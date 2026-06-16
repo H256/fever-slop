@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+import inspect
 import json
 import time
+from typing import Any, Callable
 
 from rich.console import Console
 from rich.panel import Panel
@@ -16,6 +18,7 @@ from demucs_separator import DemucsSeparator
 from prompt_relay_builder import build_scene_prompt_relay
 from stage1_segment_builder import build_stage1_segment_json
 from render_plan_builder import build_render_plan
+from scene_prompt_builder import ScenePromptBuilder
 from utils import save_timeline_json
 from vocal_timeline_analyzer import (
     VocalTimelineAnalyzer,
@@ -46,7 +49,7 @@ def log_file(label: str, path: Path):
     console.print(f"[green]✓[/green] {label}: [cyan]{path}[/cyan]")
 
 
-def run_spinner(description: str, func):
+def run_spinner(description: str, func: Callable[[], Any]):
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -61,6 +64,29 @@ def join_notes(*parts: str) -> str:
     return "\n".join(part.strip() for part in parts if part and part.strip())
 
 
+def get_steering_value(config: ProjectConfig, name: str, default: str = "") -> str:
+    steering = getattr(config, "steering", None)
+    return str(getattr(steering, name, default) or "")
+
+
+def get_config_value(config: ProjectConfig, name: str, default: Any = None) -> Any:
+    return getattr(config, name, default)
+
+
+def call_with_supported_kwargs(func: Callable[..., Any], **kwargs):
+    """
+    Calls a function with only the keyword arguments it currently supports.
+    This keeps main.py compatible while your helper modules are evolving.
+    """
+    signature = inspect.signature(func)
+    supported = {
+        key: value
+        for key, value in kwargs.items()
+        if key in signature.parameters
+    }
+    return func(**supported)
+
+
 def build_resolved_global_context(
     *,
     config: ProjectConfig,
@@ -68,23 +94,28 @@ def build_resolved_global_context(
     all_lyrics: str,
 ) -> dict:
     story_notes = join_notes(
-        config.steering.global_,
-        config.steering.story_idea,
+        get_steering_value(config, "global_"),
+        get_steering_value(config, "story_idea"),
     )
 
     style_notes = join_notes(
-        config.steering.global_,
-        config.steering.style,
+        get_steering_value(config, "global_"),
+        get_steering_value(config, "style"),
     )
 
     subject_location_notes = join_notes(
-        config.steering.global_,
-        config.steering.subject,
-        config.steering.locations,
+        get_steering_value(config, "global_"),
+        get_steering_value(config, "subject"),
+        get_steering_value(config, "locations"),
     )
 
-    if config.story_idea.strip():
-        story_idea = config.story_idea.strip()
+    config_story_idea = str(get_config_value(config, "story_idea", "") or "").strip()
+    config_style = str(get_config_value(config, "style", "") or "").strip()
+    config_subject = str(get_config_value(config, "subject", "") or "").strip()
+    config_locations = get_config_value(config, "locations", []) or []
+
+    if config_story_idea:
+        story_idea = config_story_idea
         console.print("[yellow]Using story_idea override from project config.[/yellow]")
     else:
         story_idea = run_spinner(
@@ -95,8 +126,8 @@ def build_resolved_global_context(
             ),
         )
 
-    if config.style.strip():
-        style_block = config.style.strip()
+    if config_style:
+        style_block = config_style
         console.print("[yellow]Using style override from project config.[/yellow]")
     else:
         style_block = run_spinner(
@@ -115,14 +146,14 @@ def build_resolved_global_context(
         ),
     )
 
-    if config.subject.strip():
-        subject = config.subject.strip()
+    if config_subject:
+        subject = config_subject
         console.print("[yellow]Using subject override from project config.[/yellow]")
     else:
         subject = subject_locations["subject"]
 
-    if config.locations:
-        locations = config.locations
+    if config_locations:
+        locations = config_locations
         console.print("[yellow]Using locations override from project config.[/yellow]")
     else:
         locations = subject_locations["locations"]
@@ -133,15 +164,22 @@ def build_resolved_global_context(
         "subject": subject,
         "locations": locations,
         "steering": {
-            "global": config.steering.global_,
-            "story_idea": config.steering.story_idea,
-            "style": config.steering.style,
-            "subject": config.steering.subject,
-            "locations": config.steering.locations,
-            "concepts": config.steering.concepts,
-            "final_prompts": config.steering.final_prompts,
+            "global": get_steering_value(config, "global_"),
+            "story_idea": get_steering_value(config, "story_idea"),
+            "style": get_steering_value(config, "style"),
+            "subject": get_steering_value(config, "subject"),
+            "locations": get_steering_value(config, "locations"),
+            "concepts": get_steering_value(config, "concepts"),
+            "zimage": get_steering_value(config, "zimage"),
+            "ltx": get_steering_value(config, "ltx"),
+            "final_prompts": get_steering_value(config, "final_prompts"),
         },
     }
+
+
+def ensure_dirs(*dirs: Path):
+    for directory in dirs:
+        directory.mkdir(parents=True, exist_ok=True)
 
 
 def main():
@@ -156,6 +194,17 @@ def main():
         default="app_config.json",
         help="Path to global app_config.json. If missing, defaults are used.",
     )
+    parser.add_argument(
+        "--render-storyboard",
+        action="store_true",
+        help="Render Z-Image startframes for all scenes.",
+    )
+    parser.add_argument(
+        "--zimage-workflow",
+        default=None,
+        help="Path to ComfyUI Z-Image workflow API JSON.",
+    )
+    
     args = parser.parse_args()
 
     started_at = time.time()
@@ -164,12 +213,13 @@ def main():
     app_config = AppConfig.load(args.app_config)
     video_settings = config.to_video_settings()
 
-    song_id = config.song_id
+    song_id = getattr(config, "song_id", None) or getattr(config, "project_name", "") or config.input_audio.stem
 
     stems_dir = config.stems_dir
     timeline_dir = config.timeline_dir
     prompts_dir = config.prompts_dir
     render_dir = config.render_dir
+    ensure_dirs(stems_dir, timeline_dir, prompts_dir, render_dir)
 
     timeline_json = timeline_dir / f"timeline_{song_id}.json"
     beat_json = timeline_dir / f"beat_data_{song_id}.json"
@@ -180,7 +230,7 @@ def main():
     resolved_context_json = prompts_dir / f"resolved_context_{song_id}.json"
     concept_prompts_json = prompts_dir / f"concept_prompts_{song_id}.json"
     scene_details_json = prompts_dir / f"scene_details_{song_id}.json"
-    final_scene_prompts_json = prompts_dir / f"final_scene_prompts_{song_id}.json"
+    scene_prompts_json = prompts_dir / f"scene_prompts_{song_id}.json"
     render_plan_json = render_dir / f"render_plan_{song_id}.json"
 
     console.print(Panel.fit(
@@ -302,7 +352,7 @@ def main():
     log_file("Stage 1 Segments JSON", stage1_segments_json)
 
     stage1_segments = read_json(stage1_segments_json)
-    type_counts = {}
+    type_counts: dict[str, int] = {}
     for seg in stage1_segments:
         type_counts[seg["type"]] = type_counts.get(seg["type"], 0) + 1
 
@@ -361,14 +411,17 @@ def main():
     concept_story_input = join_notes(
         global_context["story_idea"],
         "STEERING:",
-        config.steering.concepts,
+        get_steering_value(config, "concepts"),
     )
 
     concept_prompts = run_spinner(
         "Generating concept prompts for all scenes...",
-        lambda: prompt_pipeline.create_concept_prompts(
+        lambda: call_with_supported_kwargs(
+            prompt_pipeline.create_concept_prompts,
             stage1_segments=stage1_segments,
             story_idea=concept_story_input,
+            global_context=global_context,
+            notes=get_steering_value(config, "concepts"),
         ),
     )
 
@@ -377,35 +430,40 @@ def main():
 
     scene_details = run_spinner(
         "Generating camera and character motion per scene...",
-        lambda: prompt_pipeline.create_scene_details(
+        lambda: call_with_supported_kwargs(
+            prompt_pipeline.create_scene_details,
             concept_prompts=concept_prompts,
+            global_context=global_context,
         ),
     )
 
     prompt_pipeline.save_json(scene_details_json, scene_details)
     log_file("Scene Details JSON", scene_details_json)
 
-    if config.steering.final_prompts:
-        global_context["final_prompt_steering"] = config.steering.final_prompts
+    # ------------------------------------------------------------------
+    log_step("8. Z-Image + LTX Scene Prompts")
 
-    final_scene_prompts = run_spinner(
-        "Generating final scene prompts...",
-        lambda: prompt_pipeline.create_final_scene_prompts(
+    scene_prompt_builder = ScenePromptBuilder(llm)
+    run_spinner(
+        "Generating Z-Image and LTX prompts per scene...",
+        lambda: scene_prompt_builder.build_scene_prompts(
             stage1_segments=stage1_segments,
             concept_prompts=concept_prompts,
             scene_details=scene_details,
             global_context=global_context,
+            output_json_path=scene_prompts_json,
+            zimage_instructions=get_steering_value(config, "zimage"),
+            ltx_instructions=get_steering_value(config, "ltx"),
+            trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
         ),
     )
-
-    prompt_pipeline.save_json(final_scene_prompts_json, final_scene_prompts)
-    log_file("Final Scene Prompts JSON", final_scene_prompts_json)
+    log_file("Scene Prompts JSON", scene_prompts_json)
 
     # ------------------------------------------------------------------
-    log_step("8. Render Plan")
+    log_step("9. Render Plan")
 
     build_render_plan(
-        final_scene_prompts_json=final_scene_prompts_json,
+        scene_prompts_json=scene_prompts_json,
         ltx_prompt_relay_json=ltx_prompt_relay_json,
         output_json_file=render_plan_json,
         video_settings=video_settings,
@@ -435,6 +493,35 @@ def main():
         title="Pipeline Complete",
         border_style="green",
     ))
+
+    if args.render_storyboard:
+        if not args.zimage_workflow:
+            raise ValueError(
+                "--zimage-workflow is required when --render-storyboard is used"
+            )
+
+        from comfyui_client import ComfyUIClient
+        from storyboard_renderer import StoryboardRenderer
+
+        client = ComfyUIClient(
+            base_url=app_config.comfyui.base_url,
+        )
+
+        renderer = StoryboardRenderer(
+            client=client,
+            zimage_workflow_path=args.zimage_workflow,
+            output_dir=render_dir / "storyboard",
+            prompt_node_title="POSITIVE_PROMPT",
+            filename_prefix_node_title="SAVE_IMAGE",
+        )
+
+        rendered = renderer.render_storyboard(
+            render_plan_path=render_plan_json,
+        )
+
+        console.print(
+            f"[green]✓[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]"
+        )
 
 
 if __name__ == "__main__":
