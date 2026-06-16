@@ -53,8 +53,8 @@ def main():
     parser.add_argument("--character-lora-strength", type=float, default=1.0)
     parser.add_argument("--negative-prompt", default="")
 
-    parser.add_argument("--positive-title", default="#POSITIVE_PROMPT")
-    parser.add_argument("--negative-title", default="#NEGATIVE_PROMPT")
+    parser.add_argument("--positive-title", default="#PROMPT_POSITIVE")
+    parser.add_argument("--negative-title", default="#PROMPT_NEGATIVE")
     parser.add_argument("--save-title", default="#SAVE_IMAGE")
     parser.add_argument("--character-lora-title", default="#CHARACTER_LORA")
 

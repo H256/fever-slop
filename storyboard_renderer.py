@@ -3,6 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 import json
 
+from rich.progress import (
+    Progress,
+    TextColumn,
+    BarColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+
 from comfyui_client import ComfyUIClient
 from workflow_patcher import WorkflowPatcher
 
@@ -21,8 +29,8 @@ class StoryboardRenderer:
         zimage_workflow_path: str | Path,
         output_dir: str | Path,
 
-        positive_prompt_node_title: str = "#POSITIVE_PROMPT",
-        negative_prompt_node_title: str = "#NEGATIVE_PROMPT",
+        positive_prompt_node_title: str = "#PROMPT_POSITIVE",
+        negative_prompt_node_title: str = "#PROMPT_NEGATIVE",
         save_image_node_title: str = "#SAVE_IMAGE",
         character_lora_node_title: str = "#CHARACTER_LORA",
 
@@ -75,16 +83,28 @@ class StoryboardRenderer:
 
         rendered_files = []
 
-        for scene in render_plan:
-            scene_number = int(scene["scene"])
-            output_path = self.output_dir / f"scene_{scene_number:04}.png"
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task(
+                "Rendering storyboard",
+                total=len(render_plan),
+            )
+            for scene in render_plan:
+                scene_number = int(scene["scene"])
+                output_path = self.output_dir / f"scene_{scene_number:04}.png"
 
-            if skip_existing and output_path.exists():
-                rendered_files.append(output_path)
-                continue
+                if skip_existing and output_path.exists():
+                    rendered_files.append(output_path)
+                    continue
 
-            image_path = self.render_scene_startframe(scene)
-            rendered_files.append(image_path)
+                image_path = self.render_scene_startframe(scene)
+                rendered_files.append(image_path)
+                progress.advance(task)
 
         return rendered_files
 
