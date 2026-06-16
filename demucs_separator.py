@@ -58,7 +58,7 @@ class DemucsSeparator:
                 self.model,
                 mix,
                 device=self.device,
-                progress=True,
+                progress=False,
             )
 
         stems = stems[0].cpu()

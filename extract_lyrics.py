@@ -16,7 +16,7 @@ result = model.transcribe(
     str(clean_file),
     language="german",
     task="transcribe",
-    verbose=True,
+    verbose=False,
     condition_on_previous_text=False,
     no_speech_threshold=0.75,
     logprob_threshold=-0.5,
