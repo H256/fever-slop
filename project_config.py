@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+import json
+
+from video_settings import VideoSettings
+
+
+@dataclass(frozen=True)
+class VideoConfig:
+    fps: int = 24
+    width: int = 1280
+    height: int = 704
+
+
+@dataclass(frozen=True)
+class AudioConfig:
+    demucs_model: str = "htdemucs_ft"
+    whisper_model: str = "large"
+    language: str = "de"
+
+
+@dataclass(frozen=True)
+class SceneGenerationConfig:
+    min_duration: float = 2.0
+    max_duration: float = 10.0
+    bias: float = 0.7
+    duration_preset: str = "impact_weighted"
+    seed: int = 42
+
+
+@dataclass(frozen=True)
+class VocalDetectionConfig:
+    merge_gap: float = 0.5
+    min_vocal_duration: float = 0.4
+    min_silence_duration: float = 0.8
+    rms_low_percentile: float = 20.0
+    rms_high_percentile: float = 85.0
+    rms_ratio: float = 0.35
+    smooth_frames: int = 10
+
+
+@dataclass(frozen=True)
+class SteeringConfig:
+    global_: str = ""
+    story_idea: str = ""
+    style: str = ""
+    subject: str = ""
+    locations: str = ""
+    concepts: str = ""
+    final_prompts: str = ""
+
+
+@dataclass(frozen=True)
+class ProjectConfig:
+    project_dir: Path
+    project_name: str
+    input_audio: Path
+
+    video: VideoConfig = field(default_factory=VideoConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
+    scene_generation: SceneGenerationConfig = field(default_factory=SceneGenerationConfig)
+    vocal_detection: VocalDetectionConfig = field(default_factory=VocalDetectionConfig)
+
+    story_idea: str = ""
+    style: str = ""
+    subject: str = ""
+    locations: list[str] = field(default_factory=list)
+
+    steering: SteeringConfig = field(default_factory=SteeringConfig)
+
+    @classmethod
+    def load(cls, config_path: str | Path) -> "ProjectConfig":
+        config_path = Path(config_path).resolve()
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+
+        project_dir = config_path.parent
+        video_raw = raw.get("video", {})
+        audio_raw = raw.get("audio", {})
+        scene_raw = raw.get("scene_generation", {})
+        vocal_raw = raw.get("vocal_detection", {})
+        steering_raw = raw.get("steering", {})
+
+        input_audio = Path(raw["input_audio"])
+        if not input_audio.is_absolute():
+            input_audio = project_dir / input_audio
+
+        return cls(
+            project_dir=project_dir,
+            project_name=raw.get("project_name") or input_audio.stem,
+            input_audio=input_audio,
+
+            video=VideoConfig(
+                fps=int(video_raw.get("fps", 24)),
+                width=int(video_raw.get("width", 1280)),
+                height=int(video_raw.get("height", 704)),
+            ),
+
+            audio=AudioConfig(
+                demucs_model=audio_raw.get("demucs_model", "htdemucs_ft"),
+                whisper_model=audio_raw.get("whisper_model", "large"),
+                language=audio_raw.get("language", "de"),
+            ),
+
+            scene_generation=SceneGenerationConfig(
+                min_duration=float(scene_raw.get("min_duration", 2.0)),
+                max_duration=float(scene_raw.get("max_duration", 10.0)),
+                bias=float(scene_raw.get("bias", 0.7)),
+                duration_preset=scene_raw.get("duration_preset", "impact_weighted"),
+                seed=int(scene_raw.get("seed", 42)),
+            ),
+
+            vocal_detection=VocalDetectionConfig(
+                merge_gap=float(vocal_raw.get("merge_gap", 0.5)),
+                min_vocal_duration=float(vocal_raw.get("min_vocal_duration", 0.4)),
+                min_silence_duration=float(vocal_raw.get("min_silence_duration", 0.8)),
+                rms_low_percentile=float(vocal_raw.get("rms_low_percentile", 20.0)),
+                rms_high_percentile=float(vocal_raw.get("rms_high_percentile", 85.0)),
+                rms_ratio=float(vocal_raw.get("rms_ratio", 0.35)),
+                smooth_frames=int(vocal_raw.get("smooth_frames", 10)),
+            ),
+
+            story_idea=raw.get("story_idea", ""),
+            style=raw.get("style", ""),
+            subject=raw.get("subject", ""),
+            locations=list(raw.get("locations", [])),
+
+            steering=SteeringConfig(
+                global_=steering_raw.get("global", ""),
+                story_idea=steering_raw.get("story_idea", ""),
+                style=steering_raw.get("style", ""),
+                subject=steering_raw.get("subject", ""),
+                locations=steering_raw.get("locations", ""),
+                concepts=steering_raw.get("concepts", ""),
+                final_prompts=steering_raw.get("final_prompts", ""),
+            ),
+        )
+
+    def to_video_settings(self) -> VideoSettings:
+        return VideoSettings(
+            fps=self.video.fps,
+            width=self.video.width,
+            height=self.video.height,
+        )
+
+    @property
+    def song_id(self) -> str:
+        return self.input_audio.stem
+
+    @property
+    def output_dir(self) -> Path:
+        path = self.project_dir / "output"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def stems_dir(self) -> Path:
+        path = self.output_dir / "stems"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def timeline_dir(self) -> Path:
+        path = self.output_dir / "timeline"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def prompts_dir(self) -> Path:
+        path = self.output_dir / "prompts"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def render_dir(self) -> Path:
+        path = self.output_dir / "render"
+        path.mkdir(parents=True, exist_ok=True)
+        return path

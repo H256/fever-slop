@@ -1,0 +1,49 @@
+{
+  "project_name": "forest_song",
+  "input_audio": "input/comfyui_00056_.mp3",
+
+  "video": {
+    "fps": 24,
+    "width": 1280,
+    "height": 704
+  },
+
+  "audio": {
+    "demucs_model": "htdemucs_ft",
+    "whisper_model": "large",
+    "language": "de"
+  },
+
+  "scene_generation": {
+    "min_duration": 2.0,
+    "max_duration": 10.0,
+    "bias": 0.7,
+    "duration_preset": "impact_weighted",
+    "seed": 42
+  },
+
+  "vocal_detection": {
+    "merge_gap": 0.5,
+    "min_vocal_duration": 0.4,
+    "min_silence_duration": 0.8,
+    "rms_low_percentile": 20,
+    "rms_high_percentile": 85,
+    "rms_ratio": 0.35,
+    "smooth_frames": 10
+  },
+
+  "story_idea": "",
+  "style": "",
+  "subject": "",
+  "locations": [],
+
+  "steering": {
+    "global": "",
+    "story_idea": "",
+    "style": "",
+    "subject": "",
+    "locations": "",
+    "concepts": "",
+    "final_prompts": ""
+  }
+}
