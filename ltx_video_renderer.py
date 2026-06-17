@@ -11,11 +11,15 @@ from video_postprocessor import VideoPostProcessor, TrimSpec
 
 
 class LTXVideoRenderer:
+    min_prompt_relay_frames = 6
+
     def __init__(
         self,
         client: ComfyUIClient,
         ltx_workflow_path: str | Path,
         output_dir: str | Path,
+        single_prompt_workflow_path: str | Path | None = None,
+        render_mode: str = "relay",
         width_node_title: str = "#WIDTH",
         height_node_title: str = "#HEIGHT",
         load_audio_node_title: str = "#LOAD_AUDIO",
@@ -25,6 +29,8 @@ class LTXVideoRenderer:
         framerate_node_title: str = "#FRAMERATE",
         seed_node_title: str = "#SEED",
         prompt_relay_node_title: str = "#PROMPT_RELAY",
+        single_prompt_node_title: str = "#PROMPT",
+        single_prompt_input_name: str = "text",
         save_video_node_title: str = "#SAVE_VIDEO",
         character_lora_node_title: str | None = "#CHARACTER_LORA",
         character_lora_strength: float = 1.0,
@@ -37,12 +43,14 @@ class LTXVideoRenderer:
         debug_workflows_dir: str | Path | None = None,
         preroll_frames: int = 0,
         tail_loss_frames: int = 0,
+        round_render_frames_to_8n1: bool = False,
         postprocess: bool = True,
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
     ):
         self.client = client
         self.ltx_workflow_path = Path(ltx_workflow_path)
+        self.single_prompt_workflow_path = Path(single_prompt_workflow_path) if single_prompt_workflow_path else None
         self.output_dir = Path(output_dir)
         self.raw_output_dir = self.output_dir / "raw"
         self.final_output_dir = self.output_dir / "final"
@@ -56,6 +64,8 @@ class LTXVideoRenderer:
         self.framerate_node_title = framerate_node_title
         self.seed_node_title = seed_node_title
         self.prompt_relay_node_title = prompt_relay_node_title
+        self.single_prompt_node_title = single_prompt_node_title
+        self.single_prompt_input_name = single_prompt_input_name
         self.save_video_node_title = save_video_node_title
         self.character_lora_node_title = character_lora_node_title
 
@@ -66,6 +76,9 @@ class LTXVideoRenderer:
         if segment_length_mode not in {"frames_minus_one", "frames"}:
             raise ValueError("segment_length_mode must be 'frames_minus_one' or 'frames'")
         self.segment_length_mode = segment_length_mode
+        if render_mode not in {"relay", "single_prompt", "auto"}:
+            raise ValueError("render_mode must be 'relay', 'single_prompt', or 'auto'")
+        self.render_mode = render_mode
 
         self.min_duration = min_duration
         self.max_duration = max_duration
@@ -74,14 +87,16 @@ class LTXVideoRenderer:
 
         self.preroll_frames = max(0, int(preroll_frames))
         self.tail_loss_frames = max(0, int(tail_loss_frames))
+        self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
         self.postprocess = postprocess
         self.postprocessor = VideoPostProcessor(
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
         )
 
-    def load_workflow(self) -> dict:
-        return json.loads(self.ltx_workflow_path.read_text(encoding="utf-8"))
+    def load_workflow(self, mode: str = "relay") -> dict:
+        workflow_path = self._workflow_path_for_mode(mode)
+        return json.loads(workflow_path.read_text(encoding="utf-8"))
 
     def render_videos(
         self,
@@ -192,7 +207,8 @@ class LTXVideoRenderer:
         return rendered_files
 
     def render_scene_video(self, scene: dict, comfy_audio_name: str, comfy_startframe_name: str, rolling: dict) -> Path:
-        workflow = self.load_workflow()
+        mode = self._render_mode_for_scene(scene)
+        workflow = self.load_workflow(mode=mode)
         patcher = WorkflowPatcher(workflow)
 
         scene_number = int(scene["scene"])
@@ -200,13 +216,6 @@ class LTXVideoRenderer:
         width = int(scene["width"])
         height = int(scene["height"])
         render_frame_count = int(rolling["render_frame_count"])
-
-        global_prompt, local_prompts, segment_lengths = self._build_prompt_relay_payload(
-            scene=scene,
-            render_frame_count=render_frame_count,
-            trim_front_frames=int(rolling["trim_front_frames"]),
-            tail_loss_frames=int(rolling["tail_loss_frames"]),
-        )
 
         patcher.set_input_by_title(self.width_node_title, "value", width)
         patcher.set_input_by_title(self.height_node_title, "value", height)
@@ -225,9 +234,14 @@ class LTXVideoRenderer:
         patcher.set_input_by_title(self.trim_audio_node_title, "duration", float(rolling["audio_duration_seconds"]))
         patcher.set_input_by_title(self.startframe_node_title, "image", comfy_startframe_name)
 
-        patcher.set_input_by_title(self.prompt_relay_node_title, "global_prompt", global_prompt)
-        patcher.set_input_by_title(self.prompt_relay_node_title, "local_prompts", local_prompts)
-        patcher.set_input_by_title(self.prompt_relay_node_title, "segment_lengths", segment_lengths)
+        self._patch_prompt_inputs(
+            patcher=patcher,
+            scene=scene,
+            mode=mode,
+            render_frame_count=render_frame_count,
+            trim_front_frames=int(rolling["trim_front_frames"]),
+            tail_loss_frames=int(rolling["tail_loss_frames"]),
+        )
 
         patcher.set_input_by_title(self.save_video_node_title, "filename_prefix", f"ltx_raw/scene_{scene_number:04}")
 
@@ -262,6 +276,52 @@ class LTXVideoRenderer:
             output_path=self.raw_output_dir / f"scene_{scene_number:04}_raw.mp4",
         )
 
+    def _render_mode_for_scene(self, scene: dict) -> str:
+        if self.render_mode != "auto":
+            return self.render_mode
+
+        hint = str(scene.get("ltx", {}).get("render_mode_hint", "relay")).strip()
+        if hint == "single_prompt":
+            return "single_prompt"
+        return "relay"
+
+    def _workflow_path_for_mode(self, mode: str) -> Path:
+        if mode == "single_prompt":
+            return self.single_prompt_workflow_path or self.ltx_workflow_path
+        return self.ltx_workflow_path
+
+    def _patch_prompt_inputs(
+        self,
+        patcher: WorkflowPatcher,
+        scene: dict,
+        mode: str,
+        render_frame_count: int,
+        trim_front_frames: int,
+        tail_loss_frames: int,
+    ) -> None:
+        if mode == "single_prompt":
+            prompt = (
+                scene.get("ltx", {}).get("original_style_i2v_prompt")
+                or scene.get("ltx", {}).get("base_prompt")
+                or ""
+            )
+            patcher.set_input_by_title(
+                self.single_prompt_node_title,
+                self.single_prompt_input_name,
+                str(prompt).strip(),
+            )
+            return
+
+        global_prompt, local_prompts, segment_lengths = self._build_prompt_relay_payload(
+            scene=scene,
+            render_frame_count=render_frame_count,
+            trim_front_frames=trim_front_frames,
+            tail_loss_frames=tail_loss_frames,
+        )
+        patcher.set_input_by_title(self.prompt_relay_node_title, "global_prompt", global_prompt)
+        patcher.set_input_by_title(self.prompt_relay_node_title, "local_prompts", local_prompts)
+        patcher.set_input_by_title(self.prompt_relay_node_title, "segment_lengths", segment_lengths)
+
     def _rolling_spec(self, scene: dict) -> dict:
         scene_number = int(scene["scene"])
         fps = int(scene["fps"])
@@ -274,16 +334,30 @@ class LTXVideoRenderer:
         audio_start = max(0.0, scene_start - preroll / float(fps))
         effective_preroll = round((scene_start - audio_start) * fps)
 
-        render_frame_count = scene_frame_count + effective_preroll + tail
+        base_render_frame_count = scene_frame_count + effective_preroll + tail
+        render_frame_count = (
+            self._round_up_8n1(base_render_frame_count)
+            if self.round_render_frames_to_8n1
+            else base_render_frame_count
+        )
+        effective_tail = tail + (render_frame_count - base_render_frame_count)
         audio_duration = max(0.0, (render_frame_count - 1) / float(fps))
 
         return {
             "render_frame_count": render_frame_count,
             "trim_front_frames": effective_preroll,
-            "tail_loss_frames": tail,
+            "tail_loss_frames": effective_tail,
             "audio_start_seconds": audio_start,
             "audio_duration_seconds": audio_duration,
         }
+
+    @staticmethod
+    def _round_up_8n1(frame_count: int) -> int:
+        frame_count = max(1, int(frame_count))
+        remainder = (frame_count - 1) % 8
+        if remainder == 0:
+            return frame_count
+        return frame_count + (8 - remainder)
 
     def _seed_for_scene(self, scene_number: int) -> int:
         if self.randomize_seed:
@@ -329,16 +403,19 @@ class LTXVideoRenderer:
         timeline_frames = render_frame_count if self.segment_length_mode == "frames" else max(1, render_frame_count - 1)
         scene_timeline_frames = int(scene["frame_count"]) if self.segment_length_mode == "frames" else max(1, int(scene["frame_count"]) - 1)
 
-        local_prompts: list[str] = []
-        segment_lengths: list[int] = []
+        relay_segments: list[dict] = []
 
         if trim_front_frames > 0:
-            local_prompts.append("pre-roll continuity hold, preserve startframe composition, subtle breathing and atmospheric motion")
-            segment_lengths.append(trim_front_frames)
+            relay_segments.append({
+                "prompt": "pre-roll continuity hold, preserve startframe composition, subtle breathing and atmospheric motion",
+                "length": trim_front_frames,
+            })
 
         if not relays:
-            local_prompts.append("continue the main scene motion with stable subject identity")
-            segment_lengths.append(scene_timeline_frames)
+            relay_segments.append({
+                "prompt": "continue the main scene motion with stable subject identity",
+                "length": scene_timeline_frames,
+            })
         else:
             relays = sorted(relays, key=lambda item: int(item["frame_start"]))
             cursor = 0
@@ -348,22 +425,34 @@ class LTXVideoRenderer:
                 end = max(start, min(int(relay["frame_end"]), scene_timeline_frames))
 
                 if start > cursor:
-                    local_prompts.append("hold the same shot, subtle breathing and atmospheric motion")
-                    segment_lengths.append(start - cursor)
+                    relay_segments.append({
+                        "prompt": "hold the same shot, subtle breathing and atmospheric motion",
+                        "length": start - cursor,
+                    })
                     cursor = start
 
                 length = max(1, end - start)
-                local_prompts.append(str(relay["prompt"]).strip())
-                segment_lengths.append(length)
+                relay_segments.append({
+                    "prompt": str(relay["prompt"]).strip(),
+                    "length": length,
+                })
                 cursor = end
 
             if cursor < scene_timeline_frames:
-                local_prompts.append("hold the same shot, subtle breathing and atmospheric motion")
-                segment_lengths.append(scene_timeline_frames - cursor)
+                relay_segments.append({
+                    "prompt": "hold the same shot, subtle breathing and atmospheric motion",
+                    "length": scene_timeline_frames - cursor,
+                })
 
         if tail_loss_frames > 0:
-            local_prompts.append("tail safety continuation, maintain same motion and atmosphere without introducing a new scene")
-            segment_lengths.append(tail_loss_frames)
+            relay_segments.append({
+                "prompt": "tail safety continuation, maintain same motion and atmosphere without introducing a new scene",
+                "length": tail_loss_frames,
+            })
+
+        relay_segments = self._normalize_prompt_relay_segments(relay_segments)
+        local_prompts = [segment["prompt"] for segment in relay_segments]
+        segment_lengths = [int(segment["length"]) for segment in relay_segments]
 
         total = sum(segment_lengths)
         if total != timeline_frames:
@@ -375,3 +464,39 @@ class LTXVideoRenderer:
             )
 
         return global_prompt, "\n|".join(local_prompts), ",".join(str(int(x)) for x in segment_lengths)
+
+    @classmethod
+    def _normalize_prompt_relay_segments(cls, segments: list[dict]) -> list[dict]:
+        normalized = [
+            {"prompt": str(segment["prompt"]).strip(), "length": int(segment["length"])}
+            for segment in segments
+            if int(segment["length"]) > 0
+        ]
+
+        while len(normalized) > 1:
+            short_index = next(
+                (
+                    index
+                    for index, segment in enumerate(normalized)
+                    if int(segment["length"]) < cls.min_prompt_relay_frames
+                ),
+                None,
+            )
+            if short_index is None:
+                break
+
+            if short_index == 0:
+                target_index = 1
+            elif short_index == len(normalized) - 1:
+                target_index = short_index - 1
+            else:
+                previous_length = int(normalized[short_index - 1]["length"])
+                next_length = int(normalized[short_index + 1]["length"])
+                target_index = short_index + 1 if next_length <= previous_length else short_index - 1
+
+            normalized[target_index]["length"] = (
+                int(normalized[target_index]["length"]) + int(normalized[short_index]["length"])
+            )
+            del normalized[short_index]
+
+        return normalized

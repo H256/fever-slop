@@ -2,8 +2,139 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import random
 
 from video_settings import VideoSettings
+
+
+CAMERA_MOTION_DETAILS = [
+    "slow forward dolly",
+    "gentle handheld drift",
+    "subtle arc around the subject",
+    "locked medium close-up with slight push-in",
+    "soft vertical crane rise",
+    "steady shoulder-level tracking",
+]
+
+VOCAL_CHARACTER_MOTION_DETAILS = [
+    "expressive singing posture",
+    "natural breath-led head movement",
+    "hands move with the rhythm",
+    "shoulders sway subtly while performing",
+    "eyes stay engaged with the camera",
+    "controlled microphone performance gestures",
+]
+
+INSTRUMENTAL_CHARACTER_MOTION_DETAILS = [
+    "calm breathing and small posture shifts",
+    "hands relax naturally at the sides",
+    "eyes scan the environment quietly",
+    "subtle weight shift in place",
+    "still mouth with restrained facial movement",
+    "slow turn of the shoulders",
+]
+
+LIGHTING_DETAILS = [
+    "soft rim light outlining the subject",
+    "practical lights glowing in the background",
+    "high contrast stage lighting",
+    "diffused window light across the face",
+    "colored reflections moving gently through the scene",
+    "low-key cinematic light with clear facial detail",
+]
+
+TIME_OF_DAY_DETAILS = [
+    "late night",
+    "blue hour",
+    "golden hour",
+    "early morning",
+    "deep evening",
+    "overcast afternoon",
+]
+
+WEATHER_DETAILS = [
+    "clear air",
+    "light haze",
+    "soft rain outside the frame",
+    "misty atmosphere",
+    "dry still air",
+    "faint drifting dust",
+]
+
+FACIAL_EXPRESSION_DETAILS = [
+    "focused eyes",
+    "subtle intensity",
+    "restrained vulnerability",
+    "serene concentration",
+    "quiet confidence",
+    "emotional resolve",
+]
+
+EMOTION_DETAILS = [
+    "intimate",
+    "urgent",
+    "melancholic",
+    "defiant",
+    "tender",
+    "haunted",
+]
+
+LOCATION_DETAILS = [
+    "within the established setting",
+    "in the same framed environment",
+    "without changing location",
+    "inside the existing scene geography",
+]
+
+
+class DetailListPicker:
+    def __init__(self, seed: int = 0):
+        self.seed = int(seed)
+        self._cycles: dict[str, list[str]] = {}
+        self._positions: dict[str, int] = {}
+
+    def pick(
+        self,
+        list_name: str,
+        items: list[str],
+        scene_number: int,
+        strategy: str = "random",
+        index: int | None = None,
+        pick_count: int = 1,
+    ) -> str:
+        if not items:
+            return ""
+
+        count = max(1, int(pick_count))
+
+        if strategy == "index":
+            start = int(index if index is not None else scene_number - 1)
+            picks = [items[(start + offset) % len(items)] for offset in range(count)]
+        elif strategy == "random_no_repeat":
+            picks = [self._pick_no_repeat(list_name, items) for _ in range(count)]
+        elif strategy == "random":
+            rng = random.Random(f"{self.seed}:{scene_number}:{list_name}")
+            picks = [items[rng.randrange(len(items))] for _ in range(count)]
+        else:
+            raise ValueError("strategy must be 'index', 'random', or 'random_no_repeat'")
+
+        if len(picks) == 1:
+            return picks[0]
+        return f"start with {picks[0]} then follow with {picks[1]}"
+
+    def _pick_no_repeat(self, list_name: str, items: list[str]) -> str:
+        position = self._positions.get(list_name, 0)
+        cycle = self._cycles.get(list_name)
+
+        if cycle is None or position >= len(cycle):
+            cycle = list(items)
+            random.Random(f"{self.seed}:{list_name}:{position // max(1, len(items))}").shuffle(cycle)
+            self._cycles[list_name] = cycle
+            position = 0
+
+        value = cycle[position]
+        self._positions[list_name] = position + 1
+        return value
 
 
 def _clamp_relay_segment(frame_start: int, frame_end: int, frame_count: int) -> tuple[int, int] | None:
@@ -14,6 +145,71 @@ def _clamp_relay_segment(frame_start: int, frame_end: int, frame_count: int) -> 
         return None
 
     return frame_start, frame_end
+
+
+def _relay_states(prompt_relay: list[dict]) -> set[str]:
+    return {str(relay.get("state", "")).strip().lower() for relay in prompt_relay if relay.get("state")}
+
+
+def _render_mode_hint(scene_type: str, prompt_relay: list[dict]) -> str:
+    scene_type = scene_type.strip().lower()
+    states = _relay_states(prompt_relay)
+    if len(states) > 1:
+        return "relay"
+    if scene_type == "mixed":
+        return "relay"
+    return "single_prompt"
+
+
+def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
+    scene_number = int(scene["scene"])
+    scene_type = str(scene.get("type", "")).strip().lower()
+    base_prompt = str(scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
+    base_concept = str(scene.get("base_concept", "")).strip()
+
+    picker = DetailListPicker(seed=seed)
+    camera_motion = picker.pick("camera_motion", CAMERA_MOTION_DETAILS, scene_number, "random")
+    lighting = picker.pick("lighting", LIGHTING_DETAILS, scene_number, "random")
+    time_of_day = picker.pick("time_of_day", TIME_OF_DAY_DETAILS, scene_number, "random")
+    weather = picker.pick("weather", WEATHER_DETAILS, scene_number, "random")
+    facial_expression = picker.pick("facial_expression", FACIAL_EXPRESSION_DETAILS, scene_number, "random")
+    emotion = picker.pick("emotion", EMOTION_DETAILS, scene_number, "random")
+    location = picker.pick("location", LOCATION_DETAILS, scene_number, "index")
+
+    if scene_type == "vocals":
+        character_motion = picker.pick(
+            "vocal_character_motion",
+            VOCAL_CHARACTER_MOTION_DETAILS,
+            scene_number,
+            "random",
+            pick_count=2,
+        )
+        performance = (
+            "The visible subject sings with expressive lip sync throughout the shot, "
+            "with the mouth performance matching the vocal energy."
+        )
+    else:
+        character_motion = picker.pick(
+            "instrumental_character_motion",
+            INSTRUMENTAL_CHARACTER_MOTION_DETAILS,
+            scene_number,
+            "random",
+            pick_count=2,
+        )
+        performance = (
+            "The visible subject remains present and framed throughout the shot, "
+            "with the mouth relaxed and still."
+        )
+
+    identity = f"Scene identity: {base_concept}." if base_concept else "Scene identity stays unchanged."
+    return (
+        f"{base_prompt} {performance} {identity} Keep the subject visible and clearly framed. "
+        f"Camera motion: {camera_motion}. Character motion: {character_motion}. "
+        f"Lighting: {lighting}. Time of day: {time_of_day}. Weather and atmosphere: {weather}. "
+        f"Facial expression: {facial_expression}. Mood: {emotion}. Location: {location}. "
+        "Animate only the provided start frame; preserve the same setting, outfit, subject identity, "
+        "composition, and atmosphere. Do not introduce new characters, new locations, or new story events."
+    )
 
 
 def build_render_plan(
@@ -54,6 +250,7 @@ def build_render_plan(
 
         zimage_prompt = scene["zimage_prompt"]
         ltx_base_prompt = scene["ltx_base_prompt"]
+        original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=video_settings.fps)
 
         prompt_relay = []
 
@@ -121,7 +318,12 @@ def build_render_plan(
             "height": video_settings.height,
             "frame_count": frame_count,
             "z_image": {"prompt": zimage_prompt, "frame": 0},
-            "ltx": {"base_prompt": ltx_base_prompt, "prompt_relay": prompt_relay},
+            "ltx": {
+                "base_prompt": ltx_base_prompt,
+                "prompt_relay": prompt_relay,
+                "original_style_i2v_prompt": original_style_i2v_prompt,
+                "render_mode_hint": _render_mode_hint(str(scene.get("type", "")), prompt_relay),
+            },
             "metadata": {
                 "segment_id": scene["segment_id"],
                 "type": scene["type"],

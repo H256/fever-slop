@@ -49,6 +49,8 @@ class SteeringConfig:
     subject: str = ""
     locations: str = ""
     concepts: str = ""
+    zimage: str = ""
+    ltx: str = ""
     final_prompts: str = ""
 
 
@@ -133,6 +135,8 @@ class ProjectConfig:
                 subject=steering_raw.get("subject", ""),
                 locations=steering_raw.get("locations", ""),
                 concepts=steering_raw.get("concepts", ""),
+                zimage=steering_raw.get("zimage", ""),
+                ltx=steering_raw.get("ltx", ""),
                 final_prompts=steering_raw.get("final_prompts", ""),
             ),
         )

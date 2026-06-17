@@ -44,6 +44,8 @@
     "subject": "",
     "locations": "",
     "concepts": "",
+    "zimage": "",
+    "ltx": "",
     "final_prompts": ""
   }
 }
