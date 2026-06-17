@@ -1,152 +1,236 @@
-# Music Video Pipeline Files
+# Autoprompter Music Video Pipeline
 
-## Files
+This patch fixes scene duration handling and LTX relay rendering.
 
-- `config.example.json`  
-  Per-project config. Copy this into your project folder as `config.json`.
+## Key rule
 
-- `app_config.example.json`  
-  Global config for LLM and later ComfyUI. Copy this into the working directory as `app_config.json`.
-
-- `project_config.py`  
-  Loads project-specific settings: input audio, video settings, audio models, scene settings, steering notes, overrides.
-
-- `app_config.py`  
-  Loads global settings: LLM endpoint/model and later ComfyUI endpoint.
-
-- `main.py`  
-  Rich-logged pipeline.
-
-## Example structure
-
-```text
-projects/
-└─ forest_song/
-   ├─ config.json
-   ├─ input/
-   │  └─ comfyui_00056_.mp3
-   └─ output/
-```
-
-## Run
-
-```powershell
-uv run python main.py --project ./projects/forest_song/config.json --app-config ./app_config.json
-```
-
-## Dependency
-
-```powershell
-uv pip install rich
-```
-
-Existing pipeline dependencies still apply:
-
-```powershell
-uv pip install openai librosa soundfile numpy openai-whisper
-```
-
-# Prompt Patch
-
-This patch separates prompt generation into model-specific layers:
-
-- `concept_prompts_*.json` — Stage 1 scene concepts.
-- `scene_details_*.json` — camera motion + character motion.
-- `scene_prompts_*.json` — both `zimage_prompt` and `ltx_base_prompt`.
-- `render_plan_*.json` — final render plan.
-
-Important:
-
-- The resolved subject is injected into every scene prompt generation call.
-- Z-Image prompts are still-image keyframe prompts.
-- LTX prompts are video prompts.
-- Prompt Relay stays frame-based.
-- One scene = one cut = one LTX render pass.
-- `frame_count = round(fps * duration_seconds) + 1`.
-
-Add these project config fields if missing:
+Project config controls scene duration:
 
 ```json
-"trigger_word": "",
-"steering": {
-  "zimage": "Create strong still-image keyframes. Avoid motion language, lip sync, singing, and actions that require multiple frames.",
-  "ltx": "Create video-ready prompts with controlled motion and strong continuity. Preserve subject identity, wardrobe, lighting, and environment."
+"scene_generation": {
+  "min_duration": 2.0,
+  "max_duration": 10.0,
+  "bias": 0.7,
+  "duration_preset": "impact_weighted",
+  "seed": 42
 }
 ```
 
-# ComfyUI Render Layer
+All beat scenes should respect this range before Stage1, storyboard, and LTX rendering.
 
-This patch separates rendering from concept/prompt generation.
+If a generated scene is shorter than `min_duration`, it is merged.
+If a generated scene is longer than `max_duration`, it is split.
 
-## Generate concepts and render plan first
+This is applied as early as possible: directly after beat SRT generation.
+
+---
+
+## Files included
+
+- `scene_duration_enforcer.py`
+- `repair_scene_srt.py`
+- `main_scene_duration_patch_snippet.py`
+- `render_plan_normalizer.py`
+- `normalize_render_plan.py`
+- `ltx_video_renderer.py`
+- `render_ltx.py`
+- `README_COMPLETE_AUTOPROMPTER_PIPELINE.md`
+
+---
+
+## Patch main.py
+
+Add import:
+
+```python
+from scene_duration_enforcer import (
+    enforce_scene_srt_file,
+    parse_scene_srt,
+    validate_scene_durations,
+)
+```
+
+Use two SRT paths:
+
+```python
+scene_srt_raw = timeline_dir / f"scenes_{song_id}_raw.srt"
+scene_srt = timeline_dir / f"scenes_{song_id}.srt"
+```
+
+After beat generation, write raw SRT first:
+
+```python
+scene_generator.generate_from_json_file(
+    beat_json_path=beat_json,
+    output_srt_path=scene_srt_raw,
+)
+```
+
+Then repair:
+
+```python
+enforce_scene_srt_file(
+    input_srt=scene_srt_raw,
+    output_srt=scene_srt,
+    min_duration=scene_cfg.min_duration,
+    max_duration=scene_cfg.max_duration,
+)
+```
+
+Then validate:
+
+```python
+duration_errors = validate_scene_durations(
+    parse_scene_srt(scene_srt),
+    min_duration=scene_cfg.min_duration,
+    max_duration=scene_cfg.max_duration,
+)
+
+if duration_errors:
+    raise ValueError(
+        "Scene duration constraints failed after repair:\n"
+        + "\n".join(duration_errors)
+    )
+```
+
+After this point, all downstream steps use the repaired `scene_srt`.
+
+---
+
+## Full generation
 
 ```powershell
-uv run python main.py --project ./projects/forest_song/config.json --app-config ./app_config.json
+uv run python main.py `
+  --project .\projects\my_frst_project\config.json `
+  --app-config .\app_config.json
 ```
 
-This creates a render plan, for example:
+Output render plan:
 
 ```text
-projects/forest_song/output/render/render_plan_forest_song.json
+.\projects\my_frst_project\output\render\render_plan_comfyui_00056_.json
 ```
 
-## Render only Z-Image storyboard later
+---
+
+## Optional safety repair for an existing render plan
+
+If you already have a render plan with bad durations:
+
+```powershell
+uv run python normalize_render_plan.py `
+  --input-render-plan .\projects\my_frst_project\output\render\render_plan_comfyui_00056_.json `
+  --output-render-plan .\projects\my_frst_project\output\render\render_plan_comfyui_00056__duration_fixed.json `
+  --min-duration 2.0 `
+  --max-duration 10.0
+```
+
+Prefer regenerating from repaired SRT when possible. This normalizer is only a safety net.
+
+---
+
+## Compact relay prompts
+
+If you use the previous relay compaction patch:
+
+```powershell
+uv run python compact_relay_prompts.py `
+  --app-config .\app_config.json `
+  --input-render-plan .\projects\my_frst_project\output\render\render_plan_comfyui_00056__duration_fixed.json `
+  --output-render-plan .\projects\my_frst_project\output\render\render_plan_comfyui_00056__duration_fixed_compact.json
+```
+
+---
+
+## Render storyboard
+
+Use the final render plan that has valid scene durations:
 
 ```powershell
 uv run python render_storyboard.py `
-  --app-config ./app_config.json `
-  --render-plan ./projects/forest_song/output/render/render_plan_forest_song.json `
-  --workflow ./workflows/zimage_api.json `
-  --output-dir ./projects/forest_song/output/render/storyboard `
-  --character-lora-strength 1.0
+  --app-config .\app_config.json `
+  --render-plan .\projects\my_frst_project\output\render\render_plan_comfyui_00056__duration_fixed_compact.json `
+  --workflow .\workflows\zimage_api.json `
+  --output-dir .\projects\my_frst_project\output\render\storyboard
 ```
 
-Disable the character LoRA:
+If you regenerated main.py with repaired SRT directly, use the normal `render_plan_comfyui_00056_.json`.
+
+---
+
+## Render LTX
 
 ```powershell
---character-lora-strength 0.0
+uv run python render_ltx.py `
+  --app-config .\app_config.json `
+  --render-plan .\projects\my_frst_project\output\render\render_plan_comfyui_00056__duration_fixed_compact.json `
+  --workflow .\workflows\autoprompt_relay_ltxv_i2v.json `
+  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
+  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
+  --output-dir .\projects\my_frst_project\output\render\ltx `
+  --min-duration 2.0 `
+  --max-duration 10.0 `
+  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug_workflows
 ```
 
-Render only selected scenes:
+---
 
-```powershell
---scenes 1,2,5-8
-```
+## PromptRelay frame rule
 
-Limit for testing:
-
-```powershell
---limit 3
-```
-
-## Required ComfyUI node titles
-
-Set these in the API workflow JSON under `_meta.title`:
+Your workflow showed this pattern:
 
 ```text
-#POSITIVE_PROMPT
-#NEGATIVE_PROMPT
-#SAVE_IMAGE
-#CHARACTER_LORA
+#FRAMES = 5
+#PROMPT_RELAY.segment_lengths = 4
 ```
 
-The renderer patches:
+Therefore default is:
 
-- `#POSITIVE_PROMPT.inputs.text`
-- `#NEGATIVE_PROMPT.inputs.text`
-- `#SAVE_IMAGE.inputs.filename_prefix`
-- `#CHARACTER_LORA.inputs.strength_model`
-- `#CHARACTER_LORA.inputs.strength_clip`
+```text
+sum(segment_lengths) = frame_count - 1
+```
 
-It also tries alternate LoRA strength input names:
-`strength`, `model_strength`, `clip_strength`.
+The renderer uses this by default:
 
-## Why separate rendering?
+```powershell
+--segment-length-mode frames_minus_one
+```
 
-You can now:
+If your node expects `sum(segment_lengths) = frame_count`, use:
 
-1. Batch-generate concepts and render plans.
-2. Manually inspect/edit render_plan.json.
-3. Render storyboard images later.
-4. Later add a separate LTX/I2V renderer using the same render_plan.json.
+```powershell
+--segment-length-mode frames
+```
 
+---
+
+## Debug checklist
+
+When a generated video is 0 seconds, inspect the debug workflow:
+
+```text
+#FRAMES
+#FRAMERATE
+#TRIM_AUDIO.start_index
+#TRIM_AUDIO.duration
+#PROMPT_RELAY.segment_lengths
+#SAVE_VIDEO.trim_to_audio
+```
+
+Expected with 24 fps and 2 seconds minimum:
+
+```text
+#FRAMES >= 49
+#TRIM_AUDIO.duration >= 2.0 approx
+sum(segment_lengths) = #FRAMES - 1
+```
+
+---
+
+## Concat
+
+After LTX rendering:
+
+```powershell
+ffmpeg -f concat -safe 0 -i .\projects\my_frst_project\output\render\ltx\concat_list.txt -c copy .\projects\my_frst_project\output\render\ltx\final_concat.mp4
+```
