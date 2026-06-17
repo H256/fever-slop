@@ -127,7 +127,7 @@
   "12": {
     "inputs": {
       "audio": "ComfyUI_00056_.mp3",
-      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.785367575512075"
+      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.24760083184089532"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -301,23 +301,6 @@
       "title": "LTXVPreprocess"
     }
   },
-  "24": {
-    "inputs": {
-      "frames_number": [
-        "22",
-        0
-      ],
-      "frame_rate": [
-        "25",
-        0
-      ],
-      "batch_size": 1
-    },
-    "class_type": "LTXVEmptyLatentAudio",
-    "_meta": {
-      "title": "LTXV Empty Latent Audio"
-    }
-  },
   "25": {
     "inputs": {
       "value": 24
@@ -356,12 +339,12 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "59",
+        "61",
         0
       ],
       "positive": [
-        "59",
-        1
+        "60",
+        0
       ],
       "negative": [
         "38",
@@ -471,8 +454,8 @@
   "38": {
     "inputs": {
       "conditioning": [
-        "59",
-        1
+        "60",
+        0
       ]
     },
     "class_type": "ConditioningZeroOut",
@@ -507,8 +490,8 @@
   "42": {
     "inputs": {
       "positive": [
-        "59",
-        1
+        "60",
+        0
       ],
       "negative": [
         "38",
@@ -570,7 +553,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "59",
+        "61",
         0
       ],
       "positive": [
@@ -763,28 +746,31 @@
       "title": "🎈VRAM-Cleanup"
     }
   },
-  "59": {
+  "60": {
     "inputs": {
-      "global_prompt": "Cinematic wide shot in a dark, primordial forest where dim light filters through thick shadows, casting high contrast across mossy stone paths and ancient ruins. An old weary warrior man stands motionless amidst the heavy, sacred silence of a moonlit clearing, his face etched with the weight of centuries. As he begins to sing a mournful melody, his lips move with deep emotion, echoing the spirits trapped within the gnarled limbs of a massive, ancient oak tree. Leaves drift slowly downward through the air like falling memories. The camera performs a slow aerial drift upward, revealing the scale of the ancient forest and the solemnity of the grove as the spirits become one with the very wood. Deep moss greens, earthy browns, and pale grey stone dominate the atmospheric, heavy fantasy scene.",
-      "local_prompts": "During this frame range, the same subject sings with expressive lip sync. Preserve the same shot, lighting, character identity, wardrobe, and environment.\n|The man turns towards the camera. During this frame range, the same subject is silent. No singing, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment.\n| his lips move with deep emotion, echoing the spirits trapped within the gnarled limbs of a massive, ancient oak tree. During this frame range, the same subject sings with expressive lip sync. Preserve the same shot, lighting, character identity, wardrobe, and environment.\n|During this frame range, the same subject is silent. No singing, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment.\n|During this frame range, the same subject sings with expressive lip sync. Preserve the same shot, lighting, character identity, wardrobe, and environment.\n",
-      "segment_lengths": "27,24,109,15,48",
-      "epsilon": 0.001,
-      "model": [
-        "1",
-        0
-      ],
+      "text": "",
       "clip": [
         "3",
         0
-      ],
-      "latent": [
-        "20",
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "#PROMPT"
+    }
+  },
+  "61": {
+    "inputs": {
+      "lora_name": "LTXV2\\ltx23-kwh-balanced-av.comfy.safetensors",
+      "strength_model": 0.85,
+      "model": [
+        "1",
         0
       ]
     },
-    "class_type": "PromptRelayEncode",
+    "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "#PROMPT_RELAY"
+      "title": "#LORA_1"
     }
   }
 }

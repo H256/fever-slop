@@ -365,6 +365,7 @@ Wirkung:
 
 - LTX rendert einige Frames vor der eigentlichen Szene mit.
 - Das finale Clip wird danach getrimmt.
+- Die Audiospur bleibt pro Szenenclip das passende, ebenfalls getrimmte Audiofenster.
 - Das reduziert sichtbare Luecken zwischen einzeln gerenderten Clips.
 
 Output:
@@ -581,6 +582,8 @@ Bestehende Clips neu rendern:
 
 ### 7. Finales Video concatieren
 
+Standard ist Original-Parity: Die finalen Szenenclips werden mit ihren jeweiligen Szenen-Audiospuren concateniert. Der komplette Originalsong wird nicht nachtraeglich ueber das finale Video gemuxt.
+
 Streamcopy:
 
 ```powershell
@@ -599,6 +602,8 @@ ffmpeg -f concat -safe 0 `
   -c:a aac -b:a 192k `
   .\projects\my_frst_project\output\render\ltx\final_video_reencoded.mp4
 ```
+
+Ein Vergleichsexport mit komplettem Originalsong ist nur ein Diagnosepfad, z.B. ueber `.\test.ps1 -DiagnosticOriginalAudioMux`.
 
 ## Safety- und Reparaturbefehle
 

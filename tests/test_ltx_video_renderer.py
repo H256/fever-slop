@@ -1,6 +1,6 @@
 import unittest
 
-from ltx_video_renderer import LTXVideoRenderer
+from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
 from workflow_patcher import WorkflowPatcher
 
 
@@ -139,6 +139,33 @@ class LTXRenderModeTests(unittest.TestCase):
 
 
 class RollingFrameSpecTests(unittest.TestCase):
+    def test_rolling_spec_is_typed_audio_window_with_mapping_compatibility(self):
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            preroll_frames=50,
+            tail_loss_frames=25,
+            round_render_frames_to_8n1=True,
+        )
+        scene = {
+            "scene": 3,
+            "fps": 25,
+            "frame_count": 101,
+            "abs_start_seconds": 12.0,
+        }
+
+        rolling = renderer._rolling_spec(scene)
+
+        self.assertIsInstance(rolling, AudioWindowSpec)
+        self.assertEqual(177, rolling.render_frame_count)
+        self.assertEqual(177, rolling["render_frame_count"])
+        self.assertEqual(50, rolling.trim_front_frames)
+        self.assertEqual(26, rolling.tail_loss_frames)
+        self.assertAlmostEqual(10.0, rolling.audio_start_seconds)
+        self.assertAlmostEqual(176 / 25, rolling.audio_duration_seconds)
+        self.assertAlmostEqual(101 / 25, rolling.output_duration_seconds)
+
     def test_preroll_and_tail_increase_render_frame_count_directly(self):
         renderer = LTXVideoRenderer(
             client=None,
@@ -159,6 +186,28 @@ class RollingFrameSpecTests(unittest.TestCase):
         self.assertEqual(176, rolling["render_frame_count"])
         self.assertEqual(50, rolling["trim_front_frames"])
         self.assertEqual(25, rolling["tail_loss_frames"])
+
+    def test_first_scene_audio_window_does_not_seek_before_song_start(self):
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            preroll_frames=50,
+            tail_loss_frames=25,
+        )
+        scene = {
+            "scene": 1,
+            "fps": 25,
+            "frame_count": 101,
+            "abs_start_seconds": 0.0,
+        }
+
+        rolling = renderer._rolling_spec(scene)
+
+        self.assertEqual(126, rolling.render_frame_count)
+        self.assertEqual(0, rolling.trim_front_frames)
+        self.assertAlmostEqual(0.0, rolling.audio_start_seconds)
+        self.assertAlmostEqual(125 / 25, rolling.audio_duration_seconds)
 
     def test_original_rounding_adds_padding_to_effective_tail(self):
         renderer = LTXVideoRenderer(

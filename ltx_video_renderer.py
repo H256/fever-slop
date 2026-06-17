@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import json
 import random
@@ -8,6 +9,36 @@ import shutil
 from comfyui_client import ComfyUIClient
 from workflow_patcher import WorkflowPatcher
 from video_postprocessor import VideoPostProcessor, TrimSpec
+
+
+@dataclass(frozen=True)
+class AudioWindowSpec:
+    scene_frame_count: int
+    render_frame_count: int
+    trim_front_frames: int
+    tail_loss_frames: int
+    fps: int
+    audio_start_seconds: float
+    audio_duration_seconds: float
+
+    @property
+    def output_duration_seconds(self) -> float:
+        return self.scene_frame_count / float(self.fps)
+
+    def as_dict(self) -> dict:
+        return {
+            "scene_frame_count": self.scene_frame_count,
+            "render_frame_count": self.render_frame_count,
+            "trim_front_frames": self.trim_front_frames,
+            "tail_loss_frames": self.tail_loss_frames,
+            "fps": self.fps,
+            "audio_start_seconds": self.audio_start_seconds,
+            "audio_duration_seconds": self.audio_duration_seconds,
+            "output_duration_seconds": self.output_duration_seconds,
+        }
+
+    def __getitem__(self, key: str):
+        return self.as_dict()[key]
 
 
 class LTXVideoRenderer:
@@ -206,7 +237,7 @@ class LTXVideoRenderer:
         self.postprocessor.write_manifest(manifest_entries, self.output_dir / "render_manifest.json")
         return rendered_files
 
-    def render_scene_video(self, scene: dict, comfy_audio_name: str, comfy_startframe_name: str, rolling: dict) -> Path:
+    def render_scene_video(self, scene: dict, comfy_audio_name: str, comfy_startframe_name: str, rolling: AudioWindowSpec) -> Path:
         mode = self._render_mode_for_scene(scene)
         workflow = self.load_workflow(mode=mode)
         patcher = WorkflowPatcher(workflow)
@@ -337,7 +368,7 @@ class LTXVideoRenderer:
         patcher.set_input_by_title(self.prompt_relay_node_title, "local_prompts", local_prompts)
         patcher.set_input_by_title(self.prompt_relay_node_title, "segment_lengths", segment_lengths)
 
-    def _rolling_spec(self, scene: dict) -> dict:
+    def _rolling_spec(self, scene: dict) -> AudioWindowSpec:
         scene_number = int(scene["scene"])
         fps = int(scene["fps"])
         scene_frame_count = int(scene["frame_count"])
@@ -358,13 +389,15 @@ class LTXVideoRenderer:
         effective_tail = tail + (render_frame_count - base_render_frame_count)
         audio_duration = max(0.0, (render_frame_count - 1) / float(fps))
 
-        return {
-            "render_frame_count": render_frame_count,
-            "trim_front_frames": effective_preroll,
-            "tail_loss_frames": effective_tail,
-            "audio_start_seconds": audio_start,
-            "audio_duration_seconds": audio_duration,
-        }
+        return AudioWindowSpec(
+            scene_frame_count=scene_frame_count,
+            render_frame_count=render_frame_count,
+            trim_front_frames=effective_preroll,
+            tail_loss_frames=effective_tail,
+            fps=fps,
+            audio_start_seconds=audio_start,
+            audio_duration_seconds=audio_duration,
+        )
 
     @staticmethod
     def _round_up_8n1(frame_count: int) -> int:

@@ -127,7 +127,7 @@
   "12": {
     "inputs": {
       "audio": "ComfyUI_00056_.mp3",
-      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.34427250922815034"
+      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.04509347859535617"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -301,23 +301,6 @@
       "title": "LTXVPreprocess"
     }
   },
-  "24": {
-    "inputs": {
-      "frames_number": [
-        "22",
-        0
-      ],
-      "frame_rate": [
-        "25",
-        0
-      ],
-      "batch_size": 1
-    },
-    "class_type": "LTXVEmptyLatentAudio",
-    "_meta": {
-      "title": "LTXV Empty Latent Audio"
-    }
-  },
   "25": {
     "inputs": {
       "value": 24
@@ -369,7 +352,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "1",
+        "59",
         0
       ],
       "positive": [
@@ -603,7 +586,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "1",
+        "59",
         0
       ],
       "positive": [
@@ -794,6 +777,20 @@
     "class_type": "VRAMCleanup",
     "_meta": {
       "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "59": {
+    "inputs": {
+      "lora_name": "LTXV2\\ltx23-kwh-balanced-av.comfy.safetensors",
+      "strength_model": 0.85,
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "#LORA_1"
     }
   }
 }
