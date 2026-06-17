@@ -234,3 +234,189 @@ After LTX rendering:
 ```powershell
 ffmpeg -f concat -safe 0 -i .\projects\my_frst_project\output\render\ltx\concat_list.txt -c copy .\projects\my_frst_project\output\render\ltx\final_concat.mp4
 ```
+
+# Concept Prompt Batch Mode
+
+This patch adds optional batched generation for `concept_prompts.json`.
+
+## Why?
+
+Large single-call JSON generation can drop keys near the end, for example:
+
+```text
+stage1_segments has segment_040
+concept_prompts only contains segment_001..segment_039
+```
+
+Batch mode reduces that risk by generating concepts in smaller chunks.
+
+## Does continuity survive batching?
+
+Yes, because every batch receives:
+
+- `story_idea`
+- `global_context`
+- steering notes
+- previous generated concepts
+- a rolling summary of the visual story so far
+
+So the LLM still knows where the story came from and where the next batch should continue.
+
+## Files
+
+- `concept_prompt_batcher.py`
+- `main.py` patched with `--concept-batch-size`
+- `prompt_pipeline_batch_patch.py` as manual patch reference
+- `README_CONCEPT_BATCH_MODE.md`
+
+## Usage
+
+Recommended:
+
+```powershell
+uv run python main.py `
+  --project .\projects\my_frst_project\config.json `
+  --app-config .\app_config.json `
+  --concept-batch-size 10
+```
+
+Disable batch mode:
+
+```powershell
+--concept-batch-size 0
+```
+
+Use smaller batches if the model is weak at JSON:
+
+```powershell
+--concept-batch-size 5
+```
+
+## Where this runs
+
+This only affects concept generation:
+
+```text
+stage1_segments.json
+→ concept_prompts.json
+```
+
+Everything after that stays the same:
+
+```text
+concept_prompts.json
+→ scene_details.json
+→ scene_prompts.json
+→ render_plan.json
+```
+
+## Validation
+
+The patched `main.py` validates:
+
+- every `stage1_segments[].segment_id` must exist in `concept_prompts`
+- extra keys are removed
+- output order follows `stage1_segments`
+
+If a key is missing even after batch repair, `main.py` raises a clear error.
+
+# LTX Rolling Frames Patch
+
+Adds rolling-frame rendering to reduce visible gaps between separately rendered LTX clips.
+
+## Files
+
+- `ltx_video_renderer.py`
+- `render_ltx.py`
+- `video_postprocessor.py`
+- `trim_existing_ltx_clips.py`
+- `README_ROLLING_FRAMES_LTX.md`
+
+## Output structure
+
+```text
+output/render/ltx/
+├─ raw/
+│  ├─ scene_0001_raw.mp4
+│  └─ ...
+├─ final/
+│  ├─ scene_0001.mp4
+│  └─ ...
+├─ concat_list.txt
+└─ render_manifest.json
+```
+
+`concat_list.txt` points to `final/`, not `raw/`.
+
+## Recommended command
+
+Use your compact render plan if available.
+
+```powershell
+uv run python render_ltx.py `
+  --app-config .\app_config.json `
+  --render-plan .\projects\my_frst_project\output\render\render_plan_comfyui_00056__compact.json `
+  --workflow .\workflows\autoprompt_relay_ltxv_i2v.json `
+  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
+  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
+  --output-dir .\projects\my_frst_project\output\render\ltx `
+  --preroll-frames 6 `
+  --tail-loss-frames 6 `
+  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
+```
+
+Test scene 16 only:
+
+```powershell
+--scenes 16
+```
+
+## Tuning
+
+Start with:
+
+```powershell
+--preroll-frames 6 --tail-loss-frames 6
+```
+
+If gaps remain:
+
+```powershell
+--preroll-frames 8 --tail-loss-frames 8
+```
+
+If starts get too unstable:
+
+```powershell
+--preroll-frames 4 --tail-loss-frames 6
+```
+
+## Concat
+
+```powershell
+ffmpeg -f concat -safe 0 `
+  -i .\projects\my_frst_project\output\render\ltx\concat_list.txt `
+  -c copy `
+  .\projects\my_frst_project\output\render\ltx\final_concat.mp4
+```
+
+If streamcopy concat fails, re-encode:
+
+```powershell
+ffmpeg -f concat -safe 0 `
+  -i .\projects\my_frst_project\output\render\ltx\concat_list.txt `
+  -c:v libx264 -crf 18 -preset slow `
+  -c:a aac -b:a 192k `
+  .\projects\my_frst_project\output\render\ltx\final_concat_reencoded.mp4
+```
+
+## Note about prompt drift
+
+Rolling frames reduces seam gaps. It does not fix prompt drift where:
+
+```text
+Z-Image: character foreground
+LTX base prompt: forest / tree / gallows without character foreground
+```
+
+For that, make sure to run the compact relay prompt step and later tighten the LTX base prompt builder so it preserves the startframe composition.

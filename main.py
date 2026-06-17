@@ -16,9 +16,15 @@ from app_config import AppConfig
 from project_config import ProjectConfig
 from demucs_separator import DemucsSeparator
 from prompt_relay_builder import build_scene_prompt_relay
+from scene_duration_enforcer import (
+    enforce_scene_srt_file,
+    parse_scene_srt,
+    validate_scene_durations,
+)
 from stage1_segment_builder import build_stage1_segment_json
 from render_plan_builder import build_render_plan
 from scene_prompt_builder import ScenePromptBuilder
+from concept_prompt_batcher import ConceptPromptBatcher
 from utils import save_timeline_json
 from vocal_timeline_analyzer import (
     VocalTimelineAnalyzer,
@@ -204,7 +210,13 @@ def main():
         default=None,
         help="Path to ComfyUI Z-Image workflow API JSON.",
     )
-    
+    parser.add_argument(
+        "--concept-batch-size",
+        type=int,
+        default=0,
+        help="Generate concept prompts in batches of N segments. 0 disables batching.",
+    )
+
     args = parser.parse_args()
 
     started_at = time.time()
@@ -223,6 +235,7 @@ def main():
 
     timeline_json = timeline_dir / f"timeline_{song_id}.json"
     beat_json = timeline_dir / f"beat_data_{song_id}.json"
+    scene_srt_raw = timeline_dir / f"scenes_{song_id}_raw.srt"
     scene_srt = timeline_dir / f"scenes_{song_id}.srt"
     stage1_segments_json = timeline_dir / f"stage1_segments_{song_id}.json"
     ltx_prompt_relay_json = prompts_dir / f"ltx_prompt_relay_{song_id}.json"
@@ -335,11 +348,46 @@ def main():
         seed=scene_cfg.seed,
     )
 
+    # Write the direct beat-generated SRT first. Some beat generators can still
+    # produce tiny edge scenes, especially at the beginning/end of a song.
     scene_generator.generate_from_json_file(
         beat_json_path=beat_json,
-        output_srt_path=scene_srt,
+        output_srt_path=scene_srt_raw,
     )
-    log_file("Scene SRT", scene_srt)
+    log_file("Raw Scene SRT", scene_srt_raw)
+
+    # Repair the SRT so every downstream artifact uses the same legal scene
+    # windows from the project config:
+    # scene_generation.min_duration <= scene.duration <= scene_generation.max_duration
+    enforce_scene_srt_file(
+        input_srt=scene_srt_raw,
+        output_srt=scene_srt,
+        min_duration=scene_cfg.min_duration,
+        max_duration=scene_cfg.max_duration,
+    )
+    log_file("Repaired Scene SRT", scene_srt)
+
+    repaired_scenes = parse_scene_srt(scene_srt)
+    duration_errors = validate_scene_durations(
+        repaired_scenes,
+        min_duration=scene_cfg.min_duration,
+        max_duration=scene_cfg.max_duration,
+    )
+
+    if duration_errors:
+        raise ValueError(
+            "Scene duration constraints failed after repair:\n"
+            + "\n".join(duration_errors)
+        )
+
+    shortest_scene = min((scene.duration for scene in repaired_scenes), default=0.0)
+    longest_scene = max((scene.duration for scene in repaired_scenes), default=0.0)
+    console.print(
+        f"[green]✓[/green] Scene duration range: "
+        f"[yellow]{shortest_scene:.2f}s[/yellow].."
+        f"[yellow]{longest_scene:.2f}s[/yellow] "
+        f"from [yellow]{len(repaired_scenes)}[/yellow] scenes"
+    )
 
     # ------------------------------------------------------------------
     log_step("5. Stage 1 Segment Mapping")
@@ -414,16 +462,64 @@ def main():
         get_steering_value(config, "concepts"),
     )
 
-    concept_prompts = run_spinner(
-        "Generating concept prompts for all scenes...",
-        lambda: call_with_supported_kwargs(
-            prompt_pipeline.create_concept_prompts,
-            stage1_segments=stage1_segments,
-            story_idea=concept_story_input,
-            global_context=global_context,
-            notes=get_steering_value(config, "concepts"),
-        ),
-    )
+    concept_batch_size = int(getattr(args, "concept_batch_size", 0) or 0)
+
+    if concept_batch_size > 0:
+        console.print(
+            f"[cyan]Using batched concept generation: "
+            f"{concept_batch_size} segments per batch[/cyan]"
+        )
+
+        concept_batcher = ConceptPromptBatcher(
+            llm=llm,
+            batch_size=concept_batch_size,
+        )
+
+        concept_prompts = run_spinner(
+            f"Generating concept prompts in batches of {concept_batch_size}...",
+            lambda: concept_batcher.create_concept_prompts_batched(
+                stage1_segments=stage1_segments,
+                story_idea=concept_story_input,
+                global_context=global_context,
+                notes=get_steering_value(config, "concepts"),
+            ),
+        )
+    else:
+        concept_prompts = run_spinner(
+            "Generating concept prompts for all scenes...",
+            lambda: call_with_supported_kwargs(
+                prompt_pipeline.create_concept_prompts,
+                stage1_segments=stage1_segments,
+                story_idea=concept_story_input,
+                global_context=global_context,
+                notes=get_steering_value(config, "concepts"),
+            ),
+        )
+
+    expected_concept_ids = {seg["segment_id"] for seg in stage1_segments}
+
+    missing_concepts = [
+        seg["segment_id"]
+        for seg in stage1_segments
+        if seg["segment_id"] not in concept_prompts
+    ]
+
+    extra_concepts = [
+        segment_id
+        for segment_id in concept_prompts.keys()
+        if segment_id not in expected_concept_ids
+    ]
+
+    if missing_concepts:
+        raise ValueError(f"Missing concept prompts: {missing_concepts}")
+
+    if extra_concepts:
+        console.print(f"[yellow]Ignoring extra concept prompt keys: {extra_concepts}[/yellow]")
+
+    concept_prompts = {
+        seg["segment_id"]: concept_prompts[seg["segment_id"]]
+        for seg in stage1_segments
+    }
 
     prompt_pipeline.save_json(concept_prompts_json, concept_prompts)
     log_file("Concept Prompts JSON", concept_prompts_json)
@@ -511,8 +607,10 @@ def main():
             client=client,
             zimage_workflow_path=args.zimage_workflow,
             output_dir=render_dir / "storyboard",
-            prompt_node_title="POSITIVE_PROMPT",
-            filename_prefix_node_title="SAVE_IMAGE",
+            positive_prompt_node_title="#POSITIVE_PROMPT",
+            negative_prompt_node_title="#NEGATIVE_PROMPT",
+            save_image_node_title="#SAVE_IMAGE",
+            character_lora_node_title="#CHARACTER_LORA",
         )
 
         rendered = renderer.render_storyboard(

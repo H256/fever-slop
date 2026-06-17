@@ -19,47 +19,40 @@ console = Console()
 def parse_scene_list(value: str | None) -> set[int] | None:
     if not value:
         return None
-
     result: set[int] = set()
-
     for part in value.split(","):
         part = part.strip()
         if not part:
             continue
-
         if "-" in part:
             start_raw, end_raw = part.split("-", 1)
             result.update(range(int(start_raw), int(end_raw) + 1))
         else:
             result.add(int(part))
-
     return result
 
 
 def load_render_plan_subset(render_plan_path: str | Path, scene_numbers: set[int] | None, limit: int | None) -> list[dict]:
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
-
     if scene_numbers is not None:
         render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
-
     if limit is not None:
         render_plan = render_plan[:limit]
-
     return render_plan
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Render LTX I2V videos from render_plan.json and storyboard startframes.")
+    parser = argparse.ArgumentParser(description="Render LTX I2V videos with rolling-frame preroll/tail trimming.")
 
     parser.add_argument("--app-config", default="./app_config.json")
     parser.add_argument("--render-plan", required=True)
-    parser.add_argument("--workflow", required=True, help="ComfyUI LTX API workflow JSON")
-    parser.add_argument("--audio", required=True, help="Original full-length song audio file")
-    parser.add_argument("--storyboard-dir", required=True, help="Directory containing scene_0001.png etc.")
+    parser.add_argument("--workflow", required=True)
+    parser.add_argument("--audio", required=True)
+    parser.add_argument("--storyboard-dir", required=True)
     parser.add_argument("--output-dir", required=True)
 
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--scenes", default=None, help="Example: 1,2,5-8")
+    parser.add_argument("--scenes", default=None)
     parser.add_argument("--no-skip-existing", action="store_true")
 
     parser.add_argument("--character-lora-strength", type=float, default=1.0)
@@ -76,6 +69,12 @@ def main():
     parser.add_argument("--allow-out-of-range-clips", action="store_true")
     parser.add_argument("--debug-workflows-dir", default=None)
 
+    parser.add_argument("--preroll-frames", type=int, default=6)
+    parser.add_argument("--tail-loss-frames", type=int, default=6)
+    parser.add_argument("--no-postprocess", action="store_true")
+    parser.add_argument("--ffmpeg", default="ffmpeg")
+    parser.add_argument("--postprocess-streamcopy", action="store_true")
+
     args = parser.parse_args()
 
     app_config = AppConfig.load(args.app_config)
@@ -91,9 +90,9 @@ def main():
         f"Storyboard: [cyan]{args.storyboard_dir}[/cyan]\n"
         f"Output: [cyan]{args.output_dir}[/cyan]\n"
         f"Scenes: [yellow]{len(planned)}[/yellow]\n"
-        f"Character LoRA strength: [yellow]{args.character_lora_strength}[/yellow]\n"
-        f"Segment length mode: [yellow]{args.segment_length_mode}[/yellow]\n"
-        f"Duration range: [yellow]{args.min_duration:.2f}s..{args.max_duration:.2f}s[/yellow]",
+        f"Preroll frames: [yellow]{args.preroll_frames}[/yellow]\n"
+        f"Tail loss frames: [yellow]{args.tail_loss_frames}[/yellow]\n"
+        f"Postprocess: [yellow]{not args.no_postprocess}[/yellow]",
         title="Startup",
         border_style="cyan",
     ))
@@ -112,6 +111,11 @@ def main():
         max_duration=args.max_duration,
         allow_out_of_range_clips=args.allow_out_of_range_clips,
         debug_workflows_dir=args.debug_workflows_dir,
+        preroll_frames=args.preroll_frames,
+        tail_loss_frames=args.tail_loss_frames,
+        postprocess=not args.no_postprocess,
+        ffmpeg_path=args.ffmpeg,
+        postprocess_reencode=not args.postprocess_streamcopy,
     )
 
     rendered: list[Path] = []
@@ -148,8 +152,7 @@ def main():
             rendered.extend(files)
             progress.advance(task)
 
-    concat_file = LTXVideoRenderer.write_concat_list(rendered, Path(args.output_dir) / "concat_list.txt")
-
+    concat_file = Path(args.output_dir) / "concat_list.txt"
     console.print(f"[green]✓[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
     console.print(f"[green]✓[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
     console.print()

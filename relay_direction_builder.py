@@ -9,6 +9,7 @@ from llm_client import LocalOpenAIClient
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:
+    original = text
     text = text.strip()
 
     if text.startswith("```"):
@@ -16,45 +17,62 @@ def _extract_json_array(text: str) -> list[dict[str, Any]]:
         text = re.sub(r"```$", "", text).strip()
 
     start = text.find("[")
+    if start == -1:
+        raise ValueError(f"No JSON array start found in LLM response:\n{original}")
+
     end = text.rfind("]")
 
-    if start == -1 or end == -1:
-        raise ValueError(f"No JSON array found in LLM response:\n{text}")
+    if end == -1:
+        candidate = text[start:].strip().rstrip(",") + "]"
+    else:
+        candidate = text[start:end + 1]
 
-    return json.loads(text[start:end + 1])
+    candidate = re.sub(r",\s*]", "]", candidate)
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        object_texts = re.findall(r"\{[^{}]*\}", candidate, flags=re.DOTALL)
+        objects = []
+        for obj_text in object_texts:
+            try:
+                objects.append(json.loads(obj_text))
+            except json.JSONDecodeError:
+                continue
+        if objects:
+            return objects
+        raise ValueError(
+            "Could not parse JSON array from LLM response.\n"
+            f"Original response:\n{original}\n\nCandidate:\n{candidate}"
+        )
 
 
 def _clean_direction(text: str, max_chars: int = 220) -> str:
     text = " ".join(str(text).replace("\n", " ").split())
     text = text.strip(" -|")
+    text = re.sub(r"\bno subject visible\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bno visible subject\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip(" ,.;")
     if len(text) > max_chars:
         text = text[:max_chars].rsplit(" ", 1)[0].strip()
     return text
 
 
 class RelayDirectionBuilder:
-    """
-    Converts verbose render_plan ltx.prompt_relay prompts into compact PromptRelay directions.
-
-    Important:
-    - global prompt remains scene["ltx"]["base_prompt"]
-    - local relay prompts become short direction/motion instructions only
-    - frame_start / frame_end / state are preserved
-    """
-
     def __init__(
         self,
         llm: LocalOpenAIClient,
         max_words: int = 28,
+        subject_anchor: str = (
+            "the old weary warrior man with weathered scarred face, "
+            "salt-and-pepper beard, tattered leather armor, and heavy frayed cloak"
+        ),
     ):
         self.llm = llm
         self.max_words = max_words
+        self.subject_anchor = subject_anchor
 
-    def compact_render_plan_file(
-        self,
-        input_render_plan: str | Path,
-        output_render_plan: str | Path,
-    ) -> Path:
+    def compact_render_plan_file(self, input_render_plan: str | Path, output_render_plan: str | Path) -> Path:
         input_render_plan = Path(input_render_plan)
         output_render_plan = Path(output_render_plan)
 
@@ -62,11 +80,7 @@ class RelayDirectionBuilder:
         compacted = self.compact_render_plan(plan)
 
         output_render_plan.parent.mkdir(parents=True, exist_ok=True)
-        output_render_plan.write_text(
-            json.dumps(compacted, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
+        output_render_plan.write_text(json.dumps(compacted, ensure_ascii=False, indent=2), encoding="utf-8")
         return output_render_plan
 
     def compact_render_plan(self, render_plan: list[dict]) -> list[dict]:
@@ -87,11 +101,15 @@ class RelayDirectionBuilder:
         return result
 
     def compact_scene_relays(self, scene: dict, relays: list[dict]) -> list[dict]:
+        scene_type = scene.get("metadata", {}).get("type", "")
+        has_vocals = scene_type in {"vocals", "mixed"}
+
         payload = {
             "scene": scene.get("scene"),
             "segment_id": scene.get("metadata", {}).get("segment_id"),
-            "scene_type": scene.get("metadata", {}).get("type"),
+            "scene_type": scene_type,
             "lyrics": scene.get("metadata", {}).get("lyrics", ""),
+            "main_subject": self.subject_anchor,
             "base_prompt": scene["ltx"]["base_prompt"],
             "camera_motion": scene.get("metadata", {}).get("camera_motion", ""),
             "character_motion": scene.get("metadata", {}).get("character_motion", ""),
@@ -108,28 +126,25 @@ class RelayDirectionBuilder:
         }
 
         system_prompt = f"""
-You create compact PromptRelay local directions for LTX video.
+You create compact PromptRelay local directions for LTX image-to-video.
 
-The global prompt is already provided separately. Do NOT repeat the global scene, subject, style, location, lighting, or full story.
+The global prompt is already provided separately. Do NOT repeat the full scene, style, location, lighting, or full story.
 
 Return ONLY valid JSON array with exactly one object per relay segment:
 [
   {{"index": 0, "prompt": "short local direction"}}
 ]
 
-Rules:
+Hard rules:
 - Keep each prompt under {self.max_words} words.
-- Each prompt should be only local direction: camera motion, character movement, interaction, expression, emotion, singing state, environmental motion.
-- Do NOT repeat the full scene description.
-- Do NOT include frame numbers.
-- Do NOT include JSON comments or markdown.
-- Do NOT mention "global prompt".
-- For state "singing": the resolved main subject is the only one who sings or lip-syncs.
-- For state "instrumental": no singing, no lip movement.
-- If spirits, villagers, shadows, trees, or secondary figures appear, they must not sing unless explicitly the main subject.
-- Make the directions dynamic and cinematic: turns, reaches, recoils, breathes, gazes, camera drifts, fog curls, light pulses.
-- Prefer strong verbs.
-- Avoid long descriptive adjectives.
+- For state "singing": the main subject must remain clearly visible and must sing/lip-sync.
+- Main subject: {self.subject_anchor}
+- Never write: "no subject visible", "no visible subject", "tree sings", "bark sings", "shadows sing", "ropes sing".
+- The tree, bark, shadows, fog, ropes, branches, spirits, or secondary figures must not sing.
+- For instrumental: no singing and no lip movement.
+- For vocals/mixed scenes: keep the main subject foreground or clearly visible; environment moves behind or around him.
+- Make directions dynamic: turns, reaches, recoils, breathes, gazes, camera drifts, fog curls, light pulses.
+- No frame numbers, no markdown, no comments.
 """.strip()
 
         response = self.llm.complete_prompt(
@@ -137,36 +152,79 @@ Rules:
             prompt=json.dumps(payload, ensure_ascii=False, indent=2),
         )
 
-        items = _extract_json_array(response)
-        by_index = {int(item["index"]): _clean_direction(item["prompt"]) for item in items}
+        try:
+            items = _extract_json_array(response)
+            by_index = {
+                int(item["index"]): _clean_direction(item["prompt"])
+                for item in items
+                if "index" in item and "prompt" in item
+            }
+        except Exception:
+            by_index = {}
 
         result = []
 
         for idx, relay in enumerate(relays):
             new_relay = dict(relay)
-            fallback = self._fallback_direction(scene, relay)
-            new_relay["prompt"] = by_index.get(idx, fallback)
+            fallback = self._fallback_direction(scene, relay, has_vocals)
+            prompt = by_index.get(idx, fallback)
+            prompt = self._safety_fix_prompt(scene, relay, prompt, has_vocals)
+            new_relay["prompt"] = prompt
             result.append(new_relay)
 
         return result
 
-    @staticmethod
-    def _fallback_direction(scene: dict, relay: dict) -> str:
+    def _safety_fix_prompt(self, scene: dict, relay: dict, prompt: str, has_vocals: bool) -> str:
+        state = relay.get("state", "")
+        p = _clean_direction(prompt)
+
+        bad_patterns = [
+            "no subject visible",
+            "no visible subject",
+            "tree sings",
+            "bark sings",
+            "shadows sing",
+            "ropes sing",
+            "branches sing",
+        ]
+
+        if any(pattern in p.lower() for pattern in bad_patterns):
+            return self._fallback_direction(scene, relay, has_vocals)
+
+        # If singing but no explicit visible subject/lip-sync intent, repair.
+        if state == "singing":
+            lower = p.lower()
+            if "sing" not in lower and "lip sync" not in lower and "lip-sync" not in lower:
+                return self._fallback_direction(scene, relay, has_vocals)
+            if "warrior" not in lower and "man" not in lower and "subject" not in lower:
+                return self._fallback_direction(scene, relay, has_vocals)
+
+        if has_vocals and state != "singing":
+            lower = p.lower()
+            if "warrior" not in lower and "subject" not in lower and "man" not in lower:
+                p = f"{self.subject_anchor} remains visible and silent, {p}"
+
+        return _clean_direction(p)
+
+    def _fallback_direction(self, scene: dict, relay: dict, has_vocals: bool) -> str:
         state = relay.get("state", "")
         camera = scene.get("metadata", {}).get("camera_motion", "")
         motion = scene.get("metadata", {}).get("character_motion", "")
 
         parts = []
 
+        if state == "singing":
+            parts.append(f"{self.subject_anchor} remains clearly visible in foreground, singing with controlled lip sync and focused emotion")
+        elif has_vocals:
+            parts.append(f"{self.subject_anchor} remains clearly visible in foreground, silent with no lip movement")
+        else:
+            parts.append("preserve the same shot and startframe composition")
+
         if camera:
             parts.append(camera)
-
         if motion:
             parts.append(motion)
 
-        if state == "singing":
-            parts.append("main subject sings with controlled lip sync and focused emotion")
-        else:
-            parts.append("main subject remains silent, no lip movement")
+        parts.append("environmental motion stays behind or around the subject")
 
         return _clean_direction(", ".join(parts))
