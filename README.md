@@ -6,10 +6,10 @@ Autoprompter erzeugt aus einem Song einen beat- und vocal-synchronen Musikvideo-
 2. beat-aligned Szenen mit garantierten Mindest-/Maximaldauern
 3. Story-, Konzept-, Z-Image- und LTX-Prompts
 4. Z-Image Startframes pro Szene
-5. LTX Image-to-Video Clips mit PromptRelay-Steuerung
+5. LTX Image-to-Video Clips mit Single-Prompt-I2V
 6. eine FFmpeg-Concat-Liste fuer das finale Video
 
-Der aktuelle LTX-Standardpfad ist weiterhin der segmentierte PromptRelay-Modus. Der Renderer kann aber auch einen Non-Relay-Workflow mit einem einzelnen Prompt-Node rendern. Dafuer nutzt er pro Szene `ltx.original_style_i2v_prompt`; im Auto-Modus entscheidet `ltx.render_mode_hint`.
+Der aktuelle LTX-Standardpfad ist der Non-Relay-Single-Prompt-Modus wie in den urspruenglichen Workflows. Dafuer nutzt der Renderer pro Szene `ltx.original_style_i2v_prompt`. PromptRelay bleibt optional fuer Workflows mit einem korrekt verdrahteten `#PROMPT_RELAY` Node.
 
 ## Voraussetzungen
 
@@ -264,7 +264,7 @@ Empfohlen ist der separate Weg, weil du vorher Renderplan-Fixes wie Compact/Anch
 
 ### LTX PromptRelay-Modus
 
-Das ist aktuell der aktive Renderpfad.
+Das ist ein optionaler Renderpfad fuer Workflows mit PromptRelay-Node.
 
 - `ltx.base_prompt`: globale Szenenbeschreibung.
 - `ltx.prompt_relay`: framebasierte lokale Steering-Segmente fuer Singing/Silent-Wechsel.
@@ -307,12 +307,12 @@ Policy:
 
 - Vocal-only Szenen duerfen Singing/Lip-Sync enthalten.
 - Instrumental-only Szenen enthalten keine Singing-/Lip-Sync-Begriffe.
-- Mixed-/Wechsel-Szenen bleiben zunaechst im PromptRelay-Modus.
+- Mixed-/Wechsel-Szenen koennen optional im PromptRelay-Modus gerendert werden, wenn ein passender Workflow vorhanden ist.
 
 Renderer-Modi:
 
+- `--render-mode single_prompt`: Default, nutzt `--workflow` als Non-Relay-Workflow und patcht `#PROMPT` oder den Fallback `#PROMPT_POSITIVE`.
 - `--render-mode relay`: nutzt `--workflow` als PromptRelay-Workflow und patcht `#PROMPT_RELAY`.
-- `--render-mode single_prompt`: nutzt `--workflow` oder `--single-prompt-workflow` als Non-Relay-Workflow und patcht `#PROMPT`.
 - `--render-mode auto`: nutzt pro Szene `ltx.render_mode_hint`; dafuer muessen `--workflow` und `--single-prompt-workflow` gesetzt sein.
 
 ### Rolling-Frames-Modus
@@ -492,38 +492,17 @@ Vor einem Vollrender zuerst eine kritische Szene testen, z. B. Szene 16:
 uv run python render_ltx.py `
   --app-config .\app_config.json `
   --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\autoprompt_relay_ltxv_i2v.json `
+  --workflow .\workflows\autoprompt_ltxv_i2v.json `
+  --render-mode single_prompt `
   --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
   --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-dir .\projects\my_frst_project\output\render\ltx `
+  --output-dir .\projects\my_frst_project\output\render\ltx_single `
   --scenes 16 `
   --no-skip-existing `
   --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
 ```
 
-Pruefen:
-
-```text
-.\projects\my_frst_project\output\render\ltx\final\scene_0016.mp4
-.\projects\my_frst_project\output\render\ltx_debug\scene_0016_workflow.json
-```
-
-### 6. Alle LTX-Szenen rendern
-
-PromptRelay-Workflow:
-
-```powershell
-uv run python render_ltx.py `
-  --app-config .\app_config.json `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\autoprompt_relay_ltxv_i2v.json `
-  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-dir .\projects\my_frst_project\output\render\ltx `
-  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
-```
-
-Non-Relay Single-Prompt-Workflow:
+Mit Character-LoRA im LTX-Workflow:
 
 ```powershell
 uv run python render_ltx.py `
@@ -531,12 +510,64 @@ uv run python render_ltx.py `
   --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
   --workflow .\workflows\autoprompt_ltxv_i2v.json `
   --render-mode single_prompt `
-  --single-prompt-title "#PROMPT" `
-  --single-prompt-input "text" `
   --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
   --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
   --output-dir .\projects\my_frst_project\output\render\ltx_single `
-  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_single_debug
+  --scenes 16 `
+  --lora-1-enabled `
+  --lora-1-name "characters\my_character.safetensors" `
+  --lora-1-strength-model 0.85 `
+  --lora-1-strength-clip 0.65 `
+  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
+```
+
+Der LTX-Workflow muss den LoRA-Node bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein, sondern patcht nur den vorhandenen Node mit `_meta.title` `#LORA_1`. Fuer spaetere Multi-LoRA-Workflows sind `#LORA_2`, `#LORA_3`, ... reserviert.
+
+Workflow-Upgrade:
+
+1. Neuen ComfyUI API-Workflow exportieren.
+2. Alle dynamischen Nodes mit stabilen `#...` Titeln versehen.
+3. `#LORA_1` in den Model/Clip-Pfad verdrahten.
+4. Workflow-Validation laufen lassen.
+5. Eine Szene mit `--debug-workflows-dir` rendern und die Debug-JSON pruefen.
+
+Pruefen:
+
+```text
+.\projects\my_frst_project\output\render\ltx_single\final\scene_0016.mp4
+.\projects\my_frst_project\output\render\ltx_debug\scene_0016_workflow.json
+```
+
+Bei aktivem LoRA im Debug-Workflow pruefen, dass `#LORA_1` den erwarteten Dateinamen und die erwarteten Staerken enthaelt.
+
+### 6. Alle LTX-Szenen rendern
+
+Single-Prompt-Workflow:
+
+```powershell
+uv run python render_ltx.py `
+  --app-config .\app_config.json `
+  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow .\workflows\autoprompt_ltxv_i2v.json `
+  --render-mode single_prompt `
+  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
+  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
+  --output-dir .\projects\my_frst_project\output\render\ltx_single `
+  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
+```
+
+PromptRelay-Workflow, falls du einen passenden `#PROMPT_RELAY` Workflow nutzen willst:
+
+```powershell
+uv run python render_ltx.py `
+  --app-config .\app_config.json `
+  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow .\workflows\autoprompt_relay_ltxv_i2v.json `
+  --render-mode relay `
+  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
+  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
+  --output-dir .\projects\my_frst_project\output\render\ltx_relay `
+  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_relay_debug
 ```
 
 Auto-Modus mit beiden Workflows:

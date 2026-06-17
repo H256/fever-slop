@@ -87,6 +87,14 @@ class PromptGuidanceConfig:
 
 
 @dataclass(frozen=True)
+class LoraConfig:
+    enabled: bool = False
+    name: str = ""
+    strength_model: float = 1.0
+    strength_clip: float = 1.0
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
     project_name: str
@@ -104,6 +112,7 @@ class ProjectConfig:
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
+    lora_1: LoraConfig = field(default_factory=LoraConfig)
 
     @classmethod
     def load(cls, config_path: str | Path) -> "ProjectConfig":
@@ -117,6 +126,7 @@ class ProjectConfig:
         vocal_raw = raw.get("vocal_detection", {})
         steering_raw = raw.get("steering", {})
         guidance_raw = raw.get("prompt_guidance", {})
+        lora_1_raw = raw.get("lora_1", {})
 
         input_audio = Path(raw["input_audio"])
         if not input_audio.is_absolute():
@@ -186,6 +196,12 @@ class ProjectConfig:
                 list_handling=guidance_raw.get("list_handling", ""),
                 word_count_min=int(guidance_raw.get("word_count_min", 40)),
                 word_count_max=int(guidance_raw.get("word_count_max", 50)),
+            ),
+            lora_1=LoraConfig(
+                enabled=bool(lora_1_raw.get("enabled", False)),
+                name=lora_1_raw.get("name", ""),
+                strength_model=float(lora_1_raw.get("strength_model", 1.0)),
+                strength_clip=float(lora_1_raw.get("strength_clip", 1.0)),
             ),
         )
 

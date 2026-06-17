@@ -87,6 +87,7 @@ class LTXPromptAnchorFixer:
         has_vocals = scene_type in {"vocals", "mixed"}
 
         scene["ltx"]["base_prompt"] = self._fix_base_prompt(scene, has_vocals)
+        scene["ltx"]["original_style_i2v_prompt"] = self._fix_original_style_prompt(scene, has_vocals)
 
         relays = scene["ltx"].get("prompt_relay", [])
         scene["ltx"]["prompt_relay"] = [
@@ -133,6 +134,42 @@ class LTXPromptAnchorFixer:
         # Use base as secondary context, not as primary instruction.
         prompt = prefix + " ".join(dynamic) + " " + base
 
+        return _sentence_limit(prompt, self.max_base_prompt_chars)
+
+    def _fix_original_style_prompt(self, scene: dict, has_vocals: bool) -> str:
+        z_prompt = _clean_text(scene.get("z_image", {}).get("prompt", ""))
+        if not z_prompt:
+            z_prompt = _clean_text(scene["ltx"].get("base_prompt", ""))
+
+        camera = _clean_text(scene.get("metadata", {}).get("camera_motion", ""))
+        motion = _clean_text(scene.get("metadata", {}).get("character_motion", ""))
+        concept = _clean_text(scene.get("metadata", {}).get("base_concept", ""))
+
+        if has_vocals:
+            performance = (
+                f"{self.subject_anchor} remains clearly visible and sings with controlled lip sync; "
+                "the body stays in the same starting pose and framing."
+            )
+        else:
+            performance = (
+                f"{self.subject_anchor} remains clearly visible with a relaxed still mouth; "
+                "only subtle breathing, fabric, hair, and atmospheric motion occur."
+            )
+
+        details = []
+        if camera:
+            details.append(f"Camera motion: {camera}.")
+        if motion:
+            details.append(f"Subject or environment motion: {motion}.")
+        if concept:
+            details.append(f"Story beat: {concept}.")
+
+        prompt = (
+            f"Preserve the exact startframe composition. Start frame: {z_prompt} "
+            f"{performance} {' '.join(details)} "
+            "Do not change the pose, camera framing, location, wardrobe, lighting, or subject identity. "
+            "Do not cut away to a different shot or introduce a new action."
+        )
         return _sentence_limit(prompt, self.max_base_prompt_chars)
 
     def _fix_relay(self, scene: dict, relay: dict, has_vocals: bool) -> dict:

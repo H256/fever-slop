@@ -164,8 +164,14 @@ def _render_mode_hint(scene_type: str, prompt_relay: list[dict]) -> str:
 def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     scene_number = int(scene["scene"])
     scene_type = str(scene.get("type", "")).strip().lower()
+    zimage_prompt = str(
+        scene.get("zimage_prompt")
+        or scene.get("z_image", {}).get("prompt", "")
+        or ""
+    ).strip()
     base_prompt = str(scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
     base_concept = str(scene.get("base_concept", "")).strip()
+    visual_foundation = zimage_prompt or base_prompt
 
     picker = DetailListPicker(seed=seed)
     camera_motion = picker.pick("camera_motion", CAMERA_MOTION_DETAILS, scene_number, "random")
@@ -203,11 +209,13 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
 
     identity = f"Scene identity: {base_concept}." if base_concept else "Scene identity stays unchanged."
     return (
-        f"{base_prompt} {performance} {identity} Keep the subject visible and clearly framed. "
+        f"Start frame: {visual_foundation} "
+        f"Animate the provided start frame without changing the initial composition. "
+        f"{performance} {identity} Keep the subject visible and clearly framed. "
         f"Camera motion: {camera_motion}. Character motion: {character_motion}. "
         f"Lighting: {lighting}. Time of day: {time_of_day}. Weather and atmosphere: {weather}. "
         f"Facial expression: {facial_expression}. Mood: {emotion}. Location: {location}. "
-        "Animate only the provided start frame; preserve the same setting, outfit, subject identity, "
+        "Preserve the same pose, setting, outfit, subject identity, "
         "composition, and atmosphere. Do not introduce new characters, new locations, or new story events."
     )
 
@@ -228,7 +236,7 @@ def build_render_plan(
 
     Rule:
     - One scene == one cut == one LTX render pass.
-    - frame_count == round(fps * duration_seconds) + 1.
+    - frame_count == round(fps * duration_seconds).
     """
 
     scene_prompts = json.loads(Path(scene_prompts_json).read_text(encoding="utf-8"))
@@ -246,7 +254,10 @@ def build_render_plan(
             raise ValueError(f"No relay data found for scene {scene_number}")
 
         duration_seconds = float(scene["duration"])
-        frame_count = video_settings.scene_frame_count(duration_seconds)
+        frame_count = video_settings.scene_frame_count_between(
+            float(scene["start"]),
+            float(scene["end"]),
+        )
 
         zimage_prompt = scene["zimage_prompt"]
         ltx_base_prompt = scene["ltx_base_prompt"]

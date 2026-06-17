@@ -74,7 +74,7 @@ class VideoPostProcessor:
         subprocess.run(cmd, check=True)
         return spec.output_file
 
-    def concat_clips(self, concat_list: str | Path, output_file: str | Path) -> Path:
+    def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False) -> Path:
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -84,13 +84,16 @@ class VideoPostProcessor:
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_list),
-            "-c", "copy",
-            str(output_file),
         ]
+        if video_only:
+            cmd.extend(["-an", "-c:v", "copy"])
+        else:
+            cmd.extend(["-c", "copy"])
+        cmd.append(str(output_file))
         subprocess.run(cmd, check=True)
         return output_file
 
-    def mux_original_audio_for_diagnostics(
+    def mux_original_audio(
         self,
         video_file: str | Path,
         audio_file: str | Path,
@@ -114,6 +117,14 @@ class VideoPostProcessor:
         ]
         subprocess.run(cmd, check=True)
         return output_file
+
+    def mux_original_audio_for_diagnostics(
+        self,
+        video_file: str | Path,
+        audio_file: str | Path,
+        output_file: str | Path,
+    ) -> Path:
+        return self.mux_original_audio(video_file, audio_file, output_file)
 
     @staticmethod
     def write_concat_list(video_files: list[Path], output_file: str | Path) -> Path:

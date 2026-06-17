@@ -18,7 +18,7 @@ class WorkflowPatcher:
     #POSITIVE_PROMPT
     #NEGATIVE_PROMPT
     #SAVE_IMAGE
-    #CHARACTER_LORA
+    #LORA_1
     """
 
     def __init__(self, workflow: dict):
@@ -136,5 +136,29 @@ class WorkflowPatcher:
                 f"No known LoRA strength input found on node '{title}'. "
                 f"Tried: {', '.join(input_names)}"
             )
+
+        return patched
+
+    def patch_lora_by_title(
+        self,
+        title: str,
+        lora_name: str,
+        strength_model: float,
+        strength_clip: float,
+    ) -> list[str]:
+        patched = []
+
+        self.set_existing_input_by_title(title, "lora_name", lora_name)
+        patched.append("lora_name")
+
+        for input_name in ("strength_model", "model_strength", "strength"):
+            if self.try_set_existing_input_by_title(title, input_name, strength_model):
+                patched.append(input_name)
+                break
+
+        for input_name in ("strength_clip", "clip_strength"):
+            if self.try_set_existing_input_by_title(title, input_name, strength_clip):
+                patched.append(input_name)
+                break
 
         return patched

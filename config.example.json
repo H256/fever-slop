@@ -62,5 +62,12 @@
     "list_handling": "",
     "word_count_min": 40,
     "word_count_max": 50
+  },
+
+  "lora_1": {
+    "enabled": false,
+    "name": "",
+    "strength_model": 1.0,
+    "strength_clip": 1.0
   }
 }

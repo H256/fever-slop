@@ -66,6 +66,22 @@ class OriginalStylePromptTests(unittest.TestCase):
         for banned in ("sing", "sings", "singing", "lip sync", "lip-sync"):
             self.assertNotIn(banned, prompt)
 
+    def test_original_style_prompt_uses_startframe_prompt_as_visual_foundation(self):
+        prompt = build_original_style_i2v_prompt(
+            scene={
+                "scene": 1,
+                "type": "instrumental",
+                "zimage_prompt": "A cinematic image of an old shaman kneeling among moss and roots.",
+                "ltx_base_prompt": "The old shaman stands beside a gnarled tree and grips his staff.",
+                "base_concept": "forest ritual",
+            },
+            seed=7,
+        ).lower()
+
+        self.assertIn("animate the provided start frame", prompt)
+        self.assertIn("kneeling among moss and roots", prompt)
+        self.assertNotIn("stands beside a gnarled tree", prompt)
+
 
 class BuildRenderPlanTests(unittest.TestCase):
     def test_render_plan_includes_original_style_prompt_and_mode_hints(self):
@@ -151,6 +167,50 @@ class BuildRenderPlanTests(unittest.TestCase):
             self.assertEqual("relay", by_scene[16]["ltx"]["render_mode_hint"])
             self.assertEqual("single_prompt", by_scene[3]["ltx"]["render_mode_hint"])
             self.assertNotIn("lip sync", by_scene[3]["ltx"]["original_style_i2v_prompt"].lower())
+
+    def test_frame_counts_are_snapped_to_absolute_scene_boundaries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+
+            scenes = []
+            relay_scenes = []
+            for scene_number, start, end in (
+                (1, 0.0, 2.49),
+                (2, 2.49, 4.98),
+                (3, 4.98, 7.47),
+            ):
+                scenes.append(
+                    {
+                        "scene": scene_number,
+                        "segment_id": f"s{scene_number}",
+                        "type": "instrumental",
+                        "start": start,
+                        "end": end,
+                        "duration": round(end - start, 3),
+                        "lyrics": "",
+                        "base_concept": "stage",
+                        "zimage_prompt": "z",
+                        "ltx_base_prompt": "The performer remains still on stage.",
+                    }
+                )
+                relay_scenes.append({"scene": scene_number, "prompt_relay": []})
+
+            scene_prompts_path.write_text(json.dumps(scenes), encoding="utf-8")
+            relay_path.write_text(json.dumps(relay_scenes), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+            )
+
+            plan = json.loads(output_path.read_text(encoding="utf-8"))
+
+            self.assertEqual([60, 60, 59], [scene["frame_count"] for scene in plan])
 
 
 if __name__ == "__main__":

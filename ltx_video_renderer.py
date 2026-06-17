@@ -65,6 +65,11 @@ class LTXVideoRenderer:
         save_video_node_title: str = "#SAVE_VIDEO",
         character_lora_node_title: str | None = "#CHARACTER_LORA",
         character_lora_strength: float = 1.0,
+        lora_1_enabled: bool = False,
+        lora_1_name: str = "",
+        lora_1_strength_model: float = 1.0,
+        lora_1_strength_clip: float = 1.0,
+        lora_1_node_title: str = "#LORA_1",
         randomize_seed: bool = False,
         seed_offset: int = 100000,
         segment_length_mode: str = "frames_minus_one",
@@ -101,6 +106,11 @@ class LTXVideoRenderer:
         self.character_lora_node_title = character_lora_node_title
 
         self.character_lora_strength = character_lora_strength
+        self.lora_1_enabled = bool(lora_1_enabled)
+        self.lora_1_name = lora_1_name
+        self.lora_1_strength_model = float(lora_1_strength_model)
+        self.lora_1_strength_clip = float(lora_1_strength_clip)
+        self.lora_1_node_title = lora_1_node_title
         self.randomize_seed = randomize_seed
         self.seed_offset = seed_offset
 
@@ -128,6 +138,49 @@ class LTXVideoRenderer:
     def load_workflow(self, mode: str = "relay") -> dict:
         workflow_path = self._workflow_path_for_mode(mode)
         return json.loads(workflow_path.read_text(encoding="utf-8"))
+
+    def validate_workflow(self, mode: str = "relay") -> None:
+        workflow_path = self._workflow_path_for_mode(mode)
+        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+        patcher = WorkflowPatcher(workflow)
+
+        required_titles = [
+            self.width_node_title,
+            self.height_node_title,
+            self.load_audio_node_title,
+            self.trim_audio_node_title,
+            self.startframe_node_title,
+            self.frames_node_title,
+            self.framerate_node_title,
+            self.seed_node_title,
+            self.save_video_node_title,
+        ]
+        if mode != "single_prompt":
+            required_titles.append(self.prompt_relay_node_title)
+        if self.lora_1_enabled:
+            required_titles.append(self.lora_1_node_title)
+
+        for title in dict.fromkeys(required_titles):
+            try:
+                patcher.find_node_by_meta_title(title)
+            except KeyError as exc:
+                raise ValueError(f"Missing workflow anchor {title} in workflow file {workflow_path}") from exc
+
+        if mode == "single_prompt":
+            prompt_title_candidates = [
+                self.single_prompt_node_title,
+                "#PROMPT_POSITIVE",
+                "#PROMPT",
+            ]
+            for title in dict.fromkeys(prompt_title_candidates):
+                try:
+                    patcher.find_node_by_meta_title(title)
+                    break
+                except KeyError:
+                    continue
+            else:
+                anchors = ", ".join(dict.fromkeys(prompt_title_candidates))
+                raise ValueError(f"Missing workflow anchor {anchors} in workflow file {workflow_path}")
 
     def render_videos(
         self,
@@ -239,6 +292,7 @@ class LTXVideoRenderer:
 
     def render_scene_video(self, scene: dict, comfy_audio_name: str, comfy_startframe_name: str, rolling: AudioWindowSpec) -> Path:
         mode = self._render_mode_for_scene(scene)
+        self.validate_workflow(mode=mode)
         workflow = self.load_workflow(mode=mode)
         patcher = WorkflowPatcher(workflow)
 
@@ -276,7 +330,14 @@ class LTXVideoRenderer:
 
         patcher.set_input_by_title(self.save_video_node_title, "filename_prefix", f"ltx_raw/scene_{scene_number:04}")
 
-        if self.character_lora_node_title:
+        if self.lora_1_enabled:
+            patcher.patch_lora_by_title(
+                self.lora_1_node_title,
+                lora_name=self.lora_1_name,
+                strength_model=self.lora_1_strength_model,
+                strength_clip=self.lora_1_strength_clip,
+            )
+        elif self.character_lora_node_title:
             try:
                 patcher.patch_lora_strength_by_title(
                     self.character_lora_node_title,

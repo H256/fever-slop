@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
 from workflow_patcher import WorkflowPatcher
@@ -136,6 +138,126 @@ class LTXRenderModeTests(unittest.TestCase):
         renderer._patch_prompt_inputs(patcher, scene, mode="single_prompt", render_frame_count=24, trim_front_frames=0, tail_loss_frames=0)
 
         self.assertEqual("fallback prompt", patcher.get()["1"]["inputs"]["text"])
+
+
+class LTXLoraTests(unittest.TestCase):
+    def _workflow_with_titles(self, titles: list[str]) -> str:
+        return "{" + ",".join(
+            f'"{index}": {{"inputs": {{}}, "_meta": {{"title": "{title}"}}}}'
+            for index, title in enumerate(titles, start=1)
+        ) + "}"
+
+    def _relay_titles(self) -> list[str]:
+        return [
+            "#WIDTH",
+            "#HEIGHT",
+            "#LOAD_AUDIO",
+            "#TRIM_AUDIO",
+            "#STARTFRAME",
+            "#FRAMES",
+            "#FRAMERATE",
+            "#SEED",
+            "#PROMPT_RELAY",
+            "#SAVE_VIDEO",
+        ]
+
+    def _single_prompt_titles(self) -> list[str]:
+        titles = self._relay_titles()
+        titles.remove("#PROMPT_RELAY")
+        titles.append("#PROMPT")
+        return titles
+
+    def test_workflow_patcher_patches_lora_1_name_and_strengths(self):
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {
+                    "lora_name": "",
+                    "strength_model": 1.0,
+                    "strength_clip": 1.0,
+                },
+                "class_type": "LoraLoader",
+                "_meta": {"title": "#LORA_1"},
+            }
+        })
+
+        patched = patcher.patch_lora_by_title(
+            "#LORA_1",
+            lora_name="characters/test.safetensors",
+            strength_model=0.85,
+            strength_clip=0.65,
+        )
+
+        inputs = patcher.get()["1"]["inputs"]
+        self.assertEqual(["lora_name", "strength_model", "strength_clip"], patched)
+        self.assertEqual("characters/test.safetensors", inputs["lora_name"])
+        self.assertEqual(0.85, inputs["strength_model"])
+        self.assertEqual(0.65, inputs["strength_clip"])
+
+    def test_lora_disabled_does_not_require_lora_1_anchor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow_path = Path(temp_dir) / "workflow.json"
+            workflow_path.write_text(self._workflow_with_titles(self._relay_titles()), encoding="utf-8")
+            renderer = LTXVideoRenderer(
+                client=None,
+                ltx_workflow_path=workflow_path,
+                output_dir="out",
+                lora_1_enabled=False,
+            )
+
+            renderer.validate_workflow(mode="relay")
+
+    def test_lora_enabled_requires_lora_1_anchor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow_path = Path(temp_dir) / "workflow.json"
+            workflow_path.write_text(self._workflow_with_titles(self._relay_titles()), encoding="utf-8")
+            renderer = LTXVideoRenderer(
+                client=None,
+                ltx_workflow_path=workflow_path,
+                output_dir="out",
+                lora_1_enabled=True,
+                lora_1_name="characters/test.safetensors",
+            )
+
+            with self.assertRaisesRegex(ValueError, "#LORA_1.*workflow.json"):
+                renderer.validate_workflow(mode="relay")
+
+    def test_lora_enabled_validates_single_prompt_workflow_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            relay_path = Path(temp_dir) / "relay.json"
+            single_path = Path(temp_dir) / "single.json"
+            relay_path.write_text(
+                self._workflow_with_titles([*self._relay_titles(), "#LORA_1"]),
+                encoding="utf-8",
+            )
+            single_path.write_text(self._workflow_with_titles(self._single_prompt_titles()), encoding="utf-8")
+            renderer = LTXVideoRenderer(
+                client=None,
+                ltx_workflow_path=relay_path,
+                single_prompt_workflow_path=single_path,
+                output_dir="out",
+                lora_1_enabled=True,
+                lora_1_name="characters/test.safetensors",
+            )
+
+            with self.assertRaisesRegex(ValueError, "#LORA_1.*single.json"):
+                renderer.validate_workflow(mode="single_prompt")
+
+    def test_single_prompt_validation_accepts_prompt_positive_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow_path = Path(temp_dir) / "single.json"
+            titles = self._single_prompt_titles()
+            titles.remove("#PROMPT")
+            titles.append("#PROMPT_POSITIVE")
+            workflow_path.write_text(self._workflow_with_titles(titles), encoding="utf-8")
+            renderer = LTXVideoRenderer(
+                client=None,
+                ltx_workflow_path=workflow_path,
+                output_dir="out",
+                render_mode="single_prompt",
+                single_prompt_node_title="#PROMPT",
+            )
+
+            renderer.validate_workflow(mode="single_prompt")
 
 
 class RollingFrameSpecTests(unittest.TestCase):

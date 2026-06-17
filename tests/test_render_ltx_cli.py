@@ -27,6 +27,11 @@ class RenderLTXCliTests(unittest.TestCase):
 
         self.assertEqual((50, 25, True), resolve_rolling_frames(args))
 
+    def test_single_prompt_render_mode_is_default(self):
+        args = self._parse()
+
+        self.assertEqual("single_prompt", args.render_mode)
+
     def test_safe_rolling_frame_profile_uses_low_vram_values(self):
         args = self._parse(["--rolling-frame-profile", "safe"])
 
@@ -60,6 +65,22 @@ class RenderLTXCliTests(unittest.TestCase):
 
         self.assertIsNone(args.preroll_frames)
         self.assertIsNone(args.tail_loss_frames)
+
+    def test_lora_1_cli_args_are_available(self):
+        args = self._parse([
+            "--lora-1-enabled",
+            "--lora-1-name",
+            "characters/test.safetensors",
+            "--lora-1-strength-model",
+            "0.85",
+            "--lora-1-strength-clip",
+            "0.65",
+        ])
+
+        self.assertTrue(args.lora_1_enabled)
+        self.assertEqual("characters/test.safetensors", args.lora_1_name)
+        self.assertEqual(0.85, args.lora_1_strength_model)
+        self.assertEqual(0.65, args.lora_1_strength_clip)
 
     def test_rewrite_concat_list_includes_all_rendered_scene_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:

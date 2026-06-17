@@ -32,8 +32,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--render-mode",
         choices=["relay", "single_prompt", "auto"],
-        default="relay",
-        help="relay uses #PROMPT_RELAY, single_prompt uses #PROMPT, auto uses ltx.render_mode_hint per scene.",
+        default="single_prompt",
+        help="single_prompt uses #PROMPT, relay uses #PROMPT_RELAY, auto uses ltx.render_mode_hint per scene.",
     )
     parser.add_argument(
         "--single-prompt-workflow",
@@ -51,6 +51,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-skip-existing", action="store_true")
 
     parser.add_argument("--character-lora-strength", type=float, default=1.0)
+    parser.add_argument("--lora-1-enabled", action="store_true")
+    parser.add_argument("--lora-1-name", default="")
+    parser.add_argument("--lora-1-strength-model", type=float, default=1.0)
+    parser.add_argument("--lora-1-strength-clip", type=float, default=1.0)
     parser.add_argument("--randomize-seed", action="store_true")
     parser.add_argument("--seed-offset", type=int, default=100000)
 
@@ -125,6 +129,8 @@ def main():
 
     if args.render_mode == "auto" and not args.single_prompt_workflow:
         raise ValueError("--single-prompt-workflow is required when --render-mode auto is used")
+    if args.lora_1_enabled and not args.lora_1_name:
+        raise ValueError("--lora-1-name is required when --lora-1-enabled is used")
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(args)
 
     app_config = AppConfig.load(args.app_config)
@@ -146,6 +152,8 @@ def main():
         f"Preroll frames: [yellow]{preroll_frames}[/yellow]\n"
         f"Tail loss frames: [yellow]{tail_loss_frames}[/yellow]\n"
         f"Round render frames to 8N+1: [yellow]{round_render_frames_to_8n1}[/yellow]\n"
+        f"LoRA 1 enabled: [yellow]{args.lora_1_enabled}[/yellow]\n"
+        f"LoRA 1 name: [cyan]{args.lora_1_name}[/cyan]\n"
         f"Postprocess: [yellow]{not args.no_postprocess}[/yellow]",
         title="Startup",
         border_style="cyan",
@@ -162,6 +170,10 @@ def main():
         single_prompt_node_title=args.single_prompt_title,
         single_prompt_input_name=args.single_prompt_input,
         character_lora_strength=args.character_lora_strength,
+        lora_1_enabled=args.lora_1_enabled,
+        lora_1_name=args.lora_1_name,
+        lora_1_strength_model=args.lora_1_strength_model,
+        lora_1_strength_clip=args.lora_1_strength_clip,
         randomize_seed=args.randomize_seed,
         seed_offset=args.seed_offset,
         segment_length_mode=args.segment_length_mode,
@@ -215,8 +227,11 @@ def main():
     console.print(f"[green]✓[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
     console.print(f"[green]✓[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
     console.print()
-    console.print("Concat command:")
-    console.print(f'[bold]ffmpeg -f concat -safe 0 -i "{concat_file}" -c copy "{Path(args.output_dir) / "final_concat.mp4"}"[/bold]')
+    video_only = Path(args.output_dir) / "final_concat_video_only.mp4"
+    final_concat = Path(args.output_dir) / "final_concat.mp4"
+    console.print("Concat + original-audio mux commands:")
+    console.print(f'[bold]ffmpeg -y -f concat -safe 0 -i "{concat_file}" -an -c:v copy "{video_only}"[/bold]')
+    console.print(f'[bold]ffmpeg -y -i "{video_only}" -i "{args.audio}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 320k -shortest "{final_concat}"[/bold]')
 
 
 if __name__ == "__main__":

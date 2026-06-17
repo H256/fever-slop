@@ -11,4 +11,7 @@ class VideoSettings:
         return round(seconds * self.fps)
 
     def scene_frame_count(self, duration_seconds: float) -> int:
-        return self.seconds_to_frame(duration_seconds) + 1
+        return max(1, self.seconds_to_frame(duration_seconds))
+
+    def scene_frame_count_between(self, start_seconds: float, end_seconds: float) -> int:
+        return max(1, self.seconds_to_frame(end_seconds) - self.seconds_to_frame(start_seconds))
