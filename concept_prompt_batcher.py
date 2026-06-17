@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from llm_client import LocalOpenAIClient
+from music_video_prompt_style import build_concept_mapper_system_prompt
 
 
 def extract_json_object(text: str) -> dict:
@@ -130,30 +131,6 @@ class ConceptPromptBatcher:
         previous_concepts: dict,
         previous_summary: str,
     ) -> dict:
-        system_prompt = """
-You are a music-video visual concept mapper.
-
-You receive only one batch of timed song sections, but the whole video must remain continuous.
-
-TASK:
-Create exactly one concise visual concept for each segment in CURRENT_BATCH_SEGMENTS.
-
-Rules:
-- Return ONLY valid JSON object.
-- Each key must exactly match a segment_id from CURRENT_BATCH_SEGMENTS.
-- Do not omit any segment_id.
-- Do not add extra keys.
-- Concepts are story beats, not final prompts.
-- Do NOT describe subject details, outfit, hair, age, ethnicity, or identity. The subject is injected later.
-- Do include visible setting, action, props, transformation, atmosphere, symbolic events, environmental motion, and emotional story progression.
-- For instrumental segments: advance the visual story without singing.
-- For vocals/mixed segments: reflect lyrics while preserving continuity.
-- Keep each concept one sentence.
-- Avoid "lip-sync" and "sings" in concepts unless the segment's state strongly requires vocal performance.
-- Maintain continuity with PREVIOUS_CONCEPTS and PREVIOUS_PROGRESS_SUMMARY.
-- No markdown, no comments.
-""".strip()
-
         payload = {
             "BATCH_INDEX": batch_index,
             "STORY_IDEA": story_idea,
@@ -165,7 +142,7 @@ Rules:
         }
 
         response = self.llm.complete_prompt(
-            system_prompt=system_prompt,
+            system_prompt=build_concept_mapper_system_prompt(batch=True),
             prompt=json.dumps(payload, ensure_ascii=False, indent=2),
         )
 

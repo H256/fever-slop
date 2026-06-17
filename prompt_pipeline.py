@@ -5,6 +5,12 @@ import json
 import re
 
 from llm_client import LocalOpenAIClient
+from music_video_prompt_style import (
+    build_concept_mapper_system_prompt,
+    build_detail_system_prompt,
+    build_i2v_system_prompt,
+    build_video_payload,
+)
 
 
 def extract_json_object(text: str) -> dict:
@@ -135,30 +141,6 @@ Rules for locations:
         stage1_segments: list[dict],
         story_idea: str,
     ) -> dict:
-        system_prompt = """
-You are a music-video visual concept mapper.
-
-INPUTS:
-1. SEGMENT_TIMELINE_JSON: timed song sections. Each has segment_id, start, end, duration, type, and optional lyrics.
-2. STORY_IDEA: the overall visual narrative goal.
-
-TASK:
-Create exactly one concise visual concept for each segment.
-
-Rules:
-- For "vocals": reflect the lyrics and advance the story. The character may sing or lip-sync.
-- For "instrumental": advance the story visually without referencing sung words. Do not invent lyrics. Do not say the character is singing.
-- For "mixed": combine lyrical meaning with instrumental mood.
-- Maintain character, location, style, and narrative continuity.
-- Describe only visible subjects, actions, settings, mood, and camera-relevant visual elements.
-- No technical parameters, no frame numbers, no markdown, no comments.
-
-OUTPUT:
-Return ONLY valid JSON.
-Each key must exactly match the segment_id.
-Each value must be one concise visual concept string.
-""".strip()
-
         prompt = json.dumps(
             {
                 "STORY_IDEA": story_idea,
@@ -169,7 +151,7 @@ Each value must be one concise visual concept string.
         )
 
         response = self.llm.complete_prompt(
-            system_prompt=system_prompt,
+            system_prompt=build_concept_mapper_system_prompt(batch=False),
             prompt=prompt,
         )
 
@@ -178,26 +160,45 @@ Each value must be one concise visual concept string.
     def create_scene_details(
         self,
         concept_prompts: dict,
+        stage1_segments: list[dict] | None = None,
+        global_context: dict | None = None,
     ) -> dict:
         details = {}
+        segment_types = {
+            str(segment.get("segment_id")): str(segment.get("type", ""))
+            for segment in (stage1_segments or [])
+        }
 
         for segment_id, concept in concept_prompts.items():
+            segment_type = segment_types.get(str(segment_id), "")
+            if isinstance(concept, dict):
+                segment_type = str(concept.get("type", ""))
+                concept_text = str(concept.get("concept", ""))
+            else:
+                concept_text = str(concept)
+
             camera_motion = self.llm.complete_prompt(
-                system_prompt="""
-You create one cinematic camera motion for a music video scene.
-Return only one short phrase. No explanations.
-Examples: slow push-in, low-angle tracking shot, handheld orbit, gentle crane down.
-""".strip(),
-                prompt=f"SCENE CONCEPT:\n{concept}",
+                system_prompt=build_detail_system_prompt("Camera Motion", segment_type=segment_type),
+                prompt=json.dumps(
+                    {
+                        "scene_concept": concept_text,
+                        "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
             ).strip()
 
             character_motion = self.llm.complete_prompt(
-                system_prompt="""
-You create one visible character motion for a music video scene.
-Return only one short phrase. No explanations.
-Examples: walks slowly forward, turns toward the light, raises one hand, stands still breathing.
-""".strip(),
-                prompt=f"SCENE CONCEPT:\n{concept}",
+                system_prompt=build_detail_system_prompt("Character Motion", segment_type=segment_type),
+                prompt=json.dumps(
+                    {
+                        "scene_concept": concept_text,
+                        "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
             ).strip()
 
             details[segment_id] = {
@@ -221,47 +222,19 @@ Examples: walks slowly forward, turns toward the light, raises one hand, stands 
             concept = concept_prompts[segment_id]
             details = scene_details[segment_id]
 
-            system_prompt = """
-You create one final cinematic prompt for an AI video/image generation workflow.
-
-Inputs:
-- subject
-- story idea
-- style block
-- locations
-- scene concept
-- camera motion
-- character motion
-- segment type: vocals, instrumental, or mixed
-- optional lyrics
-
-Rules:
-- Preserve the subject exactly.
-- Preserve the scene timing fields from the input; do not mention timing in the prompt.
-- If segment type is instrumental: the character must not sing and must have no lip-sync.
-- If segment type is vocals: the character may sing or lip-sync.
-- If segment type is mixed: describe a continuous shot that can support both instrumental and singing moments.
-- Use visible, cinematic language.
-- Return only one polished prompt. No JSON. No markdown.
-""".strip()
-
             prompt_payload = json.dumps(
-                {
-                    "subject": global_context["subject"],
-                    "story_idea": global_context["story_idea"],
-                    "style": global_context["style"],
-                    "locations": global_context["locations"],
-                    "segment": segment,
-                    "scene_concept": concept,
-                    "camera_motion": details["camera_motion"],
-                    "character_motion": details["character_motion"],
-                },
+                build_video_payload(
+                    segment=segment,
+                    concept=concept,
+                    scene_details=details,
+                    global_context=global_context,
+                ),
                 ensure_ascii=False,
                 indent=2,
             )
 
             final_prompt = self.llm.complete_prompt(
-                system_prompt=system_prompt,
+                system_prompt=build_i2v_system_prompt(str(segment.get("type", ""))),
                 prompt=prompt_payload,
             ).strip()
 

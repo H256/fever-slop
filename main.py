@@ -180,6 +180,7 @@ def build_resolved_global_context(
             "ltx": get_steering_value(config, "ltx"),
             "final_prompts": get_steering_value(config, "final_prompts"),
         },
+        "prompt_guidance": config.prompt_guidance.as_prompt_context(),
     }
 
 
@@ -529,6 +530,7 @@ def main():
         lambda: call_with_supported_kwargs(
             prompt_pipeline.create_scene_details,
             concept_prompts=concept_prompts,
+            stage1_segments=stage1_segments,
             global_context=global_context,
         ),
     )

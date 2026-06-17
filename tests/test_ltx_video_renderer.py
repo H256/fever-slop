@@ -110,6 +110,33 @@ class LTXRenderModeTests(unittest.TestCase):
 
         self.assertEqual("original style prompt", patcher.get()["1"]["inputs"]["text"])
 
+    def test_single_prompt_mode_falls_back_to_prompt_positive_title(self):
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="single.json",
+            output_dir="out",
+            render_mode="single_prompt",
+            single_prompt_node_title="#PROMPT",
+            single_prompt_input_name="text",
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"text": ""},
+                "class_type": "CLIPTextEncode",
+                "_meta": {"title": "#PROMPT_POSITIVE"},
+            }
+        })
+        scene = {
+            "ltx": {
+                "base_prompt": "base prompt",
+                "original_style_i2v_prompt": "fallback prompt",
+            }
+        }
+
+        renderer._patch_prompt_inputs(patcher, scene, mode="single_prompt", render_frame_count=24, trim_front_frames=0, tail_loss_frames=0)
+
+        self.assertEqual("fallback prompt", patcher.get()["1"]["inputs"]["text"])
+
 
 class RollingFrameSpecTests(unittest.TestCase):
     def test_preroll_and_tail_increase_render_frame_count_directly(self):

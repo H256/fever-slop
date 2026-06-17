@@ -47,5 +47,20 @@
     "zimage": "",
     "ltx": "",
     "final_prompts": ""
+  },
+
+  "prompt_guidance": {
+    "character_visibility": "",
+    "shot_types": "",
+    "environments": "",
+    "lighting": "",
+    "camera_motion": "",
+    "physical_interaction": "",
+    "facial_expression": "",
+    "outfit_rules": "",
+    "prompt_structure": "",
+    "list_handling": "",
+    "word_count_min": 40,
+    "word_count_max": 50
   }
 }

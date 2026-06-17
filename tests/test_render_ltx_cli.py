@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
+import tempfile
 
-from render_ltx import build_arg_parser, resolve_rolling_frames
+from render_ltx import build_arg_parser, resolve_rolling_frames, rewrite_concat_list
 
 
 class RenderLTXCliTests(unittest.TestCase):
@@ -58,6 +60,22 @@ class RenderLTXCliTests(unittest.TestCase):
 
         self.assertIsNone(args.preroll_frames)
         self.assertIsNone(args.tail_loss_frames)
+
+    def test_rewrite_concat_list_includes_all_rendered_scene_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            output_dir = temp / "ltx"
+            output_dir.mkdir()
+            rendered = [
+                output_dir / "final" / "scene_0001.mp4",
+                output_dir / "final" / "scene_0002.mp4",
+            ]
+
+            concat = rewrite_concat_list(rendered, output_dir)
+
+            text = concat.read_text(encoding="utf-8")
+            self.assertIn("scene_0001.mp4", text)
+            self.assertIn("scene_0002.mp4", text)
 
 
 if __name__ == "__main__":

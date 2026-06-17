@@ -133,6 +133,20 @@ Minimalbeispiel:
     "zimage": "",
     "ltx": "",
     "final_prompts": ""
+  },
+  "prompt_guidance": {
+    "character_visibility": "",
+    "shot_types": "",
+    "environments": "",
+    "lighting": "",
+    "camera_motion": "",
+    "physical_interaction": "",
+    "facial_expression": "",
+    "outfit_rules": "",
+    "prompt_structure": "",
+    "list_handling": "",
+    "word_count_min": 40,
+    "word_count_max": 50
   }
 }
 ```
@@ -203,6 +217,24 @@ Wenn zu viele falsche Singing-Abschnitte entstehen, `min_vocal_duration` und `mi
 - `final_prompts`: reserviert fuer finale Prompt-Stufe.
 
 Pragmatische Empfehlung: Wenn etwas wirklich fest sein muss, nutze Top-Level `story_idea`, `style`, `subject`, `locations`. Nutze `steering.*` fuer weiche Hinweise wie "mehr Close-ups", "keine neuen Charaktere", "Kamera ruhig halten".
+
+### prompt_guidance
+
+`prompt_guidance` ist die konsolenseitige Entsprechung zu UI-Listen fuer die LLM-Prompt-Erzeugung. Die Werte werden in die Konzept-, Detail-, Z-Image- und I2V-Prompt-Calls gegeben. Sie sind Leitplanken, keine Renderparameter.
+
+- `character_visibility`: Vorgaben wie "subject always visible", "medium close-up", "full body".
+- `shot_types`: Shot-Liste, z. B. "close-up, medium shot, wide establishing shot".
+- `environments`: erlaubte oder bevorzugte Umgebungen innerhalb der Top-Level-`locations`.
+- `lighting`: Lichtvorgaben, z. B. "soft rim light, flickering practical lights".
+- `camera_motion`: Bewegungsoptionen fuer Kamera, z. B. "slow push-in, handheld orbit".
+- `physical_interaction`: sichtbare Aktionen ohne neue Story-Events.
+- `facial_expression`: Ausdrucks-/Emotion-Liste.
+- `outfit_rules`: harte Regeln fuer Kleidung und Kontinuitaet.
+- `prompt_structure`: optionale Strukturvorgabe fuer Concept-Prompts.
+- `list_handling`: z. B. "cycle", "random", "reference only" als Hinweis fuer Variation.
+- `word_count_min`, `word_count_max`: Zielbereich fuer Concept-Prompts.
+
+Wichtig: Segmenttyp und Vocal-Erkennung haben Vorrang. Bei `instrumental` werden keine Singing- oder Lip-Sync-Begriffe erzwungen, auch wenn eine Guidance-Liste Performance-Begriffe enthaelt.
 
 ## Modi
 
@@ -580,19 +612,26 @@ render_storyboard.py
 render_ltx.py
 compact_relay_prompts.py
 fix_ltx_prompt_anchors.py
-normalize_render_plan.py
-repair_scene_srt.py
-trim_existing_ltx_clips.py
 ```
 
 Diese Dateien nicht allein deshalb loeschen, weil sie in keinem `import` auftauchen.
+
+Wartungs- und Reparatur-Tools liegen unter:
+
+```text
+tools/
++-- normalize_render_plan.py
++-- repair_scene_srt.py
++-- trim_existing_ltx_clips.py
++-- render_plan_normalizer.py
+```
+
+Die gleichnamigen Root-Dateien sind nur Compatibility-Wrappers fuer alte Befehle.
 
 Aktuelle statische Dead-Code-Kandidaten:
 
 - `prompt_pipeline_batch_patch.py`: wirkt wie ein alter manueller Patch-Referenzstand. Die Batch-Logik ist inzwischen in `concept_prompt_batcher.py` und `main.py` integriert.
 - `extract_lyrics.py`: wird vom Hauptpfad nicht verwendet. Es importiert `noise_reduction.py`; beide koennen Legacy-/Experiment-Code sein, solange du sie nicht separat nutzt.
-- `repair_scene_srt.py`: wird nicht vom Hauptpfad gebraucht, weil `main.py` die SRT-Reparatur direkt ausfuehrt. Als CLI-Safety-Tool kann es trotzdem bleiben.
-- `trim_existing_ltx_clips.py`: wird nicht vom Hauptpfad gebraucht, weil `render_ltx.py` direkt rendert und postprocessed. Als Reparaturtool fuer bereits gerenderte Raw-Clips kann es bleiben.
 
 Sicher loeschbar ist nur, was du nicht als manuelles Tool behalten willst. Vor dem Loeschen:
 
@@ -612,7 +651,7 @@ uv run python -m compileall .
 Nur verwenden, wenn ein existierender Renderplan falsche Dauern enthaelt. Besser ist normalerweise ein frischer Lauf von `main.py`.
 
 ```powershell
-uv run python normalize_render_plan.py `
+uv run python -m tools.normalize_render_plan `
   --input-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056_.json `
   --output-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__duration_fixed.json `
   --min-duration 2.0 `

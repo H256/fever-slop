@@ -305,10 +305,25 @@ class LTXVideoRenderer:
                 or scene.get("ltx", {}).get("base_prompt")
                 or ""
             )
-            patcher.set_input_by_title(
+            prompt_title_candidates = [
                 self.single_prompt_node_title,
-                self.single_prompt_input_name,
-                str(prompt).strip(),
+                "#PROMPT_POSITIVE",
+                "#PROMPT",
+            ]
+            last_error = None
+            for title in dict.fromkeys(prompt_title_candidates):
+                try:
+                    patcher.set_input_by_title(
+                        title,
+                        self.single_prompt_input_name,
+                        str(prompt).strip(),
+                    )
+                    return
+                except KeyError as exc:
+                    last_error = exc
+
+            raise last_error or KeyError(
+                f"No prompt node found for single_prompt mode. Tried: {prompt_title_candidates}"
             )
             return
 

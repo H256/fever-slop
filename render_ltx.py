@@ -85,6 +85,15 @@ def resolve_rolling_frames(args: argparse.Namespace) -> tuple[int, int, bool]:
     return max(0, int(preroll)), max(0, int(tail)), bool(profile_rounding)
 
 
+def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:
+    output_dir = Path(output_dir)
+    concat_file = output_dir / "concat_list.txt"
+    with concat_file.open("w", encoding="utf-8") as f:
+        for path in rendered_files:
+            f.write(f"file '{Path(path).resolve().as_posix()}'\n")
+    return concat_file
+
+
 def parse_scene_list(value: str | None) -> set[int] | None:
     if not value:
         return None
@@ -202,7 +211,7 @@ def main():
             rendered.extend(files)
             progress.advance(task)
 
-    concat_file = Path(args.output_dir) / "concat_list.txt"
+    concat_file = rewrite_concat_list(rendered, args.output_dir)
     console.print(f"[green]✓[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
     console.print(f"[green]✓[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
     console.print()

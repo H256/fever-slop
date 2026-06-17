@@ -55,6 +55,38 @@ class SteeringConfig:
 
 
 @dataclass(frozen=True)
+class PromptGuidanceConfig:
+    character_visibility: str = ""
+    shot_types: str = ""
+    environments: str = ""
+    lighting: str = ""
+    camera_motion: str = ""
+    physical_interaction: str = ""
+    facial_expression: str = ""
+    outfit_rules: str = ""
+    prompt_structure: str = ""
+    list_handling: str = ""
+    word_count_min: int = 40
+    word_count_max: int = 50
+
+    def as_prompt_context(self) -> dict:
+        return {
+            "character_visibility": self.character_visibility,
+            "shot_types": self.shot_types,
+            "environments": self.environments,
+            "lighting": self.lighting,
+            "camera_motion": self.camera_motion,
+            "physical_interaction": self.physical_interaction,
+            "facial_expression": self.facial_expression,
+            "outfit_rules": self.outfit_rules,
+            "prompt_structure": self.prompt_structure,
+            "list_handling": self.list_handling,
+            "word_count_min": self.word_count_min,
+            "word_count_max": self.word_count_max,
+        }
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
     project_name: str
@@ -71,11 +103,12 @@ class ProjectConfig:
     locations: list[str] = field(default_factory=list)
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
+    prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
 
     @classmethod
     def load(cls, config_path: str | Path) -> "ProjectConfig":
         config_path = Path(config_path).resolve()
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
+        raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
 
         project_dir = config_path.parent
         video_raw = raw.get("video", {})
@@ -83,6 +116,7 @@ class ProjectConfig:
         scene_raw = raw.get("scene_generation", {})
         vocal_raw = raw.get("vocal_detection", {})
         steering_raw = raw.get("steering", {})
+        guidance_raw = raw.get("prompt_guidance", {})
 
         input_audio = Path(raw["input_audio"])
         if not input_audio.is_absolute():
@@ -138,6 +172,20 @@ class ProjectConfig:
                 zimage=steering_raw.get("zimage", ""),
                 ltx=steering_raw.get("ltx", ""),
                 final_prompts=steering_raw.get("final_prompts", ""),
+            ),
+            prompt_guidance=PromptGuidanceConfig(
+                character_visibility=guidance_raw.get("character_visibility", ""),
+                shot_types=guidance_raw.get("shot_types", ""),
+                environments=guidance_raw.get("environments", ""),
+                lighting=guidance_raw.get("lighting", ""),
+                camera_motion=guidance_raw.get("camera_motion", ""),
+                physical_interaction=guidance_raw.get("physical_interaction", ""),
+                facial_expression=guidance_raw.get("facial_expression", ""),
+                outfit_rules=guidance_raw.get("outfit_rules", ""),
+                prompt_structure=guidance_raw.get("prompt_structure", ""),
+                list_handling=guidance_raw.get("list_handling", ""),
+                word_count_min=int(guidance_raw.get("word_count_min", 40)),
+                word_count_max=int(guidance_raw.get("word_count_max", 50)),
             ),
         )
 
