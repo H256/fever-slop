@@ -54,6 +54,14 @@ class PromptInstructionTests(unittest.TestCase):
         self.assertIn("no lip sync", prompt)
         self.assertNotIn("subject must be physically singing", prompt)
 
+    def test_i2v_system_prompt_relaxes_mixed_scene_singing_policy(self):
+        prompt = build_i2v_system_prompt("mixed").lower()
+
+        self.assertIn("vocal intervals", prompt)
+        self.assertIn("silent intervals", prompt)
+        self.assertIn("only during vocal intervals", prompt)
+        self.assertNotIn("throughout the shot", prompt)
+
     def test_concept_mapper_prompt_requires_continuity_and_standalone_segments(self):
         prompt = build_concept_mapper_system_prompt(batch=True).lower()
 

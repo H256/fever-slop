@@ -10,6 +10,7 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeEl
 
 from app_config import AppConfig
 from comfyui_client import ComfyUIClient
+from project_config import ProjectConfig
 from ltx_video_renderer import LTXVideoRenderer
 
 
@@ -27,6 +28,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Render LTX I2V videos with optional rolling-frame preroll/tail trimming.")
 
     parser.add_argument("--app-config", default="./app_config.json")
+    parser.add_argument("--project-config", default=None)
     parser.add_argument("--render-plan", required=True)
     parser.add_argument("--workflow", required=True)
     parser.add_argument(
@@ -51,10 +53,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-skip-existing", action="store_true")
 
     parser.add_argument("--character-lora-strength", type=float, default=1.0)
-    parser.add_argument("--lora-1-enabled", action="store_true")
-    parser.add_argument("--lora-1-name", default="")
-    parser.add_argument("--lora-1-strength-model", type=float, default=1.0)
-    parser.add_argument("--lora-1-strength-clip", type=float, default=1.0)
+    parser.add_argument("--lora-1-enabled", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--lora-1-name", default=None)
+    parser.add_argument("--lora-1-strength-model", type=float, default=None)
+    parser.add_argument("--lora-1-strength-clip", type=float, default=None)
     parser.add_argument("--randomize-seed", action="store_true")
     parser.add_argument("--seed-offset", type=int, default=100000)
 
@@ -63,8 +65,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-upload-startframes", action="store_true")
 
     parser.add_argument("--segment-length-mode", choices=["frames_minus_one", "frames"], default="frames_minus_one")
-    parser.add_argument("--min-duration", type=float, default=2.0)
-    parser.add_argument("--max-duration", type=float, default=10.0)
+    parser.add_argument("--min-duration", type=float, default=None)
+    parser.add_argument("--max-duration", type=float, default=None)
     parser.add_argument("--allow-out-of-range-clips", action="store_true")
     parser.add_argument("--debug-workflows-dir", default=None)
 
@@ -80,6 +82,53 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--postprocess-streamcopy", action="store_true")
     return parser
+
+
+def _discover_project_config_path(render_plan_path: str | Path) -> Path | None:
+    render_plan_path = Path(render_plan_path).resolve()
+    for parent in render_plan_path.parents:
+        candidate = parent / "config.json"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def resolve_project_config_defaults(args: argparse.Namespace) -> dict:
+    project_config_path = args.project_config
+    if not project_config_path and getattr(args, "render_plan", None):
+        discovered = _discover_project_config_path(args.render_plan)
+        if discovered:
+            project_config_path = str(discovered)
+
+    project_config = ProjectConfig.load(project_config_path) if project_config_path else None
+    scene_generation = project_config.scene_generation if project_config else None
+    lora_1 = project_config.lora_1 if project_config else None
+
+    min_duration = args.min_duration if args.min_duration is not None else (scene_generation.min_duration if scene_generation else 2.0)
+    max_duration = args.max_duration if args.max_duration is not None else (scene_generation.max_duration if scene_generation else 10.0)
+
+    lora_1_enabled = args.lora_1_enabled if args.lora_1_enabled is not None else (lora_1.enabled if lora_1 else False)
+    lora_1_name = args.lora_1_name if args.lora_1_name is not None else (lora_1.name if lora_1 else "")
+    lora_1_strength_model = (
+        args.lora_1_strength_model
+        if args.lora_1_strength_model is not None
+        else (lora_1.strength_model if lora_1 else 1.0)
+    )
+    lora_1_strength_clip = (
+        args.lora_1_strength_clip
+        if args.lora_1_strength_clip is not None
+        else (lora_1.strength_clip if lora_1 else 1.0)
+    )
+
+    return {
+        "project_config": project_config,
+        "min_duration": float(min_duration),
+        "max_duration": float(max_duration),
+        "lora_1_enabled": bool(lora_1_enabled),
+        "lora_1_name": str(lora_1_name or ""),
+        "lora_1_strength_model": float(lora_1_strength_model),
+        "lora_1_strength_clip": float(lora_1_strength_clip),
+    }
 
 
 def resolve_rolling_frames(args: argparse.Namespace) -> tuple[int, int, bool]:
@@ -126,10 +175,11 @@ def load_render_plan_subset(render_plan_path: str | Path, scene_numbers: set[int
 def main():
     parser = build_arg_parser()
     args = parser.parse_args()
+    resolved = resolve_project_config_defaults(args)
 
     if args.render_mode == "auto" and not args.single_prompt_workflow:
         raise ValueError("--single-prompt-workflow is required when --render-mode auto is used")
-    if args.lora_1_enabled and not args.lora_1_name:
+    if resolved["lora_1_enabled"] and not resolved["lora_1_name"]:
         raise ValueError("--lora-1-name is required when --lora-1-enabled is used")
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(args)
 
@@ -152,8 +202,8 @@ def main():
         f"Preroll frames: [yellow]{preroll_frames}[/yellow]\n"
         f"Tail loss frames: [yellow]{tail_loss_frames}[/yellow]\n"
         f"Round render frames to 8N+1: [yellow]{round_render_frames_to_8n1}[/yellow]\n"
-        f"LoRA 1 enabled: [yellow]{args.lora_1_enabled}[/yellow]\n"
-        f"LoRA 1 name: [cyan]{args.lora_1_name}[/cyan]\n"
+        f"LoRA 1 enabled: [yellow]{resolved['lora_1_enabled']}[/yellow]\n"
+        f"LoRA 1 name: [cyan]{resolved['lora_1_name']}[/cyan]\n"
         f"Postprocess: [yellow]{not args.no_postprocess}[/yellow]",
         title="Startup",
         border_style="cyan",
@@ -170,15 +220,15 @@ def main():
         single_prompt_node_title=args.single_prompt_title,
         single_prompt_input_name=args.single_prompt_input,
         character_lora_strength=args.character_lora_strength,
-        lora_1_enabled=args.lora_1_enabled,
-        lora_1_name=args.lora_1_name,
-        lora_1_strength_model=args.lora_1_strength_model,
-        lora_1_strength_clip=args.lora_1_strength_clip,
+        lora_1_enabled=resolved["lora_1_enabled"],
+        lora_1_name=resolved["lora_1_name"],
+        lora_1_strength_model=resolved["lora_1_strength_model"],
+        lora_1_strength_clip=resolved["lora_1_strength_clip"],
         randomize_seed=args.randomize_seed,
         seed_offset=args.seed_offset,
         segment_length_mode=args.segment_length_mode,
-        min_duration=args.min_duration,
-        max_duration=args.max_duration,
+        min_duration=resolved["min_duration"],
+        max_duration=resolved["max_duration"],
         allow_out_of_range_clips=args.allow_out_of_range_clips,
         debug_workflows_dir=args.debug_workflows_dir,
         preroll_frames=preroll_frames,

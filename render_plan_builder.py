@@ -165,11 +165,26 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     scene_number = int(scene["scene"])
     scene_type = str(scene.get("type", "")).strip().lower()
     zimage_prompt = str(
-        scene.get("zimage_prompt")
+        scene.get("t2i_prompt")
+        or scene.get("zimage_prompt")
         or scene.get("z_image", {}).get("prompt", "")
         or ""
     ).strip()
-    base_prompt = str(scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
+    explicit_i2v_prompt = str(
+        scene.get("i2v_prompt_from_t2i")
+        or scene.get("original_style_i2v_prompt")
+        or ""
+    ).strip()
+    if explicit_i2v_prompt:
+        return explicit_i2v_prompt
+
+    base_prompt = str(
+        scene.get("t2i_prompt")
+        or scene.get("zimage_prompt")
+        or scene.get("ltx_base_prompt")
+        or scene.get("base_prompt")
+        or ""
+    ).strip()
     base_concept = str(scene.get("base_concept", "")).strip()
     visual_foundation = zimage_prompt or base_prompt
 
@@ -209,8 +224,8 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
 
     identity = f"Scene identity: {base_concept}." if base_concept else "Scene identity stays unchanged."
     return (
-        f"Start frame: {visual_foundation} "
-        f"Animate the provided start frame without changing the initial composition. "
+        f"Start frame: {visual_foundation}. "
+        f"Lock the first frame to this exact composition and continue directly from it without fades, dissolves, crossfades, or shot changes. "
         f"{performance} {identity} Keep the subject visible and clearly framed. "
         f"Camera motion: {camera_motion}. Character motion: {character_motion}. "
         f"Lighting: {lighting}. Time of day: {time_of_day}. Weather and atmosphere: {weather}. "
@@ -260,7 +275,13 @@ def build_render_plan(
         )
 
         zimage_prompt = scene["zimage_prompt"]
-        ltx_base_prompt = scene["ltx_base_prompt"]
+        t2i_prompt = str(scene.get("t2i_prompt") or scene.get("zimage_prompt") or scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
+        ltx_base_prompt = t2i_prompt
+        i2v_prompt_from_t2i = str(
+            scene.get("i2v_prompt_from_t2i")
+            or scene.get("original_style_i2v_prompt")
+            or build_original_style_i2v_prompt(scene, seed=video_settings.fps)
+        ).strip()
         original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=video_settings.fps)
 
         prompt_relay = []
@@ -331,6 +352,8 @@ def build_render_plan(
             "z_image": {"prompt": zimage_prompt, "frame": 0},
             "ltx": {
                 "base_prompt": ltx_base_prompt,
+                "t2i_prompt": t2i_prompt,
+                "i2v_prompt_from_t2i": i2v_prompt_from_t2i,
                 "prompt_relay": prompt_relay,
                 "original_style_i2v_prompt": original_style_i2v_prompt,
                 "render_mode_hint": _render_mode_hint(str(scene.get("type", "")), prompt_relay),

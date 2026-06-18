@@ -11,6 +11,26 @@ Autoprompter erzeugt aus einem Song einen beat- und vocal-synchronen Musikvideo-
 
 Der aktuelle LTX-Standardpfad ist der Non-Relay-Single-Prompt-Modus wie in den urspruenglichen Workflows. Dafuer nutzt der Renderer pro Szene `ltx.original_style_i2v_prompt`. PromptRelay bleibt optional fuer Workflows mit einem korrekt verdrahteten `#PROMPT_RELAY` Node.
 
+Wenn `render_ltx.py` mit `--project-config` aufgerufen wird, nimmt es `scene_generation.min_duration`, `scene_generation.max_duration` und `lora_1.*` aus dieser Datei, sofern der jeweilige CLI-Wert nicht explizit gesetzt ist. Die Reihenfolge ist: Built-in Default, dann `config.json`, dann Kommandozeile.
+
+Die ausfuehrliche Projektanleitung mit neuer Projektstruktur, Runner-Parametern, allen Config-Keys, CLI-Optionen und Steering-Tutorial liegt hier:
+
+```text
+docs/project_workflow.md
+```
+
+Schnellstart fuer ein Projekt mit `config.json`:
+
+```powershell
+.\test.ps1 .\projects\my_song
+```
+
+oder:
+
+```bat
+test.bat .\projects\my_song
+```
+
 ## Voraussetzungen
 
 - Python 3.12
@@ -217,6 +237,8 @@ Wenn zu viele falsche Singing-Abschnitte entstehen, `min_vocal_duration` und `mi
 - `final_prompts`: reserviert fuer finale Prompt-Stufe.
 
 Pragmatische Empfehlung: Wenn etwas wirklich fest sein muss, nutze Top-Level `story_idea`, `style`, `subject`, `locations`. Nutze `steering.*` fuer weiche Hinweise wie "mehr Close-ups", "keine neuen Charaktere", "Kamera ruhig halten".
+
+Ausfuehrliche Beispiele zum Unterschied zwischen Top-Level-Feldern, `steering` und `prompt_guidance` stehen in `docs/project_workflow.md` unter "Global Fields vs Steering vs Prompt Guidance".
 
 ### prompt_guidance
 
@@ -613,28 +635,29 @@ Bestehende Clips neu rendern:
 
 ### 7. Finales Video concatieren
 
-Standard ist Original-Parity: Die finalen Szenenclips werden mit ihren jeweiligen Szenen-Audiospuren concateniert. Der komplette Originalsong wird nicht nachtraeglich ueber das finale Video gemuxt.
+Standard ist jetzt ein frame-genauer Video-Concat ohne Szenen-Audio, danach ein einmaliger Mux mit dem kompletten Originalsong. Das vermeidet kleine Audio-Hiccups an Clip-Grenzen.
 
-Streamcopy:
-
-```powershell
-ffmpeg -f concat -safe 0 `
-  -i .\projects\my_frst_project\output\render\ltx\concat_list.txt `
-  -c copy `
-  .\projects\my_frst_project\output\render\ltx\final_video.mp4
-```
-
-Falls Streamcopy wegen Codec-/Containerdetails scheitert, re-encoden:
+Video-only Concat:
 
 ```powershell
-ffmpeg -f concat -safe 0 `
+ffmpeg -y -f concat -safe 0 `
   -i .\projects\my_frst_project\output\render\ltx\concat_list.txt `
-  -c:v libx264 -crf 18 -preset slow `
-  -c:a aac -b:a 192k `
-  .\projects\my_frst_project\output\render\ltx\final_video_reencoded.mp4
+  -an -c:v copy `
+  .\projects\my_frst_project\output\render\ltx\final_concat_video_only.mp4
 ```
 
-Ein Vergleichsexport mit komplettem Originalsong ist nur ein Diagnosepfad, z.B. ueber `.\test.ps1 -DiagnosticOriginalAudioMux`.
+Original-Audio muxen:
+
+```powershell
+ffmpeg -y `
+  -i .\projects\my_frst_project\output\render\ltx\final_concat_video_only.mp4 `
+  -i .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
+  -map 0:v:0 -map 1:a:0 `
+  -c:v copy -c:a aac -b:a 320k -shortest `
+  .\projects\my_frst_project\output\render\ltx\final_concat.mp4
+```
+
+Ein Vergleichsexport mit per-scene Audio ist nur ein Diagnosepfad, z.B. ueber `.\test.ps1 -DiagnosticOriginalAudioMux`.
 
 ## Safety- und Reparaturbefehle
 

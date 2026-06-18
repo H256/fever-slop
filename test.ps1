@@ -1,5 +1,7 @@
 param(
-    [string]$ProjectConfig = ".\projects\my_first_project\config.json",
+    [Parameter(Position = 0)]
+    [string]$ProjectRoot,
+    [string]$ProjectConfig,
     [string]$AppConfig = ".\app_config.json",
     [int]$ConceptBatchSize = 10,
     [string]$StoryboardWorkflow = ".\workflows\autoprompt_image_z_image_turbo.json",
@@ -64,6 +66,20 @@ Push-Location $PSScriptRoot
 try {
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
         throw "uv not found in PATH."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ProjectConfig)) {
+        if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
+            $ProjectRoot = ".\projects\my_first_project"
+        }
+
+        if (Test-Path -LiteralPath $ProjectRoot -PathType Leaf) {
+            $ProjectConfig = $ProjectRoot
+            $ProjectRoot = Split-Path -Parent $ProjectConfig
+        }
+        else {
+            $ProjectConfig = Join-Path $ProjectRoot "config.json"
+        }
     }
 
     $projectConfigPath = (Resolve-Path $ProjectConfig).Path
@@ -158,6 +174,7 @@ try {
         $ltxWorkflow = if ($RenderMode -eq "relay") { $RelayWorkflow } else { $SinglePromptWorkflow }
         $ltxArgs = @(
             "--app-config", $AppConfig,
+            "--project-config", $projectConfigPath,
             "--render-plan", $planForNextStep,
             "--workflow", $ltxWorkflow,
             "--audio", $inputAudio,

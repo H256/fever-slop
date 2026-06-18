@@ -9,6 +9,7 @@ from music_video_prompt_style import (
     build_concept_mapper_system_prompt,
     build_detail_system_prompt,
     build_i2v_system_prompt,
+    build_t2i_system_prompt,
     build_video_payload,
 )
 
@@ -222,12 +223,33 @@ Rules for locations:
             concept = concept_prompts[segment_id]
             details = scene_details[segment_id]
 
+            t2i_prompt = self.llm.complete_prompt(
+                system_prompt=build_t2i_system_prompt(),
+                prompt=json.dumps(
+                    {
+                        "segment": segment,
+                        "performance_mode": segment.get("type", ""),
+                        "scene_concept": concept,
+                        "current_visual_prompt": concept,
+                        "global_subject": global_context["subject"],
+                        "story_idea": global_context["story_idea"],
+                        "style": global_context["style"],
+                        "locations": global_context["locations"],
+                        "prompt_guidance": global_context.get("prompt_guidance", {}),
+                        "custom_instructions": "",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            ).strip()
+
             prompt_payload = json.dumps(
                 build_video_payload(
                     segment=segment,
                     concept=concept,
                     scene_details=details,
                     global_context=global_context,
+                    t2i_prompt=t2i_prompt,
                 ),
                 ensure_ascii=False,
                 indent=2,
@@ -243,6 +265,10 @@ Rules for locations:
                 "base_concept": concept,
                 "camera_motion": details["camera_motion"],
                 "character_motion": details["character_motion"],
+                "zimage_prompt": t2i_prompt,
+                "t2i_prompt": t2i_prompt,
+                "ltx_base_prompt": t2i_prompt,
+                "i2v_prompt_from_t2i": final_prompt,
                 "final_prompt": final_prompt,
             })
 

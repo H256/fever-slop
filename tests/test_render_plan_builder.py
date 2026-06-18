@@ -78,7 +78,7 @@ class OriginalStylePromptTests(unittest.TestCase):
             seed=7,
         ).lower()
 
-        self.assertIn("animate the provided start frame", prompt)
+        self.assertIn("lock the first frame", prompt)
         self.assertIn("kneeling among moss and roots", prompt)
         self.assertNotIn("stands beside a gnarled tree", prompt)
 
@@ -167,6 +167,48 @@ class BuildRenderPlanTests(unittest.TestCase):
             self.assertEqual("relay", by_scene[16]["ltx"]["render_mode_hint"])
             self.assertEqual("single_prompt", by_scene[3]["ltx"]["render_mode_hint"])
             self.assertNotIn("lip sync", by_scene[3]["ltx"]["original_style_i2v_prompt"].lower())
+
+    def test_render_plan_prefers_explicit_i2v_prompt_from_t2i(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+
+            scene_prompts_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "scene": 1,
+                            "segment_id": "s1",
+                            "type": "instrumental",
+                            "start": 0.0,
+                            "end": 2.0,
+                            "duration": 2.0,
+                            "lyrics": "",
+                            "base_concept": "mountain peak",
+                            "zimage_prompt": "T2I PROMPT",
+                            "t2i_prompt": "T2I PROMPT",
+                            "ltx_base_prompt": "T2I PROMPT",
+                            "i2v_prompt_from_t2i": "I2V FROM T2I",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            relay_path.write_text(json.dumps([{ "scene": 1, "prompt_relay": [] }]), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+            )
+
+            plan = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("I2V FROM T2I", plan[0]["ltx"]["original_style_i2v_prompt"])
+        self.assertEqual("T2I PROMPT", plan[0]["ltx"]["base_prompt"])
 
     def test_frame_counts_are_snapped_to_absolute_scene_boundaries(self):
         with tempfile.TemporaryDirectory() as temp_dir:

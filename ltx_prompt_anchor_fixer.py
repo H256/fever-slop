@@ -86,8 +86,11 @@ class LTXPromptAnchorFixer:
         scene_type = scene.get("metadata", {}).get("type", "")
         has_vocals = scene_type in {"vocals", "mixed"}
 
+        scene["ltx"]["t2i_prompt"] = self._fix_t2i_prompt(scene)
         scene["ltx"]["base_prompt"] = self._fix_base_prompt(scene, has_vocals)
-        scene["ltx"]["original_style_i2v_prompt"] = self._fix_original_style_prompt(scene, has_vocals)
+        fixed_i2v = self._fix_original_style_prompt(scene, has_vocals)
+        scene["ltx"]["original_style_i2v_prompt"] = fixed_i2v
+        scene["ltx"]["i2v_prompt_from_t2i"] = fixed_i2v
 
         relays = scene["ltx"].get("prompt_relay", [])
         scene["ltx"]["prompt_relay"] = [
@@ -97,16 +100,25 @@ class LTXPromptAnchorFixer:
 
         return scene
 
+    def _fix_t2i_prompt(self, scene: dict) -> str:
+        prompt = _clean_text(scene["ltx"].get("t2i_prompt", ""))
+        if not prompt:
+            prompt = _clean_text(scene.get("z_image", {}).get("prompt", ""))
+        if not prompt:
+            prompt = _clean_text(scene["ltx"].get("base_prompt", ""))
+        return _sentence_limit(prompt, self.max_base_prompt_chars)
+
     def _fix_base_prompt(self, scene: dict, has_vocals: bool) -> str:
         base = _clean_text(scene["ltx"].get("base_prompt", ""))
-        z_prompt = _clean_text(scene.get("z_image", {}).get("prompt", ""))
+        z_prompt = _clean_text(scene["ltx"].get("t2i_prompt", "")) or _clean_text(scene.get("z_image", {}).get("prompt", ""))
         camera = _clean_text(scene.get("metadata", {}).get("camera_motion", ""))
         motion = _clean_text(scene.get("metadata", {}).get("character_motion", ""))
         concept = _clean_text(scene.get("metadata", {}).get("base_concept", ""))
 
         if has_vocals:
             prefix = (
-                f"Preserve the exact startframe composition. "
+                f"Start frame: {z_prompt}. "
+                f"Lock the first frame to this exact composition and continue directly from it without fades, dissolves, crossfades, or shot changes. "
                 f"Medium cinematic shot of {self.subject_anchor}, clearly visible in the foreground, "
                 f"same identity, same wardrobe, same lighting, same location. "
                 f"The main subject remains visible for lip sync throughout the shot. "
@@ -114,7 +126,8 @@ class LTXPromptAnchorFixer:
             )
         else:
             prefix = (
-                f"Preserve the exact startframe composition. "
+                f"Start frame: {z_prompt}. "
+                f"Lock the first frame to this exact composition and continue directly from it without fades, dissolves, crossfades, or shot changes. "
                 f"Keep the same camera framing, same location, same lighting, and same visual continuity. "
             )
 
@@ -137,7 +150,7 @@ class LTXPromptAnchorFixer:
         return _sentence_limit(prompt, self.max_base_prompt_chars)
 
     def _fix_original_style_prompt(self, scene: dict, has_vocals: bool) -> str:
-        z_prompt = _clean_text(scene.get("z_image", {}).get("prompt", ""))
+        z_prompt = _clean_text(scene["ltx"].get("t2i_prompt", "")) or _clean_text(scene.get("z_image", {}).get("prompt", ""))
         if not z_prompt:
             z_prompt = _clean_text(scene["ltx"].get("base_prompt", ""))
 
@@ -165,9 +178,10 @@ class LTXPromptAnchorFixer:
             details.append(f"Story beat: {concept}.")
 
         prompt = (
-            f"Preserve the exact startframe composition. Start frame: {z_prompt} "
+            f"Start frame: {z_prompt}. "
+            f"Lock the first frame to this exact composition and continue directly from it without fades, dissolves, crossfades, or shot changes. "
             f"{performance} {' '.join(details)} "
-            "Do not change the pose, camera framing, location, wardrobe, lighting, or subject identity. "
+            "Keep the subject visible and centered, with the same framing, location, wardrobe, lighting, and subject identity. "
             "Do not cut away to a different shot or introduce a new action."
         )
         return _sentence_limit(prompt, self.max_base_prompt_chars)
@@ -185,7 +199,8 @@ class LTXPromptAnchorFixer:
         if state == "singing":
             fixed = (
                 f"{self.subject_anchor} remains clearly visible in the foreground, "
-                f"singing with controlled lip sync and focused emotion"
+                f"singing with controlled lip sync and focused emotion; "
+                "do not fade, dissolve, crossfade, or cut away to a different shot"
             )
             if camera:
                 fixed += f", {camera}"
@@ -194,7 +209,8 @@ class LTXPromptAnchorFixer:
             fixed += "; tree, ropes, shadows, fog, and branches move only behind or around the subject"
         elif has_vocals:
             fixed = (
-                f"{self.subject_anchor} remains clearly visible in the foreground, silent with no lip movement"
+                f"{self.subject_anchor} remains clearly visible in the foreground, silent with no lip movement; "
+                "do not fade, dissolve, crossfade, or cut away to a different shot"
             )
             if camera:
                 fixed += f", {camera}"
@@ -207,7 +223,7 @@ class LTXPromptAnchorFixer:
                 fixed = prompt
             else:
                 fixed = "preserve the same shot, subtle atmospheric motion, no sudden scene change"
-            fixed += "; preserve the startframe composition and visual continuity"
+            fixed += "; preserve the startframe composition and visual continuity, with no fade or shot change"
 
         relay["prompt"] = _sentence_limit(fixed, self.max_relay_chars)
         return relay

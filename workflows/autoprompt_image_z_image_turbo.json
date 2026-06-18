@@ -244,7 +244,7 @@
   },
   "86": {
     "inputs": {
-      "lora_name": "zimage\\own\\klw251209-v1-dedestilled_000002500.safetensors",
+      "lora_name": "zimage\\own\\klw251209-v1_000001250.safetensors",
       "strength_model": 0.85,
       "model": [
         "82",

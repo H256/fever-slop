@@ -81,6 +81,8 @@ Convert the user's concept prompt into a dynamic image-to-video prompt.
 
 Use the user's prompt as the full scene foundation. Preserve the original subject, setting, outfit, mood, atmosphere, and scene identity. Infer only the missing video details needed to make the scene feel complete, including time of day, weather, lighting behavior, environmental movement, subject movement, camera movement, and performance energy. Do not add unrelated characters, new locations, major story changes, captions, text overlays, dialogue, or audio instructions.
 
+Use the t2i_prompt or current visual prompt as the visual reference if one is supplied. If the scene is mixed, allow the vocal portions to be sung with passion while keeping silent portions relaxed and closed-mouth.
+
 Add fast, cinematic motion by giving the subject a clear action sequence, expressive facial expressions, strong gestures, and intentional camera movement. Keep the subject visible, centered, and clearly framed throughout. Add lighting only as natural scene behavior, such as flickering stage lights, passing sunlight, glowing streetlights, storm flashes, reflections, or shifting shadows, based on what best fits the user's prompt.
 
 {performance_policy(segment_type)}
@@ -200,6 +202,7 @@ def build_video_payload(
     concept: str,
     scene_details: dict[str, Any],
     global_context: dict[str, Any],
+    t2i_prompt: str = "",
     custom_instructions: str = "",
 ) -> dict[str, Any]:
     segment_type = str(segment.get("type", "")).strip().lower()
@@ -212,6 +215,7 @@ def build_video_payload(
         "segment": segment,
         "performance_mode": segment_type,
         "performance_policy": performance_policy(segment_type),
+        "t2i_prompt": t2i_prompt,
         "scene_concept": concept,
         "camera_motion": scene_details.get("camera_motion", ""),
         "character_motion": scene_details.get("character_motion", ""),

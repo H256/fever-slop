@@ -75,6 +75,26 @@ class ScenePromptBuilder:
         concept: str,
         scene_details: dict,
         global_context: dict,
+        t2i_prompt: str = "",
+        custom_instructions: str = "",
+    ) -> str:
+        return self.build_i2v_prompt_from_t2i(
+            segment=segment,
+            concept=concept,
+            scene_details=scene_details,
+            global_context=global_context,
+            t2i_prompt=t2i_prompt,
+            custom_instructions=custom_instructions,
+        )
+
+    def build_i2v_prompt_from_t2i(
+        self,
+        *,
+        segment: dict,
+        concept: str,
+        scene_details: dict,
+        global_context: dict,
+        t2i_prompt: str = "",
         custom_instructions: str = "",
     ) -> str:
         payload = build_video_payload(
@@ -82,6 +102,7 @@ class ScenePromptBuilder:
             concept=concept,
             scene_details=scene_details,
             global_context=global_context,
+            t2i_prompt=t2i_prompt,
             custom_instructions=custom_instructions,
         )
 
@@ -111,7 +132,7 @@ class ScenePromptBuilder:
             concept = concept_prompts[segment_id]
             details = scene_details.get(segment_id, {})
 
-            zimage_prompt = self.build_zimage_prompt(
+            t2i_prompt = self.build_zimage_prompt(
                 segment=segment,
                 concept=concept,
                 global_context=global_context,
@@ -119,11 +140,12 @@ class ScenePromptBuilder:
                 trigger_word=trigger_word,
             )
 
-            ltx_prompt = self.build_ltx_base_prompt(
+            i2v_prompt_from_t2i = self.build_i2v_prompt_from_t2i(
                 segment=segment,
                 concept=concept,
                 scene_details=details,
                 global_context=global_context,
+                t2i_prompt=t2i_prompt,
                 custom_instructions=ltx_instructions,
             )
 
@@ -132,8 +154,11 @@ class ScenePromptBuilder:
                 "base_concept": concept,
                 "camera_motion": details.get("camera_motion", ""),
                 "character_motion": details.get("character_motion", ""),
-                "zimage_prompt": zimage_prompt,
-                "ltx_base_prompt": ltx_prompt,
+                "zimage_prompt": t2i_prompt,
+                "t2i_prompt": t2i_prompt,
+                "ltx_base_prompt": t2i_prompt,
+                "i2v_prompt_from_t2i": i2v_prompt_from_t2i,
+                "original_style_i2v_prompt": i2v_prompt_from_t2i,
             })
 
         output_json_path = Path(output_json_path)
