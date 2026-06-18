@@ -8,10 +8,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
+from adapters.comfyui_rendering import ComfyUIVideoBackend
+from application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from app_config import AppConfig
 from comfyui_client import ComfyUIClient
 from project_config import ProjectConfig
 from ltx_video_renderer import LTXVideoRenderer
+from ports.rendering import WorkflowAnchorConfig
 
 
 console = Console()
@@ -261,7 +264,9 @@ def main():
         postprocess_reencode=not args.postprocess_streamcopy,
     )
 
-    rendered: list[Path] = []
+    use_case = RenderVideoScenesUseCase(
+        backend=ComfyUIVideoBackend(renderer),
+    )
 
     with Progress(
         SpinnerColumn(),
@@ -274,26 +279,28 @@ def main():
     ) as progress:
         task = progress.add_task("Rendering LTX scenes", total=len(planned))
 
-        for scene in planned:
-            scene_no = int(scene["scene"])
-            progress.update(task, description=f"Rendering LTX scene {scene_no:04}")
-
-            one_scene_plan = Path(args.output_dir) / "_single_scene_plan.json"
-            one_scene_plan.parent.mkdir(parents=True, exist_ok=True)
-            one_scene_plan.write_text(json.dumps([scene], ensure_ascii=False, indent=2), encoding="utf-8")
-
-            files = renderer.render_videos(
-                render_plan_path=one_scene_plan,
-                audio_file=args.audio,
-                storyboard_dir=args.storyboard_dir,
+        rendered = use_case.execute(
+            RenderVideoScenesRequest(
+                render_plan_path=Path(args.render_plan),
+                workflow_path=Path(args.workflow),
+                audio_file=Path(args.audio),
+                storyboard_dir=Path(args.storyboard_dir),
+                output_dir=Path(args.output_dir),
+                render_mode=args.render_mode,
+                single_prompt_workflow_path=Path(args.single_prompt_workflow) if args.single_prompt_workflow else None,
+                limit=args.limit,
+                scene_numbers=scene_numbers,
                 skip_existing=not args.no_skip_existing,
                 uploaded_audio_name=args.uploaded_audio_name,
                 upload_audio=not args.no_upload_audio,
                 upload_startframes=not args.no_upload_startframes,
+                anchors=WorkflowAnchorConfig(
+                    single_prompt_title=args.single_prompt_title,
+                    single_prompt_input=args.single_prompt_input,
+                ),
             )
-
-            rendered.extend(files)
-            progress.advance(task)
+        )
+        progress.update(task, completed=len(rendered))
 
     concat_file = rewrite_concat_list(rendered, args.output_dir)
     console.print(f"[green]✓[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")

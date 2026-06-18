@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 
-from llm_client import LocalOpenAIClient
+from ports.llm import LLMPort
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:
@@ -61,7 +61,7 @@ def _clean_direction(text: str, max_chars: int = 220) -> str:
 class RelayDirectionBuilder:
     def __init__(
         self,
-        llm: LocalOpenAIClient,
+        llm: LLMPort,
         max_words: int = 28,
         subject_anchor: str = (
             "the old weary warrior man with weathered scarred face, "

@@ -8,7 +8,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from app_config import AppConfig
+from adapters.comfyui_rendering import ComfyUIImageBackend
+from application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from comfyui_client import ComfyUIClient
+from ports.rendering import WorkflowAnchorConfig
 from storyboard_renderer import StoryboardRenderer
 
 
@@ -92,6 +95,9 @@ def main():
     )
 
     scene_numbers = parse_scene_list(args.scenes)
+    use_case = RenderStoryboardUseCase(
+        backend=ComfyUIImageBackend(renderer),
+    )
 
     with Progress(
         SpinnerColumn(),
@@ -101,11 +107,23 @@ def main():
     ) as progress:
         progress.add_task("Rendering storyboard startframes...", total=None)
 
-        rendered = renderer.render_storyboard(
-            render_plan_path=args.render_plan,
-            limit=args.limit,
-            scene_numbers=scene_numbers,
-            skip_existing=not args.no_skip_existing,
+        rendered = use_case.execute(
+            RenderStoryboardRequest(
+                render_plan_path=Path(args.render_plan),
+                workflow_path=Path(args.workflow),
+                output_dir=Path(args.output_dir),
+                limit=args.limit,
+                scene_numbers=scene_numbers,
+                skip_existing=not args.no_skip_existing,
+                negative_prompt=args.negative_prompt,
+                character_lora_strength=args.character_lora_strength,
+                anchors=WorkflowAnchorConfig(
+                    positive_prompt_title=args.positive_title,
+                    negative_prompt_title=args.negative_title,
+                    save_image_title=args.save_title,
+                    character_lora_title=args.character_lora_title,
+                ),
+            )
         )
 
     console.print(

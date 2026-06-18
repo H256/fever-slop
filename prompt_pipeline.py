@@ -4,7 +4,6 @@ from pathlib import Path
 import json
 import re
 
-from llm_client import LocalOpenAIClient
 from music_video_prompt_style import (
     build_concept_mapper_system_prompt,
     build_detail_system_prompt,
@@ -12,6 +11,7 @@ from music_video_prompt_style import (
     build_t2i_system_prompt,
     build_video_payload,
 )
+from ports.llm import LLMPort
 
 
 def extract_json_object(text: str) -> dict:
@@ -31,7 +31,7 @@ def extract_json_object(text: str) -> dict:
 
 
 class MusicVideoPromptPipeline:
-    def __init__(self, llm: LocalOpenAIClient):
+    def __init__(self, llm: LLMPort):
         self.llm = llm
 
     def create_story_idea(

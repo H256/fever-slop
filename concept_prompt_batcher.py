@@ -5,8 +5,8 @@ import json
 import re
 from typing import Any
 
-from llm_client import LocalOpenAIClient
 from music_video_prompt_style import build_concept_mapper_system_prompt
+from ports.llm import LLMPort
 
 
 def extract_json_object(text: str) -> dict:
@@ -52,7 +52,7 @@ class ConceptPromptBatcher:
 
     def __init__(
         self,
-        llm: LocalOpenAIClient,
+        llm: LLMPort,
         batch_size: int = 10,
         max_previous_concepts: int = 6,
     ):

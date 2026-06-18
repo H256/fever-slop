@@ -13,7 +13,7 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from app_config import AppConfig
-from project_config import ProjectConfig
+from project_config import ProjectConfig, ProjectPaths
 from demucs_separator import DemucsSeparator
 from prompt_relay_builder import build_scene_prompt_relay
 from scene_duration_enforcer import (
@@ -35,7 +35,7 @@ from beat_analysis import (
     BeatImpactAnalyzer,
     BeatSceneDurationGenerator,
 )
-from llm_client import LocalOpenAIClient
+from adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from prompt_pipeline import MusicVideoPromptPipeline
 
 
@@ -223,15 +223,16 @@ def main():
     started_at = time.time()
 
     config = ProjectConfig.load(args.project)
+    paths = ProjectPaths.from_config(config)
     app_config = AppConfig.load(args.app_config)
     video_settings = config.to_video_settings()
 
     song_id = getattr(config, "song_id", None) or getattr(config, "project_name", "") or config.input_audio.stem
 
-    stems_dir = config.stems_dir
-    timeline_dir = config.timeline_dir
-    prompts_dir = config.prompts_dir
-    render_dir = config.render_dir
+    stems_dir = paths.stems_dir
+    timeline_dir = paths.timeline_dir
+    prompts_dir = paths.prompts_dir
+    render_dir = paths.render_dir
     ensure_dirs(stems_dir, timeline_dir, prompts_dir, render_dir)
 
     timeline_json = timeline_dir / f"timeline_{song_id}.json"
@@ -424,7 +425,7 @@ def main():
     # ------------------------------------------------------------------
     log_step("7. LLM Prompt Pipeline")
 
-    llm = LocalOpenAIClient(
+    llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,

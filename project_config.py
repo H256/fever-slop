@@ -218,30 +218,56 @@ class ProjectConfig:
 
     @property
     def output_dir(self) -> Path:
-        path = self.project_dir / "output"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return self.paths.output_dir
 
     @property
     def stems_dir(self) -> Path:
-        path = self.output_dir / "stems"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return self.paths.stems_dir
 
     @property
     def timeline_dir(self) -> Path:
-        path = self.output_dir / "timeline"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return self.paths.timeline_dir
 
     @property
     def prompts_dir(self) -> Path:
-        path = self.output_dir / "prompts"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return self.paths.prompts_dir
 
     @property
     def render_dir(self) -> Path:
-        path = self.output_dir / "render"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return self.paths.render_dir
+
+    @property
+    def paths(self) -> "ProjectPaths":
+        return ProjectPaths.from_config(self)
+
+
+@dataclass(frozen=True)
+class ProjectPaths:
+    project_dir: Path
+    output_dir: Path
+    stems_dir: Path
+    timeline_dir: Path
+    prompts_dir: Path
+    render_dir: Path
+
+    @classmethod
+    def from_config(cls, config: ProjectConfig) -> "ProjectPaths":
+        output_dir = config.project_dir / "output"
+        return cls(
+            project_dir=config.project_dir,
+            output_dir=output_dir,
+            stems_dir=output_dir / "stems",
+            timeline_dir=output_dir / "timeline",
+            prompts_dir=output_dir / "prompts",
+            render_dir=output_dir / "render",
+        )
+
+    def ensure_output_dirs(self) -> None:
+        for directory in (
+            self.output_dir,
+            self.stems_dir,
+            self.timeline_dir,
+            self.prompts_dir,
+            self.render_dir,
+        ):
+            directory.mkdir(parents=True, exist_ok=True)

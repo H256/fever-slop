@@ -4,12 +4,12 @@ from pathlib import Path
 import json
 import re
 
-from llm_client import LocalOpenAIClient
 from music_video_prompt_style import (
     build_i2v_system_prompt,
     build_t2i_system_prompt,
     build_video_payload,
 )
+from ports.llm import LLMPort
 
 
 def clean_llm_text(text: str) -> str:
@@ -30,7 +30,7 @@ class ScenePromptBuilder:
     - LTX prompts are video prompts and may contain motion.
     """
 
-    def __init__(self, llm: LocalOpenAIClient):
+    def __init__(self, llm: LLMPort):
         self.llm = llm
 
     def build_zimage_prompt(

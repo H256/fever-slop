@@ -7,8 +7,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
+from adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from app_config import AppConfig
-from llm_client import LocalOpenAIClient
 from relay_direction_builder import RelayDirectionBuilder
 
 
@@ -38,7 +38,7 @@ def main():
         border_style="cyan",
     ))
 
-    llm = LocalOpenAIClient(
+    llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
