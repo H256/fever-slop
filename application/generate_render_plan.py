@@ -12,6 +12,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from application.audio_timeline_pipeline import AudioTimelinePipeline
+from application.prompt_generation_pipeline import PromptGenerationPipeline
+from application.render_plan_pipeline import RenderPlanPipeline
+from application.scene_timeline_pipeline import SceneTimelinePipeline
 from adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from app_config import AppConfig
 from beat_analysis import BeatImpactAnalyzer, BeatSceneDurationGenerator
@@ -81,8 +85,19 @@ def call_with_supported_kwargs(func: Callable[..., Any], **kwargs):
 
 
 class GenerateRenderPlanUseCase:
-    def __init__(self, console: Console | None = None):
+    def __init__(self, console: Console | None = None, pipeline_services: list[Any] | None = None):
         self.console = console or Console()
+        self.pipeline_services = pipeline_services or [
+            AudioTimelinePipeline(),
+            SceneTimelinePipeline(),
+            PromptGenerationPipeline(),
+            RenderPlanPipeline(),
+        ]
+
+    def execute_services(self, context: dict[str, Any]) -> dict[str, Any]:
+        for service in self.pipeline_services:
+            context = service.execute(context)
+        return context
 
     def log_step(self, title: str):
         self.console.print()
