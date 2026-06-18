@@ -5,6 +5,7 @@ import json
 import shutil
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings
 from autoprompter.ports.rendering import VideoRenderRequest
@@ -62,9 +63,12 @@ class ComfyUIVideoRenderBackend:
         postprocess_reencode: bool = True,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         workflow_patcher: LTXWorkflowPatcher | None = None,
+        render_queue: ComfyUIRenderQueue | None = None,
+        postprocessor: VideoPostProcessor | None = None,
     ):
         self.client = client
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
+        self.render_queue = render_queue or ComfyUIRenderQueue(client)
         self.ltx_workflow_path = Path(ltx_workflow_path)
         self.single_prompt_workflow_path = Path(single_prompt_workflow_path) if single_prompt_workflow_path else None
         self.output_dir = Path(output_dir)
@@ -111,7 +115,7 @@ class ComfyUIVideoRenderBackend:
         self.tail_loss_frames = max(0, int(tail_loss_frames))
         self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
         self.postprocess = postprocess
-        self.postprocessor = VideoPostProcessor(
+        self.postprocessor = postprocessor or VideoPostProcessor(
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
         )
@@ -278,18 +282,9 @@ class ComfyUIVideoRenderBackend:
             comfy_startframe_name=comfy_startframe_name,
             rolling=rolling,
         )
-        prompt_id = self.client.queue_prompt(workflow)
-        history = self.client.wait_for_completion(prompt_id)
-
-        videos = self._extract_output_videos(history)
-        if not videos:
-            raise RuntimeError(f"No video output for scene {scene_number}")
-
-        first = videos[0]
-        return self.client.download_view_file(
-            filename=first["filename"],
-            subfolder=first.get("subfolder", ""),
-            file_type=first.get("type", "output"),
+        return self.render_queue.queue_workflow_and_download_first_video(
+            workflow,
+            scene_number=scene_number,
             output_path=self.raw_output_dir / f"scene_{scene_number:04}_raw.mp4",
         )
 
@@ -344,20 +339,7 @@ class ComfyUIVideoRenderBackend:
 
     @staticmethod
     def _extract_output_videos(history_entry: dict) -> list[dict]:
-        videos = []
-        outputs = history_entry.get("outputs", {})
-        for node_id, node_output in outputs.items():
-            for key in ("videos", "gifs", "files"):
-                for item in node_output.get(key, []):
-                    filename = item.get("filename")
-                    if filename and filename.lower().endswith((".mp4", ".mov", ".mkv", ".webm")):
-                        videos.append({
-                            "node_id": node_id,
-                            "filename": filename,
-                            "subfolder": item.get("subfolder", ""),
-                            "type": item.get("type", "output"),
-                        })
-        return videos
+        return ComfyUIRenderQueue.extract_output_videos(history_entry)
 
     def _build_prompt_relay_payload(
         self,

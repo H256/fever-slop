@@ -364,5 +364,93 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
             self.assertTrue((debug_dir / "scene_0001_workflow.json").exists())
 
 
+class FakeQueueClient:
+    def __init__(self, history):
+        self.history = history
+        self.queued_workflow = None
+        self.downloads = []
+
+    def queue_prompt(self, workflow):
+        self.queued_workflow = workflow
+        return "prompt-id"
+
+    def wait_for_completion(self, prompt_id):
+        self.prompt_id = prompt_id
+        return self.history
+
+    def download_view_file(self, *, filename, subfolder, file_type, output_path):
+        self.downloads.append((filename, subfolder, file_type, Path(output_path)))
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_bytes(b"fake video")
+        return Path(output_path)
+
+
+class ComfyUIRenderQueueTests(unittest.TestCase):
+    def test_extract_output_videos_accepts_supported_video_extensions(self):
+        from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
+
+        videos = ComfyUIRenderQueue.extract_output_videos(
+            {
+                "outputs": {
+                    "1": {
+                        "videos": [{"filename": "a.mp4", "subfolder": "v", "type": "output"}],
+                        "gifs": [{"filename": "b.mov", "subfolder": "", "type": "output"}],
+                        "files": [
+                            {"filename": "c.mkv", "subfolder": "", "type": "output"},
+                            {"filename": "d.webm", "subfolder": "", "type": "output"},
+                            {"filename": "note.txt", "subfolder": "", "type": "output"},
+                        ],
+                    }
+                }
+            }
+        )
+
+        self.assertEqual(["a.mp4", "b.mov", "c.mkv", "d.webm"], [item["filename"] for item in videos])
+
+    def test_queue_download_raises_when_history_has_no_video_output(self):
+        from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
+
+        queue = ComfyUIRenderQueue(FakeQueueClient({"outputs": {"1": {"files": [{"filename": "note.txt"}]}}}))
+
+        with self.assertRaisesRegex(RuntimeError, "No video output for scene 7"):
+            queue.queue_workflow_and_download_first_video(
+                {"workflow": True},
+                scene_number=7,
+                output_path=Path("raw/scene_0007_raw.mp4"),
+            )
+
+    def test_queue_downloads_first_video_to_requested_path(self):
+        from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "raw" / "scene_0001_raw.mp4"
+            client = FakeQueueClient(
+                {
+                    "outputs": {
+                        "save": {
+                            "videos": [
+                                {"filename": "scene_0001.mp4", "subfolder": "ltx_raw", "type": "output"}
+                            ]
+                        }
+                    }
+                }
+            )
+            queue = ComfyUIRenderQueue(client)
+
+            rendered = queue.queue_workflow_and_download_first_video(
+                {"workflow": True},
+                scene_number=1,
+                output_path=output,
+            )
+
+            self.assertEqual(output, rendered)
+            self.assertEqual({"workflow": True}, client.queued_workflow)
+            self.assertEqual("prompt-id", client.prompt_id)
+            self.assertEqual(
+                [("scene_0001.mp4", "ltx_raw", "output", output)],
+                client.downloads,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
