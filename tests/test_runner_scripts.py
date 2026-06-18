@@ -47,6 +47,15 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertIn('Write-Step "Running main pipeline"', script)
         self.assertIn('"Skipping main pipeline; using existing timeline, prompts, and render plan."', script)
 
+    def test_test_ps1_uses_sanitized_project_name_for_final_video(self):
+        script = Path("test.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("function Convert-ToSafeFileStem", script)
+        self.assertIn('$projectFileStem = Convert-ToSafeFileStem $projectConfigJson.project_name $songId', script)
+        self.assertIn('$finalConcatVideo = Join-Path $ltxDir "${projectFileStem}_video_only.mp4"', script)
+        self.assertIn('$finalConcat = Join-Path $ltxDir "${projectFileStem}.mp4"', script)
+        self.assertIn('$finalConcatSceneAudioDebug = Join-Path $ltxDir "${projectFileStem}_scene_audio_debug.mp4"', script)
+
     def test_test_ps1_generates_storyboard_page_unless_skipped(self):
         script = Path("test.ps1").read_text(encoding="utf-8")
 

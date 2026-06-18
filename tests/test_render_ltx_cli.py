@@ -5,9 +5,11 @@ import json
 
 from render_ltx import (
     build_arg_parser,
+    final_concat_paths,
     resolve_project_config_defaults,
     resolve_rolling_frames,
     rewrite_concat_list,
+    sanitize_file_stem,
 )
 
 
@@ -87,6 +89,21 @@ class RenderLTXCliTests(unittest.TestCase):
         self.assertEqual("characters/test.safetensors", args.lora_1_name)
         self.assertEqual(0.85, args.lora_1_strength_model)
         self.assertEqual(0.65, args.lora_1_strength_clip)
+
+    def test_lora_1_strength_cli_values_are_marked_explicit_without_enabling_name_patch(self):
+        args = self._parse([
+            "--lora-1-strength-model",
+            "0",
+            "--lora-1-strength-clip",
+            "0",
+        ])
+
+        resolved = resolve_project_config_defaults(args)
+
+        self.assertFalse(resolved["lora_1_enabled"])
+        self.assertTrue(resolved["lora_1_strengths_explicit"])
+        self.assertEqual(0.0, resolved["lora_1_strength_model"])
+        self.assertEqual(0.0, resolved["lora_1_strength_clip"])
 
     def test_project_config_values_are_used_when_cli_omits_overrides(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -262,6 +279,22 @@ class RenderLTXCliTests(unittest.TestCase):
             text = concat.read_text(encoding="utf-8")
             self.assertIn("scene_0001.mp4", text)
             self.assertIn("scene_0002.mp4", text)
+
+    def test_sanitize_file_stem_keeps_safe_project_name_characters(self):
+        self.assertEqual("La_Entity_01", sanitize_file_stem(" La Entity 01! ", "fallback"))
+        self.assertEqual("fallback", sanitize_file_stem("!!!", "fallback"))
+
+    def test_final_concat_paths_use_sanitized_project_name_when_available(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "ltx"
+
+            video_only, final_concat = final_concat_paths(
+                output_dir=output_dir,
+                project_name="La Entity!",
+            )
+
+            self.assertEqual(output_dir / "La_Entity_video_only.mp4", video_only)
+            self.assertEqual(output_dir / "La_Entity.mp4", final_concat)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import unittest
 import tempfile
+import json
 from pathlib import Path
 
 from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
@@ -192,6 +193,123 @@ class LTXLoraTests(unittest.TestCase):
         self.assertEqual("characters/test.safetensors", inputs["lora_name"])
         self.assertEqual(0.85, inputs["strength_model"])
         self.assertEqual(0.65, inputs["strength_clip"])
+
+    def test_lora_1_explicit_strengths_patch_workflow_default_without_name_patch(self):
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            lora_1_enabled=False,
+            lora_1_name="",
+            lora_1_strength_model=0.0,
+            lora_1_strength_clip=0.0,
+            lora_1_strengths_explicit=True,
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {
+                    "lora_name": "workflow-default.safetensors",
+                    "strength_model": 0.85,
+                    "strength_clip": 0.85,
+                },
+                "class_type": "LoraLoader",
+                "_meta": {"title": "#LORA_1"},
+            }
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        inputs = patcher.get()["1"]["inputs"]
+        self.assertEqual("workflow-default.safetensors", inputs["lora_name"])
+        self.assertEqual(0.0, inputs["strength_model"])
+        self.assertEqual(0.0, inputs["strength_clip"])
+
+    def test_render_scene_queues_workflow_after_lora_1_explicit_strength_patch(self):
+        class FakeClient:
+            def __init__(self):
+                self.queued_workflow = None
+
+            def queue_prompt(self, workflow):
+                self.queued_workflow = workflow
+                return "prompt-id"
+
+            def wait_for_completion(self, prompt_id):
+                return {
+                    "outputs": {
+                        "save": {
+                            "videos": [
+                                {"filename": "scene_0001.mp4", "subfolder": "", "type": "output"}
+                            ]
+                        }
+                    }
+                }
+
+            def download_view_file(self, filename, subfolder, file_type, output_path):
+                return Path(output_path)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(
+                json.dumps({
+                    "1": {"inputs": {"value": 1280}, "_meta": {"title": "#WIDTH"}},
+                    "2": {"inputs": {"value": 704}, "_meta": {"title": "#HEIGHT"}},
+                    "3": {"inputs": {"audio": "", "audioUI": ""}, "_meta": {"title": "#LOAD_AUDIO"}},
+                    "4": {"inputs": {"start_index": 0, "duration": 1}, "_meta": {"title": "#TRIM_AUDIO"}},
+                    "5": {"inputs": {"image": ""}, "_meta": {"title": "#STARTFRAME"}},
+                    "6": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMES"}},
+                    "7": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMERATE"}},
+                    "8": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                    "9": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "10": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "11": {
+                        "inputs": {
+                            "lora_name": "workflow-default.safetensors",
+                            "strength_model": 0.85,
+                        },
+                        "_meta": {"title": "#LORA_1"},
+                    },
+                }),
+                encoding="utf-8",
+            )
+            client = FakeClient()
+            renderer = LTXVideoRenderer(
+                client=client,
+                ltx_workflow_path=workflow_path,
+                output_dir=temp / "out",
+                render_mode="single_prompt",
+                lora_1_enabled=False,
+                lora_1_strength_model=0.0,
+                lora_1_strength_clip=0.0,
+                lora_1_strengths_explicit=True,
+                postprocess=False,
+            )
+
+            renderer.render_scene_video(
+                scene={
+                    "scene": 1,
+                    "fps": 24,
+                    "width": 1280,
+                    "height": 704,
+                    "ltx": {"original_style_i2v_prompt": "prompt"},
+                },
+                comfy_audio_name="audio.mp3",
+                comfy_startframe_name="scene_0001.png",
+                rolling={
+                    "render_frame_count": 24,
+                    "trim_front_frames": 0,
+                    "tail_loss_frames": 0,
+                    "audio_start_seconds": 0,
+                    "audio_duration_seconds": 1,
+                },
+            )
+
+            lora_node = next(
+                node for node in client.queued_workflow.values()
+                if node.get("_meta", {}).get("title") == "#LORA_1"
+            )
+            self.assertEqual("workflow-default.safetensors", lora_node["inputs"]["lora_name"])
+            self.assertEqual(0.0, lora_node["inputs"]["strength_model"])
 
     def test_lora_disabled_does_not_require_lora_1_anchor(self):
         with tempfile.TemporaryDirectory() as temp_dir:

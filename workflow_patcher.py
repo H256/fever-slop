@@ -162,3 +162,29 @@ class WorkflowPatcher:
                 break
 
         return patched
+
+    def patch_lora_strengths_by_title(
+        self,
+        title: str,
+        strength_model: float,
+        strength_clip: float,
+    ) -> list[str]:
+        patched = []
+
+        for input_name in ("strength_model", "model_strength", "strength"):
+            if self.try_set_existing_input_by_title(title, input_name, strength_model):
+                patched.append(input_name)
+                break
+
+        for input_name in ("strength_clip", "clip_strength"):
+            if self.try_set_existing_input_by_title(title, input_name, strength_clip):
+                patched.append(input_name)
+                break
+
+        if not patched:
+            raise KeyError(
+                f"No known LoRA strength input found on node '{title}'. "
+                "Tried model and clip strength inputs."
+            )
+
+        return patched

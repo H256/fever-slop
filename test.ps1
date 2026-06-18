@@ -73,6 +73,26 @@ function Convert-ToInvariantString {
     return $Value.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 }
 
+function Convert-ToSafeFileStem {
+    param(
+        [object]$Value,
+        [string]$Fallback
+    )
+
+    $raw = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        $raw = $Fallback
+    }
+
+    $safe = $raw.Trim() -replace "[^A-Za-z0-9._-]+", "_"
+    $safe = $safe.Trim("._-".ToCharArray())
+    if ([string]::IsNullOrWhiteSpace($safe)) {
+        $safe = $Fallback
+    }
+
+    return $safe
+}
+
 Push-Location $PSScriptRoot
 try {
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
@@ -102,6 +122,7 @@ try {
     }
 
     $songId = [System.IO.Path]::GetFileNameWithoutExtension($inputAudio)
+    $projectFileStem = Convert-ToSafeFileStem $projectConfigJson.project_name $songId
     $projectOutputDir = Join-Path $projectConfigDir "output"
     $timelineDir = Join-Path $projectOutputDir "timeline"
     $promptsDir = Join-Path $projectOutputDir "prompts"
@@ -122,9 +143,9 @@ try {
         $ltxDir = Join-Path $renderDir "ltx_${RenderMode}_smoke"
     }
     $ltxDebugDir = Join-Path $renderDir "ltx_${RenderMode}_debug"
-    $finalConcatVideo = Join-Path $ltxDir "final_concat_video_only.mp4"
-    $finalConcat = Join-Path $ltxDir "final_concat.mp4"
-    $finalConcatSceneAudioDebug = Join-Path $ltxDir "final_concat_scene_audio_debug.mp4"
+    $finalConcatVideo = Join-Path $ltxDir "${projectFileStem}_video_only.mp4"
+    $finalConcat = Join-Path $ltxDir "${projectFileStem}.mp4"
+    $finalConcatSceneAudioDebug = Join-Path $ltxDir "${projectFileStem}_scene_audio_debug.mp4"
     $concatList = Join-Path $ltxDir "concat_list.txt"
 
     Write-Host "Project: $projectConfigPath" -ForegroundColor Yellow

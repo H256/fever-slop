@@ -69,6 +69,7 @@ class LTXVideoRenderer:
         lora_1_name: str = "",
         lora_1_strength_model: float = 1.0,
         lora_1_strength_clip: float = 1.0,
+        lora_1_strengths_explicit: bool = False,
         lora_1_node_title: str = "#LORA_1",
         randomize_seed: bool = False,
         seed_offset: int = 100000,
@@ -110,6 +111,7 @@ class LTXVideoRenderer:
         self.lora_1_name = lora_1_name
         self.lora_1_strength_model = float(lora_1_strength_model)
         self.lora_1_strength_clip = float(lora_1_strength_clip)
+        self.lora_1_strengths_explicit = bool(lora_1_strengths_explicit)
         self.lora_1_node_title = lora_1_node_title
         self.randomize_seed = randomize_seed
         self.seed_offset = seed_offset
@@ -330,21 +332,7 @@ class LTXVideoRenderer:
 
         patcher.set_input_by_title(self.save_video_node_title, "filename_prefix", f"ltx_raw/scene_{scene_number:04}")
 
-        if self.lora_1_enabled:
-            patcher.patch_lora_by_title(
-                self.lora_1_node_title,
-                lora_name=self.lora_1_name,
-                strength_model=self.lora_1_strength_model,
-                strength_clip=self.lora_1_strength_clip,
-            )
-        elif self.character_lora_node_title:
-            try:
-                patcher.patch_lora_strength_by_title(
-                    self.character_lora_node_title,
-                    self.character_lora_strength,
-                )
-            except KeyError:
-                pass
+        self._patch_lora_inputs(patcher)
 
         if self.debug_workflows_dir:
             self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
@@ -367,6 +355,29 @@ class LTXVideoRenderer:
             file_type=first.get("type", "output"),
             output_path=self.raw_output_dir / f"scene_{scene_number:04}_raw.mp4",
         )
+
+    def _patch_lora_inputs(self, patcher: WorkflowPatcher) -> None:
+        if self.lora_1_enabled:
+            patcher.patch_lora_by_title(
+                self.lora_1_node_title,
+                lora_name=self.lora_1_name,
+                strength_model=self.lora_1_strength_model,
+                strength_clip=self.lora_1_strength_clip,
+            )
+        elif self.lora_1_strengths_explicit:
+            patcher.patch_lora_strengths_by_title(
+                self.lora_1_node_title,
+                strength_model=self.lora_1_strength_model,
+                strength_clip=self.lora_1_strength_clip,
+            )
+        elif self.character_lora_node_title:
+            try:
+                patcher.patch_lora_strength_by_title(
+                    self.character_lora_node_title,
+                    self.character_lora_strength,
+                )
+            except KeyError:
+                pass
 
     def _render_mode_for_scene(self, scene: dict) -> str:
         if self.render_mode != "auto":

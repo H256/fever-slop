@@ -119,6 +119,10 @@ def resolve_project_config_defaults(args: argparse.Namespace) -> dict:
         if args.lora_1_strength_clip is not None
         else (lora_1.strength_clip if lora_1 else 1.0)
     )
+    lora_1_strengths_explicit = (
+        args.lora_1_strength_model is not None
+        or args.lora_1_strength_clip is not None
+    )
 
     return {
         "project_config": project_config,
@@ -128,6 +132,7 @@ def resolve_project_config_defaults(args: argparse.Namespace) -> dict:
         "lora_1_name": str(lora_1_name or ""),
         "lora_1_strength_model": float(lora_1_strength_model),
         "lora_1_strength_clip": float(lora_1_strength_clip),
+        "lora_1_strengths_explicit": bool(lora_1_strengths_explicit),
     }
 
 
@@ -145,6 +150,22 @@ def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> P
         for path in rendered_files:
             f.write(f"file '{Path(path).resolve().as_posix()}'\n")
     return concat_file
+
+
+def sanitize_file_stem(value: str | None, fallback: str = "final_concat") -> str:
+    raw = str(value or "").strip() or fallback
+    safe = "".join(char if char.isascii() and (char.isalnum() or char in "._-") else "_" for char in raw)
+    safe = safe.strip("._-")
+    return safe or fallback
+
+
+def final_concat_paths(output_dir: str | Path, project_name: str | None = None) -> tuple[Path, Path]:
+    output_dir = Path(output_dir)
+    if project_name:
+        file_stem = sanitize_file_stem(project_name, "final_concat")
+        return output_dir / f"{file_stem}_video_only.mp4", output_dir / f"{file_stem}.mp4"
+
+    return output_dir / "final_concat_video_only.mp4", output_dir / "final_concat.mp4"
 
 
 def parse_scene_list(value: str | None) -> set[int] | None:
@@ -224,6 +245,7 @@ def main():
         lora_1_name=resolved["lora_1_name"],
         lora_1_strength_model=resolved["lora_1_strength_model"],
         lora_1_strength_clip=resolved["lora_1_strength_clip"],
+        lora_1_strengths_explicit=resolved["lora_1_strengths_explicit"],
         randomize_seed=args.randomize_seed,
         seed_offset=args.seed_offset,
         segment_length_mode=args.segment_length_mode,
@@ -277,8 +299,8 @@ def main():
     console.print(f"[green]✓[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
     console.print(f"[green]✓[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
     console.print()
-    video_only = Path(args.output_dir) / "final_concat_video_only.mp4"
-    final_concat = Path(args.output_dir) / "final_concat.mp4"
+    project_name = resolved["project_config"].project_name if resolved["project_config"] else None
+    video_only, final_concat = final_concat_paths(args.output_dir, project_name)
     console.print("Concat + original-audio mux commands:")
     console.print(f'[bold]ffmpeg -y -f concat -safe 0 -i "{concat_file}" -an -c:v copy "{video_only}"[/bold]')
     console.print(f'[bold]ffmpeg -y -i "{video_only}" -i "{args.audio}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 320k -shortest "{final_concat}"[/bold]')
