@@ -106,7 +106,7 @@ wheels = [
 [[package]]
 name = "autoprompter"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "audioread" },
     { name = "demucs" },
