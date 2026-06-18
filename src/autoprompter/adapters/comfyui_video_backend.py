@@ -14,7 +14,6 @@ from autoprompter.domain.ltx_rendering import (
     build_audio_window_spec,
     round_up_8n1,
 )
-from autoprompter.adapters.workflow_patcher import WorkflowPatcher
 from autoprompter.adapters.video_postprocessor import VideoPostProcessor, TrimSpec
 
 
@@ -288,7 +287,7 @@ class ComfyUIVideoRenderBackend:
             output_path=self.raw_output_dir / f"scene_{scene_number:04}_raw.mp4",
         )
 
-    def _patch_lora_inputs(self, patcher: WorkflowPatcher) -> None:
+    def _patch_lora_inputs(self, patcher) -> None:
         self.workflow_patcher.patch_lora_inputs(patcher)
 
     def _render_mode_for_scene(self, scene: dict) -> str:
@@ -299,7 +298,7 @@ class ComfyUIVideoRenderBackend:
 
     def _patch_prompt_inputs(
         self,
-        patcher: WorkflowPatcher,
+        patcher,
         scene: dict,
         mode: str,
         render_frame_count: int,

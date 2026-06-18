@@ -452,5 +452,161 @@ class ComfyUIRenderQueueTests(unittest.TestCase):
             )
 
 
+class FakeAssetUploader:
+    def __init__(self):
+        self.audio_calls = []
+        self.startframe_calls = []
+
+    def resolve_audio_name(self, audio_file, *, upload_audio, uploaded_audio_name):
+        self.audio_calls.append((Path(audio_file), upload_audio, uploaded_audio_name))
+        return "audio/comfy-song.mp3"
+
+    def resolve_startframe_name(self, startframe_path, *, upload_startframes):
+        self.startframe_calls.append((Path(startframe_path), upload_startframes))
+        return "storyboard/comfy-scene.png"
+
+
+class FakeWorkflowPatcher:
+    def __init__(self):
+        self.workflow_calls = []
+
+    def build_workflow(self, *, scene, comfy_audio_name, comfy_startframe_name, rolling):
+        self.workflow_calls.append((scene["scene"], comfy_audio_name, comfy_startframe_name, rolling.render_frame_count))
+        return {"scene": scene["scene"]}
+
+    def load_workflow(self, mode="relay"):
+        return {"mode": mode}
+
+    def validate_workflow(self, mode="relay"):
+        self.validated_mode = mode
+
+    def render_mode_for_scene(self, scene):
+        return "single_prompt"
+
+    def workflow_path_for_mode(self, mode):
+        return Path(f"{mode}.json")
+
+    def patch_lora_inputs(self, patcher):
+        self.patch_lora_called = True
+
+    def patch_prompt_inputs(self, **kwargs):
+        self.patch_prompt_called = True
+
+    def seed_for_scene(self, scene_number):
+        return 100000 + scene_number
+
+    def build_prompt_relay_payload(self, *, scene, render_frame_count, trim_front_frames, tail_loss_frames):
+        return "global", "local", "23"
+
+
+class FakeRenderQueue:
+    def __init__(self):
+        self.calls = []
+
+    def queue_workflow_and_download_first_video(self, workflow, *, scene_number, output_path):
+        self.calls.append((workflow, scene_number, Path(output_path)))
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_bytes(b"raw")
+        return Path(output_path)
+
+
+class FakePostprocessor:
+    def __init__(self):
+        self.trim_specs = []
+        self.concat_calls = []
+        self.manifest_calls = []
+
+    def trim_clip(self, spec):
+        self.trim_specs.append(spec)
+        spec.output_file.parent.mkdir(parents=True, exist_ok=True)
+        spec.output_file.write_bytes(b"final")
+        return spec.output_file
+
+    def write_concat_list(self, video_files, output_file):
+        self.concat_calls.append((list(video_files), Path(output_file)))
+        return Path(output_file)
+
+    def write_manifest(self, entries, output_file):
+        self.manifest_calls.append((list(entries), Path(output_file)))
+        return Path(output_file)
+
+
+class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
+    def _render_plan_scene(self) -> dict:
+        return {
+            "scene": 1,
+            "abs_start_seconds": 0.0,
+            "duration_seconds": 2.0,
+            "frame_count": 48,
+            "fps": 24,
+            "width": 1280,
+            "height": 704,
+            "ltx": {"original_style_i2v_prompt": "prompt"},
+        }
+
+    def test_video_backend_module_does_not_import_workflow_patcher_directly(self):
+        text = Path("src/autoprompter/adapters/comfyui_video_backend.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("from autoprompter.adapters.workflow_patcher import WorkflowPatcher", text)
+
+    def test_video_backend_exposes_injected_collaborators(self):
+        from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+
+        backend = ComfyUIVideoRenderBackend(
+            client=object(),
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            asset_uploader=FakeAssetUploader(),
+            workflow_patcher=FakeWorkflowPatcher(),
+            render_queue=FakeRenderQueue(),
+            postprocessor=FakePostprocessor(),
+        )
+
+        self.assertIsInstance(backend.asset_uploader, FakeAssetUploader)
+        self.assertIsInstance(backend.workflow_patcher, FakeWorkflowPatcher)
+        self.assertIsInstance(backend.render_queue, FakeRenderQueue)
+        self.assertIsInstance(backend.postprocessor, FakePostprocessor)
+
+    def test_render_videos_runs_with_fake_collaborators_without_comfyui_client(self):
+        from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps([self._render_plan_scene()]), encoding="utf-8")
+            storyboard_dir = temp / "storyboard"
+            storyboard_dir.mkdir()
+            (storyboard_dir / "scene_0001.png").write_bytes(b"png")
+            asset_uploader = FakeAssetUploader()
+            workflow_patcher = FakeWorkflowPatcher()
+            render_queue = FakeRenderQueue()
+            postprocessor = FakePostprocessor()
+            backend = ComfyUIVideoRenderBackend(
+                client=object(),
+                ltx_workflow_path=temp / "workflow.json",
+                output_dir=temp / "ltx",
+                asset_uploader=asset_uploader,
+                workflow_patcher=workflow_patcher,
+                render_queue=render_queue,
+                postprocessor=postprocessor,
+            )
+
+            rendered = backend.render_videos(
+                render_plan_path=render_plan,
+                audio_file=temp / "song.mp3",
+                storyboard_dir=storyboard_dir,
+            )
+
+            self.assertEqual([temp / "ltx" / "final" / "scene_0001.mp4"], rendered)
+            self.assertEqual([(temp / "song.mp3", True, None)], asset_uploader.audio_calls)
+            self.assertEqual([(storyboard_dir / "scene_0001.png", True)], asset_uploader.startframe_calls)
+            self.assertEqual([(1, "audio/comfy-song.mp3", "storyboard/comfy-scene.png", 48)], workflow_patcher.workflow_calls)
+            self.assertEqual([({"scene": 1}, 1, temp / "ltx" / "raw" / "scene_0001_raw.mp4")], render_queue.calls)
+            self.assertEqual(1, len(postprocessor.trim_specs))
+            self.assertEqual([([temp / "ltx" / "final" / "scene_0001.mp4"], temp / "ltx" / "concat_list.txt")], postprocessor.concat_calls)
+            self.assertEqual(1, len(postprocessor.manifest_calls[0][0]))
+            self.assertEqual(temp / "ltx" / "render_manifest.json", postprocessor.manifest_calls[0][1])
+
+
 if __name__ == "__main__":
     unittest.main()
