@@ -1,6 +1,9 @@
 import unittest
-
+from application.audio_timeline_pipeline import AudioTimelinePipeline
 from application.generate_render_plan import GenerateRenderPlanUseCase
+from application.prompt_generation_pipeline import PromptGenerationPipeline
+from application.render_plan_pipeline import RenderPlanPipeline
+from application.scene_timeline_pipeline import SceneTimelinePipeline
 
 
 class RecordingService:
@@ -17,6 +20,25 @@ class RecordingService:
 
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
+    def test_audio_timeline_pipeline_declares_required_context_keys(self):
+        service = AudioTimelinePipeline()
+
+        self.assertEqual(
+            {"config", "paths", "song_id", "video_settings"},
+            service.required_keys,
+        )
+        self.assertIn("timeline_json", service.produced_keys)
+        self.assertIn("beat_json", service.produced_keys)
+        self.assertIn("stem_files", service.produced_keys)
+
+    def test_scene_prompt_and_render_plan_services_declare_context_contracts(self):
+        self.assertIn("timeline_json", SceneTimelinePipeline.required_keys)
+        self.assertIn("stage1_segments", SceneTimelinePipeline.produced_keys)
+        self.assertIn("stage1_segments", PromptGenerationPipeline.required_keys)
+        self.assertIn("scene_prompts_json", PromptGenerationPipeline.produced_keys)
+        self.assertIn("scene_prompts_json", RenderPlanPipeline.required_keys)
+        self.assertIn("render_plan", RenderPlanPipeline.produced_keys)
+
     def test_use_case_accepts_pipeline_services_and_runs_them_in_order(self):
         services = [
             RecordingService("audio", {"timeline_json": "timeline.json"}),
