@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 
-from ports.llm import LLMPort
+from autoprompter.ports.llm import LLMPort
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:

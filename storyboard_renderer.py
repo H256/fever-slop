@@ -14,8 +14,8 @@ from rich.progress import (
 )
 
 from comfyui_client import ComfyUIClient
-from adapters.comfyui_rendering import ComfyUIImageBackend
-from ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
+from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
+from autoprompter.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
 
 
 class StoryboardRenderer:

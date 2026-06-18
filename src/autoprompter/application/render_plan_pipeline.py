@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.pipeline_context import GenerateRenderPlanContext
+from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from render_plan_builder import build_render_plan
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import json
 
-from adapters.local_artifacts import JsonArtifactStore
-from ports.artifacts import ArtifactStore
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
+from autoprompter.ports.artifacts import ArtifactStore
 from prompt_relay_builder import parse_scene_srt, overlap
 
 

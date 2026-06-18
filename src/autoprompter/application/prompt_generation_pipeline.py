@@ -4,11 +4,11 @@ from pathlib import Path
 import inspect
 from typing import Any, Callable
 
-from application.pipeline_context import GenerateRenderPlanContext
+from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from rich.panel import Panel
 from rich.table import Table
 
-from adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from autoprompter.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from concept_prompt_batcher import ConceptPromptBatcher
 from prompt_pipeline import MusicVideoPromptPipeline
 from scene_prompt_builder import ScenePromptBuilder

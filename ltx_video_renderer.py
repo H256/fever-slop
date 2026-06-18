@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from adapters.comfyui_video_backend import ComfyUIVideoBackend, AudioWindowSpec
+from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoBackend, AudioWindowSpec
 
 
 class LTXVideoRenderer(ComfyUIVideoBackend):

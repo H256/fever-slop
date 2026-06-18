@@ -1,12 +1,12 @@
 import unittest
 from pathlib import Path
 
-from application.audio_timeline_pipeline import AudioTimelinePipeline
-from application.generate_render_plan import GenerateRenderPlanUseCase
-from application.pipeline_context import GenerateRenderPlanContext
-from application.prompt_generation_pipeline import PromptGenerationPipeline
-from application.render_plan_pipeline import RenderPlanPipeline
-from application.scene_timeline_pipeline import SceneTimelinePipeline
+from autoprompter.application.audio_timeline_pipeline import AudioTimelinePipeline
+from autoprompter.application.generate_render_plan import GenerateRenderPlanUseCase
+from autoprompter.application.pipeline_context import GenerateRenderPlanContext
+from autoprompter.application.prompt_generation_pipeline import PromptGenerationPipeline
+from autoprompter.application.render_plan_pipeline import RenderPlanPipeline
+from autoprompter.application.scene_timeline_pipeline import SceneTimelinePipeline
 
 
 class RecordingService:

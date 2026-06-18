@@ -5,7 +5,7 @@ import argparse
 
 from rich.console import Console
 
-from application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
+from autoprompter.application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
 
 
 console = Console()

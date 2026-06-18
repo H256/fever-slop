@@ -5,15 +5,15 @@ import unittest
 from pathlib import Path
 
 import main
-from application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
-from application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
-from application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
-from adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoRenderBackend
-from adapters.local_artifacts import JsonArtifactStore
-from domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
-from ports.audio import AudioAnalyzerPort
-from ports.rendering import ImageRenderRequest, VideoRenderRequest
-from ports.workflow import WorkflowBackendPort
+from autoprompter.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
+from autoprompter.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
+from autoprompter.application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
+from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoRenderBackend
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
+from autoprompter.domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
+from autoprompter.ports.audio import AudioAnalyzerPort
+from autoprompter.ports.rendering import ImageRenderRequest, VideoRenderRequest
+from autoprompter.ports.workflow import WorkflowBackendPort
 from project_config import ProjectConfig, ProjectPaths
 
 

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from adapters.local_artifacts import JsonArtifactStore
-from ports.artifacts import ArtifactStore
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
+from autoprompter.ports.artifacts import ArtifactStore
 
 @dataclass(frozen=True)
 class SrtScene:

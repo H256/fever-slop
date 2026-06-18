@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapters.local_artifacts import JsonArtifactStore
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from prompt_relay_builder import build_scene_prompt_relay
 from render_plan_builder import build_render_plan
 from scene_duration_enforcer import SrtScene, write_scene_srt

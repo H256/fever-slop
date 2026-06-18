@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from adapters.local_artifacts import JsonArtifactStore
-from domain.render_plan import RenderPlan
-from ports.artifacts import ArtifactStore
-from ports.rendering import VideoRenderBackend, VideoRenderRequest, WorkflowAnchorConfig
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
+from autoprompter.domain.render_plan import RenderPlan
+from autoprompter.ports.artifacts import ArtifactStore
+from autoprompter.ports.rendering import VideoRenderBackend, VideoRenderRequest, WorkflowAnchorConfig
 
 
 @dataclass(frozen=True)

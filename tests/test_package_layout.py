@@ -1,5 +1,6 @@
 import importlib
 import unittest
+from pathlib import Path
 
 
 class PackageLayoutTests(unittest.TestCase):
@@ -28,6 +29,14 @@ class PackageLayoutTests(unittest.TestCase):
         for module_name in modules:
             with self.subTest(module=module_name):
                 self.assertIsNotNone(importlib.import_module(module_name))
+
+    def test_autoprompter_package_modules_are_real_files_under_src(self):
+        import autoprompter.application.generate_render_plan as module
+
+        module_path = Path(module.__file__).as_posix()
+
+        self.assertIn("src", module_path)
+        self.assertIn("autoprompter/application/generate_render_plan.py", module_path)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.pipeline_context import GenerateRenderPlanContext
+from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from rich.table import Table
 
 from beat_analysis import BeatImpactAnalyzer

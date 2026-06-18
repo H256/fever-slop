@@ -8,10 +8,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from app_config import AppConfig
-from adapters.comfyui_rendering import ComfyUIImageBackend
-from application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
+from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
+from autoprompter.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from comfyui_client import ComfyUIClient
-from ports.rendering import WorkflowAnchorConfig
+from autoprompter.ports.rendering import WorkflowAnchorConfig
 
 
 console = Console()

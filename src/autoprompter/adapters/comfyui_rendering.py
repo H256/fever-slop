@@ -4,8 +4,8 @@ from pathlib import Path
 import json
 
 from comfyui_client import ComfyUIClient
-from adapters.comfyui_video_backend import ComfyUIVideoBackend
-from ports.rendering import ImageRenderRequest, VideoRenderRequest
+from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoBackend
+from autoprompter.ports.rendering import ImageRenderRequest, VideoRenderRequest
 from workflow_patcher import WorkflowPatcher
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import json
 
-from adapters.local_artifacts import JsonArtifactStore
-from application.llm_parsing import extract_json_object
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
+from autoprompter.application.llm_parsing import extract_json_object
 from music_video_prompt_style import (
     build_concept_mapper_system_prompt,
     build_detail_system_prompt,
@@ -12,7 +12,7 @@ from music_video_prompt_style import (
     build_t2i_system_prompt,
     build_video_payload,
 )
-from ports.llm import LLMPort
+from autoprompter.ports.llm import LLMPort
 
 
 class MusicVideoPromptPipeline:

@@ -4,10 +4,10 @@ from pathlib import Path
 import json
 from typing import Any
 
-from adapters.local_artifacts import JsonArtifactStore
-from application.llm_parsing import extract_json_object
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
+from autoprompter.application.llm_parsing import extract_json_object
 from music_video_prompt_style import build_concept_mapper_system_prompt
-from ports.llm import LLMPort
+from autoprompter.ports.llm import LLMPort
 
 
 def chunked(items: list[Any], size: int):

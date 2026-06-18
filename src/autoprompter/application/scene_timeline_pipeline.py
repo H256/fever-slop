@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.pipeline_context import GenerateRenderPlanContext
+from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from beat_analysis import BeatSceneDurationGenerator
 from prompt_relay_builder import build_scene_prompt_relay
 from scene_duration_enforcer import (

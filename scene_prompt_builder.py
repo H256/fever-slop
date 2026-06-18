@@ -4,13 +4,13 @@ from pathlib import Path
 import json
 import re
 
-from adapters.local_artifacts import JsonArtifactStore
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from music_video_prompt_style import (
     build_i2v_system_prompt,
     build_t2i_system_prompt,
     build_video_payload,
 )
-from ports.llm import LLMPort
+from autoprompter.ports.llm import LLMPort
 
 
 def clean_llm_text(text: str) -> str:

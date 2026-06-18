@@ -1,6 +1,6 @@
 import unittest
 
-from application.llm_parsing import extract_json_object
+from autoprompter.application.llm_parsing import extract_json_object
 
 
 class LLMParsingTests(unittest.TestCase):
