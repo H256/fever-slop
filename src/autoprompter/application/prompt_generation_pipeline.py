@@ -5,6 +5,12 @@ import inspect
 from typing import Any, Callable
 
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
+from autoprompter.ports.generate_pipeline import (
+    ConceptBatcherFactory,
+    LLMFactory,
+    PromptPipelineFactory,
+    ScenePromptBuilderFactory,
+)
 from rich.panel import Panel
 from rich.table import Table
 
@@ -48,6 +54,27 @@ class PromptGenerationPipeline:
         "scene_prompts_json",
     }
 
+    def __init__(
+        self,
+        *,
+        llm_factory: LLMFactory | None = None,
+        prompt_pipeline_factory: PromptPipelineFactory | None = None,
+        concept_batcher_factory: ConceptBatcherFactory | None = None,
+        scene_prompt_builder_factory: ScenePromptBuilderFactory | None = None,
+    ):
+        self.llm_factory = llm_factory or self._default_llm
+        self.prompt_pipeline_factory = prompt_pipeline_factory or MusicVideoPromptPipeline
+        self.concept_batcher_factory = concept_batcher_factory or ConceptPromptBatcher
+        self.scene_prompt_builder_factory = scene_prompt_builder_factory or ScenePromptBuilder
+
+    def _default_llm(self, app_config: Any):
+        return OpenAICompatibleLLMClient(
+            base_url=app_config.llm.base_url,
+            model=app_config.llm.model,
+            temperature=app_config.llm.temperature,
+            max_tokens=app_config.llm.max_tokens,
+        )
+
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
         if missing:
@@ -69,13 +96,8 @@ class PromptGenerationPipeline:
         console = context["console"]
 
         log_step("7. LLM Prompt Pipeline")
-        llm = OpenAICompatibleLLMClient(
-            base_url=app_config.llm.base_url,
-            model=app_config.llm.model,
-            temperature=app_config.llm.temperature,
-            max_tokens=app_config.llm.max_tokens,
-        )
-        prompt_pipeline = MusicVideoPromptPipeline(llm)
+        llm = self.llm_factory(app_config)
+        prompt_pipeline = self.prompt_pipeline_factory(llm)
         all_lyrics = " ".join(
             seg.get("lyrics", "")
             for seg in stage1_segments
@@ -110,10 +132,7 @@ class PromptGenerationPipeline:
                 f"[cyan]Using batched concept generation: "
                 f"{request.concept_batch_size} segments per batch[/cyan]"
             )
-            concept_batcher = ConceptPromptBatcher(
-                llm=llm,
-                batch_size=request.concept_batch_size,
-            )
+            concept_batcher = self.concept_batcher_factory(llm, request.concept_batch_size)
             concept_prompts = run_spinner(
                 f"Generating concept prompts in batches of {request.concept_batch_size}...",
                 lambda: concept_batcher.create_concept_prompts_batched(
@@ -170,7 +189,7 @@ class PromptGenerationPipeline:
         log_file("Scene Details JSON", scene_details_json)
 
         log_step("8. Z-Image + LTX Scene Prompts")
-        scene_prompt_builder = ScenePromptBuilder(llm)
+        scene_prompt_builder = self.scene_prompt_builder_factory(llm)
         run_spinner(
             "Generating Z-Image and LTX prompts per scene...",
             lambda: scene_prompt_builder.build_scene_prompts(

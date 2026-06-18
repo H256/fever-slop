@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from autoprompter.application.audio_timeline_pipeline import AudioTimelinePipeline
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
+from autoprompter.application.prompt_generation_pipeline import PromptGenerationPipeline
 
 
 class FakeConsole:
@@ -21,6 +22,10 @@ class FakeArtifactStore:
 
     def read_json(self, path):
         return self.json[str(path)]
+
+    def write_json(self, path, data):
+        self.json[str(path)] = data
+        return Path(path)
 
 
 class FakeTimelineSegment:
@@ -69,6 +74,59 @@ class FakeBeatAnalyzer:
             "beats": [0.0, 0.5],
             "source_used_for_beats": "fake",
         }
+
+
+class FakePromptPipeline:
+    def __init__(self, llm):
+        self.llm = llm
+        self.used_for_concepts = False
+        self.saved = {}
+
+    def create_story_idea(self, lyrics, notes=""):
+        return "story"
+
+    def create_style_block(self, lyrics, notes=""):
+        return "style"
+
+    def create_subject_and_locations(self, story_idea, notes=""):
+        return {"subject": "subject", "locations": ["location"]}
+
+    def create_concept_prompts(self, stage1_segments, story_idea, global_context=None, notes=""):
+        self.used_for_concepts = True
+        return {segment["segment_id"]: "concept" for segment in stage1_segments}
+
+    def create_scene_details(self, concept_prompts, stage1_segments=None, global_context=None):
+        return {
+            segment["segment_id"]: {"camera_motion": "camera", "character_motion": "motion"}
+            for segment in (stage1_segments or [])
+        }
+
+    def save_json(self, path, data):
+        self.saved[str(path)] = data
+        return Path(path)
+
+
+class FakeConceptBatcher:
+    def __init__(self, llm, batch_size):
+        self.llm = llm
+        self.batch_size = batch_size
+        self.used = False
+
+    def create_concept_prompts_batched(self, stage1_segments, story_idea, global_context, notes=""):
+        self.used = True
+        return {segment["segment_id"]: "batched concept" for segment in stage1_segments}
+
+
+class FakeScenePromptBuilder:
+    def __init__(self, llm):
+        self.llm = llm
+        self.calls = []
+
+    def build_scene_prompts(self, **kwargs):
+        self.calls.append(kwargs)
+        output_json_path = kwargs["output_json_path"]
+        Path(output_json_path).write_text("[]", encoding="utf-8")
+        return Path(output_json_path)
 
 
 def _audio_context(temp: Path, artifact_store: FakeArtifactStore) -> GenerateRenderPlanContext:
@@ -122,6 +180,89 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertEqual(temp / "beat.json", beat_analyzer.calls[0]["output_json_path"])
             self.assertEqual(120, context.beat_data["bpm"])
             self.assertIn("stem_files", context.keys())
+
+    def test_prompt_pipeline_uses_injected_dependencies_without_batching(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            llm = object()
+            prompt_pipeline = FakePromptPipeline(llm)
+            scene_prompt_builder = FakeScenePromptBuilder(llm)
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda app_config: llm,
+                prompt_pipeline_factory=lambda llm_arg: prompt_pipeline,
+                concept_batcher_factory=lambda llm_arg, batch_size: self.fail("batcher should not be used"),
+                scene_prompt_builder_factory=lambda llm_arg: scene_prompt_builder,
+            )
+            context = _prompt_context(temp, concept_batch_size=0)
+
+            result = pipeline.execute(context)
+
+            self.assertTrue(prompt_pipeline.used_for_concepts)
+            self.assertEqual(1, len(scene_prompt_builder.calls))
+            self.assertEqual({"segment_001": "concept"}, result.concept_prompts)
+
+    def test_prompt_pipeline_uses_injected_concept_batcher_when_batching(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            llm = object()
+            prompt_pipeline = FakePromptPipeline(llm)
+            concept_batcher = FakeConceptBatcher(llm, 2)
+            scene_prompt_builder = FakeScenePromptBuilder(llm)
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda app_config: llm,
+                prompt_pipeline_factory=lambda llm_arg: prompt_pipeline,
+                concept_batcher_factory=lambda llm_arg, batch_size: concept_batcher,
+                scene_prompt_builder_factory=lambda llm_arg: scene_prompt_builder,
+            )
+            context = _prompt_context(temp, concept_batch_size=2)
+
+            result = pipeline.execute(context)
+
+            self.assertFalse(prompt_pipeline.used_for_concepts)
+            self.assertTrue(concept_batcher.used)
+            self.assertEqual(2, concept_batcher.batch_size)
+            self.assertEqual({"segment_001": "batched concept"}, result.concept_prompts)
+
+
+def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanContext:
+    return GenerateRenderPlanContext(
+        request=SimpleNamespace(concept_batch_size=concept_batch_size),
+        config=SimpleNamespace(
+            story_idea="",
+            style="",
+            subject="",
+            locations=[],
+            steering=SimpleNamespace(
+                global_="",
+                story_idea="",
+                style="",
+                subject="",
+                locations="",
+                concepts="",
+                zimage="",
+                ltx="",
+                final_prompts="",
+            ),
+            prompt_guidance=SimpleNamespace(as_prompt_context=lambda: {}),
+        ),
+        app_config=SimpleNamespace(llm=SimpleNamespace(base_url="http://fake", model="fake", temperature=0, max_tokens=100)),
+        stage1_segments=[
+            {
+                "segment_id": "segment_001",
+                "scene": 1,
+                "type": "vocals",
+                "lyrics": "line",
+            }
+        ],
+        console=FakeConsole(),
+        log_step=lambda title: None,
+        log_file=lambda label, path: None,
+        run_spinner=lambda description, func: func(),
+        resolved_context_json=temp / "resolved_context.json",
+        concept_prompts_json=temp / "concept_prompts.json",
+        scene_details_json=temp / "scene_details.json",
+        scene_prompts_json=temp / "scene_prompts.json",
+    )
 
 
 if __name__ == "__main__":
