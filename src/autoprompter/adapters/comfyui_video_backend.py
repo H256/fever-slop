@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-import random
 import shutil
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
 from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings
 from autoprompter.ports.rendering import VideoRenderRequest
 from autoprompter.domain.ltx_rendering import (
     AudioWindowSpec,
-    PromptRelayPayloadBuilder,
     build_audio_window_spec,
     round_up_8n1,
 )
@@ -62,6 +61,7 @@ class ComfyUIVideoRenderBackend:
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
+        workflow_patcher: LTXWorkflowPatcher | None = None,
     ):
         self.client = client
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
@@ -115,53 +115,43 @@ class ComfyUIVideoRenderBackend:
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
         )
+        self.workflow_patcher = workflow_patcher or LTXWorkflowPatcher(
+            LTXWorkflowSettings(
+                ltx_workflow_path=self.ltx_workflow_path,
+                single_prompt_workflow_path=self.single_prompt_workflow_path,
+                render_mode=self.render_mode,
+                width_node_title=self.width_node_title,
+                height_node_title=self.height_node_title,
+                load_audio_node_title=self.load_audio_node_title,
+                trim_audio_node_title=self.trim_audio_node_title,
+                startframe_node_title=self.startframe_node_title,
+                frames_node_title=self.frames_node_title,
+                framerate_node_title=self.framerate_node_title,
+                seed_node_title=self.seed_node_title,
+                prompt_relay_node_title=self.prompt_relay_node_title,
+                single_prompt_node_title=self.single_prompt_node_title,
+                single_prompt_input_name=self.single_prompt_input_name,
+                save_video_node_title=self.save_video_node_title,
+                character_lora_node_title=self.character_lora_node_title,
+                character_lora_strength=self.character_lora_strength,
+                lora_1_enabled=self.lora_1_enabled,
+                lora_1_name=self.lora_1_name,
+                lora_1_strength_model=self.lora_1_strength_model,
+                lora_1_strength_clip=self.lora_1_strength_clip,
+                lora_1_strengths_explicit=self.lora_1_strengths_explicit,
+                lora_1_node_title=self.lora_1_node_title,
+                randomize_seed=self.randomize_seed,
+                seed_offset=self.seed_offset,
+                segment_length_mode=self.segment_length_mode,
+                debug_workflows_dir=self.debug_workflows_dir,
+            )
+        )
 
     def load_workflow(self, mode: str = "relay") -> dict:
-        workflow_path = self._workflow_path_for_mode(mode)
-        return json.loads(workflow_path.read_text(encoding="utf-8"))
+        return self.workflow_patcher.load_workflow(mode=mode)
 
     def validate_workflow(self, mode: str = "relay") -> None:
-        workflow_path = self._workflow_path_for_mode(mode)
-        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
-        patcher = WorkflowPatcher(workflow)
-
-        required_titles = [
-            self.width_node_title,
-            self.height_node_title,
-            self.load_audio_node_title,
-            self.trim_audio_node_title,
-            self.startframe_node_title,
-            self.frames_node_title,
-            self.framerate_node_title,
-            self.seed_node_title,
-            self.save_video_node_title,
-        ]
-        if mode != "single_prompt":
-            required_titles.append(self.prompt_relay_node_title)
-        if self.lora_1_enabled:
-            required_titles.append(self.lora_1_node_title)
-
-        for title in dict.fromkeys(required_titles):
-            try:
-                patcher.find_node_by_meta_title(title)
-            except KeyError as exc:
-                raise ValueError(f"Missing workflow anchor {title} in workflow file {workflow_path}") from exc
-
-        if mode == "single_prompt":
-            prompt_title_candidates = [
-                self.single_prompt_node_title,
-                "#PROMPT_POSITIVE",
-                "#PROMPT",
-            ]
-            for title in dict.fromkeys(prompt_title_candidates):
-                try:
-                    patcher.find_node_by_meta_title(title)
-                    break
-                except KeyError:
-                    continue
-            else:
-                anchors = ", ".join(dict.fromkeys(prompt_title_candidates))
-                raise ValueError(f"Missing workflow anchor {anchors} in workflow file {workflow_path}")
+        self.workflow_patcher.validate_workflow(mode=mode)
 
     def render_video(self, request: VideoRenderRequest) -> Path:
         one_scene_plan = request.output_dir / "_single_scene_plan.json"
@@ -281,55 +271,14 @@ class ComfyUIVideoRenderBackend:
         return rendered_files
 
     def render_scene_video(self, scene: dict, comfy_audio_name: str, comfy_startframe_name: str, rolling: AudioWindowSpec) -> Path:
-        mode = self._render_mode_for_scene(scene)
-        self.validate_workflow(mode=mode)
-        workflow = self.load_workflow(mode=mode)
-        patcher = WorkflowPatcher(workflow)
-
         scene_number = int(scene["scene"])
-        fps = int(scene["fps"])
-        width = int(scene["width"])
-        height = int(scene["height"])
-        render_frame_count = int(rolling["render_frame_count"])
-
-        patcher.set_input_by_title(self.width_node_title, "value", width)
-        patcher.set_input_by_title(self.height_node_title, "value", height)
-        patcher.set_input_by_title(self.frames_node_title, "value", render_frame_count)
-        patcher.set_input_by_title(self.framerate_node_title, "value", fps)
-        patcher.set_input_by_title(self.seed_node_title, "noise_seed", self._seed_for_scene(scene_number))
-
-        patcher.set_input_by_title(self.load_audio_node_title, "audio", comfy_audio_name)
-        patcher.try_set_existing_input_by_title(
-            self.load_audio_node_title,
-            "audioUI",
-            f"/api/view?filename={comfy_audio_name}&type=input",
-        )
-
-        patcher.set_input_by_title(self.trim_audio_node_title, "start_index", float(rolling["audio_start_seconds"]))
-        patcher.set_input_by_title(self.trim_audio_node_title, "duration", float(rolling["audio_duration_seconds"]))
-        patcher.set_input_by_title(self.startframe_node_title, "image", comfy_startframe_name)
-
-        self._patch_prompt_inputs(
-            patcher=patcher,
+        workflow = self.workflow_patcher.build_workflow(
             scene=scene,
-            mode=mode,
-            render_frame_count=render_frame_count,
-            trim_front_frames=int(rolling["trim_front_frames"]),
-            tail_loss_frames=int(rolling["tail_loss_frames"]),
+            comfy_audio_name=comfy_audio_name,
+            comfy_startframe_name=comfy_startframe_name,
+            rolling=rolling,
         )
-
-        patcher.set_input_by_title(self.save_video_node_title, "filename_prefix", f"ltx_raw/scene_{scene_number:04}")
-
-        self._patch_lora_inputs(patcher)
-
-        if self.debug_workflows_dir:
-            self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
-            (self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json").write_text(
-                json.dumps(patcher.get(), ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-
-        prompt_id = self.client.queue_prompt(patcher.get())
+        prompt_id = self.client.queue_prompt(workflow)
         history = self.client.wait_for_completion(prompt_id)
 
         videos = self._extract_output_videos(history)
@@ -345,41 +294,13 @@ class ComfyUIVideoRenderBackend:
         )
 
     def _patch_lora_inputs(self, patcher: WorkflowPatcher) -> None:
-        if self.lora_1_enabled:
-            patcher.patch_lora_by_title(
-                self.lora_1_node_title,
-                lora_name=self.lora_1_name,
-                strength_model=self.lora_1_strength_model,
-                strength_clip=self.lora_1_strength_clip,
-            )
-        elif self.lora_1_strengths_explicit:
-            patcher.patch_lora_strengths_by_title(
-                self.lora_1_node_title,
-                strength_model=self.lora_1_strength_model,
-                strength_clip=self.lora_1_strength_clip,
-            )
-        elif self.character_lora_node_title:
-            try:
-                patcher.patch_lora_strength_by_title(
-                    self.character_lora_node_title,
-                    self.character_lora_strength,
-                )
-            except KeyError:
-                pass
+        self.workflow_patcher.patch_lora_inputs(patcher)
 
     def _render_mode_for_scene(self, scene: dict) -> str:
-        if self.render_mode != "auto":
-            return self.render_mode
-
-        hint = str(scene.get("ltx", {}).get("render_mode_hint", "relay")).strip()
-        if hint == "single_prompt":
-            return "single_prompt"
-        return "relay"
+        return self.workflow_patcher.render_mode_for_scene(scene)
 
     def _workflow_path_for_mode(self, mode: str) -> Path:
-        if mode == "single_prompt":
-            return self.single_prompt_workflow_path or self.ltx_workflow_path
-        return self.ltx_workflow_path
+        return self.workflow_patcher.workflow_path_for_mode(mode)
 
     def _patch_prompt_inputs(
         self,
@@ -390,43 +311,14 @@ class ComfyUIVideoRenderBackend:
         trim_front_frames: int,
         tail_loss_frames: int,
     ) -> None:
-        if mode == "single_prompt":
-            prompt = (
-                scene.get("ltx", {}).get("original_style_i2v_prompt")
-                or scene.get("ltx", {}).get("base_prompt")
-                or ""
-            )
-            prompt_title_candidates = [
-                self.single_prompt_node_title,
-                "#PROMPT_POSITIVE",
-                "#PROMPT",
-            ]
-            last_error = None
-            for title in dict.fromkeys(prompt_title_candidates):
-                try:
-                    patcher.set_input_by_title(
-                        title,
-                        self.single_prompt_input_name,
-                        str(prompt).strip(),
-                    )
-                    return
-                except KeyError as exc:
-                    last_error = exc
-
-            raise last_error or KeyError(
-                f"No prompt node found for single_prompt mode. Tried: {prompt_title_candidates}"
-            )
-            return
-
-        global_prompt, local_prompts, segment_lengths = self._build_prompt_relay_payload(
+        self.workflow_patcher.patch_prompt_inputs(
+            patcher=patcher,
             scene=scene,
+            mode=mode,
             render_frame_count=render_frame_count,
             trim_front_frames=trim_front_frames,
             tail_loss_frames=tail_loss_frames,
         )
-        patcher.set_input_by_title(self.prompt_relay_node_title, "global_prompt", global_prompt)
-        patcher.set_input_by_title(self.prompt_relay_node_title, "local_prompts", local_prompts)
-        patcher.set_input_by_title(self.prompt_relay_node_title, "segment_lengths", segment_lengths)
 
     def _rolling_spec(self, scene: dict) -> AudioWindowSpec:
         return build_audio_window_spec(
@@ -444,9 +336,7 @@ class ComfyUIVideoRenderBackend:
         return round_up_8n1(frame_count)
 
     def _seed_for_scene(self, scene_number: int) -> int:
-        if self.randomize_seed:
-            return random.randint(0, 2**63 - 1)
-        return self.seed_offset + scene_number
+        return self.workflow_patcher.seed_for_scene(scene_number)
 
     @staticmethod
     def _comfy_path_from_upload(upload_response: dict) -> str:
@@ -476,19 +366,16 @@ class ComfyUIVideoRenderBackend:
         trim_front_frames: int,
         tail_loss_frames: int,
     ) -> tuple[str, str, str]:
-        payload = PromptRelayPayloadBuilder(
-            segment_length_mode=self.segment_length_mode,
-        ).build(
+        return self.workflow_patcher.build_prompt_relay_payload(
             scene=scene,
             render_frame_count=render_frame_count,
             trim_front_frames=trim_front_frames,
             tail_loss_frames=tail_loss_frames,
         )
-        return payload.global_prompt, payload.local_prompts, payload.segment_lengths
 
     @classmethod
     def _normalize_prompt_relay_segments(cls, segments: list[dict]) -> list[dict]:
-        return PromptRelayPayloadBuilder.normalize_segments(segments)
+        return LTXWorkflowPatcher.normalize_prompt_relay_segments(segments)
 
 
 class ComfyUIVideoBackend(ComfyUIVideoRenderBackend):
