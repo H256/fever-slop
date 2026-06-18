@@ -90,7 +90,7 @@ class PublicCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual("#PROMPT_POSITIVE", storyboard_args.positive_title)
 
-    def test_root_python_files_are_only_cli_or_compatibility_facades(self):
+    def test_root_python_files_are_only_public_cli_or_explicit_facades(self):
         allowed = {
             "main.py",
             "render_ltx.py",
@@ -109,6 +109,11 @@ class PublicCompatibilityTests(unittest.TestCase):
         unexpected = sorted(actual - allowed)
 
         self.assertEqual([], unexpected)
+
+    def test_root_compatibility_facades_do_not_use_star_imports(self):
+        for name in ["ltx_video_renderer.py", "storyboard_renderer.py", "workflow_patcher.py"]:
+            with self.subTest(name=name):
+                self.assertNotIn("import *", Path(name).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
