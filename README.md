@@ -717,7 +717,7 @@ Ein Vergleichsexport mit per-scene Audio ist nur ein Diagnosepfad, z.B. ueber `.
 
 ### Was ist Entry-Point und was ist Bibliothekscode?
 
-Einige Dateien werden nirgends importiert, sind aber trotzdem absichtlich vorhanden, weil sie direkt per CLI aufgerufen werden:
+Root-Dateien bleiben fuer abwaertskompatible CLI-Aufrufe absichtlich erhalten:
 
 ```text
 main.py
@@ -725,38 +725,52 @@ render_storyboard.py
 render_ltx.py
 compact_relay_prompts.py
 fix_ltx_prompt_anchors.py
+storyboard_page.py
+normalize_render_plan.py
+repair_scene_srt.py
+trim_existing_ltx_clips.py
 ```
 
-Diese Dateien nicht allein deshalb loeschen, weil sie in keinem `import` auftauchen.
+Diese Dateien nicht allein deshalb loeschen, weil sie in keinem `import` auftauchen. Neue Implementierung gehoert nach `src/autoprompter`.
 
-Wartungs- und Reparatur-Tools liegen unter:
+Die wichtigsten Package-Bereiche:
 
 ```text
-tools/
-+-- normalize_render_plan.py
-+-- repair_scene_srt.py
-+-- trim_existing_ltx_clips.py
-+-- render_plan_normalizer.py
+src/autoprompter/
++-- application/    Use-Cases ohne konkrete Adapter
++-- composition/    Verdrahtung von Config, Use-Cases und Adaptern
++-- domain/         Renderplan-, LTX- und Postprocessing-Domain-Typen
++-- ports/          Protocols und Port-Typen
++-- adapters/       ComfyUI, lokale Artefakte, LLM, FFmpeg/Postprocessing
++-- pipeline/       Renderplan-/Timeline-Builder
++-- prompting/      Prompt-Generierung und Prompt-Fixes
++-- tools/          importierbare Tool-Implementierungen
 ```
 
-Die gleichnamigen Root-Dateien sind nur Compatibility-Wrappers fuer alte Befehle.
+Composition Roots:
 
-Aktuelle statische Dead-Code-Kandidaten:
+```text
+autoprompter.composition.generate_render_plan
+autoprompter.composition.render_storyboard
+```
 
-- `prompt_pipeline_batch_patch.py`: wirkt wie ein alter manueller Patch-Referenzstand. Die Batch-Logik ist inzwischen in `concept_prompt_batcher.py` und `main.py` integriert.
-- `extract_lyrics.py`: wird vom Hauptpfad nicht verwendet. Es importiert `noise_reduction.py`; beide koennen Legacy-/Experiment-Code sein, solange du sie nicht separat nutzt.
+Der produktive LTX-Renderadapter liegt hier:
 
-Sicher loeschbar ist nur, was du nicht als manuelles Tool behalten willst. Vor dem Loeschen:
+```text
+autoprompter.adapters.comfyui_video_backend
+```
+
+Die Root-Dateien `ltx_video_renderer.py`, `storyboard_renderer.py` und `workflow_patcher.py` sind Compatibility-Fassaden fuer alte Imports. Details stehen in:
+
+```text
+docs/architecture_compatibility.md
+```
+
+Wenn Root-Dateien oder alte Tool-Namen entfernt werden sollen, vorher Imports und Dokumentation pruefen:
 
 ```powershell
 rg -n "DATEINAME_OHNE_PY|python DATEINAME.py|uv run python DATEINAME.py" .
-```
-
-Danach Tests ausfuehren:
-
-```powershell
 uv run python -m unittest discover -s tests
-uv run python -m compileall .
 ```
 
 ### Renderplan-Dauern normalisieren
