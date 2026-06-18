@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from storyboard_page import (
+from autoprompter.tools.storyboard_page import (
     generate_storyboard_page,
     parse_scene_list,
 )

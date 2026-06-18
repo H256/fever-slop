@@ -35,7 +35,25 @@ class PublicCompatibilityTests(unittest.TestCase):
 
     def test_root_compatibility_modules_document_new_import_paths(self):
         self.assertIn("adapters.comfyui_video_backend", inspect.getdoc(ltx_video_renderer) or "")
-        self.assertIn("adapters.comfyui_rendering", inspect.getdoc(storyboard_renderer) or "")
+        self.assertIn("adapters.storyboard_renderer", inspect.getdoc(storyboard_renderer) or "")
+
+    def test_storyboard_renderer_root_file_is_only_compatibility_facade(self):
+        text = Path("storyboard_renderer.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "from autoprompter.adapters.storyboard_renderer import StoryboardRenderer",
+            text,
+        )
+        self.assertNotIn("class StoryboardRenderer", text)
+
+    def test_storyboard_page_package_module_exists(self):
+        import autoprompter.tools.storyboard_page as storyboard_page
+
+        self.assertIn(
+            "src/autoprompter/tools/storyboard_page.py",
+            Path(storyboard_page.__file__).as_posix(),
+        )
+        self.assertTrue(hasattr(storyboard_page, "generate_storyboard_page"))
 
     def test_cli_parser_defaults_stay_compatible(self):
         args = main.build_arg_parser().parse_args(["--project", "config.json"])
