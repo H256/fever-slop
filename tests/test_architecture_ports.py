@@ -281,6 +281,19 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertFalse(hasattr(backend, "renderer"))
             self.assertEqual(Path(temp_dir) / "workflow.json", backend.ltx_workflow_path)
 
+    def test_comfy_video_render_backend_is_primary_adapter_not_rendering_subclass(self):
+        from autoprompter.adapters.comfyui_video_backend import (
+            ComfyUIVideoBackend,
+            ComfyUIVideoRenderBackend,
+        )
+
+        self.assertTrue(issubclass(ComfyUIVideoBackend, ComfyUIVideoRenderBackend))
+        self.assertFalse(issubclass(ComfyUIVideoRenderBackend, ComfyUIVideoBackend))
+        self.assertEqual(
+            "autoprompter.adapters.comfyui_video_backend",
+            ComfyUIVideoRenderBackend.__module__,
+        )
+
     def test_ports_do_not_import_adapter_implementations(self):
         ports_dir = Path("src/autoprompter/ports")
         forbidden = [

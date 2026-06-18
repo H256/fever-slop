@@ -6,6 +6,7 @@ import random
 import shutil
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
+from autoprompter.ports.rendering import VideoRenderRequest
 from autoprompter.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayloadBuilder,
@@ -16,7 +17,7 @@ from autoprompter.adapters.workflow_patcher import WorkflowPatcher
 from autoprompter.adapters.video_postprocessor import VideoPostProcessor, TrimSpec
 
 
-class ComfyUIVideoBackend:
+class ComfyUIVideoRenderBackend:
     min_prompt_relay_frames = 6
 
     def __init__(
@@ -158,6 +159,26 @@ class ComfyUIVideoBackend:
             else:
                 anchors = ", ".join(dict.fromkeys(prompt_title_candidates))
                 raise ValueError(f"Missing workflow anchor {anchors} in workflow file {workflow_path}")
+
+    def render_video(self, request: VideoRenderRequest) -> Path:
+        one_scene_plan = request.output_dir / "_single_scene_plan.json"
+        one_scene_plan.parent.mkdir(parents=True, exist_ok=True)
+        one_scene_plan.write_text(
+            json.dumps([request.scene], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        rendered = self.render_videos(
+            render_plan_path=one_scene_plan,
+            audio_file=request.audio_file,
+            storyboard_dir=request.storyboard_dir,
+            skip_existing=request.skip_existing,
+            uploaded_audio_name=request.uploaded_audio_name,
+            upload_audio=request.upload_audio,
+            upload_startframes=request.upload_startframes,
+        )
+        if not rendered:
+            raise RuntimeError(f"No rendered video returned for scene {request.scene_number}")
+        return rendered[0]
 
     def render_videos(
         self,
@@ -480,3 +501,7 @@ class ComfyUIVideoBackend:
     @classmethod
     def _normalize_prompt_relay_segments(cls, segments: list[dict]) -> list[dict]:
         return PromptRelayPayloadBuilder.normalize_segments(segments)
+
+
+class ComfyUIVideoBackend(ComfyUIVideoRenderBackend):
+    """Compatibility alias for older imports."""

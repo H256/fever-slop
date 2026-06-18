@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from autoprompter.adapters.comfyui_rendering import ComfyUIVideoRenderBackend
+from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from autoprompter.config.app_config import AppConfig

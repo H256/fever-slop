@@ -4,9 +4,11 @@ from pathlib import Path
 import json
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
-from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoBackend
-from autoprompter.ports.rendering import ImageRenderRequest, VideoRenderRequest
+from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+from autoprompter.ports.rendering import ImageRenderRequest
 from autoprompter.adapters.workflow_patcher import WorkflowPatcher
+
+__all__ = ["ComfyUIImageBackend", "ComfyUIVideoRenderBackend"]
 
 
 class ComfyUIImageBackend:
@@ -83,25 +85,3 @@ class ComfyUIImageBackend:
             file_type=first.get("type", "output"),
             output_path=request.output_dir / f"scene_{scene_number:04}.png",
         )
-
-
-class ComfyUIVideoRenderBackend(ComfyUIVideoBackend):
-    def render_video(self, request: VideoRenderRequest) -> Path:
-        one_scene_plan = request.output_dir / "_single_scene_plan.json"
-        one_scene_plan.parent.mkdir(parents=True, exist_ok=True)
-        one_scene_plan.write_text(
-            json.dumps([request.scene], ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        rendered = self.render_videos(
-            render_plan_path=one_scene_plan,
-            audio_file=request.audio_file,
-            storyboard_dir=request.storyboard_dir,
-            skip_existing=request.skip_existing,
-            uploaded_audio_name=request.uploaded_audio_name,
-            upload_audio=request.upload_audio,
-            upload_startframes=request.upload_startframes,
-        )
-        if not rendered:
-            raise RuntimeError(f"No rendered video returned for scene {request.scene_number}")
-        return rendered[0]
