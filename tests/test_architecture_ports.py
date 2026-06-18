@@ -8,7 +8,7 @@ import main
 from application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
-from adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoBackend
+from adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoRenderBackend
 from adapters.local_artifacts import JsonArtifactStore
 from domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
 from ports.audio import AudioAnalyzerPort
@@ -232,7 +232,7 @@ class ArchitecturePortsTests(unittest.TestCase):
             pass
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            backend = ComfyUIVideoBackend(
+            backend = ComfyUIVideoRenderBackend(
                 client=FakeClient(),
                 ltx_workflow_path=Path(temp_dir) / "workflow.json",
                 output_dir=Path(temp_dir) / "ltx",

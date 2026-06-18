@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 
 from comfyui_client import ComfyUIClient
-from ltx_video_renderer import LTXVideoRenderer
+from adapters.comfyui_video_backend import ComfyUIVideoBackend
 from ports.rendering import ImageRenderRequest, VideoRenderRequest
 from workflow_patcher import WorkflowPatcher
 
@@ -85,7 +85,7 @@ class ComfyUIImageBackend:
         )
 
 
-class ComfyUIVideoBackend(LTXVideoRenderer):
+class ComfyUIVideoRenderBackend(ComfyUIVideoBackend):
     def render_video(self, request: VideoRenderRequest) -> Path:
         one_scene_plan = request.output_dir / "_single_scene_plan.json"
         one_scene_plan.parent.mkdir(parents=True, exist_ok=True)

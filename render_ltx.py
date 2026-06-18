@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from adapters.comfyui_rendering import ComfyUIVideoBackend
+from adapters.comfyui_rendering import ComfyUIVideoRenderBackend
 from application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from app_config import AppConfig
 from comfyui_client import ComfyUIClient
@@ -234,7 +234,7 @@ def main():
 
     client = ComfyUIClient(base_url=app_config.comfyui.base_url)
 
-    backend = ComfyUIVideoBackend(
+    backend = ComfyUIVideoRenderBackend(
         client=client,
         ltx_workflow_path=args.workflow,
         output_dir=args.output_dir,
