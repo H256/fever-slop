@@ -4,6 +4,8 @@ from pathlib import Path
 import json
 import re
 
+from adapters.local_artifacts import JsonArtifactStore
+from ports.artifacts import ArtifactStore
 from video_settings import VideoSettings
 
 
@@ -65,9 +67,12 @@ def build_scene_prompt_relay(
         "same scene, instrumental section, character is not singing, no lip movement"
     ),
     min_segment_duration: float = 0.25,
+    *,
+    artifact_store: ArtifactStore | None = None,
 ) -> Path:
+    artifact_store = artifact_store or JsonArtifactStore()
     scenes = parse_scene_srt(scene_srt_file)
-    timeline = json.loads(Path(vocal_timeline_json).read_text(encoding="utf-8"))
+    timeline = artifact_store.read_json(vocal_timeline_json)
 
     result = []
 
@@ -161,10 +166,4 @@ def build_scene_prompt_relay(
 
         result.append(scene_data)
 
-    output_json_file = Path(output_json_file)
-    output_json_file.parent.mkdir(parents=True, exist_ok=True)
-
-    with output_json_file.open("w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    return output_json_file
+    return artifact_store.write_json(output_json_file, result)

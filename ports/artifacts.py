@@ -5,6 +5,12 @@ from typing import Any, Protocol
 
 
 class ArtifactStore(Protocol):
+    def read_text(self, path: str | Path) -> str:
+        """Read UTF-8 text from a path."""
+
+    def write_text(self, path: str | Path, text: str) -> Path:
+        """Write UTF-8 text and return the written path."""
+
     def read_json(self, path: str | Path) -> Any:
         """Read JSON data from a path."""
 

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+from adapters.local_artifacts import JsonArtifactStore
+from ports.artifacts import ArtifactStore
 
 @dataclass(frozen=True)
 class SrtScene:
@@ -82,10 +84,12 @@ def parse_scene_srt(path: str | Path) -> list[SrtScene]:
     return scenes
 
 
-def write_scene_srt(path: str | Path, scenes: list[SrtScene]) -> Path:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
+def write_scene_srt(
+    path: str | Path,
+    scenes: list[SrtScene],
+    *,
+    artifact_store: ArtifactStore | None = None,
+) -> Path:
     blocks = []
 
     for index, scene in enumerate(scenes, start=1):
@@ -98,8 +102,8 @@ def write_scene_srt(path: str | Path, scenes: list[SrtScene]) -> Path:
             ])
         )
 
-    path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
-    return path
+    artifact_store = artifact_store or JsonArtifactStore()
+    return artifact_store.write_text(path, "\n\n".join(blocks) + "\n")
 
 
 def enforce_scene_duration_constraints(

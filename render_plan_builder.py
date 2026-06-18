@@ -4,6 +4,8 @@ from pathlib import Path
 import json
 import random
 
+from adapters.local_artifacts import JsonArtifactStore
+from ports.artifacts import ArtifactStore
 from video_settings import VideoSettings
 
 
@@ -240,6 +242,8 @@ def build_render_plan(
     ltx_prompt_relay_json: str | Path,
     output_json_file: str | Path,
     video_settings: VideoSettings,
+    *,
+    artifact_store: ArtifactStore | None = None,
 ) -> Path:
     """
     Combines:
@@ -254,8 +258,9 @@ def build_render_plan(
     - frame_count == round(fps * duration_seconds).
     """
 
-    scene_prompts = json.loads(Path(scene_prompts_json).read_text(encoding="utf-8"))
-    relay_scenes = json.loads(Path(ltx_prompt_relay_json).read_text(encoding="utf-8"))
+    artifact_store = artifact_store or JsonArtifactStore()
+    scene_prompts = artifact_store.read_json(scene_prompts_json)
+    relay_scenes = artifact_store.read_json(ltx_prompt_relay_json)
 
     relay_by_scene = {int(scene["scene"]): scene for scene in relay_scenes}
 
@@ -368,7 +373,4 @@ def build_render_plan(
             },
         })
 
-    output_json_file = Path(output_json_file)
-    output_json_file.parent.mkdir(parents=True, exist_ok=True)
-    output_json_file.write_text(json.dumps(render_plan, ensure_ascii=False, indent=2), encoding="utf-8")
-    return output_json_file
+    return artifact_store.write_json(output_json_file, render_plan)
