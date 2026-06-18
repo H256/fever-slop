@@ -84,6 +84,30 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
             service_names,
         )
 
+    def test_use_case_builds_defaults_through_explicit_composition_helper(self):
+        use_case = GenerateRenderPlanUseCase()
+
+        service_names = [
+            service.__class__.__name__
+            for service in use_case.build_default_pipeline_services()
+        ]
+
+        self.assertEqual(
+            [
+                "AudioTimelinePipeline",
+                "SceneTimelinePipeline",
+                "PromptGenerationPipeline",
+                "RenderPlanPipeline",
+            ],
+            service_names,
+        )
+
+    def test_injected_services_are_used_without_building_default_pipeline(self):
+        services = [RecordingService("only", {"render_plan": []})]
+        use_case = GenerateRenderPlanUseCase(pipeline_services=services)
+
+        self.assertIs(services, use_case.pipeline_services)
+
 
 if __name__ == "__main__":
     unittest.main()

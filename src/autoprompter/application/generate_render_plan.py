@@ -40,7 +40,10 @@ class GenerateRenderPlanResult:
 class GenerateRenderPlanUseCase:
     def __init__(self, console: Console | None = None, pipeline_services: list[Any] | None = None):
         self.console = console or Console()
-        self.pipeline_services = pipeline_services or [
+        self.pipeline_services = pipeline_services if pipeline_services is not None else self.build_default_pipeline_services()
+
+    def build_default_pipeline_services(self) -> list[Any]:
+        return [
             AudioTimelinePipeline(),
             SceneTimelinePipeline(),
             PromptGenerationPipeline(),
