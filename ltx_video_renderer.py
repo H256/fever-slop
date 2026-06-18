@@ -1,44 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 import json
 import random
 import shutil
 
 from comfyui_client import ComfyUIClient
+from domain.ltx_rendering import (
+    AudioWindowSpec,
+    PromptRelayPayloadBuilder,
+    build_audio_window_spec,
+    round_up_8n1,
+)
 from workflow_patcher import WorkflowPatcher
 from video_postprocessor import VideoPostProcessor, TrimSpec
-
-
-@dataclass(frozen=True)
-class AudioWindowSpec:
-    scene_frame_count: int
-    render_frame_count: int
-    trim_front_frames: int
-    tail_loss_frames: int
-    fps: int
-    audio_start_seconds: float
-    audio_duration_seconds: float
-
-    @property
-    def output_duration_seconds(self) -> float:
-        return self.scene_frame_count / float(self.fps)
-
-    def as_dict(self) -> dict:
-        return {
-            "scene_frame_count": self.scene_frame_count,
-            "render_frame_count": self.render_frame_count,
-            "trim_front_frames": self.trim_front_frames,
-            "tail_loss_frames": self.tail_loss_frames,
-            "fps": self.fps,
-            "audio_start_seconds": self.audio_start_seconds,
-            "audio_duration_seconds": self.audio_duration_seconds,
-            "output_duration_seconds": self.output_duration_seconds,
-        }
-
-    def __getitem__(self, key: str):
-        return self.as_dict()[key]
 
 
 class LTXVideoRenderer:
@@ -441,43 +416,19 @@ class LTXVideoRenderer:
         patcher.set_input_by_title(self.prompt_relay_node_title, "segment_lengths", segment_lengths)
 
     def _rolling_spec(self, scene: dict) -> AudioWindowSpec:
-        scene_number = int(scene["scene"])
-        fps = int(scene["fps"])
-        scene_frame_count = int(scene["frame_count"])
-        scene_start = float(scene["abs_start_seconds"])
-
-        preroll = 0 if scene_number == 1 else self.preroll_frames
-        tail = self.tail_loss_frames
-
-        audio_start = max(0.0, scene_start - preroll / float(fps))
-        effective_preroll = round((scene_start - audio_start) * fps)
-
-        base_render_frame_count = scene_frame_count + effective_preroll + tail
-        render_frame_count = (
-            self._round_up_8n1(base_render_frame_count)
-            if self.round_render_frames_to_8n1
-            else base_render_frame_count
-        )
-        effective_tail = tail + (render_frame_count - base_render_frame_count)
-        audio_duration = max(0.0, (render_frame_count - 1) / float(fps))
-
-        return AudioWindowSpec(
-            scene_frame_count=scene_frame_count,
-            render_frame_count=render_frame_count,
-            trim_front_frames=effective_preroll,
-            tail_loss_frames=effective_tail,
-            fps=fps,
-            audio_start_seconds=audio_start,
-            audio_duration_seconds=audio_duration,
+        return build_audio_window_spec(
+            scene_number=int(scene["scene"]),
+            fps=int(scene["fps"]),
+            scene_frame_count=int(scene["frame_count"]),
+            scene_start_seconds=float(scene["abs_start_seconds"]),
+            preroll_frames=self.preroll_frames,
+            tail_loss_frames=self.tail_loss_frames,
+            round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
 
     @staticmethod
     def _round_up_8n1(frame_count: int) -> int:
-        frame_count = max(1, int(frame_count))
-        remainder = (frame_count - 1) % 8
-        if remainder == 0:
-            return frame_count
-        return frame_count + (8 - remainder)
+        return round_up_8n1(frame_count)
 
     def _seed_for_scene(self, scene_number: int) -> int:
         if self.randomize_seed:
@@ -516,107 +467,16 @@ class LTXVideoRenderer:
         trim_front_frames: int,
         tail_loss_frames: int,
     ) -> tuple[str, str, str]:
-        ltx = scene["ltx"]
-        global_prompt = ltx["base_prompt"].strip()
-        relays = ltx.get("prompt_relay", [])
-
-        timeline_frames = render_frame_count if self.segment_length_mode == "frames" else max(1, render_frame_count - 1)
-        scene_timeline_frames = int(scene["frame_count"]) if self.segment_length_mode == "frames" else max(1, int(scene["frame_count"]) - 1)
-
-        relay_segments: list[dict] = []
-
-        if trim_front_frames > 0:
-            relay_segments.append({
-                "prompt": "pre-roll continuity hold, preserve startframe composition, subtle breathing and atmospheric motion",
-                "length": trim_front_frames,
-            })
-
-        if not relays:
-            relay_segments.append({
-                "prompt": "continue the main scene motion with stable subject identity",
-                "length": scene_timeline_frames,
-            })
-        else:
-            relays = sorted(relays, key=lambda item: int(item["frame_start"]))
-            cursor = 0
-
-            for relay in relays:
-                start = max(0, min(int(relay["frame_start"]), scene_timeline_frames))
-                end = max(start, min(int(relay["frame_end"]), scene_timeline_frames))
-
-                if start > cursor:
-                    relay_segments.append({
-                        "prompt": "hold the same shot, subtle breathing and atmospheric motion",
-                        "length": start - cursor,
-                    })
-                    cursor = start
-
-                length = max(1, end - start)
-                relay_segments.append({
-                    "prompt": str(relay["prompt"]).strip(),
-                    "length": length,
-                })
-                cursor = end
-
-            if cursor < scene_timeline_frames:
-                relay_segments.append({
-                    "prompt": "hold the same shot, subtle breathing and atmospheric motion",
-                    "length": scene_timeline_frames - cursor,
-                })
-
-        if tail_loss_frames > 0:
-            relay_segments.append({
-                "prompt": "tail safety continuation, maintain same motion and atmosphere without introducing a new scene",
-                "length": tail_loss_frames,
-            })
-
-        relay_segments = self._normalize_prompt_relay_segments(relay_segments)
-        local_prompts = [segment["prompt"] for segment in relay_segments]
-        segment_lengths = [int(segment["length"]) for segment in relay_segments]
-
-        total = sum(segment_lengths)
-        if total != timeline_frames:
-            raise ValueError(
-                f"PromptRelay segment length mismatch for scene {scene.get('scene')}: "
-                f"sum={total}, expected={timeline_frames}, mode={self.segment_length_mode}, "
-                f"render_frame_count={render_frame_count}, scene_frame_count={scene.get('frame_count')}, "
-                f"preroll={trim_front_frames}, tail={tail_loss_frames}"
-            )
-
-        return global_prompt, "\n|".join(local_prompts), ",".join(str(int(x)) for x in segment_lengths)
+        payload = PromptRelayPayloadBuilder(
+            segment_length_mode=self.segment_length_mode,
+        ).build(
+            scene=scene,
+            render_frame_count=render_frame_count,
+            trim_front_frames=trim_front_frames,
+            tail_loss_frames=tail_loss_frames,
+        )
+        return payload.global_prompt, payload.local_prompts, payload.segment_lengths
 
     @classmethod
     def _normalize_prompt_relay_segments(cls, segments: list[dict]) -> list[dict]:
-        normalized = [
-            {"prompt": str(segment["prompt"]).strip(), "length": int(segment["length"])}
-            for segment in segments
-            if int(segment["length"]) > 0
-        ]
-
-        while len(normalized) > 1:
-            short_index = next(
-                (
-                    index
-                    for index, segment in enumerate(normalized)
-                    if int(segment["length"]) < cls.min_prompt_relay_frames
-                ),
-                None,
-            )
-            if short_index is None:
-                break
-
-            if short_index == 0:
-                target_index = 1
-            elif short_index == len(normalized) - 1:
-                target_index = short_index - 1
-            else:
-                previous_length = int(normalized[short_index - 1]["length"])
-                next_length = int(normalized[short_index + 1]["length"])
-                target_index = short_index + 1 if next_length <= previous_length else short_index - 1
-
-            normalized[target_index]["length"] = (
-                int(normalized[target_index]["length"]) + int(normalized[short_index]["length"])
-            )
-            del normalized[short_index]
-
-        return normalized
+        return PromptRelayPayloadBuilder.normalize_segments(segments)
