@@ -760,6 +760,14 @@ Der produktive LTX-Renderadapter liegt hier:
 autoprompter.adapters.comfyui_video_backend
 ```
 
+Aktuelle Architekturgrenzen:
+
+- `autoprompter.application`: Use-Cases und Pipeline-Services ohne konkrete Adapter.
+- `autoprompter.composition`: verdrahtet Config, Use-Cases und Adapter fuer CLI-Einstiegspunkte.
+- `autoprompter.domain`: Renderplan-, LTX- und Postprocessing-Domain-Typen.
+- `autoprompter.ports`: Protocols und Request-Typen; Ports importieren keine Adapter.
+- `autoprompter.adapters`: ComfyUI, lokale JSON-Artefakte, OpenAI-kompatible LLMs und FFmpeg/Postprocessing.
+
 Die Root-Dateien `ltx_video_renderer.py`, `storyboard_renderer.py` und `workflow_patcher.py` sind Compatibility-Fassaden fuer alte Imports. Details stehen in:
 
 ```text

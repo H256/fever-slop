@@ -17,6 +17,13 @@ class DocumentationCurrentTests(unittest.TestCase):
         self.assertIn("autoprompter.adapters.comfyui_video_backend", text)
         self.assertIn("autoprompter.composition.generate_render_plan", text)
 
+    def test_architecture_compatibility_mentions_final_boundaries(self):
+        text = Path("docs/architecture_compatibility.md").read_text(encoding="utf-8")
+
+        self.assertIn("autoprompter.composition", text)
+        self.assertIn("application layer does not import concrete adapters", text)
+        self.assertIn("ports do not import adapters", text)
+
 
 if __name__ == "__main__":
     unittest.main()
