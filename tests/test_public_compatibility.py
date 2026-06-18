@@ -1,6 +1,7 @@
 import argparse
 import inspect
 import unittest
+from pathlib import Path
 
 import compact_relay_prompts
 import fix_ltx_prompt_anchors
@@ -70,6 +71,26 @@ class PublicCompatibilityTests(unittest.TestCase):
             ]
         )
         self.assertEqual("#PROMPT_POSITIVE", storyboard_args.positive_title)
+
+    def test_root_python_files_are_only_cli_or_compatibility_facades(self):
+        allowed = {
+            "main.py",
+            "render_ltx.py",
+            "render_storyboard.py",
+            "compact_relay_prompts.py",
+            "fix_ltx_prompt_anchors.py",
+            "storyboard_page.py",
+            "normalize_render_plan.py",
+            "repair_scene_srt.py",
+            "trim_existing_ltx_clips.py",
+            "ltx_video_renderer.py",
+            "storyboard_renderer.py",
+            "workflow_patcher.py",
+        }
+        actual = {path.name for path in Path(".").glob("*.py")}
+        unexpected = sorted(actual - allowed)
+
+        self.assertEqual([], unexpected)
 
 
 if __name__ == "__main__":
