@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 import re
 
 from autoprompter.adapters.local_artifacts import JsonArtifactStore

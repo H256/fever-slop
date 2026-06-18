@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from autoprompter.ports.generate_pipeline import (
     BeatImpactAnalyzerFactory,

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from autoprompter.pipeline.render_plan_builder import build_render_plan
 

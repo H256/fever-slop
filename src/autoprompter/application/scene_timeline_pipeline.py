@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from autoprompter.audio.beat_analysis import BeatSceneDurationGenerator
 from autoprompter.pipeline.prompt_relay_builder import build_scene_prompt_relay
