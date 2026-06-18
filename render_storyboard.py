@@ -8,10 +8,8 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from autoprompter.config.app_config import AppConfig
-from autoprompter.adapters.local_artifacts import JsonArtifactStore
-from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
-from autoprompter.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
-from autoprompter.adapters.comfyui_client import ComfyUIClient
+from autoprompter.application.render_storyboard import RenderStoryboardRequest
+from autoprompter.composition.render_storyboard import build_render_storyboard_use_case
 from autoprompter.ports.rendering import WorkflowAnchorConfig
 
 
@@ -80,18 +78,11 @@ def main():
         border_style="cyan",
     ))
 
-    client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
-    )
-
     scene_numbers = parse_scene_list(args.scenes)
-    use_case = RenderStoryboardUseCase(
-        backend=ComfyUIImageBackend(
-            client=client,
-            workflow_path=args.workflow,
-            output_dir=args.output_dir,
-        ),
-        artifact_store=JsonArtifactStore(),
+    use_case = build_render_storyboard_use_case(
+        app_config=app_config,
+        workflow_path=args.workflow,
+        output_dir=args.output_dir,
     )
 
     with Progress(
