@@ -241,6 +241,23 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertFalse(hasattr(backend, "renderer"))
             self.assertEqual(Path(temp_dir) / "workflow.json", backend.ltx_workflow_path)
 
+    def test_ports_do_not_import_adapter_implementations(self):
+        ports_dir = Path("src/autoprompter/ports")
+        forbidden = [
+            "autoprompter.adapters.",
+            "video_postprocessor",
+            "comfyui_client",
+            "workflow_patcher",
+        ]
+        offenders = []
+        for path in ports_dir.glob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in text:
+                    offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
 
 if __name__ == "__main__":
     unittest.main()

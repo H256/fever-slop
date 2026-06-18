@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from autoprompter.adapters.video_postprocessor import TrimSpec
+from autoprompter.domain.postprocessing import TrimSpec
 
 
 class PostProcessorPort(Protocol):

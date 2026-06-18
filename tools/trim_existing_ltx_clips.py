@@ -8,7 +8,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from autoprompter.adapters.video_postprocessor import VideoPostProcessor, TrimSpec
+from autoprompter.adapters.video_postprocessor import VideoPostProcessor
+from autoprompter.domain.postprocessing import TrimSpec
 
 
 console = Console()
