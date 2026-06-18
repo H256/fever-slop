@@ -12,10 +12,15 @@ param(
     [string]$SinglePromptTitle = "#PROMPT",
     [string]$SinglePromptInput = "text",
     [string]$RollingFrameProfile = "original",
+    [Nullable[double]]$StoryboardLoraStrength,
+    [Nullable[double]]$VideoCharacterLoraStrength,
+    [Nullable[double]]$VideoLora1StrengthModel,
+    [Nullable[double]]$VideoLora1StrengthClip,
     [int]$SmokeScene = 16,
     [switch]$SmokeOnly,
     [switch]$NoSkipExisting,
     [switch]$SkipTests,
+    [switch]$SkipMainPipeline,
     [switch]$SkipRelayCompact,
     [switch]$SkipAnchorFix,
     [switch]$SkipStoryboard,
@@ -60,6 +65,11 @@ function Invoke-Native {
     if ($LASTEXITCODE -ne 0) {
         throw "Command failed: $Command"
     }
+}
+
+function Convert-ToInvariantString {
+    param([double]$Value)
+    return $Value.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 }
 
 Push-Location $PSScriptRoot
@@ -125,12 +135,17 @@ try {
         Invoke-UvPython -Script "-m" -Arguments @("unittest", "discover", "-s", "tests")
     }
 
-    Write-Step "Running main pipeline"
-    Invoke-UvPython -Script "main.py" -Arguments @(
-        "--project", $projectConfigPath,
-        "--app-config", $AppConfig,
-        "--concept-batch-size", "$ConceptBatchSize"
-    )
+    if (-not $SkipMainPipeline) {
+        Write-Step "Running main pipeline"
+        Invoke-UvPython -Script "main.py" -Arguments @(
+            "--project", $projectConfigPath,
+            "--app-config", $AppConfig,
+            "--concept-batch-size", "$ConceptBatchSize"
+        )
+    }
+    else {
+        Write-Host "Skipping main pipeline; using existing timeline, prompts, and render plan." -ForegroundColor Yellow
+    }
 
     $planForNextStep = $renderPlan
     if (-not $SkipRelayCompact -and $RenderMode -ne "single_prompt") {
@@ -161,12 +176,18 @@ try {
 
     if (-not $SkipStoryboard) {
         Write-Step "Rendering storyboard"
-        Invoke-UvPython -Script "render_storyboard.py" -Arguments @(
+        $storyboardArgs = @(
             "--app-config", $AppConfig,
             "--render-plan", $planForNextStep,
             "--workflow", $StoryboardWorkflow,
             "--output-dir", $storyboardDir
         )
+
+        if ($null -ne $StoryboardLoraStrength) {
+            $storyboardArgs += @("--character-lora-strength", (Convert-ToInvariantString $StoryboardLoraStrength))
+        }
+
+        Invoke-UvPython -Script "render_storyboard.py" -Arguments $storyboardArgs
     }
 
     if (-not $SkipLtx) {
@@ -186,6 +207,18 @@ try {
             "--single-prompt-title", $SinglePromptTitle,
             "--single-prompt-input", $SinglePromptInput
         )
+
+        if ($null -ne $VideoCharacterLoraStrength) {
+            $ltxArgs += @("--character-lora-strength", (Convert-ToInvariantString $VideoCharacterLoraStrength))
+        }
+
+        if ($null -ne $VideoLora1StrengthModel) {
+            $ltxArgs += @("--lora-1-strength-model", (Convert-ToInvariantString $VideoLora1StrengthModel))
+        }
+
+        if ($null -ne $VideoLora1StrengthClip) {
+            $ltxArgs += @("--lora-1-strength-clip", (Convert-ToInvariantString $VideoLora1StrengthClip))
+        }
 
         if ($RenderMode -eq "auto") {
             $ltxArgs += @("--single-prompt-workflow", $SinglePromptWorkflow)
