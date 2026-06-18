@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import re
 
+from adapters.local_artifacts import JsonArtifactStore
 from music_video_prompt_style import (
     build_i2v_system_prompt,
     build_t2i_system_prompt,
@@ -162,10 +163,4 @@ class ScenePromptBuilder:
             })
 
         output_json_path = Path(output_json_path)
-        output_json_path.parent.mkdir(parents=True, exist_ok=True)
-        output_json_path.write_text(
-            json.dumps(output, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-        return output_json_path
+        return JsonArtifactStore().write_json(output_json_path, output)

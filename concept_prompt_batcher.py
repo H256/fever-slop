@@ -2,27 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-import re
 from typing import Any
 
+from adapters.local_artifacts import JsonArtifactStore
+from application.llm_parsing import extract_json_object
 from music_video_prompt_style import build_concept_mapper_system_prompt
 from ports.llm import LLMPort
-
-
-def extract_json_object(text: str) -> dict:
-    text = text.strip()
-
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"```$", "", text).strip()
-
-    start = text.find("{")
-    end = text.rfind("}")
-
-    if start == -1 or end == -1:
-        raise ValueError(f"No JSON object found in LLM response:\n{text}")
-
-    return json.loads(text[start:end + 1])
 
 
 def chunked(items: list[Any], size: int):
@@ -278,10 +263,4 @@ Do not mention JSON or segment ids unless needed.
 
 
 def save_concepts(path: str | Path, concepts: dict) -> Path:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(concepts, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return path
+    return JsonArtifactStore().write_json(path, concepts)
