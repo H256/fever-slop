@@ -1,11 +1,13 @@
 import json
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
 
+import main
 from application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
-from application.generate_render_plan import GenerateRenderPlanRequest
+from application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
 from adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoBackend
 from adapters.local_artifacts import JsonArtifactStore
 from domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
@@ -161,6 +163,13 @@ class ArchitecturePortsTests(unittest.TestCase):
         self.assertEqual({"audio_file": "song.mp3"}, audio.analyze(Path("song.mp3")))
         workflow.validate_workflow(path, ["#PROMPT"])
         self.assertEqual((path, ["#PROMPT"]), workflow.validated)
+
+    def test_main_delegates_pipeline_to_generate_render_plan_use_case(self):
+        self.assertTrue(hasattr(GenerateRenderPlanUseCase, "execute"))
+        source = inspect.getsource(main.main)
+
+        self.assertIn("GenerateRenderPlanUseCase", source)
+        self.assertIn(".execute(", source)
 
     def test_storyboard_use_case_delegates_each_scene_to_image_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
