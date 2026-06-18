@@ -47,6 +47,18 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertIn('Write-Step "Running main pipeline"', script)
         self.assertIn('"Skipping main pipeline; using existing timeline, prompts, and render plan."', script)
 
+    def test_test_ps1_generates_storyboard_page_unless_skipped(self):
+        script = Path("test.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("[switch]$SkipStoryboardPage", script)
+        self.assertIn("$storyboardPage = Join-Path $storyboardDir \"index.html\"", script)
+        self.assertIn("if (-not $SkipStoryboardPage)", script)
+        self.assertIn('Write-Step "Generating storyboard page"', script)
+        self.assertIn('Invoke-UvPython -Script "storyboard_page.py" -Arguments @(', script)
+        self.assertIn('"--render-plan", $planForNextStep', script)
+        self.assertIn('"--storyboard-dir", $storyboardDir', script)
+        self.assertIn('"--output-html", $storyboardPage', script)
+
 
 if __name__ == "__main__":
     unittest.main()

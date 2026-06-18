@@ -77,6 +77,12 @@ Projekt-Konfiguration liegt pro Projekt:
 projects/my_frst_project/config.json
 ```
 
+Nach dem Storyboard-Schritt liegt die statische Review-Seite standardmaessig hier:
+
+```text
+projects/my_frst_project/output/render/storyboard/index.html
+```
+
 ## app_config.json
 
 `app_config.json` beschreibt Infrastruktur, nicht den Song.
@@ -283,6 +289,25 @@ Es gibt zwei Wege:
 2. Separat mit `render_storyboard.py`
 
 Empfohlen ist der separate Weg, weil du vorher Renderplan-Fixes wie Compact/Anchor anwenden kannst.
+
+### Storyboard-Review-Seite
+
+Nach dem Rendern der Storyboard-Startframes kann `storyboard_page.py` eine statische HTML-Seite erzeugen:
+
+```powershell
+uv run python storyboard_page.py `
+  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
+  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
+  --output-html .\projects\my_frst_project\output\render\storyboard\index.html `
+  --title "Storyboard Review"
+```
+
+Die Seite ist eine reine Datei-Ausgabe ohne Server. Sie zeigt pro Szene einen Block mit Bild, Szeneninfos, Storybeschreibung und Prompt-Details. Der Modusschalter oben rechts bietet:
+
+- `Full`: Bild plus Story-/Prompt-Kontext.
+- `Compact`: echtes Bildgrid; Textbereiche sind ausgeblendet, der Z-Image-Prompt liegt als nativer Browser-Tooltip auf dem anklickbaren Bild.
+
+Das Grid nutzt die volle Seitenbreite, begrenzt sich aber auf maximal fuenf Karten pro Zeile, damit die Bilder lesbar bleiben. Der One-Command-Runner erzeugt `output/render/storyboard/index.html` automatisch nach dem Storyboard-Render; mit `-SkipStoryboardPage` kann dieser Schritt uebersprungen werden.
 
 ### LTX PromptRelay-Modus
 
@@ -506,7 +531,36 @@ Wenn dein Workflow andere Node-Titel nutzt:
 --character-lora-title "#CHARACTER_LORA"
 ```
 
-### 5. Einzelne LTX-Szene testen
+### 5. Storyboard-Review-Seite erzeugen
+
+```powershell
+uv run python storyboard_page.py `
+  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
+  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
+  --output-html .\projects\my_frst_project\output\render\storyboard\index.html
+```
+
+Optionen:
+
+| Option | Default | Bedeutung |
+| --- | --- | --- |
+| `--render-plan` | required | Finaler Renderplan, idealerweise derselbe Plan wie fuer `render_storyboard.py` und `render_ltx.py`. |
+| `--storyboard-dir` | required | Ordner mit `scene_XXXX.png`. |
+| `--output-html` | `storyboard/index.html` | Ziel der statischen Review-Seite. |
+| `--title` | `Storyboard Review` | Seitentitel. |
+| `--limit` | none | Nur die ersten N Szenen anzeigen. |
+| `--scenes` | none | Szenenauswahl, z. B. `1,2,5-8`. |
+| `--allow-missing-images` | off | HTML auch erzeugen, wenn einzelne Bilder fehlen. |
+
+Oeffne danach:
+
+```text
+output/render/storyboard/index.html
+```
+
+Die Seite hat einen Full-/Compact-Schalter. Compact blendet Ueberschriften und Text aus und zeigt nur die Bilder; der verwendete Bildprompt ist dann als Tooltip am Bildlink verfuegbar.
+
+### 6. Einzelne LTX-Szene testen
 
 Vor einem Vollrender zuerst eine kritische Szene testen, z. B. Szene 16:
 

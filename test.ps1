@@ -24,6 +24,7 @@ param(
     [switch]$SkipRelayCompact,
     [switch]$SkipAnchorFix,
     [switch]$SkipStoryboard,
+    [switch]$SkipStoryboardPage,
     [switch]$SkipLtx,
     [switch]$SkipFinalConcat,
     [switch]$DiagnosticOriginalAudioMux,
@@ -115,6 +116,7 @@ try {
     $compactPlan = Join-Path $renderDir "render_plan_${songId}__compact.json"
     $anchoredPlan = Join-Path $renderDir "render_plan_${songId}__compact_anchored.json"
     $storyboardDir = Join-Path $renderDir "storyboard"
+    $storyboardPage = Join-Path $storyboardDir "index.html"
     $ltxDir = Join-Path $renderDir "ltx_$RenderMode"
     if ($SmokeOnly) {
         $ltxDir = Join-Path $renderDir "ltx_${RenderMode}_smoke"
@@ -188,6 +190,15 @@ try {
         }
 
         Invoke-UvPython -Script "render_storyboard.py" -Arguments $storyboardArgs
+    }
+
+    if (-not $SkipStoryboardPage) {
+        Write-Step "Generating storyboard page"
+        Invoke-UvPython -Script "storyboard_page.py" -Arguments @(
+            "--render-plan", $planForNextStep,
+            "--storyboard-dir", $storyboardDir,
+            "--output-html", $storyboardPage
+        )
     }
 
     if (-not $SkipLtx) {
