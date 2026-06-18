@@ -13,7 +13,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_client import ComfyUIClient
 from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
 from autoprompter.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
 

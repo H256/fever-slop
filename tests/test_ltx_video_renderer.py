@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
-from workflow_patcher import WorkflowPatcher
+from autoprompter.adapters.workflow_patcher import WorkflowPatcher
 
 
 class PromptRelayPayloadTests(unittest.TestCase):

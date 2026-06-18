@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_client import LocalOpenAIClient
+from autoprompter.adapters.llm_client import LocalOpenAIClient
 
 
 class OpenAICompatibleLLMClient(LocalOpenAIClient):

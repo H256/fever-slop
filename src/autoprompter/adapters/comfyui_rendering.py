@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import json
 
-from comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_client import ComfyUIClient
 from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoBackend
 from autoprompter.ports.rendering import ImageRenderRequest, VideoRenderRequest
-from workflow_patcher import WorkflowPatcher
+from autoprompter.adapters.workflow_patcher import WorkflowPatcher
 
 
 class ComfyUIImageBackend:

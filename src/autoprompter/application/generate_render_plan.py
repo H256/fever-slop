@@ -193,7 +193,7 @@ class GenerateRenderPlanUseCase:
         if not request.zimage_workflow_path:
             raise ValueError("--zimage-workflow is required when --render-storyboard is used")
 
-        from comfyui_client import ComfyUIClient
+        from autoprompter.adapters.comfyui_client import ComfyUIClient
         from storyboard_renderer import StoryboardRenderer
 
         client = ComfyUIClient(base_url=app_config.comfyui.base_url)

@@ -10,10 +10,10 @@ from autoprompter.ports.generate_pipeline import (
 )
 from rich.table import Table
 
-from beat_analysis import BeatImpactAnalyzer
-from demucs_separator import DemucsSeparator
+from autoprompter.audio.beat_analysis import BeatImpactAnalyzer
+from autoprompter.audio.demucs_separator import DemucsSeparator
 from autoprompter.pipeline.utils import save_timeline_json
-from vocal_timeline_analyzer import (
+from autoprompter.audio.vocal_timeline_analyzer import (
     VocalTimelineAnalyzer,
     merge_same_kind_segments,
     normalize_empty_vocals,

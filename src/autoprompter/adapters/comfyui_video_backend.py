@@ -5,15 +5,15 @@ import json
 import random
 import shutil
 
-from comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_client import ComfyUIClient
 from autoprompter.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
     round_up_8n1,
 )
-from workflow_patcher import WorkflowPatcher
-from video_postprocessor import VideoPostProcessor, TrimSpec
+from autoprompter.adapters.workflow_patcher import WorkflowPatcher
+from autoprompter.adapters.video_postprocessor import VideoPostProcessor, TrimSpec
 
 
 class ComfyUIVideoBackend:

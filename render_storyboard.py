@@ -10,7 +10,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from autoprompter.config.app_config import AppConfig
 from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
 from autoprompter.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
-from comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_client import ComfyUIClient
 from autoprompter.ports.rendering import WorkflowAnchorConfig
 
 
