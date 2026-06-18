@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from project_config import ProjectConfig
+from autoprompter.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):

@@ -14,7 +14,7 @@ from autoprompter.domain.render_plan import PromptSet, RenderPlan, RenderResult,
 from autoprompter.ports.audio import AudioAnalyzerPort
 from autoprompter.ports.rendering import ImageRenderRequest, VideoRenderRequest
 from autoprompter.ports.workflow import WorkflowBackendPort
-from project_config import ProjectConfig, ProjectPaths
+from autoprompter.config.project_config import ProjectConfig, ProjectPaths
 
 
 class FakeImageBackend:

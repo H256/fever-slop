@@ -38,6 +38,19 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertIn("src", module_path)
         self.assertIn("autoprompter/application/generate_render_plan.py", module_path)
 
+    def test_config_modules_resolve_under_src_package(self):
+        import autoprompter.config.project_config as project_config
+        import autoprompter.config.video_settings as video_settings
+
+        self.assertIn(
+            "src/autoprompter/config/project_config.py",
+            Path(project_config.__file__).as_posix(),
+        )
+        self.assertIn(
+            "src/autoprompter/config/video_settings.py",
+            Path(video_settings.__file__).as_posix(),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

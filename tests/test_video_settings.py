@@ -1,6 +1,6 @@
 import unittest
 
-from video_settings import VideoSettings
+from autoprompter.config.video_settings import VideoSettings
 
 
 class VideoSettingsTests(unittest.TestCase):

@@ -6,7 +6,7 @@ import random
 
 from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.ports.artifacts import ArtifactStore
-from video_settings import VideoSettings
+from autoprompter.config.video_settings import VideoSettings
 
 
 CAMERA_MOTION_DETAILS = [

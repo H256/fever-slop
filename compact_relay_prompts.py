@@ -8,7 +8,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from autoprompter.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
-from app_config import AppConfig
+from autoprompter.config.app_config import AppConfig
 from relay_direction_builder import RelayDirectionBuilder
 
 

@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from app_config import AppConfig
+from autoprompter.config.app_config import AppConfig
 from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
 from autoprompter.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from comfyui_client import ComfyUIClient

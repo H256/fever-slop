@@ -8,7 +8,7 @@ from render_plan_builder import (
     build_original_style_i2v_prompt,
     build_render_plan,
 )
-from video_settings import VideoSettings
+from autoprompter.config.video_settings import VideoSettings
 
 
 class DetailListPickerTests(unittest.TestCase):

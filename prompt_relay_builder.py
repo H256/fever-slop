@@ -6,7 +6,7 @@ import re
 
 from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.ports.artifacts import ArtifactStore
-from video_settings import VideoSettings
+from autoprompter.config.video_settings import VideoSettings
 
 
 def parse_srt_time(value: str) -> float:

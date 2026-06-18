@@ -8,7 +8,7 @@ from prompt_relay_builder import build_scene_prompt_relay
 from render_plan_builder import build_render_plan
 from scene_duration_enforcer import SrtScene, write_scene_srt
 from stage1_segment_builder import build_stage1_segment_json
-from video_settings import VideoSettings
+from autoprompter.config.video_settings import VideoSettings
 
 
 class FakeArtifactStore:

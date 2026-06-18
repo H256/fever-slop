@@ -11,13 +11,13 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from autoprompter.adapters.local_artifacts import JsonArtifactStore
-from app_config import AppConfig
+from autoprompter.config.app_config import AppConfig
 from autoprompter.application.audio_timeline_pipeline import AudioTimelinePipeline
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from autoprompter.application.prompt_generation_pipeline import PromptGenerationPipeline
 from autoprompter.application.render_plan_pipeline import RenderPlanPipeline
 from autoprompter.application.scene_timeline_pipeline import SceneTimelinePipeline
-from project_config import ProjectConfig, ProjectPaths
+from autoprompter.config.project_config import ProjectConfig, ProjectPaths
 
 
 @dataclass(frozen=True)

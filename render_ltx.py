@@ -10,9 +10,9 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeEl
 
 from autoprompter.adapters.comfyui_rendering import ComfyUIVideoRenderBackend
 from autoprompter.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
-from app_config import AppConfig
+from autoprompter.config.app_config import AppConfig
 from comfyui_client import ComfyUIClient
-from project_config import ProjectConfig
+from autoprompter.config.project_config import ProjectConfig
 from autoprompter.ports.rendering import WorkflowAnchorConfig
 
 
