@@ -299,6 +299,10 @@ def main():
                     single_prompt_title=args.single_prompt_title,
                     single_prompt_input=args.single_prompt_input,
                 ),
+                on_scene_complete=lambda _output, completed, _total: progress.update(
+                    task,
+                    completed=completed,
+                ),
             )
         )
         progress.update(task, completed=len(rendered))

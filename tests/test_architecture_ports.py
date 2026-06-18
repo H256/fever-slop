@@ -219,6 +219,40 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertEqual("single_prompt", backend.requests[0].render_mode)
             self.assertEqual("video prompt", backend.requests[0].prompt)
 
+    def test_video_use_case_reports_progress_after_each_available_scene(self):
+        scenes = [
+            {**self._render_plan()[0], "scene": 1},
+            {**self._render_plan()[0], "scene": 2},
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(scenes), encoding="utf-8")
+            progress = []
+
+            rendered = RenderVideoScenesUseCase(
+                backend=FakeVideoBackend(),
+                artifact_store=JsonArtifactStore(),
+            ).execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=temp / "song.mp3",
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "ltx",
+                    render_mode="single_prompt",
+                    on_scene_complete=lambda output, completed, total: progress.append(
+                        (output.name, completed, total)
+                    ),
+                )
+            )
+
+            self.assertEqual(2, len(rendered))
+            self.assertEqual(
+                [("scene_0001.mp4", 1, 2), ("scene_0002.mp4", 2, 2)],
+                progress,
+            )
+
     def test_comfy_image_backend_is_constructed_from_client_not_legacy_renderer(self):
         class FakeClient:
             pass
