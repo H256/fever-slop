@@ -8,6 +8,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from autoprompter.config.app_config import AppConfig
+from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
 from autoprompter.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from autoprompter.adapters.comfyui_client import ComfyUIClient
@@ -90,6 +91,7 @@ def main():
             workflow_path=args.workflow,
             output_dir=args.output_dir,
         ),
+        artifact_store=JsonArtifactStore(),
     )
 
     with Progress(

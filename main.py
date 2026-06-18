@@ -5,7 +5,8 @@ import argparse
 
 from rich.console import Console
 
-from autoprompter.application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
+from autoprompter.application.generate_render_plan import GenerateRenderPlanRequest
+from autoprompter.composition.generate_render_plan import build_generate_render_plan_use_case
 
 
 console = Console()
@@ -44,7 +45,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main():
     args = build_arg_parser().parse_args()
-    GenerateRenderPlanUseCase(console=console).execute(
+    build_generate_render_plan_use_case(console=console).execute(
         GenerateRenderPlanRequest(
             project_config_path=Path(args.project),
             app_config_path=Path(args.app_config),

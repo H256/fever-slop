@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.domain.render_plan import RenderPlan
 from autoprompter.ports.artifacts import ArtifactStore
 from autoprompter.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
@@ -26,10 +25,10 @@ class RenderStoryboardUseCase:
     def __init__(
         self,
         backend: ImageRenderBackend,
-        artifact_store: ArtifactStore | None = None,
+        artifact_store: ArtifactStore,
     ):
         self.backend = backend
-        self.artifact_store = artifact_store or JsonArtifactStore()
+        self.artifact_store = artifact_store
 
     def execute(self, request: RenderStoryboardRequest) -> list[Path]:
         plan = RenderPlan.from_dicts(

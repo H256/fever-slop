@@ -168,7 +168,7 @@ class ArchitecturePortsTests(unittest.TestCase):
         self.assertTrue(hasattr(GenerateRenderPlanUseCase, "execute"))
         source = inspect.getsource(main.main)
 
-        self.assertIn("GenerateRenderPlanUseCase", source)
+        self.assertIn("build_generate_render_plan_use_case", source)
         self.assertIn(".execute(", source)
 
     def test_storyboard_use_case_delegates_each_scene_to_image_backend(self):
@@ -178,7 +178,10 @@ class ArchitecturePortsTests(unittest.TestCase):
             render_plan.write_text(json.dumps(self._render_plan()), encoding="utf-8")
             backend = FakeImageBackend()
 
-            rendered = RenderStoryboardUseCase(backend=backend).execute(
+            rendered = RenderStoryboardUseCase(
+                backend=backend,
+                artifact_store=JsonArtifactStore(),
+            ).execute(
                 RenderStoryboardRequest(
                     render_plan_path=render_plan,
                     workflow_path=temp / "workflow.json",
@@ -197,7 +200,10 @@ class ArchitecturePortsTests(unittest.TestCase):
             render_plan.write_text(json.dumps(self._render_plan()), encoding="utf-8")
             backend = FakeVideoBackend()
 
-            rendered = RenderVideoScenesUseCase(backend=backend).execute(
+            rendered = RenderVideoScenesUseCase(
+                backend=backend,
+                artifact_store=JsonArtifactStore(),
+            ).execute(
                 RenderVideoScenesRequest(
                     render_plan_path=render_plan,
                     workflow_path=temp / "workflow.json",

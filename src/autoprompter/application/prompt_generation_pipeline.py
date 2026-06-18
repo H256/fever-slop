@@ -14,7 +14,6 @@ from autoprompter.ports.generate_pipeline import (
 from rich.panel import Panel
 from rich.table import Table
 
-from autoprompter.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from autoprompter.prompting.concept_prompt_batcher import ConceptPromptBatcher
 from autoprompter.prompting.prompt_pipeline import MusicVideoPromptPipeline
 from autoprompter.prompting.scene_prompt_builder import ScenePromptBuilder
@@ -57,23 +56,15 @@ class PromptGenerationPipeline:
     def __init__(
         self,
         *,
-        llm_factory: LLMFactory | None = None,
+        llm_factory: LLMFactory,
         prompt_pipeline_factory: PromptPipelineFactory | None = None,
         concept_batcher_factory: ConceptBatcherFactory | None = None,
         scene_prompt_builder_factory: ScenePromptBuilderFactory | None = None,
     ):
-        self.llm_factory = llm_factory or self._default_llm
+        self.llm_factory = llm_factory
         self.prompt_pipeline_factory = prompt_pipeline_factory or MusicVideoPromptPipeline
         self.concept_batcher_factory = concept_batcher_factory or ConceptPromptBatcher
         self.scene_prompt_builder_factory = scene_prompt_builder_factory or ScenePromptBuilder
-
-    def _default_llm(self, app_config: Any):
-        return OpenAICompatibleLLMClient(
-            base_url=app_config.llm.base_url,
-            model=app_config.llm.model,
-            temperature=app_config.llm.temperature,
-            max_tokens=app_config.llm.max_tokens,
-        )
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()

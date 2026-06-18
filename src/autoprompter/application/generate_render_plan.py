@@ -10,14 +10,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.config.app_config import AppConfig
-from autoprompter.application.audio_timeline_pipeline import AudioTimelinePipeline
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
-from autoprompter.application.prompt_generation_pipeline import PromptGenerationPipeline
-from autoprompter.application.render_plan_pipeline import RenderPlanPipeline
-from autoprompter.application.scene_timeline_pipeline import SceneTimelinePipeline
 from autoprompter.config.project_config import ProjectConfig, ProjectPaths
+from autoprompter.ports.artifacts import ArtifactStore
 
 
 @dataclass(frozen=True)
@@ -38,17 +34,20 @@ class GenerateRenderPlanResult:
 
 
 class GenerateRenderPlanUseCase:
-    def __init__(self, console: Console | None = None, pipeline_services: list[Any] | None = None):
+    def __init__(
+        self,
+        console: Console | None = None,
+        pipeline_services: list[Any] | None = None,
+        artifact_store: ArtifactStore | None = None,
+        storyboard_renderer_factory: Callable[[AppConfig, Path, Path], Any] | None = None,
+    ):
         self.console = console or Console()
-        self.pipeline_services = pipeline_services if pipeline_services is not None else self.build_default_pipeline_services()
+        self.pipeline_services = pipeline_services if pipeline_services is not None else []
+        self.artifact_store = artifact_store
+        self.storyboard_renderer_factory = storyboard_renderer_factory
 
     def build_default_pipeline_services(self) -> list[Any]:
-        return [
-            AudioTimelinePipeline(),
-            SceneTimelinePipeline(),
-            PromptGenerationPipeline(),
-            RenderPlanPipeline(),
-        ]
+        return list(self.pipeline_services)
 
     def execute_services(self, context: GenerateRenderPlanContext | dict[str, Any]) -> GenerateRenderPlanContext | dict[str, Any]:
         for service in self.pipeline_services:
@@ -74,7 +73,8 @@ class GenerateRenderPlanUseCase:
 
     def execute(self, request: GenerateRenderPlanRequest) -> GenerateRenderPlanResult:
         started_at = time.time()
-        artifact_store = JsonArtifactStore()
+        if self.artifact_store is None:
+            raise ValueError("GenerateRenderPlanUseCase requires an artifact_store")
 
         config = ProjectConfig.load(request.project_config_path)
         paths = ProjectPaths.from_config(config)
@@ -94,7 +94,7 @@ class GenerateRenderPlanUseCase:
             app_config=app_config,
             video_settings=video_settings,
             song_id=song_id,
-            artifact_store=artifact_store,
+            artifact_store=self.artifact_store,
             console=self.console,
             log_step=self.log_step,
             log_file=self.log_file,
@@ -192,20 +192,10 @@ class GenerateRenderPlanUseCase:
     ) -> None:
         if not request.zimage_workflow_path:
             raise ValueError("--zimage-workflow is required when --render-storyboard is used")
+        if self.storyboard_renderer_factory is None:
+            raise ValueError("Storyboard rendering requires a storyboard_renderer_factory")
 
-        from autoprompter.adapters.comfyui_client import ComfyUIClient
-        from storyboard_renderer import StoryboardRenderer
-
-        client = ComfyUIClient(base_url=app_config.comfyui.base_url)
-        renderer = StoryboardRenderer(
-            client=client,
-            zimage_workflow_path=request.zimage_workflow_path,
-            output_dir=render_dir / "storyboard",
-            positive_prompt_node_title="#POSITIVE_PROMPT",
-            negative_prompt_node_title="#NEGATIVE_PROMPT",
-            save_image_node_title="#SAVE_IMAGE",
-            character_lora_node_title="#CHARACTER_LORA",
-        )
+        renderer = self.storyboard_renderer_factory(app_config, render_dir, request.zimage_workflow_path)
         rendered = renderer.render_storyboard(render_plan_path=render_plan_json)
         self.console.print(
             f"[green]✓[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]"

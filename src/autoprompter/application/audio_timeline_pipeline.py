@@ -10,14 +10,8 @@ from autoprompter.ports.generate_pipeline import (
 )
 from rich.table import Table
 
-from autoprompter.audio.beat_analysis import BeatImpactAnalyzer
-from autoprompter.audio.demucs_separator import DemucsSeparator
 from autoprompter.pipeline.utils import save_timeline_json
-from autoprompter.audio.vocal_timeline_analyzer import (
-    VocalTimelineAnalyzer,
-    merge_same_kind_segments,
-    normalize_empty_vocals,
-)
+from autoprompter.audio.vocal_timeline_analyzer import merge_same_kind_segments, normalize_empty_vocals
 
 
 class AudioTimelinePipeline:
@@ -29,30 +23,13 @@ class AudioTimelinePipeline:
     def __init__(
         self,
         *,
-        separator_factory: StemSeparatorFactory | None = None,
-        vocal_analyzer_factory: VocalTimelineAnalyzerFactory | None = None,
-        beat_analyzer_factory: BeatImpactAnalyzerFactory | None = None,
+        separator_factory: StemSeparatorFactory,
+        vocal_analyzer_factory: VocalTimelineAnalyzerFactory,
+        beat_analyzer_factory: BeatImpactAnalyzerFactory,
     ):
-        self.separator_factory = separator_factory or self._default_separator
-        self.vocal_analyzer_factory = vocal_analyzer_factory or self._default_vocal_analyzer
-        self.beat_analyzer_factory = beat_analyzer_factory or BeatImpactAnalyzer
-
-    def _default_separator(self, config: Any):
-        return DemucsSeparator(model_name=config.audio.demucs_model)
-
-    def _default_vocal_analyzer(self, config: Any):
-        vocal_cfg = config.vocal_detection
-        return VocalTimelineAnalyzer(
-            whisper_model=config.audio.whisper_model,
-            language=config.audio.language,
-            merge_gap=vocal_cfg.merge_gap,
-            min_vocal_duration=vocal_cfg.min_vocal_duration,
-            min_silence_duration=vocal_cfg.min_silence_duration,
-            rms_low_percentile=vocal_cfg.rms_low_percentile,
-            rms_high_percentile=vocal_cfg.rms_high_percentile,
-            rms_ratio=vocal_cfg.rms_ratio,
-            smooth_frames=vocal_cfg.smooth_frames,
-        )
+        self.separator_factory = separator_factory
+        self.vocal_analyzer_factory = vocal_analyzer_factory
+        self.beat_analyzer_factory = beat_analyzer_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()

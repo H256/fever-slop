@@ -24,15 +24,13 @@ class RecordingService:
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
     def test_audio_timeline_pipeline_declares_required_context_keys(self):
-        service = AudioTimelinePipeline()
-
         self.assertEqual(
             {"config", "paths", "song_id", "video_settings"},
-            service.required_keys,
+            AudioTimelinePipeline.required_keys,
         )
-        self.assertIn("timeline_json", service.produced_keys)
-        self.assertIn("beat_json", service.produced_keys)
-        self.assertIn("stem_files", service.produced_keys)
+        self.assertIn("timeline_json", AudioTimelinePipeline.produced_keys)
+        self.assertIn("beat_json", AudioTimelinePipeline.produced_keys)
+        self.assertIn("stem_files", AudioTimelinePipeline.produced_keys)
 
     def test_scene_prompt_and_render_plan_services_declare_context_contracts(self):
         self.assertIn("timeline_json", SceneTimelinePipeline.required_keys)
@@ -69,38 +67,15 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         self.assertEqual("demo", context.song_id)
         self.assertEqual(Path("render_plan.json"), context.render_plan_json)
 
-    def test_default_use_case_exposes_four_pipeline_services(self):
+    def test_default_use_case_starts_without_concrete_pipeline_services(self):
         use_case = GenerateRenderPlanUseCase()
 
-        service_names = [service.__class__.__name__ for service in use_case.pipeline_services]
+        self.assertEqual([], use_case.pipeline_services)
 
-        self.assertEqual(
-            [
-                "AudioTimelinePipeline",
-                "SceneTimelinePipeline",
-                "PromptGenerationPipeline",
-                "RenderPlanPipeline",
-            ],
-            service_names,
-        )
-
-    def test_use_case_builds_defaults_through_explicit_composition_helper(self):
+    def test_use_case_default_helper_does_not_build_concrete_adapters(self):
         use_case = GenerateRenderPlanUseCase()
 
-        service_names = [
-            service.__class__.__name__
-            for service in use_case.build_default_pipeline_services()
-        ]
-
-        self.assertEqual(
-            [
-                "AudioTimelinePipeline",
-                "SceneTimelinePipeline",
-                "PromptGenerationPipeline",
-                "RenderPlanPipeline",
-            ],
-            service_names,
-        )
+        self.assertEqual([], use_case.build_default_pipeline_services())
 
     def test_injected_services_are_used_without_building_default_pipeline(self):
         services = [RecordingService("only", {"render_plan": []})]
