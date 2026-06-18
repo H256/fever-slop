@@ -6,6 +6,7 @@ import random
 import shutil
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from autoprompter.ports.rendering import VideoRenderRequest
 from autoprompter.domain.ltx_rendering import (
     AudioWindowSpec,
@@ -60,8 +61,10 @@ class ComfyUIVideoRenderBackend:
         postprocess: bool = True,
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
+        asset_uploader: ComfyUIVideoAssetUploader | None = None,
     ):
         self.client = client
+        self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
         self.ltx_workflow_path = Path(ltx_workflow_path)
         self.single_prompt_workflow_path = Path(single_prompt_workflow_path) if single_prompt_workflow_path else None
         self.output_dir = Path(output_dir)
@@ -205,16 +208,11 @@ class ComfyUIVideoRenderBackend:
         self.raw_output_dir.mkdir(parents=True, exist_ok=True)
         self.final_output_dir.mkdir(parents=True, exist_ok=True)
 
-        if upload_audio:
-            audio_upload = self.client.upload_file_via_image_endpoint(
-                audio_file,
-                subfolder="autoprompter/audio",
-                file_type="input",
-                overwrite=True,
-            )
-            comfy_audio_name = self._comfy_path_from_upload(audio_upload)
-        else:
-            comfy_audio_name = uploaded_audio_name or audio_file.name
+        comfy_audio_name = self.asset_uploader.resolve_audio_name(
+            audio_file,
+            upload_audio=upload_audio,
+            uploaded_audio_name=uploaded_audio_name,
+        )
 
         rendered_files: list[Path] = []
         manifest_entries: list[dict] = []
@@ -238,16 +236,10 @@ class ComfyUIVideoRenderBackend:
             if not startframe_path.exists():
                 raise FileNotFoundError(f"Missing storyboard startframe: {startframe_path}")
 
-            if upload_startframes:
-                image_upload = self.client.upload_image(
-                    startframe_path,
-                    subfolder="autoprompter/storyboard",
-                    file_type="input",
-                    overwrite=True,
-                )
-                comfy_startframe_name = self._comfy_path_from_upload(image_upload)
-            else:
-                comfy_startframe_name = startframe_path.name
+            comfy_startframe_name = self.asset_uploader.resolve_startframe_name(
+                startframe_path,
+                upload_startframes=upload_startframes,
+            )
 
             rolling = self._rolling_spec(scene)
             raw_clip = self.render_scene_video(
@@ -458,11 +450,7 @@ class ComfyUIVideoRenderBackend:
 
     @staticmethod
     def _comfy_path_from_upload(upload_response: dict) -> str:
-        name = upload_response.get("name")
-        subfolder = upload_response.get("subfolder", "")
-        if not name:
-            raise ValueError(f"Unexpected ComfyUI upload response: {upload_response}")
-        return f"{subfolder}/{name}" if subfolder else name
+        return ComfyUIVideoAssetUploader.comfy_path_from_upload(upload_response)
 
     @staticmethod
     def _extract_output_videos(history_entry: dict) -> list[dict]:
