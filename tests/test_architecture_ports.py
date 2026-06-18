@@ -117,6 +117,19 @@ class ArchitecturePortsTests(unittest.TestCase):
         self.assertIsInstance(plan.scenes[0], RenderScene)
         self.assertEqual(self._render_plan(), plan.to_dicts())
 
+    def test_render_plan_selects_scenes_and_limit_without_mutating_shape(self):
+        scenes = [
+            {**self._render_plan()[0], "scene": 1},
+            {**self._render_plan()[0], "scene": 2},
+            {**self._render_plan()[0], "scene": 3},
+        ]
+        plan = RenderPlan.from_dicts(scenes)
+
+        selected = plan.select(scene_numbers={2, 3}, limit=1)
+
+        self.assertEqual([2], [scene.scene_number for scene in selected.scenes])
+        self.assertEqual([2], [scene["scene"] for scene in selected.to_dicts()])
+
     def test_public_application_types_cover_prompt_and_render_boundaries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -134,6 +147,10 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertEqual(10, request.concept_batch_size)
             self.assertEqual("still prompt", prompt_set.z_image_prompt)
             self.assertEqual(temp / "scene_0001.mp4", result.output_path)
+            self.assertEqual(
+                {"scene": 1, "output_path": str(temp / "scene_0001.mp4")},
+                result.as_manifest_entry(),
+            )
 
     def test_audio_and_workflow_ports_are_structural(self):
         audio: AudioAnalyzerPort = FakeAudioAnalyzer()

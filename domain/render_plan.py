@@ -15,6 +15,12 @@ class RenderResult:
     scene_number: int
     output_path: Path
 
+    def as_manifest_entry(self) -> dict:
+        return {
+            "scene": self.scene_number,
+            "output_path": str(self.output_path),
+        }
+
 
 @dataclass(frozen=True)
 class RenderScene:
@@ -56,3 +62,16 @@ class RenderPlan:
 
     def to_dicts(self) -> list[dict]:
         return [scene.to_dict() for scene in self.scenes]
+
+    def select(
+        self,
+        *,
+        scene_numbers: set[int] | None = None,
+        limit: int | None = None,
+    ) -> "RenderPlan":
+        scenes = self.scenes
+        if scene_numbers is not None:
+            scenes = [scene for scene in scenes if scene.scene_number in scene_numbers]
+        if limit is not None:
+            scenes = scenes[:limit]
+        return RenderPlan(list(scenes))

@@ -37,15 +37,15 @@ class RenderVideoScenesUseCase:
         self.artifact_store = artifact_store or JsonArtifactStore()
 
     def execute(self, request: RenderVideoScenesRequest) -> list[Path]:
-        plan = RenderPlan.from_dicts(self.artifact_store.read_render_plan(request.render_plan_path))
-        scenes = plan.scenes
-        if request.scene_numbers is not None:
-            scenes = [scene for scene in scenes if scene.scene_number in request.scene_numbers]
-        if request.limit is not None:
-            scenes = scenes[:request.limit]
+        plan = RenderPlan.from_dicts(
+            self.artifact_store.read_render_plan(request.render_plan_path)
+        ).select(
+            scene_numbers=request.scene_numbers,
+            limit=request.limit,
+        )
 
         rendered: list[Path] = []
-        for scene in scenes:
+        for scene in plan.scenes:
             final_path = request.output_dir / "final" / f"scene_{scene.scene_number:04}.mp4"
             if request.skip_existing and final_path.exists():
                 rendered.append(final_path)
