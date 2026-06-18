@@ -12,7 +12,7 @@ from ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 console = Console()
 
 
-def main():
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Fix render_plan LTX prompts so I2V preserves the Z-Image startframe composition."
     )
@@ -27,7 +27,11 @@ def main():
     )
     parser.add_argument("--max-base-prompt-chars", type=int, default=1200)
     parser.add_argument("--max-relay-chars", type=int, default=260)
+    return parser
 
+
+def main():
+    parser = build_arg_parser()
     args = parser.parse_args()
 
     fixer = LTXPromptAnchorFixer(

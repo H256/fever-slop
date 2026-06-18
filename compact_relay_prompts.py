@@ -15,7 +15,7 @@ from relay_direction_builder import RelayDirectionBuilder
 console = Console()
 
 
-def main():
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Compact verbose LTX PromptRelay prompts into short direction prompts."
     )
@@ -23,7 +23,11 @@ def main():
     parser.add_argument("--input-render-plan", required=True)
     parser.add_argument("--output-render-plan", required=True)
     parser.add_argument("--max-words", type=int, default=28)
+    return parser
 
+
+def main():
+    parser = build_arg_parser()
     args = parser.parse_args()
 
     app_config = AppConfig.load(args.app_config)

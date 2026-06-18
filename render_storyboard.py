@@ -17,6 +17,29 @@ from ports.rendering import WorkflowAnchorConfig
 console = Console()
 
 
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Render Z-Image storyboard startframes from render_plan.json."
+    )
+    parser.add_argument("--app-config", default="./app_config.json")
+    parser.add_argument("--render-plan", required=True)
+    parser.add_argument("--workflow", required=True, help="ComfyUI Z-Image API workflow JSON")
+    parser.add_argument("--output-dir", required=True)
+
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--scenes", default=None, help="Example: 1,2,5-8")
+    parser.add_argument("--no-skip-existing", action="store_true")
+
+    parser.add_argument("--character-lora-strength", type=float, default=1.0)
+    parser.add_argument("--negative-prompt", default="")
+
+    parser.add_argument("--positive-title", default="#PROMPT_POSITIVE")
+    parser.add_argument("--negative-title", default="#PROMPT_NEGATIVE")
+    parser.add_argument("--save-title", default="#SAVE_IMAGE")
+    parser.add_argument("--character-lora-title", default="#CHARACTER_LORA")
+    return parser
+
+
 def parse_scene_list(value: str | None) -> set[int] | None:
     if not value:
         return None
@@ -40,26 +63,7 @@ def parse_scene_list(value: str | None) -> set[int] | None:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Render Z-Image storyboard startframes from render_plan.json."
-    )
-    parser.add_argument("--app-config", default="./app_config.json")
-    parser.add_argument("--render-plan", required=True)
-    parser.add_argument("--workflow", required=True, help="ComfyUI Z-Image API workflow JSON")
-    parser.add_argument("--output-dir", required=True)
-
-    parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--scenes", default=None, help="Example: 1,2,5-8")
-    parser.add_argument("--no-skip-existing", action="store_true")
-
-    parser.add_argument("--character-lora-strength", type=float, default=1.0)
-    parser.add_argument("--negative-prompt", default="")
-
-    parser.add_argument("--positive-title", default="#PROMPT_POSITIVE")
-    parser.add_argument("--negative-title", default="#PROMPT_NEGATIVE")
-    parser.add_argument("--save-title", default="#SAVE_IMAGE")
-    parser.add_argument("--character-lora-title", default="#CHARACTER_LORA")
-
+    parser = build_arg_parser()
     args = parser.parse_args()
 
     app_config = AppConfig.load(args.app_config)

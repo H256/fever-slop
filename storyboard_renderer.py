@@ -1,3 +1,5 @@
+"""Compatibility facade; prefer adapters.comfyui_rendering for new imports."""
+
 from __future__ import annotations
 
 from pathlib import Path
