@@ -6,6 +6,7 @@ from pathlib import Path
 from application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from application.generate_render_plan import GenerateRenderPlanRequest
+from adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoBackend
 from adapters.local_artifacts import JsonArtifactStore
 from domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
 from ports.audio import AudioAnalyzerPort
@@ -202,6 +203,34 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertEqual(1, len(backend.requests))
             self.assertEqual("single_prompt", backend.requests[0].render_mode)
             self.assertEqual("video prompt", backend.requests[0].prompt)
+
+    def test_comfy_image_backend_is_constructed_from_client_not_legacy_renderer(self):
+        class FakeClient:
+            pass
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend = ComfyUIImageBackend(
+                client=FakeClient(),
+                workflow_path=Path(temp_dir) / "workflow.json",
+                output_dir=Path(temp_dir) / "storyboard",
+            )
+
+            self.assertFalse(hasattr(backend, "renderer"))
+            self.assertEqual(Path(temp_dir) / "workflow.json", backend.workflow_path)
+
+    def test_comfy_video_backend_is_constructed_from_client_not_legacy_renderer(self):
+        class FakeClient:
+            pass
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend = ComfyUIVideoBackend(
+                client=FakeClient(),
+                ltx_workflow_path=Path(temp_dir) / "workflow.json",
+                output_dir=Path(temp_dir) / "ltx",
+            )
+
+            self.assertFalse(hasattr(backend, "renderer"))
+            self.assertEqual(Path(temp_dir) / "workflow.json", backend.ltx_workflow_path)
 
 
 if __name__ == "__main__":

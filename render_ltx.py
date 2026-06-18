@@ -13,7 +13,6 @@ from application.render_video import RenderVideoScenesRequest, RenderVideoScenes
 from app_config import AppConfig
 from comfyui_client import ComfyUIClient
 from project_config import ProjectConfig
-from ltx_video_renderer import LTXVideoRenderer
 from ports.rendering import WorkflowAnchorConfig
 
 
@@ -235,7 +234,7 @@ def main():
 
     client = ComfyUIClient(base_url=app_config.comfyui.base_url)
 
-    renderer = LTXVideoRenderer(
+    backend = ComfyUIVideoBackend(
         client=client,
         ltx_workflow_path=args.workflow,
         output_dir=args.output_dir,
@@ -265,7 +264,7 @@ def main():
     )
 
     use_case = RenderVideoScenesUseCase(
-        backend=ComfyUIVideoBackend(renderer),
+        backend=backend,
     )
 
     with Progress(

@@ -12,7 +12,8 @@ from rich.progress import (
 )
 
 from comfyui_client import ComfyUIClient
-from workflow_patcher import WorkflowPatcher
+from adapters.comfyui_rendering import ComfyUIImageBackend
+from ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
 
 
 class StoryboardRenderer:
@@ -56,6 +57,14 @@ class StoryboardRenderer:
         self.seed_node_title = seed_node_title
         self.seed_input_name = seed_input_name
         self.filename_prefix_input_name = filename_prefix_input_name
+        self.backend = ComfyUIImageBackend(
+            client=client,
+            workflow_path=self.zimage_workflow_path,
+            output_dir=self.output_dir,
+            seed_node_title=seed_node_title,
+            seed_input_name=seed_input_name,
+            filename_prefix_input_name=filename_prefix_input_name,
+        )
 
     def load_workflow(self) -> dict:
         return json.loads(self.zimage_workflow_path.read_text(encoding="utf-8"))
@@ -109,59 +118,21 @@ class StoryboardRenderer:
         return rendered_files
 
     def render_scene_startframe(self, scene: dict) -> Path:
-        workflow = self.load_workflow()
-        patcher = WorkflowPatcher(workflow)
-
         scene_number = int(scene["scene"])
-        prompt = scene["z_image"]["prompt"]
-
-        patcher.set_input_by_title(
-            self.positive_prompt_node_title,
-            "text",
-            prompt,
-        )
-
-        if self.negative_prompt_node_title:
-            patcher.set_input_by_title(
-                self.negative_prompt_node_title,
-                "text",
-                self.negative_prompt,
+        return self.backend.render_image(
+            ImageRenderRequest(
+                scene=scene,
+                scene_number=scene_number,
+                prompt=scene["z_image"]["prompt"],
+                workflow_path=self.zimage_workflow_path,
+                output_dir=self.output_dir,
+                negative_prompt=self.negative_prompt,
+                character_lora_strength=self.character_lora_strength,
+                anchors=WorkflowAnchorConfig(
+                    positive_prompt_title=self.positive_prompt_node_title,
+                    negative_prompt_title=self.negative_prompt_node_title,
+                    save_image_title=self.save_image_node_title,
+                    character_lora_title=self.character_lora_node_title,
+                ),
             )
-
-        if self.character_lora_node_title:
-            patcher.patch_lora_strength_by_title(
-                self.character_lora_node_title,
-                self.character_lora_strength,
-            )
-
-        if self.seed_node_title:
-            patcher.set_input_by_title(
-                self.seed_node_title,
-                self.seed_input_name,
-                scene_number,
-            )
-
-        if self.save_image_node_title:
-            patcher.set_input_by_title(
-                self.save_image_node_title,
-                self.filename_prefix_input_name,
-                f"storyboard/scene_{scene_number:04}",
-            )
-
-        prompt_id = self.client.queue_prompt(patcher.get())
-        history = self.client.wait_for_completion(prompt_id)
-
-        images = self.client.extract_output_images(history)
-
-        if not images:
-            raise RuntimeError(f"No image output for scene {scene_number}")
-
-        first = images[0]
-        output_path = self.output_dir / f"scene_{scene_number:04}.png"
-
-        return self.client.download_view_file(
-            filename=first["filename"],
-            subfolder=first.get("subfolder", ""),
-            file_type=first.get("type", "output"),
-            output_path=output_path,
         )

@@ -12,7 +12,6 @@ from adapters.comfyui_rendering import ComfyUIImageBackend
 from application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from comfyui_client import ComfyUIClient
 from ports.rendering import WorkflowAnchorConfig
-from storyboard_renderer import StoryboardRenderer
 
 
 console = Console()
@@ -80,23 +79,13 @@ def main():
         base_url=app_config.comfyui.base_url,
     )
 
-    renderer = StoryboardRenderer(
-        client=client,
-        zimage_workflow_path=args.workflow,
-        output_dir=args.output_dir,
-
-        positive_prompt_node_title=args.positive_title,
-        negative_prompt_node_title=args.negative_title,
-        save_image_node_title=args.save_title,
-        character_lora_node_title=args.character_lora_title,
-
-        character_lora_strength=args.character_lora_strength,
-        negative_prompt=args.negative_prompt,
-    )
-
     scene_numbers = parse_scene_list(args.scenes)
     use_case = RenderStoryboardUseCase(
-        backend=ComfyUIImageBackend(renderer),
+        backend=ComfyUIImageBackend(
+            client=client,
+            workflow_path=args.workflow,
+            output_dir=args.output_dir,
+        ),
     )
 
     with Progress(
