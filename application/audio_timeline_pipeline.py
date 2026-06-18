@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from application.pipeline_context import GenerateRenderPlanContext
 from rich.table import Table
 
 from beat_analysis import BeatImpactAnalyzer
@@ -20,13 +21,13 @@ class AudioTimelinePipeline:
     required_keys = {"config", "paths", "song_id", "video_settings"}
     produced_keys = {"stem_files", "timeline", "timeline_json", "beat_json", "beat_data"}
 
-    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
         if missing:
             raise KeyError(f"{self.__class__.__name__} missing context keys: {sorted(missing)}")
         return self.run(context)
 
-    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+    def run(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         config = context["config"]
         paths = context["paths"]
         timeline_json = context["timeline_json"]

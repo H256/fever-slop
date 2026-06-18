@@ -4,6 +4,7 @@ from pathlib import Path
 import inspect
 from typing import Any, Callable
 
+from application.pipeline_context import GenerateRenderPlanContext
 from rich.panel import Panel
 from rich.table import Table
 
@@ -47,13 +48,13 @@ class PromptGenerationPipeline:
         "scene_prompts_json",
     }
 
-    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
         if missing:
             raise KeyError(f"{self.__class__.__name__} missing context keys: {sorted(missing)}")
         return self.run(context)
 
-    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+    def run(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         config = context["config"]
         app_config = context["app_config"]
         request = context["request"]

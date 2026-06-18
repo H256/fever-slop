@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from application.pipeline_context import GenerateRenderPlanContext
 from beat_analysis import BeatSceneDurationGenerator
 from prompt_relay_builder import build_scene_prompt_relay
 from scene_duration_enforcer import (
@@ -24,13 +25,13 @@ class SceneTimelinePipeline:
         "repaired_scenes",
     }
 
-    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
         if missing:
             raise KeyError(f"{self.__class__.__name__} missing context keys: {sorted(missing)}")
         return self.run(context)
 
-    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+    def run(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         config = context["config"]
         video_settings = context["video_settings"]
         timeline_json = context["timeline_json"]

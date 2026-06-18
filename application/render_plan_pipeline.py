@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from application.pipeline_context import GenerateRenderPlanContext
 from render_plan_builder import build_render_plan
 
 
@@ -11,13 +12,13 @@ class RenderPlanPipeline:
     required_keys = {"scene_prompts_json", "ltx_prompt_relay_json", "render_plan_json", "video_settings"}
     produced_keys = {"render_plan"}
 
-    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
         if missing:
             raise KeyError(f"{self.__class__.__name__} missing context keys: {sorted(missing)}")
         return self.run(context)
 
-    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+    def run(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         render_plan_json = context["render_plan_json"]
         artifact_store = context["artifact_store"]
         log_step = context["log_step"]

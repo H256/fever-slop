@@ -1,6 +1,9 @@
 import unittest
+from pathlib import Path
+
 from application.audio_timeline_pipeline import AudioTimelinePipeline
 from application.generate_render_plan import GenerateRenderPlanUseCase
+from application.pipeline_context import GenerateRenderPlanContext
 from application.prompt_generation_pipeline import PromptGenerationPipeline
 from application.render_plan_pipeline import RenderPlanPipeline
 from application.scene_timeline_pipeline import SceneTimelinePipeline
@@ -53,6 +56,18 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         self.assertEqual(["audio", "scene", "prompts", "render_plan"], result_context["order"])
         self.assertEqual("timeline.json", services[1].calls[0]["timeline_json"])
         self.assertEqual([{"scene": 1, "frame_count": 24, "duration_seconds": 1.0}], result_context["render_plan"])
+
+    def test_pipeline_context_exposes_planned_artifact_paths(self):
+        context = GenerateRenderPlanContext(
+            song_id="demo",
+            timeline_json=Path("timeline.json"),
+            beat_json=Path("beat.json"),
+            scene_srt=Path("scene.srt"),
+            render_plan_json=Path("render_plan.json"),
+        )
+
+        self.assertEqual("demo", context.song_id)
+        self.assertEqual(Path("render_plan.json"), context.render_plan_json)
 
     def test_default_use_case_exposes_four_pipeline_services(self):
         use_case = GenerateRenderPlanUseCase()

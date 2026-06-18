@@ -13,6 +13,7 @@ from rich.table import Table
 from adapters.local_artifacts import JsonArtifactStore
 from app_config import AppConfig
 from application.audio_timeline_pipeline import AudioTimelinePipeline
+from application.pipeline_context import GenerateRenderPlanContext
 from application.prompt_generation_pipeline import PromptGenerationPipeline
 from application.render_plan_pipeline import RenderPlanPipeline
 from application.scene_timeline_pipeline import SceneTimelinePipeline
@@ -46,7 +47,7 @@ class GenerateRenderPlanUseCase:
             RenderPlanPipeline(),
         ]
 
-    def execute_services(self, context: dict[str, Any]) -> dict[str, Any]:
+    def execute_services(self, context: GenerateRenderPlanContext | dict[str, Any]) -> GenerateRenderPlanContext | dict[str, Any]:
         for service in self.pipeline_services:
             context = service.execute(context)
         return context
@@ -83,30 +84,30 @@ class GenerateRenderPlanUseCase:
         prompts_dir = paths.prompts_dir
         render_dir = paths.render_dir
 
-        context: dict[str, Any] = {
-            "request": request,
-            "config": config,
-            "paths": paths,
-            "app_config": app_config,
-            "video_settings": video_settings,
-            "song_id": song_id,
-            "artifact_store": artifact_store,
-            "console": self.console,
-            "log_step": self.log_step,
-            "log_file": self.log_file,
-            "run_spinner": self.run_spinner,
-            "timeline_json": timeline_dir / f"timeline_{song_id}.json",
-            "beat_json": timeline_dir / f"beat_data_{song_id}.json",
-            "scene_srt_raw": timeline_dir / f"scenes_{song_id}_raw.srt",
-            "scene_srt": timeline_dir / f"scenes_{song_id}.srt",
-            "stage1_segments_json": timeline_dir / f"stage1_segments_{song_id}.json",
-            "ltx_prompt_relay_json": prompts_dir / f"ltx_prompt_relay_{song_id}.json",
-            "resolved_context_json": prompts_dir / f"resolved_context_{song_id}.json",
-            "concept_prompts_json": prompts_dir / f"concept_prompts_{song_id}.json",
-            "scene_details_json": prompts_dir / f"scene_details_{song_id}.json",
-            "scene_prompts_json": prompts_dir / f"scene_prompts_{song_id}.json",
-            "render_plan_json": render_dir / f"render_plan_{song_id}.json",
-        }
+        context = GenerateRenderPlanContext(
+            request=request,
+            config=config,
+            paths=paths,
+            app_config=app_config,
+            video_settings=video_settings,
+            song_id=song_id,
+            artifact_store=artifact_store,
+            console=self.console,
+            log_step=self.log_step,
+            log_file=self.log_file,
+            run_spinner=self.run_spinner,
+            timeline_json=timeline_dir / f"timeline_{song_id}.json",
+            beat_json=timeline_dir / f"beat_data_{song_id}.json",
+            scene_srt_raw=timeline_dir / f"scenes_{song_id}_raw.srt",
+            scene_srt=timeline_dir / f"scenes_{song_id}.srt",
+            stage1_segments_json=timeline_dir / f"stage1_segments_{song_id}.json",
+            ltx_prompt_relay_json=prompts_dir / f"ltx_prompt_relay_{song_id}.json",
+            resolved_context_json=prompts_dir / f"resolved_context_{song_id}.json",
+            concept_prompts_json=prompts_dir / f"concept_prompts_{song_id}.json",
+            scene_details_json=prompts_dir / f"scene_details_{song_id}.json",
+            scene_prompts_json=prompts_dir / f"scene_prompts_{song_id}.json",
+            render_plan_json=render_dir / f"render_plan_{song_id}.json",
+        )
 
         self.console.print(Panel.fit(
             f"[bold]Music Video Pipeline[/bold]\n\n"
