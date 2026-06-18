@@ -9,7 +9,7 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeEl
 
 from autoprompter.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from autoprompter.config.app_config import AppConfig
-from relay_direction_builder import RelayDirectionBuilder
+from autoprompter.prompting.relay_direction_builder import RelayDirectionBuilder
 
 
 console = Console()

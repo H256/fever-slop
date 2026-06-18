@@ -15,9 +15,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from autoprompter.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
-from concept_prompt_batcher import ConceptPromptBatcher
-from prompt_pipeline import MusicVideoPromptPipeline
-from scene_prompt_builder import ScenePromptBuilder
+from autoprompter.prompting.concept_prompt_batcher import ConceptPromptBatcher
+from autoprompter.prompting.prompt_pipeline import MusicVideoPromptPipeline
+from autoprompter.prompting.scene_prompt_builder import ScenePromptBuilder
 
 
 def join_notes(*parts: str) -> str:

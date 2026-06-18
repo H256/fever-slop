@@ -12,7 +12,7 @@ from rich.table import Table
 
 from beat_analysis import BeatImpactAnalyzer
 from demucs_separator import DemucsSeparator
-from utils import save_timeline_json
+from autoprompter.pipeline.utils import save_timeline_json
 from vocal_timeline_analyzer import (
     VocalTimelineAnalyzer,
     merge_same_kind_segments,

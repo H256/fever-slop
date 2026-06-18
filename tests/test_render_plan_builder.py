@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from render_plan_builder import (
+from autoprompter.pipeline.render_plan_builder import (
     DetailListPicker,
     build_original_style_i2v_prompt,
     build_render_plan,

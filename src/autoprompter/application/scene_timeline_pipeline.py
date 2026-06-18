@@ -4,13 +4,13 @@ from typing import Any
 
 from autoprompter.application.pipeline_context import GenerateRenderPlanContext
 from beat_analysis import BeatSceneDurationGenerator
-from prompt_relay_builder import build_scene_prompt_relay
-from scene_duration_enforcer import (
+from autoprompter.pipeline.prompt_relay_builder import build_scene_prompt_relay
+from autoprompter.pipeline.scene_duration_enforcer import (
     enforce_scene_srt_file,
     parse_scene_srt,
     validate_scene_durations,
 )
-from stage1_segment_builder import build_stage1_segment_json
+from autoprompter.pipeline.stage1_segment_builder import build_stage1_segment_json
 
 
 class SceneTimelinePipeline:

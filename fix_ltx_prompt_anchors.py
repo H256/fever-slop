@@ -6,7 +6,7 @@ import argparse
 from rich.console import Console
 from rich.panel import Panel
 
-from ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
+from autoprompter.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 
 
 console = Console()

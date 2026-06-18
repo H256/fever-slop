@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 
 from autoprompter.adapters.local_artifacts import JsonArtifactStore
-from prompt_relay_builder import build_scene_prompt_relay
-from render_plan_builder import build_render_plan
-from scene_duration_enforcer import SrtScene, write_scene_srt
-from stage1_segment_builder import build_stage1_segment_json
+from autoprompter.pipeline.prompt_relay_builder import build_scene_prompt_relay
+from autoprompter.pipeline.render_plan_builder import build_render_plan
+from autoprompter.pipeline.scene_duration_enforcer import SrtScene, write_scene_srt
+from autoprompter.pipeline.stage1_segment_builder import build_stage1_segment_json
 from autoprompter.config.video_settings import VideoSettings
 
 

@@ -51,6 +51,19 @@ class PackageLayoutTests(unittest.TestCase):
             Path(video_settings.__file__).as_posix(),
         )
 
+    def test_pipeline_and_prompting_modules_resolve_under_src_package(self):
+        import autoprompter.pipeline.render_plan_builder as render_plan_builder
+        import autoprompter.prompting.scene_prompt_builder as scene_prompt_builder
+
+        self.assertIn(
+            "src/autoprompter/pipeline/render_plan_builder.py",
+            Path(render_plan_builder.__file__).as_posix(),
+        )
+        self.assertIn(
+            "src/autoprompter/prompting/scene_prompt_builder.py",
+            Path(scene_prompt_builder.__file__).as_posix(),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

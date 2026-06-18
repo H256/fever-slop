@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scene_prompt_builder import ScenePromptBuilder
+from autoprompter.prompting.scene_prompt_builder import ScenePromptBuilder
 
 
 class FakeLLM:
