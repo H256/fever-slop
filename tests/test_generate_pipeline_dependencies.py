@@ -76,6 +76,18 @@ class FakeBeatAnalyzer:
         }
 
 
+class FakeLyricAligner:
+    def __init__(self):
+        self.calls = []
+
+    def align(self, timeline, reference_lyrics):
+        self.calls.append((timeline, reference_lyrics))
+        for segment in timeline:
+            if segment.kind == "vocals":
+                segment.text = "corrected line"
+        return timeline
+
+
 class FakePromptPipeline:
     def __init__(self, llm):
         self.llm = llm
@@ -132,6 +144,7 @@ class FakeScenePromptBuilder:
 def _audio_context(temp: Path, artifact_store: FakeArtifactStore) -> GenerateRenderPlanContext:
     config = SimpleNamespace(
         input_audio=temp / "song.wav",
+        lyrics="",
         audio=SimpleNamespace(demucs_model="fake-demucs", whisper_model="fake-whisper", language="en"),
         vocal_detection=SimpleNamespace(
             merge_gap=0.25,
@@ -180,6 +193,51 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertEqual(temp / "beat.json", beat_analyzer.calls[0]["output_json_path"])
             self.assertEqual(120, context.beat_data["bpm"])
             self.assertIn("stem_files", context.keys())
+
+    def test_audio_pipeline_aligns_lyrics_when_configured(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            artifact_store = FakeArtifactStore()
+            separator = FakeSeparator()
+            vocal_analyzer = FakeVocalAnalyzer()
+            beat_analyzer = FakeBeatAnalyzer(artifact_store)
+            lyric_aligner = FakeLyricAligner()
+            context = _audio_context(temp, artifact_store)
+            context.config.lyrics = "full reference lyrics"
+            pipeline = AudioTimelinePipeline(
+                separator_factory=lambda config: separator,
+                vocal_analyzer_factory=lambda config: vocal_analyzer,
+                beat_analyzer_factory=lambda: beat_analyzer,
+                lyric_aligner_factory=lambda context: lyric_aligner,
+            )
+
+            result = pipeline.execute(context)
+
+            self.assertEqual(1, len(lyric_aligner.calls))
+            self.assertEqual("full reference lyrics", lyric_aligner.calls[0][1])
+            self.assertEqual("corrected line", result.timeline[0].text)
+
+    def test_audio_pipeline_skips_alignment_without_configured_lyrics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            artifact_store = FakeArtifactStore()
+            separator = FakeSeparator()
+            vocal_analyzer = FakeVocalAnalyzer()
+            beat_analyzer = FakeBeatAnalyzer(artifact_store)
+            lyric_aligner = FakeLyricAligner()
+            context = _audio_context(temp, artifact_store)
+            context.config.lyrics = ""
+            pipeline = AudioTimelinePipeline(
+                separator_factory=lambda config: separator,
+                vocal_analyzer_factory=lambda config: vocal_analyzer,
+                beat_analyzer_factory=lambda: beat_analyzer,
+                lyric_aligner_factory=lambda context: lyric_aligner,
+            )
+
+            result = pipeline.execute(context)
+
+            self.assertEqual([], lyric_aligner.calls)
+            self.assertEqual("line", result.timeline[0].text)
 
     def test_prompt_pipeline_uses_injected_dependencies_without_batching(self):
         with tempfile.TemporaryDirectory() as temp_dir:

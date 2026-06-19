@@ -94,11 +94,18 @@ class LoraConfig:
     strength_clip: float = 1.0
 
 
+def _load_multiline_text(value) -> str:
+    if isinstance(value, list):
+        return "\n".join(str(item).strip() for item in value if str(item).strip()).strip()
+    return str(value or "").strip()
+
+
 @dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
     project_name: str
     input_audio: Path
+    lyrics: str = ""
 
     video: VideoConfig = field(default_factory=VideoConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
@@ -136,6 +143,7 @@ class ProjectConfig:
             project_dir=project_dir,
             project_name=raw.get("project_name") or input_audio.stem,
             input_audio=input_audio,
+            lyrics=_load_multiline_text(raw.get("lyrics", "")),
 
             video=VideoConfig(
                 fps=int(video_raw.get("fps", 24)),

@@ -127,6 +127,7 @@ Minimalbeispiel:
 {
   "project_name": "forest_song",
   "input_audio": "input/ComfyUI_00056_.mp3",
+  "lyrics": "",
   "video": {
     "fps": 24,
     "width": 1280,
@@ -189,10 +190,17 @@ Minimalbeispiel:
 
 - `project_name`: Anzeigename und Fallback-ID.
 - `input_audio`: Pfad zur Audiodatei, relativ zur `config.json` oder absolut.
+- `lyrics`: Optionale vollstaendige Referenzlyrics. Wenn gesetzt, bleiben Timing und Segmentgrenzen aus Whisper/RMS erhalten; nur der erkannte Vocal-Text wird gegen diese Referenz korrigiert.
 - `story_idea`: Harte Vorgabe fuer die Story. Wenn leer, generiert der LLM eine Storyidee.
 - `style`: Harte Vorgabe fuer den visuellen Stil. Wenn leer, generiert der LLM einen Stilblock.
 - `subject`: Harte Vorgabe fuer Hauptfigur/Subjekt. Wichtig fuer konsistente Charaktere.
 - `locations`: Liste erlaubter Orte. Nutze konkrete Orte, wenn keine neuen Locations erfunden werden sollen.
+
+### lyrics
+
+Optional complete reference lyrics for the song. When this field is set, FeverSlop still uses Whisper and vocal-energy detection for timing, but corrects the detected vocal segment text against these reference lyrics before building scene prompts.
+
+Use this when Whisper hears the right timing but gets words wrong. Do not use it to force different timing; segment boundaries are preserved.
 
 ### video
 

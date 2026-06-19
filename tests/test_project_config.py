@@ -136,5 +136,43 @@ class ProjectConfigTests(unittest.TestCase):
             self.assertEqual("test", config.project_name)
 
 
+class ProjectConfigLyricsTests(unittest.TestCase):
+    def test_loads_lyrics_string(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "input_audio": "input/song.wav",
+                        "lyrics": "[Verse]\nfirst line\nsecond line",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertEqual("[Verse]\nfirst line\nsecond line", config.lyrics)
+
+    def test_loads_lyrics_list_as_newline_joined_text(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "input_audio": "input/song.wav",
+                        "lyrics": ["[Verse]", "first line", "second line"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertEqual("[Verse]\nfirst line\nsecond line", config.lyrics)
+
+
 if __name__ == "__main__":
     unittest.main()

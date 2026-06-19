@@ -16,6 +16,7 @@ from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
 from feverslop.audio.beat_analysis import BeatImpactAnalyzer
 from feverslop.audio.demucs_separator import DemucsSeparator
 from feverslop.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 from storyboard_renderer import StoryboardRenderer
 
 
@@ -28,6 +29,7 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                 separator_factory=lambda config: DemucsSeparator(model_name=config.audio.demucs_model),
                 vocal_analyzer_factory=_build_vocal_analyzer,
                 beat_analyzer_factory=BeatImpactAnalyzer,
+                lyric_aligner_factory=lambda context: LyricTimelineAligner(_build_llm(context["app_config"])),
             ),
             SceneTimelinePipeline(),
             PromptGenerationPipeline(llm_factory=_build_llm),

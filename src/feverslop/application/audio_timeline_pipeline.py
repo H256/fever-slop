@@ -3,6 +3,7 @@
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import (
     BeatImpactAnalyzerFactory,
+    LyricAlignerFactory,
     StemSeparatorFactory,
     VocalTimelineAnalyzerFactory,
 )
@@ -24,10 +25,12 @@ class AudioTimelinePipeline:
         separator_factory: StemSeparatorFactory,
         vocal_analyzer_factory: VocalTimelineAnalyzerFactory,
         beat_analyzer_factory: BeatImpactAnalyzerFactory,
+        lyric_aligner_factory: LyricAlignerFactory | None = None,
     ):
         self.separator_factory = separator_factory
         self.vocal_analyzer_factory = vocal_analyzer_factory
         self.beat_analyzer_factory = beat_analyzer_factory
+        self.lyric_aligner_factory = lyric_aligner_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -68,6 +71,13 @@ class AudioTimelinePipeline:
         )
         timeline = normalize_empty_vocals(timeline)
         timeline = merge_same_kind_segments(timeline, merge_gap=vocal_cfg.merge_gap)
+        reference_lyrics = str(getattr(config, "lyrics", "") or "").strip()
+        if reference_lyrics and self.lyric_aligner_factory is not None:
+            aligner = self.lyric_aligner_factory(context)
+            timeline = run_spinner(
+                "Correcting Whisper lyrics against project lyrics...",
+                lambda: aligner.align(timeline, reference_lyrics),
+            )
         save_timeline_json(timeline, timeline_json)
         log_file("Timeline JSON", timeline_json)
 

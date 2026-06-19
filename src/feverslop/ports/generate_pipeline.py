@@ -21,9 +21,15 @@ class BeatImpactAnalyzerPort(Protocol):
         """Analyze beat/impact data and write JSON output."""
 
 
+class LyricAlignerPort(Protocol):
+    def align(self, timeline: list[Any], reference_lyrics: str) -> list[Any]:
+        """Correct vocal segment text using complete reference lyrics."""
+
+
 StemSeparatorFactory = Callable[[Any], StemSeparatorPort]
 VocalTimelineAnalyzerFactory = Callable[[Any], VocalTimelineAnalyzerPort]
 BeatImpactAnalyzerFactory = Callable[[], BeatImpactAnalyzerPort]
+LyricAlignerFactory = Callable[[Any], LyricAlignerPort]
 LLMFactory = Callable[[Any], LLMPort]
 PromptPipelineFactory = Callable[[LLMPort], Any]
 ConceptBatcherFactory = Callable[[LLMPort, int], Any]

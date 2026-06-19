@@ -1,6 +1,7 @@
 {
   "project_name": "forest_song",
   "input_audio": "input/comfyui_00056_.mp3",
+  "lyrics": "",
 
   "video": {
     "fps": 24,
