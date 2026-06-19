@@ -584,7 +584,7 @@ Vor einem Vollrender zuerst eine kritische Szene testen, z. B. Szene 16:
 uv run python render_ltx.py `
   --app-config .\app_config.json `
   --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\autoprompt_ltxv_i2v.json `
+  --workflow .\workflows\video_ltxv_i2v_v1.json `
   --render-mode single_prompt `
   --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
   --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
@@ -600,7 +600,7 @@ Mit Character-LoRA im LTX-Workflow:
 uv run python render_ltx.py `
   --app-config .\app_config.json `
   --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\autoprompt_ltxv_i2v.json `
+  --workflow .\workflows\video_ltxv_i2v_v1.json `
   --render-mode single_prompt `
   --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
   --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
@@ -640,7 +640,7 @@ Single-Prompt-Workflow:
 uv run python render_ltx.py `
   --app-config .\app_config.json `
   --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\autoprompt_ltxv_i2v.json `
+  --workflow .\workflows\video_ltxv_i2v_v1.json `
   --render-mode single_prompt `
   --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
   --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
@@ -654,7 +654,7 @@ PromptRelay-Workflow, falls du einen passenden `#PROMPT_RELAY` Workflow nutzen w
 uv run python render_ltx.py `
   --app-config .\app_config.json `
   --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\autoprompt_relay_ltxv_i2v.json `
+  --workflow .\workflows\your_prompt_relay_workflow.json `
   --render-mode relay `
   --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
   --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
@@ -668,8 +668,8 @@ Auto-Modus mit beiden Workflows:
 uv run python render_ltx.py `
   --app-config .\app_config.json `
   --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\autoprompt_relay_ltxv_i2v.json `
-  --single-prompt-workflow .\workflows\autoprompt_ltxv_i2v.json `
+  --workflow .\workflows\your_prompt_relay_workflow.json `
+  --single-prompt-workflow .\workflows\video_ltxv_i2v_v1.json `
   --render-mode auto `
   --single-prompt-title "#PROMPT" `
   --single-prompt-input "text" `

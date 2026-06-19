@@ -92,7 +92,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
 
         resolved = resolver.resolve_workflow_models(
             workflow_with("zimage\\own\\klw251209-v1_000001250.safetensors"),
-            workflow_path=Path("workflows/autoprompt_image_z_image_turbo.json"),
+            workflow_path=Path("workflows/image_t2i_startframe_v1.json"),
         )
 
         self.assertEqual(

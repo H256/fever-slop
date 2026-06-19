@@ -4,9 +4,9 @@ param(
     [string]$ProjectConfig,
     [string]$AppConfig = ".\app_config.json",
     [int]$ConceptBatchSize = 10,
-    [string]$StoryboardWorkflow = ".\workflows\autoprompt_image_z_image_turbo.json",
-    [string]$RelayWorkflow = ".\workflows\autoprompt_relay_ltxv_i2v.json",
-    [string]$SinglePromptWorkflow = ".\workflows\autoprompt_ltxv_i2v.json",
+    [string]$StoryboardWorkflow = ".\workflows\image_t2i_startframe_v1.json",
+    [string]$RelayWorkflow = "",
+    [string]$SinglePromptWorkflow = ".\workflows\video_ltxv_i2v_v1.json",
     [ValidateSet("auto", "relay", "single_prompt")]
     [string]$RenderMode = "single_prompt",
     [string]$SinglePromptTitle = "#PROMPT",
@@ -224,7 +224,11 @@ try {
 
     if (-not $SkipLtx) {
         Write-Step "Rendering LTX"
-        $ltxWorkflow = if ($RenderMode -eq "relay") { $RelayWorkflow } else { $SinglePromptWorkflow }
+        if ($RenderMode -ne "single_prompt" -and [string]::IsNullOrWhiteSpace($RelayWorkflow)) {
+            throw "RenderMode '$RenderMode' requires -RelayWorkflow pointing to a workflow with #PROMPT_RELAY."
+        }
+
+        $ltxWorkflow = if ($RenderMode -eq "single_prompt") { $SinglePromptWorkflow } else { $RelayWorkflow }
         $ltxArgs = @(
             "--app-config", $AppConfig,
             "--project-config", $projectConfigPath,
