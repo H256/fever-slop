@@ -61,7 +61,7 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "ðŸŽˆVRAM-Cleanup"
+      "title": "VRAM-Cleanup"
     }
   },
   "7": {
@@ -75,7 +75,7 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "ðŸŽˆVRAM-Cleanup"
+      "title": "VRAM-Cleanup"
     }
   },
   "8": {
@@ -89,7 +89,7 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "ðŸŽˆVRAM-Cleanup"
+      "title": "VRAM-Cleanup"
     }
   },
   "9": {
@@ -103,7 +103,7 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "ðŸŽˆVRAM-Cleanup"
+      "title": "VRAM-Cleanup"
     }
   },
   "10": {
@@ -127,7 +127,7 @@
   "12": {
     "inputs": {
       "audio": "ComfyUI_00056_.mp3",
-      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.04509347859535617"
+      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.44524088109661175"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -586,7 +586,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "59",
+        "60",
         0
       ],
       "positive": [
@@ -762,7 +762,7 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "ðŸŽˆVRAM-Cleanup"
+      "title": "VRAM-Cleanup"
     }
   },
   "58": {
@@ -776,13 +776,13 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "ðŸŽˆVRAM-Cleanup"
+      "title": "VRAM-Cleanup"
     }
   },
   "59": {
     "inputs": {
       "lora_name": "LTXV2\\ltx23-kwh-balanced-av.comfy.safetensors",
-      "strength_model": 0.85,
+      "strength_model": 0.5,
       "model": [
         "1",
         0
@@ -791,6 +791,20 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "#LORA_1"
+    }
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "LTXV2\\ltx23-kwh-balanced-av.comfy.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "#SPLIT_LORA_1"
     }
   }
 }
