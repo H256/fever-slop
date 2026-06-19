@@ -16,6 +16,7 @@ param(
     [Nullable[double]]$VideoCharacterLoraStrength,
     [Nullable[double]]$VideoLora1StrengthModel,
     [Nullable[double]]$VideoLora1StrengthClip,
+    [Nullable[bool]]$LoraSplitEnabled,
     [int]$SmokeScene = 16,
     [switch]$SmokeOnly,
     [switch]$NoSkipExisting,
@@ -254,6 +255,10 @@ try {
 
         if ($null -ne $VideoLora1StrengthClip) {
             $ltxArgs += @("--lora-1-strength-clip", (Convert-ToInvariantString $VideoLora1StrengthClip))
+        }
+
+        if ($null -ne $LoraSplitEnabled) {
+            $ltxArgs += @(if ($LoraSplitEnabled) { "--lora-split-enabled" } else { "--no-lora-split-enabled" })
         }
 
         if ($RenderMode -eq "auto") {

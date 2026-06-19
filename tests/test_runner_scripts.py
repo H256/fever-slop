@@ -17,6 +17,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertIn("[Nullable[double]]$VideoCharacterLoraStrength", script)
         self.assertIn("[Nullable[double]]$VideoLora1StrengthModel", script)
         self.assertIn("[Nullable[double]]$VideoLora1StrengthClip", script)
+        self.assertIn("[Nullable[bool]]$LoraSplitEnabled", script)
 
         self.assertIn('if ($null -ne $StoryboardLoraStrength)', script)
         self.assertIn(
@@ -38,6 +39,8 @@ class RunnerScriptTests(unittest.TestCase):
             '$ltxArgs += @("--lora-1-strength-clip", (Convert-ToInvariantString $VideoLora1StrengthClip))',
             script,
         )
+        self.assertIn('if ($null -ne $LoraSplitEnabled)', script)
+        self.assertIn('$ltxArgs += @(if ($LoraSplitEnabled) { "--lora-split-enabled" } else { "--no-lora-split-enabled" })', script)
 
     def test_test_ps1_can_skip_main_pipeline(self):
         script = Path("test.ps1").read_text(encoding="utf-8")

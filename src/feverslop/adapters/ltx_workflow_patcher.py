@@ -9,6 +9,23 @@ from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder
 
 
+@dataclass(frozen=True)
+class ResolvedLoraConfig:
+    index: int
+    enabled: bool = False
+    name: str = ""
+    strength_model: float = 1.0
+    strength_clip: float = 1.0
+
+    @property
+    def lora_title(self) -> str:
+        return f"#LORA_{self.index}"
+
+    @property
+    def split_title(self) -> str:
+        return f"#SPLIT_LORA_{self.index}"
+
+
 @dataclass
 class LTXWorkflowSettings:
     ltx_workflow_path: Path
@@ -38,6 +55,8 @@ class LTXWorkflowSettings:
     seed_offset: int
     segment_length_mode: str
     debug_workflows_dir: Path | None
+    loras: tuple[ResolvedLoraConfig, ...] = ()
+    lora_split_enabled: bool = False
 
 
 class LTXWorkflowPatcher:
@@ -69,8 +88,10 @@ class LTXWorkflowPatcher:
         ]
         if mode != "single_prompt":
             required_titles.append(self.settings.prompt_relay_node_title)
-        if self.settings.lora_1_enabled:
-            required_titles.append(self.settings.lora_1_node_title)
+        for lora in self.active_loras():
+            required_titles.append(lora.lora_title)
+            if self.settings.lora_split_enabled:
+                required_titles.append(lora.split_title)
 
         for title in dict.fromkeys(required_titles):
             try:
@@ -165,13 +186,35 @@ class LTXWorkflowPatcher:
         return workflow
 
     def patch_lora_inputs(self, patcher: WorkflowPatcher) -> None:
-        if self.settings.lora_1_enabled:
-            patcher.patch_lora_by_title(
-                self.settings.lora_1_node_title,
-                lora_name=self.settings.lora_1_name,
-                strength_model=self.settings.lora_1_strength_model,
-                strength_clip=self.settings.lora_1_strength_clip,
-            )
+        active_loras = self.active_loras()
+        if active_loras:
+            for lora in active_loras:
+                if not lora.name:
+                    raise ValueError(f"LoRA {lora.index} name is required when enabled")
+
+                if self.settings.lora_split_enabled:
+                    self.patch_single_lora(
+                        patcher,
+                        title=lora.lora_title,
+                        lora=lora,
+                        strength_model=lora.strength_model * 0.5,
+                        strength_clip=lora.strength_clip * 0.5,
+                    )
+                    self.patch_single_lora(
+                        patcher,
+                        title=lora.split_title,
+                        lora=lora,
+                        strength_model=lora.strength_model,
+                        strength_clip=lora.strength_clip,
+                    )
+                else:
+                    self.patch_single_lora(
+                        patcher,
+                        title=lora.lora_title,
+                        lora=lora,
+                        strength_model=lora.strength_model,
+                        strength_clip=lora.strength_clip,
+                    )
         elif self.settings.lora_1_strengths_explicit:
             patcher.patch_lora_strengths_by_title(
                 self.settings.lora_1_node_title,
@@ -186,6 +229,40 @@ class LTXWorkflowPatcher:
                 )
             except KeyError:
                 pass
+
+    def active_loras(self) -> tuple[ResolvedLoraConfig, ...]:
+        if self.settings.loras:
+            return tuple(lora for lora in self.settings.loras if lora.enabled)
+        if self.settings.lora_1_enabled:
+            return (
+                ResolvedLoraConfig(
+                    index=1,
+                    enabled=True,
+                    name=self.settings.lora_1_name,
+                    strength_model=self.settings.lora_1_strength_model,
+                    strength_clip=self.settings.lora_1_strength_clip,
+                ),
+            )
+        return ()
+
+    @staticmethod
+    def patch_single_lora(
+        patcher: WorkflowPatcher,
+        *,
+        title: str,
+        lora: ResolvedLoraConfig,
+        strength_model: float,
+        strength_clip: float,
+    ) -> None:
+        try:
+            patcher.patch_lora_by_title(
+                title,
+                lora_name=lora.name,
+                strength_model=strength_model,
+                strength_clip=strength_clip,
+            )
+        except KeyError as exc:
+            raise ValueError(f"Missing or incompatible LoRA workflow anchor {title}") from exc
 
     def patch_prompt_inputs(
         self,

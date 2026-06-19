@@ -8,7 +8,7 @@ from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
-from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings
+from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings, ResolvedLoraConfig
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
@@ -48,6 +48,8 @@ class ComfyUIVideoRenderBackend:
         lora_1_strength_clip: float = 1.0,
         lora_1_strengths_explicit: bool = False,
         lora_1_node_title: str = "#LORA_1",
+        loras: tuple[ResolvedLoraConfig, ...] = (),
+        lora_split_enabled: bool = False,
         randomize_seed: bool = False,
         seed_offset: int = 100000,
         segment_length_mode: str = "frames_minus_one",
@@ -97,6 +99,8 @@ class ComfyUIVideoRenderBackend:
         self.lora_1_strength_clip = float(lora_1_strength_clip)
         self.lora_1_strengths_explicit = bool(lora_1_strengths_explicit)
         self.lora_1_node_title = lora_1_node_title
+        self.loras = tuple(loras)
+        self.lora_split_enabled = bool(lora_split_enabled)
         self.randomize_seed = randomize_seed
         self.seed_offset = seed_offset
 
@@ -146,6 +150,8 @@ class ComfyUIVideoRenderBackend:
                 lora_1_strength_clip=self.lora_1_strength_clip,
                 lora_1_strengths_explicit=self.lora_1_strengths_explicit,
                 lora_1_node_title=self.lora_1_node_title,
+                loras=self.loras,
+                lora_split_enabled=self.lora_split_enabled,
                 randomize_seed=self.randomize_seed,
                 seed_offset=self.seed_offset,
                 segment_length_mode=self.segment_length_mode,

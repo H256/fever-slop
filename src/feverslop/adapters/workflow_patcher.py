@@ -151,10 +151,18 @@ class WorkflowPatcher:
         self.set_existing_input_by_title(title, "lora_name", lora_name)
         patched.append("lora_name")
 
+        model_strength_patched = False
         for input_name in ("strength_model", "model_strength", "strength"):
             if self.try_set_existing_input_by_title(title, input_name, strength_model):
                 patched.append(input_name)
+                model_strength_patched = True
                 break
+
+        if not model_strength_patched:
+            raise KeyError(
+                f"No known LoRA model strength input found on node '{title}'. "
+                "Tried: strength_model, model_strength, strength"
+            )
 
         for input_name in ("strength_clip", "clip_strength"):
             if self.try_set_existing_input_by_title(title, input_name, strength_clip):

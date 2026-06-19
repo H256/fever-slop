@@ -153,6 +153,125 @@ class RenderLTXCliTests(unittest.TestCase):
             self.assertEqual("characters/test.safetensors", resolved["lora_1_name"])
             self.assertEqual(0.8, resolved["lora_1_strength_model"])
             self.assertEqual(0.6, resolved["lora_1_strength_clip"])
+            self.assertFalse(resolved["lora_split_enabled"])
+            self.assertEqual(1, len(resolved["loras"]))
+            self.assertEqual(1, resolved["loras"][0].index)
+            self.assertEqual("characters/test.safetensors", resolved["loras"][0].name)
+
+    def test_project_config_loras_array_and_split_flag_are_resolved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            project_config = temp / "config.json"
+            project_config.write_text(
+                json.dumps(
+                    {
+                        "project_name": "multi_lora",
+                        "input_audio": "input/song.mp3",
+                        "lora_split_enabled": True,
+                        "loras": [
+                            {
+                                "enabled": True,
+                                "name": "characters/first.safetensors",
+                                "strength_model": 0.8,
+                                "strength_clip": 0.6,
+                            },
+                            {
+                                "enabled": False,
+                                "name": "characters/second.safetensors",
+                                "strength_model": 0.4,
+                                "strength_clip": 0.3,
+                            },
+                            {
+                                "enabled": True,
+                                "name": "characters/third.safetensors",
+                                "strength_model": 0.9,
+                                "strength_clip": 0.7,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            args = self._parse(["--project-config", str(project_config)])
+
+            resolved = resolve_project_config_defaults(args)
+
+            self.assertTrue(resolved["lora_split_enabled"])
+            self.assertEqual([1, 2, 3], [lora.index for lora in resolved["loras"]])
+            self.assertEqual(
+                ["characters/first.safetensors", "characters/second.safetensors", "characters/third.safetensors"],
+                [lora.name for lora in resolved["loras"]],
+            )
+            self.assertEqual([True, False, True], [lora.enabled for lora in resolved["loras"]])
+
+    def test_lora_split_cli_overrides_project_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            project_config = temp / "config.json"
+            project_config.write_text(
+                json.dumps(
+                    {
+                        "project_name": "multi_lora",
+                        "input_audio": "input/song.mp3",
+                        "lora_split_enabled": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            args = self._parse(["--project-config", str(project_config), "--no-lora-split-enabled"])
+
+            resolved = resolve_project_config_defaults(args)
+
+            self.assertFalse(resolved["lora_split_enabled"])
+
+    def test_lora_1_cli_overrides_first_resolved_lora(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            project_config = temp / "config.json"
+            project_config.write_text(
+                json.dumps(
+                    {
+                        "project_name": "multi_lora",
+                        "input_audio": "input/song.mp3",
+                        "loras": [
+                            {
+                                "enabled": True,
+                                "name": "characters/config.safetensors",
+                                "strength_model": 0.8,
+                                "strength_clip": 0.6,
+                            },
+                            {
+                                "enabled": True,
+                                "name": "characters/second.safetensors",
+                                "strength_model": 0.5,
+                                "strength_clip": 0.5,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            args = self._parse([
+                "--project-config",
+                str(project_config),
+                "--lora-1-enabled",
+                "--lora-1-name",
+                "characters/override.safetensors",
+                "--lora-1-strength-model",
+                "0.9",
+                "--lora-1-strength-clip",
+                "0.7",
+            ])
+
+            resolved = resolve_project_config_defaults(args)
+
+            self.assertEqual(2, len(resolved["loras"]))
+            self.assertEqual("characters/override.safetensors", resolved["loras"][0].name)
+            self.assertEqual(0.9, resolved["loras"][0].strength_model)
+            self.assertEqual("characters/second.safetensors", resolved["loras"][1].name)
 
     def test_explicit_cli_values_override_project_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:

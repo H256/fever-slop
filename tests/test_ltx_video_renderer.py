@@ -224,6 +224,118 @@ class LTXLoraTests(unittest.TestCase):
         self.assertEqual(0.0, inputs["strength_model"])
         self.assertEqual(0.0, inputs["strength_clip"])
 
+    def test_multiple_loras_patch_indexed_workflow_anchors_without_split(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
+                ResolvedLoraConfig(index=2, enabled=False, name="characters/second.safetensors", strength_model=0.4, strength_clip=0.3),
+                ResolvedLoraConfig(index=3, enabled=True, name="characters/third.safetensors", strength_model=0.9, strength_clip=0.7),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+            "3": {
+                "inputs": {"lora_name": "", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_3"},
+            },
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        workflow = patcher.get()
+        self.assertEqual("characters/first.safetensors", workflow["1"]["inputs"]["lora_name"])
+        self.assertEqual(0.8, workflow["1"]["inputs"]["strength_model"])
+        self.assertEqual("characters/third.safetensors", workflow["3"]["inputs"]["lora_name"])
+        self.assertEqual(0.9, workflow["3"]["inputs"]["strength_model"])
+
+    def test_lora_split_patches_base_half_strength_and_split_full_strength(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            lora_split_enabled=True,
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+            "2": {
+                "inputs": {"lora_name": "", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#SPLIT_LORA_1"},
+            },
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        workflow = patcher.get()
+        self.assertEqual("characters/first.safetensors", workflow["1"]["inputs"]["lora_name"])
+        self.assertEqual(0.4, workflow["1"]["inputs"]["strength_model"])
+        self.assertEqual("characters/first.safetensors", workflow["2"]["inputs"]["lora_name"])
+        self.assertEqual(0.8, workflow["2"]["inputs"]["strength_model"])
+
+    def test_lora_split_requires_split_anchor_for_active_lora(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            lora_split_enabled=True,
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+        })
+
+        with self.assertRaisesRegex(ValueError, "#SPLIT_LORA_1"):
+            renderer._patch_lora_inputs(patcher)
+
+    def test_lora_patch_rejects_anchor_without_model_strength_input(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": ""},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+        })
+
+        with self.assertRaisesRegex(ValueError, "#LORA_1"):
+            renderer._patch_lora_inputs(patcher)
+
     def test_render_scene_queues_workflow_after_lora_1_explicit_strength_patch(self):
         class FakeClient:
             def __init__(self):

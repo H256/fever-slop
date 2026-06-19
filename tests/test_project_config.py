@@ -59,6 +59,113 @@ class ProjectConfigTests(unittest.TestCase):
             self.assertEqual(0.85, config.lora_1.strength_model)
             self.assertEqual(0.65, config.lora_1.strength_clip)
 
+    def test_loads_loras_array_and_split_flag(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "test",
+                        "input_audio": "song.mp3",
+                        "lora_split_enabled": True,
+                        "loras": [
+                            {
+                                "enabled": True,
+                                "name": "characters/first.safetensors",
+                                "strength_model": 0.8,
+                                "strength_clip": 0.6,
+                            },
+                            {
+                                "enabled": False,
+                                "name": "characters/second.safetensors",
+                                "strength_model": 0.4,
+                                "strength_clip": 0.3,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertTrue(config.lora_split_enabled)
+            self.assertEqual(2, len(config.loras))
+            self.assertTrue(config.loras[0].enabled)
+            self.assertEqual("characters/first.safetensors", config.loras[0].name)
+            self.assertEqual(0.8, config.loras[0].strength_model)
+            self.assertEqual(0.6, config.loras[0].strength_clip)
+            self.assertFalse(config.loras[1].enabled)
+            self.assertEqual("characters/second.safetensors", config.loras[1].name)
+
+    def test_lora_1_is_fallback_when_loras_array_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "test",
+                        "input_audio": "song.mp3",
+                        "lora_1": {
+                            "enabled": True,
+                            "name": "characters/legacy.safetensors",
+                            "strength_model": 0.75,
+                            "strength_clip": 0.5,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertEqual(1, len(config.loras))
+            self.assertTrue(config.loras[0].enabled)
+            self.assertEqual("characters/legacy.safetensors", config.loras[0].name)
+            self.assertEqual(0.75, config.loras[0].strength_model)
+
+    def test_loras_array_wins_over_legacy_lora_1(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "test",
+                        "input_audio": "song.mp3",
+                        "lora_1": {
+                            "enabled": True,
+                            "name": "characters/legacy.safetensors",
+                            "strength_model": 0.75,
+                            "strength_clip": 0.5,
+                        },
+                        "loras": [
+                            {
+                                "enabled": True,
+                                "name": "characters/new.safetensors",
+                                "strength_model": 0.9,
+                                "strength_clip": 0.7,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertEqual(1, len(config.loras))
+            self.assertEqual("characters/new.safetensors", config.loras[0].name)
+            self.assertEqual(0.9, config.loras[0].strength_model)
+
     def test_loads_zimage_and_ltx_steering(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

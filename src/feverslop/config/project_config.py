@@ -120,6 +120,8 @@ class ProjectConfig:
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
     lora_1: LoraConfig = field(default_factory=LoraConfig)
+    loras: tuple[LoraConfig, ...] = field(default_factory=tuple)
+    lora_split_enabled: bool = False
 
     @classmethod
     def load(cls, config_path: str | Path) -> "ProjectConfig":
@@ -134,10 +136,31 @@ class ProjectConfig:
         steering_raw = raw.get("steering", {})
         guidance_raw = raw.get("prompt_guidance", {})
         lora_1_raw = raw.get("lora_1", {})
+        loras_raw = raw.get("loras")
 
         input_audio = Path(raw["input_audio"])
         if not input_audio.is_absolute():
             input_audio = project_dir / input_audio
+
+        lora_1 = LoraConfig(
+            enabled=bool(lora_1_raw.get("enabled", False)),
+            name=lora_1_raw.get("name", ""),
+            strength_model=float(lora_1_raw.get("strength_model", 1.0)),
+            strength_clip=float(lora_1_raw.get("strength_clip", 1.0)),
+        )
+        if isinstance(loras_raw, list):
+            loras = tuple(
+                LoraConfig(
+                    enabled=bool(item.get("enabled", False)),
+                    name=item.get("name", ""),
+                    strength_model=float(item.get("strength_model", 1.0)),
+                    strength_clip=float(item.get("strength_clip", 1.0)),
+                )
+                for item in loras_raw
+                if isinstance(item, dict)
+            )
+        else:
+            loras = (lora_1,)
 
         return cls(
             project_dir=project_dir,
@@ -205,12 +228,9 @@ class ProjectConfig:
                 word_count_min=int(guidance_raw.get("word_count_min", 40)),
                 word_count_max=int(guidance_raw.get("word_count_max", 50)),
             ),
-            lora_1=LoraConfig(
-                enabled=bool(lora_1_raw.get("enabled", False)),
-                name=lora_1_raw.get("name", ""),
-                strength_model=float(lora_1_raw.get("strength_model", 1.0)),
-                strength_clip=float(lora_1_raw.get("strength_clip", 1.0)),
-            ),
+            lora_1=lora_1,
+            loras=loras,
+            lora_split_enabled=bool(raw.get("lora_split_enabled", False)),
         )
 
     def to_video_settings(self) -> VideoSettings:

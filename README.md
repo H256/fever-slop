@@ -11,7 +11,7 @@ FeverSlop erzeugt aus einem Song einen beat- und vocal-synchronen Musikvideo-Ren
 
 Der aktuelle LTX-Standardpfad ist der Non-Relay-Single-Prompt-Modus wie in den urspruenglichen Workflows. Dafuer nutzt der Renderer pro Szene `ltx.original_style_i2v_prompt`. PromptRelay bleibt optional fuer Workflows mit einem korrekt verdrahteten `#PROMPT_RELAY` Node.
 
-Wenn `render_ltx.py` mit `--project-config` aufgerufen wird, nimmt es `scene_generation.min_duration`, `scene_generation.max_duration` und `lora_1.*` aus dieser Datei, sofern der jeweilige CLI-Wert nicht explizit gesetzt ist. Die Reihenfolge ist: Built-in Default, dann `config.json`, dann Kommandozeile.
+Wenn `render_ltx.py` mit `--project-config` aufgerufen wird, nimmt es `scene_generation.min_duration`, `scene_generation.max_duration`, `loras`, `lora_split_enabled` und Legacy-`lora_1.*` aus dieser Datei, sofern der jeweilige CLI-Wert nicht explizit gesetzt ist. Die Reihenfolge ist: Built-in Default, dann `config.json`, dann Kommandozeile.
 
 Die ausfuehrliche Projektanleitung mit neuer Projektstruktur, Runner-Parametern, allen Config-Keys, CLI-Optionen und Steering-Tutorial liegt hier:
 
@@ -610,16 +610,17 @@ uv run python render_ltx.py `
   --lora-1-name "characters\my_character.safetensors" `
   --lora-1-strength-model 0.85 `
   --lora-1-strength-clip 0.65 `
+  --lora-split-enabled `
   --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
 ```
 
-Der LTX-Workflow muss den LoRA-Node bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein, sondern patcht nur den vorhandenen Node mit `_meta.title` `#LORA_1`. Fuer spaetere Multi-LoRA-Workflows sind `#LORA_2`, `#LORA_3`, ... reserviert.
+Der LTX-Workflow muss die LoRA-Nodes bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein. Ohne Split patcht LoRA `N` den vorhandenen Node `#LORA_N` mit voller Strength. Mit `--lora-split-enabled` patcht LoRA `N` `#LORA_N` mit halber Strength und `#SPLIT_LORA_N` mit voller Strength.
 
 Workflow-Upgrade:
 
 1. Neuen ComfyUI API-Workflow exportieren.
 2. Alle dynamischen Nodes mit stabilen `#...` Titeln versehen.
-3. `#LORA_1` in den Model/Clip-Pfad verdrahten.
+3. `#LORA_1` und optional `#SPLIT_LORA_1` in die Model-Pfade verdrahten.
 4. Workflow-Validation laufen lassen.
 5. Eine Szene mit `--debug-workflows-dir` rendern und die Debug-JSON pruefen.
 

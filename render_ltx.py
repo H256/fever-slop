@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
@@ -61,6 +62,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lora-1-name", default=None)
     parser.add_argument("--lora-1-strength-model", type=float, default=None)
     parser.add_argument("--lora-1-strength-clip", type=float, default=None)
+    parser.add_argument("--lora-split-enabled", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--randomize-seed", action="store_true")
     parser.add_argument("--seed-offset", type=int, default=100000)
 
@@ -107,25 +109,36 @@ def resolve_project_config_defaults(args: argparse.Namespace) -> dict:
     project_config = ProjectConfig.load(project_config_path) if project_config_path else None
     scene_generation = project_config.scene_generation if project_config else None
     lora_1 = project_config.lora_1 if project_config else None
+    loras = _resolve_loras(args, project_config)
+    first_lora = loras[0] if loras else None
 
     min_duration = args.min_duration if args.min_duration is not None else (scene_generation.min_duration if scene_generation else 2.0)
     max_duration = args.max_duration if args.max_duration is not None else (scene_generation.max_duration if scene_generation else 10.0)
 
-    lora_1_enabled = args.lora_1_enabled if args.lora_1_enabled is not None else (lora_1.enabled if lora_1 else False)
-    lora_1_name = args.lora_1_name if args.lora_1_name is not None else (lora_1.name if lora_1 else "")
+    lora_1_enabled = args.lora_1_enabled if args.lora_1_enabled is not None else (
+        first_lora.enabled if first_lora else (lora_1.enabled if lora_1 else False)
+    )
+    lora_1_name = args.lora_1_name if args.lora_1_name is not None else (
+        first_lora.name if first_lora else (lora_1.name if lora_1 else "")
+    )
     lora_1_strength_model = (
         args.lora_1_strength_model
         if args.lora_1_strength_model is not None
-        else (lora_1.strength_model if lora_1 else 1.0)
+        else (first_lora.strength_model if first_lora else (lora_1.strength_model if lora_1 else 1.0))
     )
     lora_1_strength_clip = (
         args.lora_1_strength_clip
         if args.lora_1_strength_clip is not None
-        else (lora_1.strength_clip if lora_1 else 1.0)
+        else (first_lora.strength_clip if first_lora else (lora_1.strength_clip if lora_1 else 1.0))
     )
     lora_1_strengths_explicit = (
         args.lora_1_strength_model is not None
         or args.lora_1_strength_clip is not None
+    )
+    lora_split_enabled = (
+        args.lora_split_enabled
+        if args.lora_split_enabled is not None
+        else (project_config.lora_split_enabled if project_config else False)
     )
 
     return {
@@ -137,7 +150,50 @@ def resolve_project_config_defaults(args: argparse.Namespace) -> dict:
         "lora_1_strength_model": float(lora_1_strength_model),
         "lora_1_strength_clip": float(lora_1_strength_clip),
         "lora_1_strengths_explicit": bool(lora_1_strengths_explicit),
+        "loras": loras,
+        "lora_split_enabled": bool(lora_split_enabled),
     }
+
+
+def _resolve_loras(args: argparse.Namespace, project_config: ProjectConfig | None) -> tuple[ResolvedLoraConfig, ...]:
+    loras = [
+        ResolvedLoraConfig(
+            index=index,
+            enabled=lora.enabled,
+            name=lora.name,
+            strength_model=lora.strength_model,
+            strength_clip=lora.strength_clip,
+        )
+        for index, lora in enumerate(project_config.loras, start=1)
+    ] if project_config else []
+
+    has_lora_1_override = (
+        args.lora_1_enabled is not None
+        or args.lora_1_name is not None
+        or args.lora_1_strength_model is not None
+        or args.lora_1_strength_clip is not None
+    )
+    if has_lora_1_override:
+        while len(loras) < 1:
+            loras.append(ResolvedLoraConfig(index=1))
+        current = loras[0]
+        loras[0] = ResolvedLoraConfig(
+            index=1,
+            enabled=args.lora_1_enabled if args.lora_1_enabled is not None else current.enabled,
+            name=args.lora_1_name if args.lora_1_name is not None else current.name,
+            strength_model=(
+                args.lora_1_strength_model
+                if args.lora_1_strength_model is not None
+                else current.strength_model
+            ),
+            strength_clip=(
+                args.lora_1_strength_clip
+                if args.lora_1_strength_clip is not None
+                else current.strength_clip
+            ),
+        )
+
+    return tuple(loras)
 
 
 def resolve_rolling_frames(args: argparse.Namespace) -> tuple[int, int, bool]:
@@ -229,6 +285,7 @@ def main():
         f"Round render frames to 8N+1: [yellow]{round_render_frames_to_8n1}[/yellow]\n"
         f"LoRA 1 enabled: [yellow]{resolved['lora_1_enabled']}[/yellow]\n"
         f"LoRA 1 name: [cyan]{resolved['lora_1_name']}[/cyan]\n"
+        f"LoRA split enabled: [yellow]{resolved['lora_split_enabled']}[/yellow]\n"
         f"Postprocess: [yellow]{not args.no_postprocess}[/yellow]",
         title="Startup",
         border_style="cyan",
@@ -254,6 +311,8 @@ def main():
         lora_1_strength_model=resolved["lora_1_strength_model"],
         lora_1_strength_clip=resolved["lora_1_strength_clip"],
         lora_1_strengths_explicit=resolved["lora_1_strengths_explicit"],
+        loras=resolved["loras"],
+        lora_split_enabled=resolved["lora_split_enabled"],
         randomize_seed=args.randomize_seed,
         seed_offset=args.seed_offset,
         segment_length_mode=args.segment_length_mode,
