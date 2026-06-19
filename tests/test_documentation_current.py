@@ -9,6 +9,16 @@ class DocumentationCurrentTests(unittest.TestCase):
         self.assertNotIn("prompt_pipeline_batch_patch.py", text)
         self.assertNotIn("extract_lyrics.py", text)
         self.assertNotIn("noise_reduction.py", text)
+        self.assertNotIn("test.ps1", text)
+        self.assertNotIn("test.bat", text)
+
+    def test_current_workflow_docs_use_python_runner(self):
+        for path in [Path("AGENTS.md"), Path("docs/project_workflow.md")]:
+            with self.subTest(path=path):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("run_pipeline.py", text)
+                self.assertNotIn("test.ps1", text)
+                self.assertNotIn("test.bat", text)
 
     def test_readme_mentions_current_package_layout(self):
         text = Path("README.md").read_text(encoding="utf-8")

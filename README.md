@@ -25,19 +25,7 @@ Schnellstart fuer ein Projekt mit `config.json`:
 uv run python run_pipeline.py .\projects\my_song
 ```
 
-Der Python-Runner ist das direkte Gegenstueck zu `test.ps1` und nutzt dieselben Pipeline-Schritte mit Python-Use-Cases.
-
-Alternativ weiterhin per PowerShell:
-
-```powershell
-.\test.ps1 .\projects\my_song
-```
-
-oder:
-
-```bat
-test.bat .\projects\my_song
-```
+Der Python-Runner nutzt die Pipeline-Schritte direkt ueber Python-Use-Cases.
 
 ## Voraussetzungen
 
@@ -331,7 +319,7 @@ Die Seite ist eine reine Datei-Ausgabe ohne Server. Sie zeigt pro Szene einen Bl
 - `Full`: Bild plus Story-/Prompt-Kontext.
 - `Compact`: echtes Bildgrid; Textbereiche sind ausgeblendet, der Z-Image-Prompt liegt als nativer Browser-Tooltip auf dem anklickbaren Bild.
 
-Das Grid nutzt die volle Seitenbreite, begrenzt sich aber auf maximal fuenf Karten pro Zeile, damit die Bilder lesbar bleiben. Der One-Command-Runner erzeugt `output/render/storyboard/index.html` automatisch nach dem Storyboard-Render; mit `-SkipStoryboardPage` kann dieser Schritt uebersprungen werden.
+Das Grid nutzt die volle Seitenbreite, begrenzt sich aber auf maximal fuenf Karten pro Zeile, damit die Bilder lesbar bleiben. Der One-Command-Runner erzeugt `output/render/storyboard/index.html` automatisch nach dem Storyboard-Render; mit `--skip-storyboard-page` kann dieser Schritt uebersprungen werden.
 
 ### LTX PromptRelay-Modus
 
@@ -736,7 +724,7 @@ ffmpeg -y `
   .\projects\my_frst_project\output\render\ltx\final_concat.mp4
 ```
 
-Ein Vergleichsexport mit per-scene Audio ist nur ein Diagnosepfad, z.B. ueber `.\test.ps1 -DiagnosticOriginalAudioMux`.
+Ein Vergleichsexport mit per-scene Audio ist nur ein Diagnosepfad, z.B. ueber `run_pipeline.py --diagnostic-original-audio-mux`.
 
 ### 8. Projekt-Assets als ZIP archivieren
 

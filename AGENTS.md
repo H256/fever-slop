@@ -26,7 +26,6 @@ This file gives working instructions for AI coding agents in this repository.
 - Do not commit secrets, local credentials, generated media, model outputs, or machine-specific config.
 - Prefer structured parsing for JSON, TOML, SRT, and workflow files instead of ad hoc string replacement.
 - Avoid unrelated formatting churn, especially in large workflow JSON files.
-- When editing Windows-facing scripts, preserve PowerShell and batch compatibility.
 
 ## Planning Workflow
 
@@ -110,13 +109,7 @@ uv run python -m unittest discover -s tests
 Run the default project helper:
 
 ```powershell
-.\test.ps1 .\projects\my_song
-```
-
-or:
-
-```bat
-test.bat .\projects\my_song
+uv run python run_pipeline.py .\projects\my_song
 ```
 
 ## Verification
