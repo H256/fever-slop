@@ -1,8 +1,81 @@
 import unittest
 from pathlib import Path
 
+import run_pipeline
+
 
 class RunnerScriptTests(unittest.TestCase):
+    def test_run_pipeline_parser_defaults_match_test_ps1(self):
+        args = run_pipeline.build_arg_parser().parse_args([])
+
+        self.assertIsNone(args.project_root)
+        self.assertIsNone(args.project_config)
+        self.assertEqual(".\\app_config.json", args.app_config)
+        self.assertEqual(10, args.concept_batch_size)
+        self.assertEqual(".\\workflows\\image_t2i_startframe_v1.json", args.storyboard_workflow)
+        self.assertEqual("", args.relay_workflow)
+        self.assertEqual(".\\workflows\\video_ltxv_i2v_v1.json", args.single_prompt_workflow)
+        self.assertEqual("single_prompt", args.render_mode)
+        self.assertEqual("#PROMPT", args.single_prompt_title)
+        self.assertEqual("text", args.single_prompt_input)
+        self.assertEqual("original", args.rolling_frame_profile)
+        self.assertEqual(16, args.smoke_scene)
+        self.assertFalse(args.skip_main_pipeline)
+
+    def test_run_pipeline_parser_accepts_powershell_parity_flags(self):
+        args = run_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/song",
+                "--render-mode",
+                "auto",
+                "--relay-workflow",
+                "relay.json",
+                "--single-prompt-workflow",
+                "single.json",
+                "--storyboard-lora-strength",
+                "0.4",
+                "--video-character-lora-strength",
+                "0.8",
+                "--video-lora-1-strength-model",
+                "0.7",
+                "--video-lora-1-strength-clip",
+                "0.6",
+                "--lora-split-enabled",
+                "--smoke-only",
+                "--no-skip-existing",
+                "--skip-tests",
+                "--skip-main-pipeline",
+                "--skip-relay-compact",
+                "--skip-anchor-fix",
+                "--skip-storyboard",
+                "--skip-storyboard-page",
+                "--skip-ltx",
+                "--skip-final-concat",
+                "--diagnostic-original-audio-mux",
+                "--no-original-audio-mux",
+            ]
+        )
+
+        self.assertEqual("projects/song", args.project_root)
+        self.assertEqual("auto", args.render_mode)
+        self.assertEqual(0.4, args.storyboard_lora_strength)
+        self.assertEqual(0.8, args.video_character_lora_strength)
+        self.assertEqual(0.7, args.video_lora_1_strength_model)
+        self.assertEqual(0.6, args.video_lora_1_strength_clip)
+        self.assertTrue(args.lora_split_enabled)
+        self.assertTrue(args.smoke_only)
+        self.assertTrue(args.no_skip_existing)
+        self.assertTrue(args.skip_tests)
+        self.assertTrue(args.skip_main_pipeline)
+        self.assertTrue(args.skip_relay_compact)
+        self.assertTrue(args.skip_anchor_fix)
+        self.assertTrue(args.skip_storyboard)
+        self.assertTrue(args.skip_storyboard_page)
+        self.assertTrue(args.skip_ltx)
+        self.assertTrue(args.skip_final_concat)
+        self.assertTrue(args.diagnostic_original_audio_mux)
+        self.assertTrue(args.no_original_audio_mux)
+
     def test_test_ps1_forwards_project_config_to_ltx(self):
         script = Path("test.ps1").read_text(encoding="utf-8")
 

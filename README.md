@@ -22,6 +22,14 @@ docs/project_workflow.md
 Schnellstart fuer ein Projekt mit `config.json`:
 
 ```powershell
+uv run python run_pipeline.py .\projects\my_song
+```
+
+Der Python-Runner ist das direkte Gegenstueck zu `test.ps1` und nutzt dieselben Pipeline-Schritte mit Python-Use-Cases.
+
+Alternativ weiterhin per PowerShell:
+
+```powershell
 .\test.ps1 .\projects\my_song
 ```
 

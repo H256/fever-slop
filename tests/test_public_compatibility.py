@@ -7,6 +7,7 @@ import compact_relay_prompts
 import fix_ltx_prompt_anchors
 import ltx_video_renderer
 import main
+import run_pipeline
 import render_ltx
 import render_storyboard
 import storyboard_renderer
@@ -22,6 +23,7 @@ class PublicCompatibilityTests(unittest.TestCase):
     def test_public_cli_modules_expose_testable_arg_parsers(self):
         modules = [
             main,
+            run_pipeline,
             render_ltx,
             render_storyboard,
             compact_relay_prompts,
@@ -54,6 +56,12 @@ class PublicCompatibilityTests(unittest.TestCase):
             Path(storyboard_page.__file__).as_posix(),
         )
         self.assertTrue(hasattr(storyboard_page, "generate_storyboard_page"))
+
+    def test_render_ltx_uses_importable_composition_root(self):
+        source = inspect.getsource(render_ltx.main)
+
+        self.assertIn("build_render_video_scenes_use_case", source)
+        self.assertIn("namespace_to_options(args)", source)
 
     def test_cli_parser_defaults_stay_compatible(self):
         args = main.build_arg_parser().parse_args(["--project", "config.json"])
@@ -93,6 +101,7 @@ class PublicCompatibilityTests(unittest.TestCase):
     def test_root_python_files_are_only_public_cli_or_explicit_facades(self):
         allowed = {
             "main.py",
+            "run_pipeline.py",
             "render_ltx.py",
             "render_storyboard.py",
             "compact_relay_prompts.py",

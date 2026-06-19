@@ -8,13 +8,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
-from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
-from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
+from feverslop.application.render_video import RenderVideoScenesRequest
+from feverslop.composition.render_video import build_render_video_scenes_use_case, namespace_to_options
 from feverslop.config.app_config import AppConfig
-from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
@@ -307,48 +304,7 @@ def main():
         border_style="cyan",
     ))
 
-    client = ComfyUIClient(base_url=app_config.comfyui.base_url)
-    model_resolver = ComfyUIModelResolver(
-        client,
-        overrides=app_config.comfyui.model_overrides,
-    )
-
-    backend = ComfyUIVideoRenderBackend(
-        client=client,
-        ltx_workflow_path=args.workflow,
-        output_dir=args.output_dir,
-        single_prompt_workflow_path=args.single_prompt_workflow,
-        render_mode=args.render_mode,
-        single_prompt_node_title=args.single_prompt_title,
-        single_prompt_input_name=args.single_prompt_input,
-        character_lora_strength=args.character_lora_strength,
-        lora_1_enabled=resolved["lora_1_enabled"],
-        lora_1_name=resolved["lora_1_name"],
-        lora_1_strength_model=resolved["lora_1_strength_model"],
-        lora_1_strength_clip=resolved["lora_1_strength_clip"],
-        lora_1_strengths_explicit=resolved["lora_1_strengths_explicit"],
-        loras=resolved["loras"],
-        lora_split_enabled=resolved["lora_split_enabled"],
-        randomize_seed=args.randomize_seed,
-        seed_offset=args.seed_offset,
-        segment_length_mode=args.segment_length_mode,
-        min_duration=resolved["min_duration"],
-        max_duration=resolved["max_duration"],
-        allow_out_of_range_clips=args.allow_out_of_range_clips,
-        debug_workflows_dir=args.debug_workflows_dir,
-        preroll_frames=preroll_frames,
-        tail_loss_frames=tail_loss_frames,
-        round_render_frames_to_8n1=round_render_frames_to_8n1,
-        postprocess=not args.no_postprocess,
-        ffmpeg_path=args.ffmpeg,
-        postprocess_reencode=not args.postprocess_streamcopy,
-        model_resolver=model_resolver,
-    )
-
-    use_case = RenderVideoScenesUseCase(
-        backend=backend,
-        artifact_store=JsonArtifactStore(),
-    )
+    use_case = build_render_video_scenes_use_case(namespace_to_options(args), console=console)
 
     with Progress(
         SpinnerColumn(),
