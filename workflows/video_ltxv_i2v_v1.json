@@ -782,7 +782,7 @@
   "59": {
     "inputs": {
       "lora_name": "LTXV2\\ltx23-kwh-balanced-av.comfy.safetensors",
-      "strength_model": 0.5,
+      "strength_model": 0.0,
       "model": [
         "1",
         0
@@ -796,7 +796,7 @@
   "60": {
     "inputs": {
       "lora_name": "LTXV2\\ltx23-kwh-balanced-av.comfy.safetensors",
-      "strength_model": 0.5,
+      "strength_model": 0.0,
       "model": [
         "1",
         0

@@ -245,7 +245,7 @@
   "86": {
     "inputs": {
       "lora_name": "zimage\\own\\klw251209-v1_000001250.safetensors",
-      "strength_model": 0.85,
+      "strength_model": 0.0,
       "model": [
         "82",
         0
