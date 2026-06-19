@@ -50,11 +50,11 @@ class LTXWorkflowPatcher:
         return self.settings.ltx_workflow_path
 
     def load_workflow(self, mode: str = "relay") -> dict:
-        return json.loads(self.workflow_path_for_mode(mode).read_text(encoding="utf-8"))
+        return json.loads(self.workflow_path_for_mode(mode).read_text(encoding="utf-8-sig"))
 
     def validate_workflow(self, mode: str = "relay") -> None:
         workflow_path = self.workflow_path_for_mode(mode)
-        patcher = WorkflowPatcher(json.loads(workflow_path.read_text(encoding="utf-8")))
+        patcher = WorkflowPatcher(json.loads(workflow_path.read_text(encoding="utf-8-sig")))
 
         required_titles = [
             self.settings.width_node_title,

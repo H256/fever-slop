@@ -210,6 +210,19 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
 
             patcher.validate_workflow(mode="single_prompt")
 
+    def test_workflow_loading_accepts_utf8_bom(self):
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = self._settings(Path(temp_dir))
+            workflow_text = settings.ltx_workflow_path.read_text(encoding="utf-8")
+            settings.ltx_workflow_path.write_text(f"\ufeff{workflow_text}", encoding="utf-8")
+
+            patcher = LTXWorkflowPatcher(settings)
+
+            patcher.validate_workflow(mode="relay")
+            self.assertIn("1", patcher.load_workflow(mode="relay"))
+
     def test_lora_enabled_requires_lora_anchor(self):
         from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
 

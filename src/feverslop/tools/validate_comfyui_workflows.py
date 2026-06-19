@@ -7,10 +7,7 @@ import sys
 from rich.console import Console
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
-from feverslop.adapters.comfyui_model_resolver import (
-    ComfyUIModelResolutionError,
-    ComfyUIModelResolver,
-)
+from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.config.app_config import AppConfig
 from feverslop.config.comfyui import ComfyUIModelOverride
 
@@ -40,23 +37,30 @@ def main() -> None:
     app_config = AppConfig.load(args.app_config)
     client = ComfyUIClient(base_url=app_config.comfyui.base_url)
 
-    try:
-        reports = validate_comfyui_workflows(
-            client=client,
-            workflows_dir=args.workflows_dir,
-            overrides=app_config.comfyui.model_overrides,
-        )
-    except ComfyUIModelResolutionError as exc:
-        console.print(f"[red]ERROR[/red] {exc}")
-        sys.exit(1)
+    reports = validate_comfyui_workflows(
+        client=client,
+        workflows_dir=args.workflows_dir,
+        overrides=app_config.comfyui.model_overrides,
+    )
 
+    has_errors = False
     for report in reports:
+        if report["errors"]:
+            has_errors = True
+            console.print(f"[red]ERROR[/red] {report['workflow']}")
+            for error in report["errors"]:
+                console.print(f"  {error}")
+            continue
+
         console.print(
             f"[green]OK[/green] {report['workflow']}: "
             f"{report['patched_count']} model reference(s) would be patched"
         )
         for patch in report["patched"]:
             console.print(f"  {patch['node_id']} {patch['input']}: {patch['from']} -> {patch['to']}")
+
+    if has_errors:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

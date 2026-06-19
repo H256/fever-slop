@@ -24,6 +24,37 @@ def object_info_for(*, values, class_type="LoraLoader", input_name="lora_name"):
     }
 
 
+def combo_object_info_for(*, values, class_type="LatentUpscaleModelLoader", input_name="model_name"):
+    return {
+        class_type: {
+            "input": {
+                "required": {
+                    input_name: [
+                        "COMBO",
+                        {
+                            "options": list(values),
+                            "multiselect": False,
+                        },
+                    ],
+                }
+            }
+        }
+    }
+
+
+def object_info_with_fields(class_type: str, fields: dict[str, list[str]]):
+    return {
+        class_type: {
+            "input": {
+                "required": {
+                    input_name: [list(values)]
+                    for input_name, values in fields.items()
+                }
+            }
+        }
+    }
+
+
 def workflow_with(value, *, class_type="LoraLoader", node_id="12", title="#LORA_1", input_name="lora_name"):
     return {
         node_id: {
@@ -83,6 +114,100 @@ class ComfyUIModelResolverTests(unittest.TestCase):
 
         self.assertEqual("characters/foo.safetensors", resolved["12"]["inputs"]["lora_name"])
 
+    def test_combo_options_resolve_as_dropdown_values(self):
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(combo_object_info_for(values=["upscale/model.safetensors"]))
+        )
+
+        resolved = resolver.resolve_workflow_models(
+            workflow_with(
+                "model.safetensors",
+                class_type="LatentUpscaleModelLoader",
+                input_name="model_name",
+            ),
+            workflow_path=Path("workflows/test.json"),
+        )
+
+        self.assertEqual("upscale/model.safetensors", resolved["12"]["inputs"]["model_name"])
+
+    def test_non_model_dropdowns_are_ignored(self):
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(object_info_for(values=["server.png"], class_type="LoadImage", input_name="image"))
+        )
+
+        resolved = resolver.resolve_workflow_models(
+            workflow_with(
+                "scene_0038.png",
+                class_type="LoadImage",
+                input_name="image",
+                title="#STARTFRAME",
+            ),
+            workflow_path=Path("workflows/test.json"),
+        )
+
+        self.assertEqual("scene_0038.png", resolved["12"]["inputs"]["image"])
+        self.assertEqual(0, resolver.last_report["patched_count"])
+
+    def test_class_name_marker_does_not_make_non_model_input_a_model(self):
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(object_info_for(values=["ltxv"], class_type="DualCLIPLoaderGGUF", input_name="type"))
+        )
+
+        resolved = resolver.resolve_workflow_models(
+            workflow_with(
+                "custom_type_value",
+                class_type="DualCLIPLoaderGGUF",
+                input_name="type",
+                title="DualCLIPLoader (GGUF)",
+            ),
+            workflow_path=Path("workflows/test.json"),
+        )
+
+        self.assertEqual("custom_type_value", resolved["12"]["inputs"]["type"])
+        self.assertEqual(0, resolver.last_report["patched_count"])
+
+    def test_multiple_model_errors_are_reported_together(self):
+        from feverslop.adapters.comfyui_model_resolver import (
+            ComfyUIModelResolutionError,
+            ComfyUIModelResolver,
+        )
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(
+                object_info_with_fields(
+                    "DualCLIPLoaderGGUF",
+                    {
+                        "clip_name1": ["known_clip_1.safetensors"],
+                        "clip_name2": ["known_clip_2.safetensors"],
+                    },
+                )
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ComfyUIModelResolutionError,
+            r"missing_clip_1\.safetensors.*missing_clip_2\.safetensors",
+        ):
+            resolver.resolve_workflow_models(
+                {
+                    "3": {
+                        "class_type": "DualCLIPLoaderGGUF",
+                        "inputs": {
+                            "clip_name1": "missing_clip_1.safetensors",
+                            "clip_name2": "missing_clip_2.safetensors",
+                        },
+                        "_meta": {"title": "DualCLIPLoader (GGUF)"},
+                    }
+                },
+                workflow_path=Path("workflows/test.json"),
+            )
+
     def test_basename_ambiguity_raises_clear_error(self):
         from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolutionError,
@@ -121,6 +246,30 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                 workflow_path=Path("workflows/test.json"),
             )
 
+    def test_empty_model_dropdown_raises_missing_model(self):
+        from feverslop.adapters.comfyui_model_resolver import (
+            ComfyUIModelResolutionError,
+            ComfyUIModelResolver,
+        )
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(object_info_for(values=[], class_type="UnetLoaderGGUF", input_name="unet_name"))
+        )
+
+        with self.assertRaisesRegex(
+            ComfyUIModelResolutionError,
+            r"ComfyUI model reference 'LTX-2\.3-22B-distilled-1\.1-Q6_K\.gguf'.*was not found",
+        ):
+            resolver.resolve_workflow_models(
+                workflow_with(
+                    "LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
+                    class_type="UnetLoaderGGUF",
+                    input_name="unet_name",
+                    title="Unet Loader \\(GGUF\\)",
+                ),
+                workflow_path=Path("workflows/test.json"),
+            )
+
     def test_missing_node_class_raises_clear_error(self):
         from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolutionError,
@@ -133,10 +282,18 @@ class ComfyUIModelResolverTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ComfyUIModelResolutionError,
-            r"workflow node type 'MissingCustomNode'.*is not available on the configured server",
+            r"Missing node types: node 12: MissingCustomNode.*node 13: AnotherMissingNode",
         ):
             resolver.resolve_workflow_models(
-                workflow_with("known.safetensors", class_type="MissingCustomNode"),
+                {
+                    **workflow_with("known.safetensors", class_type="MissingCustomNode"),
+                    **workflow_with(
+                        "known.safetensors",
+                        class_type="AnotherMissingNode",
+                        node_id="13",
+                        title="#MISSING_2",
+                    ),
+                },
                 workflow_path=Path("workflows/test.json"),
             )
 
@@ -286,6 +443,32 @@ class ComfyUIWorkflowValidationCliTests(unittest.TestCase):
         self.assertEqual(1, len(reports))
         self.assertEqual("sample.json", reports[0]["workflow"])
         self.assertEqual(1, reports[0]["patched_count"])
+
+    def test_validate_cli_reports_errors_without_stopping_at_first_workflow(self):
+        from feverslop.tools.validate_comfyui_workflows import validate_comfyui_workflows
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflows = temp / "workflows"
+            workflows.mkdir()
+            (workflows / "a.json").write_text(
+                json.dumps(workflow_with("missing-a.safetensors")),
+                encoding="utf-8",
+            )
+            (workflows / "b.json").write_text(
+                json.dumps(workflow_with("missing-b.safetensors")),
+                encoding="utf-8",
+            )
+
+            reports = validate_comfyui_workflows(
+                client=FakeObjectInfoClient(object_info_for(values=["known.safetensors"])),
+                workflows_dir=workflows,
+                overrides=[],
+            )
+
+        self.assertEqual(["a.json", "b.json"], [report["workflow"] for report in reports])
+        self.assertIn("missing-a.safetensors", reports[0]["errors"][0])
+        self.assertIn("missing-b.safetensors", reports[1]["errors"][0])
 
 
 if __name__ == "__main__":

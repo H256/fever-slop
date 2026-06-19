@@ -21,6 +21,24 @@ class NoOpComfyUIModelResolver:
 
 
 class ComfyUIModelResolver:
+    model_input_markers = (
+        "model",
+        "ckpt",
+        "checkpoint",
+        "lora",
+        "vae",
+        "clip",
+        "unet",
+        "control",
+        "upscale",
+        "embedding",
+        "hypernetwork",
+        "gligen",
+        "ipadapter",
+        "diffusion",
+        "diffusers",
+    )
+
     def __init__(
         self,
         client,
@@ -42,6 +60,7 @@ class ComfyUIModelResolver:
             self._apply_override(resolved, override, path_label, patched)
 
         dropdowns = self._model_dropdowns()
+        errors: list[str] = []
         for node_id, node in resolved.items():
             class_type = node.get("class_type")
             inputs = node.get("inputs", {})
@@ -52,14 +71,18 @@ class ComfyUIModelResolver:
                 value = inputs.get(input_name)
                 if not isinstance(value, str):
                     continue
-                replacement = self._resolve_value(
-                    value=value,
-                    candidates=candidates,
-                    workflow_path=path_label,
-                    node_id=str(node_id),
-                    class_type=class_type,
-                    input_name=input_name,
-                )
+                try:
+                    replacement = self._resolve_value(
+                        value=value,
+                        candidates=candidates,
+                        workflow_path=path_label,
+                        node_id=str(node_id),
+                        class_type=class_type,
+                        input_name=input_name,
+                    )
+                except ComfyUIModelResolutionError as exc:
+                    errors.append(str(exc))
+                    continue
                 if replacement != value:
                     inputs[input_name] = replacement
                     patched.append({
@@ -70,6 +93,9 @@ class ComfyUIModelResolver:
                         "to": replacement,
                     })
 
+        if errors:
+            raise ComfyUIModelResolutionError("; ".join(errors))
+
         self.last_report = {"workflow": path_label, "patched": patched, "patched_count": len(patched)}
         return resolved
 
@@ -79,14 +105,24 @@ class ComfyUIModelResolver:
         from pathlib import Path
 
         for workflow_path in sorted(Path(str(workflows_dir)).glob("*.json")):
-            workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
-            self.resolve_workflow_models(workflow, workflow_path=workflow_path)
-            reports.append({
-                "workflow": workflow_path.name,
-                "patched_count": self.last_report["patched_count"],
-                "patched": list(self.last_report["patched"]),
-                "directory": directory.as_posix(),
-            })
+            workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
+            try:
+                self.resolve_workflow_models(workflow, workflow_path=workflow_path)
+                reports.append({
+                    "workflow": workflow_path.name,
+                    "patched_count": self.last_report["patched_count"],
+                    "patched": list(self.last_report["patched"]),
+                    "errors": [],
+                    "directory": directory.as_posix(),
+                })
+            except ComfyUIModelResolutionError as exc:
+                reports.append({
+                    "workflow": workflow_path.name,
+                    "patched_count": 0,
+                    "patched": [],
+                    "errors": self._split_error_messages(str(exc)),
+                    "directory": directory.as_posix(),
+                })
         return reports
 
     def _object_info_payload(self) -> dict[str, Any]:
@@ -96,6 +132,7 @@ class ComfyUIModelResolver:
 
     def _validate_node_class_types(self, workflow: dict, workflow_path: str) -> None:
         server_class_types = set(self._object_info_payload())
+        missing: list[str] = []
         for node_id, node in workflow.items():
             if not isinstance(node, dict):
                 continue
@@ -104,10 +141,13 @@ class ComfyUIModelResolver:
                 continue
             node_title = str(node.get("_meta", {}).get("title", ""))
             title_suffix = f" titled '{node_title}'" if node_title else ""
+            missing.append(f"node {node_id}: {class_type}{title_suffix}")
+
+        if missing:
             raise ComfyUIModelResolutionError(
-                f"ComfyUI workflow node type '{class_type}' in {workflow_path} node {node_id}"
-                f"{title_suffix} is not available on the configured server. Install the required custom node "
-                f"or use a ComfyUI server/workflow with matching custom-node support."
+                f"ComfyUI workflow {workflow_path} uses node types that are not available on the "
+                f"configured server. Install the required custom nodes or use a ComfyUI server/workflow "
+                f"with matching custom-node support. Missing node types: {'; '.join(missing)}"
             )
 
     def _model_dropdowns(self) -> dict[str, dict[str, list[str]]]:
@@ -125,14 +165,19 @@ class ComfyUIModelResolver:
                     continue
                 for input_name, descriptor in fields.items():
                     candidates = self._dropdown_values(descriptor)
-                    if candidates:
+                    if candidates is not None and self._is_model_dropdown(str(class_type), str(input_name)):
                         class_dropdowns[str(input_name)] = candidates
             if class_dropdowns:
                 dropdowns[str(class_type)] = class_dropdowns
         return dropdowns
 
+    @classmethod
+    def _is_model_dropdown(cls, class_type: str, input_name: str) -> bool:
+        haystack = input_name.replace("-", "_").casefold()
+        return any(marker in haystack for marker in cls.model_input_markers)
+
     @staticmethod
-    def _dropdown_values(descriptor: Any) -> list[str]:
+    def _dropdown_values(descriptor: Any) -> list[str] | None:
         if (
             isinstance(descriptor, list)
             and descriptor
@@ -140,7 +185,16 @@ class ComfyUIModelResolver:
             and all(isinstance(item, str) for item in descriptor[0])
         ):
             return list(descriptor[0])
-        return []
+        if (
+            isinstance(descriptor, list)
+            and len(descriptor) >= 2
+            and descriptor[0] == "COMBO"
+            and isinstance(descriptor[1], dict)
+            and isinstance(descriptor[1].get("options"), list)
+            and all(isinstance(item, str) for item in descriptor[1]["options"])
+        ):
+            return list(descriptor[1]["options"])
+        return None
 
     def _resolve_value(
         self,
@@ -249,6 +303,10 @@ class ComfyUIModelResolver:
     @staticmethod
     def _basename(value: str) -> str:
         return value.rstrip("/").split("/")[-1]
+
+    @staticmethod
+    def _split_error_messages(message: str) -> list[str]:
+        return [part.strip() for part in message.split("; ") if part.strip()]
 
     @staticmethod
     def _ambiguous_error(

@@ -71,7 +71,7 @@ class StoryboardRenderer:
         )
 
     def load_workflow(self) -> dict:
-        return json.loads(self.zimage_workflow_path.read_text(encoding="utf-8"))
+        return json.loads(self.zimage_workflow_path.read_text(encoding="utf-8-sig"))
 
     def render_storyboard(
         self,

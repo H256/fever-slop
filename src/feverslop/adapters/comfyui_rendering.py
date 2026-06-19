@@ -32,7 +32,7 @@ class ComfyUIImageBackend:
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
 
     def load_workflow(self) -> dict:
-        return json.loads(self.workflow_path.read_text(encoding="utf-8"))
+        return json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
 
     def render_image(self, request: ImageRenderRequest) -> Path:
         workflow = self.load_workflow()
