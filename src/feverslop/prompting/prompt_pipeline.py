@@ -3,8 +3,7 @@
 from pathlib import Path
 import json
 
-from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.application.llm_parsing import extract_json_object
+from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.prompting.music_video_prompt_style import (
     build_concept_mapper_system_prompt,
     build_detail_system_prompt,
@@ -12,6 +11,7 @@ from feverslop.prompting.music_video_prompt_style import (
     build_t2i_system_prompt,
     build_video_payload,
 )
+from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 
 
@@ -260,5 +260,5 @@ Rules for locations:
         return result
 
     @staticmethod
-    def save_json(path: str | Path, data) -> Path:
-        return JsonArtifactStore().write_json(path, data)
+    def save_json(path: str | Path, data, *, artifact_store: ArtifactStore) -> Path:
+        return artifact_store.write_json(path, data)

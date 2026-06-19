@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.ports.artifacts import ArtifactStore
 
 @dataclass(frozen=True)
@@ -88,7 +87,7 @@ def write_scene_srt(
     path: str | Path,
     scenes: list[SrtScene],
     *,
-    artifact_store: ArtifactStore | None = None,
+    artifact_store: ArtifactStore,
 ) -> Path:
     blocks = []
 
@@ -102,7 +101,6 @@ def write_scene_srt(
             ])
         )
 
-    artifact_store = artifact_store or JsonArtifactStore()
     return artifact_store.write_text(path, "\n\n".join(blocks) + "\n")
 
 
@@ -284,6 +282,8 @@ def enforce_scene_srt_file(
     output_srt: str | Path,
     min_duration: float,
     max_duration: float,
+    *,
+    artifact_store: ArtifactStore,
 ) -> Path:
     scenes = parse_scene_srt(input_srt)
     repaired = enforce_scene_duration_constraints(
@@ -291,7 +291,7 @@ def enforce_scene_srt_file(
         min_duration=min_duration,
         max_duration=max_duration,
     )
-    return write_scene_srt(output_srt, repaired)
+    return write_scene_srt(output_srt, repaired, artifact_store=artifact_store)
 
 
 def validate_scene_durations(

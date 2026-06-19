@@ -1,7 +1,8 @@
 ﻿from __future__ import annotations
 
+from typing import Any, Callable
+
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
-from feverslop.pipeline.render_plan_builder import build_render_plan
 
 
 class RenderPlanPipeline:
@@ -9,6 +10,9 @@ class RenderPlanPipeline:
 
     required_keys = {"scene_prompts_json", "ltx_prompt_relay_json", "render_plan_json", "video_settings"}
     produced_keys = {"render_plan"}
+
+    def __init__(self, *, build_render_plan: Callable[..., Any]):
+        self.build_render_plan = build_render_plan
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -23,7 +27,7 @@ class RenderPlanPipeline:
         log_file = context["log_file"]
 
         log_step("9. Render Plan")
-        build_render_plan(
+        self.build_render_plan(
             scene_prompts_json=context["scene_prompts_json"],
             ltx_prompt_relay_json=context["ltx_prompt_relay_json"],
             output_json_file=render_plan_json,

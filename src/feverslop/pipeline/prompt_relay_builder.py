@@ -3,7 +3,6 @@
 from pathlib import Path
 import re
 
-from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
 
@@ -67,9 +66,8 @@ def build_scene_prompt_relay(
     ),
     min_segment_duration: float = 0.25,
     *,
-    artifact_store: ArtifactStore | None = None,
+    artifact_store: ArtifactStore,
 ) -> Path:
-    artifact_store = artifact_store or JsonArtifactStore()
     scenes = parse_scene_srt(scene_srt_file)
     timeline = artifact_store.read_json(vocal_timeline_json)
 

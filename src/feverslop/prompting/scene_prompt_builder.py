@@ -4,12 +4,12 @@ from pathlib import Path
 import json
 import re
 
-from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.music_video_prompt_style import (
     build_i2v_system_prompt,
     build_t2i_system_prompt,
     build_video_payload,
 )
+from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 
 
@@ -125,6 +125,7 @@ class ScenePromptBuilder:
         zimage_instructions: str = "",
         ltx_instructions: str = "",
         trigger_word: str = "",
+        artifact_store: ArtifactStore,
     ) -> Path:
         output = []
 
@@ -162,5 +163,4 @@ class ScenePromptBuilder:
                 "original_style_i2v_prompt": i2v_prompt_from_t2i,
             })
 
-        output_json_path = Path(output_json_path)
-        return JsonArtifactStore().write_json(output_json_path, output)
+        return artifact_store.write_json(output_json_path, output)

@@ -36,6 +36,12 @@ class ImportBoundaryTests(unittest.TestCase):
         forbidden = [
             "from feverslop.adapters.",
             "import feverslop.adapters.",
+            "from feverslop.audio.",
+            "import feverslop.audio.",
+            "from feverslop.pipeline.",
+            "import feverslop.pipeline.",
+            "from feverslop.prompting.",
+            "import feverslop.prompting.",
             "from app_config",
             "from project_config",
             "from beat_analysis",
@@ -52,6 +58,59 @@ class ImportBoundaryTests(unittest.TestCase):
         ]
         offenders = []
         for path in app_root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in text:
+                    offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
+    def test_inner_layers_do_not_import_concrete_adapters(self):
+        inner_layers = [
+            Path("src/feverslop/domain"),
+            Path("src/feverslop/ports"),
+            Path("src/feverslop/application"),
+            Path("src/feverslop/pipeline"),
+            Path("src/feverslop/prompting"),
+        ]
+        forbidden = [
+            "from feverslop.adapters.",
+            "import feverslop.adapters.",
+        ]
+        offenders = []
+        for layer_root in inner_layers:
+            for path in layer_root.rglob("*.py"):
+                text = path.read_text(encoding="utf-8")
+                for token in forbidden:
+                    if token in text:
+                        offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
+    def test_prompting_layer_does_not_import_application_layer(self):
+        prompting_root = Path("src/feverslop/prompting")
+        forbidden = [
+            "from feverslop.application.",
+            "import feverslop.application.",
+        ]
+        offenders = []
+        for path in prompting_root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in text:
+                    offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
+    def test_composition_layer_does_not_import_root_compatibility_facades(self):
+        composition_root = Path("src/feverslop/composition")
+        forbidden = [
+            "from storyboard_renderer import",
+            "from workflow_patcher import",
+            "from ltx_video_renderer import",
+        ]
+        offenders = []
+        for path in composition_root.rglob("*.py"):
             text = path.read_text(encoding="utf-8")
             for token in forbidden:
                 if token in text:

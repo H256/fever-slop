@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from feverslop.application.llm_parsing import extract_json_object
+from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.audio.vocal_timeline_analyzer import TimelineSegment
 from feverslop.ports.llm import LLMPort
 

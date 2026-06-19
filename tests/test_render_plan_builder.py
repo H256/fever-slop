@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.pipeline.render_plan_builder import (
     DetailListPicker,
     build_original_style_i2v_prompt,
@@ -157,6 +158,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                 ltx_prompt_relay_json=relay_path,
                 output_json_file=output_path,
                 video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
             )
 
             plan = json.loads(output_path.read_text(encoding="utf-8"))
@@ -203,6 +205,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                 ltx_prompt_relay_json=relay_path,
                 output_json_file=output_path,
                 video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
             )
 
             plan = json.loads(output_path.read_text(encoding="utf-8"))
@@ -248,6 +251,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                 ltx_prompt_relay_json=relay_path,
                 output_json_file=output_path,
                 video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
             )
 
             plan = json.loads(output_path.read_text(encoding="utf-8"))

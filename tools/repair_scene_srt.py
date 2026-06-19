@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.pipeline.scene_duration_enforcer import (
     parse_scene_srt,
     enforce_scene_srt_file,
@@ -32,6 +33,7 @@ def main():
         output_srt=args.output_srt,
         min_duration=args.min_duration,
         max_duration=args.max_duration,
+        artifact_store=JsonArtifactStore(),
     )
     after = parse_scene_srt(output)
 

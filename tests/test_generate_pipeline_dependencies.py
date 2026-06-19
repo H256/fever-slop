@@ -113,8 +113,9 @@ class FakePromptPipeline:
             for segment in (stage1_segments or [])
         }
 
-    def save_json(self, path, data):
+    def save_json(self, path, data, *, artifact_store):
         self.saved[str(path)] = data
+        artifact_store.write_json(path, data)
         return Path(path)
 
 
@@ -173,6 +174,17 @@ def _audio_context(temp: Path, artifact_store: FakeArtifactStore) -> GenerateRen
 
 
 class GeneratePipelineDependencyTests(unittest.TestCase):
+    def _audio_pipeline(self, separator, vocal_analyzer, beat_analyzer, lyric_aligner_factory=None):
+        return AudioTimelinePipeline(
+            separator_factory=lambda config: separator,
+            vocal_analyzer_factory=lambda config: vocal_analyzer,
+            beat_analyzer_factory=lambda: beat_analyzer,
+            lyric_aligner_factory=lyric_aligner_factory,
+            normalize_empty_vocals=lambda timeline: timeline,
+            merge_same_kind_segments=lambda timeline, merge_gap: timeline,
+            save_timeline_json=lambda timeline, path: None,
+        )
+
     def test_audio_pipeline_uses_injected_dependencies(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -180,11 +192,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             separator = FakeSeparator()
             vocal_analyzer = FakeVocalAnalyzer()
             beat_analyzer = FakeBeatAnalyzer(artifact_store)
-            pipeline = AudioTimelinePipeline(
-                separator_factory=lambda config: separator,
-                vocal_analyzer_factory=lambda config: vocal_analyzer,
-                beat_analyzer_factory=lambda: beat_analyzer,
-            )
+            pipeline = self._audio_pipeline(separator, vocal_analyzer, beat_analyzer)
 
             context = pipeline.execute(_audio_context(temp, artifact_store))
 
@@ -204,10 +212,10 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             lyric_aligner = FakeLyricAligner()
             context = _audio_context(temp, artifact_store)
             context.config.lyrics = "full reference lyrics"
-            pipeline = AudioTimelinePipeline(
-                separator_factory=lambda config: separator,
-                vocal_analyzer_factory=lambda config: vocal_analyzer,
-                beat_analyzer_factory=lambda: beat_analyzer,
+            pipeline = self._audio_pipeline(
+                separator,
+                vocal_analyzer,
+                beat_analyzer,
                 lyric_aligner_factory=lambda context: lyric_aligner,
             )
 
@@ -227,10 +235,10 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             lyric_aligner = FakeLyricAligner()
             context = _audio_context(temp, artifact_store)
             context.config.lyrics = ""
-            pipeline = AudioTimelinePipeline(
-                separator_factory=lambda config: separator,
-                vocal_analyzer_factory=lambda config: vocal_analyzer,
-                beat_analyzer_factory=lambda: beat_analyzer,
+            pipeline = self._audio_pipeline(
+                separator,
+                vocal_analyzer,
+                beat_analyzer,
                 lyric_aligner_factory=lambda context: lyric_aligner,
             )
 
@@ -312,6 +320,7 @@ def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanCo
                 "lyrics": "line",
             }
         ],
+        artifact_store=FakeArtifactStore(),
         console=FakeConsole(),
         log_step=lambda title: None,
         log_file=lambda label, path: None,

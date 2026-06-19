@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
 
 
@@ -49,6 +50,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                     "prompt_guidance": {},
                 },
                 output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
             )
 
             data = json.loads(output_path.read_text(encoding="utf-8"))

@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from typing import Any, Callable
+
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import (
     BeatImpactAnalyzerFactory,
@@ -8,10 +10,6 @@ from feverslop.ports.generate_pipeline import (
     VocalTimelineAnalyzerFactory,
 )
 from rich.table import Table
-
-from feverslop.pipeline.utils import save_timeline_json
-from feverslop.audio.vocal_timeline_analyzer import merge_same_kind_segments, normalize_empty_vocals
-
 
 class AudioTimelinePipeline:
     """Application service boundary for stem, vocal timeline, and beat analysis."""
@@ -26,11 +24,17 @@ class AudioTimelinePipeline:
         vocal_analyzer_factory: VocalTimelineAnalyzerFactory,
         beat_analyzer_factory: BeatImpactAnalyzerFactory,
         lyric_aligner_factory: LyricAlignerFactory | None = None,
+        normalize_empty_vocals: Callable[[list[Any]], list[Any]],
+        merge_same_kind_segments: Callable[..., list[Any]],
+        save_timeline_json: Callable[..., Any],
     ):
         self.separator_factory = separator_factory
         self.vocal_analyzer_factory = vocal_analyzer_factory
         self.beat_analyzer_factory = beat_analyzer_factory
         self.lyric_aligner_factory = lyric_aligner_factory
+        self.normalize_empty_vocals = normalize_empty_vocals
+        self.merge_same_kind_segments = merge_same_kind_segments
+        self.save_timeline_json = save_timeline_json
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -69,8 +73,8 @@ class AudioTimelinePipeline:
             "Detecting vocal activity and transcribing lyrics...",
             lambda: analyzer.analyze(files["vocals"]),
         )
-        timeline = normalize_empty_vocals(timeline)
-        timeline = merge_same_kind_segments(timeline, merge_gap=vocal_cfg.merge_gap)
+        timeline = self.normalize_empty_vocals(timeline)
+        timeline = self.merge_same_kind_segments(timeline, merge_gap=vocal_cfg.merge_gap)
         reference_lyrics = str(getattr(config, "lyrics", "") or "").strip()
         if reference_lyrics and self.lyric_aligner_factory is not None:
             aligner = self.lyric_aligner_factory(context)
@@ -78,7 +82,7 @@ class AudioTimelinePipeline:
                 "Correcting Whisper lyrics against project lyrics...",
                 lambda: aligner.align(timeline, reference_lyrics),
             )
-        save_timeline_json(timeline, timeline_json)
+        self.save_timeline_json(timeline, timeline_json)
         log_file("Timeline JSON", timeline_json)
 
         vocal_count = sum(1 for seg in timeline if seg.kind == "vocals")

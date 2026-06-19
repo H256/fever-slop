@@ -1,6 +1,10 @@
 import unittest
 from pathlib import Path
+import sys
+import tempfile
+from unittest.mock import patch
 
+from tools.repair_scene_srt import main as repair_scene_srt_main
 import run_pipeline
 
 
@@ -79,6 +83,34 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertTrue(args.skip_final_concat)
         self.assertTrue(args.diagnostic_original_audio_mux)
         self.assertTrue(args.no_original_audio_mux)
+
+    def test_repair_scene_srt_cli_writes_repaired_output(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            input_srt = temp / "input.srt"
+            output_srt = temp / "output.srt"
+            input_srt.write_text(
+                "1\n00:00:00,000 --> 00:00:00,500\nScene 1\n\n"
+                "2\n00:00:00,500 --> 00:00:02,000\nScene 2\n",
+                encoding="utf-8",
+            )
+
+            argv = [
+                "repair_scene_srt.py",
+                "--input-srt",
+                str(input_srt),
+                "--output-srt",
+                str(output_srt),
+                "--min-duration",
+                "1.0",
+                "--max-duration",
+                "3.0",
+            ]
+            with patch.object(sys, "argv", argv):
+                repair_scene_srt_main()
+
+            self.assertTrue(output_srt.exists())
+            self.assertIn("00:00:00,000 --> 00:00:02,000", output_srt.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.pipeline.prompt_relay_builder import parse_scene_srt, overlap
 
@@ -14,9 +13,8 @@ def build_stage1_segment_json(
     min_vocal_ratio_for_vocals: float = 0.65,
     min_vocal_ratio_for_mixed: float = 0.10,
     *,
-    artifact_store: ArtifactStore | None = None,
+    artifact_store: ArtifactStore,
 ) -> Path:
-    artifact_store = artifact_store or JsonArtifactStore()
     scenes = parse_scene_srt(scene_srt_file)
     timeline = artifact_store.read_json(vocal_timeline_json)
 

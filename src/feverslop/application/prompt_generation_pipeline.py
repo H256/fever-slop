@@ -14,10 +14,6 @@ from feverslop.ports.generate_pipeline import (
 from rich.panel import Panel
 from rich.table import Table
 
-from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
-from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
-from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
-
 
 def join_notes(*parts: str) -> str:
     return "\n".join(part.strip() for part in parts if part and part.strip())
@@ -57,14 +53,14 @@ class PromptGenerationPipeline:
         self,
         *,
         llm_factory: LLMFactory,
-        prompt_pipeline_factory: PromptPipelineFactory | None = None,
-        concept_batcher_factory: ConceptBatcherFactory | None = None,
-        scene_prompt_builder_factory: ScenePromptBuilderFactory | None = None,
+        prompt_pipeline_factory: PromptPipelineFactory,
+        concept_batcher_factory: ConceptBatcherFactory,
+        scene_prompt_builder_factory: ScenePromptBuilderFactory,
     ):
         self.llm_factory = llm_factory
-        self.prompt_pipeline_factory = prompt_pipeline_factory or MusicVideoPromptPipeline
-        self.concept_batcher_factory = concept_batcher_factory or ConceptPromptBatcher
-        self.scene_prompt_builder_factory = scene_prompt_builder_factory or ScenePromptBuilder
+        self.prompt_pipeline_factory = prompt_pipeline_factory
+        self.concept_batcher_factory = concept_batcher_factory
+        self.scene_prompt_builder_factory = scene_prompt_builder_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -85,6 +81,7 @@ class PromptGenerationPipeline:
         log_file = context["log_file"]
         run_spinner = context["run_spinner"]
         console = context["console"]
+        artifact_store = context["artifact_store"]
 
         log_step("7. LLM Prompt Pipeline")
         llm = self.llm_factory(app_config)
@@ -101,7 +98,11 @@ class PromptGenerationPipeline:
             run_spinner=run_spinner,
             console=console,
         )
-        prompt_pipeline.save_json(resolved_context_json, global_context)
+        prompt_pipeline.save_json(
+            resolved_context_json,
+            global_context,
+            artifact_store=artifact_store,
+        )
         log_file("Resolved Context JSON", resolved_context_json)
         console.print(Panel(global_context["story_idea"], title="Story Idea", border_style="green"))
         console.print(Panel(global_context["style"], title="Style Block", border_style="green"))
@@ -164,7 +165,11 @@ class PromptGenerationPipeline:
             seg["segment_id"]: concept_prompts[seg["segment_id"]]
             for seg in stage1_segments
         }
-        prompt_pipeline.save_json(concept_prompts_json, concept_prompts)
+        prompt_pipeline.save_json(
+            concept_prompts_json,
+            concept_prompts,
+            artifact_store=artifact_store,
+        )
         log_file("Concept Prompts JSON", concept_prompts_json)
 
         scene_details = run_spinner(
@@ -176,7 +181,11 @@ class PromptGenerationPipeline:
                 global_context=global_context,
             ),
         )
-        prompt_pipeline.save_json(scene_details_json, scene_details)
+        prompt_pipeline.save_json(
+            scene_details_json,
+            scene_details,
+            artifact_store=artifact_store,
+        )
         log_file("Scene Details JSON", scene_details_json)
 
         log_step("8. Z-Image + LTX Scene Prompts")
@@ -192,6 +201,7 @@ class PromptGenerationPipeline:
                 zimage_instructions=get_steering_value(config, "zimage"),
                 ltx_instructions=get_steering_value(config, "ltx"),
                 trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
+                artifact_store=artifact_store,
             ),
         )
         log_file("Scene Prompts JSON", scene_prompts_json)
@@ -209,7 +219,7 @@ class PromptGenerationPipeline:
         self,
         *,
         config: Any,
-        prompt_pipeline: MusicVideoPromptPipeline,
+        prompt_pipeline: Any,
         all_lyrics: str,
         run_spinner: Callable[[str, Callable[[], Any]], Any],
         console: Any,

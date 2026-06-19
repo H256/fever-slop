@@ -1,20 +1,5 @@
-from __future__ import annotations
+"""Compatibility facade; prefer feverslop.domain.llm_parsing."""
 
-import json
-import re
+from feverslop.domain.llm_parsing import extract_json_object
 
-
-def extract_json_object(text: str) -> dict:
-    text = text.strip()
-
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"```$", "", text).strip()
-
-    start = text.find("{")
-    end = text.rfind("}")
-
-    if start == -1 or end == -1:
-        raise ValueError(f"No JSON object found in LLM response:\n{text}")
-
-    return json.loads(text[start:end + 1])
+__all__ = ["extract_json_object"]

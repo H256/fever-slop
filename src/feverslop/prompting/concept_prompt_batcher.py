@@ -4,9 +4,9 @@ from pathlib import Path
 import json
 from typing import Any
 
-from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.application.llm_parsing import extract_json_object
+from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.prompting.music_video_prompt_style import build_concept_mapper_system_prompt
+from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 
 
@@ -262,5 +262,5 @@ Do not mention JSON or segment ids unless needed.
         )
 
 
-def save_concepts(path: str | Path, concepts: dict) -> Path:
-    return JsonArtifactStore().write_json(path, concepts)
+def save_concepts(path: str | Path, concepts: dict, *, artifact_store: ArtifactStore) -> Path:
+    return artifact_store.write_json(path, concepts)

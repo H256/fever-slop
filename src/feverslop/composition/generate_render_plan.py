@@ -14,10 +14,27 @@ from feverslop.application.prompt_generation_pipeline import PromptGenerationPip
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
 from feverslop.audio.beat_analysis import BeatImpactAnalyzer
+from feverslop.audio.beat_analysis import BeatSceneDurationGenerator
 from feverslop.audio.demucs_separator import DemucsSeparator
-from feverslop.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+from feverslop.audio.vocal_timeline_analyzer import (
+    VocalTimelineAnalyzer,
+    merge_same_kind_segments,
+    normalize_empty_vocals,
+)
+from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
+from feverslop.pipeline.render_plan_builder import build_render_plan
+from feverslop.pipeline.scene_duration_enforcer import (
+    enforce_scene_srt_file,
+    parse_scene_srt,
+    validate_scene_durations,
+)
+from feverslop.pipeline.stage1_segment_builder import build_stage1_segment_json
+from feverslop.pipeline.utils import save_timeline_json
+from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
-from storyboard_renderer import StoryboardRenderer
+from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
+from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
+from feverslop.adapters.storyboard_renderer import StoryboardRenderer
 
 
 def build_generate_render_plan_use_case(console: Console | None = None) -> GenerateRenderPlanUseCase:
@@ -30,10 +47,25 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                 vocal_analyzer_factory=_build_vocal_analyzer,
                 beat_analyzer_factory=BeatImpactAnalyzer,
                 lyric_aligner_factory=lambda context: LyricTimelineAligner(_build_llm(context["app_config"])),
+                normalize_empty_vocals=normalize_empty_vocals,
+                merge_same_kind_segments=merge_same_kind_segments,
+                save_timeline_json=save_timeline_json,
             ),
-            SceneTimelinePipeline(),
-            PromptGenerationPipeline(llm_factory=_build_llm),
-            RenderPlanPipeline(),
+            SceneTimelinePipeline(
+                scene_generator_factory=_build_scene_generator,
+                enforce_scene_srt_file=enforce_scene_srt_file,
+                parse_scene_srt=parse_scene_srt,
+                validate_scene_durations=validate_scene_durations,
+                build_stage1_segment_json=build_stage1_segment_json,
+                build_scene_prompt_relay=build_scene_prompt_relay,
+            ),
+            PromptGenerationPipeline(
+                llm_factory=_build_llm,
+                prompt_pipeline_factory=MusicVideoPromptPipeline,
+                concept_batcher_factory=ConceptPromptBatcher,
+                scene_prompt_builder_factory=ScenePromptBuilder,
+            ),
+            RenderPlanPipeline(build_render_plan=build_render_plan),
         ],
         storyboard_renderer_factory=_build_storyboard_renderer,
     )
@@ -60,6 +92,16 @@ def _build_llm(app_config):
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,
+    )
+
+
+def _build_scene_generator(scene_cfg):
+    return BeatSceneDurationGenerator(
+        min_duration=scene_cfg.min_duration,
+        max_duration=scene_cfg.max_duration,
+        bias=scene_cfg.bias,
+        duration_preset=scene_cfg.duration_preset,
+        seed=scene_cfg.seed,
     )
 
 

@@ -3,7 +3,6 @@
 from pathlib import Path
 import random
 
-from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
 
@@ -242,7 +241,7 @@ def build_render_plan(
     output_json_file: str | Path,
     video_settings: VideoSettings,
     *,
-    artifact_store: ArtifactStore | None = None,
+    artifact_store: ArtifactStore,
 ) -> Path:
     """
     Combines:
@@ -257,7 +256,6 @@ def build_render_plan(
     - frame_count == round(fps * duration_seconds).
     """
 
-    artifact_store = artifact_store or JsonArtifactStore()
     scene_prompts = artifact_store.read_json(scene_prompts_json)
     relay_scenes = artifact_store.read_json(ltx_prompt_relay_json)
 
