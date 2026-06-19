@@ -5,6 +5,7 @@ import json
 import shutil
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings
@@ -62,6 +63,7 @@ class ComfyUIVideoRenderBackend:
         postprocess_reencode: bool = True,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         workflow_patcher: LTXWorkflowPatcher | None = None,
+        model_resolver=None,
         render_queue: ComfyUIRenderQueue | None = None,
         postprocessor: VideoPostProcessor | None = None,
     ):
@@ -114,6 +116,7 @@ class ComfyUIVideoRenderBackend:
         self.tail_loss_frames = max(0, int(tail_loss_frames))
         self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
         self.postprocess = postprocess
+        self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.postprocessor = postprocessor or VideoPostProcessor(
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
@@ -280,6 +283,11 @@ class ComfyUIVideoRenderBackend:
             comfy_audio_name=comfy_audio_name,
             comfy_startframe_name=comfy_startframe_name,
             rolling=rolling,
+        )
+        mode = self.workflow_patcher.render_mode_for_scene(scene)
+        workflow = self.model_resolver.resolve_workflow_models(
+            workflow,
+            workflow_path=self.workflow_patcher.workflow_path_for_mode(mode),
         )
         return self.render_queue.queue_workflow_and_download_first_video(
             workflow,

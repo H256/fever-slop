@@ -43,6 +43,7 @@ class StoryboardRenderer:
         seed_node_title: str | None = None,
         seed_input_name: str = "seed",
         filename_prefix_input_name: str = "filename_prefix",
+        model_resolver=None,
     ):
         self.client = client
         self.zimage_workflow_path = Path(zimage_workflow_path)
@@ -66,6 +67,7 @@ class StoryboardRenderer:
             seed_node_title=seed_node_title,
             seed_input_name=seed_input_name,
             filename_prefix_input_name=filename_prefix_input_name,
+            model_resolver=model_resolver,
         )
 
     def load_workflow(self) -> dict:

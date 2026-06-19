@@ -5,6 +5,7 @@ from pathlib import Path
 from rich.console import Console
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from autoprompter.application.audio_timeline_pipeline import AudioTimelinePipeline
@@ -62,6 +63,10 @@ def _build_llm(app_config):
 
 def _build_storyboard_renderer(app_config, render_dir: Path, workflow_path: Path):
     client = ComfyUIClient(base_url=app_config.comfyui.base_url)
+    model_resolver = ComfyUIModelResolver(
+        client,
+        overrides=app_config.comfyui.model_overrides,
+    )
     return StoryboardRenderer(
         client=client,
         zimage_workflow_path=workflow_path,
@@ -70,4 +75,5 @@ def _build_storyboard_renderer(app_config, render_dir: Path, workflow_path: Path
         negative_prompt_node_title="#NEGATIVE_PROMPT",
         save_image_node_title="#SAVE_IMAGE",
         character_lora_node_title="#CHARACTER_LORA",
+        model_resolver=model_resolver,
     )

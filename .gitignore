@@ -11,3 +11,4 @@ wheels/
 .idea
 projects
 .agent
+app_config.json

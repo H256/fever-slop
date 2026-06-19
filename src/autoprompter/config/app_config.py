@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import json
+
+from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelOverride
 
 
 @dataclass
@@ -16,6 +18,7 @@ class LLMConfig:
 @dataclass
 class ComfyUIConfig:
     base_url: str = "http://127.0.0.1:8188"
+    model_overrides: list[ComfyUIModelOverride] = field(default_factory=list)
 
 
 @dataclass
@@ -46,5 +49,9 @@ class AppConfig:
             ),
             comfyui=ComfyUIConfig(
                 base_url=comfyui_raw.get("base_url", "http://127.0.0.1:8188"),
+                model_overrides=[
+                    ComfyUIModelOverride.from_dict(item)
+                    for item in comfyui_raw.get("model_overrides", [])
+                ],
             ),
         )

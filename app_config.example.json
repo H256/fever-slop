@@ -6,6 +6,7 @@
     "max_tokens": 4096
   },
   "comfyui": {
-    "base_url": "http://127.0.0.1:8188"
+    "base_url": "http://127.0.0.1:8188",
+    "model_overrides": []
   }
 }

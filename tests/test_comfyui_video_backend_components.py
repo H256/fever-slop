@@ -531,6 +531,83 @@ class FakePostprocessor:
         return Path(output_file)
 
 
+class FakeModelResolver:
+    def __init__(self):
+        self.calls = []
+
+    def resolve_workflow_models(self, workflow, workflow_path=None):
+        self.calls.append((workflow, Path(workflow_path) if workflow_path is not None else None))
+        patched = dict(workflow)
+        patched["resolved"] = {"inputs": {"ok": True}}
+        return patched
+
+
+class ComfyUIImageBackendModelResolverTests(unittest.TestCase):
+    def test_image_backend_queues_resolved_workflow(self):
+        from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
+        from autoprompter.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
+
+        class Client:
+            def __init__(self):
+                self.queued_workflow = None
+
+            def queue_prompt(self, workflow):
+                self.queued_workflow = workflow
+                return "prompt-id"
+
+            def wait_for_completion(self, prompt_id):
+                return {"outputs": {"save": {"images": [{"filename": "scene.png"}]}}}
+
+            def extract_output_images(self, history):
+                return history["outputs"]["save"]["images"]
+
+            def download_view_file(self, *, filename, subfolder, file_type, output_path):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"png")
+                return Path(output_path)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "image.json"
+            workflow_path.write_text(
+                json.dumps(
+                    {
+                        "1": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                        "2": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_IMAGE"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            client = Client()
+            resolver = FakeModelResolver()
+
+            backend = ComfyUIImageBackend(
+                client=client,
+                workflow_path=workflow_path,
+                output_dir=temp,
+                model_resolver=resolver,
+            )
+
+            backend.render_image(
+                ImageRenderRequest(
+                    scene={},
+                    scene_number=1,
+                    prompt="prompt",
+                    workflow_path=workflow_path,
+                    output_dir=temp,
+                    anchors=WorkflowAnchorConfig(
+                        positive_prompt_title="#PROMPT",
+                        negative_prompt_title=None,
+                        save_image_title="#SAVE_IMAGE",
+                        character_lora_title=None,
+                    ),
+                )
+            )
+
+            self.assertIn("resolved", client.queued_workflow)
+            self.assertEqual(workflow_path, resolver.calls[0][1])
+
+
 class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
     def _render_plan_scene(self) -> dict:
         return {
@@ -566,6 +643,43 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
         self.assertIsInstance(backend.workflow_patcher, FakeWorkflowPatcher)
         self.assertIsInstance(backend.render_queue, FakeRenderQueue)
         self.assertIsInstance(backend.postprocessor, FakePostprocessor)
+
+    def test_video_backend_queues_resolved_workflow_after_dynamic_patching(self):
+        from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from autoprompter.domain.ltx_rendering import AudioWindowSpec
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow_patcher = FakeWorkflowPatcher()
+            render_queue = FakeRenderQueue()
+            resolver = FakeModelResolver()
+            backend = ComfyUIVideoRenderBackend(
+                client=object(),
+                ltx_workflow_path="relay.json",
+                output_dir=Path(temp_dir) / "out",
+                workflow_patcher=workflow_patcher,
+                render_queue=render_queue,
+                model_resolver=resolver,
+            )
+
+            backend.render_scene_video(
+                scene=self._render_plan_scene(),
+                comfy_audio_name="audio.mp3",
+                comfy_startframe_name="scene.png",
+                rolling=AudioWindowSpec(
+                    scene_frame_count=48,
+                    render_frame_count=48,
+                    trim_front_frames=0,
+                    tail_loss_frames=0,
+                    fps=24,
+                    audio_start_seconds=0,
+                    audio_duration_seconds=2,
+                ),
+            )
+
+            queued_workflow = render_queue.calls[0][0]
+            self.assertEqual({"scene": 1}, resolver.calls[0][0])
+            self.assertEqual(Path("single_prompt.json"), resolver.calls[0][1])
+            self.assertIn("resolved", queued_workflow)
 
     def test_render_videos_runs_with_fake_collaborators_without_comfyui_client(self):
         from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend

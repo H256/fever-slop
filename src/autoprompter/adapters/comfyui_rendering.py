@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 
 from autoprompter.adapters.comfyui_client import ComfyUIClient
+from autoprompter.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 from autoprompter.ports.rendering import ImageRenderRequest
 from autoprompter.adapters.workflow_patcher import WorkflowPatcher
@@ -20,6 +21,7 @@ class ComfyUIImageBackend:
         seed_node_title: str | None = None,
         seed_input_name: str = "seed",
         filename_prefix_input_name: str = "filename_prefix",
+        model_resolver=None,
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -27,6 +29,7 @@ class ComfyUIImageBackend:
         self.seed_node_title = seed_node_title
         self.seed_input_name = seed_input_name
         self.filename_prefix_input_name = filename_prefix_input_name
+        self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
 
     def load_workflow(self) -> dict:
         return json.loads(self.workflow_path.read_text(encoding="utf-8"))
@@ -71,7 +74,11 @@ class ComfyUIImageBackend:
                 f"storyboard/scene_{scene_number:04}",
             )
 
-        prompt_id = self.client.queue_prompt(patcher.get())
+        workflow = self.model_resolver.resolve_workflow_models(
+            patcher.get(),
+            workflow_path=self.workflow_path,
+        )
+        prompt_id = self.client.queue_prompt(workflow)
         history = self.client.wait_for_completion(prompt_id)
         images = self.client.extract_output_images(history)
 

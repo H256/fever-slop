@@ -45,6 +45,14 @@ class ComfyUIClient:
         response.raise_for_status()
         return response.json()
 
+    def get_object_info(self) -> dict:
+        response = requests.get(
+            f"{self.base_url}/object_info",
+            timeout=60,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def wait_for_completion(
         self,
         prompt_id: str,

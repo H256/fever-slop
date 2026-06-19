@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from autoprompter.adapters.local_artifacts import JsonArtifactStore
 from autoprompter.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from autoprompter.config.app_config import AppConfig
@@ -234,6 +235,10 @@ def main():
     ))
 
     client = ComfyUIClient(base_url=app_config.comfyui.base_url)
+    model_resolver = ComfyUIModelResolver(
+        client,
+        overrides=app_config.comfyui.model_overrides,
+    )
 
     backend = ComfyUIVideoRenderBackend(
         client=client,
@@ -262,6 +267,7 @@ def main():
         postprocess=not args.no_postprocess,
         ffmpeg_path=args.ffmpeg,
         postprocess_reencode=not args.postprocess_streamcopy,
+        model_resolver=model_resolver,
     )
 
     use_case = RenderVideoScenesUseCase(
