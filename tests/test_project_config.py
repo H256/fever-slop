@@ -98,8 +98,43 @@ class ProjectConfigTests(unittest.TestCase):
             self.assertEqual("characters/first.safetensors", config.loras[0].name)
             self.assertEqual(0.8, config.loras[0].strength_model)
             self.assertEqual(0.6, config.loras[0].strength_clip)
+            self.assertTrue(config.loras[0].name_explicit)
+            self.assertTrue(config.loras[0].strength_model_explicit)
+            self.assertTrue(config.loras[0].strength_clip_explicit)
             self.assertFalse(config.loras[1].enabled)
             self.assertEqual("characters/second.safetensors", config.loras[1].name)
+
+    def test_loras_array_tracks_omitted_optional_patch_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "test",
+                        "input_audio": "song.mp3",
+                        "loras": [
+                            {
+                                "enabled": True,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertEqual(1, len(config.loras))
+            self.assertTrue(config.loras[0].enabled)
+            self.assertEqual("", config.loras[0].name)
+            self.assertEqual(1.0, config.loras[0].strength_model)
+            self.assertEqual(1.0, config.loras[0].strength_clip)
+            self.assertFalse(config.loras[0].name_explicit)
+            self.assertFalse(config.loras[0].strength_model_explicit)
+            self.assertFalse(config.loras[0].strength_clip_explicit)
 
     def test_lora_1_is_fallback_when_loras_array_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:

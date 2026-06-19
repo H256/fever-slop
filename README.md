@@ -614,7 +614,7 @@ uv run python render_ltx.py `
   --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
 ```
 
-Der LTX-Workflow muss die LoRA-Nodes bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein. Ohne Split patcht LoRA `N` den vorhandenen Node `#LORA_N` mit voller Strength. Mit `--lora-split-enabled` patcht LoRA `N` `#LORA_N` mit halber Strength und `#SPLIT_LORA_N` mit voller Strength.
+Der LTX-Workflow muss die LoRA-Nodes bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein. Ohne Split patcht LoRA `N` den vorhandenen Node `#LORA_N`. Mit `--lora-split-enabled` patcht LoRA `N` `#LORA_N` mit halber Strength und `#SPLIT_LORA_N` mit voller Strength. Gepatcht werden nur Properties, die du explizit per Config oder CLI setzt; fehlende `name`- oder Strength-Felder bleiben im Workflow unveraendert.
 
 Workflow-Upgrade:
 
@@ -631,7 +631,7 @@ Pruefen:
 .\projects\my_frst_project\output\render\ltx_debug\scene_0016_workflow.json
 ```
 
-Bei aktivem LoRA im Debug-Workflow pruefen, dass `#LORA_1` den erwarteten Dateinamen und die erwarteten Staerken enthaelt.
+Bei aktivem LoRA im Debug-Workflow pruefen, dass `#LORA_1` nur die erwarteten ueberschriebenen Properties enthaelt. Wenn kein `name` gesetzt wurde, bleibt der Workflow-Dateiname unveraendert.
 
 ### 6. Alle LTX-Szenen rendern
 

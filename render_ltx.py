@@ -163,6 +163,9 @@ def _resolve_loras(args: argparse.Namespace, project_config: ProjectConfig | Non
             name=lora.name,
             strength_model=lora.strength_model,
             strength_clip=lora.strength_clip,
+            name_explicit=lora.name_explicit,
+            strength_model_explicit=lora.strength_model_explicit,
+            strength_clip_explicit=lora.strength_clip_explicit,
         )
         for index, lora in enumerate(project_config.loras, start=1)
     ] if project_config else []
@@ -181,15 +184,30 @@ def _resolve_loras(args: argparse.Namespace, project_config: ProjectConfig | Non
             index=1,
             enabled=args.lora_1_enabled if args.lora_1_enabled is not None else current.enabled,
             name=args.lora_1_name if args.lora_1_name is not None else current.name,
+            name_explicit=(
+                bool(str(args.lora_1_name).strip())
+                if args.lora_1_name is not None
+                else current.name_explicit
+            ),
             strength_model=(
                 args.lora_1_strength_model
                 if args.lora_1_strength_model is not None
                 else current.strength_model
             ),
+            strength_model_explicit=(
+                True
+                if args.lora_1_strength_model is not None
+                else current.strength_model_explicit
+            ),
             strength_clip=(
                 args.lora_1_strength_clip
                 if args.lora_1_strength_clip is not None
                 else current.strength_clip
+            ),
+            strength_clip_explicit=(
+                True
+                if args.lora_1_strength_clip is not None
+                else current.strength_clip_explicit
             ),
         )
 
@@ -260,8 +278,6 @@ def main():
 
     if args.render_mode == "auto" and not args.single_prompt_workflow:
         raise ValueError("--single-prompt-workflow is required when --render-mode auto is used")
-    if resolved["lora_1_enabled"] and not resolved["lora_1_name"]:
-        raise ValueError("--lora-1-name is required when --lora-1-enabled is used")
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(args)
 
     app_config = AppConfig.load(args.app_config)

@@ -105,6 +105,21 @@ class RenderLTXCliTests(unittest.TestCase):
         self.assertEqual(0.0, resolved["lora_1_strength_model"])
         self.assertEqual(0.0, resolved["lora_1_strength_clip"])
 
+    def test_lora_1_enabled_does_not_require_name_when_only_strengths_are_overridden(self):
+        args = self._parse([
+            "--lora-1-enabled",
+            "--lora-1-strength-model",
+            "0.5",
+        ])
+
+        resolved = resolve_project_config_defaults(args)
+
+        self.assertTrue(resolved["loras"][0].enabled)
+        self.assertEqual("", resolved["loras"][0].name)
+        self.assertFalse(resolved["loras"][0].name_explicit)
+        self.assertTrue(resolved["loras"][0].strength_model_explicit)
+        self.assertFalse(resolved["loras"][0].strength_clip_explicit)
+
     def test_project_config_values_are_used_when_cli_omits_overrides(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

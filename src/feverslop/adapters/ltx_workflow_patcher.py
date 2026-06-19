@@ -16,6 +16,9 @@ class ResolvedLoraConfig:
     name: str = ""
     strength_model: float = 1.0
     strength_clip: float = 1.0
+    name_explicit: bool = False
+    strength_model_explicit: bool = False
+    strength_clip_explicit: bool = False
 
     @property
     def lora_title(self) -> str:
@@ -189,31 +192,28 @@ class LTXWorkflowPatcher:
         active_loras = self.active_loras()
         if active_loras:
             for lora in active_loras:
-                if not lora.name:
-                    raise ValueError(f"LoRA {lora.index} name is required when enabled")
-
                 if self.settings.lora_split_enabled:
                     self.patch_single_lora(
                         patcher,
                         title=lora.lora_title,
                         lora=lora,
-                        strength_model=lora.strength_model * 0.5,
-                        strength_clip=lora.strength_clip * 0.5,
+                        strength_model=lora.strength_model * 0.5 if lora.strength_model_explicit else None,
+                        strength_clip=lora.strength_clip * 0.5 if lora.strength_clip_explicit else None,
                     )
                     self.patch_single_lora(
                         patcher,
                         title=lora.split_title,
                         lora=lora,
-                        strength_model=lora.strength_model,
-                        strength_clip=lora.strength_clip,
+                        strength_model=lora.strength_model if lora.strength_model_explicit else None,
+                        strength_clip=lora.strength_clip if lora.strength_clip_explicit else None,
                     )
                 else:
                     self.patch_single_lora(
                         patcher,
                         title=lora.lora_title,
                         lora=lora,
-                        strength_model=lora.strength_model,
-                        strength_clip=lora.strength_clip,
+                        strength_model=lora.strength_model if lora.strength_model_explicit else None,
+                        strength_clip=lora.strength_clip if lora.strength_clip_explicit else None,
                     )
         elif self.settings.lora_1_strengths_explicit:
             patcher.patch_lora_strengths_by_title(
@@ -241,6 +241,9 @@ class LTXWorkflowPatcher:
                     name=self.settings.lora_1_name,
                     strength_model=self.settings.lora_1_strength_model,
                     strength_clip=self.settings.lora_1_strength_clip,
+                    name_explicit=bool(str(self.settings.lora_1_name).strip()),
+                    strength_model_explicit=True,
+                    strength_clip_explicit=True,
                 ),
             )
         return ()
@@ -251,13 +254,15 @@ class LTXWorkflowPatcher:
         *,
         title: str,
         lora: ResolvedLoraConfig,
-        strength_model: float,
-        strength_clip: float,
+        strength_model: float | None,
+        strength_clip: float | None,
     ) -> None:
+        if not lora.name_explicit and strength_model is None and strength_clip is None:
+            return
         try:
-            patcher.patch_lora_by_title(
+            patcher.patch_lora_fields_by_title(
                 title,
-                lora_name=lora.name,
+                lora_name=lora.name if lora.name_explicit else None,
                 strength_model=strength_model,
                 strength_clip=strength_clip,
             )

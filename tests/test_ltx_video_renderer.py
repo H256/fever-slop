@@ -232,9 +232,9 @@ class LTXLoraTests(unittest.TestCase):
             ltx_workflow_path="workflow.json",
             output_dir="out",
             loras=(
-                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
-                ResolvedLoraConfig(index=2, enabled=False, name="characters/second.safetensors", strength_model=0.4, strength_clip=0.3),
-                ResolvedLoraConfig(index=3, enabled=True, name="characters/third.safetensors", strength_model=0.9, strength_clip=0.7),
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6, name_explicit=True, strength_model_explicit=True, strength_clip_explicit=True),
+                ResolvedLoraConfig(index=2, enabled=False, name="characters/second.safetensors", strength_model=0.4, strength_clip=0.3, name_explicit=True, strength_model_explicit=True, strength_clip_explicit=True),
+                ResolvedLoraConfig(index=3, enabled=True, name="characters/third.safetensors", strength_model=0.9, strength_clip=0.7, name_explicit=True, strength_model_explicit=True, strength_clip_explicit=True),
             ),
         )
         patcher = WorkflowPatcher({
@@ -267,7 +267,7 @@ class LTXLoraTests(unittest.TestCase):
             output_dir="out",
             lora_split_enabled=True,
             loras=(
-                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6, name_explicit=True, strength_model_explicit=True, strength_clip_explicit=True),
             ),
         )
         patcher = WorkflowPatcher({
@@ -291,6 +291,89 @@ class LTXLoraTests(unittest.TestCase):
         self.assertEqual("characters/first.safetensors", workflow["2"]["inputs"]["lora_name"])
         self.assertEqual(0.8, workflow["2"]["inputs"]["strength_model"])
 
+    def test_lora_without_name_keeps_workflow_default_name_and_patches_strength(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, name="", strength_model=0.8, strength_clip=0.6, strength_model_explicit=True, strength_clip_explicit=True),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "workflow-default.safetensors", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        workflow = patcher.get()
+        self.assertEqual("workflow-default.safetensors", workflow["1"]["inputs"]["lora_name"])
+        self.assertEqual(0.8, workflow["1"]["inputs"]["strength_model"])
+
+    def test_lora_split_without_name_keeps_both_workflow_default_names(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            lora_split_enabled=True,
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, name="", strength_model=0.8, strength_clip=0.6, strength_model_explicit=True, strength_clip_explicit=True),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "first-pass-default.safetensors", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+            "2": {
+                "inputs": {"lora_name": "second-pass-default.safetensors", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#SPLIT_LORA_1"},
+            },
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        workflow = patcher.get()
+        self.assertEqual("first-pass-default.safetensors", workflow["1"]["inputs"]["lora_name"])
+        self.assertEqual(0.4, workflow["1"]["inputs"]["strength_model"])
+        self.assertEqual("second-pass-default.safetensors", workflow["2"]["inputs"]["lora_name"])
+        self.assertEqual(0.8, workflow["2"]["inputs"]["strength_model"])
+
+    def test_lora_without_overridden_properties_keeps_workflow_defaults(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "workflow-default.safetensors", "strength_model": 0.33},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        workflow = patcher.get()
+        self.assertEqual("workflow-default.safetensors", workflow["1"]["inputs"]["lora_name"])
+        self.assertEqual(0.33, workflow["1"]["inputs"]["strength_model"])
+
     def test_lora_split_requires_split_anchor_for_active_lora(self):
         from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
 
@@ -300,7 +383,7 @@ class LTXLoraTests(unittest.TestCase):
             output_dir="out",
             lora_split_enabled=True,
             loras=(
-                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6, name_explicit=True, strength_model_explicit=True, strength_clip_explicit=True),
             ),
         )
         patcher = WorkflowPatcher({
@@ -322,7 +405,7 @@ class LTXLoraTests(unittest.TestCase):
             ltx_workflow_path="workflow.json",
             output_dir="out",
             loras=(
-                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6),
+                ResolvedLoraConfig(index=1, enabled=True, name="characters/first.safetensors", strength_model=0.8, strength_clip=0.6, name_explicit=True, strength_model_explicit=True, strength_clip_explicit=True),
             ),
         )
         patcher = WorkflowPatcher({

@@ -92,6 +92,21 @@ class LoraConfig:
     name: str = ""
     strength_model: float = 1.0
     strength_clip: float = 1.0
+    name_explicit: bool = False
+    strength_model_explicit: bool = False
+    strength_clip_explicit: bool = False
+
+
+def _load_lora_config(raw: dict) -> LoraConfig:
+    return LoraConfig(
+        enabled=bool(raw.get("enabled", False)),
+        name=raw.get("name", ""),
+        strength_model=float(raw.get("strength_model", 1.0)),
+        strength_clip=float(raw.get("strength_clip", 1.0)),
+        name_explicit="name" in raw and bool(str(raw.get("name", "")).strip()),
+        strength_model_explicit="strength_model" in raw,
+        strength_clip_explicit="strength_clip" in raw,
+    )
 
 
 def _load_multiline_text(value) -> str:
@@ -142,20 +157,10 @@ class ProjectConfig:
         if not input_audio.is_absolute():
             input_audio = project_dir / input_audio
 
-        lora_1 = LoraConfig(
-            enabled=bool(lora_1_raw.get("enabled", False)),
-            name=lora_1_raw.get("name", ""),
-            strength_model=float(lora_1_raw.get("strength_model", 1.0)),
-            strength_clip=float(lora_1_raw.get("strength_clip", 1.0)),
-        )
+        lora_1 = _load_lora_config(lora_1_raw)
         if isinstance(loras_raw, list):
             loras = tuple(
-                LoraConfig(
-                    enabled=bool(item.get("enabled", False)),
-                    name=item.get("name", ""),
-                    strength_model=float(item.get("strength_model", 1.0)),
-                    strength_clip=float(item.get("strength_clip", 1.0)),
-                )
+                _load_lora_config(item)
                 for item in loras_raw
                 if isinstance(item, dict)
             )
