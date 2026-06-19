@@ -121,6 +121,25 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                 workflow_path=Path("workflows/test.json"),
             )
 
+    def test_missing_node_class_raises_clear_error(self):
+        from feverslop.adapters.comfyui_model_resolver import (
+            ComfyUIModelResolutionError,
+            ComfyUIModelResolver,
+        )
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(object_info_for(values=["known.safetensors"]))
+        )
+
+        with self.assertRaisesRegex(
+            ComfyUIModelResolutionError,
+            r"workflow node type 'MissingCustomNode'.*is not available on the configured server",
+        ):
+            resolver.resolve_workflow_models(
+                workflow_with("known.safetensors", class_type="MissingCustomNode"),
+                workflow_path=Path("workflows/test.json"),
+            )
+
     def test_strict_override_applies_when_expected_value_matches(self):
         from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolver,

@@ -36,6 +36,8 @@ class ComfyUIModelResolver:
         path_label = self._workflow_label(workflow_path)
         patched: list[dict[str, str]] = []
 
+        self._validate_node_class_types(resolved, path_label)
+
         for override in self._matching_overrides(path_label):
             self._apply_override(resolved, override, path_label, patched)
 
@@ -91,6 +93,22 @@ class ComfyUIModelResolver:
         if self._object_info is None:
             self._object_info = self.client.get_object_info()
         return self._object_info
+
+    def _validate_node_class_types(self, workflow: dict, workflow_path: str) -> None:
+        server_class_types = set(self._object_info_payload())
+        for node_id, node in workflow.items():
+            if not isinstance(node, dict):
+                continue
+            class_type = node.get("class_type")
+            if not isinstance(class_type, str) or class_type in server_class_types:
+                continue
+            node_title = str(node.get("_meta", {}).get("title", ""))
+            title_suffix = f" titled '{node_title}'" if node_title else ""
+            raise ComfyUIModelResolutionError(
+                f"ComfyUI workflow node type '{class_type}' in {workflow_path} node {node_id}"
+                f"{title_suffix} is not available on the configured server. Install the required custom node "
+                f"or use a ComfyUI server/workflow with matching custom-node support."
+            )
 
     def _model_dropdowns(self) -> dict[str, dict[str, list[str]]]:
         dropdowns: dict[str, dict[str, list[str]]] = {}

@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import time
 import uuid
 import requests
+
+
+class ComfyUIHTTPError(RuntimeError):
+    pass
+
+
+def json_dumps_compact(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 class ComfyUIClient:
@@ -34,7 +43,7 @@ class ComfyUIClient:
             },
             timeout=60,
         )
-        response.raise_for_status()
+        self._raise_for_status(response, "queue prompt")
         return response.json()["prompt_id"]
 
     def get_history(self, prompt_id: str) -> dict:
@@ -42,7 +51,7 @@ class ComfyUIClient:
             f"{self.base_url}/history/{prompt_id}",
             timeout=60,
         )
-        response.raise_for_status()
+        self._raise_for_status(response, "get history")
         return response.json()
 
     def get_object_info(self) -> dict:
@@ -50,7 +59,7 @@ class ComfyUIClient:
             f"{self.base_url}/object_info",
             timeout=60,
         )
-        response.raise_for_status()
+        self._raise_for_status(response, "get object info")
         return response.json()
 
     def wait_for_completion(
@@ -104,7 +113,7 @@ class ComfyUIClient:
                 timeout=300,
             )
 
-        response.raise_for_status()
+        self._raise_for_status(response, "upload image")
         return response.json()
 
     def upload_file_via_image_endpoint(
@@ -144,10 +153,28 @@ class ComfyUIClient:
             },
             timeout=300,
         )
-        response.raise_for_status()
+        self._raise_for_status(response, "download view file")
 
         output_path.write_bytes(response.content)
         return output_path
+
+    def _raise_for_status(self, response: requests.Response, operation: str) -> None:
+        if response.ok:
+            return
+
+        detail = self._response_detail(response)
+        raise ComfyUIHTTPError(
+            f"ComfyUI {operation} failed with HTTP {response.status_code} for "
+            f"{response.url}: {detail}"
+        ) from None
+
+    @staticmethod
+    def _response_detail(response: requests.Response) -> str:
+        try:
+            return json_dumps_compact(response.json())
+        except ValueError:
+            text = response.text.strip()
+            return text if text else "<empty response body>"
 
     def extract_output_images(self, history_entry: dict) -> list[dict]:
         images = []

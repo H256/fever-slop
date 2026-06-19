@@ -5,7 +5,7 @@ import argparse
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import Progress, TextColumn, TimeElapsedColumn
 
 from feverslop.config.app_config import AppConfig
 from feverslop.application.render_storyboard import RenderStoryboardRequest
@@ -86,7 +86,6 @@ def main():
     )
 
     with Progress(
-        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         TimeElapsedColumn(),
         console=console,
