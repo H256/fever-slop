@@ -1,7 +1,7 @@
-import unittest
+﻿import unittest
 
-from autoprompter.application.generate_render_plan import GenerateRenderPlanUseCase
-from autoprompter.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.application.generate_render_plan import GenerateRenderPlanUseCase
+from feverslop.application.pipeline_context import GenerateRenderPlanContext
 
 
 class RecordingPipelineService:

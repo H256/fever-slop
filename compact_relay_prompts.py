@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 
@@ -6,9 +6,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from autoprompter.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
-from autoprompter.config.app_config import AppConfig
-from autoprompter.prompting.relay_direction_builder import RelayDirectionBuilder
+from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from feverslop.config.app_config import AppConfig
+from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
 
 
 console = Console()
@@ -68,7 +68,7 @@ def main():
         )
         progress.update(task, completed=1)
 
-    console.print(f"[green]✓[/green] Compact render plan: [cyan]{output}[/cyan]")
+    console.print(f"[green]âœ“[/green] Compact render plan: [cyan]{output}[/cyan]")
 
 
 if __name__ == "__main__":

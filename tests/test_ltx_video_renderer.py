@@ -1,10 +1,10 @@
-import unittest
+﻿import unittest
 import tempfile
 import json
 from pathlib import Path
 
 from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
-from autoprompter.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.workflow_patcher import WorkflowPatcher
 
 
 class PromptRelayPayloadTests(unittest.TestCase):

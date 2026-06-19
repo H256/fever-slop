@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from autoprompter.config.video_settings import VideoSettings
+from feverslop.config.video_settings import VideoSettings
 
 
 class VideoSettingsTests(unittest.TestCase):

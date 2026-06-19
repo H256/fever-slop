@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 
@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from autoprompter.pipeline.scene_duration_enforcer import (
+from feverslop.pipeline.scene_duration_enforcer import (
     parse_scene_srt,
     enforce_scene_srt_file,
     validate_scene_durations,

@@ -1,4 +1,4 @@
-import argparse
+﻿import argparse
 import inspect
 import unittest
 from pathlib import Path
@@ -41,16 +41,16 @@ class PublicCompatibilityTests(unittest.TestCase):
         text = Path("storyboard_renderer.py").read_text(encoding="utf-8")
 
         self.assertIn(
-            "from autoprompter.adapters.storyboard_renderer import StoryboardRenderer",
+            "from feverslop.adapters.storyboard_renderer import StoryboardRenderer",
             text,
         )
         self.assertNotIn("class StoryboardRenderer", text)
 
     def test_storyboard_page_package_module_exists(self):
-        import autoprompter.tools.storyboard_page as storyboard_page
+        import feverslop.tools.storyboard_page as storyboard_page
 
         self.assertIn(
-            "src/autoprompter/tools/storyboard_page.py",
+            "src/feverslop/tools/storyboard_page.py",
             Path(storyboard_page.__file__).as_posix(),
         )
         self.assertTrue(hasattr(storyboard_page, "generate_storyboard_page"))

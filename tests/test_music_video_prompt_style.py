@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from autoprompter.prompting.music_video_prompt_style import (
+from feverslop.prompting.music_video_prompt_style import (
     build_concept_mapper_system_prompt,
     build_detail_system_prompt,
     build_i2v_system_prompt,

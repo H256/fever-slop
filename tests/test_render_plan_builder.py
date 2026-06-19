@@ -1,14 +1,14 @@
-import json
+﻿import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from autoprompter.pipeline.render_plan_builder import (
+from feverslop.pipeline.render_plan_builder import (
     DetailListPicker,
     build_original_style_i2v_prompt,
     build_render_plan,
 )
-from autoprompter.config.video_settings import VideoSettings
+from feverslop.config.video_settings import VideoSettings
 
 
 class DetailListPickerTests(unittest.TestCase):

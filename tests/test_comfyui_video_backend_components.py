@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 import json
 import tempfile
 from pathlib import Path
@@ -20,7 +20,7 @@ class FakeComfyUIClient:
 
 class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
     def test_upload_audio_uses_comfyui_image_endpoint_contract(self):
-        from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 
         client = FakeComfyUIClient()
         uploader = ComfyUIVideoAssetUploader(client)
@@ -31,14 +31,14 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
             uploaded_audio_name=None,
         )
 
-        self.assertEqual("autoprompter/audio/song.mp3", name)
+        self.assertEqual("feverslop/audio/song.mp3", name)
         self.assertEqual(
-            [(Path("song.mp3"), "autoprompter/audio", "input", True)],
+            [(Path("song.mp3"), "feverslop/audio", "input", True)],
             client.audio_uploads,
         )
 
     def test_audio_upload_can_be_skipped_with_uploaded_name_or_file_name(self):
-        from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 
         uploader = ComfyUIVideoAssetUploader(FakeComfyUIClient())
 
@@ -60,7 +60,7 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
         )
 
     def test_upload_startframe_uses_storyboard_subfolder_contract(self):
-        from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 
         client = FakeComfyUIClient()
         uploader = ComfyUIVideoAssetUploader(client)
@@ -70,14 +70,14 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
             upload_startframes=True,
         )
 
-        self.assertEqual("autoprompter/storyboard/scene_0001.png", name)
+        self.assertEqual("feverslop/storyboard/scene_0001.png", name)
         self.assertEqual(
-            [(Path("scene_0001.png"), "autoprompter/storyboard", "input", True)],
+            [(Path("scene_0001.png"), "feverslop/storyboard", "input", True)],
             client.image_uploads,
         )
 
     def test_startframe_upload_can_be_skipped(self):
-        from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 
         uploader = ComfyUIVideoAssetUploader(FakeComfyUIClient())
 
@@ -90,7 +90,7 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
         )
 
     def test_malformed_upload_response_raises_clear_error(self):
-        from autoprompter.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 
         with self.assertRaisesRegex(ValueError, "Unexpected ComfyUI upload response"):
             ComfyUIVideoAssetUploader.comfy_path_from_upload({"subfolder": "x"})
@@ -104,7 +104,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
         ) + "}"
 
     def _settings(self, temp: Path, **overrides):
-        from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowSettings
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowSettings
 
         relay_path = temp / "relay.json"
         single_path = temp / "single.json"
@@ -177,7 +177,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
         return LTXWorkflowSettings(**values)
 
     def test_relay_validation_requires_prompt_relay_anchor(self):
-        from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -203,7 +203,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                 LTXWorkflowPatcher(settings).validate_workflow(mode="relay")
 
     def test_single_prompt_validation_accepts_prompt_positive_fallback(self):
-        from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
 
         with tempfile.TemporaryDirectory() as temp_dir:
             patcher = LTXWorkflowPatcher(self._settings(Path(temp_dir)))
@@ -211,7 +211,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
             patcher.validate_workflow(mode="single_prompt")
 
     def test_lora_enabled_requires_lora_anchor(self):
-        from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -238,8 +238,8 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                 LTXWorkflowPatcher(settings).validate_workflow(mode="relay")
 
     def test_single_prompt_build_workflow_patches_original_style_prompt(self):
-        from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
-        from autoprompter.domain.ltx_rendering import AudioWindowSpec
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.domain.ltx_rendering import AudioWindowSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
             patcher = LTXWorkflowPatcher(self._settings(Path(temp_dir), render_mode="single_prompt"))
@@ -272,8 +272,8 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
             self.assertEqual("original style prompt", prompt_node["inputs"]["text"])
 
     def test_lora_explicit_strengths_patch_workflow_defaults(self):
-        from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
-        from autoprompter.domain.ltx_rendering import AudioWindowSpec
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.domain.ltx_rendering import AudioWindowSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -332,8 +332,8 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
             self.assertEqual(0.0, lora_node["inputs"]["strength_model"])
 
     def test_debug_workflow_file_is_written(self):
-        from autoprompter.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
-        from autoprompter.domain.ltx_rendering import AudioWindowSpec
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.domain.ltx_rendering import AudioWindowSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -387,7 +387,7 @@ class FakeQueueClient:
 
 class ComfyUIRenderQueueTests(unittest.TestCase):
     def test_extract_output_videos_accepts_supported_video_extensions(self):
-        from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
+        from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 
         videos = ComfyUIRenderQueue.extract_output_videos(
             {
@@ -408,7 +408,7 @@ class ComfyUIRenderQueueTests(unittest.TestCase):
         self.assertEqual(["a.mp4", "b.mov", "c.mkv", "d.webm"], [item["filename"] for item in videos])
 
     def test_queue_download_raises_when_history_has_no_video_output(self):
-        from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
+        from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 
         queue = ComfyUIRenderQueue(FakeQueueClient({"outputs": {"1": {"files": [{"filename": "note.txt"}]}}}))
 
@@ -420,7 +420,7 @@ class ComfyUIRenderQueueTests(unittest.TestCase):
             )
 
     def test_queue_downloads_first_video_to_requested_path(self):
-        from autoprompter.adapters.comfyui_render_queue import ComfyUIRenderQueue
+        from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "raw" / "scene_0001_raw.mp4"
@@ -544,8 +544,8 @@ class FakeModelResolver:
 
 class ComfyUIImageBackendModelResolverTests(unittest.TestCase):
     def test_image_backend_queues_resolved_workflow(self):
-        from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend
-        from autoprompter.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
+        from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+        from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
 
         class Client:
             def __init__(self):
@@ -622,12 +622,12 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
         }
 
     def test_video_backend_module_does_not_import_workflow_patcher_directly(self):
-        text = Path("src/autoprompter/adapters/comfyui_video_backend.py").read_text(encoding="utf-8")
+        text = Path("src/feverslop/adapters/comfyui_video_backend.py").read_text(encoding="utf-8")
 
-        self.assertNotIn("from autoprompter.adapters.workflow_patcher import WorkflowPatcher", text)
+        self.assertNotIn("from feverslop.adapters.workflow_patcher import WorkflowPatcher", text)
 
     def test_video_backend_exposes_injected_collaborators(self):
-        from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 
         backend = ComfyUIVideoRenderBackend(
             client=object(),
@@ -645,8 +645,8 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
         self.assertIsInstance(backend.postprocessor, FakePostprocessor)
 
     def test_video_backend_queues_resolved_workflow_after_dynamic_patching(self):
-        from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
-        from autoprompter.domain.ltx_rendering import AudioWindowSpec
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from feverslop.domain.ltx_rendering import AudioWindowSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
             workflow_patcher = FakeWorkflowPatcher()
@@ -682,7 +682,7 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
             self.assertIn("resolved", queued_workflow)
 
     def test_render_videos_runs_with_fake_collaborators_without_comfyui_client(self):
-        from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -722,8 +722,8 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
             self.assertEqual(temp / "ltx" / "render_manifest.json", postprocessor.manifest_calls[0][1])
 
     def test_render_scene_video_builds_real_workflow_and_delegates_to_queue(self):
-        from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
-        from autoprompter.domain.ltx_rendering import AudioWindowSpec
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from feverslop.domain.ltx_rendering import AudioWindowSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

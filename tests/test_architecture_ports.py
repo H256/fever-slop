@@ -1,20 +1,20 @@
-import json
+﻿import json
 import inspect
 import tempfile
 import unittest
 from pathlib import Path
 
 import main
-from autoprompter.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
-from autoprompter.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
-from autoprompter.application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
-from autoprompter.adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoRenderBackend
-from autoprompter.adapters.local_artifacts import JsonArtifactStore
-from autoprompter.domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
-from autoprompter.ports.audio import AudioAnalyzerPort
-from autoprompter.ports.rendering import ImageRenderRequest, VideoRenderRequest
-from autoprompter.ports.workflow import WorkflowBackendPort
-from autoprompter.config.project_config import ProjectConfig, ProjectPaths
+from feverslop.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
+from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
+from feverslop.application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
+from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoRenderBackend
+from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
+from feverslop.ports.audio import AudioAnalyzerPort
+from feverslop.ports.rendering import ImageRenderRequest, VideoRenderRequest
+from feverslop.ports.workflow import WorkflowBackendPort
+from feverslop.config.project_config import ProjectConfig, ProjectPaths
 
 
 class FakeImageBackend:
@@ -291,7 +291,7 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertEqual(Path(temp_dir) / "workflow.json", backend.ltx_workflow_path)
 
     def test_comfy_video_render_backend_is_primary_adapter_not_rendering_subclass(self):
-        from autoprompter.adapters.comfyui_video_backend import (
+        from feverslop.adapters.comfyui_video_backend import (
             ComfyUIVideoBackend,
             ComfyUIVideoRenderBackend,
         )
@@ -299,14 +299,14 @@ class ArchitecturePortsTests(unittest.TestCase):
         self.assertTrue(issubclass(ComfyUIVideoBackend, ComfyUIVideoRenderBackend))
         self.assertFalse(issubclass(ComfyUIVideoRenderBackend, ComfyUIVideoBackend))
         self.assertEqual(
-            "autoprompter.adapters.comfyui_video_backend",
+            "feverslop.adapters.comfyui_video_backend",
             ComfyUIVideoRenderBackend.__module__,
         )
 
     def test_ports_do_not_import_adapter_implementations(self):
-        ports_dir = Path("src/autoprompter/ports")
+        ports_dir = Path("src/feverslop/ports")
         forbidden = [
-            "autoprompter.adapters.",
+            "feverslop.adapters.",
             "video_postprocessor",
             "comfyui_client",
             "workflow_patcher",

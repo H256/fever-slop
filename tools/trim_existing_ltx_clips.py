@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 import argparse
@@ -8,8 +8,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from autoprompter.adapters.video_postprocessor import VideoPostProcessor
-from autoprompter.domain.postprocessing import TrimSpec
+from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.domain.postprocessing import TrimSpec
 
 
 console = Console()
@@ -105,8 +105,8 @@ def main():
 
     concat = processor.write_concat_list(outputs, output_dir / "concat_list.txt")
     processor.write_manifest(manifest, output_dir / "trim_manifest.json")
-    console.print(f"[green]✓[/green] Trimmed clips: [yellow]{len(outputs)}[/yellow]")
-    console.print(f"[green]✓[/green] Concat list: [cyan]{concat}[/cyan]")
+    console.print(f"[green]âœ“[/green] Trimmed clips: [yellow]{len(outputs)}[/yellow]")
+    console.print(f"[green]âœ“[/green] Concat list: [cyan]{concat}[/cyan]")
 
 
 if __name__ == "__main__":

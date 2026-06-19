@@ -1,4 +1,4 @@
-import io
+﻿import io
 import json
 import tempfile
 import unittest
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from autoprompter.application.generate_render_plan import (
+from feverslop.application.generate_render_plan import (
     GenerateRenderPlanRequest,
     GenerateRenderPlanUseCase,
 )

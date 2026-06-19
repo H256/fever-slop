@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 import argparse
@@ -7,10 +7,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from autoprompter.config.app_config import AppConfig
-from autoprompter.application.render_storyboard import RenderStoryboardRequest
-from autoprompter.composition.render_storyboard import build_render_storyboard_use_case
-from autoprompter.ports.rendering import WorkflowAnchorConfig
+from feverslop.config.app_config import AppConfig
+from feverslop.application.render_storyboard import RenderStoryboardRequest
+from feverslop.composition.render_storyboard import build_render_storyboard_use_case
+from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
 console = Console()
@@ -113,7 +113,7 @@ def main():
         )
 
     console.print(
-        f"[green]✓[/green] Rendered/available storyboard frames: "
+        f"[green]âœ“[/green] Rendered/available storyboard frames: "
         f"[yellow]{len(rendered)}[/yellow]"
     )
 

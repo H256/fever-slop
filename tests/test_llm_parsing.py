@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from autoprompter.application.llm_parsing import extract_json_object
+from feverslop.application.llm_parsing import extract_json_object
 
 
 class LLMParsingTests(unittest.TestCase):

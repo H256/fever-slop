@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from autoprompter.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer
+from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer
 
 
 class LTXPromptAnchorFixerTests(unittest.TestCase):

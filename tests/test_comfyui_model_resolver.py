@@ -1,4 +1,4 @@
-import json
+﻿import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,7 +39,7 @@ def workflow_with(value, *, class_type="LoraLoader", node_id="12", title="#LORA_
 
 class ComfyUIModelResolverTests(unittest.TestCase):
     def test_exact_dropdown_value_remains_unchanged(self):
-        from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelResolver
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
             FakeObjectInfoClient(object_info_for(values=["models/foo.safetensors"]))
@@ -53,7 +53,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         self.assertEqual("models/foo.safetensors", resolved["12"]["inputs"]["lora_name"])
 
     def test_windows_path_separator_resolves_to_server_dropdown_value(self):
-        from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelResolver
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
             FakeObjectInfoClient(object_info_for(values=["zimage/own/klw251209-v1_000001250.safetensors"]))
@@ -70,7 +70,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         )
 
     def test_basename_resolves_when_unique(self):
-        from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelResolver
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
             FakeObjectInfoClient(object_info_for(values=["characters/foo.safetensors"]))
@@ -84,7 +84,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         self.assertEqual("characters/foo.safetensors", resolved["12"]["inputs"]["lora_name"])
 
     def test_basename_ambiguity_raises_clear_error(self):
-        from autoprompter.adapters.comfyui_model_resolver import (
+        from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolutionError,
             ComfyUIModelResolver,
         )
@@ -103,7 +103,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
             )
 
     def test_missing_model_raises_clear_error(self):
-        from autoprompter.adapters.comfyui_model_resolver import (
+        from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolutionError,
             ComfyUIModelResolver,
         )
@@ -122,10 +122,10 @@ class ComfyUIModelResolverTests(unittest.TestCase):
             )
 
     def test_strict_override_applies_when_expected_value_matches(self):
-        from autoprompter.adapters.comfyui_model_resolver import (
-            ComfyUIModelOverride,
+        from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolver,
         )
+        from feverslop.config.comfyui import ComfyUIModelOverride
 
         resolver = ComfyUIModelResolver(
             FakeObjectInfoClient(object_info_for(values=["server/foo.safetensors"])),
@@ -149,11 +149,11 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         self.assertEqual("server/foo.safetensors", resolved["12"]["inputs"]["lora_name"])
 
     def test_stale_override_fails_when_workflow_value_changed(self):
-        from autoprompter.adapters.comfyui_model_resolver import (
-            ComfyUIModelOverride,
+        from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolutionError,
             ComfyUIModelResolver,
         )
+        from feverslop.config.comfyui import ComfyUIModelOverride
 
         resolver = ComfyUIModelResolver(
             FakeObjectInfoClient(object_info_for(values=["server/foo.safetensors"])),
@@ -176,7 +176,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
             )
 
     def test_validate_workflow_directory_reports_resolved_files(self):
-        from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelResolver
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
             FakeObjectInfoClient(object_info_for(values=["folder/foo.safetensors"]))
@@ -198,7 +198,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
 
 class ComfyUIConfigModelOverrideTests(unittest.TestCase):
     def test_app_config_loads_model_overrides(self):
-        from autoprompter.config.app_config import AppConfig
+        from feverslop.config.app_config import AppConfig
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "app_config.json"
@@ -230,7 +230,7 @@ class ComfyUIConfigModelOverrideTests(unittest.TestCase):
         self.assertEqual("workflows/test.json", config.comfyui.model_overrides[0].workflow)
 
     def test_missing_app_config_defaults_to_empty_model_overrides(self):
-        from autoprompter.config.app_config import AppConfig
+        from feverslop.config.app_config import AppConfig
 
         config = AppConfig.load(Path("does-not-exist.json"))
 
@@ -239,7 +239,7 @@ class ComfyUIConfigModelOverrideTests(unittest.TestCase):
 
 class ComfyUIWorkflowValidationCliTests(unittest.TestCase):
     def test_validate_cli_parser_defaults_to_workflows_directory(self):
-        from autoprompter.tools.validate_comfyui_workflows import build_arg_parser
+        from feverslop.tools.validate_comfyui_workflows import build_arg_parser
 
         args = build_arg_parser().parse_args([])
 
@@ -247,7 +247,7 @@ class ComfyUIWorkflowValidationCliTests(unittest.TestCase):
         self.assertEqual("workflows", args.workflows_dir)
 
     def test_validate_cli_run_returns_reports(self):
-        from autoprompter.tools.validate_comfyui_workflows import validate_comfyui_workflows
+        from feverslop.tools.validate_comfyui_workflows import validate_comfyui_workflows
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

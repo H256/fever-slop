@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 
 from rich.console import Console
 from rich.panel import Panel
 
-from autoprompter.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
+from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 
 
 console = Console()

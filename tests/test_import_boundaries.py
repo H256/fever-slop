@@ -1,10 +1,10 @@
-import unittest
+﻿import unittest
 from pathlib import Path
 
 
 class ImportBoundaryTests(unittest.TestCase):
     def test_package_code_does_not_import_root_architecture_packages(self):
-        package_root = Path("src/autoprompter")
+        package_root = Path("src/feverslop")
         forbidden = [
             "from application.",
             "from adapters.",
@@ -28,14 +28,14 @@ class ImportBoundaryTests(unittest.TestCase):
     def test_compatibility_docs_define_new_import_policy(self):
         text = Path("docs/architecture_compatibility.md").read_text(encoding="utf-8")
 
-        self.assertIn("new implementation imports must use `autoprompter.*`", text)
+        self.assertIn("new implementation imports must use `feverslop.*`", text)
         self.assertIn("no new code should import `application.*`, `adapters.*`, `domain.*`, or `ports.*`", text)
 
     def test_application_layer_does_not_import_concrete_adapters_or_root_modules(self):
-        app_root = Path("src/autoprompter/application")
+        app_root = Path("src/feverslop/application")
         forbidden = [
-            "from autoprompter.adapters.",
-            "import autoprompter.adapters.",
+            "from feverslop.adapters.",
+            "import feverslop.adapters.",
             "from app_config",
             "from project_config",
             "from beat_analysis",
@@ -52,6 +52,21 @@ class ImportBoundaryTests(unittest.TestCase):
         ]
         offenders = []
         for path in app_root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in text:
+                    offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
+    def test_config_layer_does_not_import_concrete_adapters(self):
+        config_root = Path("src/feverslop/config")
+        forbidden = [
+            "from feverslop.adapters.",
+            "import feverslop.adapters.",
+        ]
+        offenders = []
+        for path in config_root.rglob("*.py"):
             text = path.read_text(encoding="utf-8")
             for token in forbidden:
                 if token in text:

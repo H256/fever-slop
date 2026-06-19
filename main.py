@@ -1,12 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 import argparse
 
 from rich.console import Console
 
-from autoprompter.application.generate_render_plan import GenerateRenderPlanRequest
-from autoprompter.composition.generate_render_plan import build_generate_render_plan_use_case
+from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
+from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
 
 
 console = Console()

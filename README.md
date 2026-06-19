@@ -1,6 +1,6 @@
-# Autoprompter Music Video Pipeline
+﻿# FeverSlop Music Video Pipeline
 
-Autoprompter erzeugt aus einem Song einen beat- und vocal-synchronen Musikvideo-Renderplan und rendert daraus:
+FeverSlop erzeugt aus einem Song einen beat- und vocal-synchronen Musikvideo-Renderplan und rendert daraus:
 
 1. Audio-Stems und Vocal-/Lyric-Timeline
 2. beat-aligned Szenen mit garantierten Mindest-/Maximaldauern
@@ -52,17 +52,17 @@ Typische Projektstruktur:
 
 ```text
 projects/my_frst_project/
-├─ config.json
-├─ input/
-│  └─ ComfyUI_00056_.mp3
-└─ output/
-   ├─ stems/
-   ├─ timeline/
-   ├─ prompts/
-   └─ render/
-      ├─ render_plan_ComfyUI_00056_.json
-      ├─ storyboard/
-      └─ ltx/
+â”œâ”€ config.json
+â”œâ”€ input/
+â”‚  â””â”€ ComfyUI_00056_.mp3
+â””â”€ output/
+   â”œâ”€ stems/
+   â”œâ”€ timeline/
+   â”œâ”€ prompts/
+   â””â”€ render/
+      â”œâ”€ render_plan_ComfyUI_00056_.json
+      â”œâ”€ storyboard/
+      â””â”€ ltx/
 ```
 
 Globale App-Konfiguration liegt normalerweise im Repo-Root:
@@ -96,7 +96,8 @@ projects/my_frst_project/output/render/storyboard/index.html
     "max_tokens": 4096
   },
   "comfyui": {
-    "base_url": "http://127.0.0.1:8188"
+    "base_url": "http://127.0.0.1:8188",
+    "model_overrides": []
   }
 }
 ```
@@ -108,8 +109,15 @@ Einstellungen:
 - `llm.temperature`: Kreativitaet der Textgeneration. Fuer reproduzierbarere Prompts eher `0.4` bis `0.7`.
 - `llm.max_tokens`: Tokenlimit pro LLM-Antwort. Bei grossen Projekten sind `4096` oft knapp; falls JSON abgeschnitten wird, Batch-Modus verwenden oder erhoehen.
 - `comfyui.base_url`: ComfyUI API-Adresse.
+- `comfyui.model_overrides`: optionale, strikte Modellnamen-Overrides fuer Sonderfaelle.
 
 Wenn `--app-config` fehlt oder die Datei nicht existiert, nutzt der Code Defaults: `http://localhost:8080/v1` fuer LLM und `http://127.0.0.1:8188` fuer ComfyUI.
+
+ComfyUI-Modellreferenzen in Workflow-JSONs werden vor jedem Renderlauf automatisch gegen den in `app_config.json` konfigurierten Server aufgeloest. Details stehen in:
+
+```text
+docs/comfyui_model_resolution.md
+```
 
 ## Projekt config.json
 
@@ -731,12 +739,12 @@ repair_scene_srt.py
 trim_existing_ltx_clips.py
 ```
 
-Diese Dateien nicht allein deshalb loeschen, weil sie in keinem `import` auftauchen. Neue Implementierung gehoert nach `src/autoprompter`.
+Diese Dateien nicht allein deshalb loeschen, weil sie in keinem `import` auftauchen. Neue Implementierung gehoert nach `src/feverslop`.
 
 Die wichtigsten Package-Bereiche:
 
 ```text
-src/autoprompter/
+src/feverslop/
 +-- application/    Use-Cases ohne konkrete Adapter
 +-- composition/    Verdrahtung von Config, Use-Cases und Adaptern
 +-- domain/         Renderplan-, LTX- und Postprocessing-Domain-Typen
@@ -750,23 +758,23 @@ src/autoprompter/
 Composition Roots:
 
 ```text
-autoprompter.composition.generate_render_plan
-autoprompter.composition.render_storyboard
+feverslop.composition.generate_render_plan
+feverslop.composition.render_storyboard
 ```
 
 Der produktive LTX-Renderadapter liegt hier:
 
 ```text
-autoprompter.adapters.comfyui_video_backend
+feverslop.adapters.comfyui_video_backend
 ```
 
 Aktuelle Architekturgrenzen:
 
-- `autoprompter.application`: Use-Cases und Pipeline-Services ohne konkrete Adapter.
-- `autoprompter.composition`: verdrahtet Config, Use-Cases und Adapter fuer CLI-Einstiegspunkte.
-- `autoprompter.domain`: Renderplan-, LTX- und Postprocessing-Domain-Typen.
-- `autoprompter.ports`: Protocols und Request-Typen; Ports importieren keine Adapter.
-- `autoprompter.adapters`: ComfyUI, lokale JSON-Artefakte, OpenAI-kompatible LLMs und FFmpeg/Postprocessing.
+- `feverslop.application`: Use-Cases und Pipeline-Services ohne konkrete Adapter.
+- `feverslop.composition`: verdrahtet Config, Use-Cases und Adapter fuer CLI-Einstiegspunkte.
+- `feverslop.domain`: Renderplan-, LTX- und Postprocessing-Domain-Typen.
+- `feverslop.ports`: Protocols und Request-Typen; Ports importieren keine Adapter.
+- `feverslop.adapters`: ComfyUI, lokale JSON-Artefakte, OpenAI-kompatible LLMs und FFmpeg/Postprocessing.
 
 Die Root-Dateien `ltx_video_renderer.py`, `storyboard_renderer.py` und `workflow_patcher.py` sind Compatibility-Fassaden fuer alte Imports. Details stehen in:
 
@@ -798,7 +806,7 @@ uv run python -m tools.normalize_render_plan `
 Nuetzlich, wenn Audio oder Startframes bereits in ComfyUI liegen:
 
 ```powershell
---no-upload-audio --uploaded-audio-name "autoprompter/audio/ComfyUI_00056_.mp3"
+--no-upload-audio --uploaded-audio-name "feverslop/audio/ComfyUI_00056_.mp3"
 ```
 
 ```powershell

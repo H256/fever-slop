@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 import argparse
@@ -8,14 +8,14 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
-from autoprompter.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
-from autoprompter.adapters.comfyui_model_resolver import ComfyUIModelResolver
-from autoprompter.adapters.local_artifacts import JsonArtifactStore
-from autoprompter.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
-from autoprompter.config.app_config import AppConfig
-from autoprompter.adapters.comfyui_client import ComfyUIClient
-from autoprompter.config.project_config import ProjectConfig
-from autoprompter.ports.rendering import WorkflowAnchorConfig
+from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
+from feverslop.config.app_config import AppConfig
+from feverslop.adapters.comfyui_client import ComfyUIClient
+from feverslop.config.project_config import ProjectConfig
+from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
 console = Console()
@@ -314,8 +314,8 @@ def main():
         progress.update(task, completed=len(rendered))
 
     concat_file = rewrite_concat_list(rendered, args.output_dir)
-    console.print(f"[green]✓[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
-    console.print(f"[green]✓[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
+    console.print(f"[green]âœ“[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
+    console.print(f"[green]âœ“[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
     console.print()
     project_name = resolved["project_config"].project_name if resolved["project_config"] else None
     video_only, final_concat = final_concat_paths(args.output_dir, project_name)

@@ -1,9 +1,9 @@
-import json
+﻿import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from autoprompter.prompting.scene_prompt_builder import ScenePromptBuilder
+from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
 
 
 class FakeLLM:

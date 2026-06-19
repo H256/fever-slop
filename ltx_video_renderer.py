@@ -1,8 +1,8 @@
-"""Compatibility facade; prefer autoprompter.adapters.comfyui_video_backend for new imports."""
+﻿"""Compatibility facade; prefer feverslop.adapters.comfyui_video_backend for new imports."""
 
 from __future__ import annotations
 
-from autoprompter.adapters.comfyui_video_backend import AudioWindowSpec, ComfyUIVideoBackend
+from feverslop.adapters.comfyui_video_backend import AudioWindowSpec, ComfyUIVideoBackend
 
 __all__ = ["AudioWindowSpec", "LTXVideoRenderer"]
 

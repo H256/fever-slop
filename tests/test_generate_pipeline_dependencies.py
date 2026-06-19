@@ -1,11 +1,11 @@
-import tempfile
+﻿import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from autoprompter.application.audio_timeline_pipeline import AudioTimelinePipeline
-from autoprompter.application.pipeline_context import GenerateRenderPlanContext
-from autoprompter.application.prompt_generation_pipeline import PromptGenerationPipeline
+from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
+from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 
 
 class FakeConsole:

@@ -1,4 +1,4 @@
-"""Compatibility facade; prefer autoprompter.adapters.workflow_patcher."""
-from autoprompter.adapters.workflow_patcher import WorkflowPatcher
+﻿"""Compatibility facade; prefer feverslop.adapters.workflow_patcher."""
+from feverslop.adapters.workflow_patcher import WorkflowPatcher
 
 __all__ = ["WorkflowPatcher"]

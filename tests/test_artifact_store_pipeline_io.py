@@ -1,13 +1,13 @@
-import tempfile
+﻿import tempfile
 import unittest
 from pathlib import Path
 
-from autoprompter.adapters.local_artifacts import JsonArtifactStore
-from autoprompter.pipeline.prompt_relay_builder import build_scene_prompt_relay
-from autoprompter.pipeline.render_plan_builder import build_render_plan
-from autoprompter.pipeline.scene_duration_enforcer import SrtScene, write_scene_srt
-from autoprompter.pipeline.stage1_segment_builder import build_stage1_segment_json
-from autoprompter.config.video_settings import VideoSettings
+from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
+from feverslop.pipeline.render_plan_builder import build_render_plan
+from feverslop.pipeline.scene_duration_enforcer import SrtScene, write_scene_srt
+from feverslop.pipeline.stage1_segment_builder import build_stage1_segment_json
+from feverslop.config.video_settings import VideoSettings
 
 
 class FakeArtifactStore:

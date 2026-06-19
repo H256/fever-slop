@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from autoprompter.domain.ltx_rendering import (
+from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
