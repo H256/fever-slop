@@ -35,9 +35,9 @@ class StoryboardRenderer:
         positive_prompt_node_title: str = "#PROMPT_POSITIVE",
         negative_prompt_node_title: str = "#PROMPT_NEGATIVE",
         save_image_node_title: str = "#SAVE_IMAGE",
-        character_lora_node_title: str = "#CHARACTER_LORA",
+        character_lora_node_title: str = "#LORA_1",
 
-        character_lora_strength: float = 1.0,
+        character_lora_strength: float | None = None,
         negative_prompt: str = "",
 
         seed_node_title: str | None = None,

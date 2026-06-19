@@ -224,6 +224,26 @@ class LTXLoraTests(unittest.TestCase):
         self.assertEqual(0.0, inputs["strength_model"])
         self.assertEqual(0.0, inputs["strength_clip"])
 
+    def test_legacy_character_lora_strength_is_not_patched_when_unset(self):
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            character_lora_node_title="#LORA_1",
+            character_lora_strength=None,
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"strength_model": 0.42},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            }
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        self.assertEqual(0.42, patcher.get()["1"]["inputs"]["strength_model"])
+
     def test_multiple_loras_patch_indexed_workflow_anchors_without_split(self):
         from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
 
@@ -374,7 +394,63 @@ class LTXLoraTests(unittest.TestCase):
         self.assertEqual("workflow-default.safetensors", workflow["1"]["inputs"]["lora_name"])
         self.assertEqual(0.33, workflow["1"]["inputs"]["strength_model"])
 
-    def test_lora_split_requires_split_anchor_for_active_lora(self):
+    def test_lora_without_split_patches_split_anchor_full_strength_when_present(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            lora_split_enabled=False,
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, strength_model=0.85, strength_model_explicit=True),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "first-pass-default.safetensors", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+            "2": {
+                "inputs": {"lora_name": "second-pass-default.safetensors", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#SPLIT_LORA_1"},
+            },
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        workflow = patcher.get()
+        self.assertEqual(0.85, workflow["1"]["inputs"]["strength_model"])
+        self.assertEqual(0.85, workflow["2"]["inputs"]["strength_model"])
+
+    def test_lora_split_enabled_without_split_anchor_patches_base_full_strength(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        renderer = LTXVideoRenderer(
+            client=None,
+            ltx_workflow_path="workflow.json",
+            output_dir="out",
+            lora_split_enabled=True,
+            loras=(
+                ResolvedLoraConfig(index=1, enabled=True, strength_model=0.85, strength_model_explicit=True),
+            ),
+        )
+        patcher = WorkflowPatcher({
+            "1": {
+                "inputs": {"lora_name": "workflow-default.safetensors", "strength_model": 1.0},
+                "class_type": "LoraLoaderModelOnly",
+                "_meta": {"title": "#LORA_1"},
+            },
+        })
+
+        renderer._patch_lora_inputs(patcher)
+
+        workflow = patcher.get()
+        self.assertEqual(0.85, workflow["1"]["inputs"]["strength_model"])
+
+    def test_lora_split_does_not_require_split_anchor_for_active_lora(self):
         from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
 
         renderer = LTXVideoRenderer(
@@ -394,8 +470,9 @@ class LTXLoraTests(unittest.TestCase):
             },
         })
 
-        with self.assertRaisesRegex(ValueError, "#SPLIT_LORA_1"):
-            renderer._patch_lora_inputs(patcher)
+        renderer._patch_lora_inputs(patcher)
+
+        self.assertEqual(0.8, patcher.get()["1"]["inputs"]["strength_model"])
 
     def test_lora_patch_rejects_anchor_without_model_strength_input(self):
         from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
@@ -533,6 +610,27 @@ class LTXLoraTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "#LORA_1.*workflow.json"):
                 renderer.validate_workflow(mode="relay")
+
+    def test_lora_split_enabled_does_not_require_split_anchor_during_validation(self):
+        from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow_path = Path(temp_dir) / "workflow.json"
+            workflow_path.write_text(
+                self._workflow_with_titles([*self._relay_titles(), "#LORA_1"]),
+                encoding="utf-8",
+            )
+            renderer = LTXVideoRenderer(
+                client=None,
+                ltx_workflow_path=workflow_path,
+                output_dir="out",
+                lora_split_enabled=True,
+                loras=(
+                    ResolvedLoraConfig(index=1, enabled=True, strength_model=0.85, strength_model_explicit=True),
+                ),
+            )
+
+            renderer.validate_workflow(mode="relay")
 
     def test_lora_enabled_validates_single_prompt_workflow_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:

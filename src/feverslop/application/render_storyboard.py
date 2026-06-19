@@ -17,7 +17,7 @@ class RenderStoryboardRequest:
     scene_numbers: set[int] | None = None
     skip_existing: bool = True
     negative_prompt: str = ""
-    character_lora_strength: float = 1.0
+    character_lora_strength: float | None = None
     anchors: WorkflowAnchorConfig = WorkflowAnchorConfig()
 
 

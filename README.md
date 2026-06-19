@@ -544,7 +544,7 @@ Wenn dein Workflow andere Node-Titel nutzt:
 --positive-title "#PROMPT_POSITIVE" `
 --negative-title "#PROMPT_NEGATIVE" `
 --save-title "#SAVE_IMAGE" `
---character-lora-title "#CHARACTER_LORA"
+--character-lora-title "#LORA_1"
 ```
 
 ### 5. Storyboard-Review-Seite erzeugen
@@ -614,7 +614,7 @@ uv run python render_ltx.py `
   --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
 ```
 
-Der LTX-Workflow muss die LoRA-Nodes bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein. Ohne Split patcht LoRA `N` den vorhandenen Node `#LORA_N`. Mit `--lora-split-enabled` patcht LoRA `N` `#LORA_N` mit halber Strength und `#SPLIT_LORA_N` mit voller Strength. Gepatcht werden nur Properties, die du explizit per Config oder CLI setzt; fehlende `name`- oder Strength-Felder bleiben im Workflow unveraendert.
+Der LTX-Workflow muss die LoRA-Nodes bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein. Wenn `#SPLIT_LORA_N` fehlt, bekommt `#LORA_N` die volle explizit gesetzte Strength. Wenn `#SPLIT_LORA_N` existiert, bekommen bei deaktiviertem Split beide Nodes die volle Strength; bei aktiviertem Split bekommt `#LORA_N` die halbe und `#SPLIT_LORA_N` die volle Strength. Gepatcht werden nur Properties, die du explizit per Config oder CLI setzt; fehlende `name`- oder Strength-Felder bleiben im Workflow unveraendert.
 
 Workflow-Upgrade:
 

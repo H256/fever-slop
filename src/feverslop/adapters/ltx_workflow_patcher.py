@@ -47,7 +47,7 @@ class LTXWorkflowSettings:
     single_prompt_input_name: str
     save_video_node_title: str
     character_lora_node_title: str | None
-    character_lora_strength: float
+    character_lora_strength: float | None
     lora_1_enabled: bool
     lora_1_name: str
     lora_1_strength_model: float
@@ -93,8 +93,6 @@ class LTXWorkflowPatcher:
             required_titles.append(self.settings.prompt_relay_node_title)
         for lora in self.active_loras():
             required_titles.append(lora.lora_title)
-            if self.settings.lora_split_enabled:
-                required_titles.append(lora.split_title)
 
         for title in dict.fromkeys(required_titles):
             try:
@@ -192,25 +190,37 @@ class LTXWorkflowPatcher:
         active_loras = self.active_loras()
         if active_loras:
             for lora in active_loras:
+                split_anchor_exists = self.has_anchor(patcher, lora.split_title)
+                patch_base_as_split_first_pass = self.settings.lora_split_enabled and split_anchor_exists
+
                 if self.settings.lora_split_enabled:
                     self.patch_single_lora(
                         patcher,
                         title=lora.lora_title,
                         lora=lora,
-                        strength_model=lora.strength_model * 0.5 if lora.strength_model_explicit else None,
-                        strength_clip=lora.strength_clip * 0.5 if lora.strength_clip_explicit else None,
-                    )
-                    self.patch_single_lora(
-                        patcher,
-                        title=lora.split_title,
-                        lora=lora,
-                        strength_model=lora.strength_model if lora.strength_model_explicit else None,
-                        strength_clip=lora.strength_clip if lora.strength_clip_explicit else None,
+                        strength_model=(
+                            lora.strength_model * 0.5
+                            if lora.strength_model_explicit and patch_base_as_split_first_pass
+                            else lora.strength_model if lora.strength_model_explicit else None
+                        ),
+                        strength_clip=(
+                            lora.strength_clip * 0.5
+                            if lora.strength_clip_explicit and patch_base_as_split_first_pass
+                            else lora.strength_clip if lora.strength_clip_explicit else None
+                        ),
                     )
                 else:
                     self.patch_single_lora(
                         patcher,
                         title=lora.lora_title,
+                        lora=lora,
+                        strength_model=lora.strength_model if lora.strength_model_explicit else None,
+                        strength_clip=lora.strength_clip if lora.strength_clip_explicit else None,
+                    )
+                if split_anchor_exists:
+                    self.patch_single_lora(
+                        patcher,
+                        title=lora.split_title,
                         lora=lora,
                         strength_model=lora.strength_model if lora.strength_model_explicit else None,
                         strength_clip=lora.strength_clip if lora.strength_clip_explicit else None,
@@ -221,7 +231,7 @@ class LTXWorkflowPatcher:
                 strength_model=self.settings.lora_1_strength_model,
                 strength_clip=self.settings.lora_1_strength_clip,
             )
-        elif self.settings.character_lora_node_title:
+        elif self.settings.character_lora_node_title and self.settings.character_lora_strength is not None:
             try:
                 patcher.patch_lora_strength_by_title(
                     self.settings.character_lora_node_title,
@@ -247,6 +257,14 @@ class LTXWorkflowPatcher:
                 ),
             )
         return ()
+
+    @staticmethod
+    def has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
+        try:
+            patcher.find_node_by_meta_title(title)
+            return True
+        except KeyError:
+            return False
 
     @staticmethod
     def patch_single_lora(

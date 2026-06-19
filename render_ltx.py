@@ -57,7 +57,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scenes", default=None)
     parser.add_argument("--no-skip-existing", action="store_true")
 
-    parser.add_argument("--character-lora-strength", type=float, default=1.0)
+    parser.add_argument("--character-lora-strength", type=float, default=None)
     parser.add_argument("--lora-1-enabled", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--lora-1-name", default=None)
     parser.add_argument("--lora-1-strength-model", type=float, default=None)

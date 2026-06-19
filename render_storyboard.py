@@ -29,13 +29,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scenes", default=None, help="Example: 1,2,5-8")
     parser.add_argument("--no-skip-existing", action="store_true")
 
-    parser.add_argument("--character-lora-strength", type=float, default=1.0)
+    parser.add_argument("--character-lora-strength", type=float, default=None)
     parser.add_argument("--negative-prompt", default="")
 
     parser.add_argument("--positive-title", default="#PROMPT_POSITIVE")
     parser.add_argument("--negative-title", default="#PROMPT_NEGATIVE")
     parser.add_argument("--save-title", default="#SAVE_IMAGE")
-    parser.add_argument("--character-lora-title", default="#CHARACTER_LORA")
+    parser.add_argument("--character-lora-title", default="#LORA_1")
     return parser
 
 
@@ -73,7 +73,7 @@ def main():
         f"Render plan: [cyan]{args.render_plan}[/cyan]\n"
         f"Workflow: [cyan]{args.workflow}[/cyan]\n"
         f"Output: [cyan]{args.output_dir}[/cyan]\n"
-        f"Character LoRA strength: [yellow]{args.character_lora_strength}[/yellow]",
+        f"LoRA 1 strength: [yellow]{args.character_lora_strength if args.character_lora_strength is not None else 'workflow default'}[/yellow]",
         title="Startup",
         border_style="cyan",
     ))

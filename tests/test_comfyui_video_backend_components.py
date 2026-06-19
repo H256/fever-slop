@@ -160,7 +160,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
             single_prompt_node_title="#PROMPT",
             single_prompt_input_name="text",
             save_video_node_title="#SAVE_VIDEO",
-            character_lora_node_title="#CHARACTER_LORA",
+            character_lora_node_title="#LORA_1",
             character_lora_strength=1.0,
             lora_1_enabled=False,
             lora_1_name="",
@@ -619,6 +619,70 @@ class ComfyUIImageBackendModelResolverTests(unittest.TestCase):
 
             self.assertIn("resolved", client.queued_workflow)
             self.assertEqual(workflow_path, resolver.calls[0][1])
+
+    def test_image_backend_does_not_patch_lora_strength_when_unset(self):
+        from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+        from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
+
+        class Client:
+            def __init__(self):
+                self.queued_workflow = None
+
+            def queue_prompt(self, workflow):
+                self.queued_workflow = workflow
+                return "prompt-id"
+
+            def wait_for_completion(self, prompt_id):
+                return {"outputs": {"save": {"images": [{"filename": "scene.png"}]}}}
+
+            def extract_output_images(self, history):
+                return history["outputs"]["save"]["images"]
+
+            def download_view_file(self, *, filename, subfolder, file_type, output_path):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"png")
+                return Path(output_path)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "image.json"
+            workflow_path.write_text(
+                json.dumps(
+                    {
+                        "1": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                        "2": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_IMAGE"}},
+                        "3": {
+                            "inputs": {"lora_name": "workflow-default.safetensors", "strength_model": 0.42},
+                            "_meta": {"title": "#LORA_1"},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            client = Client()
+            backend = ComfyUIImageBackend(
+                client=client,
+                workflow_path=workflow_path,
+                output_dir=temp,
+            )
+
+            backend.render_image(
+                ImageRenderRequest(
+                    scene={},
+                    scene_number=1,
+                    prompt="prompt",
+                    workflow_path=workflow_path,
+                    output_dir=temp,
+                    anchors=WorkflowAnchorConfig(
+                        positive_prompt_title="#PROMPT",
+                        negative_prompt_title=None,
+                        save_image_title="#SAVE_IMAGE",
+                        character_lora_title="#LORA_1",
+                    ),
+                )
+            )
+
+            self.assertEqual(0.42, client.queued_workflow["3"]["inputs"]["strength_model"])
 
 
 class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):

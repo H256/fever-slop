@@ -10,7 +10,7 @@ class WorkflowAnchorConfig:
     positive_prompt_title: str = "#PROMPT_POSITIVE"
     negative_prompt_title: str = "#PROMPT_NEGATIVE"
     save_image_title: str = "#SAVE_IMAGE"
-    character_lora_title: str | None = "#CHARACTER_LORA"
+    character_lora_title: str | None = "#LORA_1"
     single_prompt_title: str = "#PROMPT"
     single_prompt_input: str = "text"
 
@@ -30,7 +30,7 @@ class ImageRenderRequest:
     output_dir: Path
     skip_existing: bool = True
     negative_prompt: str = ""
-    character_lora_strength: float = 1.0
+    character_lora_strength: float | None = None
     anchors: WorkflowAnchorConfig = WorkflowAnchorConfig()
 
 

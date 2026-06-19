@@ -54,7 +54,7 @@ class ComfyUIImageBackend:
                 request.negative_prompt,
             )
 
-        if anchors.character_lora_title:
+        if anchors.character_lora_title and request.character_lora_strength is not None:
             patcher.patch_lora_strength_by_title(
                 anchors.character_lora_title,
                 request.character_lora_strength,

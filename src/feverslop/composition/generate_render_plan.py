@@ -76,6 +76,6 @@ def _build_storyboard_renderer(app_config, render_dir: Path, workflow_path: Path
         positive_prompt_node_title="#POSITIVE_PROMPT",
         negative_prompt_node_title="#NEGATIVE_PROMPT",
         save_image_node_title="#SAVE_IMAGE",
-        character_lora_node_title="#CHARACTER_LORA",
+        character_lora_node_title="#LORA_1",
         model_resolver=model_resolver,
     )
