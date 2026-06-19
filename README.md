@@ -729,6 +729,26 @@ ffmpeg -y `
 
 Ein Vergleichsexport mit per-scene Audio ist nur ein Diagnosepfad, z.B. ueber `.\test.ps1 -DiagnosticOriginalAudioMux`.
 
+### 8. Projekt-Assets als ZIP archivieren
+
+Nach einem Renderlauf koennen Arbeits- und Zwischendateien des Projektordners in ein ZIP geschrieben werden:
+
+```powershell
+uv run python -m tools.project_asset_archive --project .\projects\my_frst_project\config.json
+```
+
+Standardziel:
+
+```text
+projects/my_frst_project/archives/my_frst_project_assets_YYYYMMDD_HHMMSS.zip
+```
+
+Nicht archiviert werden `config.json`, `output/render/storyboard/**`, finale muxed Videos wie `final_concat.mp4` oder `<project_name>.mp4`, und der `archives/`-Ordner selbst. Bestehende ZIP-Dateien werden nicht ueberschrieben; bei Namenskollisionen wird `-2`, `-3` usw. angehaengt. Der Befehl loescht keine Dateien. Vor dem Schreiben kann die Dateiliste geprueft werden:
+
+```powershell
+uv run python -m tools.project_asset_archive --project .\projects\my_frst_project\config.json --dry-run
+```
+
 ## Safety- und Reparaturbefehle
 
 ### Was ist Entry-Point und was ist Bibliothekscode?

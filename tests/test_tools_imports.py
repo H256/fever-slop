@@ -6,6 +6,7 @@ class ToolsImportTests(unittest.TestCase):
     def test_tool_modules_import(self):
         for module_name in (
             "tools.normalize_render_plan",
+            "tools.project_asset_archive",
             "tools.render_plan_normalizer",
             "tools.repair_scene_srt",
             "tools.trim_existing_ltx_clips",
