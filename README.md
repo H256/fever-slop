@@ -1,4 +1,5 @@
-﻿# FeverSlop Music Video Pipeline
+﻿![<img height="480" src="./feverslop_logo.png" width="480"/>](./feverslop_logo.png)
+# FeverSlop Music Video Pipeline
 
 FeverSlop erzeugt aus einem Song einen beat- und vocal-synchronen Musikvideo-Renderplan und rendert daraus:
 
