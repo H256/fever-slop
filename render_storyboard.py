@@ -1,11 +1,12 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 import argparse
+import json
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, TextColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.config.app_config import AppConfig
 from feverslop.application.render_storyboard import RenderStoryboardRequest
@@ -61,6 +62,15 @@ def parse_scene_list(value: str | None) -> set[int] | None:
     return result
 
 
+def load_render_plan_subset(render_plan_path: str | Path, scene_numbers: set[int] | None, limit: int | None) -> list[dict]:
+    render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
+    if scene_numbers is not None:
+        render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
+    if limit is not None:
+        render_plan = render_plan[:limit]
+    return render_plan
+
+
 def main():
     parser = build_arg_parser()
     args = parser.parse_args()
@@ -79,6 +89,7 @@ def main():
     ))
 
     scene_numbers = parse_scene_list(args.scenes)
+    planned = load_render_plan_subset(args.render_plan, scene_numbers, args.limit)
     use_case = build_render_storyboard_use_case(
         app_config=app_config,
         workflow_path=args.workflow,
@@ -86,11 +97,15 @@ def main():
     )
 
     with Progress(
+        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
         TimeElapsedColumn(),
+        TimeRemainingColumn(),
         console=console,
     ) as progress:
-        progress.add_task("Rendering storyboard startframes...", total=None)
+        task = progress.add_task("Rendering storyboard startframes", total=len(planned))
 
         rendered = use_case.execute(
             RenderStoryboardRequest(
@@ -108,11 +123,16 @@ def main():
                     save_image_title=args.save_title,
                     character_lora_title=args.character_lora_title,
                 ),
+                on_frame_complete=lambda _output, completed, _total: progress.update(
+                    task,
+                    completed=completed,
+                ),
             )
         )
+        progress.update(task, completed=len(rendered))
 
     console.print(
-        f"[green]âœ“[/green] Rendered/available storyboard frames: "
+        f"[green]OK[/green] Rendered/available storyboard frames: "
         f"[yellow]{len(rendered)}[/yellow]"
     )
 

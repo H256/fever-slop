@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any, Callable
 
@@ -84,7 +84,7 @@ class SceneTimelinePipeline:
         shortest_scene = min((scene.duration for scene in repaired_scenes), default=0.0)
         longest_scene = max((scene.duration for scene in repaired_scenes), default=0.0)
         console.print(
-            f"[green]âœ“[/green] Scene duration range: "
+            f"[green]OK[/green] Scene duration range: "
             f"[yellow]{shortest_scene:.2f}s[/yellow].."
             f"[yellow]{longest_scene:.2f}s[/yellow] "
             f"from [yellow]{len(repaired_scenes)}[/yellow] scenes"
@@ -103,7 +103,7 @@ class SceneTimelinePipeline:
         for seg in stage1_segments:
             type_counts[seg["type"]] = type_counts.get(seg["type"], 0) + 1
         console.print(
-            f"[green]âœ“[/green] Stage 1 segments: [yellow]{len(stage1_segments)}[/yellow] "
+            f"[green]OK[/green] Stage 1 segments: [yellow]{len(stage1_segments)}[/yellow] "
             f"{type_counts}"
         )
 

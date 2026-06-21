@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
@@ -19,6 +20,7 @@ class RenderStoryboardRequest:
     negative_prompt: str = ""
     character_lora_strength: float | None = None
     anchors: WorkflowAnchorConfig = WorkflowAnchorConfig()
+    on_frame_complete: Callable[[Path, int, int], None] | None = None
 
 
 class RenderStoryboardUseCase:
@@ -39,26 +41,30 @@ class RenderStoryboardUseCase:
         )
 
         rendered: list[Path] = []
+        total = len(plan.scenes)
         for scene in plan.scenes:
             output_path = request.output_dir / f"scene_{scene.scene_number:04}.png"
             if request.skip_existing and output_path.exists():
                 rendered.append(output_path)
+                if request.on_frame_complete:
+                    request.on_frame_complete(output_path, len(rendered), total)
                 continue
 
-            rendered.append(
-                self.backend.render_image(
-                    ImageRenderRequest(
-                        scene=scene.to_dict(),
-                        scene_number=scene.scene_number,
-                        prompt=scene.z_image_prompt,
-                        workflow_path=request.workflow_path,
-                        output_dir=request.output_dir,
-                        skip_existing=request.skip_existing,
-                        negative_prompt=request.negative_prompt,
-                        character_lora_strength=request.character_lora_strength,
-                        anchors=request.anchors,
-                    )
+            rendered_path = self.backend.render_image(
+                ImageRenderRequest(
+                    scene=scene.to_dict(),
+                    scene_number=scene.scene_number,
+                    prompt=scene.z_image_prompt,
+                    workflow_path=request.workflow_path,
+                    output_dir=request.output_dir,
+                    skip_existing=request.skip_existing,
+                    negative_prompt=request.negative_prompt,
+                    character_lora_strength=request.character_lora_strength,
+                    anchors=request.anchors,
                 )
             )
+            rendered.append(rendered_path)
+            if request.on_frame_complete:
+                request.on_frame_complete(rendered_path, len(rendered), total)
 
         return rendered

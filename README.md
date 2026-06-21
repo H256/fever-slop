@@ -1,4 +1,4 @@
-﻿![<img height="480" src="./feverslop_logo.png" width="480"/>](./feverslop_logo.png)
+![<img height="480" src="./feverslop_logo.png" width="480"/>](./feverslop_logo.png)
 # FeverSlop Music Video Pipeline
 
 FeverSlop erzeugt aus einem Song einen beat- und vocal-synchronen Musikvideo-Renderplan und rendert daraus:
@@ -49,17 +49,17 @@ Typische Projektstruktur:
 
 ```text
 projects/my_frst_project/
-â”œâ”€ config.json
-â”œâ”€ input/
-â”‚  â””â”€ ComfyUI_00056_.mp3
-â””â”€ output/
-   â”œâ”€ stems/
-   â”œâ”€ timeline/
-   â”œâ”€ prompts/
-   â””â”€ render/
-      â”œâ”€ render_plan_ComfyUI_00056_.json
-      â”œâ”€ storyboard/
-      â””â”€ ltx/
+├─ config.json
+├─ input/
+│  └─ ComfyUI_00056_.mp3
+└─ output/
+   ├─ stems/
+   ├─ timeline/
+   ├─ prompts/
+   └─ render/
+      ├─ render_plan_ComfyUI_00056_.json
+      ├─ storyboard/
+      └─ ltx/
 ```
 
 Globale App-Konfiguration liegt normalerweise im Repo-Root:

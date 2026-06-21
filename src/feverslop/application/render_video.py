@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from rich.console import Console
+
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.rendering import VideoRenderBackend, VideoRenderRequest, WorkflowAnchorConfig
@@ -33,9 +35,11 @@ class RenderVideoScenesUseCase:
         self,
         backend: VideoRenderBackend,
         artifact_store: ArtifactStore,
+        console: Console | None = None,
     ):
         self.backend = backend
         self.artifact_store = artifact_store
+        self.console = console
 
     def execute(self, request: RenderVideoScenesRequest) -> list[Path]:
         plan = RenderPlan.from_dicts(
@@ -51,6 +55,7 @@ class RenderVideoScenesUseCase:
             final_path = request.output_dir / "final" / f"scene_{scene.scene_number:04}.mp4"
             if request.skip_existing and final_path.exists():
                 rendered.append(final_path)
+                self._log_scene_available(final_path, len(rendered), total, skipped=True)
                 if request.on_scene_complete:
                     request.on_scene_complete(final_path, len(rendered), total)
                 continue
@@ -74,7 +79,16 @@ class RenderVideoScenesUseCase:
                 )
             )
             rendered.append(output_path)
+            self._log_scene_available(output_path, len(rendered), total, skipped=False)
             if request.on_scene_complete:
                 request.on_scene_complete(output_path, len(rendered), total)
 
         return rendered
+
+    def _log_scene_available(self, output_path: Path, completed: int, total: int, *, skipped: bool) -> None:
+        if self.console is None:
+            return
+        verb = "Available" if skipped else "Rendered"
+        self.console.print(
+            f"[green]OK[/green] {verb} scene {completed}/{total}: [cyan]{output_path}[/cyan]"
+        )

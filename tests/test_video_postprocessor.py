@@ -1,5 +1,6 @@
 ﻿import unittest
 from pathlib import Path
+import subprocess
 from unittest.mock import patch
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
@@ -40,6 +41,35 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertIn("0:v:0", cmd)
         self.assertIn("1:a:0", cmd)
         self.assertIn("-shortest", cmd)
+
+    def test_ffmpeg_output_is_suppressed_by_default(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            processor.concat_clips(
+                concat_list=Path("concat_list.txt"),
+                output_file=Path("final_concat.mp4"),
+            )
+
+        self.assertEqual(
+            {
+                "check": True,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            },
+            run.call_args.kwargs,
+        )
+
+    def test_ffmpeg_output_is_visible_in_debug_mode(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg", debug=True)
+
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            processor.concat_clips(
+                concat_list=Path("concat_list.txt"),
+                output_file=Path("final_concat.mp4"),
+            )
+
+        self.assertEqual({"check": True}, run.call_args.kwargs)
 
 
 if __name__ == "__main__":

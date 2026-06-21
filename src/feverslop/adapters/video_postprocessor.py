@@ -17,6 +17,7 @@ class VideoPostProcessor:
         preset: str = "slow",
         audio_codec: str = "aac",
         audio_bitrate: str = "192k",
+        debug: bool = False,
     ):
         self.ffmpeg_path = ffmpeg_path
         self.reencode = reencode
@@ -25,6 +26,7 @@ class VideoPostProcessor:
         self.preset = preset
         self.audio_codec = audio_codec
         self.audio_bitrate = audio_bitrate
+        self.debug = debug
 
     def trim_clip(self, spec: TrimSpec) -> Path:
         spec.output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -54,7 +56,7 @@ class VideoPostProcessor:
             cmd.extend(["-c", "copy"])
 
         cmd.append(str(spec.output_file))
-        subprocess.run(cmd, check=True)
+        self._run_ffmpeg(cmd)
         return spec.output_file
 
     def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False) -> Path:
@@ -73,7 +75,7 @@ class VideoPostProcessor:
         else:
             cmd.extend(["-c", "copy"])
         cmd.append(str(output_file))
-        subprocess.run(cmd, check=True)
+        self._run_ffmpeg(cmd)
         return output_file
 
     def mux_original_audio(
@@ -98,7 +100,7 @@ class VideoPostProcessor:
             "-shortest",
             str(output_file),
         ]
-        subprocess.run(cmd, check=True)
+        self._run_ffmpeg(cmd)
         return output_file
 
     def mux_original_audio_for_diagnostics(
@@ -132,3 +134,14 @@ class VideoPostProcessor:
             encoding="utf-8",
         )
         return output_file
+
+    def _run_ffmpeg(self, cmd: list[str]) -> None:
+        if self.debug:
+            subprocess.run(cmd, check=True)
+            return
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )

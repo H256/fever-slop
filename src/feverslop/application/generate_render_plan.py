@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,7 +59,7 @@ class GenerateRenderPlanUseCase:
         self.console.rule(f"[bold cyan]{title}[/bold cyan]")
 
     def log_file(self, label: str, path: Path):
-        self.console.print(f"[green]âœ“[/green] {label}: [cyan]{path}[/cyan]")
+        self.console.print(f"[green]OK[/green] {label}: [cyan]{path}[/cyan]")
 
     def run_spinner(self, description: str, func: Callable[[], Any]):
         with Progress(
@@ -198,5 +198,5 @@ class GenerateRenderPlanUseCase:
         renderer = self.storyboard_renderer_factory(app_config, render_dir, request.zimage_workflow_path)
         rendered = renderer.render_storyboard(render_plan_path=render_plan_json)
         self.console.print(
-            f"[green]âœ“[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]"
+            f"[green]OK[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]"
         )

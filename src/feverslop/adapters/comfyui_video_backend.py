@@ -63,6 +63,7 @@ class ComfyUIVideoRenderBackend:
         postprocess: bool = True,
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
+        ffmpeg_debug: bool = False,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         workflow_patcher: LTXWorkflowPatcher | None = None,
         model_resolver=None,
@@ -124,6 +125,7 @@ class ComfyUIVideoRenderBackend:
         self.postprocessor = postprocessor or VideoPostProcessor(
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
+            debug=ffmpeg_debug,
         )
         self.workflow_patcher = workflow_patcher or LTXWorkflowPatcher(
             LTXWorkflowSettings(

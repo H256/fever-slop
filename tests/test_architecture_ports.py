@@ -1,10 +1,12 @@
 ﻿import json
 import inspect
+import io
 import tempfile
 import unittest
 from pathlib import Path
 
 import main
+from rich.console import Console
 from feverslop.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
 from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
@@ -202,6 +204,37 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertEqual(1, len(backend.requests))
             self.assertEqual("start frame prompt", backend.requests[0].prompt)
 
+    def test_storyboard_use_case_reports_progress_after_each_available_frame(self):
+        scenes = [
+            {**self._render_plan()[0], "scene": 1},
+            {**self._render_plan()[0], "scene": 2},
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(scenes), encoding="utf-8")
+            progress = []
+
+            rendered = RenderStoryboardUseCase(
+                backend=FakeImageBackend(),
+                artifact_store=JsonArtifactStore(),
+            ).execute(
+                RenderStoryboardRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    output_dir=temp / "storyboard",
+                    on_frame_complete=lambda output, completed, total: progress.append(
+                        (output.name, completed, total)
+                    ),
+                )
+            )
+
+            self.assertEqual(2, len(rendered))
+            self.assertEqual(
+                [("scene_0001.png", 1, 2), ("scene_0002.png", 2, 2)],
+                progress,
+            )
+
     def test_video_use_case_delegates_each_scene_to_video_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -261,6 +294,32 @@ class ArchitecturePortsTests(unittest.TestCase):
                 [("scene_0001.mp4", 1, 2), ("scene_0002.mp4", 2, 2)],
                 progress,
             )
+
+    def test_video_use_case_prints_rich_status_when_console_is_provided(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(self._render_plan()), encoding="utf-8")
+            console = Console(record=True, force_terminal=False, color_system=None, file=io.StringIO())
+
+            RenderVideoScenesUseCase(
+                backend=FakeVideoBackend(),
+                artifact_store=JsonArtifactStore(),
+                console=console,
+            ).execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=temp / "song.mp3",
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "ltx",
+                    render_mode="single_prompt",
+                )
+            )
+
+            output = console.export_text()
+            self.assertIn("OK Rendered scene 1/1", output)
+            self.assertIn("scene_0001.mp4", output)
 
     def test_comfy_image_backend_is_constructed_from_client_not_legacy_renderer(self):
         class FakeClient:

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any, Callable
 
@@ -88,7 +88,7 @@ class AudioTimelinePipeline:
         vocal_count = sum(1 for seg in timeline if seg.kind == "vocals")
         instrumental_count = sum(1 for seg in timeline if seg.kind == "instrumental")
         console.print(
-            f"[green]âœ“[/green] Timeline segments: "
+            f"[green]OK[/green] Timeline segments: "
             f"[yellow]{len(timeline)}[/yellow] total, "
             f"[yellow]{vocal_count}[/yellow] vocals, "
             f"[yellow]{instrumental_count}[/yellow] instrumental"
@@ -110,7 +110,7 @@ class AudioTimelinePipeline:
         log_file("Beat Data JSON", beat_json)
         beat_data = context["artifact_store"].read_json(beat_json)
         console.print(
-            f"[green]âœ“[/green] BPM: [yellow]{beat_data.get('bpm')}[/yellow], "
+            f"[green]OK[/green] BPM: [yellow]{beat_data.get('bpm')}[/yellow], "
             f"beats: [yellow]{len(beat_data.get('beats', []))}[/yellow], "
             f"source: [yellow]{beat_data.get('source_used_for_beats')}[/yellow]"
         )

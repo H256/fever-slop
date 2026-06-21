@@ -51,6 +51,7 @@ class RenderVideoCompositionOptions:
     postprocess: bool = True
     ffmpeg_path: str = "ffmpeg"
     postprocess_reencode: bool = True
+    ffmpeg_debug: bool = False
 
 
 def build_render_video_scenes_use_case(
@@ -100,12 +101,14 @@ def build_render_video_scenes_use_case(
         postprocess=options.postprocess,
         ffmpeg_path=options.ffmpeg_path,
         postprocess_reencode=options.postprocess_reencode,
+        ffmpeg_debug=options.ffmpeg_debug,
         model_resolver=model_resolver,
     )
 
     return RenderVideoScenesUseCase(
         backend=backend,
         artifact_store=JsonArtifactStore(),
+        console=console,
     )
 
 
@@ -215,6 +218,7 @@ def namespace_to_options(args) -> RenderVideoCompositionOptions:
         postprocess=not args.no_postprocess,
         ffmpeg_path=args.ffmpeg,
         postprocess_reencode=not args.postprocess_streamcopy,
+        ffmpeg_debug=getattr(args, "debug", False),
     )
 
 

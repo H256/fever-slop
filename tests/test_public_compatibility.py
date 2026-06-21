@@ -1,5 +1,7 @@
 ﻿import argparse
 import inspect
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -97,6 +99,26 @@ class PublicCompatibilityTests(unittest.TestCase):
             ]
         )
         self.assertEqual("#PROMPT_POSITIVE", storyboard_args.positive_title)
+
+    def test_storyboard_render_plan_subset_matches_scene_filter_and_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            render_plan = Path(temp_dir) / "render_plan.json"
+            render_plan.write_text(
+                json.dumps([
+                    {"scene": 1},
+                    {"scene": 2},
+                    {"scene": 3},
+                ]),
+                encoding="utf-8",
+            )
+
+            subset = render_storyboard.load_render_plan_subset(
+                render_plan,
+                scene_numbers={2, 3},
+                limit=1,
+            )
+
+            self.assertEqual([2], [scene["scene"] for scene in subset])
 
     def test_root_python_files_are_only_public_cli_or_explicit_facades(self):
         allowed = {

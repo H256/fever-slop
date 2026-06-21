@@ -11,6 +11,7 @@ from render_ltx import (
     rewrite_concat_list,
     sanitize_file_stem,
 )
+from feverslop.composition.render_video import namespace_to_options
 
 
 class RenderLTXCliTests(unittest.TestCase):
@@ -39,6 +40,12 @@ class RenderLTXCliTests(unittest.TestCase):
         args = self._parse()
 
         self.assertEqual("single_prompt", args.render_mode)
+
+    def test_debug_flag_enables_ffmpeg_debug_output(self):
+        args = self._parse(["--debug"])
+
+        self.assertTrue(args.debug)
+        self.assertTrue(namespace_to_options(args).ffmpeg_debug)
 
     def test_safe_rolling_frame_profile_uses_low_vram_values(self):
         args = self._parse(["--rolling-frame-profile", "safe"])

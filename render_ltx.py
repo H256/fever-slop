@@ -72,6 +72,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-duration", type=float, default=None)
     parser.add_argument("--allow-out-of-range-clips", action="store_true")
     parser.add_argument("--debug-workflows-dir", default=None)
+    parser.add_argument("--debug", action="store_true", help="Show verbose debug output, including FFmpeg output.")
 
     parser.add_argument(
         "--rolling-frame-profile",
@@ -299,7 +300,8 @@ def main():
         f"LoRA 1 enabled: [yellow]{resolved['lora_1_enabled']}[/yellow]\n"
         f"LoRA 1 name: [cyan]{resolved['lora_1_name']}[/cyan]\n"
         f"LoRA split enabled: [yellow]{resolved['lora_split_enabled']}[/yellow]\n"
-        f"Postprocess: [yellow]{not args.no_postprocess}[/yellow]",
+        f"Postprocess: [yellow]{not args.no_postprocess}[/yellow]\n"
+        f"Debug: [yellow]{args.debug}[/yellow]",
         title="Startup",
         border_style="cyan",
     ))
@@ -345,8 +347,8 @@ def main():
         progress.update(task, completed=len(rendered))
 
     concat_file = rewrite_concat_list(rendered, args.output_dir)
-    console.print(f"[green]âœ“[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
-    console.print(f"[green]âœ“[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
+    console.print(f"[green]OK[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
+    console.print(f"[green]OK[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
     console.print()
     project_name = resolved["project_config"].project_name if resolved["project_config"] else None
     video_only, final_concat = final_concat_paths(args.output_dir, project_name)

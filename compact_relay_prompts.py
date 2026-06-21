@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 
@@ -68,7 +68,7 @@ def main():
         )
         progress.update(task, completed=1)
 
-    console.print(f"[green]âœ“[/green] Compact render plan: [cyan]{output}[/cyan]")
+    console.print(f"[green]OK[/green] Compact render plan: [cyan]{output}[/cyan]")
 
 
 if __name__ == "__main__":
