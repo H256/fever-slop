@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from feverslop.domain.prompt_constraints import build_location_constraint
+
 
 def performance_policy(segment_type: str) -> str:
     mode = str(segment_type or "").strip().lower()
@@ -46,6 +48,7 @@ Priority:
 
 Rules:
 - Create one polished text-to-image prompt.
+- If location_constraint is provided in the user input, follow it as a mandatory rule. Every Z-Image prompt must visibly take place in one allowed location.
 - Treat the current visual prompt as the base scene description.
 - Expand and improve that scene using the style/theme.
 - Keep the image prompt concrete and visual.
@@ -140,6 +143,7 @@ Visual rules:
 - Do not describe technical render parameters.
 
 Prompt guidance:
+- If GLOBAL_CONTEXT.location_constraint is provided, follow it as a mandatory rule. Every scene concept must visibly take place in one allowed location.
 - If prompt_guidance is provided, treat its categories as user interface values for this run.
 - Shot types, character visibility, environments, lighting, camera motion, physical interaction, facial expression, outfit rules, prompt structure, list handling, and word count are guidance for visual continuity and variety.
 - Follow explicit prompt_guidance values unless they conflict with segment type, subject identity, allowed locations, or the performance policy.

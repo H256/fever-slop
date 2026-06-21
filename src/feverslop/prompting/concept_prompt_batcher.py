@@ -178,6 +178,7 @@ Do not add extra keys.
 Rules:
 - One sentence per concept.
 - Preserve story continuity.
+- If GLOBAL_CONTEXT.location_constraint is provided, follow it as a mandatory rule.
 - Do not describe subject identity/outfit/hair.
 - Do not repeat full prompts.
 - Describe visual story action, environment, transformation, symbol, or mood.
@@ -203,7 +204,7 @@ Rules:
         for segment_id in missing:
             value = repair.get(segment_id)
             if value is None:
-                value = self._fallback_concept(segment_id)
+                value = self._fallback_concept(segment_id, global_context)
             repaired[segment_id] = str(value)
 
         return {
@@ -255,7 +256,14 @@ Do not mention JSON or segment ids unless needed.
         ).strip()
 
     @staticmethod
-    def _fallback_concept(segment_id: str) -> str:
+    def _fallback_concept(segment_id: str, global_context: dict | None = None) -> str:
+        locations = (global_context or {}).get("locations") or []
+        first_location = str(locations[0]).strip() if locations else ""
+        if first_location:
+            return (
+                f"Continue the established visual story for {segment_id} in {first_location}, "
+                f"preserving atmosphere, symbolic tension, and narrative progression."
+            )
         return (
             f"Continue the established visual story for {segment_id}, preserving the same setting, "
             f"atmosphere, symbolic tension, and narrative progression."

@@ -126,10 +126,14 @@ Rules for locations:
         self,
         stage1_segments: list[dict],
         story_idea: str,
+        global_context: dict | None = None,
+        notes: str = "",
     ) -> dict:
         prompt = json.dumps(
             {
                 "STORY_IDEA": story_idea,
+                "GLOBAL_CONTEXT": global_context or {},
+                "NOTES": notes,
                 "SEGMENT_TIMELINE_JSON": stage1_segments,
             },
             ensure_ascii=False,

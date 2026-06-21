@@ -63,6 +63,27 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertGreaterEqual(len(llm.calls), 2)
         self.assertIn("T2I RESULT", llm.calls[-1]["prompt"])
 
+    def test_zimage_prompt_payload_includes_location_constraint(self):
+        llm = FakeLLM()
+        builder = ScenePromptBuilder(llm)
+
+        builder.build_zimage_prompt(
+            segment={"segment_id": "segment_001", "type": "instrumental"},
+            concept="A youth kneels at a spring.",
+            global_context={
+                "subject": "a Greek youth",
+                "story_idea": "A forest myth.",
+                "style": "chiaroscuro",
+                "locations": ["ancient forest", "secluded spring"],
+                "location_constraint": "Allowed locations: ancient forest, secluded spring",
+                "prompt_guidance": {},
+            },
+        )
+
+        payload = json.loads(llm.calls[0]["prompt"])
+
+        self.assertEqual("Allowed locations: ancient forest, secluded spring", payload["location_constraint"])
+
 
 if __name__ == "__main__":
     unittest.main()

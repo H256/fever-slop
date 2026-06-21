@@ -1,6 +1,7 @@
 ﻿import unittest
 
 from feverslop.prompting.music_video_prompt_style import (
+    build_location_constraint,
     build_concept_mapper_system_prompt,
     build_detail_system_prompt,
     build_i2v_system_prompt,
@@ -36,6 +37,23 @@ class PerformancePolicyTests(unittest.TestCase):
 
 
 class PromptInstructionTests(unittest.TestCase):
+    def test_location_constraint_requires_allowed_locations_when_configured(self):
+        constraint = build_location_constraint([
+            "A lush, ancient forest with dappled sunlight",
+            "A secluded, crystal-clear spring in a Locus amoenus",
+        ]).lower()
+
+        self.assertIn("allowed locations", constraint)
+        self.assertIn("every scene concept", constraint)
+        self.assertIn("every z-image prompt", constraint)
+        self.assertIn("must visibly take place", constraint)
+        self.assertIn("do not invent other locations", constraint)
+        self.assertIn("a lush, ancient forest with dappled sunlight", constraint)
+        self.assertIn("a secluded, crystal-clear spring in a locus amoenus", constraint)
+
+    def test_location_constraint_is_empty_without_locations(self):
+        self.assertEqual("", build_location_constraint([]))
+
     def test_t2i_system_prompt_uses_reference_style_structure(self):
         prompt = build_t2i_system_prompt().lower()
 
@@ -44,6 +62,8 @@ class PromptInstructionTests(unittest.TestCase):
         self.assertIn("do not use metaphors", prompt)
         self.assertIn("only send the final prompt text", prompt)
         self.assertIn("do not say the character is singing", prompt)
+        self.assertIn("location_constraint", prompt)
+        self.assertIn("every z-image prompt", prompt)
 
     def test_i2v_system_prompt_adapts_performance_policy(self):
         prompt = build_i2v_system_prompt("instrumental").lower()
@@ -68,6 +88,8 @@ class PromptInstructionTests(unittest.TestCase):
         self.assertIn("continuous visual story", prompt)
         self.assertIn("each concept must stand alone", prompt)
         self.assertIn("prompt guidance", prompt)
+        self.assertIn("location_constraint", prompt)
+        self.assertIn("every scene concept", prompt)
         self.assertIn("shot types", prompt)
         self.assertIn("instrumental segments", prompt)
         self.assertIn("do not say the character is singing", prompt)

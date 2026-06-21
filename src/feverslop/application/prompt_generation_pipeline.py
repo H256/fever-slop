@@ -11,6 +11,7 @@ from feverslop.ports.generate_pipeline import (
     PromptPipelineFactory,
     ScenePromptBuilderFactory,
 )
+from feverslop.domain.prompt_constraints import build_location_constraint
 from rich.panel import Panel
 from rich.table import Table
 
@@ -292,6 +293,7 @@ class PromptGenerationPipeline:
             "style": style_block,
             "subject": subject,
             "locations": locations,
+            "location_constraint": build_location_constraint(locations),
             "steering": {
                 "global": get_steering_value(config, "global_"),
                 "story_idea": get_steering_value(config, "story_idea"),

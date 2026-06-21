@@ -52,6 +52,7 @@ class ScenePromptBuilder:
             "story_idea": global_context["story_idea"],
             "style": global_context["style"],
             "locations": global_context["locations"],
+            "location_constraint": global_context.get("location_constraint", ""),
             "prompt_guidance": global_context.get("prompt_guidance", {}),
             "custom_instructions": custom_instructions,
             "trigger_word": trigger_word,

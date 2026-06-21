@@ -191,7 +191,7 @@ Minimalbeispiel:
 - `story_idea`: Harte Vorgabe fuer die Story. Wenn leer, generiert der LLM eine Storyidee.
 - `style`: Harte Vorgabe fuer den visuellen Stil. Wenn leer, generiert der LLM einen Stilblock.
 - `subject`: Harte Vorgabe fuer Hauptfigur/Subjekt. Wichtig fuer konsistente Charaktere.
-- `locations`: Liste erlaubter Orte. Nutze konkrete Orte, wenn keine neuen Locations erfunden werden sollen.
+- `locations`: Liste erlaubter Orte. Wenn gesetzt, muss jeder Konzept- und Z-Image-Prompt sichtbar an einem dieser Orte oder einer direkten visuellen Variante davon stattfinden; andere Orte duerfen nicht erfunden werden.
 
 ### lyrics
 
@@ -249,7 +249,7 @@ Wenn zu viele falsche Singing-Abschnitte entstehen, `min_vocal_duration` und `mi
 - `story_idea`: Zusatzlenkung fuer Story-Generierung.
 - `style`: Zusatzlenkung fuer Stil-Generierung.
 - `subject`: Zusatzlenkung fuer Subjekt-/Charakter-Generierung.
-- `locations`: Zusatzlenkung fuer erlaubte Locations.
+- `locations`: Zusatzlenkung fuer Location-Generierung. Harte Ortsvorgaben gehoeren in das Top-Level-Feld `locations`.
 - `concepts`: Zusatzlenkung fuer Konzept-Prompts pro Segment.
 - `zimage`: Zusatzlenkung fuer Z-Image Startframe-Prompts.
 - `ltx`: Zusatzlenkung fuer LTX-Bewegungs-/I2V-Prompts.
