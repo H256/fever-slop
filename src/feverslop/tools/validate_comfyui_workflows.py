@@ -35,7 +35,10 @@ def main() -> None:
     args = build_arg_parser().parse_args()
     console = Console()
     app_config = AppConfig.load(args.app_config)
-    client = ComfyUIClient(base_url=app_config.comfyui.base_url)
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
 
     reports = validate_comfyui_workflows(
         client=client,

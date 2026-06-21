@@ -18,6 +18,7 @@ class LLMConfig:
 @dataclass
 class ComfyUIConfig:
     base_url: str = "http://127.0.0.1:8188"
+    prompt_timeout_seconds: float = 1800.0
     model_overrides: list[ComfyUIModelOverride] = field(default_factory=list)
 
 
@@ -49,6 +50,7 @@ class AppConfig:
             ),
             comfyui=ComfyUIConfig(
                 base_url=comfyui_raw.get("base_url", "http://127.0.0.1:8188"),
+                prompt_timeout_seconds=float(comfyui_raw.get("prompt_timeout_seconds", 1800.0)),
                 model_overrides=[
                     ComfyUIModelOverride.from_dict(item)
                     for item in comfyui_raw.get("model_overrides", [])

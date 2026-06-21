@@ -118,6 +118,54 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         self.assertEqual({7}, request.scene_numbers)
         self.assertFalse(request.skip_existing)
 
+    def test_ltx_resume_rewrites_concat_list_from_all_returned_clips_before_final_concat(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            plan_path = render_dir / "render_plan_song.json"
+            plan_path.write_text("[]", encoding="utf-8")
+            clip_1 = render_dir / "ltx_single_prompt" / "final" / "scene_0001.mp4"
+            clip_2 = render_dir / "ltx_single_prompt" / "final" / "scene_0002.mp4"
+            clip_1.parent.mkdir(parents=True)
+            clip_1.write_bytes(b"clip 1")
+            clip_2.write_bytes(b"clip 2")
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-storyboard",
+                    "--skip-storyboard-page",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = [clip_1, clip_2]
+            postprocessor = Mock()
+            postprocessor.concat_clips.return_value = render_dir / "ltx_single_prompt" / "Song_video_only.mp4"
+            postprocessor.mux_original_audio.return_value = render_dir / "ltx_single_prompt" / "Song.mp4"
+            with patch("run_pipeline.build_render_video_scenes_use_case", return_value=use_case), \
+                patch("run_pipeline.VideoPostProcessor", return_value=postprocessor):
+                run_pipeline.run(args)
+
+            concat_list = render_dir / "ltx_single_prompt" / "concat_list.txt"
+            self.assertEqual(
+                [
+                    f"file '{clip_1.resolve().as_posix()}'",
+                    f"file '{clip_2.resolve().as_posix()}'",
+                ],
+                concat_list.read_text(encoding="utf-8").splitlines(),
+            )
+
 
 def context_path(config_path: Path) -> Path:
     return config_path.parent / "output" / "render" / "render_plan_song.json"

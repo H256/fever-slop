@@ -4,6 +4,13 @@ import requests
 
 
 class ComfyUIClientTests(unittest.TestCase):
+    def test_wait_for_completion_uses_configured_default_timeout(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        client = ComfyUIClient(base_url="http://comfy.example", prompt_timeout_seconds=12)
+
+        self.assertEqual(12, client.prompt_timeout_seconds)
+
     def test_http_error_includes_response_body(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient, ComfyUIHTTPError
 

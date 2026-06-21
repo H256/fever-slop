@@ -62,7 +62,10 @@ def build_render_video_scenes_use_case(
     resolved = resolve_project_config_defaults(options)
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(options)
 
-    client = ComfyUIClient(base_url=app_config.comfyui.base_url)
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
     model_resolver = ComfyUIModelResolver(
         client,
         overrides=app_config.comfyui.model_overrides,

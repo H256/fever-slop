@@ -30,9 +30,11 @@ class ComfyUIClient:
         self,
         base_url: str = "http://127.0.0.1:8188",
         client_id: str | None = None,
+        prompt_timeout_seconds: float = 1800.0,
     ):
         self.base_url = base_url.rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
+        self.prompt_timeout_seconds = float(prompt_timeout_seconds)
 
     def queue_prompt(self, workflow: dict) -> str:
         response = requests.post(
@@ -66,9 +68,10 @@ class ComfyUIClient:
         self,
         prompt_id: str,
         poll_interval: float = 1.0,
-        timeout_seconds: float = 1800.0,
+        timeout_seconds: float | None = None,
     ) -> dict:
         started_at = time.time()
+        timeout_seconds = self.prompt_timeout_seconds if timeout_seconds is None else timeout_seconds
 
         while True:
             history = self.get_history(prompt_id)

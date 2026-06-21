@@ -170,6 +170,16 @@ def convert_to_safe_file_stem(value, fallback: str) -> str:
     return safe or fallback
 
 
+def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:
+    output_dir = Path(output_dir)
+    concat_file = output_dir / "concat_list.txt"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with concat_file.open("w", encoding="utf-8") as f:
+        for path in rendered_files:
+            f.write(f"file '{Path(path).resolve().as_posix()}'\n")
+    return concat_file
+
+
 def runner_root() -> Path:
     return Path(__file__).resolve().parent
 
@@ -288,7 +298,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             ),
             console=console,
         )
-        video_use_case.execute(
+        rendered_ltx_clips = video_use_case.execute(
             RenderVideoScenesRequest(
                 render_plan_path=plan_for_next_step,
                 workflow_path=ltx_workflow,
@@ -305,6 +315,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 ),
             )
         )
+        rewrite_concat_list(rendered_ltx_clips, context.ltx_dir)
 
     video_only_path = None
     final_video_path = None

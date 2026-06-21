@@ -106,7 +106,10 @@ def _build_scene_generator(scene_cfg):
 
 
 def _build_storyboard_renderer(app_config, render_dir: Path, workflow_path: Path):
-    client = ComfyUIClient(base_url=app_config.comfyui.base_url)
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
     model_resolver = ComfyUIModelResolver(
         client,
         overrides=app_config.comfyui.model_overrides,
