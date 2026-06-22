@@ -6,7 +6,7 @@ import json
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.config.app_config import AppConfig
 from feverslop.application.render_storyboard import RenderStoryboardRequest
@@ -102,10 +102,10 @@ def main():
     )
 
     with Progress(
-        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TextColumn("{task.completed}/{task.total}"),
+        TaskProgressColumn(),
         TimeElapsedColumn(),
         TimeRemainingColumn(),
         console=console,

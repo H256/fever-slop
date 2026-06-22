@@ -9,6 +9,14 @@ import re
 import subprocess
 
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
@@ -27,6 +35,34 @@ from feverslop.tools.storyboard_page import generate_storyboard_page
 
 
 console = Console()
+
+
+class RenderProgressReporter:
+    def __init__(self, description: str, total: int, *, console: Console = console):
+        self.description = description
+        self.total = total
+        self.progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        )
+        self.task_id = None
+
+    def __enter__(self) -> RenderProgressReporter:
+        self.progress.__enter__()
+        self.task_id = self.progress.add_task(self.description, total=self.total)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.progress.__exit__(exc_type, exc_value, traceback)
+
+    def update(self, _output_path: Path, completed: int, _total: int) -> None:
+        if self.task_id is not None:
+            self.progress.update(self.task_id, completed=completed)
 
 
 @dataclass(frozen=True)
@@ -180,6 +216,15 @@ def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> P
     return concat_file
 
 
+def count_render_plan_items(render_plan_path: str | Path, scene_numbers: set[int] | None = None, limit: int | None = None) -> int:
+    render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    if scene_numbers is not None:
+        render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
+    if limit is not None:
+        render_plan = render_plan[:limit]
+    return len(render_plan)
+
+
 def runner_root() -> Path:
     return Path(__file__).resolve().parent
 
@@ -253,14 +298,17 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             workflow_path=storyboard_workflow,
             output_dir=context.storyboard_dir,
         )
-        storyboard_use_case.execute(
-            RenderStoryboardRequest(
-                render_plan_path=plan_for_next_step,
-                workflow_path=storyboard_workflow,
-                output_dir=context.storyboard_dir,
-                character_lora_strength=args.storyboard_lora_strength,
+        storyboard_total = count_render_plan_items(plan_for_next_step)
+        with RenderProgressReporter("Rendering storyboard frames", storyboard_total) as storyboard_progress:
+            storyboard_use_case.execute(
+                RenderStoryboardRequest(
+                    render_plan_path=plan_for_next_step,
+                    workflow_path=storyboard_workflow,
+                    output_dir=context.storyboard_dir,
+                    character_lora_strength=args.storyboard_lora_strength,
+                    on_frame_complete=storyboard_progress.update,
+                )
             )
-        )
 
     if not args.skip_storyboard_page:
         write_step("Generating storyboard page")
@@ -297,23 +345,27 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             ),
             console=console,
         )
-        rendered_ltx_clips = video_use_case.execute(
-            RenderVideoScenesRequest(
-                render_plan_path=plan_for_next_step,
-                workflow_path=ltx_workflow,
-                audio_file=context.input_audio,
-                storyboard_dir=context.storyboard_dir,
-                output_dir=context.ltx_dir,
-                render_mode=args.render_mode,
-                single_prompt_workflow_path=ltx_single_prompt_workflow,
-                scene_numbers={args.smoke_scene} if args.smoke_only else None,
-                skip_existing=False if args.smoke_only else not args.no_skip_existing,
-                anchors=WorkflowAnchorConfig(
-                    single_prompt_title=args.single_prompt_title,
-                    single_prompt_input=args.single_prompt_input,
-                ),
+        ltx_scene_numbers = {args.smoke_scene} if args.smoke_only else None
+        ltx_total = count_render_plan_items(plan_for_next_step, scene_numbers=ltx_scene_numbers)
+        with RenderProgressReporter("Rendering LTX scenes", ltx_total) as ltx_progress:
+            rendered_ltx_clips = video_use_case.execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=plan_for_next_step,
+                    workflow_path=ltx_workflow,
+                    audio_file=context.input_audio,
+                    storyboard_dir=context.storyboard_dir,
+                    output_dir=context.ltx_dir,
+                    render_mode=args.render_mode,
+                    single_prompt_workflow_path=ltx_single_prompt_workflow,
+                    scene_numbers=ltx_scene_numbers,
+                    skip_existing=False if args.smoke_only else not args.no_skip_existing,
+                    anchors=WorkflowAnchorConfig(
+                        single_prompt_title=args.single_prompt_title,
+                        single_prompt_input=args.single_prompt_input,
+                    ),
+                    on_scene_complete=ltx_progress.update,
+                )
             )
-        )
         rewrite_concat_list(rendered_ltx_clips, context.ltx_dir)
 
     video_only_path = None

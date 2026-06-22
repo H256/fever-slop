@@ -4,6 +4,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
+from rich.progress import TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
+
 import run_pipeline
 
 
@@ -97,6 +99,15 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         video_builder.assert_not_called()
         postprocessor.assert_not_called()
 
+    def test_runner_render_progress_has_percent_elapsed_and_eta_columns(self):
+        progress = run_pipeline.RenderProgressReporter("Rendering", total=3)
+
+        column_types = [type(column) for column in progress.progress.columns]
+
+        self.assertIn(TaskProgressColumn, column_types)
+        self.assertIn(TimeElapsedColumn, column_types)
+        self.assertIn(TimeRemainingColumn, column_types)
+
     def test_smoke_ltx_uses_selected_scene_and_forces_rerender(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"
@@ -104,6 +115,12 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             config_path = project_dir / "config.json"
             config_path.write_text(
                 json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            (render_dir / "render_plan_song.json").write_text(
+                json.dumps([{"scene": 7}]),
                 encoding="utf-8",
             )
             args = run_pipeline.build_arg_parser().parse_args(
@@ -130,6 +147,80 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         request = use_case.execute.call_args.args[0]
         self.assertEqual({7}, request.scene_numbers)
         self.assertFalse(request.skip_existing)
+
+    def test_storyboard_runner_wires_progress_callback(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            (render_dir / "render_plan_song.json").write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}]),
+                encoding="utf-8",
+            )
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-storyboard-page",
+                    "--skip-ltx",
+                    "--skip-final-concat",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+            with patch("run_pipeline.build_render_storyboard_use_case", return_value=use_case):
+                run_pipeline.run(args)
+
+        request = use_case.execute.call_args.args[0]
+        self.assertIsNotNone(request.on_frame_complete)
+        self.assertEqual(2, request.on_frame_complete.__self__.total)
+
+    def test_ltx_runner_wires_progress_callback(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            (render_dir / "render_plan_song.json").write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                encoding="utf-8",
+            )
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-storyboard",
+                    "--skip-storyboard-page",
+                    "--skip-final-concat",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+            with patch("run_pipeline.build_render_video_scenes_use_case", return_value=use_case):
+                run_pipeline.run(args)
+
+        request = use_case.execute.call_args.args[0]
+        self.assertIsNotNone(request.on_scene_complete)
+        self.assertEqual(3, request.on_scene_complete.__self__.total)
 
     def test_ltx_resume_rewrites_concat_list_from_all_returned_clips_before_final_concat(self):
         with TemporaryDirectory() as tmp:

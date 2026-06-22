@@ -6,7 +6,7 @@ import json
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import Progress, BarColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
 from feverslop.application.render_video import RenderVideoScenesRequest
@@ -317,10 +317,10 @@ def main():
     use_case = build_render_video_scenes_use_case(namespace_to_options(args), console=console)
 
     with Progress(
-        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TextColumn("{task.completed}/{task.total}"),
+        TaskProgressColumn(),
         TimeElapsedColumn(),
         TimeRemainingColumn(),
         console=console,
