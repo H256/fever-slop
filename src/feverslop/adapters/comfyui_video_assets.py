@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 
@@ -25,6 +26,7 @@ class ComfyUIVideoAssetUploader:
             subfolder="feverslop/audio",
             file_type="input",
             overwrite=True,
+            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(audio_file),
         )
         return self.comfy_path_from_upload(audio_upload)
 
@@ -45,6 +47,15 @@ class ComfyUIVideoAssetUploader:
             overwrite=True,
         )
         return self.comfy_path_from_upload(image_upload)
+
+    
+    @staticmethod
+    def content_addressed_name(file_path: Path) -> str:
+        if not file_path.exists():
+            return file_path.name
+
+        digest = hashlib.sha256(file_path.read_bytes()).hexdigest()[:12]
+        return f"{file_path.stem}-{digest}{file_path.suffix}"
 
     @staticmethod
     def comfy_path_from_upload(upload_response: dict) -> str:

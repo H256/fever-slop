@@ -90,6 +90,7 @@ class ComfyUIClient:
         subfolder: str = "",
         file_type: str = "input",
         overwrite: bool = True,
+        upload_name: str | None = None,
     ) -> dict:
         """
         ComfyUI's default upload endpoint is /upload/image.
@@ -107,7 +108,7 @@ class ComfyUIClient:
         with file_path.open("rb") as f:
             response = requests.post(
                 f"{self.base_url}/upload/image",
-                files={"image": (file_path.name, f)},
+                files={"image": (upload_name or file_path.name, f)},
                 data={
                     "type": file_type,
                     "subfolder": subfolder,
@@ -125,6 +126,7 @@ class ComfyUIClient:
         subfolder: str = "",
         file_type: str = "input",
         overwrite: bool = True,
+        upload_name: str | None = None,
     ) -> dict:
         """
         Alias for workflows/custom nodes that accept uploaded files through ComfyUI's input folder.
@@ -135,6 +137,7 @@ class ComfyUIClient:
             subfolder=subfolder,
             file_type=file_type,
             overwrite=overwrite,
+            upload_name=upload_name,
         )
 
     def download_view_file(

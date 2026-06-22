@@ -1,4 +1,5 @@
 ﻿import unittest
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -9,13 +10,13 @@ class FakeComfyUIClient:
         self.audio_uploads = []
         self.image_uploads = []
 
-    def upload_file_via_image_endpoint(self, path, *, subfolder, file_type, overwrite):
-        self.audio_uploads.append((Path(path), subfolder, file_type, overwrite))
-        return {"name": Path(path).name, "subfolder": subfolder}
+    def upload_file_via_image_endpoint(self, path, *, subfolder, file_type, overwrite, upload_name=None):
+        self.audio_uploads.append((Path(path), subfolder, file_type, overwrite, upload_name))
+        return {"name": upload_name or Path(path).name, "subfolder": subfolder}
 
-    def upload_image(self, path, *, subfolder, file_type, overwrite):
-        self.image_uploads.append((Path(path), subfolder, file_type, overwrite))
-        return {"name": Path(path).name, "subfolder": subfolder}
+    def upload_image(self, path, *, subfolder, file_type, overwrite, upload_name=None):
+        self.image_uploads.append((Path(path), subfolder, file_type, overwrite, upload_name))
+        return {"name": upload_name or Path(path).name, "subfolder": subfolder}
 
 
 class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
@@ -33,7 +34,29 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
 
         self.assertEqual("feverslop/audio/song.mp3", name)
         self.assertEqual(
-            [(Path("song.mp3"), "feverslop/audio", "input", True)],
+            [(Path("song.mp3"), "feverslop/audio", "input", True, "song.mp3")],
+            client.audio_uploads,
+        )
+
+    def test_existing_audio_upload_uses_content_addressed_name(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio = Path(temp_dir) / "song.mp3"
+            audio.write_bytes(b"audio")
+            digest = hashlib.sha256(b"audio").hexdigest()[:12]
+            client = FakeComfyUIClient()
+            uploader = ComfyUIVideoAssetUploader(client)
+
+            name = uploader.resolve_audio_name(
+                audio,
+                upload_audio=True,
+                uploaded_audio_name=None,
+            )
+
+        self.assertEqual(f"feverslop/audio/song-{digest}.mp3", name)
+        self.assertEqual(
+            [(audio, "feverslop/audio", "input", True, f"song-{digest}.mp3")],
             client.audio_uploads,
         )
 
@@ -72,7 +95,7 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
 
         self.assertEqual("feverslop/storyboard/scene_0001.png", name)
         self.assertEqual(
-            [(Path("scene_0001.png"), "feverslop/storyboard", "input", True)],
+            [(Path("scene_0001.png"), "feverslop/storyboard", "input", True, None)],
             client.image_uploads,
         )
 
