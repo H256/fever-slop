@@ -10,6 +10,7 @@ from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.config.app_config import AppConfig
 from feverslop.config.comfyui import ComfyUIModelOverride
+from feverslop.path_utils import coerce_local_path
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -34,7 +35,7 @@ def validate_comfyui_workflows(
 def main() -> None:
     args = build_arg_parser().parse_args()
     console = Console()
-    app_config = AppConfig.load(args.app_config)
+    app_config = AppConfig.load(coerce_local_path(args.app_config))
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -42,7 +43,7 @@ def main() -> None:
 
     reports = validate_comfyui_workflows(
         client=client,
-        workflows_dir=args.workflows_dir,
+        workflows_dir=coerce_local_path(args.workflows_dir),
         overrides=app_config.comfyui.model_overrides,
     )
 

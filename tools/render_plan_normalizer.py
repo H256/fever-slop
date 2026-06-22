@@ -4,6 +4,8 @@ from pathlib import Path
 import json
 from copy import deepcopy
 
+from feverslop.path_utils import coerce_local_path
+
 
 def scene_duration_from_frame_count(frame_count: int, fps: int) -> float:
     return max(0.0, (int(frame_count) - 1) / float(fps))
@@ -179,8 +181,8 @@ def normalize_render_plan_file(
     max_duration: float,
     renumber: bool = True,
 ) -> Path:
-    input_render_plan = Path(input_render_plan)
-    output_render_plan = Path(output_render_plan)
+    input_render_plan = coerce_local_path(input_render_plan)
+    output_render_plan = coerce_local_path(output_render_plan)
 
     plan = json.loads(input_render_plan.read_text(encoding="utf-8"))
     normalized = normalize_render_plan(

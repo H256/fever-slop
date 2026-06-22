@@ -12,6 +12,7 @@ from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.application.render_video import RenderVideoScenesUseCase
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
+from feverslop.path_utils import coerce_local_path
 
 
 ROLLING_FRAME_PROFILES = {
@@ -74,9 +75,13 @@ def build_render_video_scenes_use_case(
 
     backend = ComfyUIVideoRenderBackend(
         client=client,
-        ltx_workflow_path=options.workflow_path,
-        output_dir=options.output_dir,
-        single_prompt_workflow_path=options.single_prompt_workflow_path,
+        ltx_workflow_path=coerce_local_path(options.workflow_path),
+        output_dir=coerce_local_path(options.output_dir),
+        single_prompt_workflow_path=(
+            coerce_local_path(options.single_prompt_workflow_path)
+            if options.single_prompt_workflow_path
+            else None
+        ),
         render_mode=options.render_mode,
         single_prompt_node_title=options.single_prompt_title,
         single_prompt_input_name=options.single_prompt_input,
@@ -94,7 +99,7 @@ def build_render_video_scenes_use_case(
         min_duration=resolved["min_duration"],
         max_duration=resolved["max_duration"],
         allow_out_of_range_clips=options.allow_out_of_range_clips,
-        debug_workflows_dir=options.debug_workflows_dir,
+        debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
         preroll_frames=preroll_frames,
         tail_loss_frames=tail_loss_frames,
         round_render_frames_to_8n1=round_render_frames_to_8n1,
@@ -113,7 +118,7 @@ def build_render_video_scenes_use_case(
 
 
 def discover_project_config_path(render_plan_path: str | Path) -> Path | None:
-    render_plan_path = Path(render_plan_path).resolve()
+    render_plan_path = coerce_local_path(render_plan_path).resolve()
     for parent in render_plan_path.parents:
         candidate = parent / "config.json"
         if candidate.exists():

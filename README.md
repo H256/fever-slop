@@ -23,7 +23,7 @@ docs/project_workflow.md
 Schnellstart fuer ein Projekt mit `config.json`:
 
 ```powershell
-uv run python run_pipeline.py .\projects\my_song
+uv run python run_pipeline.py ./projects/my_song
 ```
 
 Der Python-Runner nutzt die Pipeline-Schritte direkt ueber Python-Use-Cases.
@@ -49,17 +49,17 @@ Typische Projektstruktur:
 
 ```text
 projects/my_frst_project/
-├─ config.json
-├─ input/
-│  └─ ComfyUI_00056_.mp3
-└─ output/
-   ├─ stems/
-   ├─ timeline/
-   ├─ prompts/
-   └─ render/
-      ├─ render_plan_ComfyUI_00056_.json
-      ├─ storyboard/
-      └─ ltx/
+|-- config.json
+|-- input/
+|   `-- ComfyUI_00056_.mp3
+`-- output/
+   |-- stems/
+   |-- timeline/
+   |-- prompts/
+   `-- render/
+      |-- render_plan_ComfyUI_00056_.json
+      |-- storyboard/
+      `-- ltx/
 ```
 
 Globale App-Konfiguration liegt normalerweise im Repo-Root:
@@ -309,9 +309,9 @@ Nach dem Rendern der Storyboard-Startframes kann `storyboard_page.py` eine stati
 
 ```powershell
 uv run python storyboard_page.py `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-html .\projects\my_frst_project\output\render\storyboard\index.html `
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --storyboard-dir ./projects/my_frst_project/output/render/storyboard `
+  --output-html ./projects/my_frst_project/output/render/storyboard/index.html `
   --title "Storyboard Review"
 ```
 
@@ -465,9 +465,9 @@ Falls ein anderer PromptRelay-Node `sum(segment_lengths) = #FRAMES` erwartet:
 Die Beispiele nutzen:
 
 ```powershell
-$Project = ".\projects\my_frst_project"
+$Project = "./projects/my_frst_project"
 $Song = "ComfyUI_00056_"
-$RenderPlan = "$Project\output\render\render_plan_$Song.json"
+$RenderPlan = "$Project/output/render/render_plan_$Song.json"
 ```
 
 PowerShell-Variablen sind optional; du kannst die Pfade auch direkt schreiben.
@@ -476,8 +476,8 @@ PowerShell-Variablen sind optional; du kannst die Pfade auch direkt schreiben.
 
 ```powershell
 uv run python main.py `
-  --project .\projects\my_frst_project\config.json `
-  --app-config .\app_config.json `
+  --project ./projects/my_frst_project/config.json `
+  --app-config ./app_config.json `
   --concept-batch-size 10
 ```
 
@@ -503,9 +503,9 @@ Empfohlen, wenn LTX zu stark driftet oder Relay-Prompts zu lang sind.
 
 ```powershell
 uv run python compact_relay_prompts.py `
-  --app-config .\app_config.json `
-  --input-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056_.json `
-  --output-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact.json `
+  --app-config ./app_config.json `
+  --input-render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056_.json `
+  --output-render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact.json `
   --max-words 28
 ```
 
@@ -517,8 +517,8 @@ Empfohlen, wenn LTX vom Startframe wegdriftet, z. B. nur Baum, Rinde, Seil, Scha
 
 ```powershell
 uv run python fix_ltx_prompt_anchors.py `
-  --input-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact.json `
-  --output-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
+  --input-render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact.json `
+  --output-render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
   --subject-anchor "the old weary warrior man with weathered scarred face, salt-and-pepper beard, tattered leather armor, and heavy frayed cloak"
 ```
 
@@ -528,10 +528,10 @@ Ab hier im Zweifel mit `render_plan_ComfyUI_00056__compact_anchored.json` weiter
 
 ```powershell
 uv run python render_storyboard.py `
-  --app-config .\app_config.json `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\zimage_api.json `
-  --output-dir .\projects\my_frst_project\output\render\storyboard `
+  --app-config ./app_config.json `
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow ./workflows/zimage_api.json `
+  --output-dir ./projects/my_frst_project/output/render/storyboard `
   --no-skip-existing
 ```
 
@@ -548,9 +548,9 @@ Wenn dein Workflow andere Node-Titel nutzt:
 
 ```powershell
 uv run python storyboard_page.py `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-html .\projects\my_frst_project\output\render\storyboard\index.html
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --storyboard-dir ./projects/my_frst_project/output/render/storyboard `
+  --output-html ./projects/my_frst_project/output/render/storyboard/index.html
 ```
 
 Optionen:
@@ -579,36 +579,36 @@ Vor einem Vollrender zuerst eine kritische Szene testen, z. B. Szene 16:
 
 ```powershell
 uv run python render_ltx.py `
-  --app-config .\app_config.json `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\video_ltxv_i2v_v1.json `
+  --app-config ./app_config.json `
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow ./workflows/video_ltxv_i2v_v1.json `
   --render-mode single_prompt `
-  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-dir .\projects\my_frst_project\output\render\ltx_single `
+  --audio ./projects/my_frst_project/input/ComfyUI_00056_.mp3 `
+  --storyboard-dir ./projects/my_frst_project/output/render/storyboard `
+  --output-dir ./projects/my_frst_project/output/render/ltx_single `
   --scenes 16 `
   --no-skip-existing `
-  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
+  --debug-workflows-dir ./projects/my_frst_project/output/render/ltx_debug
 ```
 
 Mit Character-LoRA im LTX-Workflow:
 
 ```powershell
 uv run python render_ltx.py `
-  --app-config .\app_config.json `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\video_ltxv_i2v_v1.json `
+  --app-config ./app_config.json `
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow ./workflows/video_ltxv_i2v_v1.json `
   --render-mode single_prompt `
-  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-dir .\projects\my_frst_project\output\render\ltx_single `
+  --audio ./projects/my_frst_project/input/ComfyUI_00056_.mp3 `
+  --storyboard-dir ./projects/my_frst_project/output/render/storyboard `
+  --output-dir ./projects/my_frst_project/output/render/ltx_single `
   --scenes 16 `
   --lora-1-enabled `
-  --lora-1-name "characters\my_character.safetensors" `
+  --lora-1-name "characters/my_character.safetensors" `
   --lora-1-strength-model 0.85 `
   --lora-1-strength-clip 0.65 `
   --lora-split-enabled `
-  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
+  --debug-workflows-dir ./projects/my_frst_project/output/render/ltx_debug
 ```
 
 Der LTX-Workflow muss die LoRA-Nodes bereits korrekt in den Model/Clip-Pfad verdrahtet haben. Der Code fuegt keine LoRA-Nodes ein. Wenn `#SPLIT_LORA_N` fehlt, bekommt `#LORA_N` die volle explizit gesetzte Strength. Wenn `#SPLIT_LORA_N` existiert, bekommen bei deaktiviertem Split beide Nodes die volle Strength; bei aktiviertem Split bekommt `#LORA_N` die halbe und `#SPLIT_LORA_N` die volle Strength. Gepatcht werden nur Properties, die du explizit per Config oder CLI setzt; fehlende `name`- oder Strength-Felder bleiben im Workflow unveraendert.
@@ -624,8 +624,8 @@ Workflow-Upgrade:
 Pruefen:
 
 ```text
-.\projects\my_frst_project\output\render\ltx_single\final\scene_0016.mp4
-.\projects\my_frst_project\output\render\ltx_debug\scene_0016_workflow.json
+./projects/my_frst_project/output/render/ltx_single/final/scene_0016.mp4
+./projects/my_frst_project/output/render/ltx_debug/scene_0016_workflow.json
 ```
 
 Bei aktivem LoRA im Debug-Workflow pruefen, dass `#LORA_1` nur die erwarteten ueberschriebenen Properties enthaelt. Wenn kein `name` gesetzt wurde, bleibt der Workflow-Dateiname unveraendert.
@@ -636,45 +636,45 @@ Single-Prompt-Workflow:
 
 ```powershell
 uv run python render_ltx.py `
-  --app-config .\app_config.json `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\video_ltxv_i2v_v1.json `
+  --app-config ./app_config.json `
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow ./workflows/video_ltxv_i2v_v1.json `
   --render-mode single_prompt `
-  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-dir .\projects\my_frst_project\output\render\ltx_single `
-  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_debug
+  --audio ./projects/my_frst_project/input/ComfyUI_00056_.mp3 `
+  --storyboard-dir ./projects/my_frst_project/output/render/storyboard `
+  --output-dir ./projects/my_frst_project/output/render/ltx_single `
+  --debug-workflows-dir ./projects/my_frst_project/output/render/ltx_debug
 ```
 
 PromptRelay-Workflow, falls du einen passenden `#PROMPT_RELAY` Workflow nutzen willst:
 
 ```powershell
 uv run python render_ltx.py `
-  --app-config .\app_config.json `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\your_prompt_relay_workflow.json `
+  --app-config ./app_config.json `
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow ./workflows/your_prompt_relay_workflow.json `
   --render-mode relay `
-  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-dir .\projects\my_frst_project\output\render\ltx_relay `
-  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_relay_debug
+  --audio ./projects/my_frst_project/input/ComfyUI_00056_.mp3 `
+  --storyboard-dir ./projects/my_frst_project/output/render/storyboard `
+  --output-dir ./projects/my_frst_project/output/render/ltx_relay `
+  --debug-workflows-dir ./projects/my_frst_project/output/render/ltx_relay_debug
 ```
 
 Auto-Modus mit beiden Workflows:
 
 ```powershell
 uv run python render_ltx.py `
-  --app-config .\app_config.json `
-  --render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__compact_anchored.json `
-  --workflow .\workflows\your_prompt_relay_workflow.json `
-  --single-prompt-workflow .\workflows\video_ltxv_i2v_v1.json `
+  --app-config ./app_config.json `
+  --render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__compact_anchored.json `
+  --workflow ./workflows/your_prompt_relay_workflow.json `
+  --single-prompt-workflow ./workflows/video_ltxv_i2v_v1.json `
   --render-mode auto `
   --single-prompt-title "#PROMPT" `
   --single-prompt-input "text" `
-  --audio .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
-  --storyboard-dir .\projects\my_frst_project\output\render\storyboard `
-  --output-dir .\projects\my_frst_project\output\render\ltx_auto `
-  --debug-workflows-dir .\projects\my_frst_project\output\render\ltx_auto_debug
+  --audio ./projects/my_frst_project/input/ComfyUI_00056_.mp3 `
+  --storyboard-dir ./projects/my_frst_project/output/render/storyboard `
+  --output-dir ./projects/my_frst_project/output/render/ltx_auto `
+  --debug-workflows-dir ./projects/my_frst_project/output/render/ltx_auto_debug
 ```
 
 Wenn dein Non-Relay-Workflow den vorhandenen Titel `#PROMPT_POSITIVE` nutzt:
@@ -709,20 +709,20 @@ Video-only Concat:
 
 ```powershell
 ffmpeg -y -f concat -safe 0 `
-  -i .\projects\my_frst_project\output\render\ltx\concat_list.txt `
+  -i ./projects/my_frst_project/output/render/ltx/concat_list.txt `
   -an -c:v copy `
-  .\projects\my_frst_project\output\render\ltx\final_concat_video_only.mp4
+  ./projects/my_frst_project/output/render/ltx/final_concat_video_only.mp4
 ```
 
 Original-Audio muxen:
 
 ```powershell
 ffmpeg -y `
-  -i .\projects\my_frst_project\output\render\ltx\final_concat_video_only.mp4 `
-  -i .\projects\my_frst_project\input\ComfyUI_00056_.mp3 `
+  -i ./projects/my_frst_project/output/render/ltx/final_concat_video_only.mp4 `
+  -i ./projects/my_frst_project/input/ComfyUI_00056_.mp3 `
   -map 0:v:0 -map 1:a:0 `
   -c:v copy -c:a aac -b:a 320k -shortest `
-  .\projects\my_frst_project\output\render\ltx\final_concat.mp4
+  ./projects/my_frst_project/output/render/ltx/final_concat.mp4
 ```
 
 Ein Vergleichsexport mit per-scene Audio ist nur ein Diagnosepfad, z.B. ueber `run_pipeline.py --diagnostic-original-audio-mux`.
@@ -732,7 +732,7 @@ Ein Vergleichsexport mit per-scene Audio ist nur ein Diagnosepfad, z.B. ueber `r
 Nach einem Renderlauf koennen Arbeits- und Zwischendateien des Projektordners in ein ZIP geschrieben werden:
 
 ```powershell
-uv run python -m tools.project_asset_archive --project .\projects\my_frst_project\config.json
+uv run python -m tools.project_asset_archive --project ./projects/my_frst_project/config.json
 ```
 
 Standardziel:
@@ -744,7 +744,7 @@ projects/my_frst_project/archives/my_frst_project_assets_YYYYMMDD_HHMMSS.zip
 Nicht archiviert werden `config.json`, `output/render/storyboard/**`, finale muxed Videos wie `final_concat.mp4` oder `<project_name>.mp4`, und der `archives/`-Ordner selbst. Bestehende ZIP-Dateien werden nicht ueberschrieben; bei Namenskollisionen wird `-2`, `-3` usw. angehaengt. Der Befehl loescht keine Dateien. Vor dem Schreiben kann die Dateiliste geprueft werden:
 
 ```powershell
-uv run python -m tools.project_asset_archive --project .\projects\my_frst_project\config.json --dry-run
+uv run python -m tools.project_asset_archive --project ./projects/my_frst_project/config.json --dry-run
 ```
 
 ## Safety- und Reparaturbefehle
@@ -821,8 +821,8 @@ Nur verwenden, wenn ein existierender Renderplan falsche Dauern enthaelt. Besser
 
 ```powershell
 uv run python -m tools.normalize_render_plan `
-  --input-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056_.json `
-  --output-render-plan .\projects\my_frst_project\output\render\render_plan_ComfyUI_00056__duration_fixed.json `
+  --input-render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056_.json `
+  --output-render-plan ./projects/my_frst_project/output/render/render_plan_ComfyUI_00056__duration_fixed.json `
   --min-duration 2.0 `
   --max-duration 10.0
 ```

@@ -8,6 +8,19 @@ import run_pipeline
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_run_pipeline_defaults_do_not_embed_windows_only_relative_prefixes(self):
+        args = run_pipeline.build_arg_parser().parse_args([])
+
+        self.assertEqual("app_config.json", args.app_config)
+        self.assertNotIn(".\\", args.storyboard_workflow)
+        self.assertNotIn(".\\", args.single_prompt_workflow)
+
+    def test_runner_path_accepts_windows_relative_cli_paths(self):
+        self.assertEqual(
+            run_pipeline.runner_root() / "app_config.json",
+            run_pipeline.resolve_runner_path(".\\app_config.json"),
+        )
+
     def test_build_run_context_resolves_project_paths_like_test_ps1(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"

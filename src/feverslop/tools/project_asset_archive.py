@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Iterable
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from feverslop.path_utils import coerce_local_path
+
 
 ARCHIVES_DIR_NAME = "archives"
 STORYBOARD_RELATIVE_PARTS = ("output", "render", "storyboard")
@@ -25,12 +27,12 @@ def resolve_project_dir(*, project: str | Path | None, project_dir: str | Path |
         raise ValueError("Pass exactly one of --project or --project-dir.")
 
     if project:
-        config_path = Path(project).resolve()
+        config_path = coerce_local_path(project).resolve()
         if not config_path.is_file():
             raise FileNotFoundError(config_path)
         return config_path.parent
 
-    directory = Path(project_dir).resolve()
+    directory = coerce_local_path(project_dir).resolve()
     if not directory.is_dir():
         raise NotADirectoryError(directory)
     return directory
@@ -94,8 +96,8 @@ def collect_archive_members(
     project_config: str | Path | None = None,
     project_name: str | None = None,
 ) -> list[ArchiveMember]:
-    project_dir = Path(project_dir).resolve()
-    config_path = Path(project_config).resolve() if project_config else None
+    project_dir = coerce_local_path(project_dir).resolve()
+    config_path = coerce_local_path(project_config).resolve() if project_config else None
     members = []
 
     for path in sorted(project_dir.rglob("*")):
@@ -120,7 +122,7 @@ def build_archive_manifest(
     *,
     created_at: str,
 ) -> dict:
-    project_dir = Path(project_dir).resolve()
+    project_dir = coerce_local_path(project_dir).resolve()
     member_list = list(members)
     return {
         "project_name": project_dir.name,
@@ -146,7 +148,7 @@ def default_archive_path(project_dir: str | Path, *, created_at: str | None = No
 
 
 def resolve_available_zip_path(path: str | Path) -> Path:
-    path = Path(path).resolve()
+    path = coerce_local_path(path).resolve()
     if not path.exists():
         return path
 
@@ -166,9 +168,9 @@ def create_project_archive(
     output_zip: str | Path | None = None,
     created_at: str | None = None,
 ) -> Path:
-    project_dir = Path(project_dir).resolve()
+    project_dir = coerce_local_path(project_dir).resolve()
     created_at = created_at or datetime.now().replace(microsecond=0).isoformat()
-    output_zip = Path(output_zip).resolve() if output_zip else default_archive_path(project_dir)
+    output_zip = coerce_local_path(output_zip).resolve() if output_zip else default_archive_path(project_dir)
     output_zip = resolve_available_zip_path(output_zip)
     output_zip.parent.mkdir(parents=True, exist_ok=True)
 
@@ -199,7 +201,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def read_project_name(config_path: str | Path | None, fallback: str) -> str:
     if not config_path:
         return fallback
-    path = Path(config_path)
+    path = coerce_local_path(config_path)
     if not path.exists():
         return fallback
     data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -208,7 +210,7 @@ def read_project_name(config_path: str | Path | None, fallback: str) -> str:
 
 def resolve_project_config_path(*, project: str | Path | None, project_dir: Path) -> Path | None:
     if project:
-        return Path(project).resolve()
+        return coerce_local_path(project).resolve()
     candidate = project_dir / "config.json"
     return candidate if candidate.exists() else None
 

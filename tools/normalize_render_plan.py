@@ -7,6 +7,7 @@ import json
 from rich.console import Console
 from rich.panel import Panel
 
+from feverslop.path_utils import coerce_local_path
 from tools.render_plan_normalizer import normalize_render_plan_file
 
 
@@ -25,12 +26,14 @@ def main():
 
     args = parser.parse_args()
 
-    input_plan = json.loads(Path(args.input_render_plan).read_text(encoding="utf-8"))
+    input_render_plan = coerce_local_path(args.input_render_plan)
+    output_render_plan = coerce_local_path(args.output_render_plan)
+    input_plan = json.loads(input_render_plan.read_text(encoding="utf-8"))
     before = len(input_plan)
 
     output = normalize_render_plan_file(
-        input_render_plan=args.input_render_plan,
-        output_render_plan=args.output_render_plan,
+        input_render_plan=input_render_plan,
+        output_render_plan=output_render_plan,
         min_duration=args.min_duration,
         max_duration=args.max_duration,
         renumber=not args.keep_original_scene_numbers,

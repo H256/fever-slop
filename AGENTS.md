@@ -109,7 +109,7 @@ uv run python -m unittest discover -s tests
 Run the default project helper:
 
 ```powershell
-uv run python run_pipeline.py .\projects\my_song
+uv run python run_pipeline.py ./projects/my_song
 ```
 
 ## Verification

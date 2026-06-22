@@ -277,6 +277,24 @@ class ProjectConfigTests(unittest.TestCase):
 
             self.assertEqual("test", config.project_name)
 
+    def test_windows_relative_input_audio_is_resolved_from_config_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "test",
+                        "input_audio": "input\\song.mp3",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual(temp / "input" / "song.mp3", config.input_audio)
+
 
 class ProjectConfigLyricsTests(unittest.TestCase):
     def test_loads_lyrics_string(self):

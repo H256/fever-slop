@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from feverslop.domain.prompt_constraints import build_location_constraint
+from feverslop.domain.prompt_constraints import build_location_constraint  # noqa: F401
 
 
 def performance_policy(segment_type: str) -> str:

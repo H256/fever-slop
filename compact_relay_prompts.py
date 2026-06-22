@@ -8,6 +8,7 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeEl
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.config.app_config import AppConfig
+from feverslop.path_utils import coerce_local_path
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
 
 
@@ -29,12 +30,14 @@ def main():
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    app_config = AppConfig.load(args.app_config)
+    input_render_plan = coerce_local_path(args.input_render_plan)
+    output_render_plan = coerce_local_path(args.output_render_plan)
+    app_config = AppConfig.load(coerce_local_path(args.app_config))
 
     console.print(Panel.fit(
         f"[bold]Relay Direction Builder[/bold]\n\n"
-        f"Input: [cyan]{args.input_render_plan}[/cyan]\n"
-        f"Output: [cyan]{args.output_render_plan}[/cyan]\n"
+        f"Input: [cyan]{input_render_plan}[/cyan]\n"
+        f"Output: [cyan]{output_render_plan}[/cyan]\n"
         f"LLM: [yellow]{app_config.llm.model}[/yellow] @ [cyan]{app_config.llm.base_url}[/cyan]\n"
         f"Max words: [yellow]{args.max_words}[/yellow]",
         title="Startup",
@@ -63,8 +66,8 @@ def main():
     ) as progress:
         task = progress.add_task("Compacting relay prompts", total=None)
         output = builder.compact_render_plan_file(
-            input_render_plan=args.input_render_plan,
-            output_render_plan=args.output_render_plan,
+            input_render_plan=input_render_plan,
+            output_render_plan=output_render_plan,
         )
         progress.update(task, completed=1)
 

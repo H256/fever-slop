@@ -5,6 +5,7 @@ import argparse
 from rich.console import Console
 from rich.panel import Panel
 
+from feverslop.path_utils import coerce_local_path
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 
 
@@ -39,16 +40,16 @@ def main():
         max_relay_chars=args.max_relay_chars,
     )
 
-    output = fixer.fix_file(
-        input_render_plan=args.input_render_plan,
-        output_render_plan=args.output_render_plan,
-    )
+    input_render_plan = coerce_local_path(args.input_render_plan)
+    output_render_plan = coerce_local_path(args.output_render_plan)
+
+    output = fixer.fix_file(input_render_plan=input_render_plan, output_render_plan=output_render_plan)
 
     warnings = validate_anchor_file(output, subject_hint=args.subject_anchor)
 
     console.print(Panel.fit(
         f"[bold]LTX Prompt Anchors Fixed[/bold]\n\n"
-        f"Input: [cyan]{args.input_render_plan}[/cyan]\n"
+        f"Input: [cyan]{input_render_plan}[/cyan]\n"
         f"Output: [cyan]{output}[/cyan]\n"
         f"Warnings: [yellow]{len(warnings)}[/yellow]",
         title="Done",

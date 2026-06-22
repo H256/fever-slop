@@ -7,6 +7,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.path_utils import coerce_local_path
 from feverslop.pipeline.scene_duration_enforcer import (
     parse_scene_srt,
     enforce_scene_srt_file,
@@ -27,10 +28,12 @@ def main():
     parser.add_argument("--max-duration", type=float, required=True)
     args = parser.parse_args()
 
-    before = parse_scene_srt(args.input_srt)
+    input_srt = coerce_local_path(args.input_srt)
+    output_srt = coerce_local_path(args.output_srt)
+    before = parse_scene_srt(input_srt)
     output = enforce_scene_srt_file(
-        input_srt=args.input_srt,
-        output_srt=args.output_srt,
+        input_srt=input_srt,
+        output_srt=output_srt,
         min_duration=args.min_duration,
         max_duration=args.max_duration,
         artifact_store=JsonArtifactStore(),

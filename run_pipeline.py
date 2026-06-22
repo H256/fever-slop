@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import argparse
 import json
+import os
 import re
 import subprocess
 
@@ -18,6 +19,7 @@ from feverslop.composition.generate_render_plan import build_generate_render_pla
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
 from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
 from feverslop.config.app_config import AppConfig
+from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
@@ -67,11 +69,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the FeverSlop pipeline from Python.")
     parser.add_argument("project_root", nargs="?", default=None)
     parser.add_argument("--project-config", default=None)
-    parser.add_argument("--app-config", default=".\\app_config.json")
+    parser.add_argument("--app-config", default="app_config.json")
     parser.add_argument("--concept-batch-size", type=int, default=10)
-    parser.add_argument("--storyboard-workflow", default=".\\workflows\\image_t2i_startframe_v1.json")
+    parser.add_argument("--storyboard-workflow", default=os.fspath(Path("workflows") / "image_t2i_startframe_v1.json"))
     parser.add_argument("--relay-workflow", default="")
-    parser.add_argument("--single-prompt-workflow", default=".\\workflows\\video_ltxv_i2v_v1.json")
+    parser.add_argument("--single-prompt-workflow", default=os.fspath(Path("workflows") / "video_ltxv_i2v_v1.json"))
     parser.add_argument("--render-mode", choices=["auto", "relay", "single_prompt"], default="single_prompt")
     parser.add_argument("--single-prompt-title", default="#PROMPT")
     parser.add_argument("--single-prompt-input", default="text")
@@ -104,7 +106,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
 
     if not project_config:
         if not project_root:
-            project_root = ".\\projects\\my_first_project"
+            project_root = os.fspath(Path("projects") / "my_first_project")
 
         project_root_path = resolve_runner_path(project_root)
         if project_root_path.is_file():
@@ -117,9 +119,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
     project_config_path = project_config_path.resolve()
     project_config_dir = project_config_path.parent
     project_config_json = json.loads(project_config_path.read_text(encoding="utf-8-sig"))
-    input_audio = Path(str(project_config_json["input_audio"]))
-    if not input_audio.is_absolute():
-        input_audio = project_config_dir / input_audio
+    input_audio = coerce_local_path(str(project_config_json["input_audio"]), base_dir=project_config_dir)
     input_audio = input_audio.resolve()
 
     song_id = input_audio.stem
@@ -185,8 +185,7 @@ def runner_root() -> Path:
 
 
 def resolve_runner_path(value: str | Path) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else runner_root() / path
+    return coerce_local_path(value, base_dir=runner_root())
 
 
 def run(args: argparse.Namespace) -> PipelineRunResult:

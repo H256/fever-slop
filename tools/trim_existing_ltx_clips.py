@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import json
 
@@ -10,6 +9,7 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeEl
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.postprocessing import TrimSpec
+from feverslop.path_utils import coerce_local_path
 
 
 console = Console()
@@ -42,13 +42,14 @@ def main():
     parser.add_argument("--scenes", default=None)
     args = parser.parse_args()
 
-    plan = json.loads(Path(args.render_plan).read_text(encoding="utf-8"))
+    render_plan = coerce_local_path(args.render_plan)
+    plan = json.loads(render_plan.read_text(encoding="utf-8"))
     scene_numbers = parse_scene_list(args.scenes)
     if scene_numbers:
         plan = [s for s in plan if int(s["scene"]) in scene_numbers]
 
-    raw_dir = Path(args.raw_dir)
-    output_dir = Path(args.output_dir)
+    raw_dir = coerce_local_path(args.raw_dir)
+    output_dir = coerce_local_path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     processor = VideoPostProcessor(ffmpeg_path=args.ffmpeg, reencode=not args.streamcopy)

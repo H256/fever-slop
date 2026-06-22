@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 
 from feverslop.config.video_settings import VideoSettings
+from feverslop.path_utils import coerce_local_path
 
 
 @dataclass(frozen=True)
@@ -140,7 +141,7 @@ class ProjectConfig:
 
     @classmethod
     def load(cls, config_path: str | Path) -> "ProjectConfig":
-        config_path = Path(config_path).resolve()
+        config_path = coerce_local_path(config_path).resolve()
         raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
 
         project_dir = config_path.parent
@@ -153,9 +154,7 @@ class ProjectConfig:
         lora_1_raw = raw.get("lora_1", {})
         loras_raw = raw.get("loras")
 
-        input_audio = Path(raw["input_audio"])
-        if not input_audio.is_absolute():
-            input_audio = project_dir / input_audio
+        input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
 
         lora_1 = _load_lora_config(lora_1_raw)
         if isinstance(loras_raw, list):

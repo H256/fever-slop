@@ -13,6 +13,7 @@ from feverslop.application.render_video import RenderVideoScenesRequest
 from feverslop.composition.render_video import build_render_video_scenes_use_case, namespace_to_options
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
+from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
@@ -89,7 +90,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _discover_project_config_path(render_plan_path: str | Path) -> Path | None:
-    render_plan_path = Path(render_plan_path).resolve()
+    render_plan_path = coerce_local_path(render_plan_path).resolve()
     for parent in render_plan_path.parents:
         candidate = parent / "config.json"
         if candidate.exists():
@@ -220,7 +221,7 @@ def resolve_rolling_frames(args: argparse.Namespace) -> tuple[int, int, bool]:
 
 
 def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:
-    output_dir = Path(output_dir)
+    output_dir = coerce_local_path(output_dir)
     concat_file = output_dir / "concat_list.txt"
     with concat_file.open("w", encoding="utf-8") as f:
         for path in rendered_files:
@@ -236,7 +237,7 @@ def sanitize_file_stem(value: str | None, fallback: str = "final_concat") -> str
 
 
 def final_concat_paths(output_dir: str | Path, project_name: str | None = None) -> tuple[Path, Path]:
-    output_dir = Path(output_dir)
+    output_dir = coerce_local_path(output_dir)
     if project_name:
         file_stem = sanitize_file_stem(project_name, "final_concat")
         return output_dir / f"{file_stem}_video_only.mp4", output_dir / f"{file_stem}.mp4"
@@ -261,7 +262,7 @@ def parse_scene_list(value: str | None) -> set[int] | None:
 
 
 def load_render_plan_subset(render_plan_path: str | Path, scene_numbers: set[int] | None, limit: int | None) -> list[dict]:
-    render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
+    render_plan = json.loads(coerce_local_path(render_plan_path).read_text(encoding="utf-8"))
     if scene_numbers is not None:
         render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
     if limit is not None:
@@ -278,20 +279,27 @@ def main():
         raise ValueError("--single-prompt-workflow is required when --render-mode auto is used")
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(args)
 
-    app_config = AppConfig.load(args.app_config)
+    app_config_path = coerce_local_path(args.app_config)
+    render_plan_path = coerce_local_path(args.render_plan)
+    workflow_path = coerce_local_path(args.workflow)
+    audio_path = coerce_local_path(args.audio)
+    storyboard_dir = coerce_local_path(args.storyboard_dir)
+    output_dir = coerce_local_path(args.output_dir)
+    single_prompt_workflow_path = coerce_local_path(args.single_prompt_workflow) if args.single_prompt_workflow else None
+    app_config = AppConfig.load(app_config_path)
     scene_numbers = parse_scene_list(args.scenes)
-    planned = load_render_plan_subset(args.render_plan, scene_numbers, args.limit)
+    planned = load_render_plan_subset(render_plan_path, scene_numbers, args.limit)
 
     console.print(Panel.fit(
         f"[bold]LTX Video Renderer[/bold]\n\n"
         f"ComfyUI: [cyan]{app_config.comfyui.base_url}[/cyan]\n"
-        f"Render plan: [cyan]{args.render_plan}[/cyan]\n"
-        f"Workflow: [cyan]{args.workflow}[/cyan]\n"
+        f"Render plan: [cyan]{render_plan_path}[/cyan]\n"
+        f"Workflow: [cyan]{workflow_path}[/cyan]\n"
         f"Render mode: [yellow]{args.render_mode}[/yellow]\n"
-        f"Single-prompt workflow: [cyan]{args.single_prompt_workflow or args.workflow}[/cyan]\n"
-        f"Audio: [cyan]{args.audio}[/cyan]\n"
-        f"Storyboard: [cyan]{args.storyboard_dir}[/cyan]\n"
-        f"Output: [cyan]{args.output_dir}[/cyan]\n"
+        f"Single-prompt workflow: [cyan]{single_prompt_workflow_path or workflow_path}[/cyan]\n"
+        f"Audio: [cyan]{audio_path}[/cyan]\n"
+        f"Storyboard: [cyan]{storyboard_dir}[/cyan]\n"
+        f"Output: [cyan]{output_dir}[/cyan]\n"
         f"Scenes: [yellow]{len(planned)}[/yellow]\n"
         f"Rolling profile: [yellow]{args.rolling_frame_profile}[/yellow]\n"
         f"Preroll frames: [yellow]{preroll_frames}[/yellow]\n"
@@ -321,13 +329,13 @@ def main():
 
         rendered = use_case.execute(
             RenderVideoScenesRequest(
-                render_plan_path=Path(args.render_plan),
-                workflow_path=Path(args.workflow),
-                audio_file=Path(args.audio),
-                storyboard_dir=Path(args.storyboard_dir),
-                output_dir=Path(args.output_dir),
+                render_plan_path=render_plan_path,
+                workflow_path=workflow_path,
+                audio_file=audio_path,
+                storyboard_dir=storyboard_dir,
+                output_dir=output_dir,
                 render_mode=args.render_mode,
-                single_prompt_workflow_path=Path(args.single_prompt_workflow) if args.single_prompt_workflow else None,
+                single_prompt_workflow_path=single_prompt_workflow_path,
                 limit=args.limit,
                 scene_numbers=scene_numbers,
                 skip_existing=not args.no_skip_existing,
@@ -346,15 +354,15 @@ def main():
         )
         progress.update(task, completed=len(rendered))
 
-    concat_file = rewrite_concat_list(rendered, args.output_dir)
+    concat_file = rewrite_concat_list(rendered, output_dir)
     console.print(f"[green]OK[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
     console.print(f"[green]OK[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
     console.print()
     project_name = resolved["project_config"].project_name if resolved["project_config"] else None
-    video_only, final_concat = final_concat_paths(args.output_dir, project_name)
+    video_only, final_concat = final_concat_paths(output_dir, project_name)
     console.print("Concat + original-audio mux commands:")
     console.print(f'[bold]ffmpeg -y -f concat -safe 0 -i "{concat_file}" -an -c:v copy "{video_only}"[/bold]')
-    console.print(f'[bold]ffmpeg -y -i "{video_only}" -i "{args.audio}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 320k -shortest "{final_concat}"[/bold]')
+    console.print(f'[bold]ffmpeg -y -i "{video_only}" -i "{audio_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 320k -shortest "{final_concat}"[/bold]')
 
 
 if __name__ == "__main__":

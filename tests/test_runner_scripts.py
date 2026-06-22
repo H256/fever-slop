@@ -1,4 +1,5 @@
 import unittest
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -18,11 +19,11 @@ class RunnerScriptTests(unittest.TestCase):
 
         self.assertIsNone(args.project_root)
         self.assertIsNone(args.project_config)
-        self.assertEqual(".\\app_config.json", args.app_config)
+        self.assertEqual("app_config.json", args.app_config)
         self.assertEqual(10, args.concept_batch_size)
-        self.assertEqual(".\\workflows\\image_t2i_startframe_v1.json", args.storyboard_workflow)
+        self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_v1.json"), args.storyboard_workflow)
         self.assertEqual("", args.relay_workflow)
-        self.assertEqual(".\\workflows\\video_ltxv_i2v_v1.json", args.single_prompt_workflow)
+        self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_i2v_v1.json"), args.single_prompt_workflow)
         self.assertEqual("single_prompt", args.render_mode)
         self.assertEqual("#PROMPT", args.single_prompt_title)
         self.assertEqual("text", args.single_prompt_input)

@@ -11,6 +11,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from feverslop.config.app_config import AppConfig
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
+from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
@@ -63,7 +64,7 @@ def parse_scene_list(value: str | None) -> set[int] | None:
 
 
 def load_render_plan_subset(render_plan_path: str | Path, scene_numbers: set[int] | None, limit: int | None) -> list[dict]:
-    render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
+    render_plan = json.loads(coerce_local_path(render_plan_path).read_text(encoding="utf-8"))
     if scene_numbers is not None:
         render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
     if limit is not None:
@@ -75,25 +76,29 @@ def main():
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    app_config = AppConfig.load(args.app_config)
+    app_config_path = coerce_local_path(args.app_config)
+    render_plan_path = coerce_local_path(args.render_plan)
+    workflow_path = coerce_local_path(args.workflow)
+    output_dir = coerce_local_path(args.output_dir)
+    app_config = AppConfig.load(app_config_path)
 
     console.print(Panel.fit(
         f"[bold]Storyboard Renderer[/bold]\n\n"
         f"ComfyUI: [cyan]{app_config.comfyui.base_url}[/cyan]\n"
-        f"Render plan: [cyan]{args.render_plan}[/cyan]\n"
-        f"Workflow: [cyan]{args.workflow}[/cyan]\n"
-        f"Output: [cyan]{args.output_dir}[/cyan]\n"
+        f"Render plan: [cyan]{render_plan_path}[/cyan]\n"
+        f"Workflow: [cyan]{workflow_path}[/cyan]\n"
+        f"Output: [cyan]{output_dir}[/cyan]\n"
         f"LoRA 1 strength: [yellow]{args.character_lora_strength if args.character_lora_strength is not None else 'workflow default'}[/yellow]",
         title="Startup",
         border_style="cyan",
     ))
 
     scene_numbers = parse_scene_list(args.scenes)
-    planned = load_render_plan_subset(args.render_plan, scene_numbers, args.limit)
+    planned = load_render_plan_subset(render_plan_path, scene_numbers, args.limit)
     use_case = build_render_storyboard_use_case(
         app_config=app_config,
-        workflow_path=args.workflow,
-        output_dir=args.output_dir,
+        workflow_path=workflow_path,
+        output_dir=output_dir,
     )
 
     with Progress(
@@ -109,9 +114,9 @@ def main():
 
         rendered = use_case.execute(
             RenderStoryboardRequest(
-                render_plan_path=Path(args.render_plan),
-                workflow_path=Path(args.workflow),
-                output_dir=Path(args.output_dir),
+                render_plan_path=render_plan_path,
+                workflow_path=workflow_path,
+                output_dir=output_dir,
                 limit=args.limit,
                 scene_numbers=scene_numbers,
                 skip_existing=not args.no_skip_existing,

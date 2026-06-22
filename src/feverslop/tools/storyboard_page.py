@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 
+from feverslop.path_utils import coerce_local_path
+
 
 def parse_scene_list(value: str | None) -> set[int] | None:
     if not value:
@@ -491,9 +493,9 @@ def generate_storyboard_page(
     limit: int | None = None,
     allow_missing_images: bool = False,
 ) -> Path:
-    render_plan_path = Path(render_plan_path)
-    storyboard_dir = Path(storyboard_dir)
-    output_html = Path(output_html) if output_html else storyboard_dir / "index.html"
+    render_plan_path = coerce_local_path(render_plan_path)
+    storyboard_dir = coerce_local_path(storyboard_dir)
+    output_html = coerce_local_path(output_html) if output_html else storyboard_dir / "index.html"
 
     render_plan = json.loads(render_plan_path.read_text(encoding="utf-8"))
     scenes = _select_scenes(render_plan, scene_numbers=scene_numbers, limit=limit)

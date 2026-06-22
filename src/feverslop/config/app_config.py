@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 
 from feverslop.config.comfyui import ComfyUIModelOverride
+from feverslop.path_utils import coerce_local_path
 
 
 @dataclass
@@ -29,7 +30,7 @@ class AppConfig:
 
     @classmethod
     def load(cls, path: str | Path) -> "AppConfig":
-        path = Path(path)
+        path = coerce_local_path(path)
 
         if not path.exists():
             return cls(
