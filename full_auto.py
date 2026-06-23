@@ -110,11 +110,8 @@ def main() -> None:
     result = build_full_auto_use_case(
         app_config_path=coerce_local_path(args.app_config),
         workflow_path=coerce_local_path(args.workflow),
+        console=console,
     ).execute(request_from_args(args))
-    console.print(f"Project config: [cyan]{result.project_config_path}[/cyan]")
-    console.print(f"Generated audio: [cyan]{result.audio_path}[/cyan]")
-    if result.final_video_path:
-        console.print(f"Final video: [cyan]{result.final_video_path}[/cyan]")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rich.console import Console
+
 from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
@@ -17,6 +19,7 @@ def build_full_auto_use_case(
     *,
     app_config_path: str | Path = "app_config.json",
     workflow_path: str | Path = Path("workflows") / "audio_song.json",
+    console: Console | None = None,
 ) -> FullAutoUseCase:
     app_config = AppConfig.load(app_config_path)
     llm = OpenAICompatibleLLMClient(
@@ -41,4 +44,5 @@ def build_full_auto_use_case(
         ),
         project_scaffold=LocalProjectScaffold(),
         pipeline_runner=RunPipelineAdapter(),
+        console=console,
     )

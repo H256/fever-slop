@@ -1,7 +1,10 @@
 import json
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
+
+from rich.console import Console
 
 
 class FakeBriefGenerator:
@@ -51,6 +54,21 @@ class FakeRunner:
         return Path(project_config_path).parent / "output" / "render" / "ltx_single_prompt" / "Joy_Demo.mp4"
 
 
+class FakeConsole:
+    def __init__(self):
+        self.messages = []
+
+    def print(self, *values, **_kwargs):
+        buffer = StringIO()
+        Console(file=buffer, force_terminal=False, width=120).print(*values)
+        self.messages.append(buffer.getvalue())
+
+    def rule(self, title):
+        buffer = StringIO()
+        Console(file=buffer, force_terminal=False, width=120).rule(title)
+        self.messages.append(buffer.getvalue())
+
+
 class FullAutoUseCaseTests(unittest.TestCase):
     def test_full_auto_prepares_project_without_running_video_pipeline(self):
         from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
@@ -63,6 +81,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
                 song_generator=FakeSongGenerator(),
                 project_scaffold=LocalProjectScaffold(),
                 pipeline_runner=runner,
+                console=FakeConsole(),
             )
 
             result = use_case.execute(
@@ -104,6 +123,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
                 song_generator=FakeSongGenerator(),
                 project_scaffold=LocalProjectScaffold(),
                 pipeline_runner=runner,
+                console=FakeConsole(),
             )
 
             result = use_case.execute(
@@ -127,6 +147,42 @@ class FullAutoUseCaseTests(unittest.TestCase):
                 Path(temp_dir) / "Joy_Demo" / "output" / "render" / "ltx_single_prompt" / "Joy_Demo.mp4",
                 result.final_video_path,
             )
+
+    def test_full_auto_logs_each_major_step_with_rich_console(self):
+        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
+        from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            console = FakeConsole()
+            use_case = FullAutoUseCase(
+                brief_generator=FakeBriefGenerator(),
+                song_generator=FakeSongGenerator(),
+                project_scaffold=LocalProjectScaffold(),
+                pipeline_runner=FakeRunner(),
+                console=console,
+            )
+
+            use_case.execute(
+                FullAutoRequest(
+                    idea="friendship and joy",
+                    style="bright pop",
+                    project_name="Joy Demo",
+                    projects_dir=Path(temp_dir),
+                    duration_seconds=120.0,
+                    language="en",
+                    seed=7,
+                    run_video_pipeline=True,
+                )
+            )
+
+            log_text = "\n".join(console.messages)
+            self.assertIn("1. Generating ACE-Step song brief", log_text)
+            self.assertIn("2. Rendering ACE-Step audio", log_text)
+            self.assertIn("3. Creating FeverSlop project", log_text)
+            self.assertIn("4. Running video pipeline", log_text)
+            self.assertIn("Full-Auto Complete", log_text)
+            self.assertIn("Joy Demo", log_text)
+            self.assertIn("BPM", log_text)
 
 
 if __name__ == "__main__":
