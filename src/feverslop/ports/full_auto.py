@@ -31,6 +31,8 @@ class ProjectScaffoldPort(Protocol):
         project_slug: str,
         spec: SongSpec,
         generated_song: GeneratedSong,
+        width: int,
+        height: int,
     ) -> ProjectScaffoldResult:
         """Create a FeverSlop project folder and config from generated song assets."""
 

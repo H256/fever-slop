@@ -91,6 +91,8 @@ class FullAutoUseCaseTests(unittest.TestCase):
                     project_name="Joy Demo!",
                     projects_dir=Path(temp_dir),
                     duration_seconds=120.0,
+                    width=1024,
+                    height=576,
                     language="en",
                     seed=42,
                     run_video_pipeline=False,
@@ -107,6 +109,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
             self.assertEqual("Joy Demo", config["project_name"])
             self.assertEqual("input/Joy_Demo.mp3", config["input_audio"])
             self.assertEqual("[Verse]\nhello", config["lyrics"])
+            self.assertEqual({"fps": 24, "width": 1024, "height": 576}, config["video"])
             self.assertEqual("friends walking into sunlight", config["story_idea"])
             self.assertEqual("warm realistic pop video", config["style"])
             self.assertTrue((project_dir / "lyrics.txt").exists())

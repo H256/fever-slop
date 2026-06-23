@@ -36,12 +36,14 @@ uv run python full_auto.py `
   --style "upbeat contemporary pop, warm, bright, catchy" `
   --project-name joy_demo `
   --duration-seconds 120 `
+  --width 1280 `
+  --height 704 `
   --language en `
   --run-video-pipeline `
   --skip-tests
 ```
 
-Der Full-Auto-Modus erzeugt zuerst Song-Spec, Lyrics, ACE-STEP-Audio und `projects/<name>/config.json`. Mit `--run-video-pipeline` startet er danach den bestehenden Runner.
+Der Full-Auto-Modus erzeugt zuerst Song-Spec, Lyrics, ACE-STEP-Audio und `projects/<name>/config.json`. `--width` und `--height` setzen optional die Videoaufloesung im erzeugten Projekt. Mit `--run-video-pipeline` startet er danach den bestehenden Runner.
 Die Runner-Overrides aus `run_pipeline.py` sind auch hier verfuegbar, z. B. `--render-mode`, `--storyboard-workflow`, `--single-prompt-workflow`, LoRA-Overrides, Smoke-/Skip-Flags und `--rolling-frame-profile`.
 
 ## Voraussetzungen

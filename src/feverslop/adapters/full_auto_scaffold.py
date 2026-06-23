@@ -15,6 +15,8 @@ class LocalProjectScaffold:
         project_slug: str,
         spec: SongSpec,
         generated_song: GeneratedSong,
+        width: int = 1280,
+        height: int = 704,
     ) -> ProjectScaffoldResult:
         project_dir = Path(projects_dir) / project_slug
         input_dir = project_dir / "input"
@@ -49,8 +51,8 @@ class LocalProjectScaffold:
                     "lyrics": spec.lyrics,
                     "video": {
                         "fps": 24,
-                        "width": 1280,
-                        "height": 704,
+                        "width": int(width),
+                        "height": int(height),
                     },
                     "audio": {
                         "demucs_model": "htdemucs_ft",

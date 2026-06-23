@@ -22,6 +22,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--app-config", default="app_config.json")
     parser.add_argument("--workflow", default=str(Path("workflows") / "audio_song.json"))
     parser.add_argument("--duration-seconds", type=float, default=120.0)
+    parser.add_argument("--width", type=int, default=1280)
+    parser.add_argument("--height", type=int, default=704)
     parser.add_argument("--language", default="en")
     parser.add_argument("--bpm", type=int, default=None)
     parser.add_argument("--keyscale", default=None)
@@ -68,6 +70,8 @@ def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
         project_name=args.project_name,
         projects_dir=Path(args.projects_dir),
         duration_seconds=float(args.duration_seconds),
+        width=int(args.width),
+        height=int(args.height),
         language=args.language,
         bpm=args.bpm,
         keyscale=args.keyscale,

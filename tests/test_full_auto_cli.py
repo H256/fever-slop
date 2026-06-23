@@ -16,6 +16,10 @@ class FullAutoCliTests(unittest.TestCase):
                 "Joy Demo",
                 "--duration-seconds",
                 "90.5",
+                "--width",
+                "1024",
+                "--height",
+                "576",
                 "--language",
                 "en",
                 "--bpm",
@@ -71,6 +75,8 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual("bright pop", args.style)
         self.assertEqual("Joy Demo", args.project_name)
         self.assertEqual(90.5, args.duration_seconds)
+        self.assertEqual(1024, args.width)
+        self.assertEqual(576, args.height)
         self.assertEqual("en", args.language)
         self.assertEqual(123, args.bpm)
         self.assertEqual("D major", args.keyscale)
@@ -111,6 +117,10 @@ class FullAutoCliTests(unittest.TestCase):
                 "bright pop",
                 "--projects-dir",
                 "projects_out",
+                "--width",
+                "1024",
+                "--height",
+                "576",
                 "--run-video-pipeline",
                 "--concept-batch-size",
                 "5",
@@ -138,6 +148,8 @@ class FullAutoCliTests(unittest.TestCase):
         request = full_auto.request_from_args(args)
 
         self.assertEqual(Path("projects_out"), request.projects_dir)
+        self.assertEqual(1024, request.width)
+        self.assertEqual(576, request.height)
         self.assertTrue(request.run_video_pipeline)
         self.assertEqual(
             {

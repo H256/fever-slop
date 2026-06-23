@@ -24,6 +24,8 @@ class FullAutoRequest:
     project_name: str | None = None
     projects_dir: Path = Path("projects")
     duration_seconds: float = 120.0
+    width: int = 1280
+    height: int = 704
     language: str = "en"
     bpm: int | None = None
     keyscale: str | None = None
@@ -83,6 +85,8 @@ class FullAutoUseCase:
             project_slug=project_slug,
             spec=spec,
             generated_song=generated_song,
+            width=int(request.width),
+            height=int(request.height),
         )
         self.log_file("Project config", scaffold.project_config_path)
         self.log_file("Lyrics", scaffold.lyrics_path)
@@ -131,6 +135,7 @@ class FullAutoUseCase:
                 f"[bold]Full-Auto ACE-Step Pipeline[/bold]\n\n"
                 f"Project: [cyan]{project_slug}[/cyan]\n"
                 f"Duration: [yellow]{float(request.duration_seconds):.1f}s[/yellow]\n"
+                f"Resolution: [yellow]{int(request.width)}x{int(request.height)}[/yellow]\n"
                 f"Language: [yellow]{request.language}[/yellow]\n"
                 f"Seed: [yellow]{int(request.seed)}[/yellow]\n"
                 f"Video pipeline: [yellow]{'on' if request.run_video_pipeline else 'off'}[/yellow]",
