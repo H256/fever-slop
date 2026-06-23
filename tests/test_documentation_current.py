@@ -28,6 +28,14 @@ class DocumentationCurrentTests(unittest.TestCase):
         self.assertIn("feverslop.adapters.comfyui_video_backend", text)
         self.assertIn("feverslop.composition.generate_render_plan", text)
 
+    def test_readme_uses_english_primary_documentation(self):
+        text = Path("README.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Requirements", text)
+        self.assertIn("## Full-Auto", text)
+        for german_heading in ("## Voraussetzungen", "## Dateien", "## Projekt config.json", "## Modi"):
+            self.assertNotIn(german_heading, text)
+
     def test_architecture_compatibility_mentions_final_boundaries(self):
         text = Path("docs/architecture_compatibility.md").read_text(encoding="utf-8")
 
