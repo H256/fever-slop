@@ -79,14 +79,14 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 ]
             )
 
-            with patch("run_pipeline.run_unittest_suite") as tests, \
-                patch("run_pipeline.build_generate_render_plan_use_case") as main_builder, \
-                patch("run_pipeline.OpenAICompatibleLLMClient") as llm, \
-                patch("run_pipeline.LTXPromptAnchorFixer") as fixer, \
-                patch("run_pipeline.build_render_storyboard_use_case") as storyboard_builder, \
-                patch("run_pipeline.generate_storyboard_page") as storyboard_page, \
-                patch("run_pipeline.build_render_video_scenes_use_case") as video_builder, \
-                patch("run_pipeline.VideoPostProcessor") as postprocessor:
+            with patch("feverslop.composition.pipeline_runner.run_unittest_suite") as tests, \
+                patch("feverslop.composition.pipeline_runner.build_generate_render_plan_use_case") as main_builder, \
+                patch("feverslop.composition.pipeline_runner.OpenAICompatibleLLMClient") as llm, \
+                patch("feverslop.composition.pipeline_runner.LTXPromptAnchorFixer") as fixer, \
+                patch("feverslop.composition.pipeline_runner.build_render_storyboard_use_case") as storyboard_builder, \
+                patch("feverslop.composition.pipeline_runner.generate_storyboard_page") as storyboard_page, \
+                patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case") as video_builder, \
+                patch("feverslop.composition.pipeline_runner.VideoPostProcessor") as postprocessor:
                 result = run_pipeline.run(args)
 
         self.assertEqual(context_path(config_path), result.render_plan_path)
@@ -141,7 +141,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
 
             use_case = Mock()
             use_case.execute.return_value = [project_dir / "output" / "render" / "ltx_single_prompt_smoke" / "final" / "scene_0007.mp4"]
-            with patch("run_pipeline.build_render_video_scenes_use_case", return_value=use_case):
+            with patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case):
                 run_pipeline.run(args)
 
         request = use_case.execute.call_args.args[0]
@@ -178,7 +178,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
 
             use_case = Mock()
             use_case.execute.return_value = []
-            with patch("run_pipeline.build_render_storyboard_use_case", return_value=use_case):
+            with patch("feverslop.composition.pipeline_runner.build_render_storyboard_use_case", return_value=use_case):
                 run_pipeline.run(args)
 
         request = use_case.execute.call_args.args[0]
@@ -215,7 +215,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
 
             use_case = Mock()
             use_case.execute.return_value = []
-            with patch("run_pipeline.build_render_video_scenes_use_case", return_value=use_case):
+            with patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case):
                 run_pipeline.run(args)
 
         request = use_case.execute.call_args.args[0]
@@ -257,8 +257,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             postprocessor = Mock()
             postprocessor.concat_clips.return_value = render_dir / "ltx_single_prompt" / "Song_video_only.mp4"
             postprocessor.mux_original_audio.return_value = render_dir / "ltx_single_prompt" / "Song.mp4"
-            with patch("run_pipeline.build_render_video_scenes_use_case", return_value=use_case), \
-                patch("run_pipeline.VideoPostProcessor", return_value=postprocessor):
+            with patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case), \
+                patch("feverslop.composition.pipeline_runner.VideoPostProcessor", return_value=postprocessor):
                 run_pipeline.run(args)
 
             concat_list = render_dir / "ltx_single_prompt" / "concat_list.txt"

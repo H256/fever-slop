@@ -25,6 +25,30 @@ class ImportBoundaryTests(unittest.TestCase):
 
         self.assertEqual([], offenders)
 
+    def test_package_code_does_not_import_root_cli_modules(self):
+        package_root = Path("src/feverslop")
+        forbidden = [
+            "import run_pipeline",
+            "from run_pipeline",
+            "import full_auto",
+            "from full_auto",
+            "import main",
+            "from main",
+            "import render_ltx",
+            "from render_ltx",
+            "import render_storyboard",
+            "from render_storyboard",
+        ]
+
+        offenders = []
+        for path in package_root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in text:
+                    offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
     def test_compatibility_docs_define_new_import_policy(self):
         text = Path("docs/architecture_compatibility.md").read_text(encoding="utf-8")
 
@@ -84,6 +108,24 @@ class ImportBoundaryTests(unittest.TestCase):
                 for token in forbidden:
                     if token in text:
                         offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
+    def test_adapters_do_not_import_application_or_composition_layers(self):
+        adapters_root = Path("src/feverslop/adapters")
+        forbidden = [
+            "from feverslop.application.",
+            "import feverslop.application.",
+            "from feverslop.composition.",
+            "import feverslop.composition.",
+        ]
+
+        offenders = []
+        for path in adapters_root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in text:
+                    offenders.append(f"{path}: {token}")
 
         self.assertEqual([], offenders)
 

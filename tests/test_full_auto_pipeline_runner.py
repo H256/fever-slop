@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+
+from feverslop.composition.pipeline_runner import build_arg_parser
 
 
 class FullAutoPipelineRunnerTests(unittest.TestCase):
@@ -46,11 +47,13 @@ class FullAutoPipelineRunnerTests(unittest.TestCase):
             "no_original_audio_mux": True,
         }
 
-        with patch("run_pipeline.run", side_effect=fake_run):
-            final = RunPipelineAdapter().run(
-                project_config_path=Path("project/config.json"),
-                options=options,
-            )
+        final = RunPipelineAdapter(
+            run_pipeline=fake_run,
+            build_arg_parser=build_arg_parser,
+        ).run(
+            project_config_path=Path("project/config.json"),
+            options=options,
+        )
 
         self.assertEqual(Path("final.mp4"), final)
         self.assertEqual(str(Path("project/config.json")), captured["project_config"])

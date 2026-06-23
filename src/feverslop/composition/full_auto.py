@@ -12,6 +12,7 @@ from feverslop.adapters.llm_song_brief_generator import LLMSongBriefGenerator
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.pipeline_runner import RunPipelineAdapter
 from feverslop.application.full_auto import FullAutoUseCase
+from feverslop.composition import pipeline_runner
 from feverslop.config.app_config import AppConfig
 
 
@@ -43,6 +44,9 @@ def build_full_auto_use_case(
             ),
         ),
         project_scaffold=LocalProjectScaffold(),
-        pipeline_runner=RunPipelineAdapter(),
+        pipeline_runner=RunPipelineAdapter(
+            run_pipeline=pipeline_runner.run,
+            build_arg_parser=pipeline_runner.build_arg_parser,
+        ),
         console=console,
     )
