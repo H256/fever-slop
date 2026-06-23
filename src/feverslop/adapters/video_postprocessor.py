@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import json
+import os
 
 from feverslop.domain.postprocessing import TrimSpec
 
@@ -57,7 +58,51 @@ class VideoPostProcessor:
 
         cmd.append(str(spec.output_file))
         self._run_ffmpeg(cmd)
+        self._pad_short_clip(spec)
         return spec.output_file
+
+    def _pad_short_clip(self, spec: TrimSpec) -> None:
+        frame_count = self._frame_count(spec.output_file)
+        missing_frames = spec.keep_frames - frame_count
+        if missing_frames <= 0:
+            return
+
+        padded_file = spec.output_file.with_name(f"{spec.output_file.stem}.padded{spec.output_file.suffix}")
+        cmd = [
+            self.ffmpeg_path,
+            "-y",
+            "-i", str(spec.output_file),
+            "-vf", f"tpad=stop_mode=clone:stop={missing_frames}",
+            "-frames:v", str(spec.keep_frames),
+            "-c:v", self.video_codec,
+            "-crf", str(self.crf),
+            "-preset", self.preset,
+            "-pix_fmt", "yuv420p",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            str(padded_file),
+        ]
+        self._run_ffmpeg(cmd)
+        os.replace(padded_file, spec.output_file)
+
+    @staticmethod
+    def _frame_count(video_file: Path) -> int:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-count_frames",
+                "-show_entries", "stream=nb_read_frames",
+                "-of", "default=nokey=1:noprint_wrappers=1",
+                str(video_file),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return int(result.stdout.strip())
 
     def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False) -> Path:
         output_file = Path(output_file)
