@@ -7,6 +7,7 @@ from pathlib import Path
 
 import compact_relay_prompts
 import fix_ltx_prompt_anchors
+import full_auto
 import ltx_video_renderer
 import main
 import run_pipeline
@@ -30,6 +31,7 @@ class PublicCompatibilityTests(unittest.TestCase):
             render_storyboard,
             compact_relay_prompts,
             fix_ltx_prompt_anchors,
+            full_auto,
         ]
 
         for module in modules:
@@ -128,6 +130,7 @@ class PublicCompatibilityTests(unittest.TestCase):
             "render_storyboard.py",
             "compact_relay_prompts.py",
             "fix_ltx_prompt_anchors.py",
+            "full_auto.py",
             "storyboard_page.py",
             "normalize_render_plan.py",
             "repair_scene_srt.py",

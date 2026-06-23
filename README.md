@@ -28,6 +28,22 @@ uv run python run_pipeline.py ./projects/my_song
 
 Der Python-Runner nutzt die Pipeline-Schritte direkt ueber Python-Use-Cases.
 
+Full-Auto aus Idee und Stil:
+
+```powershell
+uv run python full_auto.py `
+  --idea "Freundschaft und Freude in einer hellen Stadt" `
+  --style "upbeat contemporary pop, warm, bright, catchy" `
+  --project-name joy_demo `
+  --duration-seconds 120 `
+  --language en `
+  --run-video-pipeline `
+  --skip-tests
+```
+
+Der Full-Auto-Modus erzeugt zuerst Song-Spec, Lyrics, ACE-STEP-Audio und `projects/<name>/config.json`. Mit `--run-video-pipeline` startet er danach den bestehenden Runner.
+Die Runner-Overrides aus `run_pipeline.py` sind auch hier verfuegbar, z. B. `--render-mode`, `--storyboard-workflow`, `--single-prompt-workflow`, LoRA-Overrides, Smoke-/Skip-Flags und `--rolling-frame-profile`.
+
 ## Voraussetzungen
 
 - Python 3.12
@@ -35,6 +51,7 @@ Der Python-Runner nutzt die Pipeline-Schritte direkt ueber Python-Use-Cases.
 - FFmpeg im `PATH`
 - ComfyUI mit passenden API-Workflows
 - ein OpenAI-kompatibler LLM-Endpunkt fuer Textgenerierung
+- fuer Full-Auto: ACE-STEP 1.5 ComfyUI-Workflow `workflows/audio_song.json`
 - optional CUDA/PyTorch fuer Demucs/Whisper, je nach lokaler Installation
 
 Installieren:
