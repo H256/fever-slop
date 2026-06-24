@@ -3,7 +3,7 @@
     "inputs": {
       "filename_prefix": "z-image-turbo",
       "images": [
-        "88",
+        "87",
         0
       ]
     },
@@ -262,20 +262,6 @@
       "offload_cache": true,
       "anything": [
         "77",
-        0
-      ]
-    },
-    "class_type": "VRAMCleanup",
-    "_meta": {
-      "title": "VRAM-Cleanup"
-    }
-  },
-  "88": {
-    "inputs": {
-      "offload_model": true,
-      "offload_cache": true,
-      "anything": [
-        "87",
         0
       ]
     },
