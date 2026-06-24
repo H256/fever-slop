@@ -143,13 +143,41 @@
       "quality": "V0",
       "audioUI": "",
       "audio": [
-        "18",
+        "109",
         0
       ]
     },
     "class_type": "SaveAudioMP3",
     "_meta": {
       "title": "SAVE"
+    }
+  },
+  "108": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "VRAM-Cleanup"
+    }
+  },
+  "109": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "VRAM-Cleanup"
     }
   }
 }

@@ -3,7 +3,7 @@
     "inputs": {
       "filename_prefix": "z-image-turbo",
       "images": [
-        "77",
+        "88",
         0
       ]
     },
@@ -245,7 +245,7 @@
   "86": {
     "inputs": {
       "lora_name": "zimage\\own\\klw251209-v1_000001250.safetensors",
-      "strength_model": 0.0,
+      "strength_model": 0,
       "model": [
         "82",
         0
@@ -254,6 +254,34 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "#LORA_1"
+    }
+  },
+  "87": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "77",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "VRAM-Cleanup"
+    }
+  },
+  "88": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "87",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "VRAM-Cleanup"
     }
   }
 }
