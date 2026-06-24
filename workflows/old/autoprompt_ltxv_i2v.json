@@ -64,20 +64,6 @@
       "title": "ðŸŽˆVRAM-Cleanup"
     }
   },
-  "7": {
-    "inputs": {
-      "offload_model": true,
-      "offload_cache": true,
-      "anything": [
-        "6",
-        0
-      ]
-    },
-    "class_type": "VRAMCleanup",
-    "_meta": {
-      "title": "ðŸŽˆVRAM-Cleanup"
-    }
-  },
   "8": {
     "inputs": {
       "offload_model": true,
@@ -511,7 +497,7 @@
   "41": {
     "inputs": {
       "av_latent": [
-        "7",
+        "6",
         0
       ]
     },

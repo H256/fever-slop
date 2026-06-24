@@ -143,7 +143,7 @@
       "quality": "V0",
       "audioUI": "",
       "audio": [
-        "109",
+        "108",
         0
       ]
     },
@@ -158,20 +158,6 @@
       "offload_cache": true,
       "anything": [
         "18",
-        0
-      ]
-    },
-    "class_type": "VRAMCleanup",
-    "_meta": {
-      "title": "VRAM-Cleanup"
-    }
-  },
-  "109": {
-    "inputs": {
-      "offload_model": true,
-      "offload_cache": true,
-      "anything": [
-        "108",
         0
       ]
     },
