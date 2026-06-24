@@ -4,6 +4,7 @@ import subprocess
 from unittest.mock import patch
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.domain.postprocessing import TrimSpec
 
 
 class VideoPostProcessorConcatTests(unittest.TestCase):
@@ -70,6 +71,38 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             )
 
         self.assertEqual({"check": True}, run.call_args.kwargs)
+
+    def test_trim_clip_pads_short_output_to_requested_frames(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        spec = TrimSpec(
+            source_file=Path("raw.mp4"),
+            output_file=Path("scene_0001.mp4"),
+            fps=24,
+            trim_front_frames=6,
+            keep_frames=10,
+            scene=1,
+        )
+
+        ffprobe_result = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="9\n",
+            stderr="",
+        )
+        with (
+            patch("feverslop.adapters.video_postprocessor.subprocess.run") as run,
+            patch("feverslop.adapters.video_postprocessor.os.replace") as replace,
+        ):
+            run.side_effect = [None, ffprobe_result, None]
+            output = processor.trim_clip(spec)
+
+        self.assertEqual(Path("scene_0001.mp4"), output)
+        self.assertEqual(3, run.call_count)
+        pad_cmd = run.call_args_list[2].args[0]
+        self.assertIn("tpad=stop_mode=clone:stop=1", pad_cmd)
+        self.assertIn("-frames:v", pad_cmd)
+        self.assertIn("10", pad_cmd)
+        replace.assert_called_once_with(Path("scene_0001.padded.mp4"), Path("scene_0001.mp4"))
 
 
 if __name__ == "__main__":
