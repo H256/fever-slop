@@ -8,11 +8,16 @@ from typing import Protocol
 @dataclass(frozen=True)
 class WorkflowAnchorConfig:
     positive_prompt_title: str = "#PROMPT_POSITIVE"
+    positive_prompt_input: str = "text"
     negative_prompt_title: str = "#PROMPT_NEGATIVE"
     save_image_title: str = "#SAVE_IMAGE"
     character_lora_title: str | None = "#LORA_1"
     single_prompt_title: str = "#PROMPT"
     single_prompt_input: str = "text"
+    width_title: str | None = "#WIDTH"
+    height_title: str | None = "#HEIGHT"
+    width_input: str = "value"
+    height_input: str = "value"
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,8 @@ class ImageRenderRequest:
     prompt: str
     workflow_path: Path
     output_dir: Path
+    width: int | None = None
+    height: int | None = None
     skip_existing: bool = True
     negative_prompt: str = ""
     character_lora_strength: float | None = None

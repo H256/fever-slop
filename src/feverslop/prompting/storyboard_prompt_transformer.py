@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from feverslop.ports.llm import LLMPort
+
+
+@dataclass
+class TemplateStoryboardPromptTransformer:
+    llm: LLMPort
+    template_path: Path
+    debug_dir: Path
+
+    def transform_prompt(
+        self,
+        *,
+        scene_number: int,
+        original_prompt: str,
+        width: int,
+        height: int,
+    ) -> str:
+        system_prompt, user_template = split_template(self.template_path.read_text(encoding="utf-8-sig"))
+        user_prompt = (
+            user_template
+            .replace("{{width}}", str(width))
+            .replace("{{height}}", str(height))
+            .replace("{{original_prompt}}", original_prompt)
+            .strip()
+        )
+        response = self.llm.complete_prompt(prompt=user_prompt, system_prompt=system_prompt).strip()
+        self._write_debug(scene_number, system_prompt, user_prompt, response)
+        return response
+
+    def _write_debug(self, scene_number: int, system_prompt: str, user_prompt: str, response: str) -> None:
+        self.debug_dir.mkdir(parents=True, exist_ok=True)
+        prefix = self.debug_dir / f"scene_{scene_number:04}"
+        (prefix.with_name(f"{prefix.name}_system.txt")).write_text(system_prompt, encoding="utf-8")
+        (prefix.with_name(f"{prefix.name}_user.txt")).write_text(user_prompt, encoding="utf-8")
+        (prefix.with_name(f"{prefix.name}_response.txt")).write_text(response, encoding="utf-8")
+
+
+def split_template(template: str) -> tuple[str, str]:
+    system_marker = "[SYSTEM]"
+    user_marker = "[USER]"
+    if system_marker not in template:
+        raise ValueError("Storyboard prompt template is missing [SYSTEM]")
+    if user_marker not in template:
+        raise ValueError("Storyboard prompt template is missing [USER]")
+
+    _before_system, after_system = template.split(system_marker, 1)
+    system_prompt, user_template = after_system.split(user_marker, 1)
+    return system_prompt.strip(), user_template.strip()

@@ -50,6 +50,13 @@ class WorkflowPatcher:
 
         raise KeyError(f"Node with _meta.title not found: {title}")
 
+    def find_nodes_by_meta_title(self, title: str) -> list[tuple[str, dict]]:
+        return [
+            (node_id, node)
+            for node_id, node in self.workflow.items()
+            if node.get("_meta", {}).get("title") == title
+        ]
+
     def set_input_by_id(
         self,
         node_id: str | int,
@@ -84,6 +91,23 @@ class WorkflowPatcher:
 
         inputs[input_name] = value
         return self
+
+    def set_existing_input_by_title_any(
+        self,
+        title: str,
+        input_name: str,
+        value: Any,
+    ) -> "WorkflowPatcher":
+        nodes = self.find_nodes_by_meta_title(title)
+        for _, node in nodes:
+            inputs = node.setdefault("inputs", {})
+            if input_name in inputs:
+                inputs[input_name] = value
+                return self
+
+        if not nodes:
+            raise KeyError(f"Node with _meta.title not found: {title}")
+        raise KeyError(f"Input '{input_name}' not found on any node titled '{title}'")
 
     def try_set_existing_input_by_title(
         self,
