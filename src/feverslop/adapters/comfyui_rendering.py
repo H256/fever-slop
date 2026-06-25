@@ -41,7 +41,7 @@ class ComfyUIImageBackend:
         scene_number = int(request.scene_number)
         anchors = request.anchors
 
-        patcher.set_input_by_title(
+        patcher.set_existing_input_by_title_any(
             anchors.positive_prompt_title,
             anchors.positive_prompt_input,
             request.prompt,
