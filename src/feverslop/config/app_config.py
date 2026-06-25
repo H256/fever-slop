@@ -23,10 +23,30 @@ class ComfyUIConfig:
     model_overrides: list[ComfyUIModelOverride] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class StoryboardPromptTransformConfig:
+    workflow: str
+    kind: str = "template"
+    template: str = ""
+    positive_prompt_input: str = "text"
+    debug_dir: str = "storyboard_prompt_debug"
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> "StoryboardPromptTransformConfig":
+        return cls(
+            workflow=str(raw["workflow"]),
+            kind=str(raw.get("kind", "template")),
+            template=str(raw.get("template", "")),
+            positive_prompt_input=str(raw.get("positive_prompt_input", "text")),
+            debug_dir=str(raw.get("debug_dir", "storyboard_prompt_debug")),
+        )
+
+
 @dataclass
 class AppConfig:
     llm: LLMConfig
     comfyui: ComfyUIConfig
+    storyboard_prompt_transforms: list[StoryboardPromptTransformConfig] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: str | Path) -> "AppConfig":
@@ -57,4 +77,8 @@ class AppConfig:
                     for item in comfyui_raw.get("model_overrides", [])
                 ],
             ),
+            storyboard_prompt_transforms=[
+                StoryboardPromptTransformConfig.from_dict(item)
+                for item in raw.get("storyboard_prompt_transforms", [])
+            ],
         )

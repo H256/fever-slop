@@ -42,6 +42,14 @@ class RenderScene:
         return str(self.data.get("z_image", {}).get("prompt", ""))
 
     @property
+    def width(self) -> int:
+        return int(self.data.get("width", 0))
+
+    @property
+    def height(self) -> int:
+        return int(self.data.get("height", 0))
+
+    @property
     def video_prompt(self) -> str:
         ltx = self.data.get("ltx", {})
         return str(

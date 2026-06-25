@@ -43,7 +43,7 @@ class ComfyUIImageBackend:
 
         patcher.set_input_by_title(
             anchors.positive_prompt_title,
-            "text",
+            anchors.positive_prompt_input,
             request.prompt,
         )
 
@@ -72,6 +72,20 @@ class ComfyUIImageBackend:
                 anchors.save_image_title,
                 self.filename_prefix_input_name,
                 f"storyboard/scene_{scene_number:04}",
+            )
+
+        if request.width is not None and anchors.width_title:
+            patcher.try_set_existing_input_by_title(
+                anchors.width_title,
+                anchors.width_input,
+                int(request.width),
+            )
+
+        if request.height is not None and anchors.height_title:
+            patcher.try_set_existing_input_by_title(
+                anchors.height_title,
+                anchors.height_input,
+                int(request.height),
             )
 
         workflow = self.model_resolver.resolve_workflow_models(

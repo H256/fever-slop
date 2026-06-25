@@ -53,6 +53,44 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual("configured-model", config.llm.model)
 
+    def test_storyboard_prompt_transforms_default_to_empty_list(self):
+        from feverslop.config.app_config import AppConfig
+
+        config = AppConfig.load(Path("does-not-exist.json"))
+
+        self.assertEqual([], config.storyboard_prompt_transforms)
+
+    def test_loads_storyboard_prompt_transform_config(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "storyboard_prompt_transforms": [
+                    {
+                      "workflow": "workflows/image_t2i_startframe_ideogram_v1.json",
+                      "kind": "template",
+                      "template": "docs/ideogram4_prompt_template.md",
+                      "positive_prompt_input": "value",
+                      "debug_dir": "ideogram4_prompt_debug"
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            config = AppConfig.load(config_path)
+
+        [transform] = config.storyboard_prompt_transforms
+        self.assertEqual("workflows/image_t2i_startframe_ideogram_v1.json", transform.workflow)
+        self.assertEqual("template", transform.kind)
+        self.assertEqual("docs/ideogram4_prompt_template.md", transform.template)
+        self.assertEqual("value", transform.positive_prompt_input)
+        self.assertEqual("ideogram4_prompt_debug", transform.debug_dir)
+
 
 @contextmanager
 def working_directory(path: Path):

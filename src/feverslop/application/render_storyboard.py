@@ -1,11 +1,12 @@
 ﻿from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
+from feverslop.ports.llm import StoryboardPromptTransformerPort
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
 
 
@@ -28,9 +29,13 @@ class RenderStoryboardUseCase:
         self,
         backend: ImageRenderBackend,
         artifact_store: ArtifactStore,
+        prompt_transformer: StoryboardPromptTransformerPort | None = None,
+        positive_prompt_input: str | None = None,
     ):
         self.backend = backend
         self.artifact_store = artifact_store
+        self.prompt_transformer = prompt_transformer
+        self.positive_prompt_input = positive_prompt_input
 
     def execute(self, request: RenderStoryboardRequest) -> list[Path]:
         plan = RenderPlan.from_dicts(
@@ -50,17 +55,32 @@ class RenderStoryboardUseCase:
                     request.on_frame_complete(output_path, len(rendered), total)
                 continue
 
+            prompt = scene.z_image_prompt
+            if self.prompt_transformer is not None:
+                prompt = self.prompt_transformer.transform_prompt(
+                    scene_number=scene.scene_number,
+                    original_prompt=scene.z_image_prompt,
+                    width=scene.width,
+                    height=scene.height,
+                )
+
+            anchors = request.anchors
+            if self.positive_prompt_input is not None:
+                anchors = replace(anchors, positive_prompt_input=self.positive_prompt_input)
+
             rendered_path = self.backend.render_image(
                 ImageRenderRequest(
                     scene=scene.to_dict(),
                     scene_number=scene.scene_number,
-                    prompt=scene.z_image_prompt,
+                    prompt=prompt,
                     workflow_path=request.workflow_path,
                     output_dir=request.output_dir,
+                    width=scene.width,
+                    height=scene.height,
                     skip_existing=request.skip_existing,
                     negative_prompt=request.negative_prompt,
                     character_lora_strength=request.character_lora_strength,
-                    anchors=request.anchors,
+                    anchors=anchors,
                 )
             )
             rendered.append(rendered_path)

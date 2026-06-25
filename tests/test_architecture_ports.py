@@ -53,6 +53,22 @@ class FakeWorkflowBackend:
         self.validated = (workflow_path, required_titles)
 
 
+class FakePromptTransformer:
+    def __init__(self):
+        self.calls = []
+
+    def transform_prompt(self, *, scene_number: int, original_prompt: str, width: int, height: int) -> str:
+        self.calls.append(
+            {
+                "scene_number": scene_number,
+                "original_prompt": original_prompt,
+                "width": width,
+                "height": height,
+            }
+        )
+        return f"transformed {scene_number}"
+
+
 class ArchitecturePortsTests(unittest.TestCase):
     def _render_plan(self) -> list[dict]:
         return [
@@ -203,6 +219,66 @@ class ArchitecturePortsTests(unittest.TestCase):
             self.assertEqual([temp / "storyboard" / "scene_0001.png"], rendered)
             self.assertEqual(1, len(backend.requests))
             self.assertEqual("start frame prompt", backend.requests[0].prompt)
+            self.assertEqual(1280, backend.requests[0].width)
+            self.assertEqual(704, backend.requests[0].height)
+
+    def test_storyboard_use_case_transforms_prompt_before_rendering(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(self._render_plan()), encoding="utf-8")
+            backend = FakeImageBackend()
+            transformer = FakePromptTransformer()
+
+            RenderStoryboardUseCase(
+                backend=backend,
+                artifact_store=JsonArtifactStore(),
+                prompt_transformer=transformer,
+            ).execute(
+                RenderStoryboardRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    output_dir=temp / "storyboard",
+                )
+            )
+
+            self.assertEqual("transformed 1", backend.requests[0].prompt)
+            self.assertEqual(
+                [
+                    {
+                        "scene_number": 1,
+                        "original_prompt": "start frame prompt",
+                        "width": 1280,
+                        "height": 704,
+                    }
+                ],
+                transformer.calls,
+            )
+
+    def test_storyboard_use_case_does_not_transform_skipped_existing_frame(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(self._render_plan()), encoding="utf-8")
+            existing = temp / "storyboard" / "scene_0001.png"
+            existing.parent.mkdir(parents=True)
+            existing.write_bytes(b"existing")
+            transformer = FakePromptTransformer()
+
+            rendered = RenderStoryboardUseCase(
+                backend=FakeImageBackend(),
+                artifact_store=JsonArtifactStore(),
+                prompt_transformer=transformer,
+            ).execute(
+                RenderStoryboardRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    output_dir=temp / "storyboard",
+                )
+            )
+
+            self.assertEqual([existing], rendered)
+            self.assertEqual([], transformer.calls)
 
     def test_storyboard_use_case_reports_progress_after_each_available_frame(self):
         scenes = [
