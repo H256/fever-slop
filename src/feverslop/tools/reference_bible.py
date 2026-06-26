@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from rich.console import Console
@@ -32,15 +33,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def load_reference_subjects(project_config_path: str | Path) -> tuple[list[ReferenceSubject], list[ReferenceLocation]]:
     config = ProjectConfig.load(project_config_path)
+    resolved_context = _load_resolved_context(config)
+    actor_source = resolved_context.get("actors") or config.actors
+    location_source = resolved_context.get("structured_locations") or config.structured_locations
     subjects = [
         ReferenceSubject(
-            id=actor.id,
-            name=actor.name,
-            role=actor.role,
-            visual_description=actor.visual_description,
-            image_prompt=actor.image_prompt or actor.visual_description or actor.name,
+            id=_item_value(actor, "id"),
+            name=_item_value(actor, "name"),
+            role=_item_value(actor, "role"),
+            visual_description=_item_value(actor, "visual_description"),
+            image_prompt=(
+                _item_value(actor, "image_prompt")
+                or _item_value(actor, "visual_description")
+                or _item_value(actor, "name")
+            ),
         )
-        for actor in config.actors
+        for actor in actor_source
     ]
     if not subjects and config.subject.strip():
         subjects.append(
@@ -54,14 +62,36 @@ def load_reference_subjects(project_config_path: str | Path) -> tuple[list[Refer
 
     locations = [
         ReferenceLocation(
-            id=location.id,
-            name=location.name,
-            visual_description=location.visual_description,
-            image_prompt=location.image_prompt or location.visual_description or location.name,
+            id=_item_value(location, "id"),
+            name=_item_value(location, "name"),
+            visual_description=_item_value(location, "visual_description"),
+            image_prompt=(
+                _item_value(location, "image_prompt")
+                or _item_value(location, "visual_description")
+                or _item_value(location, "name")
+            ),
         )
-        for location in config.structured_locations
+        for location in location_source
     ]
     return subjects, locations
+
+
+def _load_resolved_context(config: ProjectConfig) -> dict:
+    prompts_dir = config.project_dir / "output" / "prompts"
+    candidates = [
+        prompts_dir / f"resolved_context_{config.song_id}.json",
+        *sorted(prompts_dir.glob("resolved_context_*.json")),
+    ]
+    for path in candidates:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8-sig"))
+    return {}
+
+
+def _item_value(item, name: str) -> str:
+    if isinstance(item, dict):
+        return str(item.get(name, "") or "").strip()
+    return str(getattr(item, name, "") or "").strip()
 
 
 def run(args: argparse.Namespace) -> list[Path]:

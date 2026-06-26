@@ -36,3 +36,28 @@ class ReferenceBibleToolTests(unittest.TestCase):
             self.assertEqual("subject", subjects[0].id)
             self.assertEqual("a singer in a red coat", subjects[0].image_prompt)
             self.assertEqual([], locations)
+
+    def test_load_reference_subjects_reads_resolved_context_when_available(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": "input/song.mp3", "subject": ""}),
+                encoding="utf-8",
+            )
+            prompts_dir = temp / "output" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            (prompts_dir / "resolved_context_song.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "image_prompt": "portrait"}],
+                        "structured_locations": [{"id": "stage", "name": "Stage", "image_prompt": "stage"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            subjects, locations = load_reference_subjects(config_path)
+
+            self.assertEqual("mara", subjects[0].id)
+            self.assertEqual("stage", locations[0].id)
