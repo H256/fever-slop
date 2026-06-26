@@ -60,6 +60,21 @@ class ComfyUIImageBackend:
                 request.character_lora_strength,
             )
 
+        if anchors.reference_image_title and request.reference_image is not None:
+            image_upload = self.client.upload_image(
+                request.reference_image,
+                subfolder="feverslop/references",
+                file_type="input",
+                overwrite=True,
+            )
+            patcher.set_input_by_title(
+                anchors.reference_image_title,
+                anchors.reference_image_input,
+                self.client.comfy_path_from_upload(image_upload)
+                if hasattr(self.client, "comfy_path_from_upload")
+                else _comfy_path_from_upload(image_upload),
+            )
+
         if self.seed_node_title:
             patcher.set_input_by_title(
                 self.seed_node_title,
@@ -106,3 +121,11 @@ class ComfyUIImageBackend:
             file_type=first.get("type", "output"),
             output_path=request.output_dir / f"scene_{scene_number:04}.png",
         )
+
+
+def _comfy_path_from_upload(upload_response: dict) -> str:
+    name = upload_response.get("name")
+    subfolder = upload_response.get("subfolder", "")
+    if not name:
+        raise ValueError(f"Unexpected ComfyUI upload response: {upload_response}")
+    return f"{subfolder}/{name}" if subfolder else name

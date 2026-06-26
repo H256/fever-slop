@@ -55,6 +55,8 @@ class ComfyUIMSRVideoRenderBackend:
         scene_number = int(scene["scene"])
         references = scene.get("references") or {}
         actor_paths = [Path(path) for path in references.get("actor_sheet_paths", [])]
+        if not actor_paths:
+            raise ValueError(f"Scene {scene_number} references at least 1 actor for ltx_msr")
         if len(actor_paths) > 4:
             raise ValueError(f"Scene {scene_number} references at most 4 actors for ltx_msr")
         location_path = references.get("location_sheet_path")

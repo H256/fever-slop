@@ -6,7 +6,7 @@ import json
 
 from PIL import Image, ImageDraw
 
-from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest
+from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
 
 
 @dataclass(frozen=True)
@@ -29,8 +29,19 @@ class ReferenceLocation:
 class ReferenceBibleGenerator:
     view_names = ("hero", "front", "left", "right", "closeup")
 
-    def __init__(self, *, backend: ImageRenderBackend, output_dir: str | Path):
+    def __init__(
+        self,
+        *,
+        backend: ImageRenderBackend,
+        output_dir: str | Path,
+        edit_backend: ImageRenderBackend | None = None,
+        hero_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
+        edit_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
+    ):
         self.backend = backend
+        self.edit_backend = edit_backend or backend
+        self.hero_anchors = hero_anchors
+        self.edit_anchors = edit_anchors
         self.output_dir = Path(output_dir)
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
@@ -38,20 +49,27 @@ class ReferenceBibleGenerator:
         subject_dir.mkdir(parents=True, exist_ok=True)
 
         views = []
+        hero_path = None
         for index, view_name in enumerate(self.view_names, start=1):
             view_dir = subject_dir / "views"
-            rendered = self.backend.render_image(
+            backend = self.backend if view_name == "hero" else self.edit_backend
+            anchors = self.hero_anchors if view_name == "hero" else self.edit_anchors
+            rendered = backend.render_image(
                 ImageRenderRequest(
                     scene={"reference_id": subject.id, "view": view_name},
                     scene_number=index,
                     prompt=self._view_prompt(subject, view_name),
                     workflow_path=Path(""),
                     output_dir=view_dir,
+                    reference_image=hero_path,
+                    anchors=anchors,
                 )
             )
             target = view_dir / f"{view_name}.png"
             if Path(rendered) != target:
                 target.write_bytes(Path(rendered).read_bytes())
+            if view_name == "hero":
+                hero_path = target
             views.append({"name": view_name, "path": str(target)})
 
         sheet_path = subject_dir / "sheet.png"
@@ -71,20 +89,27 @@ class ReferenceBibleGenerator:
         location_dir.mkdir(parents=True, exist_ok=True)
 
         views = []
+        hero_path = None
         for index, view_name in enumerate(self.view_names, start=1):
             view_dir = location_dir / "views"
-            rendered = self.backend.render_image(
+            backend = self.backend if view_name == "hero" else self.edit_backend
+            anchors = self.hero_anchors if view_name == "hero" else self.edit_anchors
+            rendered = backend.render_image(
                 ImageRenderRequest(
                     scene={"reference_id": location.id, "view": view_name},
                     scene_number=index,
                     prompt=self._location_view_prompt(location, view_name),
                     workflow_path=Path(""),
                     output_dir=view_dir,
+                    reference_image=hero_path,
+                    anchors=anchors,
                 )
             )
             target = view_dir / f"{view_name}.png"
             if Path(rendered) != target:
                 target.write_bytes(Path(rendered).read_bytes())
+            if view_name == "hero":
+                hero_path = target
             views.append({"name": view_name, "path": str(target)})
 
         sheet_path = location_dir / "sheet.png"

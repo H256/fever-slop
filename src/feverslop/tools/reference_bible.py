@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from rich.console import Console
+
+from feverslop.adapters.comfyui_client import ComfyUIClient
+from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
+from feverslop.config.app_config import AppConfig
+from feverslop.config.project_config import ProjectConfig
+from feverslop.ports.rendering import WorkflowAnchorConfig
+
+
+console = Console()
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Render FeverSlop Actor and Location Bible reference sheets.")
+    parser.add_argument("--project-config", required=True)
+    parser.add_argument("--app-config", default="app_config.json")
+    parser.add_argument("--hero-workflow", required=True)
+    parser.add_argument("--edit-workflow", required=True)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--hero-positive-title", default="#PROMPT_POSITIVE")
+    parser.add_argument("--edit-positive-title", default="#PROMPT_POSITIVE")
+    parser.add_argument("--reference-image-title", default="#IMAGE_1")
+    return parser
+
+
+def load_reference_subjects(project_config_path: str | Path) -> tuple[list[ReferenceSubject], list[ReferenceLocation]]:
+    config = ProjectConfig.load(project_config_path)
+    subjects = [
+        ReferenceSubject(
+            id=actor.id,
+            name=actor.name,
+            role=actor.role,
+            visual_description=actor.visual_description,
+            image_prompt=actor.image_prompt or actor.visual_description or actor.name,
+        )
+        for actor in config.actors
+    ]
+    if not subjects and config.subject.strip():
+        subjects.append(
+            ReferenceSubject(
+                id="subject",
+                name="Subject",
+                visual_description=config.subject,
+                image_prompt=config.subject,
+            )
+        )
+
+    locations = [
+        ReferenceLocation(
+            id=location.id,
+            name=location.name,
+            visual_description=location.visual_description,
+            image_prompt=location.image_prompt or location.visual_description or location.name,
+        )
+        for location in config.structured_locations
+    ]
+    return subjects, locations
+
+
+def run(args: argparse.Namespace) -> list[Path]:
+    app_config = AppConfig.load(args.app_config)
+    project_config = ProjectConfig.load(args.project_config)
+    output_dir = Path(args.output_dir) if args.output_dir else project_config.project_dir / "output" / "references"
+
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
+    hero_backend = ComfyUIImageBackend(
+        client=client,
+        workflow_path=args.hero_workflow,
+        output_dir=output_dir,
+        model_resolver=model_resolver,
+    )
+    edit_backend = ComfyUIImageBackend(
+        client=client,
+        workflow_path=args.edit_workflow,
+        output_dir=output_dir,
+        model_resolver=model_resolver,
+    )
+    hero_anchors = WorkflowAnchorConfig(positive_prompt_title=args.hero_positive_title)
+    edit_anchors = WorkflowAnchorConfig(
+        positive_prompt_title=args.edit_positive_title,
+        reference_image_title=args.reference_image_title,
+    )
+    generator = ReferenceBibleGenerator(
+        backend=hero_backend,
+        edit_backend=edit_backend,
+        output_dir=output_dir,
+        hero_anchors=hero_anchors,
+        edit_anchors=edit_anchors,
+    )
+    subjects, locations = load_reference_subjects(args.project_config)
+
+    manifests: list[Path] = []
+
+    for subject in subjects:
+        manifest = generator.generate_subject_bible(subject)
+        manifests.append(manifest)
+        console.print(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
+    for location in locations:
+        manifest = generator.generate_location_bible(location)
+        manifests.append(manifest)
+        console.print(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
+    return manifests
+
+
+def main() -> None:
+    run(build_arg_parser().parse_args())
+
+
+if __name__ == "__main__":
+    main()

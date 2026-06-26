@@ -187,6 +187,8 @@ class ProjectConfig:
     locations: list[str] = field(default_factory=list)
     actors: tuple[ActorConfig, ...] = field(default_factory=tuple)
     structured_locations: tuple[StructuredLocationConfig, ...] = field(default_factory=tuple)
+    subject_mode: str = "multi"
+    max_scene_actors: int = 4
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
@@ -222,6 +224,15 @@ class ProjectConfig:
             )
         else:
             loras = (lora_1,)
+
+        subject_mode = str(raw.get("subject_mode", "multi") or "multi").strip().lower()
+        if subject_mode not in {"single", "multi"}:
+            raise ValueError("subject_mode must be 'single' or 'multi'")
+        max_scene_actors = int(raw.get("max_scene_actors", 1 if subject_mode == "single" else 4))
+        if max_scene_actors < 1 or max_scene_actors > 4:
+            raise ValueError("max_scene_actors must be between 1 and 4")
+        if subject_mode == "single":
+            max_scene_actors = 1
 
         return cls(
             project_dir=project_dir,
@@ -275,6 +286,8 @@ class ProjectConfig:
                 _load_structured_location(item, index)
                 for index, item in enumerate(locations_raw, start=1)
             ),
+            subject_mode=subject_mode,
+            max_scene_actors=max_scene_actors,
 
             steering=SteeringConfig(
                 global_=steering_raw.get("global", ""),

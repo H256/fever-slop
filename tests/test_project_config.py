@@ -146,6 +146,29 @@ class ProjectConfigTests(unittest.TestCase):
             self.assertEqual("stage", config.structured_locations[0].id)
             self.assertEqual("wide shot of mirror stage", config.structured_locations[0].image_prompt)
 
+    def test_loads_single_subject_reference_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "test",
+                        "input_audio": "song.mp3",
+                        "subject_mode": "single",
+                        "max_scene_actors": 1,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertEqual("single", config.subject_mode)
+            self.assertEqual(1, config.max_scene_actors)
+
     def test_loras_array_tracks_omitted_optional_patch_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

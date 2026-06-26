@@ -41,6 +41,7 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
 
         self.assertEqual("Allowed locations: ancient forest", payload["GLOBAL_CONTEXT"]["location_constraint"])
         self.assertEqual("Keep the spring visible.", payload["NOTES"])
+        self.assertIn("references", llm.calls[0]["system_prompt"])
 
     def test_subject_and_locations_prompt_requests_multi_actor_reference_data(self):
         llm = FakeSubjectLocationLLM()

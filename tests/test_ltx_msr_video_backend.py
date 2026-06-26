@@ -81,3 +81,24 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(17, client.queued_workflow["3"]["inputs"]["frame_count"])
             self.assertEqual("video prompt", client.queued_workflow["4"]["inputs"]["text"])
             self.assertEqual(100007, client.queued_workflow["5"]["inputs"]["noise_seed"])
+
+    def test_backend_rejects_scene_without_actor_reference(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            location = temp / "location.png"
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text("{}", encoding="utf-8")
+            backend = ComfyUIMSRVideoRenderBackend(client=FakeClient(), workflow_path=workflow, output_dir=temp / "out")
+
+            with self.assertRaisesRegex(ValueError, "at least 1 actor"):
+                backend.build_workflow(
+                    {
+                        "scene": 1,
+                        "references": {
+                            "actor_sheet_paths": [],
+                            "location_sheet_path": str(location),
+                        },
+                    },
+                    prompt="prompt",
+                )

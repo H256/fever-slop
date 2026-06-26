@@ -125,6 +125,39 @@ class ScenePromptBuilderTests(unittest.TestCase):
 
         self.assertEqual({"actor_ids": ["singer"], "location_id": "stage"}, data[0]["references"])
 
+    def test_single_subject_mode_forces_first_actor_reference(self):
+        llm = FakeLLM()
+        builder = ScenePromptBuilder(llm)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_001", "scene": 1, "type": "vocals"}],
+                concept_prompts={
+                    "segment_001": {
+                        "concept": "Mara and Jon stand on the mirror stage.",
+                        "references": {"actor_ids": ["mara", "jon"], "location_id": "stage"},
+                    }
+                },
+                scene_details={},
+                global_context={
+                    "subject": "Mara",
+                    "story_idea": "A stage performance.",
+                    "style": "cinematic realism",
+                    "locations": ["Mirror Stage"],
+                    "actors": [{"id": "mara", "name": "Mara"}, {"id": "jon", "name": "Jon"}],
+                    "structured_locations": [{"id": "stage", "name": "Mirror Stage"}],
+                    "subject_mode": "single",
+                    "max_scene_actors": 1,
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+            )
+
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual({"actor_ids": ["mara"], "location_id": "stage"}, data[0]["references"])
+
 
 if __name__ == "__main__":
     unittest.main()
