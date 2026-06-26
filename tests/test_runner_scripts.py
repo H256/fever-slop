@@ -24,6 +24,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_v1.json"), args.storyboard_workflow)
         self.assertEqual("", args.relay_workflow)
         self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_i2v_v1.json"), args.single_prompt_workflow)
+        self.assertEqual("ltx_i2v", args.video_pipeline)
         self.assertEqual("single_prompt", args.render_mode)
         self.assertEqual("#PROMPT", args.single_prompt_title)
         self.assertEqual("text", args.single_prompt_input)
@@ -41,6 +42,8 @@ class RunnerScriptTests(unittest.TestCase):
                 "relay.json",
                 "--single-prompt-workflow",
                 "single.json",
+                "--video-pipeline",
+                "ltx_msr",
                 "--storyboard-lora-strength",
                 "0.4",
                 "--video-character-lora-strength",
@@ -67,6 +70,7 @@ class RunnerScriptTests(unittest.TestCase):
 
         self.assertEqual("projects/song", args.project_root)
         self.assertEqual("auto", args.render_mode)
+        self.assertEqual("ltx_msr", args.video_pipeline)
         self.assertEqual(0.4, args.storyboard_lora_strength)
         self.assertEqual(0.8, args.video_character_lora_strength)
         self.assertEqual(0.7, args.video_lora_1_strength_model)

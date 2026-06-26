@@ -158,6 +158,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "storyboard_workflow": "storyboard.json",
                 "relay_workflow": "relay.json",
                 "single_prompt_workflow": "single.json",
+                "video_pipeline": "ltx_i2v",
                 "render_mode": "auto",
                 "single_prompt_title": "#PROMPT",
                 "single_prompt_input": "text",

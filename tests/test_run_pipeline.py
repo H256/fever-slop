@@ -222,6 +222,47 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         self.assertIsNotNone(request.on_scene_complete)
         self.assertEqual(3, request.on_scene_complete.__self__.total)
 
+    def test_ltx_msr_runner_does_not_require_relay_workflow_in_auto_mode(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            (render_dir / "render_plan_song.json").write_text(
+                json.dumps([{"scene": 1}]),
+                encoding="utf-8",
+            )
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--render-mode",
+                    "auto",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-storyboard",
+                    "--skip-storyboard-page",
+                    "--skip-final-concat",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+            with patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case) as builder:
+                run_pipeline.run(args)
+
+        options = builder.call_args.args[0]
+        self.assertEqual("ltx_msr", options.video_pipeline)
+        self.assertTrue(str(options.output_dir).endswith("ltx_msr"))
+
     def test_ltx_resume_rewrites_concat_list_from_all_returned_clips_before_final_concat(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"

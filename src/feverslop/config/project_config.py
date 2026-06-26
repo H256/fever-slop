@@ -88,6 +88,23 @@ class PromptGuidanceConfig:
 
 
 @dataclass(frozen=True)
+class ActorConfig:
+    id: str
+    name: str
+    role: str = ""
+    visual_description: str = ""
+    image_prompt: str = ""
+
+
+@dataclass(frozen=True)
+class StructuredLocationConfig:
+    id: str
+    name: str
+    visual_description: str = ""
+    image_prompt: str = ""
+
+
+@dataclass(frozen=True)
 class LoraConfig:
     enabled: bool = False
     name: str = ""
@@ -116,6 +133,42 @@ def _load_multiline_text(value) -> str:
     return str(value or "").strip()
 
 
+def _safe_id(value: str, fallback: str) -> str:
+    raw = "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip())
+    raw = "_".join(part for part in raw.split("_") if part)
+    return raw or fallback
+
+
+def _load_actor(raw: dict, index: int) -> ActorConfig:
+    name = str(raw.get("name") or raw.get("id") or f"Actor {index}").strip()
+    return ActorConfig(
+        id=str(raw.get("id") or _safe_id(name, f"actor_{index}")).strip(),
+        name=name,
+        role=str(raw.get("role", "") or "").strip(),
+        visual_description=str(raw.get("visual_description", "") or "").strip(),
+        image_prompt=str(raw.get("image_prompt", "") or "").strip(),
+    )
+
+
+def _load_structured_location(raw, index: int) -> StructuredLocationConfig:
+    if isinstance(raw, dict):
+        name = str(raw.get("name") or raw.get("id") or f"Location {index}").strip()
+        return StructuredLocationConfig(
+            id=str(raw.get("id") or _safe_id(name, f"location_{index}")).strip(),
+            name=name,
+            visual_description=str(raw.get("visual_description", "") or "").strip(),
+            image_prompt=str(raw.get("image_prompt", "") or "").strip(),
+        )
+
+    name = str(raw or f"Location {index}").strip()
+    return StructuredLocationConfig(
+        id=_safe_id(name, f"location_{index}"),
+        name=name,
+        visual_description=name,
+        image_prompt=name,
+    )
+
+
 @dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
@@ -132,6 +185,8 @@ class ProjectConfig:
     style: str = ""
     subject: str = ""
     locations: list[str] = field(default_factory=list)
+    actors: tuple[ActorConfig, ...] = field(default_factory=tuple)
+    structured_locations: tuple[StructuredLocationConfig, ...] = field(default_factory=tuple)
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
@@ -153,6 +208,8 @@ class ProjectConfig:
         guidance_raw = raw.get("prompt_guidance", {})
         lora_1_raw = raw.get("lora_1", {})
         loras_raw = raw.get("loras")
+        actors_raw = raw.get("actors", [])
+        locations_raw = raw.get("locations", [])
 
         input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
 
@@ -205,7 +262,19 @@ class ProjectConfig:
             story_idea=raw.get("story_idea", ""),
             style=raw.get("style", ""),
             subject=raw.get("subject", ""),
-            locations=list(raw.get("locations", [])),
+            locations=[
+                str(item.get("name") if isinstance(item, dict) else item)
+                for item in locations_raw
+            ],
+            actors=tuple(
+                _load_actor(item, index)
+                for index, item in enumerate(actors_raw, start=1)
+                if isinstance(item, dict)
+            ),
+            structured_locations=tuple(
+                _load_structured_location(item, index)
+                for index, item in enumerate(locations_raw, start=1)
+            ),
 
             steering=SteeringConfig(
                 global_=steering_raw.get("global", ""),

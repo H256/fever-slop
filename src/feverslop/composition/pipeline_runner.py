@@ -139,10 +139,10 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
     prompts_dir = project_output_dir / "prompts"
     render_dir = project_output_dir / "render"
     storyboard_dir = render_dir / "storyboard"
-    ltx_dir = render_dir / f"ltx_{args.render_mode}"
+    ltx_dir = render_dir / ("ltx_msr" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}")
     if args.smoke_only:
-        ltx_dir = render_dir / f"ltx_{args.render_mode}_smoke"
-    ltx_debug_dir = render_dir / f"ltx_{args.render_mode}_debug"
+        ltx_dir = render_dir / ("ltx_msr_smoke" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}_smoke")
+    ltx_debug_dir = render_dir / ("ltx_msr_debug" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}_debug")
 
     return PipelineRunContext(
         project_config_path=project_config_path,
@@ -294,11 +294,15 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
 
     if not args.skip_ltx:
         write_step("Rendering LTX")
-        if args.render_mode != "single_prompt" and not str(args.relay_workflow).strip():
+        if args.video_pipeline != "ltx_msr" and args.render_mode != "single_prompt" and not str(args.relay_workflow).strip():
             raise ValueError(f"RenderMode '{args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
 
-        ltx_workflow = single_prompt_workflow if args.render_mode == "single_prompt" else relay_workflow
-        ltx_single_prompt_workflow = single_prompt_workflow if args.render_mode == "auto" else None
+        if args.video_pipeline == "ltx_msr":
+            ltx_workflow = single_prompt_workflow
+            ltx_single_prompt_workflow = None
+        else:
+            ltx_workflow = single_prompt_workflow if args.render_mode == "single_prompt" else relay_workflow
+            ltx_single_prompt_workflow = single_prompt_workflow if args.render_mode == "auto" else None
         video_use_case = build_render_video_scenes_use_case(
             RenderVideoCompositionOptions(
                 app_config_path=app_config_path,
@@ -306,6 +310,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 render_plan_path=plan_for_next_step,
                 workflow_path=ltx_workflow,
                 output_dir=context.ltx_dir,
+                video_pipeline=args.video_pipeline,
                 single_prompt_workflow_path=ltx_single_prompt_workflow,
                 render_mode=args.render_mode,
                 single_prompt_title=args.single_prompt_title,

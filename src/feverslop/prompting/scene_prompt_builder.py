@@ -133,6 +133,10 @@ class ScenePromptBuilder:
         for segment in stage1_segments:
             segment_id = segment["segment_id"]
             concept = concept_prompts[segment_id]
+            references = {}
+            if isinstance(concept, dict):
+                references = dict(concept.get("references") or {})
+                concept = str(concept.get("concept", ""))
             details = scene_details.get(segment_id, {})
 
             t2i_prompt = self.build_zimage_prompt(
@@ -152,7 +156,7 @@ class ScenePromptBuilder:
                 custom_instructions=ltx_instructions,
             )
 
-            output.append({
+            scene_output = {
                 **segment,
                 "base_concept": concept,
                 "camera_motion": details.get("camera_motion", ""),
@@ -162,6 +166,9 @@ class ScenePromptBuilder:
                 "ltx_base_prompt": t2i_prompt,
                 "i2v_prompt_from_t2i": i2v_prompt_from_t2i,
                 "original_style_i2v_prompt": i2v_prompt_from_t2i,
-            })
+            }
+            if references:
+                scene_output["references"] = references
+            output.append(scene_output)
 
         return artifact_store.write_json(output_json_path, output)

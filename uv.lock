@@ -1,4 +1,4 @@
-﻿version = 1
+version = 1
 revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
@@ -101,41 +101,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/4a/874ecf9b472f998130c2b5e145dcdb9f6131e84786111489103b66772143/audioread-3.1.0.tar.gz", hash = "sha256:1c4ab2f2972764c896a8ac61ac53e261c8d29f0c6ccd652f84e18f08a4cab190", size = 20082, upload-time = "2025-10-26T19:44:13.484Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/16/fbe8e1e185a45042f7cd3a282def5bb8d95bb69ab9e9ef6a5368aa17e426/audioread-3.1.0-py3-none-any.whl", hash = "sha256:b30d1df6c5d3de5dcef0fb0e256f6ea17bdcf5f979408df0297d8a408e2971b4", size = 23143, upload-time = "2025-10-26T19:44:12.016Z" },
-]
-
-[[package]]
-name = "feverslop"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "audioread" },
-    { name = "demucs" },
-    { name = "librosa" },
-    { name = "numpy" },
-    { name = "openai" },
-    { name = "openai-whisper" },
-    { name = "rich" },
-    { name = "soundfile" },
-    { name = "torch" },
-    { name = "torchaudio" },
-    { name = "torchcodec" },
-    { name = "torchvision" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "audioread", specifier = ">=3.1.0" },
-    { name = "demucs", specifier = ">=4.0.1" },
-    { name = "librosa", specifier = ">=0.11.0" },
-    { name = "numpy", specifier = ">=2.4.6" },
-    { name = "openai", specifier = ">=2.41.1" },
-    { name = "openai-whisper", specifier = ">=20250625" },
-    { name = "rich", specifier = ">=15.0.0" },
-    { name = "soundfile", specifier = ">=0.14.0" },
-    { name = "torch", specifier = ">=2.12.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchaudio", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchcodec", specifier = ">=0.14.0" },
-    { name = "torchvision", specifier = ">=0.27.0", index = "https://download.pytorch.org/whl/cu130" },
 ]
 
 [[package]]
@@ -416,6 +381,43 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2c/77/850bef8d72ffb9219f0b1aac23fbc1bf7d038ee6ea666f331fa273031aa2/einops-0.8.2.tar.gz", hash = "sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827", size = 56261, upload-time = "2026-01-26T04:13:17.638Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/09/f8d8f8f31e4483c10a906437b4ce31bdf3d6d417b73fe33f1a8b59e34228/einops-0.8.2-py3-none-any.whl", hash = "sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193", size = 65638, upload-time = "2026-01-26T04:13:18.546Z" },
+]
+
+[[package]]
+name = "feverslop"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "audioread" },
+    { name = "demucs" },
+    { name = "librosa" },
+    { name = "numpy" },
+    { name = "openai" },
+    { name = "openai-whisper" },
+    { name = "pillow" },
+    { name = "rich" },
+    { name = "soundfile" },
+    { name = "torch" },
+    { name = "torchaudio" },
+    { name = "torchcodec" },
+    { name = "torchvision" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "audioread", specifier = ">=3.1.0" },
+    { name = "demucs", specifier = ">=4.0.1" },
+    { name = "librosa", specifier = ">=0.11.0" },
+    { name = "numpy", specifier = ">=2.4.6" },
+    { name = "openai", specifier = ">=2.41.1" },
+    { name = "openai-whisper", specifier = ">=20250625" },
+    { name = "pillow", specifier = ">=12.0.0" },
+    { name = "rich", specifier = ">=15.0.0" },
+    { name = "soundfile", specifier = ">=0.14.0" },
+    { name = "torch", specifier = ">=2.12.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchaudio", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchcodec", specifier = ">=0.14.0" },
+    { name = "torchvision", specifier = ">=0.27.0", index = "https://download.pytorch.org/whl/cu130" },
 ]
 
 [[package]]

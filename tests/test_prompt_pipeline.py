@@ -13,6 +13,15 @@ class FakeConceptLLM:
         return '{"segment_001": "A youth stands in the allowed forest."}'
 
 
+class FakeSubjectLocationLLM:
+    def __init__(self):
+        self.calls = []
+
+    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
+        self.calls.append({"system_prompt": system_prompt, "prompt": prompt})
+        return '{"subject": "a singer", "actors": [{"id": "singer", "name": "Mara"}], "locations": ["stage"]}'
+
+
 class MusicVideoPromptPipelineTests(unittest.TestCase):
     def test_create_concept_prompts_includes_global_context_and_notes(self):
         llm = FakeConceptLLM()
@@ -32,6 +41,15 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
 
         self.assertEqual("Allowed locations: ancient forest", payload["GLOBAL_CONTEXT"]["location_constraint"])
         self.assertEqual("Keep the spring visible.", payload["NOTES"])
+
+    def test_subject_and_locations_prompt_requests_multi_actor_reference_data(self):
+        llm = FakeSubjectLocationLLM()
+        pipeline = MusicVideoPromptPipeline(llm)
+
+        result = pipeline.create_subject_and_locations("stage story")
+
+        self.assertIn('"actors"', llm.calls[0]["system_prompt"])
+        self.assertEqual("singer", result["actors"][0]["id"])
 
 
 if __name__ == "__main__":

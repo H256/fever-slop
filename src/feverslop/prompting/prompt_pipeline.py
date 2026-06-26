@@ -91,22 +91,40 @@ Output only the block.
         notes: str = "",
     ) -> dict:
         system_prompt = """
-You extract one consistent subject and a short list of usable physical locations for a music video.
+You extract one legacy subject, one or more reusable actors, and a short list of usable physical locations for a music video.
 
 Return ONLY valid JSON in this exact shape:
 {
   "subject": "a [gender/person], with [hair color], wearing [outfit]",
+  "actors": [
+    {
+      "id": "short_snake_case_actor_id",
+      "name": "short actor name",
+      "role": "story or performance role",
+      "visual_description": "detailed stable visual description for image generation",
+      "image_prompt": "image generator prompt for the actor reference sheet"
+    }
+  ],
   "locations": [
-    "short physical location 1",
-    "short physical location 2"
+    {
+      "id": "short_snake_case_location_id",
+      "name": "short physical location name",
+      "visual_description": "detailed stable environment description",
+      "image_prompt": "image generator prompt for the location reference sheet"
+    }
   ]
 }
 
 Rules for subject:
-- Create one simple subject only.
+- Keep subject as a backward-compatible summary of the main or lead actor.
 - Infer gender only if clearly implied. If unclear, use: person.
 - If hair color is not mentioned, invent a reasonable default that fits the tone.
 - Only include gender/person, hair color, and outfit.
+
+Rules for actors:
+- Create one to four actors.
+- Each actor must be visually distinct and stable across scenes.
+- Do not create crowd members or background extras.
 
 Rules for locations:
 - List only physical environments where a person could realistically be standing.

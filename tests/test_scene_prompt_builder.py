@@ -84,6 +84,47 @@ class ScenePromptBuilderTests(unittest.TestCase):
 
         self.assertEqual("Allowed locations: ancient forest, secluded spring", payload["location_constraint"])
 
+    def test_build_scene_prompts_carries_reference_metadata_from_concept_dict(self):
+        llm = FakeLLM()
+        builder = ScenePromptBuilder(llm)
+        stage1_segments = [
+            {
+                "segment_id": "segment_001",
+                "type": "vocals",
+                "start": 0.0,
+                "end": 4.0,
+                "duration": 4.0,
+                "lyrics": "hello",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=stage1_segments,
+                concept_prompts={
+                    "segment_001": {
+                        "concept": "Mara sings on the mirror stage.",
+                        "references": {"actor_ids": ["singer"], "location_id": "stage"},
+                    }
+                },
+                scene_details={},
+                global_context={
+                    "subject": "Mara",
+                    "story_idea": "A stage performance.",
+                    "style": "cinematic realism",
+                    "locations": ["Mirror Stage"],
+                    "location_constraint": "Allowed locations: Mirror Stage",
+                    "prompt_guidance": {},
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+            )
+
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual({"actor_ids": ["singer"], "location_id": "stage"}, data[0]["references"])
+
 
 if __name__ == "__main__":
     unittest.main()
