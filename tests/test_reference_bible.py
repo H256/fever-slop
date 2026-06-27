@@ -100,6 +100,31 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("actor", events[0]["kind"])
             self.assertEqual(5, events[-1]["item_total"])
 
+    def test_actor_hero_prompt_requires_full_body_portrait(self):
+        prompt = ReferenceBibleGenerator._view_prompt(
+            ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
+            "hero",
+        )
+
+        self.assertIn("full-body", prompt)
+        self.assertIn("portrait orientation", prompt)
+        self.assertIn("head to toe", prompt)
+
+    def test_actor_turnaround_prompts_keep_full_body_portrait_except_closeup(self):
+        front_prompt = ReferenceBibleGenerator._view_prompt(
+            ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
+            "front",
+        )
+        closeup_prompt = ReferenceBibleGenerator._view_prompt(
+            ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
+            "closeup",
+        )
+
+        self.assertIn("full-body", front_prompt)
+        self.assertIn("portrait orientation", front_prompt)
+        self.assertIn("square portrait crop", closeup_prompt)
+        self.assertNotIn("full-body", closeup_prompt)
+
     def test_wide_reference_views_are_composed_as_grid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

@@ -147,7 +147,27 @@ class ReferenceBibleGenerator:
     @staticmethod
     def _view_prompt(subject: ReferenceSubject, view_name: str) -> str:
         base = subject.image_prompt or subject.visual_description or subject.name
-        return f"{base}. Character reference {view_name} view of {subject.name}."
+        if view_name == "closeup":
+            return (
+                f"{base}. Create a character reference closeup of {subject.name}: "
+                "head and shoulders only, square portrait crop, same identity, same face, "
+                "same hairstyle, same outfit details at the neckline, neutral plain background, "
+                "even reference-sheet lighting, no text, no extra characters."
+            )
+
+        view_direction = {
+            "hero": "neutral three-quarter hero reference view",
+            "front": "straight front view",
+            "left": "clean left side profile view",
+            "right": "clean right side profile view",
+        }.get(view_name, f"{view_name} view")
+        return (
+            f"{base}. Create a full-body character reference of {subject.name}: "
+            f"{view_direction}, portrait orientation, head to toe visible, feet visible, "
+            "centered standing pose, same identity, same face, same hairstyle, same body proportions, "
+            "same outfit, same colors and materials, neutral plain background, even reference-sheet lighting, "
+            "no text, no extra characters."
+        )
 
     @staticmethod
     def _location_view_prompt(location: ReferenceLocation, view_name: str) -> str:
