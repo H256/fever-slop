@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import json
+from typing import Callable, Any
 
 from PIL import Image, ImageDraw
 
@@ -37,11 +38,13 @@ class ReferenceBibleGenerator:
         edit_backend: ImageRenderBackend | None = None,
         hero_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
         edit_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
+        on_view_complete: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
         self.hero_anchors = hero_anchors
         self.edit_anchors = edit_anchors
+        self.on_view_complete = on_view_complete
         self.output_dir = Path(output_dir)
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
@@ -71,6 +74,14 @@ class ReferenceBibleGenerator:
             if view_name == "hero":
                 hero_path = target
             views.append({"name": view_name, "path": str(target)})
+            self._report_view_complete(
+                kind="actor",
+                item_id=subject.id,
+                item_name=subject.name,
+                view=view_name,
+                index=index,
+                path=target,
+            )
 
         sheet_path = subject_dir / "sheet.png"
         compose_reference_sheet([Path(view["path"]) for view in views], sheet_path)
@@ -111,6 +122,14 @@ class ReferenceBibleGenerator:
             if view_name == "hero":
                 hero_path = target
             views.append({"name": view_name, "path": str(target)})
+            self._report_view_complete(
+                kind="location",
+                item_id=location.id,
+                item_name=location.name,
+                view=view_name,
+                index=index,
+                path=target,
+            )
 
         sheet_path = location_dir / "sheet.png"
         compose_reference_sheet([Path(view["path"]) for view in views], sheet_path)
@@ -133,6 +152,30 @@ class ReferenceBibleGenerator:
     def _location_view_prompt(location: ReferenceLocation, view_name: str) -> str:
         base = location.image_prompt or location.visual_description or location.name
         return f"{base}. Environment reference {view_name} view of {location.name}."
+
+    def _report_view_complete(
+        self,
+        *,
+        kind: str,
+        item_id: str,
+        item_name: str,
+        view: str,
+        index: int,
+        path: Path,
+    ) -> None:
+        if self.on_view_complete is None:
+            return
+        self.on_view_complete(
+            {
+                "kind": kind,
+                "id": item_id,
+                "name": item_name,
+                "view": view,
+                "item_completed": index,
+                "item_total": len(self.view_names),
+                "path": path,
+            }
+        )
 
 
 def compose_reference_sheet(image_paths: list[Path], output_path: Path) -> Path:

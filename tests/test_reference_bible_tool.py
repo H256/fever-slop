@@ -1,7 +1,11 @@
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
+
+from rich.console import Console
 
 from feverslop.tools.reference_bible import build_arg_parser, load_reference_subjects
 from feverslop.tools.reference_bible import run
@@ -86,3 +90,44 @@ class ReferenceBibleToolTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "No reference actors or locations found"):
                 run(args)
+
+    def test_run_prints_reference_summary_before_rendering(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": "song.mp3", "subject": "a singer"}),
+                encoding="utf-8",
+            )
+            args = build_arg_parser().parse_args(
+                [
+                    "--project-config",
+                    str(config_path),
+                    "--app-config",
+                    "app_config.json",
+                    "--hero-workflow",
+                    "workflows/image_t2i_startframe_v1.json",
+                    "--edit-workflow",
+                    "workflows/image_edit_flux2_klein_1ref_v1.json",
+                ]
+            )
+            fake_generator = Mock()
+            fake_generator.view_names = ("hero", "front")
+            fake_generator.generate_subject_bible.return_value = temp / "manifest.json"
+            record_console = Console(file=io.StringIO(), record=True, force_terminal=False)
+
+            with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
+                    patch("feverslop.tools.reference_bible.ComfyUIClient"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIModelResolver"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIImageBackend"), \
+                    patch("feverslop.tools.reference_bible.ReferenceBibleGenerator", return_value=fake_generator), \
+                    patch("feverslop.tools.reference_bible.console", record_console):
+                app_config.return_value.comfyui.base_url = "http://localhost:8188"
+                app_config.return_value.comfyui.prompt_timeout_seconds = 1
+                app_config.return_value.comfyui.model_overrides = []
+
+                run(args)
+
+            printed = record_console.export_text()
+            self.assertIn("Reference Bible render plan", printed)
+            self.assertIn("Actors: 1", printed)

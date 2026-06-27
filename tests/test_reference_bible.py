@@ -82,3 +82,20 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("location", manifest["kind"])
             self.assertEqual("stage", manifest["id"])
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
+
+    def test_generator_reports_progress_for_each_subject_view(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            events = []
+            generator = ReferenceBibleGenerator(
+                backend=FakeImageBackend(),
+                output_dir=Path(temp_dir),
+                on_view_complete=lambda event: events.append(event),
+            )
+
+            generator.generate_subject_bible(
+                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait")
+            )
+
+            self.assertEqual(["hero", "front", "left", "right", "closeup"], [event["view"] for event in events])
+            self.assertEqual("actor", events[0]["kind"])
+            self.assertEqual(5, events[-1]["item_total"])

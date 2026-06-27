@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
@@ -121,13 +122,6 @@ def run(args: argparse.Namespace) -> list[Path]:
         positive_prompt_title=args.edit_positive_title,
         reference_image_title=args.reference_image_title,
     )
-    generator = ReferenceBibleGenerator(
-        backend=hero_backend,
-        edit_backend=edit_backend,
-        output_dir=output_dir,
-        hero_anchors=hero_anchors,
-        edit_anchors=edit_anchors,
-    )
     subjects, locations = load_reference_subjects(args.project_config)
     if not subjects and not locations:
         raise ValueError(
@@ -136,16 +130,74 @@ def run(args: argparse.Namespace) -> list[Path]:
             "to the project config."
         )
 
-    manifests: list[Path] = []
+    total_items = len(subjects) + len(locations)
+    total_views = total_items * len(ReferenceBibleGenerator.view_names)
+    console.print(
+        "[bold cyan]Reference Bible render plan[/bold cyan]\n"
+        f"Project: [cyan]{project_config.project_name}[/cyan]\n"
+        f"Output: [cyan]{output_dir}[/cyan]\n"
+        f"Actors: [yellow]{len(subjects)}[/yellow]  "
+        f"Locations: [yellow]{len(locations)}[/yellow]  "
+        f"Views per item: [yellow]{len(ReferenceBibleGenerator.view_names)}[/yellow]  "
+        f"Total renders: [yellow]{total_views}[/yellow]"
+    )
 
-    for subject in subjects:
-        manifest = generator.generate_subject_bible(subject)
-        manifests.append(manifest)
-        console.print(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
-    for location in locations:
-        manifest = generator.generate_location_bible(location)
-        manifests.append(manifest)
-        console.print(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
+    manifests: list[Path] = []
+    current_task_id = None
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        total_task_id = progress.add_task("Rendering reference views", total=total_views)
+
+        def on_view_complete(event: dict) -> None:
+            nonlocal current_task_id
+            progress.update(
+                total_task_id,
+                advance=1,
+                description=(
+                    f"{event['kind']} {event['id']} "
+                    f"{event['item_completed']}/{event['item_total']} {event['view']}"
+                ),
+            )
+            if current_task_id is not None:
+                progress.update(current_task_id, advance=1)
+
+        generator = ReferenceBibleGenerator(
+            backend=hero_backend,
+            edit_backend=edit_backend,
+            output_dir=output_dir,
+            hero_anchors=hero_anchors,
+            edit_anchors=edit_anchors,
+            on_view_complete=on_view_complete,
+        )
+
+        for subject in subjects:
+            current_task_id = progress.add_task(
+                f"Actor {subject.id}",
+                total=len(generator.view_names),
+            )
+            manifest = generator.generate_subject_bible(subject)
+            manifests.append(manifest)
+            progress.update(current_task_id, completed=len(generator.view_names))
+            console.print(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
+        for location in locations:
+            current_task_id = progress.add_task(
+                f"Location {location.id}",
+                total=len(generator.view_names),
+            )
+            manifest = generator.generate_location_bible(location)
+            manifests.append(manifest)
+            progress.update(current_task_id, completed=len(generator.view_names))
+            console.print(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
+        current_task_id = None
     return manifests
 
 
