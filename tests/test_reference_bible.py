@@ -39,6 +39,8 @@ class ReferenceBibleTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual("singer", manifest["id"])
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
+            self.assertEqual(str(manifest_path.parent / "views" / "hero.png"), manifest["msr_input_path"])
+            self.assertEqual(str(manifest_path.parent / "sheet.png"), manifest["sheet_path"])
             self.assertEqual(["hero", "front", "left", "right", "closeup"], [view["name"] for view in manifest["views"]])
 
     def test_generator_uses_hero_as_reference_for_edit_views(self):
@@ -82,6 +84,7 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("location", manifest["kind"])
             self.assertEqual("stage", manifest["id"])
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
+            self.assertEqual(str(manifest_path.parent / "views" / "hero.png"), manifest["msr_background_path"])
 
     def test_generator_reports_progress_for_each_subject_view(self):
         with tempfile.TemporaryDirectory() as temp_dir:

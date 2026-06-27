@@ -90,6 +90,7 @@ class ReferenceBibleGenerator:
             **asdict(subject),
             "kind": "actor",
             "views": views,
+            "msr_input_path": str(hero_path),
             "sheet_path": str(sheet_path),
         }
         manifest_path = subject_dir / "manifest.json"
@@ -138,6 +139,7 @@ class ReferenceBibleGenerator:
             **asdict(location),
             "kind": "location",
             "views": views,
+            "msr_background_path": str(hero_path),
             "sheet_path": str(sheet_path),
         }
         manifest_path = location_dir / "manifest.json"
@@ -255,9 +257,17 @@ def enrich_render_plan_with_reference_sheets(
             actor_manifests[actor_id]["sheet_path"]
             for actor_id in actor_ids
         ]
+        references["actor_msr_paths"] = [
+            actor_manifests[actor_id].get("msr_input_path", actor_manifests[actor_id]["sheet_path"])
+            for actor_id in actor_ids
+        ]
         location_id = references.get("location_id")
         if location_id:
             references["location_sheet_path"] = location_manifests[str(location_id)]["sheet_path"]
+            references["location_msr_path"] = location_manifests[str(location_id)].get(
+                "msr_background_path",
+                location_manifests[str(location_id)]["sheet_path"],
+            )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(render_plan, ensure_ascii=False, indent=2), encoding="utf-8")

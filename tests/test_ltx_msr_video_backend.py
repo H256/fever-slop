@@ -102,3 +102,41 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     },
                     prompt="prompt",
                 )
+
+    def test_backend_prefers_single_msr_images_over_review_sheets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor_sheet = temp / "actor_sheet.png"
+            actor_msr = temp / "actor_hero.png"
+            location_sheet = temp / "location_sheet.png"
+            location_msr = temp / "location_hero.png"
+            for path in (actor_sheet, actor_msr, location_sheet, location_msr):
+                path.write_bytes(path.name.encode("utf-8"))
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            client = FakeClient()
+            backend = ComfyUIMSRVideoRenderBackend(client=client, workflow_path=workflow, output_dir=temp / "out")
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 3,
+                    "references": {
+                        "actor_sheet_paths": [str(actor_sheet)],
+                        "location_sheet_path": str(location_sheet),
+                        "actor_msr_paths": [str(actor_msr)],
+                        "location_msr_path": str(location_msr),
+                    },
+                },
+                prompt="prompt",
+            )
+
+            self.assertEqual("feverslop/references/actor_hero.png", patched["1"]["inputs"]["image"])
+            self.assertEqual("feverslop/references/location_hero.png", patched["2"]["inputs"]["image"])

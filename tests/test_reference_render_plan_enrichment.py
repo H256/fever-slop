@@ -16,14 +16,30 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             location_dir.mkdir(parents=True)
             actor_sheet = actor_dir / "sheet.png"
             location_sheet = location_dir / "sheet.png"
+            actor_msr = actor_dir / "views" / "hero.png"
+            location_msr = location_dir / "views" / "hero.png"
+            actor_msr.parent.mkdir(parents=True)
+            location_msr.parent.mkdir(parents=True)
             actor_sheet.write_bytes(b"actor")
             location_sheet.write_bytes(b"location")
+            actor_msr.write_bytes(b"actor-msr")
+            location_msr.write_bytes(b"location-msr")
             (actor_dir / "manifest.json").write_text(
-                json.dumps({"id": "singer", "kind": "actor", "sheet_path": str(actor_sheet)}),
+                json.dumps({
+                    "id": "singer",
+                    "kind": "actor",
+                    "sheet_path": str(actor_sheet),
+                    "msr_input_path": str(actor_msr),
+                }),
                 encoding="utf-8",
             )
             (location_dir / "manifest.json").write_text(
-                json.dumps({"id": "stage", "kind": "location", "sheet_path": str(location_sheet)}),
+                json.dumps({
+                    "id": "stage",
+                    "kind": "location",
+                    "sheet_path": str(location_sheet),
+                    "msr_background_path": str(location_msr),
+                }),
                 encoding="utf-8",
             )
             render_plan_path = temp / "render_plan.json"
@@ -39,3 +55,5 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             enriched = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual([str(actor_sheet)], enriched[0]["references"]["actor_sheet_paths"])
             self.assertEqual(str(location_sheet), enriched[0]["references"]["location_sheet_path"])
+            self.assertEqual([str(actor_msr)], enriched[0]["references"]["actor_msr_paths"])
+            self.assertEqual(str(location_msr), enriched[0]["references"]["location_msr_path"])

@@ -54,14 +54,15 @@ class ComfyUIMSRVideoRenderBackend:
     def build_workflow(self, scene: dict, *, prompt: str) -> dict:
         scene_number = int(scene["scene"])
         references = scene.get("references") or {}
-        actor_paths = [Path(path) for path in references.get("actor_sheet_paths", [])]
+        actor_reference_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths", [])
+        actor_paths = [Path(path) for path in actor_reference_paths]
         if not actor_paths:
             raise ValueError(f"Scene {scene_number} references at least 1 actor for ltx_msr")
         if len(actor_paths) > 4:
             raise ValueError(f"Scene {scene_number} references at most 4 actors for ltx_msr")
-        location_path = references.get("location_sheet_path")
+        location_path = references.get("location_msr_path") or references.get("location_sheet_path")
         if not location_path:
-            raise ValueError(f"Scene {scene_number} is missing references.location_sheet_path")
+            raise ValueError(f"Scene {scene_number} is missing references.location_msr_path")
 
         patcher = WorkflowPatcher(self.load_workflow())
         for index, actor_path in enumerate(actor_paths, start=1):
