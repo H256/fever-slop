@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from feverslop.tools.reference_bible import build_arg_parser, load_reference_subjects
+from feverslop.tools.reference_bible import run
 
 
 class ReferenceBibleToolTests(unittest.TestCase):
@@ -61,3 +62,27 @@ class ReferenceBibleToolTests(unittest.TestCase):
 
             self.assertEqual("mara", subjects[0].id)
             self.assertEqual("stage", locations[0].id)
+
+    def test_run_fails_loudly_when_no_reference_subjects_exist(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": "input/song.mp3", "subject": "", "locations": []}),
+                encoding="utf-8",
+            )
+            args = build_arg_parser().parse_args(
+                [
+                    "--project-config",
+                    str(config_path),
+                    "--app-config",
+                    "app_config.json",
+                    "--hero-workflow",
+                    "workflows/image_t2i_startframe_v1.json",
+                    "--edit-workflow",
+                    "workflows/image_edit_flux2_klein_1ref_v1.json",
+                ]
+            )
+
+            with self.assertRaisesRegex(ValueError, "No reference actors or locations found"):
+                run(args)

@@ -129,6 +129,12 @@ def run(args: argparse.Namespace) -> list[Path]:
         edit_anchors=edit_anchors,
     )
     subjects, locations = load_reference_subjects(args.project_config)
+    if not subjects and not locations:
+        raise ValueError(
+            "No reference actors or locations found. Run the prompt/render-plan step first "
+            "so output/prompts/resolved_context_<song>.json exists, or add subject/actors/locations "
+            "to the project config."
+        )
 
     manifests: list[Path] = []
 
@@ -144,7 +150,11 @@ def run(args: argparse.Namespace) -> list[Path]:
 
 
 def main() -> None:
-    run(build_arg_parser().parse_args())
+    try:
+        run(build_arg_parser().parse_args())
+    except ValueError as exc:
+        console.print(f"[red]ERROR[/red] {exc}")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
