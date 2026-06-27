@@ -30,6 +30,7 @@ class ReferenceLocation:
 
 class ReferenceBibleGenerator:
     view_names = ("hero", "front", "left", "right", "closeup")
+    actor_portrait_size = (832, 1216)
 
     def __init__(
         self,
@@ -58,6 +59,7 @@ class ReferenceBibleGenerator:
             view_dir = subject_dir / "views"
             backend = self.backend if view_name == "hero" else self.edit_backend
             anchors = self.hero_anchors if view_name == "hero" else self.edit_anchors
+            width, height = self._actor_view_size(view_name) if view_name == "hero" else (None, None)
             rendered = backend.render_image(
                 ImageRenderRequest(
                     scene={"reference_id": subject.id, "view": view_name},
@@ -65,6 +67,8 @@ class ReferenceBibleGenerator:
                     prompt=self._view_prompt(subject, view_name),
                     workflow_path=Path(""),
                     output_dir=view_dir,
+                    width=width,
+                    height=height,
                     reference_image=hero_path,
                     anchors=anchors,
                 )
@@ -170,6 +174,10 @@ class ReferenceBibleGenerator:
             "same outfit, same colors and materials, neutral plain background, even reference-sheet lighting, "
             "no text, no extra characters."
         )
+
+    @classmethod
+    def _actor_view_size(cls, view_name: str) -> tuple[int, int]:
+        return cls.actor_portrait_size
 
     @staticmethod
     def _location_view_prompt(location: ReferenceLocation, view_name: str) -> str:

@@ -90,18 +90,25 @@ class ComfyUIImageBackend:
             )
 
         if request.width is not None and anchors.width_title:
-            patcher.try_set_existing_input_by_title(
+            width_patched = patcher.try_set_existing_input_by_title(
                 anchors.width_title,
                 anchors.width_input,
                 int(request.width),
             )
+        else:
+            width_patched = False
 
         if request.height is not None and anchors.height_title:
-            patcher.try_set_existing_input_by_title(
+            height_patched = patcher.try_set_existing_input_by_title(
                 anchors.height_title,
                 anchors.height_input,
                 int(request.height),
             )
+        else:
+            height_patched = False
+
+        if request.width is not None and request.height is not None and not (width_patched and height_patched):
+            self._try_patch_dimensions_node(patcher, int(request.width), int(request.height))
 
         workflow = self.model_resolver.resolve_workflow_models(
             patcher.get(),
@@ -121,6 +128,14 @@ class ComfyUIImageBackend:
             file_type=first.get("type", "output"),
             output_path=request.output_dir / f"scene_{scene_number:04}.png",
         )
+
+    @staticmethod
+    def _try_patch_dimensions_node(patcher: WorkflowPatcher, width: int, height: int) -> None:
+        try:
+            patcher.set_existing_input_by_title("#DIMENSIONS", "width", width)
+            patcher.set_existing_input_by_title("#DIMENSIONS", "height", height)
+        except KeyError:
+            return
 
 
 def _comfy_path_from_upload(upload_response: dict) -> str:
