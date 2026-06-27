@@ -140,3 +140,107 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
 
             self.assertEqual("feverslop/references/actor_hero.png", patched["1"]["inputs"]["image"])
             self.assertEqual("feverslop/references/location_hero.png", patched["2"]["inputs"]["image"])
+
+    def test_backend_patches_prompt_relay_when_anchor_exists(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {
+                        "inputs": {
+                            "global_prompt": "",
+                            "local_prompts": "",
+                            "segment_lengths": "",
+                            "epsilon": 0.001,
+                        },
+                        "_meta": {"title": "#PROMPT_RELAY"},
+                    },
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "5": {"inputs": {"value": 0}, "_meta": {"title": "#FRAMES"}},
+                    "6": {"inputs": {"value": 0}, "_meta": {"title": "#FRAMERATE"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(client=FakeClient(), workflow_path=workflow, output_dir=temp / "out")
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 4,
+                    "fps": 24,
+                    "frame_count": 25,
+                    "references": {
+                        "actor_msr_paths": [str(actor)],
+                        "location_msr_path": str(location),
+                    },
+                    "ltx": {
+                        "base_prompt": "Reference image 1: Mara, full-body singer. Background: mirror stage.",
+                    },
+                },
+                prompt="Mara walks toward camera, slow dolly in.",
+            )
+
+            relay_inputs = patched["3"]["inputs"]
+            self.assertEqual("Reference image 1: Mara, full-body singer. Background: mirror stage.", relay_inputs["global_prompt"])
+            self.assertEqual("Mara walks toward camera, slow dolly in.", relay_inputs["local_prompts"])
+            self.assertEqual("24", relay_inputs["segment_lengths"])
+            self.assertEqual(25, patched["5"]["inputs"]["value"])
+            self.assertEqual(24, patched["6"]["inputs"]["value"])
+
+    def test_render_video_patches_audio_anchors_when_present(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            audio = temp / "song.mp3"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            audio.write_bytes(b"audio")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "5": {"inputs": {"audio": "", "audioUI": ""}, "_meta": {"title": "#LOAD_AUDIO"}},
+                    "6": {"inputs": {"start_index": 0, "duration": 0}, "_meta": {"title": "#TRIM_AUDIO"}},
+                }),
+                encoding="utf-8",
+            )
+            client = FakeClient()
+            backend = ComfyUIMSRVideoRenderBackend(client=client, workflow_path=workflow, output_dir=temp / "out")
+
+            backend.render_video(
+                VideoRenderRequest(
+                    scene={
+                        "scene": 2,
+                        "fps": 24,
+                        "frame_count": 49,
+                        "abs_start_seconds": 3.5,
+                        "duration_seconds": 2.0,
+                        "references": {
+                            "actor_msr_paths": [str(actor)],
+                            "location_msr_path": str(location),
+                        },
+                    },
+                    scene_number=2,
+                    prompt="prompt",
+                    workflow_path=workflow,
+                    output_dir=temp / "out",
+                    audio_file=audio,
+                    storyboard_dir=temp,
+                )
+            )
+
+            audio_input = client.queued_workflow["5"]["inputs"]["audio"]
+            self.assertTrue(audio_input.startswith("feverslop/audio/song-"))
+            self.assertEqual(f"/api/view?filename={audio_input}&type=input", client.queued_workflow["5"]["inputs"]["audioUI"])
+            self.assertEqual(3.5, client.queued_workflow["6"]["inputs"]["start_index"])
+            self.assertEqual(2.0, client.queued_workflow["6"]["inputs"]["duration"])
