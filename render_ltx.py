@@ -34,6 +34,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project-config", default=None)
     parser.add_argument("--render-plan", required=True)
     parser.add_argument("--workflow", required=True)
+    parser.add_argument("--video-pipeline", choices=["ltx_i2v", "ltx_msr"], default="ltx_i2v")
     parser.add_argument(
         "--render-mode",
         choices=["relay", "single_prompt", "auto"],
@@ -295,6 +296,7 @@ def main():
         f"ComfyUI: [cyan]{app_config.comfyui.base_url}[/cyan]\n"
         f"Render plan: [cyan]{render_plan_path}[/cyan]\n"
         f"Workflow: [cyan]{workflow_path}[/cyan]\n"
+        f"Video pipeline: [yellow]{args.video_pipeline}[/yellow]\n"
         f"Render mode: [yellow]{args.render_mode}[/yellow]\n"
         f"Single-prompt workflow: [cyan]{single_prompt_workflow_path or workflow_path}[/cyan]\n"
         f"Audio: [cyan]{audio_path}[/cyan]\n"

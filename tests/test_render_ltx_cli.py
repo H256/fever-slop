@@ -40,6 +40,13 @@ class RenderLTXCliTests(unittest.TestCase):
         args = self._parse()
 
         self.assertEqual("single_prompt", args.render_mode)
+        self.assertEqual("ltx_i2v", args.video_pipeline)
+
+    def test_video_pipeline_ltx_msr_is_forwarded_to_composition_options(self):
+        args = self._parse(["--video-pipeline", "ltx_msr"])
+
+        self.assertEqual("ltx_msr", args.video_pipeline)
+        self.assertEqual("ltx_msr", namespace_to_options(args).video_pipeline)
 
     def test_debug_flag_enables_ffmpeg_debug_output(self):
         args = self._parse(["--debug"])
