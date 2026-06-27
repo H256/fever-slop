@@ -66,7 +66,7 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual(4, len(edit_backend.requests))
             self.assertTrue(all(request.reference_image.name == "hero.png" for request in edit_backend.requests))
 
-    def test_generator_requests_portrait_actor_hero_and_leaves_edit_views_reference_sized(self):
+    def test_generator_requests_wide_actor_hero_for_msr_and_leaves_edit_views_reference_sized(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             hero_backend = FakeImageBackend()
@@ -85,7 +85,7 @@ class ReferenceBibleTests(unittest.TestCase):
                 )
             )
 
-            self.assertEqual((1088, 1920), (hero_backend.requests[0].width, hero_backend.requests[0].height))
+            self.assertEqual((1920, 1088), (hero_backend.requests[0].width, hero_backend.requests[0].height))
             self.assertTrue(all(request.width is None for request in edit_backend.requests))
             self.assertTrue(all(request.height is None for request in edit_backend.requests))
 
@@ -166,14 +166,15 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("actor", events[0]["kind"])
             self.assertEqual(5, events[-1]["item_total"])
 
-    def test_actor_hero_prompt_requires_full_body_portrait(self):
+    def test_actor_hero_prompt_requires_full_body_wide_reference_frame(self):
         prompt = ReferenceBibleGenerator._view_prompt(
             ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
             "hero",
         )
 
         self.assertIn("full-body", prompt)
-        self.assertIn("portrait orientation", prompt)
+        self.assertIn("wide 16:9 reference frame", prompt)
+        self.assertIn("empty margin around the full body", prompt)
         self.assertIn("head to toe", prompt)
 
     def test_actor_turnaround_prompts_keep_full_body_portrait_except_closeup(self):
@@ -187,7 +188,7 @@ class ReferenceBibleTests(unittest.TestCase):
         )
 
         self.assertIn("full-body", front_prompt)
-        self.assertIn("portrait orientation", front_prompt)
+        self.assertIn("wide 16:9 reference frame", front_prompt)
         self.assertIn("square portrait crop", closeup_prompt)
         self.assertNotIn("full-body", closeup_prompt)
 
