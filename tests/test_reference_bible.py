@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
+from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject, compose_reference_sheet
 
 
 class FakeImageBackend:
@@ -99,3 +99,18 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual(["hero", "front", "left", "right", "closeup"], [event["view"] for event in events])
             self.assertEqual("actor", events[0]["kind"])
             self.assertEqual(5, events[-1]["item_total"])
+
+    def test_wide_reference_views_are_composed_as_grid(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            image_paths = []
+            for index in range(5):
+                image_path = temp / f"view_{index}.png"
+                Image.new("RGB", (1280, 704), color=(index * 20, 0, 0)).save(image_path)
+                image_paths.append(image_path)
+
+            output_path = temp / "sheet.png"
+            compose_reference_sheet(image_paths, output_path)
+
+            with Image.open(output_path) as sheet:
+                self.assertEqual((3840, 1456), sheet.size)

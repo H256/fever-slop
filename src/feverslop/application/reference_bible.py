@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import json
+import math
 from typing import Callable, Any
 
 from PIL import Image, ImageDraw
@@ -186,17 +187,31 @@ def compose_reference_sheet(image_paths: list[Path], output_path: Path) -> Path:
     width = max(image.width for image in images)
     height = max(image.height for image in images)
     label_height = 24
-    sheet = Image.new("RGB", (len(images) * width, height + label_height), "white")
+    columns = reference_sheet_columns(width=width, height=height, image_count=len(images))
+    rows = math.ceil(len(images) / columns)
+    cell_height = height + label_height
+    sheet = Image.new("RGB", (columns * width, rows * cell_height), "white")
     draw = ImageDraw.Draw(sheet)
 
     for index, image in enumerate(images):
-        x = index * width
-        sheet.paste(image.resize((width, height)), (x, 0))
-        draw.text((x + 4, height + 4), image_paths[index].stem, fill="black")
+        column = index % columns
+        row = index // columns
+        x = column * width
+        y = row * cell_height
+        sheet.paste(image.resize((width, height)), (x, y))
+        draw.text((x + 4, y + height + 4), image_paths[index].stem, fill="black")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output_path)
     return output_path
+
+
+def reference_sheet_columns(*, width: int, height: int, image_count: int) -> int:
+    if image_count <= 1:
+        return 1
+    if width > height:
+        return min(3, image_count)
+    return image_count
 
 
 def enrich_render_plan_with_reference_sheets(
