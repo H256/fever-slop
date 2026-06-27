@@ -63,6 +63,7 @@ class ComfyUIVideoAssetUploader:
             subfolder="feverslop/references",
             file_type="input",
             overwrite=True,
+            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(image_path),
         )
         return self.comfy_path_from_upload(image_upload)
 

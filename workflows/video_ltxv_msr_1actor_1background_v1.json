@@ -727,7 +727,7 @@
   },
   "59": {
     "inputs": {
-      "lora_name": "LTX-2.3\\LTX-2.3-Licon-MSR-V1.safetensors",
+      "lora_name": "LTX-2.3-Licon-MSR-V1.safetensors",
       "strength_model": 1,
       "model": [
         "1",

@@ -12,9 +12,10 @@ class FakeClient:
         self.uploaded = []
         self.queued_workflow = None
 
-    def upload_image(self, path, subfolder, file_type, overwrite):
-        self.uploaded.append(Path(path).name)
-        return {"name": Path(path).name, "subfolder": subfolder, "type": file_type}
+    def upload_image(self, path, subfolder, file_type, overwrite, upload_name=None):
+        name = upload_name or Path(path).name
+        self.uploaded.append(name)
+        return {"name": name, "subfolder": subfolder, "type": file_type}
 
     def upload_file_via_image_endpoint(self, path, subfolder, file_type, overwrite, upload_name):
         return {"name": upload_name, "subfolder": subfolder, "type": file_type}
@@ -76,8 +77,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             )
 
             self.assertEqual(temp / "out" / "scene_0007_raw.mp4", output)
-            self.assertEqual("feverslop/references/actor.png", client.queued_workflow["1"]["inputs"]["image"])
-            self.assertEqual("feverslop/references/location.png", client.queued_workflow["2"]["inputs"]["image"])
+            self.assertTrue(client.queued_workflow["1"]["inputs"]["image"].startswith("feverslop/references/actor-"))
+            self.assertTrue(client.queued_workflow["2"]["inputs"]["image"].startswith("feverslop/references/location-"))
             self.assertEqual(17, client.queued_workflow["3"]["inputs"]["frame_count"])
             self.assertEqual("video prompt", client.queued_workflow["4"]["inputs"]["text"])
             self.assertEqual(100007, client.queued_workflow["5"]["inputs"]["noise_seed"])
@@ -138,8 +139,48 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 prompt="prompt",
             )
 
-            self.assertEqual("feverslop/references/actor_hero.png", patched["1"]["inputs"]["image"])
-            self.assertEqual("feverslop/references/location_hero.png", patched["2"]["inputs"]["image"])
+            self.assertTrue(patched["1"]["inputs"]["image"].startswith("feverslop/references/actor_hero-"))
+            self.assertTrue(patched["2"]["inputs"]["image"].startswith("feverslop/references/location_hero-"))
+
+    def test_backend_uploads_same_named_actor_and_background_references_with_distinct_names(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor_dir = temp / "actors" / "warrior" / "views"
+            location_dir = temp / "locations" / "ruins" / "views"
+            actor_dir.mkdir(parents=True)
+            location_dir.mkdir(parents=True)
+            actor = actor_dir / "hero.png"
+            location = location_dir / "hero.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(client=FakeClient(), workflow_path=workflow, output_dir=temp / "out")
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 3,
+                    "references": {
+                        "actor_msr_paths": [str(actor)],
+                        "location_msr_path": str(location),
+                    },
+                },
+                prompt="prompt",
+            )
+
+            actor_input = patched["1"]["inputs"]["image"]
+            location_input = patched["2"]["inputs"]["image"]
+            self.assertNotEqual(actor_input, location_input)
+            self.assertRegex(actor_input, r"^feverslop/references/hero-[0-9a-f]{12}\.png$")
+            self.assertRegex(location_input, r"^feverslop/references/hero-[0-9a-f]{12}\.png$")
 
     def test_backend_patches_prompt_relay_when_anchor_exists(self):
         with tempfile.TemporaryDirectory() as temp_dir:

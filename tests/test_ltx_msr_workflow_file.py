@@ -41,6 +41,10 @@ class LTXMSRWorkflowFileTests(unittest.TestCase):
         self.assertIn("tile_overlap", guide_node["inputs"])
         self.assertNotIn("overlap", guide_node["inputs"])
 
+        lora_node = next(node for node in workflow.values() if node.get("_meta", {}).get("title") == "#MSR_LORA")
+        self.assertEqual("LTXICLoRALoaderModelOnly", lora_node["class_type"])
+        self.assertEqual("LTX-2.3-Licon-MSR-V1.safetensors", lora_node["inputs"]["lora_name"])
+
         relay_node = next(node for node in workflow.values() if node.get("_meta", {}).get("title") == "#PROMPT_RELAY")
         self.assertEqual("PromptRelayEncode", relay_node["class_type"])
         self.assertIn("global_prompt", relay_node["inputs"])
