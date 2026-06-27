@@ -210,7 +210,7 @@
       "crop": "center",
       "use_tiled_encode": false,
       "tile_size": 256,
-      "overlap": 64
+      "tile_overlap": 64
     },
     "class_type": "LTXAddVideoICLoRAGuide",
     "_meta": {

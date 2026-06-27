@@ -36,6 +36,11 @@ class LTXMSRWorkflowFileTests(unittest.TestCase):
         self.assertEqual(["14", 0], msr_node["inputs"]["1"])
         self.assertEqual(["15", 0], msr_node["inputs"]["background"])
 
+        guide_node = next(node for node in workflow.values() if node.get("_meta", {}).get("title") == "#MSR_GUIDE")
+        self.assertEqual("LTXAddVideoICLoRAGuide", guide_node["class_type"])
+        self.assertIn("tile_overlap", guide_node["inputs"])
+        self.assertNotIn("overlap", guide_node["inputs"])
+
         relay_node = next(node for node in workflow.values() if node.get("_meta", {}).get("title") == "#PROMPT_RELAY")
         self.assertEqual("PromptRelayEncode", relay_node["class_type"])
         self.assertIn("global_prompt", relay_node["inputs"])
