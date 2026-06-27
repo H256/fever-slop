@@ -30,7 +30,8 @@ class ReferenceLocation:
 
 class ReferenceBibleGenerator:
     view_names = ("hero", "front", "left", "right", "closeup")
-    actor_portrait_size = (832, 1216)
+    actor_portrait_size = (1088, 1920)
+    location_hero_size = (1920, 1088)
 
     def __init__(
         self,
@@ -41,6 +42,7 @@ class ReferenceBibleGenerator:
         hero_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
         edit_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
         on_view_complete: Callable[[dict[str, Any]], None] | None = None,
+        view_names: tuple[str, ...] | None = None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
@@ -48,6 +50,7 @@ class ReferenceBibleGenerator:
         self.edit_anchors = edit_anchors
         self.on_view_complete = on_view_complete
         self.output_dir = Path(output_dir)
+        self.view_names = tuple(view_names or self.view_names)
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
         subject_dir = self.output_dir / "actors" / subject.id
@@ -118,6 +121,8 @@ class ReferenceBibleGenerator:
                     prompt=self._location_view_prompt(location, view_name),
                     workflow_path=Path(""),
                     output_dir=view_dir,
+                    width=self.location_hero_size[0] if view_name == "hero" else None,
+                    height=self.location_hero_size[1] if view_name == "hero" else None,
                     reference_image=hero_path,
                     anchors=anchors,
                 )

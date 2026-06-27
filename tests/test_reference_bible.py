@@ -85,9 +85,31 @@ class ReferenceBibleTests(unittest.TestCase):
                 )
             )
 
-            self.assertEqual((832, 1216), (hero_backend.requests[0].width, hero_backend.requests[0].height))
+            self.assertEqual((1088, 1920), (hero_backend.requests[0].width, hero_backend.requests[0].height))
             self.assertTrue(all(request.width is None for request in edit_backend.requests))
             self.assertTrue(all(request.height is None for request in edit_backend.requests))
+
+    def test_generator_can_render_only_msr_hero_view(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            hero_backend = FakeImageBackend()
+            edit_backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=hero_backend,
+                edit_backend=edit_backend,
+                output_dir=output_dir,
+                view_names=("hero",),
+            )
+
+            manifest_path = generator.generate_subject_bible(
+                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara")
+            )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(["hero"], [view["name"] for view in manifest["views"]])
+            self.assertEqual(1, len(hero_backend.requests))
+            self.assertEqual(0, len(edit_backend.requests))
+            self.assertTrue((manifest_path.parent / "sheet.png").exists())
 
     def test_generator_writes_location_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -108,6 +130,24 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("stage", manifest["id"])
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
             self.assertEqual(str(manifest_path.parent / "views" / "hero.png"), manifest["msr_background_path"])
+
+    def test_generator_requests_wide_full_hd_location_hero(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            hero_backend = FakeImageBackend()
+            edit_backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=hero_backend,
+                edit_backend=edit_backend,
+                output_dir=output_dir,
+                view_names=("hero",),
+            )
+
+            generator.generate_location_bible(
+                ReferenceLocation(id="stage", name="Stage", image_prompt="wide stage")
+            )
+
+            self.assertEqual((1920, 1088), (hero_backend.requests[0].width, hero_backend.requests[0].height))
 
     def test_generator_reports_progress_for_each_subject_view(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -26,6 +26,23 @@ class ReferenceBibleToolTests(unittest.TestCase):
 
         self.assertEqual("projects/demo/config.json", args.project_config)
         self.assertEqual("workflows/image_edit_flux2_klein_1ref_v1.json", args.edit_workflow)
+        self.assertEqual("msr", args.view_set)
+
+    def test_parser_accepts_full_bible_view_set(self):
+        args = build_arg_parser().parse_args(
+            [
+                "--project-config",
+                "projects/demo/config.json",
+                "--hero-workflow",
+                "workflows/image_t2i_startframe_v1.json",
+                "--edit-workflow",
+                "workflows/image_edit_flux2_klein_1ref_v1.json",
+                "--view-set",
+                "full",
+            ]
+        )
+
+        self.assertEqual("full", args.view_set)
 
     def test_load_reference_subjects_falls_back_to_legacy_subject(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -114,13 +131,14 @@ class ReferenceBibleToolTests(unittest.TestCase):
             fake_generator = Mock()
             fake_generator.view_names = ("hero", "front")
             fake_generator.generate_subject_bible.return_value = temp / "manifest.json"
+            generator_factory = Mock(return_value=fake_generator)
             record_console = Console(file=io.StringIO(), record=True, force_terminal=False)
 
             with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
                     patch("feverslop.tools.reference_bible.ComfyUIClient"), \
                     patch("feverslop.tools.reference_bible.ComfyUIModelResolver"), \
                     patch("feverslop.tools.reference_bible.ComfyUIImageBackend"), \
-                    patch("feverslop.tools.reference_bible.ReferenceBibleGenerator", return_value=fake_generator), \
+                    patch("feverslop.tools.reference_bible.ReferenceBibleGenerator", generator_factory), \
                     patch("feverslop.tools.reference_bible.console", record_console):
                 app_config.return_value.comfyui.base_url = "http://localhost:8188"
                 app_config.return_value.comfyui.prompt_timeout_seconds = 1
@@ -131,3 +149,5 @@ class ReferenceBibleToolTests(unittest.TestCase):
             printed = record_console.export_text()
             self.assertIn("Reference Bible render plan", printed)
             self.assertIn("Actors: 1", printed)
+            self.assertIn("Total renders: 1", printed)
+            self.assertEqual(("hero",), generator_factory.call_args.kwargs["view_names"])

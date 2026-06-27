@@ -29,6 +29,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hero-positive-title", default="#PROMPT_POSITIVE")
     parser.add_argument("--edit-positive-title", default="#PROMPT_POSITIVE")
     parser.add_argument("--reference-image-title", default="#IMAGE_1")
+    parser.add_argument(
+        "--view-set",
+        choices=["msr", "full"],
+        default="msr",
+        help="msr renders only hero references; full renders hero plus edit views and sheets.",
+    )
     return parser
 
 
@@ -130,15 +136,16 @@ def run(args: argparse.Namespace) -> list[Path]:
             "to the project config."
         )
 
+    view_names = resolve_view_names(args.view_set)
     total_items = len(subjects) + len(locations)
-    total_views = total_items * len(ReferenceBibleGenerator.view_names)
+    total_views = total_items * len(view_names)
     console.print(
         "[bold cyan]Reference Bible render plan[/bold cyan]\n"
         f"Project: [cyan]{project_config.project_name}[/cyan]\n"
         f"Output: [cyan]{output_dir}[/cyan]\n"
         f"Actors: [yellow]{len(subjects)}[/yellow]  "
         f"Locations: [yellow]{len(locations)}[/yellow]  "
-        f"Views per item: [yellow]{len(ReferenceBibleGenerator.view_names)}[/yellow]  "
+        f"Views per item: [yellow]{len(view_names)}[/yellow]  "
         f"Total renders: [yellow]{total_views}[/yellow]"
     )
 
@@ -177,6 +184,7 @@ def run(args: argparse.Namespace) -> list[Path]:
             hero_anchors=hero_anchors,
             edit_anchors=edit_anchors,
             on_view_complete=on_view_complete,
+            view_names=view_names,
         )
 
         for subject in subjects:
@@ -199,6 +207,12 @@ def run(args: argparse.Namespace) -> list[Path]:
             console.print(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
         current_task_id = None
     return manifests
+
+
+def resolve_view_names(view_set: str) -> tuple[str, ...]:
+    if view_set == "msr":
+        return ("hero",)
+    return ReferenceBibleGenerator.view_names
 
 
 def main() -> None:
