@@ -22,6 +22,7 @@ from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.pipeline_runner_options import add_runner_options
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
+from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
 from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
@@ -32,6 +33,8 @@ from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
+from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
+from feverslop.tools.reference_bible import run as render_reference_bible
 from feverslop.tools.storyboard_page import generate_storyboard_page
 
 
@@ -83,6 +86,8 @@ class PipelineRunContext:
     scene_details: Path
     scene_prompts: Path
     render_plan: Path
+    reference_plan: Path
+    references_dir: Path
     compact_plan: Path
     anchored_plan: Path
     storyboard_dir: Path
@@ -160,6 +165,8 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         scene_details=prompts_dir / f"scene_details_{song_id}.json",
         scene_prompts=prompts_dir / f"scene_prompts_{song_id}.json",
         render_plan=render_dir / f"render_plan_{song_id}.json",
+        reference_plan=render_dir / f"render_plan_{song_id}_refs.json",
+        references_dir=project_output_dir / "references",
         compact_plan=render_dir / f"render_plan_{song_id}__compact.json",
         anchored_plan=render_dir / f"render_plan_{song_id}__compact_anchored.json",
         storyboard_dir=storyboard_dir,
@@ -211,6 +218,9 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
     context = build_run_context(args)
     app_config_path = resolve_runner_path(args.app_config)
     storyboard_workflow = resolve_runner_path(args.storyboard_workflow)
+    reference_hero_workflow = resolve_runner_path(args.reference_hero_workflow)
+    reference_edit_workflow = resolve_runner_path(args.reference_edit_workflow)
+    msr_workflow = resolve_runner_path(args.msr_workflow)
     relay_workflow = resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path("")
     single_prompt_workflow = resolve_runner_path(args.single_prompt_workflow)
     console.print(f"Project: {context.project_config_path}")
@@ -264,7 +274,8 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
         for warning in warnings[:30]:
             console.print(f"! {warning}")
 
-    if not args.skip_storyboard:
+    should_render_storyboard = not args.skip_storyboard and args.video_pipeline != "ltx_msr"
+    if should_render_storyboard:
         write_step("Rendering storyboard")
         app_config = AppConfig.load(app_config_path)
         storyboard_use_case = build_render_storyboard_use_case(
@@ -284,12 +295,41 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 )
             )
 
-    if not args.skip_storyboard_page:
+    should_render_storyboard_page = not args.skip_storyboard_page and args.video_pipeline != "ltx_msr"
+    if should_render_storyboard_page:
         write_step("Generating storyboard page")
         generate_storyboard_page(
             render_plan_path=plan_for_next_step,
             storyboard_dir=context.storyboard_dir,
             output_html=context.storyboard_page,
+        )
+
+    if args.video_pipeline == "ltx_msr":
+        if not args.skip_msr_reference_render:
+            write_step("Rendering MSR references")
+            reference_args = build_reference_bible_arg_parser().parse_args([
+                "--project-config",
+                str(context.project_config_path),
+                "--app-config",
+                str(app_config_path),
+                "--hero-workflow",
+                str(reference_hero_workflow),
+                "--edit-workflow",
+                str(reference_edit_workflow),
+                "--output-dir",
+                str(context.references_dir),
+                "--view-set",
+                "msr",
+            ])
+            render_reference_bible(reference_args)
+        else:
+            console.print("Skipping MSR reference rendering; using existing reference manifests.")
+
+        write_step("Enriching render plan with MSR references")
+        plan_for_next_step = enrich_render_plan_with_reference_sheets(
+            plan_for_next_step,
+            context.references_dir,
+            context.reference_plan,
         )
 
     if not args.skip_ltx:
@@ -298,7 +338,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             raise ValueError(f"RenderMode '{args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
 
         if args.video_pipeline == "ltx_msr":
-            ltx_workflow = single_prompt_workflow
+            ltx_workflow = msr_workflow
             ltx_single_prompt_workflow = None
         else:
             ltx_workflow = single_prompt_workflow if args.render_mode == "single_prompt" else relay_workflow

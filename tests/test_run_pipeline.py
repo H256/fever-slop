@@ -250,6 +250,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-anchor-fix",
                     "--skip-storyboard",
                     "--skip-storyboard-page",
+                    "--skip-msr-reference-render",
                     "--skip-final-concat",
                 ]
             )
@@ -262,6 +263,58 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         options = builder.call_args.args[0]
         self.assertEqual("ltx_msr", options.video_pipeline)
         self.assertTrue(str(options.output_dir).endswith("ltx_msr"))
+
+    def test_ltx_msr_runner_builds_references_enriches_plan_and_skips_storyboard(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            base_plan = render_dir / "render_plan_song.json"
+            refs_plan = render_dir / "render_plan_song_refs.json"
+            base_plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-final-concat",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+
+            def enrich(input_plan, references_dir, output_plan):
+                refs_plan.write_text(json.dumps([{"scene": 1, "references": {}}]), encoding="utf-8")
+                return Path(output_plan)
+
+            with patch("feverslop.composition.pipeline_runner.build_render_storyboard_use_case") as storyboard_builder, \
+                patch("feverslop.composition.pipeline_runner.generate_storyboard_page") as storyboard_page, \
+                patch("feverslop.composition.pipeline_runner.render_reference_bible") as reference_bible, \
+                patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_reference_sheets", side_effect=enrich) as enrich_refs, \
+                patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case) as video_builder:
+                result = run_pipeline.run(args)
+
+        storyboard_builder.assert_not_called()
+        storyboard_page.assert_not_called()
+        reference_bible.assert_called_once()
+        enrich_refs.assert_called_once_with(base_plan, project_dir / "output" / "references", refs_plan)
+        self.assertEqual(refs_plan, result.render_plan_path)
+        options = video_builder.call_args.args[0]
+        request = use_case.execute.call_args.args[0]
+        self.assertEqual("ltx_msr", options.video_pipeline)
+        self.assertEqual(refs_plan, options.render_plan_path)
+        self.assertEqual(refs_plan, request.render_plan_path)
 
     def test_ltx_resume_rewrites_concat_list_from_all_returned_clips_before_final_concat(self):
         with TemporaryDirectory() as tmp:

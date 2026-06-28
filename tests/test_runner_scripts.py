@@ -22,6 +22,9 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("app_config.json", args.app_config)
         self.assertEqual(10, args.concept_batch_size)
         self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_v1.json"), args.storyboard_workflow)
+        self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_krea_v1.json"), args.reference_hero_workflow)
+        self.assertEqual(os.fspath(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json"), args.reference_edit_workflow)
+        self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_msr_1actor_1background_v1.json"), args.msr_workflow)
         self.assertEqual("", args.relay_workflow)
         self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_i2v_v1.json"), args.single_prompt_workflow)
         self.assertEqual("ltx_i2v", args.video_pipeline)
@@ -44,6 +47,13 @@ class RunnerScriptTests(unittest.TestCase):
                 "single.json",
                 "--video-pipeline",
                 "ltx_msr",
+                "--reference-hero-workflow",
+                "hero.json",
+                "--reference-edit-workflow",
+                "edit.json",
+                "--msr-workflow",
+                "msr.json",
+                "--skip-msr-reference-render",
                 "--storyboard-lora-strength",
                 "0.4",
                 "--video-character-lora-strength",
@@ -71,6 +81,10 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("projects/song", args.project_root)
         self.assertEqual("auto", args.render_mode)
         self.assertEqual("ltx_msr", args.video_pipeline)
+        self.assertEqual("hero.json", args.reference_hero_workflow)
+        self.assertEqual("edit.json", args.reference_edit_workflow)
+        self.assertEqual("msr.json", args.msr_workflow)
+        self.assertTrue(args.skip_msr_reference_render)
         self.assertEqual(0.4, args.storyboard_lora_strength)
         self.assertEqual(0.8, args.video_character_lora_strength)
         self.assertEqual(0.7, args.video_lora_1_strength_model)

@@ -208,6 +208,8 @@ Important project fields:
 8. video-only concat
 9. original full-audio mux
 
+For `--video-pipeline ltx_msr`, the runner skips storyboard/startframe generation, renders actor and location MSR references, writes a `_refs.json` render plan, renders MSR clips, then runs the same final concat and original-audio mux.
+
 Common runner commands:
 
 ```powershell
@@ -223,6 +225,24 @@ uv run python run_pipeline.py --project-config ./projects/my_song/config.json --
 ```
 
 The runner's command-line values override project config values where supported. For LTX rendering, `render_ltx.py` can read scene-duration and LoRA defaults from `config.json`, while explicit CLI values still win.
+
+Run an MSR project end to end:
+
+```powershell
+uv run python run_pipeline.py ./projects/dwarfventure-msr `
+  --video-pipeline ltx_msr `
+  --skip-tests
+```
+
+Reuse existing MSR references after editing only the video workflow:
+
+```powershell
+uv run python run_pipeline.py ./projects/dwarfventure-msr `
+  --video-pipeline ltx_msr `
+  --skip-msr-reference-render `
+  --no-skip-existing `
+  --skip-tests
+```
 
 ## Package Layout
 
