@@ -82,6 +82,13 @@ def build_render_video_scenes_use_case(
             output_dir=coerce_local_path(options.output_dir),
             seed_offset=options.seed_offset,
             debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
+            preroll_frames=preroll_frames,
+            tail_loss_frames=tail_loss_frames,
+            round_render_frames_to_8n1=round_render_frames_to_8n1,
+            postprocess=options.postprocess,
+            ffmpeg_path=options.ffmpeg_path,
+            postprocess_reencode=options.postprocess_reencode,
+            ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
         )
     else:

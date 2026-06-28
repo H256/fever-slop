@@ -8,8 +8,9 @@ from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.domain.ltx_rendering import PromptRelayPayloadBuilder
+from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder, build_audio_window_spec
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -23,8 +24,16 @@ class ComfyUIMSRVideoRenderBackend:
         seed_offset: int = 100000,
         msr_frame_count: int = 17,
         debug_workflows_dir: str | Path | None = None,
+        preroll_frames: int = 50,
+        tail_loss_frames: int = 25,
+        round_render_frames_to_8n1: bool = True,
+        postprocess: bool = True,
+        ffmpeg_path: str = "ffmpeg",
+        postprocess_reencode: bool = True,
+        ffmpeg_debug: bool = False,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         render_queue: ComfyUIRenderQueue | None = None,
+        postprocessor: VideoPostProcessor | None = None,
         model_resolver=None,
     ):
         if int(msr_frame_count) not in {17, 25, 33, 41}:
@@ -32,12 +41,22 @@ class ComfyUIMSRVideoRenderBackend:
         self.client = client
         self.workflow_path = Path(workflow_path)
         self.output_dir = Path(output_dir)
-        self.raw_output_dir = self.output_dir
+        self.raw_output_dir = self.output_dir / "raw"
         self.seed_offset = int(seed_offset)
         self.msr_frame_count = int(msr_frame_count)
         self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
+        self.preroll_frames = max(0, int(preroll_frames))
+        self.tail_loss_frames = max(0, int(tail_loss_frames))
+        self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
+        self.postprocess = bool(postprocess)
+        self.postprocess_reencode = bool(postprocess_reencode)
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
         self.render_queue = render_queue or ComfyUIRenderQueue(client)
+        self.postprocessor = postprocessor or VideoPostProcessor(
+            ffmpeg_path=ffmpeg_path,
+            reencode=postprocess_reencode,
+            debug=ffmpeg_debug,
+        )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
 
     def load_workflow(self) -> dict:
@@ -45,21 +64,49 @@ class ComfyUIMSRVideoRenderBackend:
 
     def render_video(self, request: VideoRenderRequest) -> Path:
         scene_number = int(request.scene_number)
+        rolling = self._rolling_spec(request.scene)
         comfy_audio_name = self.asset_uploader.resolve_audio_name(
             request.audio_file,
             upload_audio=request.upload_audio,
             uploaded_audio_name=request.uploaded_audio_name,
         )
-        workflow = self.build_workflow(request.scene, prompt=request.prompt, comfy_audio_name=comfy_audio_name)
+        workflow = self.build_workflow(
+            request.scene,
+            prompt=request.prompt,
+            comfy_audio_name=comfy_audio_name,
+            rolling=rolling,
+        )
         workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_path)
-        return self.render_queue.queue_workflow_and_download_first_video(
+        self.raw_output_dir.mkdir(parents=True, exist_ok=True)
+        raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
             scene_number=scene_number,
             output_path=self.raw_output_dir / f"scene_{scene_number:04}_raw.mp4",
         )
+        if not self.postprocess:
+            return raw_output
 
-    def build_workflow(self, scene: dict, *, prompt: str, comfy_audio_name: str | None = None) -> dict:
+        return self.postprocessor.trim_clip(
+            TrimSpec(
+                source_file=raw_output,
+                output_file=self.output_dir / f"scene_{scene_number:04}.mp4",
+                fps=int(rolling["fps"]),
+                trim_front_frames=int(rolling["trim_front_frames"]),
+                keep_frames=int(rolling["scene_frame_count"]),
+                scene=scene_number,
+            )
+        )
+
+    def build_workflow(
+        self,
+        scene: dict,
+        *,
+        prompt: str,
+        comfy_audio_name: str | None = None,
+        rolling: AudioWindowSpec | None = None,
+    ) -> dict:
         scene_number = int(scene["scene"])
+        render_frame_count = int(rolling["render_frame_count"]) if rolling else int(scene.get("frame_count", 0) or 0)
         references = scene.get("references") or {}
         actor_reference_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths", [])
         actor_paths = [Path(path) for path in actor_reference_paths]
@@ -78,17 +125,17 @@ class ComfyUIMSRVideoRenderBackend:
             "image",
             self.asset_uploader.resolve_reference_image_name(location_path),
         )
-        self._patch_prompt_inputs(patcher, scene, prompt=prompt)
+        self._patch_prompt_inputs(patcher, scene, prompt=prompt, rolling=rolling)
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_msr_raw/scene_{scene_number:04}")
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", self.msr_frame_count)
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
         patcher.try_set_existing_input_by_title("#SEED", "noise_seed", self.seed_offset + scene_number)
         patcher.try_set_existing_input_by_title("#WIDTH", "value", int(scene.get("width", 0) or 0))
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", int(scene.get("height", 0) or 0))
-        patcher.try_set_existing_input_by_title("#FRAMES", "value", int(scene.get("frame_count", 0) or 0))
+        patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
         patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
         if comfy_audio_name:
-            self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name)
+            self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name, rolling=rolling)
 
         workflow = patcher.get()
         if self.debug_workflows_dir:
@@ -131,7 +178,13 @@ class ComfyUIMSRVideoRenderBackend:
         msr_node.setdefault("inputs", {})[str(actor_index)] = [str(actor_node_id), 0]
 
     @staticmethod
-    def _patch_audio_inputs(patcher: WorkflowPatcher, scene: dict, *, comfy_audio_name: str) -> None:
+    def _patch_audio_inputs(
+        patcher: WorkflowPatcher,
+        scene: dict,
+        *,
+        comfy_audio_name: str,
+        rolling: AudioWindowSpec | None = None,
+    ) -> None:
         patcher.try_set_existing_input_by_title("#LOAD_AUDIO", "audio", comfy_audio_name)
         patcher.try_set_existing_input_by_title(
             "#LOAD_AUDIO",
@@ -143,12 +196,27 @@ class ComfyUIMSRVideoRenderBackend:
         duration = scene.get("duration_seconds")
         if duration is None and fps > 0 and frame_count > 0:
             duration = max(0.0, (frame_count - 1) / float(fps))
-        patcher.try_set_existing_input_by_title("#TRIM_AUDIO", "start_index", float(scene.get("abs_start_seconds", 0.0) or 0.0))
+        start_index = float(scene.get("abs_start_seconds", 0.0) or 0.0)
+        if rolling:
+            start_index = float(rolling["audio_start_seconds"])
+            duration = float(rolling["audio_duration_seconds"])
+        patcher.try_set_existing_input_by_title("#TRIM_AUDIO", "start_index", start_index)
         patcher.try_set_existing_input_by_title("#TRIM_AUDIO", "duration", float(duration or 0.0))
 
-    def _patch_prompt_inputs(self, patcher: WorkflowPatcher, scene: dict, *, prompt: str) -> None:
+    def _patch_prompt_inputs(
+        self,
+        patcher: WorkflowPatcher,
+        scene: dict,
+        *,
+        prompt: str,
+        rolling: AudioWindowSpec | None = None,
+    ) -> None:
         if self._has_anchor(patcher, "#PROMPT_RELAY"):
-            global_prompt, local_prompts, segment_lengths = self._build_prompt_relay_payload(scene, prompt=prompt)
+            global_prompt, local_prompts, segment_lengths = self._build_prompt_relay_payload(
+                scene,
+                prompt=prompt,
+                rolling=rolling,
+            )
             patcher.set_input_by_title("#PROMPT_RELAY", "global_prompt", global_prompt)
             patcher.set_input_by_title("#PROMPT_RELAY", "local_prompts", local_prompts)
             patcher.set_input_by_title("#PROMPT_RELAY", "segment_lengths", segment_lengths)
@@ -156,16 +224,23 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.set_input_by_title("#PROMPT", "text", str(prompt).strip())
 
     @staticmethod
-    def _build_prompt_relay_payload(scene: dict, *, prompt: str) -> tuple[str, str, str]:
-        frame_count = int(scene.get("frame_count", 1) or 1)
+    def _build_prompt_relay_payload(
+        scene: dict,
+        *,
+        prompt: str,
+        rolling: AudioWindowSpec | None = None,
+    ) -> tuple[str, str, str]:
+        frame_count = int(rolling["render_frame_count"]) if rolling else int(scene.get("frame_count", 1) or 1)
+        trim_front_frames = int(rolling["trim_front_frames"]) if rolling else 0
+        tail_loss_frames = int(rolling["tail_loss_frames"]) if rolling else 0
         ltx = scene.get("ltx") or {}
         reference_global_prompt = _build_msr_reference_global_prompt(scene.get("references") or {})
         if ltx.get("prompt_relay"):
             payload = PromptRelayPayloadBuilder().build(
                 scene=scene,
                 render_frame_count=frame_count,
-                trim_front_frames=0,
-                tail_loss_frames=0,
+                trim_front_frames=trim_front_frames,
+                tail_loss_frames=tail_loss_frames,
             )
             motion_prompt = _build_msr_motion_prompt(scene, fallback_prompt=prompt)
             local_prompts = _clean_msr_local_prompts(
@@ -182,6 +257,17 @@ class ComfyUIMSRVideoRenderBackend:
         local_prompts = local_prompts or "continue the main scene motion with stable subject identity"
         segment_lengths = str(max(1, frame_count - 1))
         return reference_global_prompt or global_prompt, local_prompts, segment_lengths
+
+    def _rolling_spec(self, scene: dict) -> AudioWindowSpec:
+        return build_audio_window_spec(
+            scene_number=int(scene["scene"]),
+            fps=int(scene.get("fps", 0) or 24),
+            scene_frame_count=int(scene.get("frame_count", 0) or 1),
+            scene_start_seconds=float(scene.get("abs_start_seconds", 0.0) or 0.0),
+            preroll_frames=self.preroll_frames,
+            tail_loss_frames=self.tail_loss_frames,
+            round_render_frames_to_8n1=self.round_render_frames_to_8n1,
+        )
 
     @staticmethod
     def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:

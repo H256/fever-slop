@@ -31,6 +31,28 @@ class FakeClient:
         return Path(output_path)
 
 
+class FakeRenderQueue:
+    def __init__(self):
+        self.calls = []
+
+    def queue_workflow_and_download_first_video(self, workflow, scene_number, output_path):
+        self.calls.append({
+            "workflow": workflow,
+            "scene_number": scene_number,
+            "output_path": Path(output_path),
+        })
+        return Path(output_path)
+
+
+class FakePostProcessor:
+    def __init__(self):
+        self.trim_specs = []
+
+    def trim_clip(self, spec):
+        self.trim_specs.append(spec)
+        return spec.output_file
+
+
 class LTXMSRVideoBackendTests(unittest.TestCase):
     def test_backend_patches_msr_references_and_prompt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -52,7 +74,12 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 encoding="utf-8",
             )
             client = FakeClient()
-            backend = ComfyUIMSRVideoRenderBackend(client=client, workflow_path=workflow, output_dir=temp / "out")
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=client,
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                postprocess=False,
+            )
 
             output = backend.render_video(
                 VideoRenderRequest(
@@ -76,7 +103,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 )
             )
 
-            self.assertEqual(temp / "out" / "scene_0007_raw.mp4", output)
+            self.assertEqual(temp / "out" / "raw" / "scene_0007_raw.mp4", output)
             self.assertTrue(client.queued_workflow["1"]["inputs"]["image"].startswith("feverslop/references/actor-"))
             self.assertTrue(client.queued_workflow["2"]["inputs"]["image"].startswith("feverslop/references/location-"))
             self.assertEqual(17, client.queued_workflow["3"]["inputs"]["frame_count"])
@@ -383,7 +410,15 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 encoding="utf-8",
             )
             client = FakeClient()
-            backend = ComfyUIMSRVideoRenderBackend(client=client, workflow_path=workflow, output_dir=temp / "out")
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=client,
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                preroll_frames=0,
+                tail_loss_frames=0,
+                round_render_frames_to_8n1=False,
+                postprocess=False,
+            )
 
             backend.render_video(
                 VideoRenderRequest(
@@ -412,3 +447,75 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(f"/api/view?filename={audio_input}&type=input", client.queued_workflow["5"]["inputs"]["audioUI"])
             self.assertEqual(3.5, client.queued_workflow["6"]["inputs"]["start_index"])
             self.assertEqual(2.0, client.queued_workflow["6"]["inputs"]["duration"])
+
+    def test_render_video_postprocesses_raw_clip_with_rolling_window(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            audio = temp / "song.mp3"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            audio.write_bytes(b"audio")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "5": {"inputs": {"value": 0}, "_meta": {"title": "#FRAMES"}},
+                    "6": {"inputs": {"audio": "", "audioUI": ""}, "_meta": {"title": "#LOAD_AUDIO"}},
+                    "7": {"inputs": {"start_index": 0, "duration": 0}, "_meta": {"title": "#TRIM_AUDIO"}},
+                }),
+                encoding="utf-8",
+            )
+            render_queue = FakeRenderQueue()
+            postprocessor = FakePostProcessor()
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                preroll_frames=6,
+                tail_loss_frames=25,
+                round_render_frames_to_8n1=True,
+                postprocess=True,
+                render_queue=render_queue,
+                postprocessor=postprocessor,
+            )
+
+            output = backend.render_video(
+                VideoRenderRequest(
+                    scene={
+                        "scene": 2,
+                        "fps": 24,
+                        "frame_count": 49,
+                        "abs_start_seconds": 3.5,
+                        "references": {
+                            "actor_msr_paths": [str(actor)],
+                            "location_msr_path": str(location),
+                        },
+                    },
+                    scene_number=2,
+                    prompt="prompt",
+                    workflow_path=workflow,
+                    output_dir=temp / "out",
+                    audio_file=audio,
+                    storyboard_dir=temp,
+                )
+            )
+
+            raw_output = temp / "out" / "raw" / "scene_0002_raw.mp4"
+            final_output = temp / "out" / "scene_0002.mp4"
+            self.assertEqual(final_output, output)
+            self.assertEqual(raw_output, render_queue.calls[0]["output_path"])
+            self.assertEqual(81, render_queue.calls[0]["workflow"]["5"]["inputs"]["value"])
+            self.assertEqual(3.25, render_queue.calls[0]["workflow"]["7"]["inputs"]["start_index"])
+            self.assertEqual(80 / 24, render_queue.calls[0]["workflow"]["7"]["inputs"]["duration"])
+            self.assertEqual(1, len(postprocessor.trim_specs))
+            trim_spec = postprocessor.trim_specs[0]
+            self.assertEqual(raw_output, trim_spec.source_file)
+            self.assertEqual(final_output, trim_spec.output_file)
+            self.assertEqual(24, trim_spec.fps)
+            self.assertEqual(6, trim_spec.trim_front_frames)
+            self.assertEqual(49, trim_spec.keep_frames)
