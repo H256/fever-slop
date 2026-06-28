@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import re
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
@@ -158,6 +159,7 @@ class ComfyUIMSRVideoRenderBackend:
     def _build_prompt_relay_payload(scene: dict, *, prompt: str) -> tuple[str, str, str]:
         frame_count = int(scene.get("frame_count", 1) or 1)
         ltx = scene.get("ltx") or {}
+        reference_global_prompt = _build_msr_reference_global_prompt(scene.get("references") or {})
         if ltx.get("prompt_relay"):
             payload = PromptRelayPayloadBuilder().build(
                 scene=scene,
@@ -165,12 +167,21 @@ class ComfyUIMSRVideoRenderBackend:
                 trim_front_frames=0,
                 tail_loss_frames=0,
             )
-            return payload.global_prompt, payload.local_prompts, payload.segment_lengths
+            motion_prompt = _build_msr_motion_prompt(scene, fallback_prompt=prompt)
+            local_prompts = _clean_msr_local_prompts(
+                payload.local_prompts,
+                base_prompt=str(ltx.get("base_prompt") or ""),
+            )
+            if motion_prompt:
+                local_prompts = _replace_msr_local_prompt_text(local_prompts, motion_prompt)
+            return reference_global_prompt or payload.global_prompt, local_prompts, payload.segment_lengths
 
         global_prompt = str(ltx.get("base_prompt") or ltx.get("original_style_i2v_prompt") or prompt).strip()
-        local_prompts = str(prompt).strip() or "continue the main scene motion with stable subject identity"
+        local_prompts = _build_msr_motion_prompt(scene, fallback_prompt=prompt)
+        local_prompts = local_prompts or _clean_msr_local_prompt(str(prompt).strip(), base_prompt=global_prompt)
+        local_prompts = local_prompts or "continue the main scene motion with stable subject identity"
         segment_lengths = str(max(1, frame_count - 1))
-        return global_prompt, local_prompts, segment_lengths
+        return reference_global_prompt or global_prompt, local_prompts, segment_lengths
 
     @staticmethod
     def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
@@ -179,3 +190,77 @@ class ComfyUIMSRVideoRenderBackend:
             return True
         except KeyError:
             return False
+
+
+def _build_msr_reference_global_prompt(references: dict) -> str:
+    parts: list[str] = []
+    for index, actor in enumerate(references.get("actor_reference_descriptions") or [], start=1):
+        actor_text = _describe_reference_item(actor)
+        if actor_text:
+            parts.append(
+                f"Reference image {index}: {actor_text}. "
+                f"Use reference image {index} for this subject's identity, face, body, wardrobe, and materials."
+            )
+
+    location = references.get("location_reference_description") or {}
+    location_text = _describe_reference_item(location)
+    if location_text:
+        parts.append(
+            f"Background reference: {location_text}. "
+            "Use this image as the scene environment, lighting, color palette, atmosphere, and spatial setting."
+        )
+
+    return " ".join(parts).strip()
+
+
+def _describe_reference_item(item: dict) -> str:
+    name = str(item.get("name") or item.get("id") or "").strip()
+    role = str(item.get("role") or "").strip()
+    visual = str(item.get("visual_description") or item.get("image_prompt") or "").strip()
+    chunks = [chunk for chunk in (name, role, visual) if chunk]
+    return ", ".join(chunks)
+
+
+def _clean_msr_local_prompts(local_prompts: str, *, base_prompt: str) -> str:
+    cleaned = [
+        _clean_msr_local_prompt(prompt, base_prompt=base_prompt)
+        for prompt in str(local_prompts).split("\n|")
+    ]
+    return "\n|".join(prompt for prompt in cleaned if prompt)
+
+
+def _replace_msr_local_prompt_text(local_prompts: str, replacement: str) -> str:
+    segments = str(local_prompts or "").split("\n|")
+    return "\n|".join(str(replacement).strip() for segment in segments if str(segment).strip())
+
+
+def _clean_msr_local_prompt(prompt: str, *, base_prompt: str) -> str:
+    cleaned = str(prompt or "").strip()
+    base = str(base_prompt or "").strip()
+    if base and cleaned.startswith(base):
+        cleaned = cleaned[len(base):].lstrip(" .")
+    cleaned = re.sub(r"(?is)\bStart frame:\s*", "", cleaned).strip()
+    cleaned = re.sub(
+        r"(?is)\bLock the first frame\b.*?(?:\.|$)",
+        "",
+        cleaned,
+    ).strip()
+    cleaned = re.sub(
+        r"(?is)\bcontinue directly from it\b.*?(?:\.|$)",
+        "",
+        cleaned,
+    ).strip()
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _build_msr_motion_prompt(scene: dict, *, fallback_prompt: str) -> str:
+    ltx = scene.get("ltx") or {}
+    source = str(ltx.get("base_prompt") or ltx.get("original_style_i2v_prompt") or fallback_prompt or "")
+    parts: list[str] = []
+    for label in ("Camera motion", "Subject or environment motion", "Story beat"):
+        match = re.search(rf"(?is){re.escape(label)}\s*:\s*(.*?)(?:\.\.|\. (?=[A-Z][A-Za-z ]+:)|$)", source)
+        if match:
+            text = re.sub(r"\s+", " ", match.group(1)).strip(" .")
+            if text:
+                parts.append(f"{label}: {text}.")
+    return " ".join(parts).strip()

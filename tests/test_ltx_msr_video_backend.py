@@ -280,6 +280,87 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(25, patched["5"]["inputs"]["value"])
             self.assertEqual(24, patched["6"]["inputs"]["value"])
 
+    def test_backend_builds_msr_prompt_relay_from_reference_descriptions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {
+                        "inputs": {
+                            "global_prompt": "",
+                            "local_prompts": "",
+                            "segment_lengths": "",
+                        },
+                        "_meta": {"title": "#PROMPT_RELAY"},
+                    },
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(client=FakeClient(), workflow_path=workflow, output_dir=temp / "out")
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 1,
+                    "fps": 24,
+                    "frame_count": 25,
+                    "references": {
+                        "actor_msr_paths": [str(actor)],
+                        "location_msr_path": str(location),
+                        "actor_reference_descriptions": [
+                            {
+                                "id": "frost_giant",
+                                "name": "Thrym",
+                                "role": "frost giant antagonist",
+                                "visual_description": "cracked blue ice skin, glowing white eyes, runic armor",
+                            }
+                        ],
+                        "location_reference_description": {
+                            "id": "volcanic_mountain_pass",
+                            "name": "Fire-Scarred Pass",
+                            "visual_description": "fractured volcanic canyon with lava veins and ash",
+                        },
+                    },
+                    "ltx": {
+                        "base_prompt": (
+                            "Start frame: Thrym slams the frozen earth. Lock the first frame to this exact composition. "
+                            "Camera motion: slow low-angle push-in. "
+                            "Subject or environment motion: Thrym raises one arm, ash swirls around him. "
+                            "Story beat: the frost giant prepares to strike."
+                        ),
+                        "prompt_relay": [
+                            {
+                                "frame_start": 0,
+                                "frame_end": 24,
+                                "state": "motion",
+                                "prompt": (
+                                    "Start frame: Thrym slams the frozen earth. Lock the first frame to this exact composition. "
+                                    "Thrym raises one arm, ash swirls around him, camera pushes in slowly."
+                                ),
+                            }
+                        ],
+                    },
+                },
+                prompt="Start frame: stale i2v prompt",
+            )
+
+            relay_inputs = patched["3"]["inputs"]
+            self.assertIn("Reference image 1: Thrym", relay_inputs["global_prompt"])
+            self.assertIn("frost giant antagonist", relay_inputs["global_prompt"])
+            self.assertIn("Background reference: Fire-Scarred Pass", relay_inputs["global_prompt"])
+            self.assertNotIn("Start frame", relay_inputs["global_prompt"])
+            self.assertIn("Camera motion: slow low-angle push-in.", relay_inputs["local_prompts"])
+            self.assertIn("Subject or environment motion: Thrym raises one arm", relay_inputs["local_prompts"])
+            self.assertNotIn("Start frame", relay_inputs["local_prompts"])
+            self.assertNotIn("Lock the first frame", relay_inputs["local_prompts"])
+
     def test_render_video_patches_audio_anchors_when_present(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

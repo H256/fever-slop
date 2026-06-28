@@ -320,6 +320,10 @@ def enrich_render_plan_with_reference_sheets(
             actor_manifests[actor_id].get("msr_input_path", actor_manifests[actor_id]["sheet_path"])
             for actor_id in actor_ids
         ]
+        references["actor_reference_descriptions"] = [
+            _reference_description(actor_manifests[actor_id])
+            for actor_id in actor_ids
+        ]
         location_id = references.get("location_id")
         if location_id:
             references["location_sheet_path"] = location_manifests[str(location_id)]["sheet_path"]
@@ -327,6 +331,7 @@ def enrich_render_plan_with_reference_sheets(
                 "msr_background_path",
                 location_manifests[str(location_id)]["sheet_path"],
             )
+            references["location_reference_description"] = _reference_description(location_manifests[str(location_id)])
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(render_plan, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -341,3 +346,11 @@ def _load_manifests_by_id(root: Path) -> dict[str, dict]:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         manifests[str(manifest["id"])] = manifest
     return manifests
+
+
+def _reference_description(manifest: dict) -> dict:
+    return {
+        key: str(manifest.get(key, "") or "").strip()
+        for key in ("id", "name", "role", "visual_description", "image_prompt")
+        if str(manifest.get(key, "") or "").strip()
+    }

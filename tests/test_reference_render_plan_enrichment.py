@@ -27,6 +27,10 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             (actor_dir / "manifest.json").write_text(
                 json.dumps({
                     "id": "singer",
+                    "name": "Mara",
+                    "role": "lead singer",
+                    "visual_description": "silver-haired singer in a red coat",
+                    "image_prompt": "character sheet of Mara",
                     "kind": "actor",
                     "sheet_path": str(actor_sheet),
                     "msr_input_path": str(actor_msr),
@@ -36,6 +40,9 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             (location_dir / "manifest.json").write_text(
                 json.dumps({
                     "id": "stage",
+                    "name": "Mirror Stage",
+                    "visual_description": "black mirror stage with neon rain",
+                    "image_prompt": "wide mirror stage",
                     "kind": "location",
                     "sheet_path": str(location_sheet),
                     "msr_background_path": str(location_msr),
@@ -57,3 +64,6 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             self.assertEqual(str(location_sheet), enriched[0]["references"]["location_sheet_path"])
             self.assertEqual([str(actor_msr)], enriched[0]["references"]["actor_msr_paths"])
             self.assertEqual(str(location_msr), enriched[0]["references"]["location_msr_path"])
+            self.assertEqual("Mara", enriched[0]["references"]["actor_reference_descriptions"][0]["name"])
+            self.assertEqual("lead singer", enriched[0]["references"]["actor_reference_descriptions"][0]["role"])
+            self.assertEqual("Mirror Stage", enriched[0]["references"]["location_reference_description"]["name"])
