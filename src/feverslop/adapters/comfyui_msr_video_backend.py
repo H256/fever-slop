@@ -71,12 +71,7 @@ class ComfyUIMSRVideoRenderBackend:
             raise ValueError(f"Scene {scene_number} is missing references.location_msr_path")
 
         patcher = WorkflowPatcher(self.load_workflow())
-        for index, actor_path in enumerate(actor_paths, start=1):
-            patcher.set_input_by_title(
-                f"#MSR_ACTOR_{index}",
-                "image",
-                self.asset_uploader.resolve_reference_image_name(actor_path),
-            )
+        self._patch_actor_reference_inputs(patcher, actor_paths)
         patcher.set_input_by_title(
             "#MSR_BACKGROUND",
             "image",
@@ -102,6 +97,37 @@ class ComfyUIMSRVideoRenderBackend:
                 encoding="utf-8",
             )
         return workflow
+
+    def _patch_actor_reference_inputs(self, patcher: WorkflowPatcher, actor_paths: list[Path]) -> None:
+        for index, actor_path in enumerate(actor_paths, start=1):
+            title = f"#MSR_ACTOR_{index}"
+            image_name = self.asset_uploader.resolve_reference_image_name(actor_path)
+            if self._has_anchor(patcher, title):
+                node_id, node = patcher.find_node_by_meta_title(title)
+                node.setdefault("inputs", {})["image"] = image_name
+            else:
+                node_id = self._add_actor_reference_node(patcher, index=index, image_name=image_name)
+            self._connect_msr_actor_input(patcher, actor_index=index, actor_node_id=node_id)
+
+    @staticmethod
+    def _add_actor_reference_node(patcher: WorkflowPatcher, *, index: int, image_name: str) -> str:
+        workflow = patcher.get()
+        numeric_ids = [int(node_id) for node_id in workflow if str(node_id).isdigit()]
+        node_id = str(max(numeric_ids, default=0) + 1)
+        workflow[node_id] = {
+            "inputs": {"image": image_name},
+            "class_type": "LoadImage",
+            "_meta": {"title": f"#MSR_ACTOR_{index}"},
+        }
+        return node_id
+
+    @staticmethod
+    def _connect_msr_actor_input(patcher: WorkflowPatcher, *, actor_index: int, actor_node_id: str) -> None:
+        try:
+            _, msr_node = patcher.find_node_by_meta_title("#MSR_FRAME_COUNT")
+        except KeyError:
+            return
+        msr_node.setdefault("inputs", {})[str(actor_index)] = [str(actor_node_id), 0]
 
     @staticmethod
     def _patch_audio_inputs(patcher: WorkflowPatcher, scene: dict, *, comfy_audio_name: str) -> None:

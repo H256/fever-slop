@@ -182,6 +182,52 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertRegex(actor_input, r"^feverslop/references/hero-[0-9a-f]{12}\.png$")
             self.assertRegex(location_input, r"^feverslop/references/hero-[0-9a-f]{12}\.png$")
 
+    def test_backend_adds_missing_actor_reference_nodes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor_1 = temp / "actor_1.png"
+            actor_2 = temp / "actor_2.png"
+            location = temp / "location.png"
+            actor_1.write_bytes(b"actor 1")
+            actor_2.write_bytes(b"actor 2")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "class_type": "LoadImage", "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "class_type": "LoadImage", "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {
+                        "inputs": {"1": ["1", 0], "background": ["2", 0], "frame_count": 17},
+                        "class_type": "LiconMSR",
+                        "_meta": {"title": "#MSR_FRAME_COUNT"},
+                    },
+                    "4": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "5": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(client=FakeClient(), workflow_path=workflow, output_dir=temp / "out")
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 5,
+                    "references": {
+                        "actor_msr_paths": [str(actor_1), str(actor_2)],
+                        "location_msr_path": str(location),
+                    },
+                },
+                prompt="prompt",
+            )
+
+            actor_2_id = next(
+                node_id
+                for node_id, node in patched.items()
+                if node.get("_meta", {}).get("title") == "#MSR_ACTOR_2"
+            )
+            self.assertEqual("LoadImage", patched[actor_2_id]["class_type"])
+            self.assertTrue(patched[actor_2_id]["inputs"]["image"].startswith("feverslop/references/actor_2-"))
+            self.assertEqual([actor_2_id, 0], patched["3"]["inputs"]["2"])
+
     def test_backend_patches_prompt_relay_when_anchor_exists(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
