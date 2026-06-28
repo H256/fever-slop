@@ -201,6 +201,56 @@ class ComfyUIImageBackendTests(unittest.TestCase):
         self.assertEqual(832, client.queued_workflow["3"]["inputs"]["width"])
         self.assertEqual(1216, client.queued_workflow["3"]["inputs"]["height"])
 
+    def test_patches_seed_inputs_even_without_seed_anchor(self):
+        from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+
+        workflow = {
+            "1": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": ""},
+                "_meta": {"title": "#PROMPT_POSITIVE"},
+            },
+            "2": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": ""},
+                "_meta": {"title": "#PROMPT_NEGATIVE"},
+            },
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {"seed": 672800148947068},
+                "_meta": {"title": "KSampler"},
+            },
+            "4": {
+                "class_type": "RandomNoise",
+                "inputs": {"noise_seed": 192774551144773},
+                "_meta": {"title": "RandomNoise"},
+            },
+            "5": {
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": "old", "images": ["0", 0]},
+                "_meta": {"title": "#SAVE_IMAGE"},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+            client = FakeComfyClient()
+
+            ComfyUIImageBackend(client, workflow_path, temp / "out").render_image(
+                ImageRenderRequest(
+                    scene={},
+                    scene_number=4,
+                    prompt="portrait",
+                    workflow_path=workflow_path,
+                    output_dir=temp / "out",
+                )
+            )
+
+        self.assertEqual(100004, client.queued_workflow["3"]["inputs"]["seed"])
+        self.assertEqual(100004, client.queued_workflow["4"]["inputs"]["noise_seed"])
+
 
 if __name__ == "__main__":
     unittest.main()

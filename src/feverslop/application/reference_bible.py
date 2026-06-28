@@ -241,21 +241,22 @@ def compose_msr_reference_sheet(image_paths: list[Path], output_path: Path, *, s
     for index, image in enumerate(images):
         x0 = index * cell_width
         x1 = width if index == columns - 1 else (index + 1) * cell_width
-        fitted = _fit_image_contain(image, (x1 - x0, height))
-        x = x0 + ((x1 - x0) - fitted.width) // 2
-        y = (height - fitted.height) // 2
-        sheet.paste(fitted, (x, y))
+        fitted = _fit_image_cover(image, (x1 - x0, height))
+        sheet.paste(fitted, (x0, 0))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output_path)
     return output_path
 
 
-def _fit_image_contain(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+def _fit_image_cover(image: Image.Image, size: tuple[int, int]) -> Image.Image:
     width, height = size
-    scale = min(width / image.width, height / image.height)
-    fitted_size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
-    return image.resize(fitted_size)
+    scale = max(width / image.width, height / image.height)
+    resized_size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    resized = image.resize(resized_size)
+    left = max(0, (resized.width - width) // 2)
+    top = max(0, (resized.height - height) // 2)
+    return resized.crop((left, top, left + width, top + height))
 
 
 def compose_reference_sheet(image_paths: list[Path], output_path: Path, *, labels: bool = True) -> Path:

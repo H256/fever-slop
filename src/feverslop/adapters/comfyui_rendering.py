@@ -81,6 +81,8 @@ class ComfyUIImageBackend:
                 self.seed_input_name,
                 scene_number,
             )
+        else:
+            self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
 
         if anchors.save_image_title:
             patcher.set_input_by_title(
@@ -136,6 +138,19 @@ class ComfyUIImageBackend:
             patcher.set_existing_input_by_title("#DIMENSIONS", "height", height)
         except KeyError:
             return
+
+    @staticmethod
+    def _seed_for_scene(scene_number: int) -> int:
+        return 100000 + int(scene_number)
+
+    @staticmethod
+    def _patch_seed_inputs(patcher: WorkflowPatcher, seed: int) -> None:
+        for node in patcher.get().values():
+            inputs = node.setdefault("inputs", {})
+            if "seed" in inputs:
+                inputs["seed"] = seed
+            if "noise_seed" in inputs:
+                inputs["noise_seed"] = seed
 
 
 def _comfy_path_from_upload(upload_response: dict) -> str:

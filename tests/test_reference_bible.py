@@ -5,7 +5,13 @@ from pathlib import Path
 
 from PIL import Image
 
-from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject, compose_reference_sheet
+from feverslop.application.reference_bible import (
+    ReferenceBibleGenerator,
+    ReferenceLocation,
+    ReferenceSubject,
+    compose_msr_reference_sheet,
+    compose_reference_sheet,
+)
 
 
 class FakeImageBackend:
@@ -263,3 +269,16 @@ class ReferenceBibleTests(unittest.TestCase):
 
             with Image.open(output_path) as sheet:
                 self.assertEqual((4352, 1920), sheet.size)
+
+    def test_msr_reference_sheet_crops_cells_without_white_letterbox(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            image_path = temp / "portrait.png"
+            Image.new("RGB", (1088, 1920), color=(20, 30, 40)).save(image_path)
+
+            output_path = temp / "msr_sheet.png"
+            compose_msr_reference_sheet([image_path], output_path, size=(1280, 704))
+
+            with Image.open(output_path) as sheet:
+                self.assertEqual((1280, 704), sheet.size)
+                self.assertEqual((20, 30, 40), sheet.getpixel((0, 0)))
