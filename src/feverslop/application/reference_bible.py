@@ -100,7 +100,7 @@ class ReferenceBibleGenerator:
             )
 
         sheet_path = subject_dir / "sheet.png"
-        compose_reference_sheet([Path(view["path"]) for view in views], sheet_path)
+        compose_reference_sheet([Path(view["path"]) for view in views], sheet_path, labels=False)
         msr_sheet_path = subject_dir / "msr_sheet.png"
         compose_msr_reference_sheet(
             [Path(view["path"]) for view in views],
@@ -258,14 +258,14 @@ def _fit_image_contain(image: Image.Image, size: tuple[int, int]) -> Image.Image
     return image.resize(fitted_size)
 
 
-def compose_reference_sheet(image_paths: list[Path], output_path: Path) -> Path:
+def compose_reference_sheet(image_paths: list[Path], output_path: Path, *, labels: bool = True) -> Path:
     images = [Image.open(path).convert("RGB") for path in image_paths]
     if not images:
         raise ValueError("Cannot compose an empty reference sheet")
 
     width = max(image.width for image in images)
     height = max(image.height for image in images)
-    label_height = 24
+    label_height = 24 if labels else 0
     columns = reference_sheet_columns(width=width, height=height, image_count=len(images))
     rows = math.ceil(len(images) / columns)
     cell_height = height + label_height
@@ -278,7 +278,8 @@ def compose_reference_sheet(image_paths: list[Path], output_path: Path) -> Path:
         x = column * width
         y = row * cell_height
         sheet.paste(image.resize((width, height)), (x, y))
-        draw.text((x + 4, y + height + 4), image_paths[index].stem, fill="black")
+        if labels:
+            draw.text((x + 4, y + height + 4), image_paths[index].stem, fill="black")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output_path)

@@ -248,3 +248,18 @@ class ReferenceBibleTests(unittest.TestCase):
 
             with Image.open(output_path) as sheet:
                 self.assertEqual((3840, 1456), sheet.size)
+
+    def test_reference_sheet_can_be_composed_without_label_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            image_paths = []
+            for index in range(4):
+                image_path = temp / f"view_{index}.png"
+                Image.new("RGB", (1088, 1920), color=(index * 20, 0, 0)).save(image_path)
+                image_paths.append(image_path)
+
+            output_path = temp / "sheet.png"
+            compose_reference_sheet(image_paths, output_path, labels=False)
+
+            with Image.open(output_path) as sheet:
+                self.assertEqual((4352, 1920), sheet.size)
