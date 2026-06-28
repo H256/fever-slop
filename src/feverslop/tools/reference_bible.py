@@ -17,6 +17,7 @@ from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
 console = Console()
+MSR_ACTOR_VIEW_NAMES = ("hero_closeup", "front", "left", "back")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -136,16 +137,16 @@ def run(args: argparse.Namespace) -> list[Path]:
             "to the project config."
         )
 
-    view_names = resolve_view_names(args.view_set)
-    total_items = len(subjects) + len(locations)
-    total_views = total_items * len(view_names)
+    actor_view_names, location_view_names = resolve_view_names(args.view_set)
+    total_views = (len(subjects) * len(actor_view_names)) + (len(locations) * len(location_view_names))
     console.print(
         "[bold cyan]Reference Bible render plan[/bold cyan]\n"
         f"Project: [cyan]{project_config.project_name}[/cyan]\n"
         f"Output: [cyan]{output_dir}[/cyan]\n"
         f"Actors: [yellow]{len(subjects)}[/yellow]  "
         f"Locations: [yellow]{len(locations)}[/yellow]  "
-        f"Views per item: [yellow]{len(view_names)}[/yellow]  "
+        f"Actor views: [yellow]{len(actor_view_names)}[/yellow]  "
+        f"Location views: [yellow]{len(location_view_names)}[/yellow]  "
         f"Total renders: [yellow]{total_views}[/yellow]"
     )
 
@@ -184,35 +185,37 @@ def run(args: argparse.Namespace) -> list[Path]:
             hero_anchors=hero_anchors,
             edit_anchors=edit_anchors,
             on_view_complete=on_view_complete,
-            view_names=view_names,
+            actor_view_names=actor_view_names,
+            location_view_names=location_view_names,
+            msr_sheet_size=(project_config.video.width, project_config.video.height),
         )
 
         for subject in subjects:
             current_task_id = progress.add_task(
                 f"Actor {subject.id}",
-                total=len(generator.view_names),
+                total=len(actor_view_names),
             )
             manifest = generator.generate_subject_bible(subject)
             manifests.append(manifest)
-            progress.update(current_task_id, completed=len(generator.view_names))
+            progress.update(current_task_id, completed=len(actor_view_names))
             console.print(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
         for location in locations:
             current_task_id = progress.add_task(
                 f"Location {location.id}",
-                total=len(generator.view_names),
+                total=len(location_view_names),
             )
             manifest = generator.generate_location_bible(location)
             manifests.append(manifest)
-            progress.update(current_task_id, completed=len(generator.view_names))
+            progress.update(current_task_id, completed=len(location_view_names))
             console.print(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
         current_task_id = None
     return manifests
 
 
-def resolve_view_names(view_set: str) -> tuple[str, ...]:
+def resolve_view_names(view_set: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if view_set == "msr":
-        return ("hero",)
-    return ReferenceBibleGenerator.view_names
+        return MSR_ACTOR_VIEW_NAMES, ("hero",)
+    return ReferenceBibleGenerator.view_names, ReferenceBibleGenerator.view_names
 
 
 def main() -> None:

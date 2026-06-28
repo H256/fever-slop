@@ -32,6 +32,7 @@ class ReferenceBibleGenerator:
     view_names = ("hero", "front", "left", "right", "closeup")
     actor_hero_size = (1088, 1920)
     location_hero_size = (1920, 1088)
+    msr_actor_view_names = ("hero_closeup", "front", "left", "back")
 
     def __init__(
         self,
@@ -43,6 +44,9 @@ class ReferenceBibleGenerator:
         edit_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
         on_view_complete: Callable[[dict[str, Any]], None] | None = None,
         view_names: tuple[str, ...] | None = None,
+        actor_view_names: tuple[str, ...] | None = None,
+        location_view_names: tuple[str, ...] | None = None,
+        msr_sheet_size: tuple[int, int] = (1280, 704),
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
@@ -51,6 +55,9 @@ class ReferenceBibleGenerator:
         self.on_view_complete = on_view_complete
         self.output_dir = Path(output_dir)
         self.view_names = tuple(view_names or self.view_names)
+        self.actor_view_names = tuple(actor_view_names or view_names or self.view_names)
+        self.location_view_names = tuple(location_view_names or view_names or self.view_names)
+        self.msr_sheet_size = (int(msr_sheet_size[0]), int(msr_sheet_size[1]))
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
         subject_dir = self.output_dir / "actors" / subject.id
@@ -58,11 +65,12 @@ class ReferenceBibleGenerator:
 
         views = []
         hero_path = None
-        for index, view_name in enumerate(self.view_names, start=1):
+        for index, view_name in enumerate(self.actor_view_names, start=1):
             view_dir = subject_dir / "views"
-            backend = self.backend if view_name == "hero" else self.edit_backend
-            anchors = self.hero_anchors if view_name == "hero" else self.edit_anchors
-            width, height = self._actor_view_size(view_name) if view_name == "hero" else (None, None)
+            is_first_reference = index == 1
+            backend = self.backend if is_first_reference else self.edit_backend
+            anchors = self.hero_anchors if is_first_reference else self.edit_anchors
+            width, height = self._actor_view_size(view_name) if is_first_reference else (None, None)
             rendered = backend.render_image(
                 ImageRenderRequest(
                     scene={"reference_id": subject.id, "view": view_name},
@@ -79,7 +87,7 @@ class ReferenceBibleGenerator:
             target = view_dir / f"{view_name}.png"
             if Path(rendered) != target:
                 target.write_bytes(Path(rendered).read_bytes())
-            if view_name == "hero":
+            if is_first_reference:
                 hero_path = target
             views.append({"name": view_name, "path": str(target)})
             self._report_view_complete(
@@ -93,11 +101,17 @@ class ReferenceBibleGenerator:
 
         sheet_path = subject_dir / "sheet.png"
         compose_reference_sheet([Path(view["path"]) for view in views], sheet_path)
+        msr_sheet_path = subject_dir / "msr_sheet.png"
+        compose_msr_reference_sheet(
+            [Path(view["path"]) for view in views],
+            msr_sheet_path,
+            size=self.msr_sheet_size,
+        )
         manifest = {
             **asdict(subject),
             "kind": "actor",
             "views": views,
-            "msr_input_path": str(hero_path),
+            "msr_input_path": str(msr_sheet_path if len(views) > 1 else hero_path),
             "sheet_path": str(sheet_path),
         }
         manifest_path = subject_dir / "manifest.json"
@@ -110,7 +124,7 @@ class ReferenceBibleGenerator:
 
         views = []
         hero_path = None
-        for index, view_name in enumerate(self.view_names, start=1):
+        for index, view_name in enumerate(self.location_view_names, start=1):
             view_dir = location_dir / "views"
             backend = self.backend if view_name == "hero" else self.edit_backend
             anchors = self.hero_anchors if view_name == "hero" else self.edit_anchors
@@ -158,7 +172,7 @@ class ReferenceBibleGenerator:
     @staticmethod
     def _view_prompt(subject: ReferenceSubject, view_name: str) -> str:
         base = subject.image_prompt or subject.visual_description or subject.name
-        if view_name == "closeup":
+        if view_name in {"closeup", "hero_closeup"}:
             return (
                 f"{base}. Create a character reference closeup of {subject.name}: "
                 "head and shoulders only, square portrait crop, same identity, same face, "
@@ -171,6 +185,7 @@ class ReferenceBibleGenerator:
             "front": "straight front view",
             "left": "clean left side profile view",
             "right": "clean right side profile view",
+            "back": "clean full-body back view",
         }.get(view_name, f"{view_name} view")
         return (
             f"{base}. Create a full-body character reference of {subject.name}: "
@@ -208,10 +223,39 @@ class ReferenceBibleGenerator:
                 "name": item_name,
                 "view": view,
                 "item_completed": index,
-                "item_total": len(self.view_names),
+                "item_total": len(self.actor_view_names if kind == "actor" else self.location_view_names),
                 "path": path,
             }
         )
+
+
+def compose_msr_reference_sheet(image_paths: list[Path], output_path: Path, *, size: tuple[int, int]) -> Path:
+    images = [Image.open(path).convert("RGB") for path in image_paths]
+    if not images:
+        raise ValueError("Cannot compose an empty MSR reference sheet")
+
+    width, height = int(size[0]), int(size[1])
+    sheet = Image.new("RGB", (width, height), "white")
+    columns = len(images)
+    cell_width = max(1, width // columns)
+    for index, image in enumerate(images):
+        x0 = index * cell_width
+        x1 = width if index == columns - 1 else (index + 1) * cell_width
+        fitted = _fit_image_contain(image, (x1 - x0, height))
+        x = x0 + ((x1 - x0) - fitted.width) // 2
+        y = (height - fitted.height) // 2
+        sheet.paste(fitted, (x, y))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(output_path)
+    return output_path
+
+
+def _fit_image_contain(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    width, height = size
+    scale = min(width / image.width, height / image.height)
+    fitted_size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    return image.resize(fitted_size)
 
 
 def compose_reference_sheet(image_paths: list[Path], output_path: Path) -> Path:

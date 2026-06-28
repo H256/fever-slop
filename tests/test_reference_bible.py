@@ -39,7 +39,7 @@ class ReferenceBibleTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual("singer", manifest["id"])
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
-            self.assertEqual(str(manifest_path.parent / "views" / "hero.png"), manifest["msr_input_path"])
+            self.assertEqual(str(manifest_path.parent / "msr_sheet.png"), manifest["msr_input_path"])
             self.assertEqual(str(manifest_path.parent / "sheet.png"), manifest["sheet_path"])
             self.assertEqual(["hero", "front", "left", "right", "closeup"], [view["name"] for view in manifest["views"]])
 
@@ -110,6 +110,33 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual(1, len(hero_backend.requests))
             self.assertEqual(0, len(edit_backend.requests))
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
+
+    def test_generator_writes_msr_actor_sheet_as_reference_input(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            hero_backend = FakeImageBackend()
+            edit_backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=hero_backend,
+                edit_backend=edit_backend,
+                output_dir=output_dir,
+                actor_view_names=("hero_closeup", "front", "left", "back"),
+                location_view_names=("hero",),
+                msr_sheet_size=(1280, 704),
+            )
+
+            manifest_path = generator.generate_subject_bible(
+                ReferenceSubject(id="warrior", name="Warrior", image_prompt="dark fantasy warrior")
+            )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                ["hero_closeup", "front", "left", "back"],
+                [view["name"] for view in manifest["views"]],
+            )
+            self.assertEqual(str(manifest_path.parent / "msr_sheet.png"), manifest["msr_input_path"])
+            with Image.open(manifest_path.parent / "msr_sheet.png") as sheet:
+                self.assertEqual((1280, 704), sheet.size)
 
     def test_generator_writes_location_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -191,6 +218,21 @@ class ReferenceBibleTests(unittest.TestCase):
         self.assertIn("portrait reference frame", front_prompt)
         self.assertIn("square portrait crop", closeup_prompt)
         self.assertNotIn("full-body", closeup_prompt)
+
+    def test_msr_actor_sheet_prompts_include_closeup_front_left_and_back(self):
+        closeup = ReferenceBibleGenerator._view_prompt(
+            ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
+            "hero_closeup",
+        )
+        back = ReferenceBibleGenerator._view_prompt(
+            ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
+            "back",
+        )
+
+        self.assertIn("closeup", closeup)
+        self.assertIn("back view", back)
+        self.assertIn("full-body", back)
+        self.assertIn("portrait reference frame", back)
 
     def test_wide_reference_views_are_composed_as_grid(self):
         with tempfile.TemporaryDirectory() as temp_dir:

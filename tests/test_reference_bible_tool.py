@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from rich.console import Console
 
-from feverslop.tools.reference_bible import build_arg_parser, load_reference_subjects
+from feverslop.tools.reference_bible import build_arg_parser, load_reference_subjects, resolve_view_names
 from feverslop.tools.reference_bible import run
 
 
@@ -43,6 +43,12 @@ class ReferenceBibleToolTests(unittest.TestCase):
         )
 
         self.assertEqual("full", args.view_set)
+
+    def test_msr_view_set_uses_actor_sheet_views_and_single_location_background(self):
+        actor_views, location_views = resolve_view_names("msr")
+
+        self.assertEqual(("hero_closeup", "front", "left", "back"), actor_views)
+        self.assertEqual(("hero",), location_views)
 
     def test_load_reference_subjects_falls_back_to_legacy_subject(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -149,5 +155,6 @@ class ReferenceBibleToolTests(unittest.TestCase):
             printed = record_console.export_text()
             self.assertIn("Reference Bible render plan", printed)
             self.assertIn("Actors: 1", printed)
-            self.assertIn("Total renders: 1", printed)
-            self.assertEqual(("hero",), generator_factory.call_args.kwargs["view_names"])
+            self.assertIn("Total renders: 4", printed)
+            self.assertEqual(("hero_closeup", "front", "left", "back"), generator_factory.call_args.kwargs["actor_view_names"])
+            self.assertEqual(("hero",), generator_factory.call_args.kwargs["location_view_names"])
