@@ -1,0 +1,286 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "Flux2-Klein-4b-base",
+      "images": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "#SAVE_IMAGE"
+    }
+  },
+  "76": {
+    "inputs": {
+      "image": "Helmet.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#IMAGE_1"
+    }
+  },
+  "131": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "132": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "133": {
+    "inputs": {
+      "steps": 20,
+      "width": [
+        "145",
+        0
+      ],
+      "height": [
+        "145",
+        1
+      ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+      "title": "Flux2Scheduler"
+    }
+  },
+  "134": {
+    "inputs": {
+      "cfg": 5,
+      "model": [
+        "138",
+        0
+      ],
+      "positive": [
+        "148",
+        0
+      ],
+      "negative": [
+        "146",
+        0
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG Guider"
+    }
+  },
+  "135": {
+    "inputs": {
+      "noise": [
+        "137",
+        0
+      ],
+      "guider": [
+        "134",
+        0
+      ],
+      "sampler": [
+        "132",
+        0
+      ],
+      "sigmas": [
+        "133",
+        0
+      ],
+      "latent_image": [
+        "143",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "136": {
+    "inputs": {
+      "samples": [
+        "135",
+        0
+      ],
+      "vae": [
+        "142",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "137": {
+    "inputs": {
+      "noise_seed": 192774551144773
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "138": {
+    "inputs": {
+      "unet_name": "flux-2-klein-base-9b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "139": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "140": {
+    "inputs": {
+      "text": "Change the camera angle to a first-person driver's perspective looking through the steering wheel at the dashboard and windshield, maintaining the same white minimalist interior style and lighting\n",
+      "clip": [
+        "139",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "#PROMPT_POSITIVE"
+    }
+  },
+  "141": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "139",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "#PROMPT_NEGATIVE"
+    }
+  },
+  "142": {
+    "inputs": {
+      "vae_name": "full_encoder_small_decoder.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "143": {
+    "inputs": {
+      "width": [
+        "145",
+        0
+      ],
+      "height": [
+        "145",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Empty Flux 2 Latent"
+    }
+  },
+  "144": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.5,
+      "resolution_steps": 1,
+      "image": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "Scale Image to Total Pixels"
+    }
+  },
+  "145": {
+    "inputs": {
+      "image": [
+        "144",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "146": {
+    "inputs": {
+      "conditioning": [
+        "141",
+        0
+      ],
+      "latent": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "147": {
+    "inputs": {
+      "pixels": [
+        "144",
+        0
+      ],
+      "vae": [
+        "142",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "148": {
+    "inputs": {
+      "conditioning": [
+        "140",
+        0
+      ],
+      "latent": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  }
+}
