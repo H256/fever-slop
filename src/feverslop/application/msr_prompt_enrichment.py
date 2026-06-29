@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import json
 import re
 
@@ -14,12 +14,19 @@ def enrich_render_plan_with_msr_prompts(
     output_path: str | Path,
     *,
     llm: LLMPort | None = None,
+    on_scene_complete: Callable[[int, int, int], None] | None = None,
 ) -> Path:
     render_plan_path = Path(render_plan_path)
     output_path = Path(output_path)
     render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
 
-    enriched = [enrich_scene_with_msr_prompts(scene, llm=llm) for scene in render_plan]
+    enriched = []
+    total = len(render_plan)
+    for index, scene in enumerate(render_plan, start=1):
+        enriched_scene = enrich_scene_with_msr_prompts(scene, llm=llm)
+        enriched.append(enriched_scene)
+        if on_scene_complete is not None:
+            on_scene_complete(int(scene.get("scene", index)), index, total)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(enriched, ensure_ascii=False, indent=2), encoding="utf-8")

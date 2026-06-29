@@ -295,13 +295,17 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             use_case = Mock()
             use_case.execute.return_value = []
 
-            def enrich(input_plan, references_dir, output_plan):
+            def enrich(input_plan, references_dir, output_plan, on_scene_complete=None):
+                self.assertIsNotNone(on_scene_complete)
                 refs_plan.write_text(json.dumps([{"scene": 1, "references": {}}]), encoding="utf-8")
+                on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
-            def enrich_msr(input_plan, output_plan, *, llm):
+            def enrich_msr(input_plan, output_plan, *, llm, on_scene_complete=None):
                 self.assertIsNotNone(llm)
+                self.assertIsNotNone(on_scene_complete)
                 msr_plan.write_text(json.dumps([{"scene": 1, "ltx": {"msr_prompt_relay": []}}]), encoding="utf-8")
+                on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
             with patch("feverslop.composition.pipeline_runner.build_render_storyboard_use_case") as storyboard_builder, \
@@ -315,10 +319,14 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         storyboard_builder.assert_not_called()
         storyboard_page.assert_not_called()
         reference_bible.assert_called_once()
-        enrich_refs.assert_called_once_with(base_plan, project_dir / "output" / "references", refs_plan)
+        self.assertEqual(base_plan, enrich_refs.call_args.args[0])
+        self.assertEqual(project_dir / "output" / "references", enrich_refs.call_args.args[1])
+        self.assertEqual(refs_plan, enrich_refs.call_args.args[2])
+        self.assertIn("on_scene_complete", enrich_refs.call_args.kwargs)
         enrich_msr_prompts.assert_called_once()
         self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[0])
         self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[1])
+        self.assertIn("on_scene_complete", enrich_msr_prompts.call_args.kwargs)
         self.assertEqual(refs_plan, result.render_plan_path)
         options = video_builder.call_args.args[0]
         request = use_case.execute.call_args.args[0]
@@ -421,7 +429,11 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 ]
             )
 
-            def enrich(_input_plan, _references_dir, output_plan):
+            def enrich(_input_plan, _references_dir, output_plan, on_scene_complete=None):
+                if on_scene_complete is not None:
+                    on_scene_complete(1, 1, 3)
+                    on_scene_complete(2, 2, 3)
+                    on_scene_complete(3, 3, 3)
                 return Path(output_plan)
 
             postprocessor = Mock()

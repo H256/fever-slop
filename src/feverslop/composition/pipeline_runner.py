@@ -352,11 +352,14 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             console.print("Skipping MSR reference rendering; using existing reference manifests.")
 
         write_step("Enriching render plan with MSR references")
-        plan_for_next_step = enrich_render_plan_with_reference_sheets(
-            plan_for_next_step,
-            context.references_dir,
-            context.reference_plan,
-        )
+        msr_reference_total = count_render_plan_items(plan_for_next_step)
+        with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
+            plan_for_next_step = enrich_render_plan_with_reference_sheets(
+                plan_for_next_step,
+                context.references_dir,
+                context.reference_plan,
+                on_scene_complete=_scene_progress_callback(reference_progress),
+            )
         write_step("Enriching render plan with MSR prompts")
         app_config = AppConfig.load(app_config_path)
         llm = OpenAICompatibleLLMClient(
@@ -365,11 +368,14 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             temperature=app_config.llm.temperature,
             max_tokens=app_config.llm.max_tokens,
         )
-        plan_for_next_step = enrich_render_plan_with_msr_prompts(
-            plan_for_next_step,
-            context.reference_plan,
-            llm=llm,
-        )
+        msr_prompt_total = count_render_plan_items(plan_for_next_step)
+        with RenderProgressReporter("Enriching MSR prompts", msr_prompt_total) as msr_prompt_progress:
+            plan_for_next_step = enrich_render_plan_with_msr_prompts(
+                plan_for_next_step,
+                context.reference_plan,
+                llm=llm,
+                on_scene_complete=_scene_progress_callback(msr_prompt_progress),
+            )
 
     if not args.skip_ltx:
         write_step("Rendering LTX")
@@ -468,6 +474,13 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
 
 def run_unittest_suite() -> None:
     subprocess.run(["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"], check=True)
+
+
+def _scene_progress_callback(progress: RenderProgressReporter):
+    def update(scene_number: int, completed: int, total: int) -> None:
+        progress.update(Path(f"scene_{scene_number:04}.json"), completed, total)
+
+    return update
 
 
 def write_step(message: str) -> None:

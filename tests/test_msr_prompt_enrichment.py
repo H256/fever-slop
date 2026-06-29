@@ -166,6 +166,36 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             self.assertIn("The wolf lowers its head", relay["prompt"])
             self.assertNotIn("lip sync", relay["prompt"].lower())
 
+    def test_reports_progress_per_scene(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            input_plan = temp / "render_plan_refs.json"
+            output_plan = temp / "render_plan_refs.json"
+            input_plan.write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "references": {"actor_reference_descriptions": [{"name": "Mara"}]},
+                        "ltx": {"prompt_relay": []},
+                    },
+                    {
+                        "scene": 2,
+                        "references": {"actor_reference_descriptions": [{"name": "Mara"}]},
+                        "ltx": {"prompt_relay": []},
+                    },
+                ]),
+                encoding="utf-8",
+            )
+            events = []
+
+            enrich_render_plan_with_msr_prompts(
+                input_plan,
+                output_plan,
+                on_scene_complete=lambda scene, completed, total: events.append((scene, completed, total)),
+            )
+
+            self.assertEqual([(1, 1, 2), (2, 2, 2)], events)
+
 
 if __name__ == "__main__":
     unittest.main()

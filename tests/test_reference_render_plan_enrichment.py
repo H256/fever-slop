@@ -67,3 +67,51 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             self.assertEqual("Mara", enriched[0]["references"]["actor_reference_descriptions"][0]["name"])
             self.assertEqual("lead singer", enriched[0]["references"]["actor_reference_descriptions"][0]["role"])
             self.assertEqual("Mirror Stage", enriched[0]["references"]["location_reference_description"]["name"])
+
+    def test_reports_progress_per_scene(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor_dir = temp / "actors" / "singer"
+            location_dir = temp / "locations" / "stage"
+            actor_dir.mkdir(parents=True)
+            location_dir.mkdir(parents=True)
+            actor_sheet = actor_dir / "sheet.png"
+            location_sheet = location_dir / "sheet.png"
+            actor_sheet.write_bytes(b"actor")
+            location_sheet.write_bytes(b"location")
+            (actor_dir / "manifest.json").write_text(
+                json.dumps({
+                    "id": "singer",
+                    "name": "Mara",
+                    "kind": "actor",
+                    "sheet_path": str(actor_sheet),
+                }),
+                encoding="utf-8",
+            )
+            (location_dir / "manifest.json").write_text(
+                json.dumps({
+                    "id": "stage",
+                    "name": "Mirror Stage",
+                    "kind": "location",
+                    "sheet_path": str(location_sheet),
+                }),
+                encoding="utf-8",
+            )
+            render_plan_path = temp / "render_plan.json"
+            render_plan_path.write_text(
+                json.dumps([
+                    {"scene": 1, "references": {"actor_ids": ["singer"], "location_id": "stage"}},
+                    {"scene": 2, "references": {"actor_ids": ["singer"], "location_id": "stage"}},
+                ]),
+                encoding="utf-8",
+            )
+            events = []
+
+            enrich_render_plan_with_reference_sheets(
+                render_plan_path,
+                temp,
+                temp / "render_plan_refs.json",
+                on_scene_complete=lambda scene, completed, total: events.append((scene, completed, total)),
+            )
+
+            self.assertEqual([(1, 1, 2), (2, 2, 2)], events)

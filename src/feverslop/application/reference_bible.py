@@ -299,6 +299,7 @@ def enrich_render_plan_with_reference_sheets(
     render_plan_path: str | Path,
     references_dir: str | Path,
     output_path: str | Path,
+    on_scene_complete: Callable[[int, int, int], None] | None = None,
 ) -> Path:
     render_plan_path = Path(render_plan_path)
     references_dir = Path(references_dir)
@@ -307,7 +308,8 @@ def enrich_render_plan_with_reference_sheets(
     actor_manifests = _load_manifests_by_id(references_dir / "actors")
     location_manifests = _load_manifests_by_id(references_dir / "locations")
 
-    for scene in render_plan:
+    total = len(render_plan)
+    for index, scene in enumerate(render_plan, start=1):
         references = scene.setdefault("references", {})
         actor_ids = list(references.get("actor_ids") or [])
         if len(actor_ids) > 4:
@@ -332,6 +334,8 @@ def enrich_render_plan_with_reference_sheets(
                 location_manifests[str(location_id)]["sheet_path"],
             )
             references["location_reference_description"] = _reference_description(location_manifests[str(location_id)])
+        if on_scene_complete is not None:
+            on_scene_complete(int(scene.get("scene", index)), index, total)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(render_plan, ensure_ascii=False, indent=2), encoding="utf-8")
