@@ -54,6 +54,13 @@ class FakePostProcessor:
         return spec.output_file
 
 
+class FakeModelResolver:
+    def resolve_workflow_models(self, workflow, workflow_path=None):
+        workflow = json.loads(json.dumps(workflow))
+        workflow["8"]["inputs"]["lora_name"] = "loras/LTX-2.3-Licon-MSR-V1.safetensors"
+        return workflow
+
+
 class LTXMSRVideoBackendTests(unittest.TestCase):
     def test_backend_patches_msr_references_and_prompt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -673,3 +680,66 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(24, trim_spec.fps)
             self.assertEqual(6, trim_spec.trim_front_frames)
             self.assertEqual(49, trim_spec.keep_frames)
+
+    def test_debug_workflow_is_written_after_model_resolution(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            audio = temp / "song.mp3"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            audio.write_bytes(b"audio")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "8": {
+                        "inputs": {"lora_name": "LTX-2.3-Licon-MSR-V1.safetensors"},
+                        "class_type": "LTXICLoRALoaderModelOnly",
+                        "_meta": {"title": "#MSR_LORA"},
+                    },
+                }),
+                encoding="utf-8",
+            )
+            render_queue = FakeRenderQueue()
+            debug_dir = temp / "debug"
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                postprocess=False,
+                render_queue=render_queue,
+                model_resolver=FakeModelResolver(),
+                debug_workflows_dir=debug_dir,
+            )
+
+            backend.render_video(
+                VideoRenderRequest(
+                    scene={
+                        "scene": 2,
+                        "fps": 24,
+                        "frame_count": 49,
+                        "references": {
+                            "actor_msr_paths": [str(actor)],
+                            "location_msr_path": str(location),
+                        },
+                    },
+                    scene_number=2,
+                    prompt="prompt",
+                    workflow_path=workflow,
+                    output_dir=temp / "out",
+                    audio_file=audio,
+                    storyboard_dir=temp,
+                )
+            )
+
+            debug_workflow = json.loads((debug_dir / "scene_0002_workflow.json").read_text(encoding="utf-8"))
+            self.assertEqual("loras/LTX-2.3-Licon-MSR-V1.safetensors", debug_workflow["8"]["inputs"]["lora_name"])
+            self.assertEqual(
+                "loras/LTX-2.3-Licon-MSR-V1.safetensors",
+                render_queue.calls[0]["workflow"]["8"]["inputs"]["lora_name"],
+            )

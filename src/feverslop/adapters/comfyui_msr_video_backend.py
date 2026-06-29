@@ -80,6 +80,7 @@ class ComfyUIMSRVideoRenderBackend:
             rolling=rolling,
         )
         workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_path)
+        self._write_debug_workflow(scene_number, workflow)
         self.raw_output_dir.mkdir(parents=True, exist_ok=True)
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
@@ -140,14 +141,16 @@ class ComfyUIMSRVideoRenderBackend:
         if comfy_audio_name:
             self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name, rolling=rolling)
 
-        workflow = patcher.get()
-        if self.debug_workflows_dir:
-            self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
-            (self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json").write_text(
-                json.dumps(workflow, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        return workflow
+        return patcher.get()
+
+    def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
+        if self.debug_workflows_dir is None:
+            return
+        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
+        (self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json").write_text(
+            json.dumps(workflow, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def _patch_actor_reference_inputs(self, patcher: WorkflowPatcher, actor_paths: list[Path]) -> None:
         for index, actor_path in enumerate(actor_paths, start=1):
