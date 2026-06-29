@@ -17,6 +17,7 @@ from feverslop.domain.ltx_rendering import (
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
 )
+from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -42,12 +43,14 @@ class ComfyUIMSRVideoRenderBackend:
         render_queue: ComfyUIRenderQueue | None = None,
         postprocessor: VideoPostProcessor | None = None,
         model_resolver=None,
+        project_dir: str | Path | None = None,
     ):
         if int(msr_frame_count) not in {17, 25, 33, 41}:
             raise ValueError("msr_frame_count must be one of 17, 25, 33, 41")
         self.client = client
         self.workflow_path = Path(workflow_path)
         self.output_dir = Path(output_dir)
+        self.project_dir = Path(project_dir) if project_dir is not None else None
         self.raw_output_dir = self.output_dir / "raw"
         self.seed_offset = int(seed_offset)
         self.randomize_seed = bool(randomize_seed)
@@ -118,7 +121,7 @@ class ComfyUIMSRVideoRenderBackend:
         render_frame_count = int(rolling["render_frame_count"]) if rolling else int(scene.get("frame_count", 0) or 0)
         references = scene.get("references") or {}
         actor_reference_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths", [])
-        actor_paths = [Path(path) for path in actor_reference_paths]
+        actor_paths = [self._resolve_project_path(path) for path in actor_reference_paths]
         if not actor_paths:
             raise ValueError(f"Scene {scene_number} references at least 1 actor for ltx_msr")
         if len(actor_paths) > 4:
@@ -126,6 +129,7 @@ class ComfyUIMSRVideoRenderBackend:
         location_path = references.get("location_msr_path") or references.get("location_sheet_path")
         if not location_path:
             raise ValueError(f"Scene {scene_number} is missing references.location_msr_path")
+        location_path = self._resolve_project_path(location_path)
 
         patcher = WorkflowPatcher(self.load_workflow())
         self._patch_actor_reference_inputs(patcher, actor_paths)
@@ -293,6 +297,11 @@ class ComfyUIMSRVideoRenderBackend:
         if self.randomize_seed:
             return random.randint(0, 2**63 - 1)
         return self.seed_offset + int(scene_number)
+
+    def _resolve_project_path(self, path: str | Path) -> Path:
+        if self.project_dir is None:
+            return coerce_local_path(path)
+        return coerce_local_path(path, base_dir=self.project_dir)
 
     @staticmethod
     def _patch_seed_inputs(patcher: WorkflowPatcher, seed: int) -> None:

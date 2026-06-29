@@ -54,6 +54,7 @@ class ReferenceBibleGenerator:
         self.edit_anchors = edit_anchors
         self.on_view_complete = on_view_complete
         self.output_dir = Path(output_dir)
+        self.artifact_base_dir = _infer_reference_artifact_base_dir(self.output_dir)
         self.view_names = tuple(view_names or self.view_names)
         self.actor_view_names = tuple(actor_view_names or view_names or self.view_names)
         self.location_view_names = tuple(location_view_names or view_names or self.view_names)
@@ -89,7 +90,7 @@ class ReferenceBibleGenerator:
                 target.write_bytes(Path(rendered).read_bytes())
             if is_first_reference:
                 hero_path = target
-            views.append({"name": view_name, "path": str(target)})
+            views.append({"name": view_name, "path": self._artifact_path(target)})
             self._report_view_complete(
                 kind="actor",
                 item_id=subject.id,
@@ -100,10 +101,11 @@ class ReferenceBibleGenerator:
             )
 
         sheet_path = subject_dir / "sheet.png"
-        compose_reference_sheet([Path(view["path"]) for view in views], sheet_path, labels=False)
+        view_paths = [subject_dir / "views" / f"{view_name}.png" for view_name in self.actor_view_names]
+        compose_reference_sheet(view_paths, sheet_path, labels=False)
         msr_sheet_path = subject_dir / "msr_sheet.png"
         compose_msr_reference_sheet(
-            [Path(view["path"]) for view in views],
+            view_paths,
             msr_sheet_path,
             size=self.msr_sheet_size,
         )
@@ -111,8 +113,8 @@ class ReferenceBibleGenerator:
             **asdict(subject),
             "kind": "actor",
             "views": views,
-            "msr_input_path": str(msr_sheet_path if len(views) > 1 else hero_path),
-            "sheet_path": str(sheet_path),
+            "msr_input_path": self._artifact_path(msr_sheet_path if len(views) > 1 else hero_path),
+            "sheet_path": self._artifact_path(sheet_path),
         }
         manifest_path = subject_dir / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -146,7 +148,7 @@ class ReferenceBibleGenerator:
                 target.write_bytes(Path(rendered).read_bytes())
             if view_name == "hero":
                 hero_path = target
-            views.append({"name": view_name, "path": str(target)})
+            views.append({"name": view_name, "path": self._artifact_path(target)})
             self._report_view_complete(
                 kind="location",
                 item_id=location.id,
@@ -157,13 +159,14 @@ class ReferenceBibleGenerator:
             )
 
         sheet_path = location_dir / "sheet.png"
-        compose_reference_sheet([Path(view["path"]) for view in views], sheet_path)
+        view_paths = [location_dir / "views" / f"{view_name}.png" for view_name in self.location_view_names]
+        compose_reference_sheet(view_paths, sheet_path)
         manifest = {
             **asdict(location),
             "kind": "location",
             "views": views,
-            "msr_background_path": str(hero_path),
-            "sheet_path": str(sheet_path),
+            "msr_background_path": self._artifact_path(hero_path),
+            "sheet_path": self._artifact_path(sheet_path),
         }
         manifest_path = location_dir / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -203,6 +206,15 @@ class ReferenceBibleGenerator:
     def _location_view_prompt(location: ReferenceLocation, view_name: str) -> str:
         base = location.image_prompt or location.visual_description or location.name
         return f"{base}. Environment reference {view_name} view of {location.name}."
+
+    def _artifact_path(self, path: str | Path | None) -> str:
+        if path is None:
+            return ""
+        path = Path(path)
+        try:
+            return path.relative_to(self.artifact_base_dir).as_posix()
+        except ValueError:
+            return path.as_posix()
 
     def _report_view_complete(
         self,
@@ -295,6 +307,12 @@ def reference_sheet_columns(*, width: int, height: int, image_count: int) -> int
     return image_count
 
 
+def _infer_reference_artifact_base_dir(output_dir: Path) -> Path:
+    if output_dir.name == "references" and output_dir.parent.name == "output":
+        return output_dir.parent.parent
+    return output_dir
+
+
 def enrich_render_plan_with_reference_sheets(
     render_plan_path: str | Path,
     references_dir: str | Path,
@@ -315,11 +333,11 @@ def enrich_render_plan_with_reference_sheets(
         if len(actor_ids) > 4:
             raise ValueError(f"Scene {scene.get('scene')} references at most 4 actors for ltx_msr")
         references["actor_sheet_paths"] = [
-            actor_manifests[actor_id]["sheet_path"]
+            _portable_manifest_path(actor_manifests[actor_id], "sheet_path", references_dir)
             for actor_id in actor_ids
         ]
         references["actor_msr_paths"] = [
-            actor_manifests[actor_id].get("msr_input_path", actor_manifests[actor_id]["sheet_path"])
+            _portable_manifest_path(actor_manifests[actor_id], "msr_input_path", references_dir, fallback_key="sheet_path")
             for actor_id in actor_ids
         ]
         references["actor_reference_descriptions"] = [
@@ -328,10 +346,13 @@ def enrich_render_plan_with_reference_sheets(
         ]
         location_id = references.get("location_id")
         if location_id:
-            references["location_sheet_path"] = location_manifests[str(location_id)]["sheet_path"]
-            references["location_msr_path"] = location_manifests[str(location_id)].get(
+            location_manifest = location_manifests[str(location_id)]
+            references["location_sheet_path"] = _portable_manifest_path(location_manifest, "sheet_path", references_dir)
+            references["location_msr_path"] = _portable_manifest_path(
+                location_manifest,
                 "msr_background_path",
-                location_manifests[str(location_id)]["sheet_path"],
+                references_dir,
+                fallback_key="sheet_path",
             )
             references["location_reference_description"] = _reference_description(location_manifests[str(location_id)])
         if on_scene_complete is not None:
@@ -350,6 +371,27 @@ def _load_manifests_by_id(root: Path) -> dict[str, dict]:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         manifests[str(manifest["id"])] = manifest
     return manifests
+
+
+def _portable_manifest_path(
+    manifest: dict,
+    key: str,
+    references_dir: Path,
+    *,
+    fallback_key: str | None = None,
+) -> str:
+    value = str(manifest.get(key) or manifest.get(fallback_key or "") or "").strip()
+    if not value:
+        return ""
+    normalized = value.replace("\\", "/")
+    path = Path(value)
+    project_base = _infer_reference_artifact_base_dir(references_dir)
+    if path.is_absolute():
+        try:
+            return path.relative_to(project_base).as_posix()
+        except ValueError:
+            return path.as_posix()
+    return normalized
 
 
 def _reference_description(manifest: dict) -> dict:

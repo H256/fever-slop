@@ -29,7 +29,8 @@ class FakeImageBackend:
 class ReferenceBibleTests(unittest.TestCase):
     def test_generator_writes_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir)
+            project_dir = Path(temp_dir) / "project"
+            output_dir = project_dir / "output" / "references"
             generator = ReferenceBibleGenerator(backend=FakeImageBackend(), output_dir=output_dir)
 
             manifest_path = generator.generate_subject_bible(
@@ -45,8 +46,9 @@ class ReferenceBibleTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual("singer", manifest["id"])
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
-            self.assertEqual(str(manifest_path.parent / "msr_sheet.png"), manifest["msr_input_path"])
-            self.assertEqual(str(manifest_path.parent / "sheet.png"), manifest["sheet_path"])
+            self.assertEqual("output/references/actors/singer/msr_sheet.png", manifest["msr_input_path"])
+            self.assertEqual("output/references/actors/singer/sheet.png", manifest["sheet_path"])
+            self.assertEqual("output/references/actors/singer/views/hero.png", manifest["views"][0]["path"])
             self.assertEqual(["hero", "front", "left", "right", "closeup"], [view["name"] for view in manifest["views"]])
 
     def test_generator_uses_hero_as_reference_for_edit_views(self):
@@ -119,7 +121,8 @@ class ReferenceBibleTests(unittest.TestCase):
 
     def test_generator_writes_msr_actor_sheet_as_reference_input(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir)
+            project_dir = Path(temp_dir) / "project"
+            output_dir = project_dir / "output" / "references"
             hero_backend = FakeImageBackend()
             edit_backend = FakeImageBackend()
             generator = ReferenceBibleGenerator(
@@ -140,13 +143,14 @@ class ReferenceBibleTests(unittest.TestCase):
                 ["hero_closeup", "front", "left", "back"],
                 [view["name"] for view in manifest["views"]],
             )
-            self.assertEqual(str(manifest_path.parent / "msr_sheet.png"), manifest["msr_input_path"])
+            self.assertEqual("output/references/actors/warrior/msr_sheet.png", manifest["msr_input_path"])
             with Image.open(manifest_path.parent / "msr_sheet.png") as sheet:
                 self.assertEqual((1280, 704), sheet.size)
 
     def test_generator_writes_location_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir)
+            project_dir = Path(temp_dir) / "project"
+            output_dir = project_dir / "output" / "references"
             generator = ReferenceBibleGenerator(backend=FakeImageBackend(), output_dir=output_dir)
 
             manifest_path = generator.generate_location_bible(
@@ -162,7 +166,7 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("location", manifest["kind"])
             self.assertEqual("stage", manifest["id"])
             self.assertTrue((manifest_path.parent / "sheet.png").exists())
-            self.assertEqual(str(manifest_path.parent / "views" / "hero.png"), manifest["msr_background_path"])
+            self.assertEqual("output/references/locations/stage/views/hero.png", manifest["msr_background_path"])
 
     def test_generator_requests_wide_full_hd_location_hero(self):
         with tempfile.TemporaryDirectory() as temp_dir:

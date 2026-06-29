@@ -11,11 +11,13 @@ from feverslop.ports.rendering import VideoRenderRequest
 class FakeClient:
     def __init__(self):
         self.uploaded = []
+        self.uploaded_paths = []
         self.queued_workflow = None
 
     def upload_image(self, path, subfolder, file_type, overwrite, upload_name=None):
         name = upload_name or Path(path).name
         self.uploaded.append(name)
+        self.uploaded_paths.append(Path(path))
         return {"name": name, "subfolder": subfolder, "type": file_type}
 
     def upload_file_via_image_endpoint(self, path, subfolder, file_type, overwrite, upload_name):
@@ -117,6 +119,57 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(17, client.queued_workflow["3"]["inputs"]["frame_count"])
             self.assertEqual("video prompt", client.queued_workflow["4"]["inputs"]["text"])
             self.assertEqual(100007, client.queued_workflow["5"]["inputs"]["noise_seed"])
+
+    def test_backend_resolves_project_relative_msr_reference_paths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir) / "project"
+            actor = project / "output" / "references" / "actors" / "dwarf" / "msr_sheet.png"
+            location = project / "output" / "references" / "locations" / "cavern" / "views" / "hero.png"
+            actor.parent.mkdir(parents=True)
+            location.parent.mkdir(parents=True)
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = project / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            client = FakeClient()
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=client,
+                workflow_path=workflow,
+                output_dir=project / "output" / "render" / "ltx_msr",
+                project_dir=project,
+                postprocess=False,
+            )
+
+            backend.render_video(
+                VideoRenderRequest(
+                    scene={
+                        "scene": 1,
+                        "fps": 24,
+                        "frame_count": 25,
+                        "ltx": {"original_style_i2v_prompt": "video prompt"},
+                        "references": {
+                            "actor_msr_paths": ["output/references/actors/dwarf/msr_sheet.png"],
+                            "location_msr_path": "output/references/locations/cavern/views/hero.png",
+                        },
+                    },
+                    scene_number=1,
+                    prompt="video prompt",
+                    workflow_path=workflow,
+                    output_dir=project / "output" / "render" / "ltx_msr",
+                    audio_file=project / "input" / "song.mp3",
+                    storyboard_dir=project / "output" / "storyboard",
+                )
+            )
+
+            self.assertEqual([actor, location], client.uploaded_paths)
 
     def test_backend_randomizes_seed_when_requested(self):
         with tempfile.TemporaryDirectory() as temp_dir:

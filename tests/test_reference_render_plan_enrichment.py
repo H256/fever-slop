@@ -9,7 +9,8 @@ from feverslop.application.reference_bible import enrich_render_plan_with_refere
 class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
     def test_enriches_reference_ids_with_sheet_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp = Path(temp_dir)
+            project = Path(temp_dir) / "project"
+            temp = project / "output" / "references"
             actor_dir = temp / "actors" / "singer"
             location_dir = temp / "locations" / "stage"
             actor_dir.mkdir(parents=True)
@@ -32,8 +33,8 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
                     "visual_description": "silver-haired singer in a red coat",
                     "image_prompt": "character sheet of Mara",
                     "kind": "actor",
-                    "sheet_path": str(actor_sheet),
-                    "msr_input_path": str(actor_msr),
+                    "sheet_path": "output/references/actors/singer/sheet.png",
+                    "msr_input_path": "output/references/actors/singer/views/hero.png",
                 }),
                 encoding="utf-8",
             )
@@ -44,12 +45,13 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
                     "visual_description": "black mirror stage with neon rain",
                     "image_prompt": "wide mirror stage",
                     "kind": "location",
-                    "sheet_path": str(location_sheet),
-                    "msr_background_path": str(location_msr),
+                    "sheet_path": "output/references/locations/stage/sheet.png",
+                    "msr_background_path": "output/references/locations/stage/views/hero.png",
                 }),
                 encoding="utf-8",
             )
-            render_plan_path = temp / "render_plan.json"
+            render_plan_path = project / "output" / "render" / "render_plan.json"
+            render_plan_path.parent.mkdir(parents=True)
             render_plan_path.write_text(
                 json.dumps([
                     {"scene": 1, "references": {"actor_ids": ["singer"], "location_id": "stage"}}
@@ -60,10 +62,10 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             output_path = enrich_render_plan_with_reference_sheets(render_plan_path, temp, temp / "render_plan_refs.json")
 
             enriched = json.loads(output_path.read_text(encoding="utf-8"))
-            self.assertEqual([str(actor_sheet)], enriched[0]["references"]["actor_sheet_paths"])
-            self.assertEqual(str(location_sheet), enriched[0]["references"]["location_sheet_path"])
-            self.assertEqual([str(actor_msr)], enriched[0]["references"]["actor_msr_paths"])
-            self.assertEqual(str(location_msr), enriched[0]["references"]["location_msr_path"])
+            self.assertEqual(["output/references/actors/singer/sheet.png"], enriched[0]["references"]["actor_sheet_paths"])
+            self.assertEqual("output/references/locations/stage/sheet.png", enriched[0]["references"]["location_sheet_path"])
+            self.assertEqual(["output/references/actors/singer/views/hero.png"], enriched[0]["references"]["actor_msr_paths"])
+            self.assertEqual("output/references/locations/stage/views/hero.png", enriched[0]["references"]["location_msr_path"])
             self.assertEqual("Mara", enriched[0]["references"]["actor_reference_descriptions"][0]["name"])
             self.assertEqual("lead singer", enriched[0]["references"]["actor_reference_descriptions"][0]["role"])
             self.assertEqual("Mirror Stage", enriched[0]["references"]["location_reference_description"]["name"])
