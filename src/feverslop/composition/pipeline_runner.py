@@ -197,6 +197,31 @@ def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> P
     return concat_file
 
 
+def collect_render_plan_scene_clips(render_plan_path: str | Path, output_dir: str | Path) -> list[Path]:
+    output_dir = Path(output_dir)
+    render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    clips: list[Path] = []
+    missing: list[Path] = []
+    for scene in render_plan:
+        scene_number = int(scene["scene"])
+        candidates = [
+            output_dir / f"scene_{scene_number:04}.mp4",
+            output_dir / "final" / f"scene_{scene_number:04}.mp4",
+        ]
+        clip = next((candidate for candidate in candidates if candidate.exists()), None)
+        if clip is None:
+            missing.append(candidates[0])
+            continue
+        clips.append(clip)
+
+    if missing:
+        raise FileNotFoundError(
+            "Cannot build final concat; missing rendered scene clips: "
+            + ", ".join(str(path) for path in missing[:10])
+        )
+    return clips
+
+
 def count_render_plan_items(render_plan_path: str | Path, scene_numbers: set[int] | None = None, limit: int | None = None) -> int:
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
     if scene_numbers is not None:
@@ -368,7 +393,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
         ltx_scene_numbers = {args.smoke_scene} if args.smoke_only else None
         ltx_total = count_render_plan_items(plan_for_next_step, scene_numbers=ltx_scene_numbers)
         with RenderProgressReporter("Rendering LTX scenes", ltx_total) as ltx_progress:
-            rendered_ltx_clips = video_use_case.execute(
+            video_use_case.execute(
                 RenderVideoScenesRequest(
                     render_plan_path=plan_for_next_step,
                     workflow_path=ltx_workflow,
@@ -386,11 +411,10 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                     on_scene_complete=ltx_progress.update,
                 )
             )
-        rewrite_concat_list(rendered_ltx_clips, context.ltx_dir)
-
     video_only_path = None
     final_video_path = None
-    if not args.skip_final_concat and context.concat_list.exists():
+    if not args.skip_final_concat:
+        rewrite_concat_list(collect_render_plan_scene_clips(plan_for_next_step, context.ltx_dir), context.ltx_dir)
         postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
         write_step("Final FFmpeg video-only concat")
         video_only_path = postprocessor.concat_clips(

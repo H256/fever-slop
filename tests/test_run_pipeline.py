@@ -316,7 +316,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         self.assertEqual(refs_plan, options.render_plan_path)
         self.assertEqual(refs_plan, request.render_plan_path)
 
-    def test_ltx_resume_rewrites_concat_list_from_all_returned_clips_before_final_concat(self):
+    def test_ltx_resume_rewrites_concat_list_from_full_render_plan_before_final_concat(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"
             project_dir.mkdir()
@@ -328,12 +328,17 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             render_dir = project_dir / "output" / "render"
             render_dir.mkdir(parents=True)
             plan_path = render_dir / "render_plan_song.json"
-            plan_path.write_text("[]", encoding="utf-8")
+            plan_path.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                encoding="utf-8",
+            )
             clip_1 = render_dir / "ltx_single_prompt" / "final" / "scene_0001.mp4"
             clip_2 = render_dir / "ltx_single_prompt" / "final" / "scene_0002.mp4"
+            clip_3 = render_dir / "ltx_single_prompt" / "final" / "scene_0003.mp4"
             clip_1.parent.mkdir(parents=True)
             clip_1.write_bytes(b"clip 1")
             clip_2.write_bytes(b"clip 2")
+            clip_3.write_bytes(b"clip 3")
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
@@ -347,7 +352,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             )
 
             use_case = Mock()
-            use_case.execute.return_value = [clip_1, clip_2]
+            use_case.execute.return_value = [clip_2]
             postprocessor = Mock()
             postprocessor.concat_clips.return_value = render_dir / "ltx_single_prompt" / "Song_video_only.mp4"
             postprocessor.mux_original_audio.return_value = render_dir / "ltx_single_prompt" / "Song.mp4"
@@ -360,6 +365,68 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 [
                     f"file '{clip_1.resolve().as_posix()}'",
                     f"file '{clip_2.resolve().as_posix()}'",
+                    f"file '{clip_3.resolve().as_posix()}'",
+                ],
+                concat_list.read_text(encoding="utf-8").splitlines(),
+            )
+
+    def test_ltx_msr_skip_ltx_rewrites_concat_list_from_existing_scene_clips(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            plan_path = render_dir / "render_plan_song_refs.json"
+            plan_path.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                encoding="utf-8",
+            )
+            base_plan = render_dir / "render_plan_song.json"
+            base_plan.write_text(json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]), encoding="utf-8")
+            clip_1 = render_dir / "ltx_msr" / "scene_0001.mp4"
+            clip_2 = render_dir / "ltx_msr" / "scene_0002.mp4"
+            clip_3 = render_dir / "ltx_msr" / "scene_0003.mp4"
+            clip_1.parent.mkdir(parents=True)
+            clip_1.write_bytes(b"clip 1")
+            clip_2.write_bytes(b"clip 2")
+            clip_3.write_bytes(b"clip 3")
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-storyboard",
+                    "--skip-storyboard-page",
+                    "--skip-msr-reference-render",
+                    "--skip-ltx",
+                ]
+            )
+
+            def enrich(_input_plan, _references_dir, output_plan):
+                return Path(output_plan)
+
+            postprocessor = Mock()
+            postprocessor.concat_clips.return_value = render_dir / "ltx_msr" / "Song_video_only.mp4"
+            postprocessor.mux_original_audio.return_value = render_dir / "ltx_msr" / "Song.mp4"
+            with patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_reference_sheets", side_effect=enrich), \
+                patch("feverslop.composition.pipeline_runner.VideoPostProcessor", return_value=postprocessor):
+                run_pipeline.run(args)
+
+            concat_list = render_dir / "ltx_msr" / "concat_list.txt"
+            self.assertEqual(
+                [
+                    f"file '{clip_1.resolve().as_posix()}'",
+                    f"file '{clip_2.resolve().as_posix()}'",
+                    f"file '{clip_3.resolve().as_posix()}'",
                 ],
                 concat_list.read_text(encoding="utf-8").splitlines(),
             )
