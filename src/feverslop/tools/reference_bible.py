@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
@@ -153,14 +153,17 @@ def run(args: argparse.Namespace) -> list[Path]:
     manifests: list[Path] = []
     current_task_id = None
 
-    with Progress(
-        SpinnerColumn(),
+    columns = (
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TextColumn("{task.completed}/{task.total}"),
         TaskProgressColumn(),
         TimeElapsedColumn(),
         TimeRemainingColumn(),
+    )
+    run._last_progress_columns = columns
+    with Progress(
+        *columns,
         console=console,
     ) as progress:
         total_task_id = progress.add_task("Rendering reference views", total=total_views)

@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from feverslop.config.app_config import AppConfig
@@ -62,10 +62,13 @@ class GenerateRenderPlanUseCase:
         self.console.print(f"[green]OK[/green] {label}: [cyan]{path}[/cyan]")
 
     def run_spinner(self, description: str, func: Callable[[], Any]):
-        with Progress(
-            SpinnerColumn(),
+        columns = (
             TextColumn("[progress.description]{task.description}"),
             TimeElapsedColumn(),
+        )
+        self._last_progress_columns = columns
+        with Progress(
+            *columns,
             console=self.console,
         ) as progress:
             progress.add_task(description, total=None)
