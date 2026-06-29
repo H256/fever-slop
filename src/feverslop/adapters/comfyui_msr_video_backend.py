@@ -11,7 +11,12 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder, build_audio_window_spec
+from feverslop.domain.ltx_rendering import (
+    AudioWindowSpec,
+    PromptRelayPayload,
+    PromptRelayPayloadBuilder,
+    build_audio_window_spec,
+)
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -241,13 +246,8 @@ class ComfyUIMSRVideoRenderBackend:
         tail_loss_frames = int(rolling["tail_loss_frames"]) if rolling else 0
         ltx = scene.get("ltx") or {}
         if ltx.get("msr_prompt_relay") or ltx.get("msr_global_prompt"):
-            msr_scene = dict(scene)
-            msr_ltx = dict(ltx)
-            msr_ltx["base_prompt"] = str(ltx.get("msr_global_prompt") or ltx.get("base_prompt") or "").strip()
-            msr_ltx["prompt_relay"] = list(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
-            msr_scene["ltx"] = msr_ltx
-            payload = PromptRelayPayloadBuilder().build(
-                scene=msr_scene,
+            payload = _build_msr_prompt_relay_payload(
+                scene=scene,
                 render_frame_count=frame_count,
                 trim_front_frames=trim_front_frames,
                 tail_loss_frames=tail_loss_frames,
@@ -315,6 +315,151 @@ class ComfyUIMSRVideoRenderBackend:
             return True
         except KeyError:
             return False
+
+
+def _build_msr_prompt_relay_payload(
+    *,
+    scene: dict,
+    render_frame_count: int,
+    trim_front_frames: int,
+    tail_loss_frames: int,
+) -> PromptRelayPayload:
+    ltx = scene.get("ltx") or {}
+    global_prompt = str(ltx.get("msr_global_prompt") or ltx.get("base_prompt") or "").strip()
+    relays = list(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
+    timeline_frames = max(1, int(render_frame_count) - 1)
+    scene_timeline_frames = max(1, int(scene.get("frame_count", 1)) - 1)
+
+    relay_segments: list[dict] = []
+    if trim_front_frames > 0:
+        relay_segments.append({
+            "prompt": _msr_preroll_prompt(scene),
+            "length": int(trim_front_frames),
+        })
+
+    if not relays:
+        relay_segments.append({
+            "prompt": _msr_gap_prompt(scene),
+            "length": scene_timeline_frames,
+        })
+    else:
+        cursor = 0
+        for relay in sorted(relays, key=lambda item: int(item["frame_start"])):
+            start = max(0, min(int(relay["frame_start"]), scene_timeline_frames))
+            end = max(start, min(int(relay["frame_end"]), scene_timeline_frames))
+            if start > cursor:
+                relay_segments.append({
+                    "prompt": _msr_gap_prompt(scene),
+                    "length": start - cursor,
+                })
+                cursor = start
+
+            relay_segments.append({
+                "prompt": str(relay.get("prompt") or "").strip() or _msr_gap_prompt(scene),
+                "length": max(1, end - start),
+            })
+            cursor = end
+
+        if cursor < scene_timeline_frames:
+            relay_segments.append({
+                "prompt": _msr_gap_prompt(scene),
+                "length": scene_timeline_frames - cursor,
+            })
+
+    if tail_loss_frames > 0:
+        relay_segments.append({
+            "prompt": _msr_tail_prompt(scene),
+            "length": int(tail_loss_frames),
+        })
+
+    relay_segments = PromptRelayPayloadBuilder.normalize_segments(relay_segments)
+    local_prompts = [segment["prompt"] for segment in relay_segments]
+    segment_lengths = [int(segment["length"]) for segment in relay_segments]
+    total = sum(segment_lengths)
+    if total != timeline_frames:
+        raise ValueError(
+            f"PromptRelay segment length mismatch for MSR scene {scene.get('scene')}: "
+            f"sum={total}, expected={timeline_frames}, render_frame_count={render_frame_count}, "
+            f"scene_frame_count={scene.get('frame_count')}, preroll={trim_front_frames}, tail={tail_loss_frames}"
+        )
+
+    return PromptRelayPayload(
+        global_prompt=global_prompt,
+        local_prompts="\n|".join(local_prompts),
+        segment_lengths=",".join(str(length) for length in segment_lengths),
+    )
+
+
+def _msr_preroll_prompt(scene: dict) -> str:
+    ltx = scene.get("ltx") or {}
+    prompt = str(ltx.get("msr_preroll_prompt") or "").strip()
+    if prompt:
+        return prompt
+    return _msr_scene_direction(
+        scene,
+        fallback=(
+            "Cinematic atmosphere gathers around {location}; {actor} remains physically present as particles, "
+            "light, and environmental motion build tension before the main action begins."
+        ),
+    )
+
+
+def _msr_tail_prompt(scene: dict) -> str:
+    ltx = scene.get("ltx") or {}
+    prompt = str(ltx.get("msr_tail_prompt") or "").strip()
+    if prompt:
+        return prompt
+    return _msr_scene_direction(
+        scene,
+        fallback=(
+            "{actor} carries the last motion through {location}; camera and atmosphere continue the same dramatic "
+            "energy as the action resolves without introducing a new scene."
+        ),
+    )
+
+
+def _msr_gap_prompt(scene: dict) -> str:
+    ltx = scene.get("ltx") or {}
+    prompt = str(ltx.get("msr_gap_prompt") or "").strip()
+    if prompt:
+        return prompt
+    return _msr_scene_direction(
+        scene,
+        fallback=(
+            "{actor} continues the scene action inside {location}; the camera stays active while environmental "
+            "details keep moving around the reference subject."
+        ),
+    )
+
+
+def _msr_scene_direction(scene: dict, *, fallback: str) -> str:
+    metadata = scene.get("metadata") or {}
+    references = scene.get("references") or {}
+    actor = _first_reference_name(references, default="the reference actor")
+    location = _location_reference_name(references)
+    base_concept = str(metadata.get("base_concept") or "").strip()
+    camera = str(metadata.get("camera_motion") or "").strip()
+    character_motion = str(metadata.get("character_motion") or "").strip()
+    prompt = fallback.format(actor=actor, location=location)
+    extras = [value for value in (character_motion, camera, base_concept) if value]
+    if extras:
+        prompt = f"{prompt} {' '.join(text.strip(' .') + '.' for text in extras)}"
+    return re.sub(r"\s+", " ", prompt).strip()
+
+
+def _first_reference_name(references: dict, *, default: str) -> str:
+    actors = references.get("actor_reference_descriptions") or []
+    if actors:
+        name = str(actors[0].get("name") or actors[0].get("id") or "").strip()
+        if name:
+            return name
+    return default
+
+
+def _location_reference_name(references: dict) -> str:
+    location = references.get("location_reference_description") or {}
+    name = str(location.get("name") or location.get("id") or "").strip()
+    return name or "the referenced location"
 
 
 def _build_msr_reference_global_prompt(references: dict) -> str:

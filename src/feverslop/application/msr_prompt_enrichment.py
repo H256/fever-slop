@@ -40,6 +40,8 @@ def enrich_scene_with_msr_prompts(scene: dict, *, llm: LLMPort | None = None) ->
     relays = list(ltx.get("prompt_relay") or [])
 
     ltx["msr_global_prompt"] = build_msr_global_prompt(references)
+    ltx["msr_preroll_prompt"] = _build_preroll_prompt(result)
+    ltx["msr_tail_prompt"] = _build_tail_prompt(result)
     if not relays:
         return result
 
@@ -113,6 +115,8 @@ Rules:
 - For state "singing": the actor sings the provided lyrics with clear lip sync and expressive acting.
 - For non-singing states: the actor is silent, mouth closed, and physically performs the scene action.
 - Include camera motion and concrete character/environment motion when provided.
+- Write rich cinematic direction, usually 25 to 45 words per segment, with action, acting, camera behavior, and visible environment effects.
+- Preroll-like or transition-like segments still need concrete cinematic atmosphere and tension, not generic continuity filler.
 - No markdown, no comments, no frame numbers.
 """.strip()
 
@@ -145,23 +149,53 @@ def _msr_segment_payload(scene: dict, relays: list[dict]) -> dict:
 def _fallback_segment_prompt(scene: dict, relay: dict) -> str:
     metadata = scene.get("metadata") or {}
     actor = _primary_actor_name(scene.get("references") or {})
+    location = _location_name(scene.get("references") or {})
     state = str(relay.get("state") or "").strip().lower()
     lyrics = str(metadata.get("lyrics") or "").strip().strip(".")
     camera = str(metadata.get("camera_motion") or "").strip()
     character_motion = str(metadata.get("character_motion") or "").strip()
     base_concept = str(metadata.get("base_concept") or "").strip()
 
-    parts: list[str] = []
     if state == "singing":
         lyric_phrase = f' the phrase "{lyrics}"' if lyrics else ""
-        parts.append(f"{actor} sings{lyric_phrase} with clear lip sync and expressive acting")
+        action = f"{actor} sings{lyric_phrase} with clear lip sync and expressive acting"
     else:
-        parts.append(f"{actor} is silent with mouth closed")
+        action = f"{actor} stays silent with mouth closed"
 
-    for value in (character_motion, camera, base_concept):
-        if value:
-            parts.append(value)
-    return ". ".join(part.strip(" .") for part in parts if part).strip() + "."
+    motion = character_motion or base_concept or "the scene action builds with controlled physical intensity"
+    camera_text = camera or "the camera holds a readable cinematic view"
+    environment = base_concept or f"the atmosphere of {location} remains visible around the reference subject"
+    return _clean_segment_prompt(f"{action}; {motion}; {camera_text}; {environment}.")
+
+
+def _build_preroll_prompt(scene: dict) -> str:
+    metadata = scene.get("metadata") or {}
+    references = scene.get("references") or {}
+    actor = _primary_actor_name(references)
+    location = _location_name(references)
+    base_concept = str(metadata.get("base_concept") or "").strip()
+    camera = str(metadata.get("camera_motion") or "").strip()
+    character_motion = str(metadata.get("character_motion") or "").strip()
+    atmosphere = base_concept or f"atmospheric detail gathers across {location}"
+    motion = character_motion or f"{actor} remains physically present as the tension builds"
+    camera_text = camera or "the camera holds a steady cinematic setup"
+    return _clean_segment_prompt(
+        f"Cinematic atmosphere holds around {location}; {atmosphere}; {motion}; {camera_text} before the main action begins."
+    )
+
+
+def _build_tail_prompt(scene: dict) -> str:
+    metadata = scene.get("metadata") or {}
+    references = scene.get("references") or {}
+    actor = _primary_actor_name(references)
+    location = _location_name(references)
+    base_concept = str(metadata.get("base_concept") or "").strip()
+    camera = str(metadata.get("camera_motion") or "").strip()
+    character_motion = str(metadata.get("character_motion") or "").strip()
+    motion = character_motion or f"{actor} carries the last action forward"
+    environment = base_concept or f"the atmosphere of {location} keeps reacting around the subject"
+    camera_text = camera or "the camera continues the same cinematic movement"
+    return _clean_segment_prompt(f"{motion} through {location}; {environment}; {camera_text}; the energy resolves without a new scene.")
 
 
 def _primary_actor_name(references: dict) -> str:
@@ -171,6 +205,12 @@ def _primary_actor_name(references: dict) -> str:
         if name:
             return name
     return "The reference actor"
+
+
+def _location_name(references: dict) -> str:
+    location = references.get("location_reference_description") or {}
+    name = str(location.get("name") or location.get("id") or "").strip()
+    return name or "the referenced location"
 
 
 def _describe_reference_item(item: dict) -> str:

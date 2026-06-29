@@ -553,6 +553,53 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             )
             self.assertEqual("48", relay_inputs["segment_lengths"])
 
+    def test_backend_uses_msr_preroll_and_tail_prompts_for_rolling_prompt_relay(self):
+        scene = {
+            "scene": 6,
+            "fps": 24,
+            "frame_count": 49,
+            "ltx": {
+                "base_prompt": "old global",
+                "msr_global_prompt": "Reference image 1: Spectral Wolf. Reference image 2 (scene): Megalith Circle.",
+                "msr_preroll_prompt": (
+                    "Cinematic atmosphere holds around the Megalith Circle as blue mist and golden particles "
+                    "coil together, keeping Spectral Wolf present before the attack begins."
+                ),
+                "msr_tail_prompt": (
+                    "Spectral Wolf carries the howl through the Megalith Circle, blue essence clashing with "
+                    "golden monolith light as the camera keeps drifting backward."
+                ),
+                "msr_prompt_relay": [
+                    {
+                        "frame_start": 0,
+                        "frame_end": 48,
+                        "state": "singing",
+                        "prompt": "Spectral Wolf howls toward the glowing monolith with clear lip sync.",
+                    }
+                ],
+            },
+        }
+
+        global_prompt, local_prompts, segment_lengths = ComfyUIMSRVideoRenderBackend._build_prompt_relay_payload(
+            scene,
+            prompt="fallback prompt",
+            rolling={
+                "render_frame_count": 80,
+                "trim_front_frames": 6,
+                "tail_loss_frames": 25,
+            },
+        )
+
+        parts = local_prompts.split("\n|")
+        self.assertEqual("Reference image 1: Spectral Wolf. Reference image 2 (scene): Megalith Circle.", global_prompt)
+        self.assertEqual("6,48,25", segment_lengths)
+        self.assertEqual(3, len(parts))
+        self.assertIn("blue mist and golden particles", parts[0])
+        self.assertIn("Spectral Wolf howls", parts[1])
+        self.assertIn("camera keeps drifting backward", parts[2])
+        self.assertNotIn("pre-roll continuity hold", local_prompts)
+        self.assertNotIn("tail safety continuation", local_prompts)
+
     def test_render_video_patches_audio_anchors_when_present(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
