@@ -51,6 +51,10 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                                         "A large translucent wolf made of swirling blue mist and white light, "
                                         "with glowing eyes and ethereal fur."
                                     ),
+                                    "image_prompt": (
+                                        "Full body spectral wolf reference sheet, luminous blue mist fur, "
+                                        "glowing white eyes, readable wolf silhouette."
+                                    ),
                                 }
                             ],
                             "location_reference_description": {
@@ -59,6 +63,10 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                                 "visual_description": (
                                     "A clearing featuring a massive ancient stone monolith pulsing with "
                                     "internal golden light."
+                                ),
+                                "image_prompt": (
+                                    "Wide environment reference of an ancient stone circle, golden monolith, "
+                                    "dense fog and moonlit forest."
                                 ),
                             },
                         },
@@ -105,7 +113,10 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             data = json.loads(result.read_text(encoding="utf-8"))
             ltx = data[0]["ltx"]
             self.assertIn("Reference image 1: Spectral Wolf, supernatural antagonist", ltx["msr_global_prompt"])
+            self.assertIn("Full body spectral wolf reference sheet", ltx["msr_global_prompt"])
             self.assertIn("Reference image 2 (scene): Megalith Circle", ltx["msr_global_prompt"])
+            self.assertIn("Wide environment reference of an ancient stone circle", ltx["msr_global_prompt"])
+            self.assertNotIn("Do not duplicate reference subjects", ltx["msr_global_prompt"])
             self.assertEqual(2, len(ltx["msr_prompt_relay"]))
             self.assertIn("Spectral Wolf prowls", ltx["msr_prompt_relay"][0]["prompt"])
             self.assertIn("mouth closed", ltx["msr_prompt_relay"][0]["prompt"])

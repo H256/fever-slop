@@ -326,8 +326,6 @@ def _build_msr_reference_global_prompt(references: dict) -> str:
                 f"Reference image {index}: {actor_text}. "
                 f"Use reference image {index} for this subject's identity, face, body, wardrobe, and materials."
             )
-    if parts:
-        parts.append("Do not duplicate reference subjects as clones, background copies, or extra versions of the same character.")
 
     location = references.get("location_reference_description") or {}
     location_text = _describe_reference_item(location)
@@ -343,8 +341,9 @@ def _build_msr_reference_global_prompt(references: dict) -> str:
 def _describe_reference_item(item: dict) -> str:
     name = str(item.get("name") or item.get("id") or "").strip()
     role = str(item.get("role") or "").strip()
-    visual = str(item.get("visual_description") or item.get("image_prompt") or "").strip()
-    chunks = [chunk for chunk in (name, role, visual) if chunk]
+    visual = str(item.get("visual_description") or "").strip()
+    image_prompt = str(item.get("image_prompt") or "").strip()
+    chunks = [chunk for chunk in (name, role, visual, image_prompt) if chunk]
     return ", ".join(chunks)
 
 

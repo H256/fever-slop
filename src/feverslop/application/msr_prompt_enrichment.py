@@ -66,8 +66,6 @@ def build_msr_global_prompt(references: dict) -> str:
     if location_text:
         parts.append(f"Reference image {len(parts) + 1} (scene): {location_text}.")
 
-    if parts:
-        parts.append("Do not duplicate reference subjects as clones or extra copies.")
     return "\n\n".join(parts).strip()
 
 
@@ -178,8 +176,9 @@ def _primary_actor_name(references: dict) -> str:
 def _describe_reference_item(item: dict) -> str:
     name = str(item.get("name") or item.get("id") or "").strip()
     role = str(item.get("role") or "").strip()
-    visual = str(item.get("visual_description") or item.get("image_prompt") or "").strip()
-    return ", ".join(chunk for chunk in (name, role, visual) if chunk)
+    visual = str(item.get("visual_description") or "").strip()
+    image_prompt = str(item.get("image_prompt") or "").strip()
+    return ", ".join(chunk for chunk in (name, role, visual, image_prompt) if chunk)
 
 
 def _clean_segment_prompt(prompt: str) -> str:

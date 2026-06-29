@@ -435,12 +435,14 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                                 "name": "Thrym",
                                 "role": "frost giant antagonist",
                                 "visual_description": "cracked blue ice skin, glowing white eyes, runic armor",
+                                "image_prompt": "full body frost giant reference with ancient runic armor and stone hammer",
                             }
                         ],
                         "location_reference_description": {
                             "id": "volcanic_mountain_pass",
                             "name": "Fire-Scarred Pass",
                             "visual_description": "fractured volcanic canyon with lava veins and ash",
+                            "image_prompt": "wide volcanic mountain pass environment reference with lava veins and storm ash",
                         },
                     },
                     "ltx": {
@@ -470,8 +472,10 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             relay_inputs = patched["3"]["inputs"]
             self.assertIn("Reference image 1: Thrym", relay_inputs["global_prompt"])
             self.assertIn("frost giant antagonist", relay_inputs["global_prompt"])
+            self.assertIn("full body frost giant reference", relay_inputs["global_prompt"])
             self.assertIn("Background reference: Fire-Scarred Pass", relay_inputs["global_prompt"])
-            self.assertIn("Do not duplicate reference subjects", relay_inputs["global_prompt"])
+            self.assertIn("wide volcanic mountain pass environment reference", relay_inputs["global_prompt"])
+            self.assertNotIn("Do not duplicate reference subjects", relay_inputs["global_prompt"])
             self.assertNotIn("Start frame", relay_inputs["global_prompt"])
             self.assertIn("Camera motion: slow low-angle push-in.", relay_inputs["local_prompts"])
             self.assertIn("Character motion: Thrym braces both legs", relay_inputs["local_prompts"])
