@@ -22,6 +22,7 @@ from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.pipeline_runner_options import add_runner_options
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
+from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
@@ -355,6 +356,19 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             plan_for_next_step,
             context.references_dir,
             context.reference_plan,
+        )
+        write_step("Enriching render plan with MSR prompts")
+        app_config = AppConfig.load(app_config_path)
+        llm = OpenAICompatibleLLMClient(
+            base_url=app_config.llm.base_url,
+            model=app_config.llm.model,
+            temperature=app_config.llm.temperature,
+            max_tokens=app_config.llm.max_tokens,
+        )
+        plan_for_next_step = enrich_render_plan_with_msr_prompts(
+            plan_for_next_step,
+            context.reference_plan,
+            llm=llm,
         )
 
     if not args.skip_ltx:

@@ -264,7 +264,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         self.assertEqual("ltx_msr", options.video_pipeline)
         self.assertTrue(str(options.output_dir).endswith("ltx_msr"))
 
-    def test_ltx_msr_runner_builds_references_enriches_plan_and_skips_storyboard(self):
+    def test_ltx_msr_runner_builds_references_enriches_msr_prompts_and_skips_storyboard(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"
             project_dir.mkdir()
@@ -277,6 +277,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             render_dir.mkdir(parents=True)
             base_plan = render_dir / "render_plan_song.json"
             refs_plan = render_dir / "render_plan_song_refs.json"
+            msr_plan = refs_plan
             base_plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
             args = run_pipeline.build_arg_parser().parse_args(
                 [
@@ -298,10 +299,16 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 refs_plan.write_text(json.dumps([{"scene": 1, "references": {}}]), encoding="utf-8")
                 return Path(output_plan)
 
+            def enrich_msr(input_plan, output_plan, *, llm):
+                self.assertIsNotNone(llm)
+                msr_plan.write_text(json.dumps([{"scene": 1, "ltx": {"msr_prompt_relay": []}}]), encoding="utf-8")
+                return Path(output_plan)
+
             with patch("feverslop.composition.pipeline_runner.build_render_storyboard_use_case") as storyboard_builder, \
                 patch("feverslop.composition.pipeline_runner.generate_storyboard_page") as storyboard_page, \
                 patch("feverslop.composition.pipeline_runner.render_reference_bible") as reference_bible, \
                 patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_reference_sheets", side_effect=enrich) as enrich_refs, \
+                patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_msr_prompts", side_effect=enrich_msr) as enrich_msr_prompts, \
                 patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case) as video_builder:
                 result = run_pipeline.run(args)
 
@@ -309,6 +316,9 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         storyboard_page.assert_not_called()
         reference_bible.assert_called_once()
         enrich_refs.assert_called_once_with(base_plan, project_dir / "output" / "references", refs_plan)
+        enrich_msr_prompts.assert_called_once()
+        self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[0])
+        self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[1])
         self.assertEqual(refs_plan, result.render_plan_path)
         options = video_builder.call_args.args[0]
         request = use_case.execute.call_args.args[0]

@@ -472,6 +472,76 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertNotIn("Start frame", relay_inputs["local_prompts"])
             self.assertNotIn("Lock the first frame", relay_inputs["local_prompts"])
 
+    def test_backend_prefers_render_plan_msr_prompt_relay_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {
+                        "inputs": {
+                            "global_prompt": "",
+                            "local_prompts": "",
+                            "segment_lengths": "",
+                        },
+                        "_meta": {"title": "#PROMPT_RELAY"},
+                    },
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(client=FakeClient(), workflow_path=workflow, output_dir=temp / "out")
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 2,
+                    "fps": 24,
+                    "frame_count": 49,
+                    "references": {
+                        "actor_msr_paths": [str(actor)],
+                        "location_msr_path": str(location),
+                    },
+                    "ltx": {
+                        "base_prompt": "old global",
+                        "msr_global_prompt": "Reference image 1: Spectral Wolf. Reference image 2 (scene): Megalith Circle.",
+                        "prompt_relay": [
+                            {
+                                "frame_start": 0,
+                                "frame_end": 48,
+                                "state": "singing",
+                                "prompt": "generic same subject sings",
+                            }
+                        ],
+                        "msr_prompt_relay": [
+                            {
+                                "frame_start": 0,
+                                "frame_end": 48,
+                                "state": "singing",
+                                "prompt": "Spectral Wolf howls toward the glowing monolith with clear lip sync.",
+                            }
+                        ],
+                    },
+                },
+                prompt="fallback prompt",
+            )
+
+            relay_inputs = patched["3"]["inputs"]
+            self.assertEqual(
+                "Reference image 1: Spectral Wolf. Reference image 2 (scene): Megalith Circle.",
+                relay_inputs["global_prompt"],
+            )
+            self.assertEqual(
+                "Spectral Wolf howls toward the glowing monolith with clear lip sync.",
+                relay_inputs["local_prompts"],
+            )
+            self.assertEqual("48", relay_inputs["segment_lengths"])
+
     def test_render_video_patches_audio_anchors_when_present(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

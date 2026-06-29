@@ -237,6 +237,20 @@ class ComfyUIMSRVideoRenderBackend:
         trim_front_frames = int(rolling["trim_front_frames"]) if rolling else 0
         tail_loss_frames = int(rolling["tail_loss_frames"]) if rolling else 0
         ltx = scene.get("ltx") or {}
+        if ltx.get("msr_prompt_relay") or ltx.get("msr_global_prompt"):
+            msr_scene = dict(scene)
+            msr_ltx = dict(ltx)
+            msr_ltx["base_prompt"] = str(ltx.get("msr_global_prompt") or ltx.get("base_prompt") or "").strip()
+            msr_ltx["prompt_relay"] = list(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
+            msr_scene["ltx"] = msr_ltx
+            payload = PromptRelayPayloadBuilder().build(
+                scene=msr_scene,
+                render_frame_count=frame_count,
+                trim_front_frames=trim_front_frames,
+                tail_loss_frames=tail_loss_frames,
+            )
+            return payload.global_prompt, payload.local_prompts, payload.segment_lengths
+
         reference_global_prompt = _build_msr_reference_global_prompt(scene.get("references") or {})
         if ltx.get("prompt_relay"):
             payload = PromptRelayPayloadBuilder().build(

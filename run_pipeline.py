@@ -11,6 +11,7 @@ build_run_context = _pipeline_runner.build_run_context
 convert_to_safe_file_stem = _pipeline_runner.convert_to_safe_file_stem
 count_render_plan_items = _pipeline_runner.count_render_plan_items
 collect_render_plan_scene_clips = _pipeline_runner.collect_render_plan_scene_clips
+enrich_render_plan_with_msr_prompts = _pipeline_runner.enrich_render_plan_with_msr_prompts
 main = _pipeline_runner.main
 resolve_runner_path = _pipeline_runner.resolve_runner_path
 rewrite_concat_list = _pipeline_runner.rewrite_concat_list
