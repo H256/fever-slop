@@ -240,6 +240,21 @@ class ReferenceBibleTests(unittest.TestCase):
         self.assertIn("full-body", back)
         self.assertIn("portrait reference frame", back)
 
+    def test_actor_reference_prompts_require_plain_white_background(self):
+        front_prompt = ReferenceBibleGenerator._view_prompt(
+            ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara in a forest"),
+            "front",
+        )
+        closeup_prompt = ReferenceBibleGenerator._view_prompt(
+            ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara in a forest"),
+            "hero_closeup",
+        )
+
+        for prompt in (front_prompt, closeup_prompt):
+            self.assertIn("plain white seamless studio background", prompt)
+            self.assertIn("no environment", prompt)
+            self.assertIn("no scenery", prompt)
+
     def test_wide_reference_views_are_composed_as_grid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

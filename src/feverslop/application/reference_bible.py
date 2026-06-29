@@ -176,8 +176,8 @@ class ReferenceBibleGenerator:
             return (
                 f"{base}. Create a character reference closeup of {subject.name}: "
                 "head and shoulders only, square portrait crop, same identity, same face, "
-                "same hairstyle, same outfit details at the neckline, neutral plain background, "
-                "even reference-sheet lighting, no text, no extra characters."
+                "same hairstyle, same outfit details at the neckline, plain white seamless studio background, "
+                "even reference-sheet lighting, no environment, no scenery, no props, no text, no extra characters."
             )
 
         view_direction = {
@@ -191,8 +191,8 @@ class ReferenceBibleGenerator:
             f"{base}. Create a full-body character reference of {subject.name}: "
             f"{view_direction}, portrait reference frame, head to toe visible, feet visible, "
             "centered standing pose, same identity, same face, same hairstyle, same body proportions, "
-            "same outfit, same colors and materials, empty margin around the full body, neutral plain background, even reference-sheet lighting, "
-            "no text, no extra characters."
+            "same outfit, same colors and materials, empty margin around the full body, plain white seamless studio background, "
+            "even reference-sheet lighting, no environment, no scenery, no props, no text, no extra characters."
         )
 
     @classmethod
