@@ -125,7 +125,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
                     "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
                     "4": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
-                    "5": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "5": {"inputs": {"noise_seed": 0}, "class_type": "RandomNoise"},
+                    "6": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
                 }),
                 encoding="utf-8",
             )
@@ -149,6 +150,46 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 )
 
             self.assertEqual(123456789, patched["4"]["inputs"]["noise_seed"])
+            self.assertEqual(123456789, patched["5"]["inputs"]["noise_seed"])
+
+    def test_backend_patches_seed_value_inputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"value": 0}, "_meta": {"title": "#SEED"}},
+                    "5": {"inputs": {"seed": 0}, "class_type": "SomeSampler"},
+                    "6": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow,
+                output_dir=temp / "out",
+            )
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 7,
+                    "references": {
+                        "actor_msr_paths": [str(actor)],
+                        "location_msr_path": str(location),
+                    },
+                },
+                prompt="prompt",
+            )
+
+            self.assertEqual(100007, patched["4"]["inputs"]["value"])
+            self.assertEqual(100007, patched["5"]["inputs"]["seed"])
 
     def test_backend_rejects_scene_without_actor_reference(self):
         with tempfile.TemporaryDirectory() as temp_dir:

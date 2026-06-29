@@ -132,7 +132,7 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_msr_raw/scene_{scene_number:04}")
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", self.msr_frame_count)
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
-        patcher.try_set_existing_input_by_title("#SEED", "noise_seed", self._seed_for_scene(scene_number))
+        self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
         patcher.try_set_existing_input_by_title("#WIDTH", "value", int(scene.get("width", 0) or 0))
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", int(scene.get("height", 0) or 0))
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
@@ -276,6 +276,20 @@ class ComfyUIMSRVideoRenderBackend:
         if self.randomize_seed:
             return random.randint(0, 2**63 - 1)
         return self.seed_offset + int(scene_number)
+
+    @staticmethod
+    def _patch_seed_inputs(patcher: WorkflowPatcher, seed: int) -> None:
+        for _, node in patcher.find_nodes_by_meta_title("#SEED"):
+            inputs = node.setdefault("inputs", {})
+            for input_name in ("noise_seed", "seed", "value"):
+                if input_name in inputs:
+                    inputs[input_name] = seed
+
+        for _, node in patcher.get().items():
+            inputs = node.setdefault("inputs", {})
+            for input_name in ("noise_seed", "seed"):
+                if input_name in inputs:
+                    inputs[input_name] = seed
 
     @staticmethod
     def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
