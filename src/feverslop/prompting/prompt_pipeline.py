@@ -127,6 +127,8 @@ Rules for actors:
 - Do not create crowd members or background extras.
 
 Rules for locations:
+- Create a compact reusable set of locations that covers the major story phases, turning points, conflict spaces, and resolution spaces implied by STORY_IDEA.
+- Avoid collapsing visually distinct story beats into one generic location when separate physical environments would make the story clearer.
 - List only physical environments where a person could realistically be standing.
 - Avoid aerial, drone, satellite, or far landscape shots.
 - No camera directions.

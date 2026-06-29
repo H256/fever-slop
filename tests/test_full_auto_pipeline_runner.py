@@ -35,6 +35,7 @@ class FullAutoPipelineRunnerTests(unittest.TestCase):
             "video_lora_1_strength_model": 0.7,
             "video_lora_1_strength_clip": 0.6,
             "lora_split_enabled": True,
+            "randomize_seed": True,
             "smoke_scene": 3,
             "smoke_only": True,
             "no_skip_existing": True,

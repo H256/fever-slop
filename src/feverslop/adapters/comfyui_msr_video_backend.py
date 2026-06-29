@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import random
 import re
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -22,6 +23,7 @@ class ComfyUIMSRVideoRenderBackend:
         workflow_path: str | Path,
         output_dir: str | Path,
         seed_offset: int = 100000,
+        randomize_seed: bool = False,
         msr_frame_count: int = 17,
         debug_workflows_dir: str | Path | None = None,
         preroll_frames: int = 50,
@@ -43,6 +45,7 @@ class ComfyUIMSRVideoRenderBackend:
         self.output_dir = Path(output_dir)
         self.raw_output_dir = self.output_dir / "raw"
         self.seed_offset = int(seed_offset)
+        self.randomize_seed = bool(randomize_seed)
         self.msr_frame_count = int(msr_frame_count)
         self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
         self.preroll_frames = max(0, int(preroll_frames))
@@ -129,7 +132,7 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_msr_raw/scene_{scene_number:04}")
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", self.msr_frame_count)
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
-        patcher.try_set_existing_input_by_title("#SEED", "noise_seed", self.seed_offset + scene_number)
+        patcher.try_set_existing_input_by_title("#SEED", "noise_seed", self._seed_for_scene(scene_number))
         patcher.try_set_existing_input_by_title("#WIDTH", "value", int(scene.get("width", 0) or 0))
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", int(scene.get("height", 0) or 0))
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
@@ -269,6 +272,11 @@ class ComfyUIMSRVideoRenderBackend:
             round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
 
+    def _seed_for_scene(self, scene_number: int) -> int:
+        if self.randomize_seed:
+            return random.randint(0, 2**63 - 1)
+        return self.seed_offset + int(scene_number)
+
     @staticmethod
     def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
         try:
@@ -287,6 +295,8 @@ def _build_msr_reference_global_prompt(references: dict) -> str:
                 f"Reference image {index}: {actor_text}. "
                 f"Use reference image {index} for this subject's identity, face, body, wardrobe, and materials."
             )
+    if parts:
+        parts.append("Do not duplicate reference subjects as clones, background copies, or extra versions of the same character.")
 
     location = references.get("location_reference_description") or {}
     location_text = _describe_reference_item(location)
@@ -343,7 +353,7 @@ def _build_msr_motion_prompt(scene: dict, *, fallback_prompt: str) -> str:
     ltx = scene.get("ltx") or {}
     source = str(ltx.get("base_prompt") or ltx.get("original_style_i2v_prompt") or fallback_prompt or "")
     parts: list[str] = []
-    for label in ("Camera motion", "Subject or environment motion", "Story beat"):
+    for label in ("Camera motion", "Character motion", "Subject or environment motion", "Story beat"):
         match = re.search(rf"(?is){re.escape(label)}\s*:\s*(.*?)(?:\.\.|\. (?=[A-Z][A-Za-z ]+:)|$)", source)
         if match:
             text = re.sub(r"\s+", " ", match.group(1)).strip(" .")

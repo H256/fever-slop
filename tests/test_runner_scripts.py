@@ -32,6 +32,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("#PROMPT", args.single_prompt_title)
         self.assertEqual("text", args.single_prompt_input)
         self.assertEqual("original", args.rolling_frame_profile)
+        self.assertFalse(args.randomize_seed)
         self.assertEqual(16, args.smoke_scene)
         self.assertFalse(args.skip_main_pipeline)
 
@@ -63,6 +64,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "--video-lora-1-strength-clip",
                 "0.6",
                 "--lora-split-enabled",
+                "--randomize-seed",
                 "--smoke-only",
                 "--no-skip-existing",
                 "--skip-tests",
@@ -90,6 +92,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual(0.7, args.video_lora_1_strength_model)
         self.assertEqual(0.6, args.video_lora_1_strength_clip)
         self.assertTrue(args.lora_split_enabled)
+        self.assertTrue(args.randomize_seed)
         self.assertTrue(args.smoke_only)
         self.assertTrue(args.no_skip_existing)
         self.assertTrue(args.skip_tests)

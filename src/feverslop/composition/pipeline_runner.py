@@ -359,6 +359,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 lora_1_strength_model=args.video_lora_1_strength_model,
                 lora_1_strength_clip=args.video_lora_1_strength_clip,
                 lora_split_enabled=args.lora_split_enabled,
+                randomize_seed=args.randomize_seed,
                 debug_workflows_dir=context.ltx_debug_dir,
                 rolling_frame_profile=args.rolling_frame_profile,
             ),

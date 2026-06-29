@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.ports.rendering import VideoRenderRequest
@@ -109,6 +110,45 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(17, client.queued_workflow["3"]["inputs"]["frame_count"])
             self.assertEqual("video prompt", client.queued_workflow["4"]["inputs"]["text"])
             self.assertEqual(100007, client.queued_workflow["5"]["inputs"]["noise_seed"])
+
+    def test_backend_randomizes_seed_when_requested(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                    "5": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                randomize_seed=True,
+            )
+
+            with patch("feverslop.adapters.comfyui_msr_video_backend.random.randint", return_value=123456789):
+                patched = backend.build_workflow(
+                    {
+                        "scene": 7,
+                        "references": {
+                            "actor_msr_paths": [str(actor)],
+                            "location_msr_path": str(location),
+                        },
+                    },
+                    prompt="prompt",
+                )
+
+            self.assertEqual(123456789, patched["4"]["inputs"]["noise_seed"])
 
     def test_backend_rejects_scene_without_actor_reference(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -359,7 +399,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                         "base_prompt": (
                             "Start frame: Thrym slams the frozen earth. Lock the first frame to this exact composition. "
                             "Camera motion: slow low-angle push-in. "
-                            "Subject or environment motion: Thrym raises one arm, ash swirls around him. "
+                            "Character motion: Thrym braces both legs and swings his stone hammer in a heavy arc. "
+                            "Subject or environment motion: ash swirls around him. "
                             "Story beat: the frost giant prepares to strike."
                         ),
                         "prompt_relay": [
@@ -382,9 +423,11 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertIn("Reference image 1: Thrym", relay_inputs["global_prompt"])
             self.assertIn("frost giant antagonist", relay_inputs["global_prompt"])
             self.assertIn("Background reference: Fire-Scarred Pass", relay_inputs["global_prompt"])
+            self.assertIn("Do not duplicate reference subjects", relay_inputs["global_prompt"])
             self.assertNotIn("Start frame", relay_inputs["global_prompt"])
             self.assertIn("Camera motion: slow low-angle push-in.", relay_inputs["local_prompts"])
-            self.assertIn("Subject or environment motion: Thrym raises one arm", relay_inputs["local_prompts"])
+            self.assertIn("Character motion: Thrym braces both legs", relay_inputs["local_prompts"])
+            self.assertIn("Subject or environment motion: ash swirls around him.", relay_inputs["local_prompts"])
             self.assertNotIn("Start frame", relay_inputs["local_prompts"])
             self.assertNotIn("Lock the first frame", relay_inputs["local_prompts"])
 

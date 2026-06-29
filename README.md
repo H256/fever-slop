@@ -244,6 +244,19 @@ uv run python run_pipeline.py ./projects/dwarfventure-msr `
   --skip-tests
 ```
 
+Render a fresh variant for one scene with a new seed:
+
+```powershell
+uv run python run_pipeline.py ./projects/dwarfventure-msr `
+  --video-pipeline ltx_msr `
+  --skip-msr-reference-render `
+  --randomize-seed `
+  --no-skip-existing `
+  --smoke-only `
+  --smoke-scene 4 `
+  --skip-tests
+```
+
 ## Package Layout
 
 Root scripts are public CLIs or compatibility facades. New implementation code lives under `src/feverslop`.

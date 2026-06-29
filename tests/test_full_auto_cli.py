@@ -170,6 +170,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "video_lora_1_strength_model": 0.7,
                 "video_lora_1_strength_clip": None,
                 "lora_split_enabled": False,
+                "randomize_seed": False,
                 "skip_tests": True,
                 "smoke_only": True,
                 "smoke_scene": 2,

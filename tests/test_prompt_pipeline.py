@@ -52,6 +52,16 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
         self.assertIn('"actors"', llm.calls[0]["system_prompt"])
         self.assertEqual("singer", result["actors"][0]["id"])
 
+    def test_subject_and_locations_prompt_requests_story_phase_locations(self):
+        llm = FakeSubjectLocationLLM()
+        pipeline = MusicVideoPromptPipeline(llm)
+
+        pipeline.create_subject_and_locations("A quest through caverns, a dragon lair, and a magic spring.")
+
+        system_prompt = llm.calls[0]["system_prompt"]
+        self.assertIn("major story phases", system_prompt)
+        self.assertIn("avoid collapsing", system_prompt.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

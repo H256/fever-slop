@@ -24,6 +24,7 @@ RUNNER_ARGUMENTS = (
     ("video_lora_1_strength_clip", ("--video-lora-1-strength-clip",), {"type": float, "default": None}),
     ("lora_split_enabled", ("--lora-split-enabled",), {"dest": "lora_split_enabled", "action": "store_true", "default": None}),
     ("lora_split_enabled", ("--no-lora-split-enabled",), {"dest": "lora_split_enabled", "action": "store_false"}),
+    ("randomize_seed", ("--randomize-seed",), {"action": "store_true"}),
     ("smoke_scene", ("--smoke-scene",), {"type": int, "default": 16}),
     ("smoke_only", ("--smoke-only",), {"action": "store_true"}),
     ("no_skip_existing", ("--no-skip-existing",), {"action": "store_true"}),

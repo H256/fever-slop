@@ -81,6 +81,7 @@ def build_render_video_scenes_use_case(
             workflow_path=coerce_local_path(options.workflow_path),
             output_dir=coerce_local_path(options.output_dir),
             seed_offset=options.seed_offset,
+            randomize_seed=options.randomize_seed,
             debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
             preroll_frames=preroll_frames,
             tail_loss_frames=tail_loss_frames,
