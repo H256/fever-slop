@@ -76,7 +76,11 @@ class ReferenceBibleGenerator:
                 ImageRenderRequest(
                     scene={"reference_id": subject.id, "view": view_name},
                     scene_number=index,
-                    prompt=self._view_prompt(subject, view_name),
+                    prompt=(
+                        self._view_prompt(subject, view_name)
+                        if is_first_reference
+                        else self._edit_view_prompt(subject, view_name)
+                    ),
                     workflow_path=Path(""),
                     output_dir=view_dir,
                     width=width,
@@ -196,6 +200,22 @@ class ReferenceBibleGenerator:
             "centered standing pose, same identity, same face, same hairstyle, same body proportions, "
             "same outfit, same colors and materials, empty margin around the full body, plain white seamless studio background, "
             "even reference-sheet lighting, no environment, no scenery, no props, no text, no extra characters."
+        )
+
+    @staticmethod
+    def _edit_view_prompt(subject: ReferenceSubject, view_name: str) -> str:
+        view_direction = {
+            "front": "straight front view",
+            "left": "left-side view",
+            "right": "right-side view",
+            "back": "full-body back view",
+            "closeup": "head-and-shoulders closeup view",
+            "hero_closeup": "head-and-shoulders closeup view",
+        }.get(view_name, f"{view_name} view")
+        return (
+            f"Create a {view_direction} of the character from the reference image. "
+            "Keep the same identity, face, hairstyle, body proportions, outfit, colors, and materials from the reference image. "
+            "Use a plain white seamless studio background, even reference-sheet lighting, no environment, no scenery, no props, no text, no extra characters."
         )
 
     @classmethod

@@ -74,6 +74,38 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual(4, len(edit_backend.requests))
             self.assertTrue(all(request.reference_image.name == "hero.png" for request in edit_backend.requests))
 
+    def test_generator_uses_short_reference_based_prompts_for_actor_edit_views(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            hero_backend = FakeImageBackend()
+            edit_backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=hero_backend,
+                edit_backend=edit_backend,
+                output_dir=output_dir,
+                actor_view_names=("hero_closeup", "front", "left", "back"),
+            )
+
+            generator.generate_subject_bible(
+                ReferenceSubject(
+                    id="singer",
+                    name="Mara",
+                    image_prompt="portrait of Mara in a forest with emerald robes and silver hair",
+                )
+            )
+
+            self.assertIn("portrait of Mara in a forest", hero_backend.requests[0].prompt)
+            edit_prompts = [request.prompt for request in edit_backend.requests]
+            self.assertTrue(edit_prompts[0].startswith("Create a straight front view of the character from the reference image."))
+            self.assertTrue(edit_prompts[1].startswith("Create a left-side view of the character from the reference image."))
+            self.assertTrue(edit_prompts[2].startswith("Create a full-body back view of the character from the reference image."))
+            for prompt in edit_prompts:
+                self.assertNotIn("portrait of Mara in a forest", prompt)
+                self.assertIn("plain white seamless studio background", prompt)
+                self.assertIn("no environment", prompt)
+                self.assertIn("no scenery", prompt)
+                self.assertIn("no extra characters", prompt)
+
     def test_generator_requests_portrait_actor_hero_for_msr_and_leaves_edit_views_reference_sized(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
