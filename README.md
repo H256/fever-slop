@@ -210,6 +210,8 @@ Important project fields:
 
 For `--video-pipeline ltx_msr`, the runner skips storyboard/startframe generation, renders actor and location MSR references, writes a `_refs.json` render plan, renders MSR clips, then runs the same final concat and original-audio mux.
 
+MSR workflows have an internal reference frame count, commonly 17 or 41. Keep the rolling preroll longer than that count; with the default 50-frame preroll, 17 is usually safe, 41 can be borderline, and larger values can make reference-sheet frames leak into the rendered clip. Actor references should use a neutral white or black background; location references should remain real background/environment images.
+
 Common runner commands:
 
 ```powershell
