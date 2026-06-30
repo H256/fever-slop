@@ -128,6 +128,50 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
             self.assertEqual([("Joy_Demo.mp3", "audio", "output", temp / "input" / "Joy_Demo.mp3")], client.downloads)
             self.assertEqual(workflow_path, resolver.calls[0][1])
 
+    def test_generate_writes_per_run_resolved_workflow_debug_json_under_project_output(self):
+        from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
+        from feverslop.domain.full_auto import SongSpec
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "audio_song.json"
+            workflow_path.write_text(Path("workflows/audio_song.json").read_text(encoding="utf-8-sig"), encoding="utf-8")
+            client = FakeComfyUIClient()
+            resolver = FakeModelResolver()
+            generator = ComfyUIAceStepSongGenerator(
+                client=client,
+                workflow_path=workflow_path,
+                model_resolver=resolver,
+            )
+
+            generator.generate(
+                SongSpec(
+                    title="Joy Demo",
+                    tags="bright pop song",
+                    lyrics="[Verse]\nhello",
+                    bpm=123,
+                    duration_seconds=90.5,
+                    language="en",
+                    keyscale="D major",
+                    visual_story_idea="friends",
+                    visual_style="warm",
+                ),
+                project_slug="Joy_Demo",
+                output_dir=temp / "input",
+                seed=42,
+            )
+
+            debug_files = sorted((temp / "output" / "debug" / "ace_step").glob("ace_step_*_workflow.json"))
+            self.assertEqual(1, len(debug_files))
+            debug_path = debug_files[0]
+            debug_workflow = json.loads(debug_path.read_text(encoding="utf-8"))
+            self.assertEqual(client.queued_workflow, debug_workflow)
+            ace = next(node for node in debug_workflow.values() if node["_meta"]["title"] == "ACE_STEP")
+            self.assertEqual("bright pop song", ace["inputs"]["tags"])
+            self.assertEqual("[Verse]\nhello", ace["inputs"]["lyrics"])
+            self.assertEqual(42, ace["inputs"]["seed"])
+            self.assertNotIn(str(temp), debug_path.read_text(encoding="utf-8"))
+
     def test_validation_reports_missing_required_anchor(self):
         from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
 
