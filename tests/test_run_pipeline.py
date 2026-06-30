@@ -334,6 +334,54 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         self.assertEqual(refs_plan, options.render_plan_path)
         self.assertEqual(refs_plan, request.render_plan_path)
 
+    def test_ltx_msr_runner_can_resume_selected_scenes_without_prompt_enrichment(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            refs_plan = render_dir / "render_plan_song_refs.json"
+            refs_plan.write_text(json.dumps([{"scene": 14}, {"scene": 15}, {"scene": 16}]), encoding="utf-8")
+            (render_dir / "render_plan_song.json").write_text(
+                json.dumps([{"scene": 14}, {"scene": 15}, {"scene": 16}]),
+                encoding="utf-8",
+            )
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-anchor-fix",
+                    "--skip-msr-reference-render",
+                    "--skip-msr-prompt-enrichment",
+                    "--skip-final-concat",
+                    "--scenes",
+                    "15-16",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+
+            def enrich_refs(input_plan, references_dir, output_plan, on_scene_complete=None):
+                return Path(output_plan)
+
+            with patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_reference_sheets", side_effect=enrich_refs), \
+                patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_msr_prompts") as enrich_msr_prompts, \
+                patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case):
+                run_pipeline.run(args)
+
+            enrich_msr_prompts.assert_not_called()
+            request = use_case.execute.call_args.args[0]
+            self.assertEqual({15, 16}, request.scene_numbers)
+
     def test_ltx_resume_rewrites_concat_list_from_full_render_plan_before_final_concat(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"

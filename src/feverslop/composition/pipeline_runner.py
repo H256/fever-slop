@@ -36,6 +36,7 @@ from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, va
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
 from feverslop.tools.reference_bible import run as render_reference_bible
+from feverslop.tools.storyboard_page import parse_scene_list
 from feverslop.tools.storyboard_page import generate_storyboard_page
 
 
@@ -360,22 +361,25 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 context.reference_plan,
                 on_scene_complete=_scene_progress_callback(reference_progress),
             )
-        write_step("Enriching render plan with MSR prompts")
-        app_config = AppConfig.load(app_config_path)
-        llm = OpenAICompatibleLLMClient(
-            base_url=app_config.llm.base_url,
-            model=app_config.llm.model,
-            temperature=app_config.llm.temperature,
-            max_tokens=app_config.llm.max_tokens,
-        )
-        msr_prompt_total = count_render_plan_items(plan_for_next_step)
-        with RenderProgressReporter("Enriching MSR prompts", msr_prompt_total) as msr_prompt_progress:
-            plan_for_next_step = enrich_render_plan_with_msr_prompts(
-                plan_for_next_step,
-                context.reference_plan,
-                llm=llm,
-                on_scene_complete=_scene_progress_callback(msr_prompt_progress),
+        if not args.skip_msr_prompt_enrichment:
+            write_step("Enriching render plan with MSR prompts")
+            app_config = AppConfig.load(app_config_path)
+            llm = OpenAICompatibleLLMClient(
+                base_url=app_config.llm.base_url,
+                model=app_config.llm.model,
+                temperature=app_config.llm.temperature,
+                max_tokens=app_config.llm.max_tokens,
             )
+            msr_prompt_total = count_render_plan_items(plan_for_next_step)
+            with RenderProgressReporter("Enriching MSR prompts", msr_prompt_total) as msr_prompt_progress:
+                plan_for_next_step = enrich_render_plan_with_msr_prompts(
+                    plan_for_next_step,
+                    context.reference_plan,
+                    llm=llm,
+                    on_scene_complete=_scene_progress_callback(msr_prompt_progress),
+                )
+        else:
+            console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
 
     if not args.skip_ltx:
         write_step("Rendering LTX")
@@ -410,7 +414,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             ),
             console=console,
         )
-        ltx_scene_numbers = {args.smoke_scene} if args.smoke_only else None
+        ltx_scene_numbers = {args.smoke_scene} if args.smoke_only else parse_scene_list(args.scenes)
         ltx_total = count_render_plan_items(plan_for_next_step, scene_numbers=ltx_scene_numbers)
         with RenderProgressReporter("Rendering LTX scenes", ltx_total) as ltx_progress:
             video_use_case.execute(
