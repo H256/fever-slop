@@ -17,7 +17,7 @@ from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
 console = Console()
-MSR_ACTOR_VIEW_NAMES = ("hero_closeup", "front", "left", "back")
+MSR_ACTOR_VIEW_NAMES = ReferenceBibleGenerator.direct_msr_actor_view_names
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -34,7 +34,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--view-set",
         choices=["msr", "full"],
         default="msr",
-        help="msr renders only hero references; full renders hero plus edit views and sheets.",
+        help="msr renders direct 4-panel actor sheets and hero location references; full renders hero plus edit views and sheets.",
     )
     return parser
 

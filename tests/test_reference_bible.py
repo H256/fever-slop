@@ -179,6 +179,49 @@ class ReferenceBibleTests(unittest.TestCase):
             with Image.open(manifest_path.parent / "msr_sheet.png") as sheet:
                 self.assertEqual((1280, 704), sheet.size)
 
+    def test_generator_can_render_direct_msr_actor_sheet_without_edit_views(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir) / "project"
+            output_dir = project_dir / "output" / "references"
+            hero_backend = FakeImageBackend()
+            edit_backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=hero_backend,
+                edit_backend=edit_backend,
+                output_dir=output_dir,
+                actor_view_names=("msr_sheet",),
+                location_view_names=("hero",),
+                msr_sheet_size=(1920, 1088),
+            )
+
+            manifest_path = generator.generate_subject_bible(
+                ReferenceSubject(
+                    id="warrior",
+                    name="Warrior",
+                    image_prompt="dark fantasy warrior with black armor",
+                )
+            )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(1, len(hero_backend.requests))
+            self.assertEqual(0, len(edit_backend.requests))
+            request = hero_backend.requests[0]
+            self.assertEqual((1920, 1088), (request.width, request.height))
+            self.assertTrue(request.prompt.startswith("vertical four panel character sheet photos."))
+            self.assertIn("dark fantasy warrior with black armor", request.prompt)
+            self.assertIn("1st panel is a closeup", request.prompt)
+            self.assertIn("2nd panel is front view", request.prompt)
+            self.assertIn("3rd panel is left view", request.prompt)
+            self.assertIn("4th panel is back view", request.prompt)
+            self.assertIn("the panel background is white", request.prompt)
+            self.assertEqual(["msr_sheet"], [view["name"] for view in manifest["views"]])
+            self.assertEqual("output/references/actors/warrior/msr_sheet.png", manifest["msr_input_path"])
+            self.assertEqual("output/references/actors/warrior/sheet.png", manifest["sheet_path"])
+            self.assertEqual("output/references/actors/warrior/views/msr_sheet.png", manifest["views"][0]["path"])
+            self.assertTrue((manifest_path.parent / "views" / "msr_sheet.png").exists())
+            self.assertTrue((manifest_path.parent / "sheet.png").exists())
+            self.assertTrue((manifest_path.parent / "msr_sheet.png").exists())
+
     def test_generator_writes_location_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_dir = Path(temp_dir) / "project"

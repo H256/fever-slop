@@ -48,7 +48,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
     def test_msr_view_set_uses_actor_sheet_views_and_single_location_background(self):
         actor_views, location_views = resolve_view_names("msr")
 
-        self.assertEqual(("hero_closeup", "front", "left", "back"), actor_views)
+        self.assertEqual(("msr_sheet",), actor_views)
         self.assertEqual(("hero",), location_views)
 
     def test_load_reference_subjects_falls_back_to_legacy_subject(self):
@@ -156,8 +156,9 @@ class ReferenceBibleToolTests(unittest.TestCase):
             printed = record_console.export_text()
             self.assertIn("Reference Bible render plan", printed)
             self.assertIn("Actors: 1", printed)
-            self.assertIn("Total renders: 4", printed)
-            self.assertEqual(("hero_closeup", "front", "left", "back"), generator_factory.call_args.kwargs["actor_view_names"])
+            self.assertIn("Actor views: 1", printed)
+            self.assertIn("Total renders: 1", printed)
+            self.assertEqual(("msr_sheet",), generator_factory.call_args.kwargs["actor_view_names"])
             self.assertEqual(("hero",), generator_factory.call_args.kwargs["location_view_names"])
 
     def test_run_progress_avoids_unicode_spinner_column(self):

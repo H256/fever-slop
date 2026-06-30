@@ -33,6 +33,7 @@ class ReferenceBibleGenerator:
     actor_hero_size = (1088, 1920)
     location_hero_size = (1920, 1088)
     msr_actor_view_names = ("hero_closeup", "front", "left", "back")
+    direct_msr_actor_view_names = ("msr_sheet",)
 
     def __init__(
         self,
@@ -63,6 +64,9 @@ class ReferenceBibleGenerator:
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
         subject_dir = self.output_dir / "actors" / subject.id
         subject_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.actor_view_names == self.direct_msr_actor_view_names:
+            return self._generate_direct_msr_subject_bible(subject, subject_dir)
 
         views = []
         hero_path = None
@@ -118,6 +122,49 @@ class ReferenceBibleGenerator:
             "kind": "actor",
             "views": views,
             "msr_input_path": self._artifact_path(msr_sheet_path if len(views) > 1 else hero_path),
+            "sheet_path": self._artifact_path(sheet_path),
+        }
+        manifest_path = subject_dir / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return manifest_path
+
+    def _generate_direct_msr_subject_bible(self, subject: ReferenceSubject, subject_dir: Path) -> Path:
+        view_name = self.direct_msr_actor_view_names[0]
+        view_dir = subject_dir / "views"
+        rendered = self.backend.render_image(
+            ImageRenderRequest(
+                scene={"reference_id": subject.id, "view": view_name},
+                scene_number=1,
+                prompt=self._direct_msr_sheet_prompt(subject),
+                workflow_path=Path(""),
+                output_dir=view_dir,
+                width=self.msr_sheet_size[0],
+                height=self.msr_sheet_size[1],
+                reference_image=None,
+                anchors=self.hero_anchors,
+            )
+        )
+        target = view_dir / f"{view_name}.png"
+        if Path(rendered) != target:
+            target.write_bytes(Path(rendered).read_bytes())
+
+        sheet_path = subject_dir / "sheet.png"
+        msr_sheet_path = subject_dir / "msr_sheet.png"
+        sheet_path.write_bytes(target.read_bytes())
+        msr_sheet_path.write_bytes(target.read_bytes())
+        self._report_view_complete(
+            kind="actor",
+            item_id=subject.id,
+            item_name=subject.name,
+            view=view_name,
+            index=1,
+            path=target,
+        )
+        manifest = {
+            **asdict(subject),
+            "kind": "actor",
+            "views": [{"name": view_name, "path": self._artifact_path(target)}],
+            "msr_input_path": self._artifact_path(msr_sheet_path),
             "sheet_path": self._artifact_path(sheet_path),
         }
         manifest_path = subject_dir / "manifest.json"
@@ -216,6 +263,19 @@ class ReferenceBibleGenerator:
             f"Create a {view_direction} of the character from the reference image. "
             "Keep the same identity, face, hairstyle, body proportions, outfit, colors, and materials from the reference image. "
             "Use a plain white seamless studio background, even reference-sheet lighting, no environment, no scenery, no props, no text, no extra characters."
+        )
+
+    @staticmethod
+    def _direct_msr_sheet_prompt(subject: ReferenceSubject) -> str:
+        base = subject.image_prompt or subject.visual_description or subject.name
+        return (
+            "vertical four panel character sheet photos.\n\n"
+            f"{base}\n\n"
+            "1st panel is a closeup,\n"
+            "2nd panel is front view,\n"
+            "3rd panel is left view,\n"
+            "4th panel is back view.\n\n"
+            "the panel background is white"
         )
 
     @classmethod
