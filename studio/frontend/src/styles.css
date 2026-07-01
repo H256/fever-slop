@@ -852,12 +852,18 @@ select {
   display: none;
 }
 
+.timeline-transport {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
 .timeline-scrubber {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) 48px;
   gap: 10px;
   align-items: center;
-  margin-bottom: 12px;
   color: var(--ink-muted);
   font-size: 12px;
 }
@@ -982,7 +988,7 @@ select {
   bottom: 7px;
   display: grid;
   align-content: center;
-  min-width: 44px;
+  min-width: 0;
   padding: 6px;
   overflow: hidden;
   border: 1px solid var(--primary);
@@ -1186,7 +1192,8 @@ select {
   .studio-shell,
   .editor-layout,
   .reference-workspace,
-  .timeline-preview {
+  .timeline-preview,
+  .timeline-transport {
     grid-template-columns: 1fr;
   }
 

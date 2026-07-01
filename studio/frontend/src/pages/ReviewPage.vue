@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { Clapperboard, Play, Redo2, RotateCcw, Save, Scissors, Sparkles, Trash2, Undo2, ZoomIn } from "lucide-vue-next";
+import { Clapperboard, Play, Redo2, RotateCcw, Save, Scissors, Sparkles, Square, Trash2, Undo2, ZoomIn } from "lucide-vue-next";
 import { useRoute } from "vue-router";
 import { api, mediaUrl, thumbnailUrl } from "../api";
 import { useStudioStore } from "../stores/studio";
@@ -181,6 +181,12 @@ async function playTimeline() {
     await audioRef.value.play();
   }
   await videoRef.value?.play();
+}
+
+function stopTimeline() {
+  playingTimeline.value = false;
+  videoRef.value?.pause();
+  audioRef.value?.pause();
 }
 
 async function playNextClip() {
@@ -428,7 +434,7 @@ function blockStyle(start: number, duration: number): Record<string, string> {
   const total = totalDuration.value || 1;
   return {
     left: `${(start / total) * 100}%`,
-    width: `${Math.max((duration / total) * 100, 1)}%`
+    width: `${Math.max((duration / total) * 100, 0)}%`
   };
 }
 
@@ -624,7 +630,6 @@ function formatTime(value: number): string {
           <RotateCcw :size="18" /> Rebuild stale {{ staleScenes.length || "" }}
         </button>
         <button class="button secondary" :disabled="!timelineDirty" @click="pendingTimelineSave = true"><Save :size="18" /> Save timeline</button>
-        <button class="button secondary" :disabled="playableItems.length === 0" @click="playTimeline"><Play :size="18" /> Play timeline</button>
         <button class="button" :disabled="!selectedScene" @click="pendingRetake = true"><Clapperboard :size="18" /> Render retake</button>
       </div>
     </header>
@@ -677,12 +682,19 @@ function formatTime(value: number): string {
         </aside>
       </div>
 
-      <section class="panel timeline-panel">
+      <div class="panel timeline-transport">
+        <div class="button-row">
+          <button class="button secondary" :disabled="playableItems.length === 0" @click="playTimeline"><Play :size="18" /> Play timeline</button>
+          <button class="button secondary" :disabled="!playingTimeline" @click="stopTimeline"><Square :size="16" /> Stop</button>
+        </div>
         <div class="timeline-scrubber">
           <span>{{ formatTime(scrubSeconds) }}</span>
           <input v-model.number="scrubSeconds" type="range" min="0" :max="totalDuration" step="0.01" @input="scrub" />
           <span>{{ formatTime(totalDuration) }}</span>
         </div>
+      </div>
+
+      <section class="panel timeline-panel">
         <div class="timeline-scroll">
           <div class="timeline-lanes" :style="timelineScaleStyle">
           <div class="timeline-lane time-ruler-lane">
