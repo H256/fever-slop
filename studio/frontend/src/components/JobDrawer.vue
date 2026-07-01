@@ -10,6 +10,7 @@ defineProps<{ jobs: Job[] }>();
     <header class="panel-header">
       <h2>Jobs</h2>
     </header>
+    <p class="job-note">Status refreshes from Studio job state. Rich CLI progress is still printed in the backend terminal.</p>
     <div v-if="jobs.length === 0" class="empty">No jobs yet.</div>
     <article v-for="job in jobs" :key="job.id" class="job-row">
       <div>

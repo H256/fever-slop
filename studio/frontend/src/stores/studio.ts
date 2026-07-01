@@ -19,8 +19,8 @@ export const useStudioStore = defineStore("studio", {
     async loadJobs(projectId?: string) {
       this.jobs = await api.jobs(projectId);
     },
-    async startJob(projectId: string, action: string, scenes?: number[]) {
-      const job = await api.startJob(projectId, action, scenes);
+    async startJob(projectId: string, action: string, scenes?: number[], extra?: Record<string, unknown>) {
+      const job = await api.startJob(projectId, action, scenes, extra);
       this.jobs.unshift(job);
       return job;
     }

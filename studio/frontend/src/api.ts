@@ -20,17 +20,23 @@ export const api = {
       headers: jsonHeaders,
       body: JSON.stringify({ path, data })
     }),
+  uploadMedia: (projectId: string, path: string, dataUrl: string) =>
+    request<{ path: string }>(`/api/projects/${projectId}/media`, {
+      method: "PUT",
+      headers: jsonHeaders,
+      body: JSON.stringify({ path, data_url: dataUrl })
+    }),
   patchScene: (projectId: string, path: string, scene: number, updates: Record<string, unknown>) =>
     request(`/api/projects/${projectId}/render-plan`, {
       method: "PATCH",
       headers: jsonHeaders,
       body: JSON.stringify({ path, scene, updates })
     }),
-  startJob: (projectId: string, action: string, scenes?: number[]) =>
+  startJob: (projectId: string, action: string, scenes?: number[], extra?: Record<string, unknown>) =>
     request<Job>(`/api/projects/${projectId}/jobs`, {
       method: "POST",
       headers: jsonHeaders,
-      body: JSON.stringify({ action, scenes })
+      body: JSON.stringify({ action, scenes, ...extra })
     }),
   jobs: (projectId?: string) => request<Job[]>(`/api/jobs${projectId ? `?project_id=${projectId}` : ""}`)
 };

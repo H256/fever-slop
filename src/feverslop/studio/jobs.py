@@ -3,11 +3,14 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.adapters.pipeline_runner import RunPipelineAdapter
 from feverslop.composition import pipeline_runner
+from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
+from feverslop.tools.reference_bible import run as render_reference_bible
 
 
 JobHandler = Callable[[Callable[[str], None]], Any]
@@ -120,3 +123,76 @@ def build_pipeline_handler(project_config_path: Path, action: str, *, scenes: li
 
     return run
 
+
+def build_reference_rerender_handler(project_config_path: Path, *, reference_kind: str, reference_id: str) -> JobHandler:
+    def run(log: Callable[[str], None]) -> Any:
+        log(f"Rerendering {reference_kind} reference {reference_id}")
+        args = build_reference_bible_arg_parser().parse_args(
+            [
+                "--project-config",
+                str(project_config_path),
+                "--app-config",
+                "app_config.json",
+                "--hero-workflow",
+                str(Path("workflows") / "image_t2i_startframe_krea_v1.json"),
+                "--edit-workflow",
+                str(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json"),
+                "--view-set",
+                "msr",
+                "--only-kind",
+                reference_kind,
+                "--only-id",
+                reference_id,
+            ]
+        )
+        manifests = render_reference_bible(args)
+        log(f"Finished {reference_kind} reference {reference_id}")
+        return ", ".join(str(path) for path in manifests)
+
+    return run
+
+
+def build_ffmpeg_recut_command(
+    raw_clip_path: Path,
+    output_clip_path: Path,
+    *,
+    raw_in_seconds: float,
+    raw_out_seconds: float,
+) -> list[str]:
+    return [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        f"{raw_in_seconds:.3f}",
+        "-to",
+        f"{raw_out_seconds:.3f}",
+        "-i",
+        str(raw_clip_path),
+        "-c",
+        "copy",
+        str(output_clip_path),
+    ]
+
+
+def build_recut_scene_handler(
+    raw_clip_path: Path,
+    output_clip_path: Path,
+    *,
+    raw_in_seconds: float,
+    raw_out_seconds: float,
+) -> JobHandler:
+    def run(log: Callable[[str], None]) -> Any:
+        if raw_out_seconds <= raw_in_seconds:
+            raise ValueError("raw_out_seconds must be greater than raw_in_seconds")
+        output_clip_path.parent.mkdir(parents=True, exist_ok=True)
+        command = build_ffmpeg_recut_command(
+            raw_clip_path,
+            output_clip_path,
+            raw_in_seconds=raw_in_seconds,
+            raw_out_seconds=raw_out_seconds,
+        )
+        log(" ".join(command))
+        subprocess.run(command, check=True)
+        return output_clip_path
+
+    return run

@@ -4,7 +4,7 @@ import time
 import unittest
 from pathlib import Path
 
-from feverslop.studio.jobs import JobRegistry, build_pipeline_options
+from feverslop.studio.jobs import JobRegistry, build_ffmpeg_recut_command, build_pipeline_options
 from feverslop.studio.projects import (
     ArtifactRequest,
     ProjectStore,
@@ -81,6 +81,17 @@ class StudioBackendTests(unittest.TestCase):
             with self.assertRaises(StudioPathError):
                 store.resolve_media_path("demo", "../../etc/passwd")
 
+    def test_write_media_data_url_stays_inside_project(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+
+            result = store.write_media_data_url("demo", "output/references/actors/hero/sheet.png", "data:image/png;base64,cG5n")
+
+            self.assertEqual("output/references/actors/hero/sheet.png", result["path"])
+            self.assertEqual(b"png", (Path(temp_dir) / "demo" / "output/references/actors/hero/sheet.png").read_bytes())
+            with self.assertRaises(StudioPathError):
+                store.write_media_data_url("demo", "../bad.png", "data:image/png;base64,cG5n")
+
     def test_job_registry_tracks_success_and_failure(self):
         registry = JobRegistry()
 
@@ -105,6 +116,14 @@ class StudioBackendTests(unittest.TestCase):
         self.assertTrue(options["skip_storyboard"])
         self.assertFalse(options["skip_ltx"])
         self.assertEqual("2,4", options["scenes"])
+
+    def test_build_ffmpeg_recut_command_trims_raw_clip_to_output_clip(self):
+        command = build_ffmpeg_recut_command(Path("raw.mp4"), Path("final.mp4"), raw_in_seconds=0.4, raw_out_seconds=11.9)
+
+        self.assertEqual(
+            ["ffmpeg", "-y", "-ss", "0.400", "-to", "11.900", "-i", "raw.mp4", "-c", "copy", "final.mp4"],
+            command,
+        )
 
 
 if __name__ == "__main__":

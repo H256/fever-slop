@@ -2,7 +2,6 @@
 import { computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useStudioStore } from "../stores/studio";
-import ProjectNav from "../components/ProjectNav.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 
 const route = useRoute();
@@ -12,9 +11,7 @@ onMounted(() => studio.loadProject(projectId.value));
 </script>
 
 <template>
-  <section v-if="studio.currentProject" class="page">
-    <ProjectNav :project-id="projectId" />
-    <header class="page-header">
+  <section v-if="studio.currentProject" class="page">    <header class="page-header">
       <h1>{{ studio.currentProject.name }}</h1>
       <p>{{ studio.currentProject.path }}</p>
     </header>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -74,6 +75,17 @@ class ProjectStore:
         artifact_path.write_text(json.dumps(request.data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return {"path": request.path, "data": request.data}
 
+    def write_media_data_url(self, project_id: str, path: str, data_url: str) -> dict[str, str]:
+        media_path = self.resolve_project_path(project_id, path)
+        if media_path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+            raise StudioPathError("Unsupported uploaded media type")
+        header, separator, encoded = data_url.partition(",")
+        if not separator or not header.startswith("data:image/"):
+            raise StudioPathError("Expected an image data URL")
+        media_path.parent.mkdir(parents=True, exist_ok=True)
+        media_path.write_bytes(base64.b64decode(encoded))
+        return {"path": path}
+
     def patch_render_plan(self, project_id: str, patch: RenderPlanPatch) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, patch.path)
         render_plan = self._read_json_file(artifact_path, default=[])
@@ -118,4 +130,3 @@ class ProjectStore:
     @staticmethod
     def _relative_matches(root: Path, files: list[Path], predicate) -> list[str]:
         return sorted(path.relative_to(root).as_posix() for path in files if predicate(path))
-
