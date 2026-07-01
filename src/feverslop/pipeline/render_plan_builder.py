@@ -161,6 +161,18 @@ def _render_mode_hint(scene_type: str, prompt_relay: list[dict]) -> str:
     return "single_prompt"
 
 
+def _scene_references(scene: dict) -> dict:
+    references = dict(scene.get("references") or {})
+    actor_ids = list(references.get("actor_ids") or [])
+    if len(actor_ids) > 4:
+        raise ValueError(f"Scene {scene.get('scene')} references at most 4 actors for ltx_msr")
+    if actor_ids:
+        references["actor_ids"] = [str(actor_id) for actor_id in actor_ids]
+    if "location_id" in references and references["location_id"] is not None:
+        references["location_id"] = str(references["location_id"])
+    return references
+
+
 def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     scene_number = int(scene["scene"])
     scene_type = str(scene.get("type", "")).strip().lower()
@@ -341,7 +353,7 @@ def build_render_plan(
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
             })
 
-        render_plan.append({
+        render_scene = {
             "scene": scene_number,
             "cut": True,
             "abs_start_seconds": scene["start"],
@@ -368,6 +380,10 @@ def build_render_plan(
                 "camera_motion": scene.get("camera_motion", ""),
                 "character_motion": scene.get("character_motion", ""),
             },
-        })
+        }
+        references = _scene_references(scene)
+        if references:
+            render_scene["references"] = references
+        render_plan.append(render_scene)
 
     return artifact_store.write_json(output_json_file, render_plan)

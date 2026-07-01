@@ -22,6 +22,8 @@ from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.pipeline_runner_options import add_runner_options
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
+from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
+from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
 from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
@@ -32,6 +34,9 @@ from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
+from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
+from feverslop.tools.reference_bible import run as render_reference_bible
+from feverslop.tools.storyboard_page import parse_scene_list
 from feverslop.tools.storyboard_page import generate_storyboard_page
 
 
@@ -83,6 +88,8 @@ class PipelineRunContext:
     scene_details: Path
     scene_prompts: Path
     render_plan: Path
+    reference_plan: Path
+    references_dir: Path
     compact_plan: Path
     anchored_plan: Path
     storyboard_dir: Path
@@ -139,10 +146,10 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
     prompts_dir = project_output_dir / "prompts"
     render_dir = project_output_dir / "render"
     storyboard_dir = render_dir / "storyboard"
-    ltx_dir = render_dir / f"ltx_{args.render_mode}"
+    ltx_dir = render_dir / ("ltx_msr" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}")
     if args.smoke_only:
-        ltx_dir = render_dir / f"ltx_{args.render_mode}_smoke"
-    ltx_debug_dir = render_dir / f"ltx_{args.render_mode}_debug"
+        ltx_dir = render_dir / ("ltx_msr_smoke" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}_smoke")
+    ltx_debug_dir = render_dir / ("ltx_msr_debug" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}_debug")
 
     return PipelineRunContext(
         project_config_path=project_config_path,
@@ -160,6 +167,8 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         scene_details=prompts_dir / f"scene_details_{song_id}.json",
         scene_prompts=prompts_dir / f"scene_prompts_{song_id}.json",
         render_plan=render_dir / f"render_plan_{song_id}.json",
+        reference_plan=render_dir / f"render_plan_{song_id}_refs.json",
+        references_dir=project_output_dir / "references",
         compact_plan=render_dir / f"render_plan_{song_id}__compact.json",
         anchored_plan=render_dir / f"render_plan_{song_id}__compact_anchored.json",
         storyboard_dir=storyboard_dir,
@@ -190,6 +199,31 @@ def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> P
     return concat_file
 
 
+def collect_render_plan_scene_clips(render_plan_path: str | Path, output_dir: str | Path) -> list[Path]:
+    output_dir = Path(output_dir)
+    render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    clips: list[Path] = []
+    missing: list[Path] = []
+    for scene in render_plan:
+        scene_number = int(scene["scene"])
+        candidates = [
+            output_dir / f"scene_{scene_number:04}.mp4",
+            output_dir / "final" / f"scene_{scene_number:04}.mp4",
+        ]
+        clip = next((candidate for candidate in candidates if candidate.exists()), None)
+        if clip is None:
+            missing.append(candidates[0])
+            continue
+        clips.append(clip)
+
+    if missing:
+        raise FileNotFoundError(
+            "Cannot build final concat; missing rendered scene clips: "
+            + ", ".join(str(path) for path in missing[:10])
+        )
+    return clips
+
+
 def count_render_plan_items(render_plan_path: str | Path, scene_numbers: set[int] | None = None, limit: int | None = None) -> int:
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
     if scene_numbers is not None:
@@ -211,6 +245,9 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
     context = build_run_context(args)
     app_config_path = resolve_runner_path(args.app_config)
     storyboard_workflow = resolve_runner_path(args.storyboard_workflow)
+    reference_hero_workflow = resolve_runner_path(args.reference_hero_workflow)
+    reference_edit_workflow = resolve_runner_path(args.reference_edit_workflow)
+    msr_workflow = resolve_runner_path(args.msr_workflow)
     relay_workflow = resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path("")
     single_prompt_workflow = resolve_runner_path(args.single_prompt_workflow)
     console.print(f"Project: {context.project_config_path}")
@@ -264,7 +301,8 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
         for warning in warnings[:30]:
             console.print(f"! {warning}")
 
-    if not args.skip_storyboard:
+    should_render_storyboard = not args.skip_storyboard and args.video_pipeline != "ltx_msr"
+    if should_render_storyboard:
         write_step("Rendering storyboard")
         app_config = AppConfig.load(app_config_path)
         storyboard_use_case = build_render_storyboard_use_case(
@@ -284,7 +322,8 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 )
             )
 
-    if not args.skip_storyboard_page:
+    should_render_storyboard_page = not args.skip_storyboard_page and args.video_pipeline != "ltx_msr"
+    if should_render_storyboard_page:
         write_step("Generating storyboard page")
         generate_storyboard_page(
             render_plan_path=plan_for_next_step,
@@ -292,13 +331,67 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             output_html=context.storyboard_page,
         )
 
+    if args.video_pipeline == "ltx_msr":
+        if not args.skip_msr_reference_render:
+            write_step("Rendering MSR references")
+            reference_args = build_reference_bible_arg_parser().parse_args([
+                "--project-config",
+                str(context.project_config_path),
+                "--app-config",
+                str(app_config_path),
+                "--hero-workflow",
+                str(reference_hero_workflow),
+                "--edit-workflow",
+                str(reference_edit_workflow),
+                "--output-dir",
+                str(context.references_dir),
+                "--view-set",
+                "msr",
+            ])
+            render_reference_bible(reference_args)
+        else:
+            console.print("Skipping MSR reference rendering; using existing reference manifests.")
+
+        write_step("Enriching render plan with MSR references")
+        msr_reference_total = count_render_plan_items(plan_for_next_step)
+        with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
+            plan_for_next_step = enrich_render_plan_with_reference_sheets(
+                plan_for_next_step,
+                context.references_dir,
+                context.reference_plan,
+                on_scene_complete=_scene_progress_callback(reference_progress),
+            )
+        if not args.skip_msr_prompt_enrichment:
+            write_step("Enriching render plan with MSR prompts")
+            app_config = AppConfig.load(app_config_path)
+            llm = OpenAICompatibleLLMClient(
+                base_url=app_config.llm.base_url,
+                model=app_config.llm.model,
+                temperature=app_config.llm.temperature,
+                max_tokens=app_config.llm.max_tokens,
+            )
+            msr_prompt_total = count_render_plan_items(plan_for_next_step)
+            with RenderProgressReporter("Enriching MSR prompts", msr_prompt_total) as msr_prompt_progress:
+                plan_for_next_step = enrich_render_plan_with_msr_prompts(
+                    plan_for_next_step,
+                    context.reference_plan,
+                    llm=llm,
+                    on_scene_complete=_scene_progress_callback(msr_prompt_progress),
+                )
+        else:
+            console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
+
     if not args.skip_ltx:
         write_step("Rendering LTX")
-        if args.render_mode != "single_prompt" and not str(args.relay_workflow).strip():
+        if args.video_pipeline != "ltx_msr" and args.render_mode != "single_prompt" and not str(args.relay_workflow).strip():
             raise ValueError(f"RenderMode '{args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
 
-        ltx_workflow = single_prompt_workflow if args.render_mode == "single_prompt" else relay_workflow
-        ltx_single_prompt_workflow = single_prompt_workflow if args.render_mode == "auto" else None
+        if args.video_pipeline == "ltx_msr":
+            ltx_workflow = msr_workflow
+            ltx_single_prompt_workflow = None
+        else:
+            ltx_workflow = single_prompt_workflow if args.render_mode == "single_prompt" else relay_workflow
+            ltx_single_prompt_workflow = single_prompt_workflow if args.render_mode == "auto" else None
         video_use_case = build_render_video_scenes_use_case(
             RenderVideoCompositionOptions(
                 app_config_path=app_config_path,
@@ -306,6 +399,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 render_plan_path=plan_for_next_step,
                 workflow_path=ltx_workflow,
                 output_dir=context.ltx_dir,
+                video_pipeline=args.video_pipeline,
                 single_prompt_workflow_path=ltx_single_prompt_workflow,
                 render_mode=args.render_mode,
                 single_prompt_title=args.single_prompt_title,
@@ -314,15 +408,16 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                 lora_1_strength_model=args.video_lora_1_strength_model,
                 lora_1_strength_clip=args.video_lora_1_strength_clip,
                 lora_split_enabled=args.lora_split_enabled,
+                randomize_seed=args.randomize_seed,
                 debug_workflows_dir=context.ltx_debug_dir,
                 rolling_frame_profile=args.rolling_frame_profile,
             ),
             console=console,
         )
-        ltx_scene_numbers = {args.smoke_scene} if args.smoke_only else None
+        ltx_scene_numbers = {args.smoke_scene} if args.smoke_only else parse_scene_list(args.scenes)
         ltx_total = count_render_plan_items(plan_for_next_step, scene_numbers=ltx_scene_numbers)
         with RenderProgressReporter("Rendering LTX scenes", ltx_total) as ltx_progress:
-            rendered_ltx_clips = video_use_case.execute(
+            video_use_case.execute(
                 RenderVideoScenesRequest(
                     render_plan_path=plan_for_next_step,
                     workflow_path=ltx_workflow,
@@ -340,11 +435,10 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
                     on_scene_complete=ltx_progress.update,
                 )
             )
-        rewrite_concat_list(rendered_ltx_clips, context.ltx_dir)
-
     video_only_path = None
     final_video_path = None
-    if not args.skip_final_concat and context.concat_list.exists():
+    if not args.skip_final_concat:
+        rewrite_concat_list(collect_render_plan_scene_clips(plan_for_next_step, context.ltx_dir), context.ltx_dir)
         postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
         write_step("Final FFmpeg video-only concat")
         video_only_path = postprocessor.concat_clips(
@@ -384,6 +478,13 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
 
 def run_unittest_suite() -> None:
     subprocess.run(["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"], check=True)
+
+
+def _scene_progress_callback(progress: RenderProgressReporter):
+    def update(scene_number: int, completed: int, total: int) -> None:
+        progress.update(Path(f"scene_{scene_number:04}.json"), completed, total)
+
+    return update
 
 
 def write_step(message: str) -> None:

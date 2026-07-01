@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any
+import re
 
 
 class WorkflowPatcher:
@@ -56,6 +57,70 @@ class WorkflowPatcher:
             for node_id, node in self.workflow.items()
             if node.get("_meta", {}).get("title") == title
         ]
+
+    def apply_patch_spec(self, operations: list[dict], context: dict | None = None) -> "WorkflowPatcher":
+        context = context or {}
+        for operation in operations:
+            op = operation.get("op")
+            if op == "set_input":
+                self._apply_set_input(operation, context)
+            elif op == "remove_node":
+                self._apply_remove_node(operation)
+            elif op == "insert_node_between":
+                self._apply_insert_node_between(operation)
+            else:
+                raise ValueError(f"Unsupported workflow patch op: {op}")
+        return self
+
+    def _apply_set_input(self, operation: dict, context: dict) -> None:
+        _, node = self._resolve_target(operation["target"])
+        if "value_from" in operation:
+            value = resolve_dotted_path(context, str(operation["value_from"]))
+        else:
+            value = operation.get("value")
+        node.setdefault("inputs", {})[str(operation["input"])] = value
+
+    def _apply_remove_node(self, operation: dict) -> None:
+        node_id, node = self._resolve_target(operation["target"])
+        inputs = node.get("inputs", {})
+        for bridge in operation.get("bridge", []):
+            from_input = str(bridge["from_input"])
+            if from_input not in inputs:
+                raise KeyError(f"Bridge input '{from_input}' not found on removed node {node_id}")
+            _, target_node = self._resolve_target(bridge["to"])
+            target_node.setdefault("inputs", {})[str(bridge["to"]["input"])] = deepcopy(inputs[from_input])
+        del self.workflow[node_id]
+
+    def _apply_insert_node_between(self, operation: dict) -> None:
+        new_node_id = str(operation["new_node_id"])
+        if new_node_id in self.workflow:
+            raise ValueError(f"Node id already exists: {new_node_id}")
+
+        source_id, _ = self._resolve_target(operation["source"])
+        _, target_node = self._resolve_target(operation["target"])
+        new_node = deepcopy(operation["node"])
+        new_node.setdefault("inputs", {})[str(operation["new_node_input"])] = [
+            source_id,
+            int(operation.get("source", {}).get("output", 0)),
+        ]
+        self.workflow[new_node_id] = new_node
+        target_node.setdefault("inputs", {})[str(operation["target"]["input"])] = [
+            new_node_id,
+            int(operation.get("new_node_output", 0)),
+        ]
+
+    def _resolve_target(self, target: dict) -> tuple[str, dict]:
+        if "id" in target:
+            node_id = str(target["id"])
+            return node_id, self.find_node_by_id(node_id)
+        if "title" in target:
+            return self.find_node_by_meta_title(str(target["title"]))
+        if "class_type" in target:
+            nodes = self.find_nodes_by_class_type(str(target["class_type"]))
+            if not nodes:
+                raise KeyError(f"No node with class_type found: {target['class_type']}")
+            return nodes[int(target.get("index", 0))]
+        raise ValueError(f"Patch target must include id, title, or class_type: {target}")
 
     def set_input_by_id(
         self,
@@ -259,3 +324,22 @@ class WorkflowPatcher:
             )
 
         return patched
+
+
+_PATH_PART_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)])?")
+
+
+def resolve_dotted_path(context: dict, path: str) -> Any:
+    current: Any = context
+    for part in path.split("."):
+        match = _PATH_PART_RE.fullmatch(part)
+        if not match:
+            raise ValueError(f"Invalid dotted path part: {part}")
+        key, index = match.groups()
+        if isinstance(current, dict):
+            current = current[key]
+        else:
+            current = getattr(current, key)
+        if index is not None:
+            current = current[int(index)]
+    return current

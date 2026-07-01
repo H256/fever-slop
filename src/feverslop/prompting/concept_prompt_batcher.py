@@ -147,7 +147,7 @@ class ConceptPromptBatcher:
     ) -> dict:
         # Drop unexpected keys.
         repaired = {
-            key: str(value)
+            key: value
             for key, value in result.items()
             if key in expected_ids
         }

@@ -119,7 +119,7 @@ You are a professional music video director and cinematographer creating a conti
 {batch_text}
 
 TASK:
-Create exactly one concise visual concept for each segment in {target_text}.
+Create exactly one concise visual concept and scene reference assignment for each segment in {target_text}.
 
 Continuity rules:
 - Read all available segments first and infer the full emotional and visual arc.
@@ -144,6 +144,10 @@ Visual rules:
 
 Prompt guidance:
 - If GLOBAL_CONTEXT.location_constraint is provided, follow it as a mandatory rule. Every scene concept must visibly take place in one allowed location.
+- If GLOBAL_CONTEXT.actors is provided, choose scene actors only from those actor ids.
+- If GLOBAL_CONTEXT.structured_locations is provided, choose location_id only from those location ids.
+- If GLOBAL_CONTEXT.subject_mode is "single", every scene references exactly one actor: the first available actor id.
+- Otherwise every scene references 1 to GLOBAL_CONTEXT.max_scene_actors actor ids, never more than 4.
 - If prompt_guidance is provided, treat its categories as user interface values for this run.
 - Shot types, character visibility, environments, lighting, camera motion, physical interaction, facial expression, outfit rules, prompt structure, list handling, and word count are guidance for visual continuity and variety.
 - Follow explicit prompt_guidance values unless they conflict with segment type, subject identity, allowed locations, or the performance policy.
@@ -153,7 +157,11 @@ Output rules:
 - Return ONLY a valid JSON object.
 - Each key must exactly match a segment_id.
 - Do not omit keys. Do not add extra keys.
-- Each value must be one concise visual concept string.
+- Each value must be an object with this exact shape:
+  {{"concept": "one concise visual concept string", "references": {{"actor_ids": ["actor_id"], "location_id": "location_id"}}}}
+- references.actor_ids must contain at least 1 actor id and at most GLOBAL_CONTEXT.max_scene_actors actor ids.
+- references.location_id must contain exactly one location id.
+- If no actors or structured locations are available, fall back to a plain concept string for legacy compatibility.
 - No markdown, no comments, no code fences.
 """.strip()
 

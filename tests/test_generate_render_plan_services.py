@@ -1,6 +1,8 @@
 ﻿import unittest
 from pathlib import Path
 
+from rich.progress import SpinnerColumn
+
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
 from feverslop.application.generate_render_plan import GenerateRenderPlanUseCase
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
@@ -82,6 +84,15 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         use_case = GenerateRenderPlanUseCase(pipeline_services=services)
 
         self.assertIs(services, use_case.pipeline_services)
+
+    def test_run_spinner_avoids_unicode_spinner_column(self):
+        use_case = GenerateRenderPlanUseCase()
+
+        result = use_case.run_spinner("Doing work", lambda: "done")
+
+        self.assertEqual("done", result)
+        column_types = [type(column) for column in use_case._last_progress_columns]
+        self.assertNotIn(SpinnerColumn, column_types)
 
 
 if __name__ == "__main__":

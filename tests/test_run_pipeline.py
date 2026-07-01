@@ -222,7 +222,167 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         self.assertIsNotNone(request.on_scene_complete)
         self.assertEqual(3, request.on_scene_complete.__self__.total)
 
-    def test_ltx_resume_rewrites_concat_list_from_all_returned_clips_before_final_concat(self):
+    def test_ltx_msr_runner_does_not_require_relay_workflow_in_auto_mode(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            (render_dir / "render_plan_song.json").write_text(
+                json.dumps([{"scene": 1}]),
+                encoding="utf-8",
+            )
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--render-mode",
+                    "auto",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-storyboard",
+                    "--skip-storyboard-page",
+                    "--skip-msr-reference-render",
+                    "--skip-final-concat",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+            with patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case) as builder:
+                run_pipeline.run(args)
+
+        options = builder.call_args.args[0]
+        self.assertEqual("ltx_msr", options.video_pipeline)
+        self.assertTrue(str(options.output_dir).endswith("ltx_msr"))
+
+    def test_ltx_msr_runner_builds_references_enriches_msr_prompts_and_skips_storyboard(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            base_plan = render_dir / "render_plan_song.json"
+            refs_plan = render_dir / "render_plan_song_refs.json"
+            msr_plan = refs_plan
+            base_plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-final-concat",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+
+            def enrich(input_plan, references_dir, output_plan, on_scene_complete=None):
+                self.assertIsNotNone(on_scene_complete)
+                refs_plan.write_text(json.dumps([{"scene": 1, "references": {}}]), encoding="utf-8")
+                on_scene_complete(1, 1, 1)
+                return Path(output_plan)
+
+            def enrich_msr(input_plan, output_plan, *, llm, on_scene_complete=None):
+                self.assertIsNotNone(llm)
+                self.assertIsNotNone(on_scene_complete)
+                msr_plan.write_text(json.dumps([{"scene": 1, "ltx": {"msr_prompt_relay": []}}]), encoding="utf-8")
+                on_scene_complete(1, 1, 1)
+                return Path(output_plan)
+
+            with patch("feverslop.composition.pipeline_runner.build_render_storyboard_use_case") as storyboard_builder, \
+                patch("feverslop.composition.pipeline_runner.generate_storyboard_page") as storyboard_page, \
+                patch("feverslop.composition.pipeline_runner.render_reference_bible") as reference_bible, \
+                patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_reference_sheets", side_effect=enrich) as enrich_refs, \
+                patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_msr_prompts", side_effect=enrich_msr) as enrich_msr_prompts, \
+                patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case) as video_builder:
+                result = run_pipeline.run(args)
+
+        storyboard_builder.assert_not_called()
+        storyboard_page.assert_not_called()
+        reference_bible.assert_called_once()
+        self.assertEqual(base_plan, enrich_refs.call_args.args[0])
+        self.assertEqual(project_dir / "output" / "references", enrich_refs.call_args.args[1])
+        self.assertEqual(refs_plan, enrich_refs.call_args.args[2])
+        self.assertIn("on_scene_complete", enrich_refs.call_args.kwargs)
+        enrich_msr_prompts.assert_called_once()
+        self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[0])
+        self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[1])
+        self.assertIn("on_scene_complete", enrich_msr_prompts.call_args.kwargs)
+        self.assertEqual(refs_plan, result.render_plan_path)
+        options = video_builder.call_args.args[0]
+        request = use_case.execute.call_args.args[0]
+        self.assertEqual("ltx_msr", options.video_pipeline)
+        self.assertEqual(refs_plan, options.render_plan_path)
+        self.assertEqual(refs_plan, request.render_plan_path)
+
+    def test_ltx_msr_runner_can_resume_selected_scenes_without_prompt_enrichment(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            refs_plan = render_dir / "render_plan_song_refs.json"
+            refs_plan.write_text(json.dumps([{"scene": 14}, {"scene": 15}, {"scene": 16}]), encoding="utf-8")
+            (render_dir / "render_plan_song.json").write_text(
+                json.dumps([{"scene": 14}, {"scene": 15}, {"scene": 16}]),
+                encoding="utf-8",
+            )
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-anchor-fix",
+                    "--skip-msr-reference-render",
+                    "--skip-msr-prompt-enrichment",
+                    "--skip-final-concat",
+                    "--scenes",
+                    "15-16",
+                ]
+            )
+
+            use_case = Mock()
+            use_case.execute.return_value = []
+
+            def enrich_refs(input_plan, references_dir, output_plan, on_scene_complete=None):
+                return Path(output_plan)
+
+            with patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_reference_sheets", side_effect=enrich_refs), \
+                patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_msr_prompts") as enrich_msr_prompts, \
+                patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case", return_value=use_case):
+                run_pipeline.run(args)
+
+            enrich_msr_prompts.assert_not_called()
+            request = use_case.execute.call_args.args[0]
+            self.assertEqual({15, 16}, request.scene_numbers)
+
+    def test_ltx_resume_rewrites_concat_list_from_full_render_plan_before_final_concat(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"
             project_dir.mkdir()
@@ -234,12 +394,17 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             render_dir = project_dir / "output" / "render"
             render_dir.mkdir(parents=True)
             plan_path = render_dir / "render_plan_song.json"
-            plan_path.write_text("[]", encoding="utf-8")
+            plan_path.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                encoding="utf-8",
+            )
             clip_1 = render_dir / "ltx_single_prompt" / "final" / "scene_0001.mp4"
             clip_2 = render_dir / "ltx_single_prompt" / "final" / "scene_0002.mp4"
+            clip_3 = render_dir / "ltx_single_prompt" / "final" / "scene_0003.mp4"
             clip_1.parent.mkdir(parents=True)
             clip_1.write_bytes(b"clip 1")
             clip_2.write_bytes(b"clip 2")
+            clip_3.write_bytes(b"clip 3")
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
@@ -253,7 +418,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             )
 
             use_case = Mock()
-            use_case.execute.return_value = [clip_1, clip_2]
+            use_case.execute.return_value = [clip_2]
             postprocessor = Mock()
             postprocessor.concat_clips.return_value = render_dir / "ltx_single_prompt" / "Song_video_only.mp4"
             postprocessor.mux_original_audio.return_value = render_dir / "ltx_single_prompt" / "Song.mp4"
@@ -266,6 +431,72 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 [
                     f"file '{clip_1.resolve().as_posix()}'",
                     f"file '{clip_2.resolve().as_posix()}'",
+                    f"file '{clip_3.resolve().as_posix()}'",
+                ],
+                concat_list.read_text(encoding="utf-8").splitlines(),
+            )
+
+    def test_ltx_msr_skip_ltx_rewrites_concat_list_from_existing_scene_clips(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            render_dir = project_dir / "output" / "render"
+            render_dir.mkdir(parents=True)
+            plan_path = render_dir / "render_plan_song_refs.json"
+            plan_path.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                encoding="utf-8",
+            )
+            base_plan = render_dir / "render_plan_song.json"
+            base_plan.write_text(json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]), encoding="utf-8")
+            clip_1 = render_dir / "ltx_msr" / "scene_0001.mp4"
+            clip_2 = render_dir / "ltx_msr" / "scene_0002.mp4"
+            clip_3 = render_dir / "ltx_msr" / "scene_0003.mp4"
+            clip_1.parent.mkdir(parents=True)
+            clip_1.write_bytes(b"clip 1")
+            clip_2.write_bytes(b"clip 2")
+            clip_3.write_bytes(b"clip 3")
+            args = run_pipeline.build_arg_parser().parse_args(
+                [
+                    str(config_path),
+                    "--video-pipeline",
+                    "ltx_msr",
+                    "--skip-tests",
+                    "--skip-main-pipeline",
+                    "--skip-relay-compact",
+                    "--skip-anchor-fix",
+                    "--skip-storyboard",
+                    "--skip-storyboard-page",
+                    "--skip-msr-reference-render",
+                    "--skip-ltx",
+                ]
+            )
+
+            def enrich(_input_plan, _references_dir, output_plan, on_scene_complete=None):
+                if on_scene_complete is not None:
+                    on_scene_complete(1, 1, 3)
+                    on_scene_complete(2, 2, 3)
+                    on_scene_complete(3, 3, 3)
+                return Path(output_plan)
+
+            postprocessor = Mock()
+            postprocessor.concat_clips.return_value = render_dir / "ltx_msr" / "Song_video_only.mp4"
+            postprocessor.mux_original_audio.return_value = render_dir / "ltx_msr" / "Song.mp4"
+            with patch("feverslop.composition.pipeline_runner.enrich_render_plan_with_reference_sheets", side_effect=enrich), \
+                patch("feverslop.composition.pipeline_runner.VideoPostProcessor", return_value=postprocessor):
+                run_pipeline.run(args)
+
+            concat_list = render_dir / "ltx_msr" / "concat_list.txt"
+            self.assertEqual(
+                [
+                    f"file '{clip_1.resolve().as_posix()}'",
+                    f"file '{clip_2.resolve().as_posix()}'",
+                    f"file '{clip_3.resolve().as_posix()}'",
                 ],
                 concat_list.read_text(encoding="utf-8").splitlines(),
             )

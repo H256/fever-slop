@@ -3,6 +3,7 @@
 from pathlib import Path
 import inspect
 from typing import Any, Callable
+from dataclasses import asdict, is_dataclass
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import (
@@ -27,6 +28,31 @@ def get_steering_value(config: Any, name: str, default: str = "") -> str:
 
 def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
+
+
+def config_items_as_dicts(items: Any) -> list[dict]:
+    output = []
+    for item in items or []:
+        if is_dataclass(item):
+            output.append(asdict(item))
+        elif isinstance(item, dict):
+            output.append(dict(item))
+    return output
+
+
+def normalize_location_names(items: Any) -> list[str]:
+    names = []
+    for item in items or []:
+        if isinstance(item, dict):
+            names.append(str(item.get("name") or item.get("id") or "").strip())
+        else:
+            names.append(str(item).strip())
+    return [name for name in names if name]
+
+
+def console_print(console: Any, message: str) -> None:
+    if console is not None:
+        console.print(message)
 
 
 def call_with_supported_kwargs(func: Callable[..., Any], **kwargs):
@@ -243,10 +269,14 @@ class PromptGenerationPipeline:
         config_style = str(get_config_value(config, "style", "") or "").strip()
         config_subject = str(get_config_value(config, "subject", "") or "").strip()
         config_locations = get_config_value(config, "locations", []) or []
+        config_actors = get_config_value(config, "actors", []) or []
+        config_structured_locations = get_config_value(config, "structured_locations", []) or []
+        subject_mode = str(get_config_value(config, "subject_mode", "multi") or "multi")
+        max_scene_actors = int(get_config_value(config, "max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
 
         if config_story_idea:
             story_idea = config_story_idea
-            console.print("[yellow]Using story_idea override from project config.[/yellow]")
+            console_print(console, "[yellow]Using story_idea override from project config.[/yellow]")
         else:
             story_idea = run_spinner(
                 "Generating story idea...",
@@ -258,7 +288,7 @@ class PromptGenerationPipeline:
 
         if config_style:
             style_block = config_style
-            console.print("[yellow]Using style override from project config.[/yellow]")
+            console_print(console, "[yellow]Using style override from project config.[/yellow]")
         else:
             style_block = run_spinner(
                 "Generating style block...",
@@ -278,21 +308,31 @@ class PromptGenerationPipeline:
 
         if config_subject:
             subject = config_subject
-            console.print("[yellow]Using subject override from project config.[/yellow]")
+            console_print(console, "[yellow]Using subject override from project config.[/yellow]")
         else:
             subject = subject_locations["subject"]
 
         if config_locations:
             locations = config_locations
-            console.print("[yellow]Using locations override from project config.[/yellow]")
+            console_print(console, "[yellow]Using locations override from project config.[/yellow]")
         else:
-            locations = subject_locations["locations"]
+            locations = normalize_location_names(subject_locations["locations"])
+
+        actors = config_items_as_dicts(config_actors) or config_items_as_dicts(subject_locations.get("actors", []))
+        structured_locations = (
+            config_items_as_dicts(config_structured_locations)
+            or config_items_as_dicts(subject_locations.get("locations", []))
+        )
 
         return {
             "story_idea": story_idea,
             "style": style_block,
             "subject": subject,
             "locations": locations,
+            "actors": actors,
+            "structured_locations": structured_locations,
+            "subject_mode": subject_mode,
+            "max_scene_actors": max_scene_actors,
             "location_constraint": build_location_constraint(locations),
             "steering": {
                 "global": get_steering_value(config, "global_"),

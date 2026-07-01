@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import json
@@ -89,6 +90,7 @@ class ComfyUIAceStepSongGenerator:
             patcher.get(),
             workflow_path=self.workflow_path,
         )
+        self._write_debug_workflow(output_dir=Path(output_dir), workflow=workflow)
         prompt_id = self.client.queue_prompt(workflow)
         history = self.client.wait_for_completion(prompt_id)
         output = self._first_audio_output(history)
@@ -106,6 +108,16 @@ class ComfyUIAceStepSongGenerator:
                 "seed": seed,
                 "workflow_path": str(self.workflow_path),
             },
+        )
+
+    def _write_debug_workflow(self, *, output_dir: Path, workflow: dict) -> None:
+        project_dir = output_dir.parent
+        debug_dir = project_dir / "output" / "debug" / "ace_step"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        (debug_dir / f"ace_step_{run_id}_workflow.json").write_text(
+            json.dumps(workflow, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
 
     def _first_audio_output(self, history: dict) -> dict:

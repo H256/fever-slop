@@ -7,6 +7,7 @@ from rich.console import Console
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.application.render_video import RenderVideoScenesUseCase
@@ -29,6 +30,7 @@ class RenderVideoCompositionOptions:
     render_plan_path: str | Path | None = None
     workflow_path: str | Path = ""
     output_dir: str | Path = ""
+    video_pipeline: str = "ltx_i2v"
     single_prompt_workflow_path: str | Path | None = None
     render_mode: str = "single_prompt"
     single_prompt_title: str = "#PROMPT"
@@ -73,42 +75,63 @@ def build_render_video_scenes_use_case(
         overrides=app_config.comfyui.model_overrides,
     )
 
-    backend = ComfyUIVideoRenderBackend(
-        client=client,
-        ltx_workflow_path=coerce_local_path(options.workflow_path),
-        output_dir=coerce_local_path(options.output_dir),
-        single_prompt_workflow_path=(
-            coerce_local_path(options.single_prompt_workflow_path)
-            if options.single_prompt_workflow_path
-            else None
-        ),
-        render_mode=options.render_mode,
-        single_prompt_node_title=options.single_prompt_title,
-        single_prompt_input_name=options.single_prompt_input,
-        character_lora_strength=options.character_lora_strength,
-        lora_1_enabled=resolved["lora_1_enabled"],
-        lora_1_name=resolved["lora_1_name"],
-        lora_1_strength_model=resolved["lora_1_strength_model"],
-        lora_1_strength_clip=resolved["lora_1_strength_clip"],
-        lora_1_strengths_explicit=resolved["lora_1_strengths_explicit"],
-        loras=resolved["loras"],
-        lora_split_enabled=resolved["lora_split_enabled"],
-        randomize_seed=options.randomize_seed,
-        seed_offset=options.seed_offset,
-        segment_length_mode=options.segment_length_mode,
-        min_duration=resolved["min_duration"],
-        max_duration=resolved["max_duration"],
-        allow_out_of_range_clips=options.allow_out_of_range_clips,
-        debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
-        preroll_frames=preroll_frames,
-        tail_loss_frames=tail_loss_frames,
-        round_render_frames_to_8n1=round_render_frames_to_8n1,
-        postprocess=options.postprocess,
-        ffmpeg_path=options.ffmpeg_path,
-        postprocess_reencode=options.postprocess_reencode,
-        ffmpeg_debug=options.ffmpeg_debug,
-        model_resolver=model_resolver,
-    )
+    if options.video_pipeline == "ltx_msr":
+        project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
+        project_dir = ProjectConfig.load(project_config_path).project_dir if project_config_path else None
+        backend = ComfyUIMSRVideoRenderBackend(
+            client=client,
+            workflow_path=coerce_local_path(options.workflow_path),
+            output_dir=coerce_local_path(options.output_dir),
+            project_dir=project_dir,
+            seed_offset=options.seed_offset,
+            randomize_seed=options.randomize_seed,
+            debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
+            preroll_frames=preroll_frames,
+            tail_loss_frames=tail_loss_frames,
+            round_render_frames_to_8n1=round_render_frames_to_8n1,
+            postprocess=options.postprocess,
+            ffmpeg_path=options.ffmpeg_path,
+            postprocess_reencode=options.postprocess_reencode,
+            ffmpeg_debug=options.ffmpeg_debug,
+            model_resolver=model_resolver,
+        )
+    else:
+        backend = ComfyUIVideoRenderBackend(
+            client=client,
+            ltx_workflow_path=coerce_local_path(options.workflow_path),
+            output_dir=coerce_local_path(options.output_dir),
+            single_prompt_workflow_path=(
+                coerce_local_path(options.single_prompt_workflow_path)
+                if options.single_prompt_workflow_path
+                else None
+            ),
+            render_mode=options.render_mode,
+            single_prompt_node_title=options.single_prompt_title,
+            single_prompt_input_name=options.single_prompt_input,
+            character_lora_strength=options.character_lora_strength,
+            lora_1_enabled=resolved["lora_1_enabled"],
+            lora_1_name=resolved["lora_1_name"],
+            lora_1_strength_model=resolved["lora_1_strength_model"],
+            lora_1_strength_clip=resolved["lora_1_strength_clip"],
+            lora_1_strengths_explicit=resolved["lora_1_strengths_explicit"],
+            loras=resolved["loras"],
+            lora_split_enabled=resolved["lora_split_enabled"],
+            randomize_seed=options.randomize_seed,
+            seed_offset=options.seed_offset,
+            segment_length_mode=options.segment_length_mode,
+            min_duration=resolved["min_duration"],
+            max_duration=resolved["max_duration"],
+            allow_out_of_range_clips=options.allow_out_of_range_clips,
+            debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
+            preroll_frames=preroll_frames,
+            tail_loss_frames=tail_loss_frames,
+            round_render_frames_to_8n1=round_render_frames_to_8n1,
+            postprocess=options.postprocess,
+            ffmpeg_path=options.ffmpeg_path,
+            postprocess_reencode=options.postprocess_reencode,
+            ffmpeg_debug=options.ffmpeg_debug,
+            model_resolver=model_resolver,
+        )
 
     return RenderVideoScenesUseCase(
         backend=backend,
@@ -200,6 +223,7 @@ def namespace_to_options(args) -> RenderVideoCompositionOptions:
         render_plan_path=args.render_plan,
         workflow_path=args.workflow,
         output_dir=args.output_dir,
+        video_pipeline=getattr(args, "video_pipeline", "ltx_i2v"),
         single_prompt_workflow_path=args.single_prompt_workflow,
         render_mode=args.render_mode,
         single_prompt_title=args.single_prompt_title,

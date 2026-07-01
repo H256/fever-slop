@@ -21,6 +21,42 @@ def clean_llm_text(text: str) -> str:
     return text.strip()
 
 
+def normalize_scene_references(references: dict, global_context: dict) -> dict:
+    actors = [
+        str(actor.get("id", "")).strip()
+        for actor in global_context.get("actors", [])
+        if isinstance(actor, dict) and str(actor.get("id", "")).strip()
+    ]
+    locations = [
+        str(location.get("id", "")).strip()
+        for location in global_context.get("structured_locations", [])
+        if isinstance(location, dict) and str(location.get("id", "")).strip()
+    ]
+    subject_mode = str(global_context.get("subject_mode", "multi") or "multi").strip().lower()
+    max_scene_actors = int(global_context.get("max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
+    max_scene_actors = max(1, min(4, max_scene_actors))
+
+    output = dict(references or {})
+    if actors:
+        if subject_mode == "single":
+            output["actor_ids"] = [actors[0]]
+        else:
+            selected = [
+                str(actor_id).strip()
+                for actor_id in output.get("actor_ids", [])
+                if str(actor_id).strip() in actors
+            ]
+            output["actor_ids"] = (selected or [actors[0]])[:max_scene_actors]
+
+    if locations:
+        location_id = str(output.get("location_id", "")).strip()
+        if location_id not in locations:
+            location_id = locations[0]
+        output["location_id"] = location_id
+
+    return output
+
+
 class ScenePromptBuilder:
     """
     Builds model-specific prompts per scene.
@@ -133,6 +169,13 @@ class ScenePromptBuilder:
         for segment in stage1_segments:
             segment_id = segment["segment_id"]
             concept = concept_prompts[segment_id]
+            references = {}
+            if isinstance(concept, dict):
+                references = normalize_scene_references(
+                    dict(concept.get("references") or {}),
+                    global_context,
+                )
+                concept = str(concept.get("concept", ""))
             details = scene_details.get(segment_id, {})
 
             t2i_prompt = self.build_zimage_prompt(
@@ -152,7 +195,7 @@ class ScenePromptBuilder:
                 custom_instructions=ltx_instructions,
             )
 
-            output.append({
+            scene_output = {
                 **segment,
                 "base_concept": concept,
                 "camera_motion": details.get("camera_motion", ""),
@@ -162,6 +205,9 @@ class ScenePromptBuilder:
                 "ltx_base_prompt": t2i_prompt,
                 "i2v_prompt_from_t2i": i2v_prompt_from_t2i,
                 "original_style_i2v_prompt": i2v_prompt_from_t2i,
-            })
+            }
+            if references:
+                scene_output["references"] = references
+            output.append(scene_output)
 
         return artifact_store.write_json(output_json_path, output)

@@ -18,6 +18,8 @@ class WorkflowAnchorConfig:
     height_title: str | None = "#HEIGHT"
     width_input: str = "value"
     height_input: str = "value"
+    reference_image_title: str | None = "#IMAGE_1"
+    reference_image_input: str = "image"
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,7 @@ class ImageRenderRequest:
     skip_existing: bool = True
     negative_prompt: str = ""
     character_lora_strength: float | None = None
+    reference_image: Path | None = None
     anchors: WorkflowAnchorConfig = WorkflowAnchorConfig()
 
 
