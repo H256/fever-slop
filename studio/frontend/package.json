@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "bun test src",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.0",
@@ -18,5 +20,7 @@
     "vue-router": "^4.5.0",
     "vue-tsc": "^2.2.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
 }

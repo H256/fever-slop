@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -31,12 +33,14 @@ class RenderPlanPatchPayload(BaseModel):
 class JobPayload(BaseModel):
     action: str
     scenes: list[int] | None = None
+    thumbnails: list[dict[str, Any]] | None = None
     reference_kind: str | None = None
     reference_id: str | None = None
     raw_clip: str | None = None
     output_clip: str | None = None
     raw_in_seconds: float | None = None
     raw_out_seconds: float | None = None
+    exact: bool = False
 
 
 def create_app(projects_root: str | Path = "projects") -> FastAPI:
@@ -91,6 +95,13 @@ def create_app(projects_root: str | Path = "projects") -> FastAPI:
     def write_media(project_id: str, payload: MediaPayload):
         return _safe(lambda: store.write_media_data_url(project_id, payload.path, payload.data_url))
 
+    @app.get("/api/projects/{project_id}/thumbnail")
+    def get_thumbnail(project_id: str, path: str, at: float = 0.0):
+        def create():
+            return FileResponse(_thumbnail_path(store, project_id, path, at), media_type="image/jpeg")
+
+        return _safe(create)
+
     @app.post("/api/projects/{project_id}/jobs")
     def start_job(project_id: str, payload: JobPayload):
         def create():
@@ -116,7 +127,26 @@ def create_app(projects_root: str | Path = "projects") -> FastAPI:
                     store.resolve_project_path(project_id, payload.output_clip),
                     raw_in_seconds=payload.raw_in_seconds,
                     raw_out_seconds=payload.raw_out_seconds,
+                    exact=payload.exact,
                 )
+            elif payload.action == "thumbnail-prebuild":
+                requests = payload.thumbnails or []
+
+                def handler(log):
+                    count = 0
+                    for request in requests:
+                        path = str(request.get("path") or "")
+                        for second in request.get("times") or []:
+                            _thumbnail_path(store, project_id, path, float(second))
+                            count += 1
+                    log(f"Generated {count} thumbnails")
+                    return count
+
+            elif payload.action == "thumbnail-cleanup":
+                def handler(log):
+                    log("Clearing thumbnail cache")
+                    return store.clear_thumbnail_cache(project_id)
+
             else:
                 handler = build_pipeline_handler(config_path, payload.action, scenes=payload.scenes)
             return jobs.get(jobs.start(project_id, payload.action, handler))
@@ -144,6 +174,37 @@ def _safe(fn):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (StudioPathError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _thumbnail_path(store: ProjectStore, project_id: str, path: str, at: float) -> Path:
+    video_path = store.resolve_video_path(project_id, path)
+    seconds = max(0.0, float(at))
+    key = hashlib.sha1(f"{path}:{seconds:.2f}".encode()).hexdigest()
+    thumbnail = store.thumbnail_cache_path(project_id, key)
+    if thumbnail.exists():
+        return thumbnail
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                f"{seconds:.3f}",
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "3",
+                str(thumbnail),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError("Could not generate thumbnail with ffmpeg") from exc
+    return thumbnail
 
 
 app = create_app()

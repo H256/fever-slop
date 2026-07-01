@@ -7,6 +7,7 @@ export interface ProjectArtifacts {
   generated_json: string[];
   videos: string[];
   images: string[];
+  audio: string[];
 }
 
 export interface ProjectSummary {
@@ -15,6 +16,10 @@ export interface ProjectSummary {
   path: string;
   status: ProjectStatus;
   artifacts: ProjectArtifacts;
+  artifact_sizes?: {
+    total_bytes: number;
+    by_type: Record<string, number>;
+  };
 }
 
 export interface Job {

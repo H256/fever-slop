@@ -29,6 +29,8 @@ class StudioBackendTests(unittest.TestCase):
         )
         (project / "output" / "references" / "actor_manifest.json").write_text("{}", encoding="utf-8")
         (project / "output" / "references" / "still.png").write_bytes(b"png")
+        (project / "input").mkdir()
+        (project / "input" / "song.mp3").write_bytes(b"audio")
         (project / "config.json").write_text('{"project_name": "Demo", "input_audio": "input/song.mp3"}', encoding="utf-8")
         return ProjectStore(root)
 
@@ -43,6 +45,32 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("present", projects[0]["status"]["config"])
             self.assertEqual("present", projects[0]["status"]["render_plan"])
             self.assertIn("output/render/render_plan_song.json", projects[0]["artifacts"]["render_plans"])
+            self.assertIn("input/song.mp3", projects[0]["artifacts"]["audio"])
+            self.assertEqual(5, projects[0]["artifact_sizes"]["by_type"]["audio"])
+            self.assertGreater(projects[0]["artifact_sizes"]["total_bytes"], 5)
+
+    def test_thumbnail_cache_is_not_reported_as_project_artifact(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            cache = Path(temp_dir) / "demo" / ".studio" / "thumbnails"
+            cache.mkdir(parents=True)
+            (cache / "scene.jpg").write_bytes(b"cache")
+
+            project = store.describe_project("demo")
+
+            self.assertNotIn(".studio/thumbnails/scene.jpg", project["artifacts"]["images"])
+            self.assertEqual(0, project["artifact_sizes"]["by_type"]["images"])
+
+    def test_clear_thumbnail_cache_removes_cached_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            cache = store.thumbnail_cache_path("demo", "scene")
+            cache.write_bytes(b"jpg")
+
+            removed = store.clear_thumbnail_cache("demo")
+
+            self.assertEqual(1, removed)
+            self.assertFalse(cache.exists())
 
     def test_artifact_read_write_is_project_relative(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -124,6 +152,13 @@ class StudioBackendTests(unittest.TestCase):
             ["ffmpeg", "-y", "-ss", "0.400", "-to", "11.900", "-i", "raw.mp4", "-c", "copy", "final.mp4"],
             command,
         )
+
+    def test_build_ffmpeg_recut_command_supports_exact_reencode(self):
+        command = build_ffmpeg_recut_command(Path("raw.mp4"), Path("final.mp4"), raw_in_seconds=0.4, raw_out_seconds=11.9, exact=True)
+
+        self.assertIn("-c:v", command)
+        self.assertIn("libx264", command)
+        self.assertLess(command.index("-i"), command.index("-ss"))
 
 
 if __name__ == "__main__":

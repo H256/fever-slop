@@ -44,3 +44,7 @@ export const api = {
 export function mediaUrl(projectId: string, path: string): string {
   return `/api/projects/${projectId}/media?path=${encodeURIComponent(path)}`;
 }
+
+export function thumbnailUrl(projectId: string, path: string, at: number): string {
+  return `/api/projects/${projectId}/thumbnail?path=${encodeURIComponent(path)}&at=${encodeURIComponent(at.toFixed(2))}`;
+}

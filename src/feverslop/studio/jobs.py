@@ -158,7 +158,30 @@ def build_ffmpeg_recut_command(
     *,
     raw_in_seconds: float,
     raw_out_seconds: float,
+    exact: bool = False,
 ) -> list[str]:
+    if exact:
+        return [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(raw_clip_path),
+            "-ss",
+            f"{raw_in_seconds:.3f}",
+            "-to",
+            f"{raw_out_seconds:.3f}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-c:a",
+            "aac",
+            "-avoid_negative_ts",
+            "make_zero",
+            str(output_clip_path),
+        ]
     return [
         "ffmpeg",
         "-y",
@@ -180,6 +203,7 @@ def build_recut_scene_handler(
     *,
     raw_in_seconds: float,
     raw_out_seconds: float,
+    exact: bool = False,
 ) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
         if raw_out_seconds <= raw_in_seconds:
@@ -190,6 +214,7 @@ def build_recut_scene_handler(
             output_clip_path,
             raw_in_seconds=raw_in_seconds,
             raw_out_seconds=raw_out_seconds,
+            exact=exact,
         )
         log(" ".join(command))
         subprocess.run(command, check=True)
