@@ -331,6 +331,7 @@ function previewStart(item: TimelineItem): number {
 }
 
 function startFinalDrag(event: PointerEvent, item: TimelineItem, mode: "left" | "right") {
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   selectItem(item);
   const track = (event.currentTarget as HTMLElement).closest(".timeline-track");
   const rect = track?.getBoundingClientRect();
@@ -400,6 +401,7 @@ function startZoomDrag(event: PointerEvent) {
 function undoTimeline() {
   const previous = undoStack.value.pop();
   if (!previous) return;
+  rawPreview.value = null;
   redoStack.value.push(scenes.value.map((scene) => cloneScene(scene)));
   scenes.value = previous.map((scene) => cloneScene(scene));
   timelineDirty.value = true;
@@ -408,6 +410,7 @@ function undoTimeline() {
 function redoTimeline() {
   const next = redoStack.value.pop();
   if (!next) return;
+  rawPreview.value = null;
   undoStack.value.push(scenes.value.map((scene) => cloneScene(scene)));
   scenes.value = next.map((scene) => cloneScene(scene));
   timelineDirty.value = true;

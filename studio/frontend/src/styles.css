@@ -1127,13 +1127,13 @@ select {
 
 .timeline-edge-handle {
   position: absolute;
-  top: 10px;
-  bottom: 10px;
+  top: 0;
+  bottom: 0;
   z-index: 4;
   display: grid;
   place-items: center;
-  width: 28px;
-  border-radius: 6px;
+  width: 42px;
+  border-radius: 8px;
   background: rgba(28, 28, 30, 0.88);
   color: white;
   cursor: ew-resize;
@@ -1144,11 +1144,11 @@ select {
 }
 
 .timeline-edge-handle.left {
-  left: 6px;
+  left: 0;
 }
 
 .timeline-edge-handle.right {
-  right: 6px;
+  right: 0;
 }
 
 .timeline-edge-handle:hover {
