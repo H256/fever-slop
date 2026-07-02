@@ -784,12 +784,24 @@ select {
   align-items: start;
 }
 
+.timeline-preview-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--editor-bg);
+}
+
 .timeline-preview video,
 .timeline-missing-preview {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: 8px;
-  background: var(--editor-bg);
+  height: 100%;
+}
+
+.timeline-preview video {
+  display: block;
+  object-fit: contain;
 }
 
 .timeline-missing-preview {
@@ -799,8 +811,16 @@ select {
 }
 
 .raw-preview-badge {
-  grid-column: 1;
-  margin-top: -8px;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1;
+  width: fit-content;
+  max-width: calc(100% - 20px);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.88);
   color: var(--primary);
   font-size: 12px;
   font-weight: 800;

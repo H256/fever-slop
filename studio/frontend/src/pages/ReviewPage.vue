@@ -667,20 +667,22 @@ function formatTime(value: number): string {
 
     <section class="timeline-editor">
       <div class="timeline-preview panel">
-        <video
-          v-if="selectedClipUrl"
-          ref="videoRef"
-          :key="selectedClipUrl"
-          :src="selectedClipUrl"
-          controls
-          @ended="playNextClip"
-          @pause="pauseAudio"
-          @play="playAudio"
-          @timeupdate="syncScrubber"
-        />
-        <div v-else class="timeline-missing-preview">No clip exists for selected scene.</div>
-        <div v-if="rawPreview" class="raw-preview-badge">
-          Raw {{ rawPreview.edge }} preview at {{ rawPreview.seconds.toFixed(2) }}s
+        <div class="timeline-preview-media">
+          <video
+            v-if="selectedClipUrl"
+            ref="videoRef"
+            :key="selectedClipUrl"
+            :src="selectedClipUrl"
+            controls
+            @ended="playNextClip"
+            @pause="pauseAudio"
+            @play="playAudio"
+            @timeupdate="syncScrubber"
+          />
+          <div v-else class="timeline-missing-preview">No clip exists for selected scene.</div>
+          <div v-if="rawPreview" class="raw-preview-badge">
+            Raw {{ rawPreview.edge }} preview at {{ rawPreview.seconds.toFixed(2) }}s
+          </div>
         </div>
         <audio v-if="audioUrl" ref="audioRef" :src="audioUrl" preload="metadata" />
         <aside v-if="selectedItem">
@@ -782,6 +784,7 @@ function formatTime(value: number): string {
                   v-if="item.scene === selectedScene"
                   class="timeline-edge-handle left"
                   title="Trim left: borrow frames from previous clip"
+                  @click.stop
                   @pointerdown.stop="startFinalDrag($event, item, 'left')"
                 >IN</span>
                 <strong>Scene {{ item.scene }}</strong>
@@ -790,6 +793,7 @@ function formatTime(value: number): string {
                   v-if="item.scene === selectedScene"
                   class="timeline-edge-handle right"
                   title="Trim right: borrow frames from next clip"
+                  @click.stop
                   @pointerdown.stop="startFinalDrag($event, item, 'right')"
                 >OUT</span>
               </button>
