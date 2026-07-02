@@ -4,6 +4,7 @@ import base64
 import json
 import re
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -285,6 +286,30 @@ class ProjectStore:
         count = sum(1 for path in cache.rglob("*") if path.is_file())
         shutil.rmtree(cache)
         return count
+
+    def record_pipeline_run(self, project_id: str, *, action: str, stages: list[str], status: str) -> dict[str, Any]:
+        root = self.project_root(project_id)
+        path = root / ".studio" / "pipeline_state.json"
+        state = self._read_json_file(path, default={})
+        if not isinstance(state, dict):
+            state = {}
+        completed = list(state.get("completed_stages") or [])
+        if status == "succeeded":
+            for stage in stages:
+                if stage not in completed:
+                    completed.append(stage)
+        entry = {
+            "action": action,
+            "stages": stages,
+            "status": status,
+            "updated_at": time.time(),
+        }
+        state["completed_stages"] = completed
+        state["last_run"] = entry
+        state.setdefault("runs", []).append(entry)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return state
 
     @staticmethod
     def _read_json_file(path: Path, *, default: Any) -> Any:

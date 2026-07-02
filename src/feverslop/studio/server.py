@@ -12,7 +12,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from feverslop.studio.jobs import PIPELINE_ACTIONS, JobRegistry, build_pipeline_handler, build_recut_scene_handler, build_reference_rerender_handler, run_with_stream_logging
+from feverslop.studio.jobs import (
+    PIPELINE_ACTIONS,
+    JobRegistry,
+    build_pipeline_handler,
+    build_pipeline_options,
+    build_recut_scene_handler,
+    build_reference_rerender_handler,
+    run_with_stream_logging,
+)
 from feverslop.studio.logging import render_log_lines
 from feverslop.studio.projects import ArtifactRequest, ProjectCreateRequest, ProjectStore, RenderPlanPatch, StudioPathError
 
@@ -202,6 +210,7 @@ def create_app(
                 factory = pipeline_handler or build_pipeline_handler
                 pipeline_mode = payload.pipeline_mode or _pipeline_mode_from_config(config_path)
                 handler = factory(config_path, payload.action, scenes=payload.scenes, pipeline_mode=pipeline_mode)
+                handler = _record_pipeline_state(store, project_id, payload.action, handler, scenes=payload.scenes, pipeline_mode=pipeline_mode)
             return jobs.get(
                 jobs.start(
                     project_id,
@@ -247,6 +256,41 @@ def create_app(
         return StreamingResponse(events(), media_type="text/event-stream")
 
     return app
+
+
+def _record_pipeline_state(
+    store: ProjectStore,
+    project_id: str,
+    action: str,
+    handler: Callable[[Callable[[str], None]], Any],
+    *,
+    scenes: list[int] | None = None,
+    pipeline_mode: str | None = None,
+):
+    if action not in PIPELINE_ACTIONS:
+        return handler
+
+    def run(log):
+        try:
+            result = handler(log)
+        except Exception:
+            store.record_pipeline_run(project_id, action=action, stages=_pipeline_state_stages(action, scenes=scenes, pipeline_mode=pipeline_mode), status="failed")
+            raise
+        store.record_pipeline_run(project_id, action=action, stages=_pipeline_state_stages(action, scenes=scenes, pipeline_mode=pipeline_mode), status="succeeded")
+        return result
+
+    return run
+
+
+def _pipeline_state_stages(action: str, *, scenes: list[int] | None = None, pipeline_mode: str | None = None) -> list[str]:
+    try:
+        options = build_pipeline_options(action, scenes=scenes, pipeline_mode=pipeline_mode)
+    except ValueError:
+        return [action]
+    stages = options.get("stages")
+    if isinstance(stages, list):
+        return [str(stage) for stage in stages]
+    return [action]
 
 
 class _StudioFullAutoConsole:

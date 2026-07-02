@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from feverslop.adapters.pipeline_runner import RunPipelineAdapter
 from feverslop.composition import pipeline_runner
+from feverslop.composition.pipeline_runner import PipelineStage
 from feverslop.studio.logging import render_log_lines
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
 from feverslop.tools.reference_bible import run as render_reference_bible
@@ -19,6 +20,14 @@ JobHandler = Callable[[Callable[[str], None]], Any]
 STREAM_CAPTURE_LOCK = threading.Lock()
 
 PIPELINE_ACTIONS = {
+    "anchor-fix",
+    "relay-compact",
+    "storyboard-frames",
+    "storyboard-page",
+    "msr-reference-sheets",
+    "msr-prompt-enrich",
+    "concat-video-only",
+    "mux-original-audio",
     "main-pipeline",
     "storyboard",
     "msr-references",
@@ -31,6 +40,14 @@ PIPELINE_ACTIONS = {
 
 
 PIPELINE_STEPS: dict[str, list[str]] = {
+    "anchor-fix": ["anchor fix"],
+    "relay-compact": ["relay compact"],
+    "storyboard-frames": ["Storyboard frames"],
+    "storyboard-page": ["Storyboard page"],
+    "msr-reference-sheets": ["MSR reference sheets"],
+    "msr-prompt-enrich": ["MSR prompt enrichment"],
+    "concat-video-only": ["Final concat video-only"],
+    "mux-original-audio": ["Mux original audio"],
     "main-pipeline": ["Main pipeline"],
     "storyboard": ["Storyboard", "Storyboard page"],
     "msr-references": ["MSR references"],
@@ -253,9 +270,31 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipe
         "skip_final_concat": True,
     }
     video_pipeline = _video_pipeline_for_mode(pipeline_mode)
-    if action == "main-pipeline":
+    if action == "anchor-fix":
+        base["stages"] = [PipelineStage.ANCHOR_FIX.value]
+    elif action == "relay-compact":
+        base["render_mode"] = "relay"
+        base["stages"] = [PipelineStage.RELAY_COMPACT.value]
+    elif action == "storyboard-frames":
+        base["stages"] = [PipelineStage.STORYBOARD_FRAMES.value]
+    elif action == "storyboard-page":
+        base["stages"] = [PipelineStage.STORYBOARD_PAGE.value]
+    elif action == "msr-reference-sheets":
+        base["video_pipeline"] = "ltx_msr"
+        base["stages"] = [PipelineStage.MSR_REFERENCE_SHEETS.value]
+    elif action == "msr-prompt-enrich":
+        base["video_pipeline"] = "ltx_msr"
+        base["stages"] = [PipelineStage.MSR_PROMPT_ENRICH.value]
+    elif action == "concat-video-only":
+        base["video_pipeline"] = video_pipeline
+        base["stages"] = [PipelineStage.CONCAT_VIDEO_ONLY.value]
+    elif action == "mux-original-audio":
+        base["video_pipeline"] = video_pipeline
+        base["stages"] = [PipelineStage.MUX_ORIGINAL_AUDIO.value]
+    elif action == "main-pipeline":
         base["skip_main_pipeline"] = False
     elif action == "storyboard":
+        base["stages"] = [PipelineStage.STORYBOARD_FRAMES.value, PipelineStage.STORYBOARD_PAGE.value]
         base["skip_storyboard"] = False
         base["skip_storyboard_page"] = False
     elif action == "msr-references":
@@ -263,14 +302,17 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipe
         base["skip_msr_reference_render"] = False
     elif action == "msr-enrich":
         base["video_pipeline"] = "ltx_msr"
+        base["stages"] = [PipelineStage.MSR_REFERENCE_SHEETS.value, PipelineStage.MSR_PROMPT_ENRICH.value]
         base["skip_msr_prompt_enrichment"] = False
     elif action == "ltx-render-scenes":
         base["video_pipeline"] = video_pipeline
+        base["stages"] = [PipelineStage.LTX_RENDER_SCENES.value]
         base["skip_ltx"] = False
         if scenes:
             base["scenes"] = ",".join(str(scene) for scene in scenes)
     elif action == "final-concat":
         base["video_pipeline"] = video_pipeline
+        base["stages"] = [PipelineStage.CONCAT_VIDEO_ONLY.value, PipelineStage.MUX_ORIGINAL_AUDIO.value]
         base["skip_final_concat"] = False
     elif action == "full-pipeline":
         return {

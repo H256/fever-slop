@@ -343,6 +343,16 @@ class StudioBackendTests(unittest.TestCase):
         self.assertFalse(options["skip_ltx"])
         self.assertEqual("2,4", options["scenes"])
 
+    def test_pipeline_option_builder_maps_atomic_actions_to_stages(self):
+        self.assertEqual(["anchor_fix"], build_pipeline_options("anchor-fix")["stages"])
+        self.assertEqual(["relay_compact"], build_pipeline_options("relay-compact")["stages"])
+        self.assertEqual(["storyboard_frames"], build_pipeline_options("storyboard-frames")["stages"])
+        self.assertEqual(["storyboard_page"], build_pipeline_options("storyboard-page")["stages"])
+        self.assertEqual(["msr_reference_sheets"], build_pipeline_options("msr-reference-sheets")["stages"])
+        self.assertEqual(["msr_prompt_enrich"], build_pipeline_options("msr-prompt-enrich")["stages"])
+        self.assertEqual(["concat_video_only"], build_pipeline_options("concat-video-only")["stages"])
+        self.assertEqual(["mux_original_audio"], build_pipeline_options("mux-original-audio")["stages"])
+
     def test_pipeline_option_builder_uses_selected_pipeline_mode(self):
         classic = build_pipeline_options("full-pipeline", pipeline_mode="classic")
         msr = build_pipeline_options("full-pipeline", pipeline_mode="msr")
@@ -484,6 +494,28 @@ class StudioBackendTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual([("config.json", "full-pipeline", None, None)], calls)
+
+    def test_api_atomic_pipeline_job_records_completed_stage(self):
+        def fake_pipeline_handler(config_path, action, *, scenes=None, pipeline_mode=None):
+            return lambda log: log(f"ran {action}") or "ok"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
+            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+
+            job_response = client.post("/api/projects/my-cool-video/jobs", json={"action": "anchor-fix"})
+
+            self.assertEqual(200, job_response.status_code, job_response.text)
+            job_id = job_response.json()["id"]
+            for _ in range(50):
+                job = client.get(f"/api/jobs/{job_id}").json()
+                if job["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+            state = json.loads((Path(temp_dir) / "my-cool-video" / ".studio" / "pipeline_state.json").read_text())
+            self.assertEqual(["anchor_fix"], state["completed_stages"])
+            self.assertEqual("anchor-fix", state["last_run"]["action"])
 
     def test_api_rejects_duplicate_pipeline_start_while_running(self):
         gate = threading.Event()

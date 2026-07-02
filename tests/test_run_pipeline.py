@@ -56,6 +56,62 @@ class RunPipelinePathTests(unittest.TestCase):
 
 
 class RunPipelineOrchestrationTests(unittest.TestCase):
+    def test_pipeline_stage_arg_executes_only_anchor_fix(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            prompts_dir = project_dir / "output" / "prompts"
+            render_dir = project_dir / "output" / "render"
+            prompts_dir.mkdir(parents=True)
+            render_dir.mkdir(parents=True)
+            (prompts_dir / "resolved_context_song.json").write_text(json.dumps({"subject": "Singer"}), encoding="utf-8")
+            (render_dir / "render_plan_song.json").write_text(json.dumps([{"scene": 1, "prompt": "Singer sings"}]), encoding="utf-8")
+            args = run_pipeline.build_arg_parser().parse_args([str(config_path), "--stage", "anchor_fix"])
+
+            fixer = Mock()
+            anchored_plan = render_dir / "render_plan_song__compact_anchored.json"
+
+            def fix_file(*, input_render_plan, output_render_plan):
+                output_render_plan.write_text(Path(input_render_plan).read_text(encoding="utf-8"), encoding="utf-8")
+                return output_render_plan
+
+            fixer.fix_file.side_effect = fix_file
+            with patch("feverslop.composition.pipeline_runner.run_unittest_suite") as tests, \
+                patch("feverslop.composition.pipeline_runner.LTXPromptAnchorFixer", return_value=fixer) as fixer_class, \
+                patch("feverslop.composition.pipeline_runner.build_generate_render_plan_use_case") as main_builder, \
+                patch("feverslop.composition.pipeline_runner.build_render_storyboard_use_case") as storyboard_builder, \
+                patch("feverslop.composition.pipeline_runner.build_render_video_scenes_use_case") as video_builder, \
+                patch("feverslop.composition.pipeline_runner.VideoPostProcessor") as postprocessor:
+                result = run_pipeline.run(args)
+
+        tests.assert_not_called()
+        main_builder.assert_not_called()
+        storyboard_builder.assert_not_called()
+        video_builder.assert_not_called()
+        postprocessor.assert_not_called()
+        fixer_class.assert_called_once_with(subject_anchor="Singer")
+        fixer.fix_file.assert_called_once()
+        self.assertEqual(anchored_plan, result.render_plan_path)
+
+    def test_pipeline_stage_error_names_failed_stage(self):
+        with TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "project"
+            project_dir.mkdir()
+            config_path = project_dir / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            args = run_pipeline.build_arg_parser().parse_args([str(config_path), "--stage", "mux_original_audio"])
+
+            with self.assertRaisesRegex(RuntimeError, "Mux original audio failed"):
+                run_pipeline.run(args)
+
     def test_skip_flags_suppress_pipeline_steps(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"

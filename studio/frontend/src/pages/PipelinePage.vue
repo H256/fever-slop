@@ -23,11 +23,16 @@ type Action = readonly [string, string];
 
 const standardActions = [
   ["main-pipeline", "Main pipeline"],
+  ["relay-compact", "Relay compact"],
+  ["anchor-fix", "Anchor fix"],
   ["msr-references", "MSR references"],
-  ["msr-enrich", "MSR enrichment"],
-  ["storyboard", "Storyboard"],
+  ["msr-reference-sheets", "MSR reference sheets"],
+  ["msr-prompt-enrich", "MSR prompt enrichment"],
+  ["storyboard-frames", "Storyboard frames"],
+  ["storyboard-page", "Storyboard page"],
   ["ltx-render-scenes", "Render selected scenes"],
-  ["final-concat", "Final concat"],
+  ["concat-video-only", "Concat video only"],
+  ["mux-original-audio", "Mux original audio"],
   ["full-pipeline", "Full pipeline"]
 ] as const;
 
