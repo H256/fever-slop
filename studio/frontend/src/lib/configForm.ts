@@ -130,6 +130,7 @@ export function moveArrayItem(target: Record<string, unknown>, path: PathPart[],
 }
 
 export function pruneConfigForSave(config: Record<string, unknown>): Record<string, unknown> {
+  const knownPaths = knownConfigPaths();
   const keepPaths = new Set([
     "project_name",
     "input_audio",
@@ -152,7 +153,7 @@ export function pruneConfigForSave(config: Record<string, unknown>): Record<stri
     "vocal_detection.rms_ratio",
     "vocal_detection.smooth_frames"
   ]);
-  return pruneValue(config, [], keepPaths) as Record<string, unknown>;
+  return pruneValue(config, [], keepPaths, knownPaths) as Record<string, unknown>;
 }
 
 function mergeDefaults(defaultValue: unknown, value: unknown): unknown {
@@ -183,18 +184,19 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
-function pruneValue(value: unknown, path: PathPart[], keepPaths: Set<string>): unknown {
-  const key = path.join(".");
+function pruneValue(value: unknown, path: PathPart[], keepPaths: Set<string>, knownPaths: Set<string>): unknown {
+  const key = normalizedPath(path);
+  if (path.length && !knownPaths.has(key)) return value;
   if (keepPaths.has(key)) return value;
   if (typeof value === "string") return value.trim() ? value : undefined;
   if (Array.isArray(value)) {
-    const items = value.map((item, index) => pruneValue(item, [...path, index], keepPaths)).filter((item) => item !== undefined);
+    const items = value.map((item, index) => pruneValue(item, [...path, index], keepPaths, knownPaths)).filter((item) => item !== undefined);
     return items.length ? items : undefined;
   }
   if (isRecord(value)) {
     if (isEmptyLora(value)) return undefined;
     const entries = Object.entries(value)
-      .map(([childKey, child]) => [childKey, pruneValue(child, [...path, childKey], keepPaths)] as const)
+      .map(([childKey, child]) => [childKey, pruneValue(child, [...path, childKey], keepPaths, knownPaths)] as const)
       .filter(([, child]) => child !== undefined);
     return entries.length ? Object.fromEntries(entries) : undefined;
   }
@@ -204,4 +206,24 @@ function pruneValue(value: unknown, path: PathPart[], keepPaths: Set<string>): u
 
 function isEmptyLora(value: Record<string, unknown>): boolean {
   return value.enabled === false && !String(value.name ?? "").trim() && Number(value.strength_model ?? 1) === 1 && Number(value.strength_clip ?? 1) === 1;
+}
+
+function knownConfigPaths(): Set<string> {
+  const paths = new Set<string>();
+  collectKnownPaths(DEFAULT_CONFIG, [], paths);
+  for (const [key, template] of Object.entries(ARRAY_TEMPLATES)) {
+    collectKnownPaths(template, [key, 0], paths);
+  }
+  return paths;
+}
+
+function collectKnownPaths(value: unknown, path: PathPart[], paths: Set<string>) {
+  if (path.length) paths.add(normalizedPath(path));
+  if (isRecord(value)) {
+    for (const [key, child] of Object.entries(value)) collectKnownPaths(child, [...path, key], paths);
+  }
+}
+
+function normalizedPath(path: PathPart[]): string {
+  return path.map((part) => (typeof part === "number" ? "*" : part)).join(".");
 }

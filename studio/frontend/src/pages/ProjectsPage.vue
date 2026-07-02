@@ -85,7 +85,7 @@ async function createProject(startFullAuto = false) {
     if (project.project_type === "full_auto") {
       await router.push(`/projects/${project.id}/pipeline`);
     } else {
-      await router.push({ path: `/projects/${project.id}/artifacts`, query: { path: "config.json" } });
+      await router.push(`/projects/${project.id}/settings`);
     }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : String(caught);

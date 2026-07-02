@@ -136,6 +136,37 @@ class StudioBackendTests(unittest.TestCase):
             with self.assertRaises(StudioPathError):
                 store.read_artifact("demo", "../outside.json")
 
+    def test_config_write_validates_required_fields_and_preserves_unknown_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+
+            store.write_artifact(
+                "demo",
+                ArtifactRequest(
+                    path="config.json",
+                    data={
+                        "project_name": "Changed",
+                        "input_audio": "input/song.mp3",
+                        "subject_mode": "single",
+                        "max_scene_actors": 1,
+                        "custom_plugin": {"empty_but_intentional": ""},
+                    },
+                ),
+            )
+
+            config = json.loads((Path(temp_dir) / "demo" / "config.json").read_text())
+            self.assertEqual({"empty_but_intentional": ""}, config["custom_plugin"])
+            with self.assertRaises(ValueError):
+                store.write_artifact(
+                    "demo",
+                    ArtifactRequest(path="config.json", data={"project_name": "", "input_audio": "input/song.mp3"}),
+                )
+            with self.assertRaises(ValueError):
+                store.write_artifact(
+                    "demo",
+                    ArtifactRequest(path="config.json", data={"project_name": "Demo", "input_audio": "input/song.mp3", "subject_mode": "group"}),
+                )
+
     def test_patch_render_plan_updates_selected_scene_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = self._project_store(Path(temp_dir))

@@ -24,6 +24,7 @@ const projectId = computed(() => (typeof route.params.projectId === "string" ? r
         <RouterLink :to="`/projects/${projectId}/pipeline`"><Gauge :size="18" /> Pipeline</RouterLink>
         <RouterLink :to="`/projects/${projectId}/render-plan`"><ListVideo :size="18" /> Render Plan</RouterLink>
         <RouterLink :to="`/projects/${projectId}/references`"><Images :size="18" /> References</RouterLink>
+        <RouterLink :to="`/projects/${projectId}/settings`"><Settings :size="18" /> Project Settings</RouterLink>
         <RouterLink :to="`/projects/${projectId}/artifacts`"><FileJson :size="18" /> Artifacts</RouterLink>
         <RouterLink :to="`/projects/${projectId}/queue`"><Boxes :size="18" /> Queue</RouterLink>
         <RouterLink :to="`/projects/${projectId}/review`"><Clapperboard :size="18" /> Review</RouterLink>

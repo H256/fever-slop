@@ -150,6 +150,8 @@ class ProjectStore:
 
     def write_artifact(self, project_id: str, request: ArtifactRequest) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, request.path)
+        if artifact_path.name == "config.json":
+            self._validate_project_config(request.data)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(json.dumps(request.data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return {"path": request.path, "data": request.data}
@@ -190,6 +192,21 @@ class ProjectStore:
         path = root / ".studio" / "project.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _validate_project_config(data: Any) -> None:
+        if not isinstance(data, dict):
+            raise ValueError("config.json must be a JSON object")
+        if not str(data.get("project_name") or "").strip():
+            raise ValueError("project_name is required")
+        if not str(data.get("input_audio") or "").strip():
+            raise ValueError("input_audio is required")
+        subject_mode = str(data.get("subject_mode", "multi") or "multi").strip().lower()
+        if subject_mode not in {"single", "multi"}:
+            raise ValueError("subject_mode must be 'single' or 'multi'")
+        max_scene_actors = int(data.get("max_scene_actors", 1 if subject_mode == "single" else 4))
+        if max_scene_actors < 1 or max_scene_actors > 4:
+            raise ValueError("max_scene_actors must be between 1 and 4")
 
     def resolve_project_path(self, project_id: str, path: str) -> Path:
         root = self.project_root(project_id)

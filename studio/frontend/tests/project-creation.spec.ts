@@ -64,43 +64,6 @@ test("creates a standard project and opens the config form", async ({ page }) =>
     expect(body.data.actors).toEqual([{ name: "Mara" }]);
     await route.fulfill({ json: { path: "config.json", data: body.data } });
   });
-  await page.route("**/api/projects/my-cool-video/jobs", async (route) => {
-    const body = await route.request().postDataJSON();
-    expect(body.action).toBe("full-pipeline");
-    await route.fulfill({
-      json: {
-        id: "standard-job",
-        project_id: "my-cool-video",
-        action: "full-pipeline",
-        pipeline_type: "full-pipeline",
-        status: "queued",
-        progress: 0,
-        logs: [],
-        recent_logs: [],
-        error: null,
-        result: null
-      }
-    });
-  });
-  await page.route("**/api/jobs?project_id=my-cool-video", (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: "standard-job",
-          project_id: "my-cool-video",
-          action: "full-pipeline",
-          pipeline_type: "full-pipeline",
-          status: "queued",
-          progress: 0,
-          logs: [],
-          recent_logs: [],
-          error: null,
-          result: null
-        }
-      ]
-    })
-  );
-
   await page.goto("/");
   await page.getByRole("button", { name: /create project/i }).click();
   await page.getByRole("button", { name: /standard/i }).click();
@@ -108,17 +71,15 @@ test("creates a standard project and opens the config form", async ({ page }) =>
   await expect(page.getByText("my-cool-video")).toBeVisible();
   await page.getByRole("button", { name: /create and configure/i }).click();
 
-  await expect(page).toHaveURL(/\/projects\/my-cool-video\/artifacts\?path=config\.json/);
-  await expect(page.getByRole("heading", { name: "config.json" })).toBeVisible();
+  await expect(page).toHaveURL(/\/projects\/my-cool-video\/settings/);
+  await expect(page.getByRole("heading", { name: "Project Settings" })).toBeVisible();
   await expect(page.getByRole("spinbutton", { name: /fps/i })).toHaveValue("24");
   await expect(page.getByRole("spinbutton", { name: /word count min/i })).toHaveValue("40");
+  await page.getByRole("textbox", { name: /input audio/i }).fill("input/song.mp3");
   await page.getByRole("button", { name: "Add actors" }).click();
   await page.locator(".array-item-block", { hasText: "actors 1" }).getByRole("textbox", { name: /^name/i }).fill("Mara");
-  await page.getByRole("button", { name: /save and run pipeline/i }).click();
-  await page.getByRole("button", { name: "Save and run", exact: true }).click();
-
-  await expect(page).toHaveURL(/\/projects\/my-cool-video\/pipeline/);
-  await expect(page.getByRole("heading", { name: "full-pipeline" })).toBeVisible();
+  await page.getByRole("button", { name: /^save$/i }).click();
+  await expect(page.getByText("Settings saved")).toBeVisible();
 });
 
 test("validates duplicate slugs before creation", async ({ page }) => {

@@ -59,4 +59,16 @@ describe("pruneConfigForSave", () => {
     expect(saved.story_idea).toBe("lost in neon");
     expect(saved.actors).toEqual([{ name: "Mara" }]);
   });
+
+  test("preserves unknown advanced fields even when empty", () => {
+    const config = mergeConfigDefaults({
+      project_name: "Demo",
+      input_audio: "song.mp3",
+      custom_plugin: { empty_but_intentional: "" }
+    });
+
+    const saved = pruneConfigForSave(config);
+
+    expect(saved.custom_plugin).toEqual({ empty_but_intentional: "" });
+  });
 });
