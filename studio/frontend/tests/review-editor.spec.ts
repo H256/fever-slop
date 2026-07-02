@@ -77,5 +77,6 @@ test("review timeline exposes zoom, seek, and constrained trim handles", async (
   await page.mouse.down();
   await page.mouse.move(outBox.x + 80, outBox.y + outBox.height / 2);
   await page.mouse.up();
+  await expect(page.getByText(/Raw OUT preview/)).toBeVisible();
   await expect(page.locator(".status-badge.warning", { hasText: "stale" })).toBeVisible();
 });

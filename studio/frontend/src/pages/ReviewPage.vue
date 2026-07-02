@@ -31,6 +31,7 @@ interface RenderManifestEntry {
   trim_front_frames?: number;
   scene_frame_count?: number;
   render_frame_count?: number;
+  tail_loss_frames?: number;
 }
 
 const route = useRoute();
@@ -52,6 +53,7 @@ const timelineDirty = ref(false);
 const timelineZoom = ref(1);
 const undoStack = ref<RenderScene[][]>([]);
 const redoStack = ref<RenderScene[][]>([]);
+const rawPreview = ref<{ scene: number; clip: string; seconds: number; edge: "IN" | "OUT" } | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
 const audioRef = ref<HTMLAudioElement | null>(null);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
@@ -93,9 +95,12 @@ const timelineItems = computed<TimelineItem[]>(() =>
   })
 );
 const clipEdits = computed(() => scenes.value.map((scene) => editForScene(scene)));
-const totalDuration = computed(() => Math.max(0, ...timelineItems.value.flatMap((item) => [item.end, item.rawEnd])));
+const totalDuration = computed(() => Math.max(0, ...timelineItems.value.map((item) => item.end)));
 const selectedItem = computed(() => timelineItems.value.find((item) => item.scene === selectedScene.value) ?? timelineItems.value[0]);
-const selectedClipUrl = computed(() => (selectedItem.value?.clip ? mediaUrl(projectId.value, selectedItem.value.clip) : ""));
+const selectedClipUrl = computed(() => {
+  const clip = rawPreview.value?.clip || selectedItem.value?.clip;
+  return clip ? mediaUrl(projectId.value, clip) : "";
+});
 const audioUrl = computed(() => (audioSource.value ? mediaUrl(projectId.value, audioSource.value) : ""));
 const playableItems = computed(() => timelineItems.value.filter((item) => item.clip));
 const staleScenes = computed(() =>
@@ -137,6 +142,7 @@ watch(selectedItem, (item) => {
 });
 
 function selectItem(item: TimelineItem) {
+  rawPreview.value = null;
   selectedScene.value = item.scene;
   scrubSeconds.value = item.start;
   seekPreview();
@@ -155,7 +161,7 @@ async function seekPreview() {
   const video = videoRef.value;
   const item = selectedItem.value;
   if (!video || !item?.clip) return;
-  video.currentTime = Math.max(0, scrubSeconds.value - previewStart(item));
+  video.currentTime = rawPreview.value ? rawPreview.value.seconds : Math.max(0, scrubSeconds.value - previewStart(item));
 }
 
 async function runRetake() {
@@ -184,6 +190,7 @@ async function playTimeline() {
 }
 
 function stopTimeline() {
+  rawPreview.value = null;
   playingTimeline.value = false;
   videoRef.value?.pause();
   audioRef.value?.pause();
@@ -205,11 +212,13 @@ async function playNextClip() {
 
 function syncScrubber() {
   if (!selectedItem.value || !videoRef.value) return;
+  if (rawPreview.value) return;
   scrubSeconds.value = previewStart(selectedItem.value) + videoRef.value.currentTime;
   if (audioRef.value && Math.abs(audioRef.value.currentTime - scrubSeconds.value) > 0.25) audioRef.value.currentTime = scrubSeconds.value;
 }
 
 async function playAudio() {
+  if (rawPreview.value) return;
   if (!audioRef.value) return;
   audioRef.value.currentTime = scrubSeconds.value;
   await audioRef.value.play();
@@ -331,11 +340,13 @@ function startFinalDrag(event: PointerEvent, item: TimelineItem, mode: "left" | 
   const originalEdits = clipEdits.value.map((edit) => ({ ...edit }));
   const startX = event.clientX;
   const secondsPerPixel = (totalDuration.value || 1) / rect.width;
+  updateRawPreview(item.scene, mode, originalEdits);
   const move = (moveEvent: PointerEvent) => {
     scenes.value = original.map((scene) => cloneScene(scene));
     const deltaFrames = Math.round(((moveEvent.clientX - startX) * secondsPerPixel) / frameStep(item));
     const nextEdits = applyBoundaryTrim(originalEdits, { scene: item.scene, edge: mode, deltaFrames });
     applyClipEdits(nextEdits);
+    updateRawPreview(item.scene, mode, nextEdits);
     markChangedScenesStale(originalEdits, nextEdits);
     timelineDirty.value = true;
   };
@@ -477,11 +488,13 @@ function editForScene(scene: RenderScene): ClipEdit {
   const trimFrontFrames = Number(manifest?.trim_front_frames ?? Math.max(0, Math.round((sceneStart - rawTiming.start) * fps)));
   const fallbackRenderFrameCount = Math.max(trimFrontFrames + frameCount, Math.round(rawTiming.duration * fps));
   const renderFrameCount = Number(manifest?.render_frame_count ?? fallbackRenderFrameCount);
+  const explicitTailFrames = readPath(scene, ["rolling", "tail_loss_frames"]) ?? readPath(scene, ["ltx", "tail_loss_frames"]);
+  const tailFrames = Math.max(0, Number(manifest?.tail_loss_frames ?? explicitTailFrames ?? renderFrameCount - trimFrontFrames - frameCount));
   const base = buildEditState({
     scene: sceneNumber,
     frameCount,
     trimFrontFrames,
-    tailFrames: Math.max(0, renderFrameCount - trimFrontFrames - frameCount)
+    tailFrames
   });
   const edit = (scene.edit ?? {}) as Record<string, unknown>;
   return {
@@ -489,6 +502,24 @@ function editForScene(scene: RenderScene): ClipEdit {
     rawInFrame: Number(edit.raw_in_frame ?? base.rawInFrame),
     rawOutFrame: Number(edit.raw_out_frame ?? base.rawOutFrame)
   };
+}
+
+function sourceWindowStyle(item: TimelineItem): Record<string, string> {
+  const edit = clipEdits.value.find((candidate) => candidate.scene === item.scene);
+  const scene = sceneDurationScene(item.scene);
+  if (!edit || !scene) return blockStyle(item.start, item.duration);
+  const fps = sceneFps(scene);
+  return blockStyle(item.start - edit.rawInFrame / fps, (edit.maxRawOutFrame - edit.minRawInFrame) / fps);
+}
+
+function updateRawPreview(sceneNumber: number, mode: "left" | "right", edits: ClipEdit[]) {
+  const item = timelineItems.value.find((candidate) => candidate.scene === sceneNumber);
+  const scene = sceneDurationScene(sceneNumber);
+  const edit = edits.find((candidate) => candidate.scene === sceneNumber);
+  if (!item?.rawClip || !scene || !edit) return;
+  const seconds = (mode === "left" ? edit.rawInFrame : edit.rawOutFrame) / sceneFps(scene);
+  rawPreview.value = { scene: sceneNumber, clip: item.rawClip, seconds, edge: mode === "left" ? "IN" : "OUT" };
+  void seekPreview();
 }
 
 function applyClipEdits(edits: ClipEdit[]) {
@@ -648,6 +679,9 @@ function formatTime(value: number): string {
           @timeupdate="syncScrubber"
         />
         <div v-else class="timeline-missing-preview">No clip exists for selected scene.</div>
+        <div v-if="rawPreview" class="raw-preview-badge">
+          Raw {{ rawPreview.edge }} preview at {{ rawPreview.seconds.toFixed(2) }}s
+        </div>
         <audio v-if="audioUrl" ref="audioRef" :src="audioUrl" preload="metadata" />
         <aside v-if="selectedItem">
           <h2>Scene {{ selectedItem.scene }}</h2>
@@ -722,29 +756,17 @@ function formatTime(value: number): string {
             </div>
           </div>
           <div class="timeline-lane">
-            <span class="timeline-lane-label">Raw</span>
-            <div class="timeline-track">
-              <span class="timeline-playhead" :style="playheadStyle" />
-              <button
-                v-for="item in timelineItems"
-                :key="`raw-${item.scene}`"
-                class="timeline-clip raw"
-                :class="{ missing: !item.rawClip, active: item.scene === selectedScene }"
-                :style="blockStyle(item.rawStart, item.rawDuration)"
-                @click="selectItem(item)"
-              >
-                <span v-if="item.rawClip" class="clip-filmstrip" aria-hidden="true">
-                  <img v-for="frame in thumbnailFrames(item.rawClip, item.rawDuration)" :key="frame.time" class="clip-thumb" :src="frame.url" alt="" />
-                </span>
-                <strong>Scene {{ item.scene }}</strong>
-                <small>{{ item.rawClip ? `${item.hasManifestTiming ? "Raw window" : "Estimated raw"} ${item.rawDuration.toFixed(1)}s` : "No raw clip" }}</small>
-              </button>
-            </div>
-          </div>
-          <div class="timeline-lane">
             <span class="timeline-lane-label">Final</span>
             <div class="timeline-track">
               <span class="timeline-playhead" :style="playheadStyle" />
+              <span
+                v-for="item in timelineItems"
+                :key="`source-${item.scene}`"
+                class="timeline-source-window"
+                :class="{ active: item.scene === selectedScene }"
+                :style="sourceWindowStyle(item)"
+                :title="`Raw source bounds for scene ${item.scene}`"
+              />
               <button
                 v-for="item in timelineItems"
                 :key="`final-${item.scene}`"
