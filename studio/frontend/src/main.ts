@@ -13,6 +13,7 @@ import RenderQueuePage from "./pages/RenderQueuePage.vue";
 import ReviewPage from "./pages/ReviewPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
 import ProjectSettingsPage from "./pages/ProjectSettingsPage.vue";
+import FinalVideoPage from "./pages/FinalVideoPage.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -26,6 +27,7 @@ const router = createRouter({
     { path: "/projects/:projectId/settings", component: ProjectSettingsPage },
     { path: "/projects/:projectId/queue", component: RenderQueuePage },
     { path: "/projects/:projectId/review", component: ReviewPage },
+    { path: "/projects/:projectId/final-video", component: FinalVideoPage },
     { path: "/settings", component: SettingsPage }
   ]
 });

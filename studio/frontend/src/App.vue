@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Boxes, Clapperboard, FileJson, FolderKanban, Gauge, Images, LayoutDashboard, ListVideo, Settings } from "lucide-vue-next";
+import { Boxes, Clapperboard, FileJson, FolderKanban, Gauge, Images, LayoutDashboard, ListVideo, Settings, Video } from "lucide-vue-next";
 import { useRoute } from "vue-router";
 
 const route = useRoute();
@@ -28,6 +28,7 @@ const projectId = computed(() => (typeof route.params.projectId === "string" ? r
         <RouterLink :to="`/projects/${projectId}/artifacts`"><FileJson :size="18" /> Artifacts</RouterLink>
         <RouterLink :to="`/projects/${projectId}/queue`"><Boxes :size="18" /> Queue</RouterLink>
         <RouterLink :to="`/projects/${projectId}/review`"><Clapperboard :size="18" /> Review</RouterLink>
+        <RouterLink :to="`/projects/${projectId}/final-video`"><Video :size="18" /> Final Video</RouterLink>
       </nav>
     </aside>
     <main class="main-pane">

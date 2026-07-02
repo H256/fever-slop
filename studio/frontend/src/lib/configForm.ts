@@ -14,6 +14,7 @@ export const DEFAULT_CONFIG = {
     whisper_model: "large",
     language: "de"
   },
+  video_pipeline: "ltx_msr",
   scene_generation: {
     min_duration: 2.0,
     max_duration: 10.0,
@@ -151,7 +152,8 @@ export function pruneConfigForSave(config: Record<string, unknown>): Record<stri
     "vocal_detection.rms_low_percentile",
     "vocal_detection.rms_high_percentile",
     "vocal_detection.rms_ratio",
-    "vocal_detection.smooth_frames"
+    "vocal_detection.smooth_frames",
+    "video_pipeline"
   ]);
   return pruneValue(config, [], keepPaths, knownPaths) as Record<string, unknown>;
 }

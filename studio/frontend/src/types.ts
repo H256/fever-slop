@@ -22,6 +22,11 @@ export interface ProjectSummary {
     full_auto?: {
       idea?: string;
       song_style?: string;
+      duration_seconds?: number;
+      width?: number;
+      height?: number;
+      fps?: 16 | 24 | 50;
+      pipeline_mode?: "classic" | "msr";
     };
   };
   status: ProjectStatus;
@@ -37,6 +42,11 @@ export interface ProjectCreatePayload {
   name: string;
   idea?: string;
   song_style?: string;
+  duration_seconds?: number;
+  width?: number;
+  height?: number;
+  fps?: 16 | 24 | 50;
+  pipeline_mode?: "classic" | "msr";
 }
 
 export interface JobStep {

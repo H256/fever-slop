@@ -120,6 +120,7 @@ function validateConfig(value: Record<string, unknown> | null): string[] {
   if (!["single", "multi"].includes(String(value.subject_mode ?? "multi"))) errors.push("Subject mode must be single or multi.");
   const maxSceneActors = Number(value.max_scene_actors ?? 4);
   if (!Number.isFinite(maxSceneActors) || maxSceneActors < 1 || maxSceneActors > 4) errors.push("Max scene actors must be between 1 and 4.");
+  if (!["ltx_i2v", "ltx_msr"].includes(String(value.video_pipeline ?? "ltx_msr"))) errors.push("Video pipeline must be ltx_i2v or ltx_msr.");
   return errors;
 }
 
@@ -219,6 +220,7 @@ function helpForConfigField(path: PathPart[]): string {
     subject: "Optional. Main subject anchor for consistency.",
     subject_mode: "Required. Controls whether scenes use one subject or multiple actors.",
     max_scene_actors: "Required. Maximum actors per generated scene, from 1 to 4.",
+    video_pipeline: "Required. MSR uses Scene/Actor Bible references; ltx_i2v is the classic path without those references.",
     "video.fps": "Required. Video frame rate used for timing and rendering.",
     "video.width": "Required. Generated video width.",
     "video.height": "Required. Generated video height.",

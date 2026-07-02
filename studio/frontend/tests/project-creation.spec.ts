@@ -115,7 +115,12 @@ test("creates a full-auto project and starts its pipeline", async ({ page }) => 
         project_type: "full_auto",
         name: "Neon Wolves",
         idea: "A cyberpunk chase through a futuristic city",
-        song_style: "dark synthwave with cinematic drums"
+        song_style: "dark synthwave with cinematic drums",
+        duration_seconds: 150,
+        width: 1280,
+        height: 704,
+        fps: 24,
+        pipeline_mode: "msr"
       });
       await route.fulfill({
         json: {
@@ -187,6 +192,8 @@ test("creates a full-auto project and starts its pipeline", async ({ page }) => 
   await page.getByLabel("Project name").fill("Neon Wolves");
   await page.getByLabel("Idea").fill("A cyberpunk chase through a futuristic city");
   await page.getByLabel("Song style").fill("dark synthwave with cinematic drums");
+  await page.getByLabel("Desired video duration").fill("150");
+  await page.getByLabel("Pipeline mode").selectOption("msr");
   await page.getByRole("button", { name: /start full-auto pipeline/i }).click();
 
   await expect(page).toHaveURL(/\/projects\/neon-wolves\/pipeline/);

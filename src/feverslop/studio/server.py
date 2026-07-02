@@ -12,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from feverslop.studio.jobs import JobRegistry, build_pipeline_handler, build_recut_scene_handler, build_reference_rerender_handler
+from feverslop.studio.jobs import PIPELINE_ACTIONS, JobRegistry, build_pipeline_handler, build_recut_scene_handler, build_reference_rerender_handler, run_with_stream_logging
+from feverslop.studio.logging import render_log_lines
 from feverslop.studio.projects import ArtifactRequest, ProjectCreateRequest, ProjectStore, RenderPlanPatch, StudioPathError
 
 
@@ -37,11 +38,17 @@ class ProjectCreatePayload(BaseModel):
     name: str
     idea: str = ""
     song_style: str = ""
+    duration_seconds: float = 120.0
+    width: int = 1280
+    height: int = 704
+    fps: int = 24
+    pipeline_mode: str = "classic"
 
 
 class JobPayload(BaseModel):
     action: str
     scenes: list[int] | None = None
+    pipeline_mode: str | None = None
     thumbnails: list[dict[str, Any]] | None = None
     reference_kind: str | None = None
     reference_id: str | None = None
@@ -86,6 +93,11 @@ def create_app(
                     name=payload.name,
                     idea=payload.idea,
                     song_style=payload.song_style,
+                    duration_seconds=payload.duration_seconds,
+                    width=payload.width,
+                    height=payload.height,
+                    fps=payload.fps,
+                    pipeline_mode=payload.pipeline_mode,
                 )
             )
         )
@@ -188,8 +200,17 @@ def create_app(
             else:
                 config_path = store.resolve_project_path(project_id, "config.json")
                 factory = pipeline_handler or build_pipeline_handler
-                handler = factory(config_path, payload.action, scenes=payload.scenes)
-            return jobs.get(jobs.start(project_id, payload.action, handler, project_type=str(metadata.get("project_type", "standard_music_video"))))
+                pipeline_mode = payload.pipeline_mode or _pipeline_mode_from_config(config_path)
+                handler = factory(config_path, payload.action, scenes=payload.scenes, pipeline_mode=pipeline_mode)
+            return jobs.get(
+                jobs.start(
+                    project_id,
+                    payload.action,
+                    handler,
+                    project_type=str(metadata.get("project_type", "standard_music_video")),
+                    reject_if_project_active=payload.action in PIPELINE_ACTIONS,
+                )
+            )
 
         return _safe(create)
 
@@ -233,30 +254,35 @@ class _StudioFullAutoConsole:
         self.log = log
 
     def print(self, *values, **_kwargs):
-        text = " ".join(str(value) for value in values).strip()
-        if text:
-            self.log(text)
+        for line in render_log_lines(*values):
+            self.log(line)
 
     def rule(self, title):
-        self.log(str(title))
+        for line in render_log_lines(str(title)):
+            self.log(line)
 
 
-def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: dict[str, Any]):
+def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: dict[str, Any], use_case_factory: Callable[[Any], Any] | None = None):
     def run(log):
         from feverslop.application.full_auto import FullAutoRequest
         from feverslop.composition.full_auto import build_full_auto_use_case
 
-        use_case = build_full_auto_use_case(console=_StudioFullAutoConsole(log))
-        return use_case.execute(
-            FullAutoRequest(
-                idea=str(payload.get("idea") or ""),
-                style=str(payload.get("song_style") or ""),
-                project_name=project_id,
-                projects_dir=store.projects_root,
-                run_video_pipeline=True,
-                runner_options={"skip_tests": True},
-            )
-        ).project_config_path
+        console = _StudioFullAutoConsole(log)
+        use_case = use_case_factory(console) if use_case_factory else build_full_auto_use_case(console=console)
+        pipeline_mode = str(payload.get("pipeline_mode") or "classic")
+        request = FullAutoRequest(
+            idea=str(payload.get("idea") or ""),
+            style=str(payload.get("song_style") or ""),
+            project_name=project_id,
+            projects_dir=store.projects_root,
+            duration_seconds=float(payload.get("duration_seconds") or 120.0),
+            width=int(payload.get("width") or 1280),
+            height=int(payload.get("height") or 704),
+            fps=int(payload.get("fps") or 24),
+            run_video_pipeline=True,
+            runner_options={"skip_tests": True, "video_pipeline": "ltx_msr" if pipeline_mode == "msr" else "ltx_i2v"},
+        )
+        return run_with_stream_logging(lambda: use_case.execute(request), log).project_config_path
 
     return run
 
@@ -268,6 +294,18 @@ def _safe(fn):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (StudioPathError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _pipeline_mode_from_config(config_path: Path) -> str | None:
+    if not config_path.exists():
+        return None
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    value = str(config.get("video_pipeline") or "")
+    if value == "ltx_msr":
+        return "msr"
+    if value == "ltx_i2v":
+        return "classic"
+    return None
 
 
 def _thumbnail_path(store: ProjectStore, project_id: str, path: str, at: float) -> Path:

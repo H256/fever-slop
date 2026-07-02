@@ -32,6 +32,11 @@ class ProjectCreateRequest:
     name: str
     idea: str = ""
     song_style: str = ""
+    duration_seconds: float = 120.0
+    width: int = 1280
+    height: int = 704
+    fps: int = 24
+    pipeline_mode: str = "classic"
 
 
 def slugify_project_name(value: str) -> str:
@@ -92,6 +97,7 @@ class ProjectStore:
                 raise ValueError("Full-auto idea is required")
             if not str(request.song_style or "").strip():
                 raise ValueError("Full-auto song style is required")
+            self._validate_full_auto_inputs(request)
 
         root.mkdir(parents=True)
         metadata = {
@@ -103,6 +109,11 @@ class ProjectStore:
             metadata["full_auto"] = {
                 "idea": str(request.idea).strip(),
                 "song_style": str(request.song_style).strip(),
+                "duration_seconds": float(request.duration_seconds),
+                "width": int(request.width),
+                "height": int(request.height),
+                "fps": int(request.fps),
+                "pipeline_mode": str(request.pipeline_mode or "classic"),
             }
         self._write_project_metadata(root, metadata)
         if project_type == "standard_music_video":
@@ -204,9 +215,25 @@ class ProjectStore:
         subject_mode = str(data.get("subject_mode", "multi") or "multi").strip().lower()
         if subject_mode not in {"single", "multi"}:
             raise ValueError("subject_mode must be 'single' or 'multi'")
+        video_pipeline = data.get("video_pipeline")
+        if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr"}:
+            raise ValueError("video_pipeline must be 'ltx_i2v' or 'ltx_msr'")
         max_scene_actors = int(data.get("max_scene_actors", 1 if subject_mode == "single" else 4))
         if max_scene_actors < 1 or max_scene_actors > 4:
             raise ValueError("max_scene_actors must be between 1 and 4")
+
+    @staticmethod
+    def _validate_full_auto_inputs(request: ProjectCreateRequest) -> None:
+        if float(request.duration_seconds) <= 0:
+            raise ValueError("duration_seconds must be positive")
+        if int(request.width) <= 0:
+            raise ValueError("width must be a positive integer")
+        if int(request.height) <= 0:
+            raise ValueError("height must be a positive integer")
+        if int(request.fps) not in {16, 24, 50}:
+            raise ValueError("fps must be one of 16, 24, or 50")
+        if str(request.pipeline_mode or "classic") not in {"classic", "msr"}:
+            raise ValueError("pipeline_mode must be classic or msr")
 
     def resolve_project_path(self, project_id: str, path: str) -> Path:
         root = self.project_root(project_id)

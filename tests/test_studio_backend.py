@@ -1,11 +1,13 @@
 import json
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
 from fastapi.testclient import TestClient
+from rich.panel import Panel
 
-from feverslop.studio.jobs import JobRegistry, build_ffmpeg_recut_command, build_pipeline_options
+from feverslop.studio.jobs import JobRegistry, build_ffmpeg_recut_command, build_pipeline_options, run_with_stream_logging
 from feverslop.studio.projects import (
     ArtifactRequest,
     ProjectCreateRequest,
@@ -14,7 +16,7 @@ from feverslop.studio.projects import (
     StudioPathError,
     slugify_project_name,
 )
-from feverslop.studio.server import create_app
+from feverslop.studio.server import _StudioFullAutoConsole, build_full_auto_handler, create_app
 
 
 class StudioBackendTests(unittest.TestCase):
@@ -108,13 +110,29 @@ class StudioBackendTests(unittest.TestCase):
                     name="Neon Wolves",
                     idea="A cyberpunk chase",
                     song_style="dark synthwave",
+                    duration_seconds=95.5,
+                    width=1920,
+                    height=1080,
+                    fps=50,
+                    pipeline_mode="msr",
                 )
             )
 
             root = Path(temp_dir) / "neon-wolves"
             metadata = json.loads((root / ".studio" / "project.json").read_text())
             self.assertEqual("full_auto", metadata["project_type"])
-            self.assertEqual({"idea": "A cyberpunk chase", "song_style": "dark synthwave"}, metadata["full_auto"])
+            self.assertEqual(
+                {
+                    "idea": "A cyberpunk chase",
+                    "song_style": "dark synthwave",
+                    "duration_seconds": 95.5,
+                    "width": 1920,
+                    "height": 1080,
+                    "fps": 50,
+                    "pipeline_mode": "msr",
+                },
+                metadata["full_auto"],
+            )
             with self.assertRaises(ValueError):
                 store.create_project(
                     ProjectCreateRequest(
@@ -124,6 +142,28 @@ class StudioBackendTests(unittest.TestCase):
                         song_style="again",
                     )
                 )
+
+    def test_create_full_auto_project_validates_render_inputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            for kwargs in [
+                {"duration_seconds": 0},
+                {"width": 0},
+                {"height": -1},
+                {"fps": 30},
+                {"pipeline_mode": "unknown"},
+            ]:
+                with self.subTest(kwargs=kwargs):
+                    with self.assertRaises(ValueError):
+                        store.create_project(
+                            ProjectCreateRequest(
+                                project_type="full_auto",
+                                name=f"Bad {len(kwargs)} {list(kwargs)[0]}",
+                                idea="idea",
+                                song_style="style",
+                                **kwargs,
+                            )
+                        )
 
     def test_artifact_read_write_is_project_relative(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -237,6 +277,63 @@ class StudioBackendTests(unittest.TestCase):
         self.assertTrue(any(step["status"] == "completed" for step in job["steps"]))
         self.assertEqual(["line"], job["recent_logs"])
 
+    def test_job_registry_sanitizes_rich_logs_and_tracks_acestep_step(self):
+        registry = JobRegistry()
+
+        def handler(log):
+            console = _StudioFullAutoConsole(log)
+            console.print(Panel.fit("[green]OK[/green] Generated audio: [cyan]/tmp/song.mp3[/cyan]", title="Audio"))
+            console.rule("[bold cyan]2. Rendering ACE-Step audio[/bold cyan]")
+
+        job_id = registry.start("demo", "full-auto", handler)
+
+        for _ in range(50):
+            if registry.get(job_id)["status"] == "succeeded":
+                break
+            time.sleep(0.01)
+
+        job = registry.get(job_id)
+        text = "\n".join(job["logs"])
+        self.assertNotIn("<rich.", text)
+        self.assertNotIn("[green]", text)
+        self.assertIn("OK Generated audio: /tmp/song.mp3", text)
+        self.assertIn("2. Rendering ACE-Step audio", text)
+        self.assertTrue(any(step["name"] == "ACE-Step audio rendering" for step in job["steps"]))
+
+    def test_stream_capture_sanitizes_stdout_and_stderr(self):
+        lines = []
+
+        def noisy():
+            print("[green]OK[/green] stdout")
+            import sys
+            from rich.console import Console
+
+            Console(file=sys.stderr, force_terminal=False, width=120).print(Panel.fit("[cyan]stderr panel[/cyan]"))
+            return "result"
+
+        result = run_with_stream_logging(noisy, lines.append)
+
+        self.assertEqual("result", result)
+        text = "\n".join(lines)
+        self.assertIn("OK stdout", text)
+        self.assertIn("stderr panel", text)
+        self.assertNotIn("[green]", text)
+        self.assertNotIn("<rich.", text)
+
+    def test_job_registry_rejects_duplicate_pipeline_start_for_project(self):
+        registry = JobRegistry()
+        gate = threading.Event()
+
+        first = registry.start("demo", "full-pipeline", lambda log: gate.wait(0.5))
+        for _ in range(50):
+            if registry.get(first)["status"] == "running":
+                break
+            time.sleep(0.01)
+
+        with self.assertRaises(ValueError):
+            registry.start("demo", "full-pipeline", lambda _log: None, reject_if_project_active=True)
+        gate.set()
+
     def test_pipeline_option_builder_maps_actions_to_skip_flags(self):
         options = build_pipeline_options("ltx-render-scenes", scenes=[2, 4])
 
@@ -245,6 +342,15 @@ class StudioBackendTests(unittest.TestCase):
         self.assertTrue(options["skip_storyboard"])
         self.assertFalse(options["skip_ltx"])
         self.assertEqual("2,4", options["scenes"])
+
+    def test_pipeline_option_builder_uses_selected_pipeline_mode(self):
+        classic = build_pipeline_options("full-pipeline", pipeline_mode="classic")
+        msr = build_pipeline_options("full-pipeline", pipeline_mode="msr")
+
+        self.assertEqual("ltx_i2v", classic["video_pipeline"])
+        self.assertEqual("ltx_msr", msr["video_pipeline"])
+        self.assertFalse(msr["skip_msr_reference_render"])
+        self.assertFalse(msr["skip_msr_prompt_enrichment"])
 
     def test_build_ffmpeg_recut_command_trims_raw_clip_to_output_clip(self):
         command = build_ffmpeg_recut_command(Path("raw.mp4"), Path("final.mp4"), raw_in_seconds=0.4, raw_out_seconds=11.9)
@@ -306,12 +412,58 @@ class StudioBackendTests(unittest.TestCase):
                 time.sleep(0.01)
             self.assertEqual([("neon-wolves", "A cyberpunk chase", "dark synthwave")], calls)
 
+    def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
+        captured = {}
+
+        class FakeUseCase:
+            def execute(self, request):
+                captured["request"] = request
+                print("[green]OK[/green] nested full-auto pipeline")
+
+                class Result:
+                    project_config_path = Path("config.json")
+
+                return Result()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(
+                ProjectCreateRequest(
+                    project_type="full_auto",
+                    name="Neon Wolves",
+                    idea="A cyberpunk chase",
+                    song_style="dark synthwave",
+                    duration_seconds=90,
+                    width=1280,
+                    height=704,
+                    fps=16,
+                    pipeline_mode="classic",
+                )
+            )
+            handler = build_full_auto_handler(
+                store=store,
+                project_id="neon-wolves",
+                payload=store.project_metadata("neon-wolves")["full_auto"],
+                use_case_factory=lambda console: FakeUseCase(),
+            )
+
+            logs = []
+            handler(logs.append)
+
+        request = captured["request"]
+        self.assertEqual(90, request.duration_seconds)
+        self.assertEqual(1280, request.width)
+        self.assertEqual(704, request.height)
+        self.assertEqual(16, request.fps)
+        self.assertEqual("ltx_i2v", request.runner_options["video_pipeline"])
+        self.assertIn("OK nested full-auto pipeline", "\n".join(logs))
+
     def test_api_starts_standard_pipeline_job(self):
         calls = []
 
-        def fake_pipeline_handler(config_path, action, *, scenes=None):
+        def fake_pipeline_handler(config_path, action, *, scenes=None, pipeline_mode=None):
             def run(log):
-                calls.append((Path(config_path).name, action, scenes))
+                calls.append((Path(config_path).name, action, scenes, pipeline_mode))
                 log("standard pipeline started")
                 return "ok"
 
@@ -331,7 +483,26 @@ class StudioBackendTests(unittest.TestCase):
                 if job["status"] == "succeeded":
                     break
                 time.sleep(0.01)
-            self.assertEqual([("config.json", "full-pipeline", None)], calls)
+            self.assertEqual([("config.json", "full-pipeline", None, None)], calls)
+
+    def test_api_rejects_duplicate_pipeline_start_while_running(self):
+        gate = threading.Event()
+
+        def fake_pipeline_handler(config_path, action, *, scenes=None, pipeline_mode=None):
+            return lambda _log: gate.wait(0.5)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
+            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+
+            first = client.post("/api/projects/my-cool-video/jobs", json={"action": "full-pipeline"})
+            self.assertEqual(200, first.status_code, first.text)
+            duplicate = client.post("/api/projects/my-cool-video/jobs", json={"action": "full-pipeline"})
+            gate.set()
+
+            self.assertEqual(400, duplicate.status_code)
+            self.assertIn("Pipeline is already running", duplicate.text)
 
 
 if __name__ == "__main__":

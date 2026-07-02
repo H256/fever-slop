@@ -220,7 +220,15 @@ textarea:focus-visible {
 }
 
 .create-project-form {
+  display: grid;
+  gap: 14px;
   max-width: 680px;
+}
+
+.form-grid-compact {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
 .form-error {
@@ -536,6 +544,18 @@ progress::-moz-progress-bar {
 
 .live-log {
   max-height: 360px;
+}
+
+.final-video-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.final-video-panel video {
+  width: 100%;
+  max-height: 72vh;
+  border-radius: 8px;
+  background: #050507;
 }
 
 @keyframes indeterminate-slide {

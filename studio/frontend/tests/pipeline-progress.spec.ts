@@ -52,4 +52,6 @@ test("shows structured pipeline progress and recent logs", async ({ page }) => {
   await expect(page.getByText("completed")).toBeVisible();
   await expect(page.locator(".step-row", { hasText: "MSR references" })).toBeVisible();
   await expect(page.locator(".live-log")).toContainText("Starting full-pipeline");
+  await expect(page.getByRole("button", { name: /full pipeline/i })).toBeDisabled();
+  await expect(page.getByText("Pipeline is already running")).toBeVisible();
 });

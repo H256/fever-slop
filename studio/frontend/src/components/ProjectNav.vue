@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Boxes, Clapperboard, FileJson, Gauge, Images, LayoutDashboard, ListVideo } from "lucide-vue-next";
+import { Boxes, Clapperboard, FileJson, Gauge, Images, LayoutDashboard, ListVideo, Video } from "lucide-vue-next";
 
 defineProps<{ projectId: string }>();
 </script>
@@ -13,5 +13,6 @@ defineProps<{ projectId: string }>();
     <RouterLink :to="`/projects/${projectId}/artifacts`"><FileJson :size="16" /> Artifacts</RouterLink>
     <RouterLink :to="`/projects/${projectId}/queue`"><Boxes :size="16" /> Queue</RouterLink>
     <RouterLink :to="`/projects/${projectId}/review`"><Clapperboard :size="16" /> Review</RouterLink>
+    <RouterLink :to="`/projects/${projectId}/final-video`"><Video :size="16" /> Final Video</RouterLink>
   </div>
 </template>

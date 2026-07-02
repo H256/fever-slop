@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 import uuid
@@ -9,11 +10,24 @@ from typing import Any, Callable
 
 from feverslop.adapters.pipeline_runner import RunPipelineAdapter
 from feverslop.composition import pipeline_runner
+from feverslop.studio.logging import render_log_lines
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
 from feverslop.tools.reference_bible import run as render_reference_bible
 
 
 JobHandler = Callable[[Callable[[str], None]], Any]
+STREAM_CAPTURE_LOCK = threading.Lock()
+
+PIPELINE_ACTIONS = {
+    "main-pipeline",
+    "storyboard",
+    "msr-references",
+    "msr-enrich",
+    "ltx-render-scenes",
+    "final-concat",
+    "full-pipeline",
+    "full-auto",
+}
 
 
 PIPELINE_STEPS: dict[str, list[str]] = {
@@ -33,10 +47,15 @@ PIPELINE_STEPS: dict[str, list[str]] = {
     ],
     "full-auto": [
         "Song brief",
-        "Audio render",
+        "ACE-Step audio rendering",
         "Project scaffold",
         "Video pipeline",
     ],
+}
+
+STEP_ALIASES: dict[str, list[str]] = {
+    "ACE-Step audio rendering": ["ACE-Step audio", "Rendering ACE-Step audio", "Generated audio"],
+    "Project scaffold": ["Creating FeverSlop project", "Project config"],
 }
 
 
@@ -45,10 +64,20 @@ class JobRegistry:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
-    def start(self, project_id: str, action: str, handler: JobHandler, *, project_type: str = "standard_music_video") -> str:
+    def start(
+        self,
+        project_id: str,
+        action: str,
+        handler: JobHandler,
+        *,
+        project_type: str = "standard_music_video",
+        reject_if_project_active: bool = False,
+    ) -> str:
         job_id = uuid.uuid4().hex
         now = time.time()
         with self._lock:
+            if reject_if_project_active and self._has_active_locked(project_id):
+                raise ValueError("Pipeline is already running for this project")
             self._jobs[job_id] = {
                 "id": job_id,
                 "project_id": project_id,
@@ -75,6 +104,10 @@ class JobRegistry:
         thread.start()
         return job_id
 
+    def has_active_pipeline(self, project_id: str) -> bool:
+        with self._lock:
+            return self._has_active_locked(project_id)
+
     def list(self, project_id: str | None = None) -> list[dict[str, Any]]:
         with self._lock:
             jobs = [dict(job) for job in self._jobs.values() if project_id is None or job["project_id"] == project_id]
@@ -90,10 +123,11 @@ class JobRegistry:
         def log(message: str) -> None:
             with self._lock:
                 job = self._jobs[job_id]
-                job["logs"].append(message)
+                for line in render_log_lines(message):
+                    job["logs"].append(line)
+                    self._advance_step_from_log(job, line)
                 job["logs"] = job["logs"][-500:]
                 job["recent_logs"] = job["logs"][-100:]
-                self._advance_step_from_log(job, message)
                 self._refresh_runtime(job)
 
         self._update(job_id, status="running", started_at=time.time())
@@ -127,7 +161,7 @@ class JobRegistry:
         ]
 
     def _advance_step_from_log(self, job: dict[str, Any], message: str) -> None:
-        text = str(message)
+        text = str(message).lower()
         steps = job.get("steps") or []
         if not steps:
             return
@@ -137,7 +171,9 @@ class JobRegistry:
             current["status"] = "running"
             current["started_at"] = time.time()
         for index, step in enumerate(steps):
-            if step["name"].lower() in text.lower() and step is not current:
+            step_name = step["name"]
+            step_matches = step_name.lower() in text or any(alias.lower() in text for alias in STEP_ALIASES.get(step_name, []))
+            if step_matches and step is not current:
                 if current and current["status"] == "running":
                     current["status"] = "completed"
                     current["progress"] = 100
@@ -146,7 +182,7 @@ class JobRegistry:
                 step["started_at"] = step["started_at"] or time.time()
                 current = step
                 break
-            if text.startswith("Finished") and current and current["name"].lower() in text.lower():
+            if text.startswith("finished") and current and current["name"].lower() in text:
                 current["status"] = "completed"
                 current["progress"] = 100
                 current["completed_at"] = time.time()
@@ -196,8 +232,14 @@ class JobRegistry:
                 step["elapsed_seconds"] = max(0.0, step_end - step_start)
         job["updated_at"] = now
 
+    def _has_active_locked(self, project_id: str) -> bool:
+        return any(
+            job["project_id"] == project_id and job["action"] in PIPELINE_ACTIONS and job["status"] in {"queued", "running"}
+            for job in self._jobs.values()
+        )
 
-def build_pipeline_options(action: str, *, scenes: list[int] | None = None) -> dict[str, Any]:
+
+def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipeline_mode: str | None = None) -> dict[str, Any]:
     base: dict[str, Any] = {
         "skip_tests": True,
         "skip_main_pipeline": True,
@@ -210,6 +252,7 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None) -> d
         "skip_ltx": True,
         "skip_final_concat": True,
     }
+    video_pipeline = _video_pipeline_for_mode(pipeline_mode)
     if action == "main-pipeline":
         base["skip_main_pipeline"] = False
     elif action == "storyboard":
@@ -222,31 +265,83 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None) -> d
         base["video_pipeline"] = "ltx_msr"
         base["skip_msr_prompt_enrichment"] = False
     elif action == "ltx-render-scenes":
-        base["video_pipeline"] = "ltx_msr"
+        base["video_pipeline"] = video_pipeline
         base["skip_ltx"] = False
         if scenes:
             base["scenes"] = ",".join(str(scene) for scene in scenes)
     elif action == "final-concat":
-        base["video_pipeline"] = "ltx_msr"
+        base["video_pipeline"] = video_pipeline
         base["skip_final_concat"] = False
     elif action == "full-pipeline":
-        return {"skip_tests": True}
+        return {
+            "skip_tests": True,
+            "video_pipeline": video_pipeline,
+            "skip_msr_reference_render": video_pipeline != "ltx_msr",
+            "skip_msr_prompt_enrichment": video_pipeline != "ltx_msr",
+        }
     else:
         raise ValueError(f"Unknown pipeline action: {action}")
     return base
 
 
-def build_pipeline_handler(project_config_path: Path, action: str, *, scenes: list[int] | None = None) -> JobHandler:
-    options = build_pipeline_options(action, scenes=scenes)
+def build_pipeline_handler(project_config_path: Path, action: str, *, scenes: list[int] | None = None, pipeline_mode: str | None = None) -> JobHandler:
+    options = build_pipeline_options(action, scenes=scenes, pipeline_mode=pipeline_mode)
     adapter = RunPipelineAdapter(run_pipeline=pipeline_runner.run, build_arg_parser=pipeline_runner.build_arg_parser)
 
     def run(log: Callable[[str], None]) -> Any:
         log(f"Starting {action}")
-        result = adapter.run(project_config_path=project_config_path, options=options)
+        result = run_with_stream_logging(lambda: adapter.run(project_config_path=project_config_path, options=options), log)
         log(f"Finished {action}")
         return result
 
     return run
+
+
+def run_with_stream_logging(fn: Callable[[], Any], log: Callable[[str], None]) -> Any:
+    writer = _StreamLogWriter(log)
+    # ponytail: process-wide stdout redirection needs a global lock; move to subprocess streaming if parallel pipelines matter.
+    with STREAM_CAPTURE_LOCK:
+        with contextlib.redirect_stdout(writer), contextlib.redirect_stderr(writer):
+            try:
+                return fn()
+            finally:
+                writer.flush()
+
+
+class _StreamLogWriter:
+    encoding = "utf-8"
+
+    def __init__(self, log: Callable[[str], None]):
+        self.log = log
+        self._buffer = ""
+
+    def write(self, text: str) -> int:
+        self._buffer += str(text)
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            self._emit(line)
+        return len(text)
+
+    def flush(self) -> None:
+        if self._buffer:
+            self._emit(self._buffer)
+            self._buffer = ""
+
+    def isatty(self) -> bool:
+        return False
+
+    def _emit(self, text: str) -> None:
+        for line in render_log_lines(text):
+            if "<rich." not in line:
+                self.log(line)
+
+
+def _video_pipeline_for_mode(pipeline_mode: str | None) -> str:
+    if pipeline_mode in {None, "", "classic", "ltx_i2v"}:
+        return "ltx_i2v"
+    if pipeline_mode in {"msr", "ltx_msr"}:
+        return "ltx_msr"
+    raise ValueError("pipeline_mode must be classic or msr")
 
 
 def build_reference_rerender_handler(project_config_path: Path, *, reference_kind: str, reference_id: str) -> JobHandler:

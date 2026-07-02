@@ -35,6 +35,7 @@ const fullAutoActions = [["full-auto", "Full-auto pipeline"]] as const;
 
 const actions = computed(() => (studio.currentProject?.project_type === "full_auto" ? fullAutoActions : standardActions));
 const activeJob = computed(() => studio.jobs.find((job) => ["running", "queued"].includes(job.status)) ?? studio.jobs[0] ?? null);
+const hasRunningPipeline = computed(() => studio.jobs.some((job) => ["running", "queued"].includes(job.status)));
 const logs = computed(() => (streamedLogs.value.length ? streamedLogs.value : activeJob.value?.recent_logs ?? activeJob.value?.logs ?? []));
 const overallProgress = computed(() => activeJob.value?.overall_progress ?? activeJob.value?.progress ?? 0);
 
@@ -67,8 +68,12 @@ async function runConfirmed() {
   if (!pendingAction.value) return;
   const [action] = pendingAction.value;
   pendingAction.value = null;
-  await studio.startJob(projectId.value, action);
-  await refreshJobs();
+  try {
+    await studio.startJob(projectId.value, action);
+    await refreshJobs();
+  } catch (caught) {
+    streamedLogs.value = [caught instanceof Error ? caught.message : String(caught)];
+  }
 }
 
 function connectLogs() {
@@ -144,7 +149,15 @@ function stepProgress(job: Job, stepProgressValue: number | null): number {
     </header>
     <div class="split pipeline-layout">
       <section class="panel action-list">
-        <button v-for="action in actions" :key="action[0]" class="action-button" @click="askToRun(action)">
+        <p v-if="hasRunningPipeline" class="job-note">Pipeline is already running. Start buttons are disabled until it finishes.</p>
+        <button
+          v-for="action in actions"
+          :key="action[0]"
+          class="action-button"
+          :disabled="hasRunningPipeline"
+          :title="hasRunningPipeline ? 'Pipeline is already running' : ''"
+          @click="askToRun(action)"
+        >
           <Play :size="18" />
           <span>{{ action[1] }}</span>
         </button>

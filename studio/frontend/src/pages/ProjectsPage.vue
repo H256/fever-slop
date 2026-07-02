@@ -19,7 +19,12 @@ const error = ref("");
 const form = reactive({
   name: "",
   idea: "",
-  songStyle: ""
+  songStyle: "",
+  durationSeconds: 120,
+  width: 1280,
+  height: 704,
+  fps: 24 as 16 | 24 | 50,
+  pipelineMode: "msr" as "classic" | "msr"
 });
 
 const badgeLabels: Record<string, string> = {
@@ -37,6 +42,10 @@ const validationError = computed(() => {
   if (slugConflict.value) return `A project folder named "${slug.value}" already exists.`;
   if (selectedKind.value === "full_auto" && !form.idea.trim()) return "Idea is required for full-auto projects.";
   if (selectedKind.value === "full_auto" && !form.songStyle.trim()) return "Song style is required for full-auto projects.";
+  if (selectedKind.value === "full_auto" && (!Number.isFinite(form.durationSeconds) || form.durationSeconds <= 0)) return "Duration must be a positive number.";
+  if (selectedKind.value === "full_auto" && (!Number.isInteger(form.width) || form.width <= 0)) return "Width must be a positive integer.";
+  if (selectedKind.value === "full_auto" && (!Number.isInteger(form.height) || form.height <= 0)) return "Height must be a positive integer.";
+  if (selectedKind.value === "full_auto" && ![16, 24, 50].includes(form.fps)) return "FPS must be 16, 24, or 50.";
   return "";
 });
 
@@ -63,6 +72,11 @@ function cancelCreate() {
   form.name = "";
   form.idea = "";
   form.songStyle = "";
+  form.durationSeconds = 120;
+  form.width = 1280;
+  form.height = 704;
+  form.fps = 24;
+  form.pipelineMode = "msr";
 }
 
 async function createProject(startFullAuto = false) {
@@ -77,6 +91,11 @@ async function createProject(startFullAuto = false) {
     if (selectedKind.value === "full_auto") {
       payload.idea = form.idea.trim();
       payload.song_style = form.songStyle.trim();
+      payload.duration_seconds = form.durationSeconds;
+      payload.width = form.width;
+      payload.height = form.height;
+      payload.fps = form.fps;
+      payload.pipeline_mode = form.pipelineMode;
     }
     const project = await api.createProject(payload);
     await studio.loadProjects();
@@ -118,7 +137,7 @@ async function createProject(startFullAuto = false) {
         <button class="project-type-card" @click="startCreate('full_auto')">
           <WandSparkles :size="22" />
           <strong>Full-Auto Project</strong>
-          <span>Asks only for name, idea, and song style, then starts the full automatic song and video pipeline.</span>
+          <span>Creates the song and project automatically from a short brief, with render size and pipeline mode chosen up front.</span>
         </button>
       </div>
       <form v-else class="create-project-form" @submit.prevent="createProject(selectedKind === 'full_auto')">
@@ -135,6 +154,35 @@ async function createProject(startFullAuto = false) {
           <label>
             <span>Song style</span>
             <input v-model="form.songStyle" type="text" />
+          </label>
+          <div class="form-grid-compact">
+            <label>
+              <span>Desired video duration</span>
+              <input v-model.number="form.durationSeconds" type="number" min="1" step="0.1" />
+            </label>
+            <label>
+              <span>Width</span>
+              <input v-model.number="form.width" type="number" min="1" step="1" />
+            </label>
+            <label>
+              <span>Height</span>
+              <input v-model.number="form.height" type="number" min="1" step="1" />
+            </label>
+            <label>
+              <span>FPS</span>
+              <select v-model.number="form.fps">
+                <option :value="16">16</option>
+                <option :value="24">24</option>
+                <option :value="50">50</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            <span>Pipeline mode</span>
+            <select v-model="form.pipelineMode">
+              <option value="msr">MSR - uses Scene Bible, Actor Bible, and reference-guided generation</option>
+              <option value="classic">Classic - skips Scene/Actor Bible and uses the original image-to-video path</option>
+            </select>
           </label>
         </template>
         <p v-if="validationError || error" class="form-error">{{ validationError || error }}</p>

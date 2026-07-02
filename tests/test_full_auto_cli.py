@@ -20,6 +20,8 @@ class FullAutoCliTests(unittest.TestCase):
                 "1024",
                 "--height",
                 "576",
+                "--fps",
+                "50",
                 "--language",
                 "en",
                 "--bpm",
@@ -77,6 +79,7 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual(90.5, args.duration_seconds)
         self.assertEqual(1024, args.width)
         self.assertEqual(576, args.height)
+        self.assertEqual(50, args.fps)
         self.assertEqual("en", args.language)
         self.assertEqual(123, args.bpm)
         self.assertEqual("D major", args.keyscale)
@@ -150,6 +153,7 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual(Path("projects_out"), request.projects_dir)
         self.assertEqual(1024, request.width)
         self.assertEqual(576, request.height)
+        self.assertEqual(24, request.fps)
         self.assertTrue(request.run_video_pipeline)
         self.assertEqual(
             {
