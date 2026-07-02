@@ -177,16 +177,28 @@ async function saveTimeline() {
 }
 
 async function playTimeline() {
-  const first = playableItems.value[0];
-  if (!first) return;
+  const item = itemForPlaybackStart();
+  if (!item) return;
+  const startSeconds = Math.max(item.start, Math.min(scrubSeconds.value, item.end));
+  rawPreview.value = null;
   playingTimeline.value = true;
-  selectItem(first);
+  selectedScene.value = item.scene;
+  scrubSeconds.value = startSeconds;
   await nextTick();
+  if (videoRef.value) videoRef.value.currentTime = Math.max(0, startSeconds - previewStart(item));
   if (audioRef.value) {
-    audioRef.value.currentTime = first.start;
+    audioRef.value.currentTime = startSeconds;
     await audioRef.value.play();
   }
   await videoRef.value?.play();
+}
+
+function itemForPlaybackStart(): TimelineItem | undefined {
+  const atScrubber = playableItems.value.find((item) => scrubSeconds.value >= item.start && scrubSeconds.value < item.end);
+  if (atScrubber) return atScrubber;
+  const selected = playableItems.value.find((item) => item.scene === selectedScene.value);
+  if (selected) return selected;
+  return playableItems.value.find((item) => item.start >= scrubSeconds.value) ?? playableItems.value[0];
 }
 
 function stopTimeline() {
