@@ -126,7 +126,7 @@
   },
   "59": {
     "inputs": {
-      "lora_name": "Aether_Cloud_v1.safetensors",
+      "lora_name": "zimage/own/klw251209-v1_000001250.safetensors",
       "strength_model": 0,
       "model": [
         "55",
