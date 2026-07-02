@@ -113,9 +113,11 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             data = json.loads(result.read_text(encoding="utf-8"))
             ltx = data[0]["ltx"]
             self.assertIn("Reference image 1: Spectral Wolf, supernatural antagonist", ltx["msr_global_prompt"])
-            self.assertIn("Full body spectral wolf reference sheet", ltx["msr_global_prompt"])
+            self.assertIn("A large translucent wolf made of swirling blue mist", ltx["msr_global_prompt"])
+            self.assertNotIn("Full body spectral wolf reference sheet", ltx["msr_global_prompt"])
             self.assertIn("Reference image 2 (scene): Megalith Circle", ltx["msr_global_prompt"])
-            self.assertIn("Wide environment reference of an ancient stone circle", ltx["msr_global_prompt"])
+            self.assertIn("A clearing featuring a massive ancient stone monolith", ltx["msr_global_prompt"])
+            self.assertNotIn("Wide environment reference of an ancient stone circle", ltx["msr_global_prompt"])
             self.assertNotIn("Do not duplicate reference subjects", ltx["msr_global_prompt"])
             self.assertEqual(2, len(ltx["msr_prompt_relay"]))
             self.assertIn("Spectral Wolf", ltx["msr_preroll_prompt"])

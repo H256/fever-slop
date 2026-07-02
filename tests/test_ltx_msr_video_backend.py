@@ -525,9 +525,11 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             relay_inputs = patched["3"]["inputs"]
             self.assertIn("Reference image 1: Thrym", relay_inputs["global_prompt"])
             self.assertIn("frost giant antagonist", relay_inputs["global_prompt"])
-            self.assertIn("full body frost giant reference", relay_inputs["global_prompt"])
+            self.assertIn("cracked blue ice skin", relay_inputs["global_prompt"])
+            self.assertNotIn("full body frost giant reference", relay_inputs["global_prompt"])
             self.assertIn("Background reference: Fire-Scarred Pass", relay_inputs["global_prompt"])
-            self.assertIn("wide volcanic mountain pass environment reference", relay_inputs["global_prompt"])
+            self.assertIn("fractured volcanic canyon", relay_inputs["global_prompt"])
+            self.assertNotIn("wide volcanic mountain pass environment reference", relay_inputs["global_prompt"])
             self.assertNotIn("Do not duplicate reference subjects", relay_inputs["global_prompt"])
             self.assertNotIn("Start frame", relay_inputs["global_prompt"])
             self.assertIn("Camera motion: slow low-angle push-in.", relay_inputs["local_prompts"])

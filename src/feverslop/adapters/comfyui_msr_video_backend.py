@@ -493,11 +493,11 @@ def _build_msr_reference_global_prompt(references: dict) -> str:
 
 
 def _describe_reference_item(item: dict) -> str:
-    name = str(item.get("name") or item.get("id") or "").strip()
-    role = str(item.get("role") or "").strip()
-    visual = str(item.get("visual_description") or "").strip()
-    image_prompt = str(item.get("image_prompt") or "").strip()
-    chunks = [chunk for chunk in (name, role, visual, image_prompt) if chunk]
+    name = str(item.get("name") or item.get("id") or "").strip(" .")
+    role = str(item.get("role") or "").strip(" .")
+    visual = str(item.get("visual_description") or "").strip(" .")
+    image_prompt = str(item.get("image_prompt") or "").strip(" .")
+    chunks = [chunk for chunk in (name, role, visual or image_prompt) if chunk]
     return ", ".join(chunks)
 
 
