@@ -53,9 +53,15 @@ class JobPayload(BaseModel):
 
 
 FullAutoHandlerFactory = Callable[..., Any]
+PipelineHandlerFactory = Callable[..., Any]
 
 
-def create_app(projects_root: str | Path = "projects", *, full_auto_handler: FullAutoHandlerFactory | None = None) -> FastAPI:
+def create_app(
+    projects_root: str | Path = "projects",
+    *,
+    full_auto_handler: FullAutoHandlerFactory | None = None,
+    pipeline_handler: PipelineHandlerFactory | None = None,
+) -> FastAPI:
     app = FastAPI(title="FeverSlop Studio")
     app.add_middleware(
         CORSMiddleware,
@@ -181,7 +187,8 @@ def create_app(projects_root: str | Path = "projects", *, full_auto_handler: Ful
 
             else:
                 config_path = store.resolve_project_path(project_id, "config.json")
-                handler = build_pipeline_handler(config_path, payload.action, scenes=payload.scenes)
+                factory = pipeline_handler or build_pipeline_handler
+                handler = factory(config_path, payload.action, scenes=payload.scenes)
             return jobs.get(jobs.start(project_id, payload.action, handler, project_type=str(metadata.get("project_type", "standard_music_video"))))
 
         return _safe(create)

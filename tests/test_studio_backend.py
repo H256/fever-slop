@@ -275,6 +275,33 @@ class StudioBackendTests(unittest.TestCase):
                 time.sleep(0.01)
             self.assertEqual([("neon-wolves", "A cyberpunk chase", "dark synthwave")], calls)
 
+    def test_api_starts_standard_pipeline_job(self):
+        calls = []
+
+        def fake_pipeline_handler(config_path, action, *, scenes=None):
+            def run(log):
+                calls.append((Path(config_path).name, action, scenes))
+                log("standard pipeline started")
+                return "ok"
+
+            return run
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
+            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+
+            job_response = client.post("/api/projects/my-cool-video/jobs", json={"action": "full-pipeline"})
+
+            self.assertEqual(200, job_response.status_code, job_response.text)
+            job_id = job_response.json()["id"]
+            for _ in range(50):
+                job = client.get(f"/api/jobs/{job_id}").json()
+                if job["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+            self.assertEqual([("config.json", "full-pipeline", None)], calls)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,46 @@ test("creates a standard project and opens the config form", async ({ page }) =>
   await page.route("**/api/projects/my-cool-video/artifact?**", (route) =>
     route.fulfill({ json: { path: "config.json", data: { project_name: "My Cool Video", input_audio: "" } } })
   );
+  await page.route("**/api/projects/my-cool-video/artifact", async (route) => {
+    expect(route.request().method()).toBe("PUT");
+    await route.fulfill({ json: { path: "config.json", data: { project_name: "My Cool Video", input_audio: "" } } });
+  });
+  await page.route("**/api/projects/my-cool-video/jobs", async (route) => {
+    const body = await route.request().postDataJSON();
+    expect(body.action).toBe("full-pipeline");
+    await route.fulfill({
+      json: {
+        id: "standard-job",
+        project_id: "my-cool-video",
+        action: "full-pipeline",
+        pipeline_type: "full-pipeline",
+        status: "queued",
+        progress: 0,
+        logs: [],
+        recent_logs: [],
+        error: null,
+        result: null
+      }
+    });
+  });
+  await page.route("**/api/jobs?project_id=my-cool-video", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "standard-job",
+          project_id: "my-cool-video",
+          action: "full-pipeline",
+          pipeline_type: "full-pipeline",
+          status: "queued",
+          progress: 0,
+          logs: [],
+          recent_logs: [],
+          error: null,
+          result: null
+        }
+      ]
+    })
+  );
 
   await page.goto("/");
   await page.getByRole("button", { name: /create project/i }).click();
@@ -64,6 +104,11 @@ test("creates a standard project and opens the config form", async ({ page }) =>
 
   await expect(page).toHaveURL(/\/projects\/my-cool-video\/artifacts\?path=config\.json/);
   await expect(page.getByRole("heading", { name: "config.json" })).toBeVisible();
+  await page.getByRole("button", { name: /save and run pipeline/i }).click();
+  await page.getByRole("button", { name: "Save and run", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/projects\/my-cool-video\/pipeline/);
+  await expect(page.getByRole("heading", { name: "full-pipeline" })).toBeVisible();
 });
 
 test("validates duplicate slugs before creation", async ({ page }) => {

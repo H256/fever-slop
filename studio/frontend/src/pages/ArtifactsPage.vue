@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { Save } from "lucide-vue-next";
-import { useRoute } from "vue-router";
+import { Play, Save } from "lucide-vue-next";
+import { useRoute, useRouter } from "vue-router";
 import { api, mediaUrl } from "../api";
 import { useStudioStore } from "../stores/studio";
+import ConfirmDialog from "../components/ConfirmDialog.vue";
 import JsonEditor from "../components/JsonEditor.vue";
 
 const route = useRoute();
+const router = useRouter();
 const studio = useStudioStore();
 const projectId = computed(() => String(route.params.projectId));
 const selectedPath = ref("");
 const data = ref<unknown>(null);
+const confirmPipelineStart = ref(false);
 type PathPart = string | number;
 type FieldKind = "boolean" | "number" | "shortText" | "longText" | "simpleArray";
 interface FormField {
@@ -63,6 +66,13 @@ watch(
 
 async function save() {
   if (selectedPath.value && isJson.value) await api.saveArtifact(projectId.value, selectedPath.value, data.value);
+}
+
+async function startStandardPipeline() {
+  confirmPipelineStart.value = false;
+  if (isConfig.value) await save();
+  await studio.startJob(projectId.value, "full-pipeline");
+  await router.push(`/projects/${projectId.value}/pipeline`);
 }
 
 function collectFields(value: unknown, path: PathPart[] = []): FormField[] {
@@ -198,7 +208,10 @@ function helpForConfigField(path: PathPart[]): string {
         <h1>Artifacts</h1>
         <p>Edit JSON artifacts and preview generated media.</p>
       </div>
-      <button class="button" :disabled="!selectedPath || !isJson" @click="save"><Save :size="18" /> Save</button>
+      <div class="button-row">
+        <button v-if="isConfig" class="button secondary" @click="confirmPipelineStart = true"><Play :size="18" /> Save and run pipeline</button>
+        <button class="button" :disabled="!selectedPath || !isJson" @click="save"><Save :size="18" /> Save</button>
+      </div>
     </header>
     <div class="editor-layout">
       <section class="panel path-list">
@@ -241,5 +254,13 @@ function helpForConfigField(path: PathPart[]): string {
         </section>
       </section>
     </div>
+    <ConfirmDialog
+      :open="confirmPipelineStart"
+      title="Run full pipeline?"
+      message="This saves config.json and starts the normal generation pipeline. Generated artifacts may be overwritten."
+      confirm-label="Save and run"
+      @cancel="confirmPipelineStart = false"
+      @confirm="startStandardPipeline"
+    />
   </section>
 </template>
