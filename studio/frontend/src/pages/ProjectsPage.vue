@@ -1,10 +1,23 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
+import { Folder } from "lucide-vue-next";
 import { useStudioStore } from "../stores/studio";
-import StatusBadge from "../components/StatusBadge.vue";
+import type { ProjectSummary } from "../types";
 
 const studio = useStudioStore();
 onMounted(() => studio.loadProjects());
+
+const badgeLabels: Record<string, string> = {
+  config: "Config",
+  render_plan: "Render plan",
+  references: "References"
+};
+
+function presentBadges(project: ProjectSummary): string[] {
+  return Object.entries(project.status)
+    .filter(([, status]) => status === "present")
+    .map(([name]) => name);
+}
 </script>
 
 <template>
@@ -16,9 +29,16 @@ onMounted(() => studio.loadProjects());
     <div class="project-grid">
       <RouterLink v-for="project in studio.projects" :key="project.id" class="project-card" :to="`/projects/${project.id}`">
         <h2>{{ project.name }}</h2>
-        <p>{{ project.id }}</p>
+        <p class="project-folder"><Folder :size="15" /> {{ project.id }}</p>
         <div class="badge-row">
-          <StatusBadge v-for="(status, name) in project.status" :key="name" :status="`${name}:${status}`" />
+          <span
+            v-for="name in presentBadges(project)"
+            :key="name"
+            class="status-badge project-artifact-badge"
+            :class="`artifact-${name}`"
+          >
+            {{ badgeLabels[name] ?? name }}
+          </span>
         </div>
       </RouterLink>
     </div>

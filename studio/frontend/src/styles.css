@@ -199,6 +199,13 @@ textarea:focus-visible {
   color: var(--ink-muted);
 }
 
+.project-folder {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 14px;
+}
+
 .panel,
 .document-panel {
   padding: 16px;
@@ -217,6 +224,11 @@ textarea:focus-visible {
 .action-list {
   display: grid;
   gap: 8px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .status-list > div,
@@ -309,6 +321,21 @@ textarea:focus-visible {
 }
 
 .status-badge.warning {
+  background: #fff6d7;
+  color: #8a5a00;
+}
+
+.project-artifact-badge.artifact-config {
+  background: #e6f6ec;
+  color: #137333;
+}
+
+.project-artifact-badge.artifact-render_plan {
+  background: #edeefe;
+  color: var(--primary);
+}
+
+.project-artifact-badge.artifact-references {
   background: #fff6d7;
   color: #8a5a00;
 }
