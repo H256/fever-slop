@@ -1,60 +1,22 @@
-import type { Job, ProjectArtifacts, ProjectCreatePayload, ProjectSummary } from "./types";
-
-const jsonHeaders = { "Content-Type": "application/json" };
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) throw new Error(await response.text());
-  return response.json() as Promise<T>;
-}
+import { artifactService } from "./services/artifacts";
+import { jobLogsUrl, jobService } from "./services/jobs";
+import { mediaService, mediaUrl, thumbnailUrl } from "./services/media";
+import { projectService } from "./services/projects";
+import { request } from "./services/http";
+import type { ProjectArtifacts, ProjectCreatePayload } from "./types";
 
 export const api = {
-  projects: () => request<ProjectSummary[]>("/api/projects"),
-  createProject: (payload: ProjectCreatePayload) =>
-    request<ProjectSummary>("/api/projects", {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify(payload)
-    }),
-  project: (projectId: string) => request<ProjectSummary>(`/api/projects/${projectId}`),
+  projects: () => projectService.list(),
+  createProject: (payload: ProjectCreatePayload) => projectService.create(payload),
+  project: (projectId: string) => projectService.get(projectId),
+  uploadAudio: (projectId: string, file: File) => projectService.uploadAudio(projectId, file),
   artifacts: (projectId: string) => request<ProjectArtifacts>(`/api/projects/${projectId}/artifacts`),
-  artifact: (projectId: string, path: string) =>
-    request<{ path: string; data: unknown }>(`/api/projects/${projectId}/artifact?path=${encodeURIComponent(path)}`),
-  saveArtifact: (projectId: string, path: string, data: unknown) =>
-    request<{ path: string; data: unknown }>(`/api/projects/${projectId}/artifact`, {
-      method: "PUT",
-      headers: jsonHeaders,
-      body: JSON.stringify({ path, data })
-    }),
-  uploadMedia: (projectId: string, path: string, dataUrl: string) =>
-    request<{ path: string }>(`/api/projects/${projectId}/media`, {
-      method: "PUT",
-      headers: jsonHeaders,
-      body: JSON.stringify({ path, data_url: dataUrl })
-    }),
-  patchScene: (projectId: string, path: string, scene: number, updates: Record<string, unknown>) =>
-    request(`/api/projects/${projectId}/render-plan`, {
-      method: "PATCH",
-      headers: jsonHeaders,
-      body: JSON.stringify({ path, scene, updates })
-    }),
-  startJob: (projectId: string, action: string, scenes?: number[], extra?: Record<string, unknown>) =>
-    request<Job>(`/api/projects/${projectId}/jobs`, {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify({ action, scenes, ...extra })
-    }),
-  jobs: (projectId?: string) => request<Job[]>(`/api/jobs${projectId ? `?project_id=${projectId}` : ""}`)
+  artifact: <T = unknown>(projectId: string, path: string) => artifactService.get<T>(projectId, path),
+  saveArtifact: (projectId: string, path: string, data: unknown) => artifactService.save(projectId, path, data),
+  uploadMedia: (projectId: string, path: string, dataUrl: string) => mediaService.upload(projectId, path, dataUrl),
+  patchScene: (projectId: string, path: string, scene: number, updates: Record<string, unknown>) => artifactService.patchScene(projectId, path, scene, updates),
+  startJob: (projectId: string, action: string, scenes?: number[], extra?: Record<string, unknown>) => jobService.start(projectId, action, scenes, extra),
+  jobs: (projectId?: string) => jobService.list(projectId)
 };
 
-export function jobLogsUrl(jobId: string): string {
-  return `/api/jobs/${jobId}/logs`;
-}
-
-export function mediaUrl(projectId: string, path: string): string {
-  return `/api/projects/${projectId}/media?path=${encodeURIComponent(path)}`;
-}
-
-export function thumbnailUrl(projectId: string, path: string, at: number): string {
-  return `/api/projects/${projectId}/thumbnail?path=${encodeURIComponent(path)}&at=${encodeURIComponent(at.toFixed(2))}`;
-}
+export { jobLogsUrl, mediaUrl, thumbnailUrl };

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +45,28 @@ class ProjectCreateRequest:
 def slugify_project_name(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
     return re.sub(r"-+", "-", slug)
+
+
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
+AUDIO_MIME_TYPES = {
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/flac",
+    "audio/x-flac",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/ogg",
+}
+
+
+def sanitize_audio_filename(value: str) -> str:
+    name = re.split(r"[\\/]+", str(value or "").strip())[-1]
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._")
+    if not name:
+        raise ValueError("Audio filename is required")
+    return name
 
 
 class ProjectStore:
@@ -178,6 +202,38 @@ class ProjectStore:
         media_path.parent.mkdir(parents=True, exist_ok=True)
         media_path.write_bytes(base64.b64decode(encoded))
         return {"path": path}
+
+    def store_audio_upload(self, project_id: str, filename: str, content_type: str, source) -> dict[str, str]:
+        safe_name = sanitize_audio_filename(filename)
+        suffix = Path(safe_name).suffix.lower()
+        if suffix not in AUDIO_EXTENSIONS or str(content_type or "").lower() not in AUDIO_MIME_TYPES:
+            raise ValueError("Unsupported audio type")
+        root = self.project_root(project_id)
+        input_dir = root / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        target = (input_dir / safe_name).resolve()
+        if not target.is_relative_to(input_dir):
+            raise StudioPathError("Path escapes project input directory")
+
+        fd, temp_name = tempfile.mkstemp(prefix=f".{safe_name}.", suffix=".tmp", dir=input_dir)
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(fd, "wb") as temp_file:
+                shutil.copyfileobj(source, temp_file)
+            temp_path.replace(target)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
+
+        relative_path = target.relative_to(root).as_posix()
+        config_path = root / "config.json"
+        if config_path.exists():
+            config = self._read_json_file(config_path, default={})
+            if not isinstance(config, dict):
+                config = {}
+            config["input_audio"] = relative_path
+            config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return {"path": relative_path}
 
     def patch_render_plan(self, project_id: str, patch: RenderPlanPatch) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, patch.path)

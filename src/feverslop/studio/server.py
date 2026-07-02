@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -145,6 +145,10 @@ def create_app(
     @app.put("/api/projects/{project_id}/media")
     def write_media(project_id: str, payload: MediaPayload):
         return _safe(lambda: store.write_media_data_url(project_id, payload.path, payload.data_url))
+
+    @app.post("/api/projects/{project_id}/upload-audio")
+    def upload_audio(project_id: str, file: UploadFile = File(...)):
+        return _safe(lambda: store.store_audio_upload(project_id, file.filename or "", file.content_type or "", file.file))
 
     @app.get("/api/projects/{project_id}/thumbnail")
     def get_thumbnail(project_id: str, path: str, at: float = 0.0):

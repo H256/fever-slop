@@ -14,6 +14,7 @@ from feverslop.studio.projects import (
     ProjectStore,
     RenderPlanPatch,
     StudioPathError,
+    sanitize_audio_filename,
     slugify_project_name,
 )
 from feverslop.studio.server import _StudioFullAutoConsole, build_full_auto_handler, create_app
@@ -82,6 +83,12 @@ class StudioBackendTests(unittest.TestCase):
         self.assertEqual("my-cool-video", slugify_project_name("My Cool Video!"))
         self.assertEqual("neon-wolves", slugify_project_name("  Neon Wolves  "))
         self.assertEqual("", slugify_project_name(" !!! "))
+
+    def test_sanitize_audio_filename_removes_paths_and_unsafe_characters(self):
+        self.assertEqual("bad_name.mp3", sanitize_audio_filename("../bad name.mp3"))
+        self.assertEqual("song.wav", sanitize_audio_filename(r"..\song.wav"))
+        with self.assertRaises(ValueError):
+            sanitize_audio_filename("../")
 
     def test_create_standard_project_writes_config_and_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -243,6 +250,37 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual(b"png", (Path(temp_dir) / "demo" / "output/references/actors/hero/sheet.png").read_bytes())
             with self.assertRaises(StudioPathError):
                 store.write_media_data_url("demo", "../bad.png", "data:image/png;base64,cG5n")
+
+    def test_audio_upload_endpoint_stores_file_in_input_and_updates_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="Demo"))
+            client = TestClient(create_app(temp_dir))
+
+            response = client.post(
+                "/api/projects/demo/upload-audio",
+                files={"file": ("../My Song.mp3", b"audio bytes", "audio/mpeg")},
+            )
+
+            self.assertEqual(200, response.status_code)
+            self.assertEqual({"path": "input/My_Song.mp3"}, response.json())
+            self.assertEqual(b"audio bytes", (Path(temp_dir) / "demo" / "input" / "My_Song.mp3").read_bytes())
+            config = json.loads((Path(temp_dir) / "demo" / "config.json").read_text())
+            self.assertEqual("input/My_Song.mp3", config["input_audio"])
+
+    def test_audio_upload_endpoint_rejects_non_audio_extension(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="Demo"))
+            client = TestClient(create_app(temp_dir))
+
+            response = client.post(
+                "/api/projects/demo/upload-audio",
+                files={"file": ("notes.txt", b"not audio", "text/plain")},
+            )
+
+            self.assertEqual(400, response.status_code)
+            self.assertIn("Unsupported audio type", response.json()["detail"])
 
     def test_job_registry_tracks_success_and_failure(self):
         registry = JobRegistry()

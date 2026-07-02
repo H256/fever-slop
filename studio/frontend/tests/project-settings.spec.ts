@@ -59,3 +59,46 @@ test("project settings shows frontend validation errors", async ({ page }) => {
   await expect(page.getByText("Input audio is required.")).toBeVisible();
   await expect(page.getByRole("button", { name: /^save$/i })).toBeDisabled();
 });
+
+test("project settings uploads audio and displays the project-relative path", async ({ page }) => {
+  let uploaded = false;
+  await page.route("**/api/projects/demo", (route) => route.fulfill({ json: project }));
+  await page.route("**/api/projects/demo/artifact?**", (route) =>
+    route.fulfill({ json: { path: "config.json", data: { project_name: "Demo", input_audio: "" } } })
+  );
+  await page.route("**/api/projects/demo/upload-audio", async (route) => {
+    uploaded = true;
+    await route.fulfill({ json: { path: "input/song.mp3" } });
+  });
+
+  await page.goto("/projects/demo/settings");
+  await page.getByLabel("Upload audio file").setInputFiles({
+    name: "song.mp3",
+    mimeType: "audio/mpeg",
+    buffer: Buffer.from("audio")
+  });
+
+  expect(uploaded).toBe(true);
+  await expect(page.getByText("Audio uploaded")).toBeVisible();
+  await expect(page.getByText("input/song.mp3")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /input audio/i })).toHaveValue("input/song.mp3");
+});
+
+test("project settings shows upload errors", async ({ page }) => {
+  await page.route("**/api/projects/demo", (route) => route.fulfill({ json: project }));
+  await page.route("**/api/projects/demo/artifact?**", (route) =>
+    route.fulfill({ json: { path: "config.json", data: { project_name: "Demo", input_audio: "" } } })
+  );
+  await page.route("**/api/projects/demo/upload-audio", (route) =>
+    route.fulfill({ status: 400, json: { detail: "Unsupported audio type" } })
+  );
+
+  await page.goto("/projects/demo/settings");
+  await page.getByLabel("Upload audio file").setInputFiles({
+    name: "notes.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("not audio")
+  });
+
+  await expect(page.getByText("Unsupported audio type")).toBeVisible();
+});
