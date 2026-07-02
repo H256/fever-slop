@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Folder, Music, Plus, WandSparkles, X } from "lucide-vue-next";
+import { api } from "../api";
 import { useStudioStore } from "../stores/studio";
 import type { ProjectCreatePayload } from "../types";
 import type { ProjectSummary } from "../types";
@@ -77,7 +78,8 @@ async function createProject(startFullAuto = false) {
       payload.idea = form.idea.trim();
       payload.song_style = form.songStyle.trim();
     }
-    const project = await studio.createProject(payload);
+    const project = await api.createProject(payload);
+    await studio.loadProjects();
     if (startFullAuto) await studio.startJob(project.id, "full-auto");
     cancelCreate();
     if (project.project_type === "full_auto") {
