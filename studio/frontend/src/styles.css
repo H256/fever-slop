@@ -187,6 +187,47 @@ textarea:focus-visible {
   text-decoration: none;
 }
 
+.create-project-panel {
+  margin-bottom: 16px;
+}
+
+.project-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.project-type-card {
+  display: grid;
+  gap: 10px;
+  min-height: 150px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-type-card:hover {
+  border-color: var(--primary);
+}
+
+.project-type-card span,
+.slug-preview {
+  color: var(--ink-muted);
+}
+
+.create-project-form {
+  max-width: 680px;
+}
+
+.form-error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .project-card h2,
 .panel h2,
 .document-panel h2 {
@@ -388,6 +429,122 @@ textarea:focus-visible {
 .job-panel {
   flex: 1;
   min-width: 320px;
+}
+
+.pipeline-layout {
+  align-items: stretch;
+}
+
+.pipeline-monitor {
+  flex: 2;
+  min-width: min(620px, 100%);
+}
+
+.progress-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: 14px 0;
+}
+
+progress {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+progress::-webkit-progress-bar {
+  background: var(--surface-2);
+}
+
+progress::-webkit-progress-value {
+  background: var(--primary);
+}
+
+progress::-moz-progress-bar {
+  background: var(--primary);
+}
+
+.step-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.step-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.step-row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-muted);
+}
+
+.step-row progress,
+.step-row .indeterminate-progress {
+  grid-column: 1 / -1;
+}
+
+.indeterminate-progress {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.indeterminate-progress.running::before {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  animation: indeterminate-slide 1.2s linear infinite;
+  content: "";
+}
+
+.pipeline-error {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #ffd0cd;
+  border-radius: 8px;
+  background: #ffeceb;
+  color: #b3261e;
+}
+
+.pipeline-error p {
+  margin: 6px 0 0;
+}
+
+.job-log-section {
+  margin-top: 16px;
+}
+
+.job-log-section h3 {
+  margin: 0;
+}
+
+.live-log {
+  max-height: 360px;
+}
+
+@keyframes indeterminate-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(240%);
+  }
 }
 
 .job-note {

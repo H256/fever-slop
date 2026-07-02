@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from feverslop.studio.jobs import JobRegistry, build_pipeline_handler, build_recut_scene_handler, build_reference_rerender_handler
-from feverslop.studio.projects import ArtifactRequest, ProjectStore, RenderPlanPatch, StudioPathError
+from feverslop.studio.projects import ArtifactRequest, ProjectCreateRequest, ProjectStore, RenderPlanPatch, StudioPathError
 
 
 class ArtifactPayload(BaseModel):
@@ -30,6 +32,13 @@ class RenderPlanPatchPayload(BaseModel):
     updates: dict[str, Any]
 
 
+class ProjectCreatePayload(BaseModel):
+    project_type: str
+    name: str
+    idea: str = ""
+    song_style: str = ""
+
+
 class JobPayload(BaseModel):
     action: str
     scenes: list[int] | None = None
@@ -43,7 +52,10 @@ class JobPayload(BaseModel):
     exact: bool = False
 
 
-def create_app(projects_root: str | Path = "projects") -> FastAPI:
+FullAutoHandlerFactory = Callable[..., Any]
+
+
+def create_app(projects_root: str | Path = "projects", *, full_auto_handler: FullAutoHandlerFactory | None = None) -> FastAPI:
     app = FastAPI(title="FeverSlop Studio")
     app.add_middleware(
         CORSMiddleware,
@@ -58,6 +70,19 @@ def create_app(projects_root: str | Path = "projects") -> FastAPI:
     @app.get("/api/projects")
     def list_projects():
         return store.list_projects()
+
+    @app.post("/api/projects")
+    def create_project(payload: ProjectCreatePayload):
+        return _safe(
+            lambda: store.create_project(
+                ProjectCreateRequest(
+                    project_type=payload.project_type,
+                    name=payload.name,
+                    idea=payload.idea,
+                    song_style=payload.song_style,
+                )
+            )
+        )
 
     @app.get("/api/projects/{project_id}")
     def get_project(project_id: str):
@@ -105,8 +130,9 @@ def create_app(projects_root: str | Path = "projects") -> FastAPI:
     @app.post("/api/projects/{project_id}/jobs")
     def start_job(project_id: str, payload: JobPayload):
         def create():
-            config_path = store.resolve_project_path(project_id, "config.json")
+            metadata = store.project_metadata(project_id)
             if payload.action == "reference-rerender":
+                config_path = store.resolve_project_path(project_id, "config.json")
                 if payload.reference_kind not in {"actor", "location"} or not payload.reference_id:
                     raise ValueError("reference-rerender requires reference_kind and reference_id")
                 handler = build_reference_rerender_handler(
@@ -147,9 +173,16 @@ def create_app(projects_root: str | Path = "projects") -> FastAPI:
                     log("Clearing thumbnail cache")
                     return store.clear_thumbnail_cache(project_id)
 
+            elif payload.action == "full-auto":
+                if metadata.get("project_type") != "full_auto":
+                    raise ValueError("full-auto jobs require a full_auto project")
+                factory = full_auto_handler or build_full_auto_handler
+                handler = factory(store=store, project_id=project_id, payload=metadata.get("full_auto") or {})
+
             else:
+                config_path = store.resolve_project_path(project_id, "config.json")
                 handler = build_pipeline_handler(config_path, payload.action, scenes=payload.scenes)
-            return jobs.get(jobs.start(project_id, payload.action, handler))
+            return jobs.get(jobs.start(project_id, payload.action, handler, project_type=str(metadata.get("project_type", "standard_music_video"))))
 
         return _safe(create)
 
@@ -164,7 +197,61 @@ def create_app(projects_root: str | Path = "projects") -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=f"Job not found: {job_id}") from exc
 
+    @app.get("/api/jobs/{job_id}/logs")
+    def stream_job_logs(job_id: str):
+        def events():
+            offset = 0
+            while True:
+                try:
+                    job = jobs.get(job_id)
+                except KeyError:
+                    yield f"event: error\ndata: {json.dumps({'error': 'job not found'})}\n\n"
+                    return
+                logs = job.get("logs") or []
+                for line in logs[offset:]:
+                    yield f"data: {json.dumps({'line': line})}\n\n"
+                offset = len(logs)
+                if job.get("status") in {"succeeded", "failed"}:
+                    yield f"event: status\ndata: {json.dumps({'status': job.get('status')})}\n\n"
+                    return
+                time.sleep(1)
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
     return app
+
+
+class _StudioFullAutoConsole:
+    def __init__(self, log):
+        self.log = log
+
+    def print(self, *values, **_kwargs):
+        text = " ".join(str(value) for value in values).strip()
+        if text:
+            self.log(text)
+
+    def rule(self, title):
+        self.log(str(title))
+
+
+def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: dict[str, Any]):
+    def run(log):
+        from feverslop.application.full_auto import FullAutoRequest
+        from feverslop.composition.full_auto import build_full_auto_use_case
+
+        use_case = build_full_auto_use_case(console=_StudioFullAutoConsole(log))
+        return use_case.execute(
+            FullAutoRequest(
+                idea=str(payload.get("idea") or ""),
+                style=str(payload.get("song_style") or ""),
+                project_name=project_id,
+                projects_dir=store.projects_root,
+                run_video_pipeline=True,
+                runner_options={"skip_tests": True},
+            )
+        ).project_config_path
+
+    return run
 
 
 def _safe(fn):

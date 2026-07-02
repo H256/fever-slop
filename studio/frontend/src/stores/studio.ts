@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { api } from "../api";
-import type { Job, ProjectSummary } from "../types";
+import type { Job, ProjectCreatePayload, ProjectSummary } from "../types";
 
 export const useStudioStore = defineStore("studio", {
   state: () => ({
@@ -15,6 +15,11 @@ export const useStudioStore = defineStore("studio", {
     },
     async loadProject(projectId: string) {
       this.currentProject = await api.project(projectId);
+    },
+    async createProject(payload: ProjectCreatePayload) {
+      const project = await api.createProject(payload);
+      this.projects = [project, ...this.projects.filter((item) => item.id !== project.id)].sort((a, b) => a.id.localeCompare(b.id));
+      return project;
     },
     async loadJobs(projectId?: string) {
       this.jobs = await api.jobs(projectId);

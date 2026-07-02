@@ -3,14 +3,18 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from fastapi.testclient import TestClient
 
 from feverslop.studio.jobs import JobRegistry, build_ffmpeg_recut_command, build_pipeline_options
 from feverslop.studio.projects import (
     ArtifactRequest,
+    ProjectCreateRequest,
     ProjectStore,
     RenderPlanPatch,
     StudioPathError,
+    slugify_project_name,
 )
+from feverslop.studio.server import create_app
 
 
 class StudioBackendTests(unittest.TestCase):
@@ -71,6 +75,55 @@ class StudioBackendTests(unittest.TestCase):
 
             self.assertEqual(1, removed)
             self.assertFalse(cache.exists())
+
+    def test_slugify_project_name_uses_filesystem_safe_lowercase_slug(self):
+        self.assertEqual("my-cool-video", slugify_project_name("My Cool Video!"))
+        self.assertEqual("neon-wolves", slugify_project_name("  Neon Wolves  "))
+        self.assertEqual("", slugify_project_name(" !!! "))
+
+    def test_create_standard_project_writes_config_and_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            project = store.create_project(
+                ProjectCreateRequest(
+                    project_type="standard_music_video",
+                    name="My Cool Video",
+                )
+            )
+
+            root = Path(temp_dir) / "my-cool-video"
+            self.assertEqual("my-cool-video", project["id"])
+            self.assertEqual("My Cool Video", json.loads((root / "config.json").read_text())["project_name"])
+            metadata = json.loads((root / ".studio" / "project.json").read_text())
+            self.assertEqual("standard_music_video", metadata["project_type"])
+            self.assertEqual("My Cool Video", metadata["display_name"])
+
+    def test_create_full_auto_project_writes_inputs_and_rejects_duplicate_slug(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(
+                ProjectCreateRequest(
+                    project_type="full_auto",
+                    name="Neon Wolves",
+                    idea="A cyberpunk chase",
+                    song_style="dark synthwave",
+                )
+            )
+
+            root = Path(temp_dir) / "neon-wolves"
+            metadata = json.loads((root / ".studio" / "project.json").read_text())
+            self.assertEqual("full_auto", metadata["project_type"])
+            self.assertEqual({"idea": "A cyberpunk chase", "song_style": "dark synthwave"}, metadata["full_auto"])
+            with self.assertRaises(ValueError):
+                store.create_project(
+                    ProjectCreateRequest(
+                        project_type="full_auto",
+                        name="Neon Wolves",
+                        idea="again",
+                        song_style="again",
+                    )
+                )
 
     def test_artifact_read_write_is_project_relative(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -136,6 +189,23 @@ class StudioBackendTests(unittest.TestCase):
         self.assertIn("done", registry.get(ok)["logs"])
         self.assertIn("boom", registry.get(bad)["error"])
 
+    def test_job_registry_serializes_steps_elapsed_and_recent_logs(self):
+        registry = JobRegistry()
+
+        job_id = registry.start("demo", "full-pipeline", lambda log: log("line") or "result")
+
+        for _ in range(50):
+            if registry.get(job_id)["status"] == "succeeded":
+                break
+            time.sleep(0.01)
+
+        job = registry.get(job_id)
+        self.assertEqual("full-pipeline", job["pipeline_type"])
+        self.assertGreaterEqual(job["elapsed_seconds"], 0)
+        self.assertIn("steps", job)
+        self.assertTrue(any(step["status"] == "completed" for step in job["steps"]))
+        self.assertEqual(["line"], job["recent_logs"])
+
     def test_pipeline_option_builder_maps_actions_to_skip_flags(self):
         options = build_pipeline_options("ltx-render-scenes", scenes=[2, 4])
 
@@ -159,6 +229,51 @@ class StudioBackendTests(unittest.TestCase):
         self.assertIn("-c:v", command)
         self.assertIn("libx264", command)
         self.assertLess(command.index("-i"), command.index("-ss"))
+
+    def test_api_creates_projects_and_starts_full_auto_job(self):
+        calls = []
+
+        def fake_full_auto_handler(*, store, project_id, payload):
+            def run(log):
+                calls.append((project_id, payload["idea"], payload["song_style"]))
+                log("full auto started")
+                return "ok"
+
+            return run
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            client = TestClient(create_app(temp_dir, full_auto_handler=fake_full_auto_handler))
+            created = client.post(
+                "/api/projects",
+                json={
+                    "project_type": "full_auto",
+                    "name": "Neon Wolves",
+                    "idea": "A cyberpunk chase",
+                    "song_style": "dark synthwave",
+                },
+            )
+            self.assertEqual(200, created.status_code, created.text)
+            self.assertEqual("neon-wolves", created.json()["id"])
+            duplicate = client.post(
+                "/api/projects",
+                json={
+                    "project_type": "full_auto",
+                    "name": "Neon Wolves",
+                    "idea": "x",
+                    "song_style": "y",
+                },
+            )
+            self.assertEqual(400, duplicate.status_code)
+
+            job_response = client.post("/api/projects/neon-wolves/jobs", json={"action": "full-auto"})
+            self.assertEqual(200, job_response.status_code, job_response.text)
+            job_id = job_response.json()["id"]
+            for _ in range(50):
+                job = client.get(f"/api/jobs/{job_id}").json()
+                if job["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+            self.assertEqual([("neon-wolves", "A cyberpunk chase", "dark synthwave")], calls)
 
 
 if __name__ == "__main__":

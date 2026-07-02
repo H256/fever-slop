@@ -16,26 +16,60 @@ from feverslop.tools.reference_bible import run as render_reference_bible
 JobHandler = Callable[[Callable[[str], None]], Any]
 
 
+PIPELINE_STEPS: dict[str, list[str]] = {
+    "main-pipeline": ["Main pipeline"],
+    "storyboard": ["Storyboard", "Storyboard page"],
+    "msr-references": ["MSR references"],
+    "msr-enrich": ["MSR reference enrichment", "MSR prompt enrichment"],
+    "ltx-render-scenes": ["LTX render"],
+    "final-concat": ["Final concat"],
+    "full-pipeline": [
+        "Main pipeline",
+        "MSR references",
+        "MSR enrichment",
+        "Storyboard",
+        "LTX render",
+        "Final concat",
+    ],
+    "full-auto": [
+        "Song brief",
+        "Audio render",
+        "Project scaffold",
+        "Video pipeline",
+    ],
+}
+
+
 class JobRegistry:
     def __init__(self):
         self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
-    def start(self, project_id: str, action: str, handler: JobHandler) -> str:
+    def start(self, project_id: str, action: str, handler: JobHandler, *, project_type: str = "standard_music_video") -> str:
         job_id = uuid.uuid4().hex
         now = time.time()
         with self._lock:
             self._jobs[job_id] = {
                 "id": job_id,
                 "project_id": project_id,
+                "project_type": project_type,
                 "action": action,
+                "pipeline_type": action,
                 "status": "queued",
                 "progress": 0,
+                "overall_progress": 0,
+                "current_step": None,
+                "steps": self._initial_steps(action),
                 "logs": [],
+                "recent_logs": [],
                 "error": None,
                 "result": None,
                 "created_at": now,
+                "started_at": None,
+                "completed_at": None,
                 "updated_at": now,
+                "elapsed_seconds": 0.0,
+                "eta_seconds": None,
             }
         thread = threading.Thread(target=self._run, args=(job_id, handler), daemon=True)
         thread.start()
@@ -55,21 +89,112 @@ class JobRegistry:
     def _run(self, job_id: str, handler: JobHandler) -> None:
         def log(message: str) -> None:
             with self._lock:
-                self._jobs[job_id]["logs"].append(message)
-                self._jobs[job_id]["updated_at"] = time.time()
+                job = self._jobs[job_id]
+                job["logs"].append(message)
+                job["logs"] = job["logs"][-500:]
+                job["recent_logs"] = job["logs"][-100:]
+                self._advance_step_from_log(job, message)
+                self._refresh_runtime(job)
 
-        self._update(job_id, status="running", progress=5)
+        self._update(job_id, status="running", started_at=time.time())
         try:
             result = handler(log)
         except Exception as exc:  # noqa: BLE001 - job boundary should capture all failures
-            self._update(job_id, status="failed", progress=100, error=str(exc))
+            self._update(job_id, status="failed", progress=100, overall_progress=100, completed_at=time.time(), error=str(exc))
+            self._finish_current_step(job_id, "failed")
             return
-        self._update(job_id, status="succeeded", progress=100, result=str(result) if result is not None else None)
+        self._finish_all_steps(job_id)
+        self._update(job_id, status="succeeded", progress=100, overall_progress=100, completed_at=time.time(), result=str(result) if result is not None else None)
 
     def _update(self, job_id: str, **fields: Any) -> None:
         with self._lock:
-            self._jobs[job_id].update(fields)
-            self._jobs[job_id]["updated_at"] = time.time()
+            job = self._jobs[job_id]
+            job.update(fields)
+            self._refresh_runtime(job)
+
+    @staticmethod
+    def _initial_steps(action: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": name,
+                "status": "pending",
+                "progress": None,
+                "started_at": None,
+                "completed_at": None,
+                "elapsed_seconds": 0.0,
+            }
+            for name in PIPELINE_STEPS.get(action, [action])
+        ]
+
+    def _advance_step_from_log(self, job: dict[str, Any], message: str) -> None:
+        text = str(message)
+        steps = job.get("steps") or []
+        if not steps:
+            return
+        current = next((step for step in steps if step["status"] == "running"), None)
+        if current is None:
+            current = steps[0]
+            current["status"] = "running"
+            current["started_at"] = time.time()
+        for index, step in enumerate(steps):
+            if step["name"].lower() in text.lower() and step is not current:
+                if current and current["status"] == "running":
+                    current["status"] = "completed"
+                    current["progress"] = 100
+                    current["completed_at"] = time.time()
+                step["status"] = "running"
+                step["started_at"] = step["started_at"] or time.time()
+                current = step
+                break
+            if text.startswith("Finished") and current and current["name"].lower() in text.lower():
+                current["status"] = "completed"
+                current["progress"] = 100
+                current["completed_at"] = time.time()
+                next_step = steps[index + 1] if index + 1 < len(steps) else None
+                if next_step:
+                    next_step["status"] = "running"
+                    next_step["started_at"] = time.time()
+                    current = next_step
+        job["current_step"] = current["name"] if current and current["status"] == "running" else None
+        completed = sum(1 for step in steps if step["status"] == "completed")
+        job["overall_progress"] = int((completed / len(steps)) * 100) if steps else job.get("progress", 0)
+        job["progress"] = job["overall_progress"]
+
+    def _finish_current_step(self, job_id: str, status: str) -> None:
+        with self._lock:
+            job = self._jobs[job_id]
+            for step in job.get("steps", []):
+                if step["status"] == "running":
+                    step["status"] = status
+                    step["completed_at"] = time.time()
+                    break
+            self._refresh_runtime(job)
+
+    def _finish_all_steps(self, job_id: str) -> None:
+        with self._lock:
+            job = self._jobs[job_id]
+            now = time.time()
+            for step in job.get("steps", []):
+                if step["status"] in {"pending", "running"}:
+                    step["status"] = "completed"
+                    step["progress"] = 100
+                    step["started_at"] = step["started_at"] or now
+                    step["completed_at"] = now
+            job["current_step"] = None
+            self._refresh_runtime(job)
+
+    @staticmethod
+    def _refresh_runtime(job: dict[str, Any]) -> None:
+        now = time.time()
+        start = job.get("started_at") or job.get("created_at") or now
+        end = job.get("completed_at") or now
+        job["elapsed_seconds"] = max(0.0, end - start)
+        for step in job.get("steps", []):
+            step_start = step.get("started_at")
+            if step_start:
+                step_end = step.get("completed_at") or now
+                step["elapsed_seconds"] = max(0.0, step_end - step_start)
+        job["updated_at"] = now
 
 
 def build_pipeline_options(action: str, *, scenes: list[int] | None = None) -> dict[str, Any]:

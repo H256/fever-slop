@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,19 @@ class RenderPlanPatch:
     updates: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class ProjectCreateRequest:
+    project_type: str
+    name: str
+    idea: str = ""
+    song_style: str = ""
+
+
+def slugify_project_name(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return re.sub(r"-+", "-", slug)
+
+
 class ProjectStore:
     def __init__(self, projects_root: str | Path = "projects"):
         self.projects_root = Path(projects_root).resolve()
@@ -39,12 +53,15 @@ class ProjectStore:
         root = self.project_root(project_id)
         config_path = root / "config.json"
         config = self._read_json_file(config_path, default={})
-        name = str(config.get("project_name") or project_id)
+        metadata = self.project_metadata(project_id)
+        name = str(metadata.get("display_name") or config.get("project_name") or project_id)
         artifacts = self.list_artifacts(project_id)
         return {
             "id": project_id,
             "name": name,
             "path": root.as_posix(),
+            "project_type": metadata.get("project_type", "standard_music_video"),
+            "metadata": metadata,
             "status": {
                 "config": "present" if config_path.exists() else "missing",
                 "render_plan": "present" if artifacts["render_plans"] else "missing",
@@ -53,6 +70,58 @@ class ProjectStore:
             },
             "artifacts": artifacts,
             "artifact_sizes": self.artifact_sizes(project_id),
+        }
+
+    def create_project(self, request: ProjectCreateRequest) -> dict[str, Any]:
+        project_type = str(request.project_type or "").strip()
+        if project_type not in {"standard_music_video", "full_auto"}:
+            raise ValueError("project_type must be standard_music_video or full_auto")
+        name = str(request.name or "").strip()
+        if not name:
+            raise ValueError("Project name is required")
+        slug = slugify_project_name(name)
+        if not slug:
+            raise ValueError("Project slug is empty after slugifying the name")
+        root = (self.projects_root / slug).resolve()
+        if root.parent != self.projects_root:
+            raise StudioPathError("Project id must name a direct child of projects root")
+        if root.exists():
+            raise ValueError(f"Project already exists: {slug}")
+        if project_type == "full_auto":
+            if not str(request.idea or "").strip():
+                raise ValueError("Full-auto idea is required")
+            if not str(request.song_style or "").strip():
+                raise ValueError("Full-auto song style is required")
+
+        root.mkdir(parents=True)
+        metadata = {
+            "project_type": project_type,
+            "display_name": name,
+            "slug": slug,
+        }
+        if project_type == "full_auto":
+            metadata["full_auto"] = {
+                "idea": str(request.idea).strip(),
+                "song_style": str(request.song_style).strip(),
+            }
+        self._write_project_metadata(root, metadata)
+        if project_type == "standard_music_video":
+            (root / "config.json").write_text(
+                json.dumps({"project_name": name, "input_audio": ""}, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+        return self.describe_project(slug)
+
+    def project_metadata(self, project_id: str) -> dict[str, Any]:
+        root = self.project_root(project_id)
+        metadata = self._read_json_file(root / ".studio" / "project.json", default={})
+        if metadata:
+            return metadata
+        config = self._read_json_file(root / "config.json", default={})
+        return {
+            "project_type": "standard_music_video",
+            "display_name": str(config.get("project_name") or project_id),
+            "slug": project_id,
         }
 
     def list_artifacts(self, project_id: str) -> dict[str, list[str]]:
@@ -115,6 +184,12 @@ class ProjectStore:
         if root.parent != self.projects_root:
             raise StudioPathError("Project id must name a direct child of projects root")
         return root
+
+    @staticmethod
+    def _write_project_metadata(root: Path, metadata: dict[str, Any]) -> None:
+        path = root / ".studio" / "project.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     def resolve_project_path(self, project_id: str, path: str) -> Path:
         root = self.project_root(project_id)

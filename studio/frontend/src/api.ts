@@ -1,4 +1,4 @@
-import type { Job, ProjectArtifacts, ProjectSummary } from "./types";
+import type { Job, ProjectArtifacts, ProjectCreatePayload, ProjectSummary } from "./types";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -10,6 +10,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   projects: () => request<ProjectSummary[]>("/api/projects"),
+  createProject: (payload: ProjectCreatePayload) =>
+    request<ProjectSummary>("/api/projects", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify(payload)
+    }),
   project: (projectId: string) => request<ProjectSummary>(`/api/projects/${projectId}`),
   artifacts: (projectId: string) => request<ProjectArtifacts>(`/api/projects/${projectId}/artifacts`),
   artifact: (projectId: string, path: string) =>
@@ -40,6 +46,10 @@ export const api = {
     }),
   jobs: (projectId?: string) => request<Job[]>(`/api/jobs${projectId ? `?project_id=${projectId}` : ""}`)
 };
+
+export function jobLogsUrl(jobId: string): string {
+  return `/api/jobs/${jobId}/logs`;
+}
 
 export function mediaUrl(projectId: string, path: string): string {
   return `/api/projects/${projectId}/media?path=${encodeURIComponent(path)}`;
