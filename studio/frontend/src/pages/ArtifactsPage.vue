@@ -3,6 +3,17 @@ import { computed, onMounted, ref, watch } from "vue";
 import { Play, Save } from "lucide-vue-next";
 import { useRoute, useRouter } from "vue-router";
 import { api, mediaUrl } from "../api";
+import {
+  addArrayItem,
+  ARRAY_TEMPLATES,
+  getPath,
+  mergeConfigDefaults,
+  moveArrayItem,
+  pruneConfigForSave,
+  removeArrayItem,
+  setPath,
+  type PathPart
+} from "../lib/configForm";
 import { useStudioStore } from "../stores/studio";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import JsonEditor from "../components/JsonEditor.vue";
@@ -14,8 +25,7 @@ const projectId = computed(() => String(route.params.projectId));
 const selectedPath = ref("");
 const data = ref<unknown>(null);
 const confirmPipelineStart = ref(false);
-type PathPart = string | number;
-type FieldKind = "boolean" | "number" | "shortText" | "longText" | "simpleArray";
+type FieldKind = "boolean" | "number" | "shortText" | "longText";
 interface FormField {
   path: PathPart[];
   label: string;
@@ -28,6 +38,13 @@ interface FormGroup {
   title: string;
   path: PathPart[];
   fields: FormField[];
+}
+interface ArrayGroup {
+  key: string;
+  title: string;
+  path: PathPart[];
+  items: unknown[];
+  template: unknown;
 }
 
 const artifactPaths = computed(() =>
@@ -46,6 +63,7 @@ const isImage = computed(() => /\.(png|jpe?g|webp|gif)$/i.test(selectedPath.valu
 const isVideo = computed(() => /\.(mp4|mov|webm)$/i.test(selectedPath.value));
 const configFields = computed(() => (isConfig.value ? collectFields(data.value) : []));
 const configGroups = computed(() => groupFields(configFields.value));
+const configArrayGroups = computed(() => (isConfig.value ? collectArrayGroups(data.value) : []));
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
@@ -54,7 +72,8 @@ onMounted(async () => {
 
 watch(selectedPath, async (path) => {
   if (!path) return;
-  data.value = isJson.value ? (await api.artifact(projectId.value, path)).data : null;
+  const artifact = isJson.value ? (await api.artifact(projectId.value, path)).data : null;
+  data.value = isConfig.value ? mergeConfigDefaults(artifact) : artifact;
 });
 
 watch(
@@ -65,7 +84,8 @@ watch(
 );
 
 async function save() {
-  if (selectedPath.value && isJson.value) await api.saveArtifact(projectId.value, selectedPath.value, data.value);
+  const payload = isConfig.value && data.value && typeof data.value === "object" ? pruneConfigForSave(data.value as Record<string, unknown>) : data.value;
+  if (selectedPath.value && isJson.value) await api.saveArtifact(projectId.value, selectedPath.value, payload);
 }
 
 async function startStandardPipeline() {
@@ -80,13 +100,25 @@ function collectFields(value: unknown, path: PathPart[] = []): FormField[] {
   if (typeof value === "number") return [field(path, "number", value)];
   if (typeof value === "string") return [field(path, value.length > 90 || value.includes("\n") ? "longText" : "shortText", value)];
   if (Array.isArray(value)) {
-    if (value.every((item) => ["string", "number", "boolean"].includes(typeof item))) return [field(path, "simpleArray", value)];
     return value.flatMap((item, index) => collectFields(item, [...path, index]));
   }
   if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => collectFields(child, [...path, key]));
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => path.length > 0 || !(key in ARRAY_TEMPLATES))
+      .flatMap(([key, child]) => collectFields(child, [...path, key]));
   }
   return [];
+}
+
+function collectArrayGroups(value: unknown): ArrayGroup[] {
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(ARRAY_TEMPLATES).map(([key, template]) => ({
+    key,
+    title: labelFor([key]),
+    path: [key],
+    items: Array.isArray(getPath(value, [key])) ? (getPath(value, [key]) as unknown[]) : [],
+    template
+  }));
 }
 
 function field(path: PathPart[], kind: FieldKind, value: unknown): FormField {
@@ -98,17 +130,19 @@ function updateConfigField(field: FormField, event: Event) {
   let value: unknown = target.value;
   if (field.kind === "boolean") value = (target as HTMLInputElement).checked;
   if (field.kind === "number") value = Number(target.value);
-  if (field.kind === "simpleArray") value = target.value.split(",").map((item) => item.trim()).filter(Boolean);
   if (data.value && typeof data.value === "object") setPath(data.value as Record<string, unknown>, field.path, value);
 }
 
-function setPath(target: Record<string, unknown>, path: PathPart[], value: unknown) {
-  let current: unknown = target;
-  for (const part of path.slice(0, -1)) {
-    if (!(part in (current as Record<string, unknown>))) (current as Record<string, unknown>)[part] = {};
-    current = (current as Record<string, unknown> | unknown[])[part as never];
-  }
-  (current as Record<string, unknown> | unknown[])[path[path.length - 1] as never] = value as never;
+function addConfigArrayItem(group: ArrayGroup) {
+  if (data.value && typeof data.value === "object") addArrayItem(data.value as Record<string, unknown>, group.path, group.template);
+}
+
+function removeConfigArrayItem(group: ArrayGroup, index: number) {
+  if (data.value && typeof data.value === "object") removeArrayItem(data.value as Record<string, unknown>, group.path, index);
+}
+
+function moveConfigArrayItem(group: ArrayGroup, index: number, direction: -1 | 1) {
+  if (data.value && typeof data.value === "object") moveArrayItem(data.value as Record<string, unknown>, group.path, index, direction);
 }
 
 function displayValue(field: FormField): string {
@@ -149,6 +183,7 @@ function optionsForField(field: FormField): string[] {
     "audio.demucs_model": ["htdemucs_ft", "htdemucs", "mdx_extra_q"],
     "audio.whisper_model": ["tiny", "base", "small", "medium", "large"],
     "scene_generation.duration_preset": ["impact_weighted", "uniform", "vocal_weighted"],
+    subject_mode: ["multi", "single"],
     video_pipeline: ["ltx_i2v", "ltx_msr"],
     render_mode: ["single_prompt", "relay", "auto"]
   };
@@ -220,6 +255,31 @@ function helpForConfigField(path: PathPart[]): string {
       <section class="document-panel">
         <h2>{{ selectedPath }}</h2>
         <div v-if="isConfig" class="generated-form">
+          <fieldset v-for="group in configArrayGroups" :key="group.key" class="form-block array-form-block">
+            <legend>{{ group.title }}</legend>
+            <article v-for="(_item, index) in group.items" :key="index" class="array-item-block">
+              <header>
+                <strong>{{ group.title }} {{ index + 1 }}</strong>
+                <div class="array-controls">
+                  <button type="button" class="button secondary compact-button" :disabled="index === 0" @click="moveConfigArrayItem(group, index, -1)">Up</button>
+                  <button type="button" class="button secondary compact-button" :disabled="index === group.items.length - 1" @click="moveConfigArrayItem(group, index, 1)">Down</button>
+                  <button type="button" class="button danger compact-button" @click="removeConfigArrayItem(group, index)">Remove</button>
+                </div>
+              </header>
+              <label v-for="field in collectFields(_item, [...group.path, index])" :key="field.path.join('.')">
+                <span class="field-title">{{ labelFor(field.path.slice(group.path.length + 1)) }}</span>
+                <span class="field-help">{{ field.help }}</span>
+                <select v-if="optionsForField(field).length" :value="displayValue(field)" @change="updateConfigField(field, $event)">
+                  <option v-for="option in optionsForField(field)" :key="option" :value="option">{{ option }}</option>
+                </select>
+                <input v-else-if="field.kind === 'boolean'" type="checkbox" :checked="Boolean(field.value)" @change="updateConfigField(field, $event)" />
+                <input v-else-if="field.kind === 'number'" type="number" :value="field.value" @input="updateConfigField(field, $event)" />
+                <textarea v-else-if="field.kind === 'longText'" class="transcript-area" :value="displayValue(field)" @input="updateConfigField(field, $event)" />
+                <input v-else type="text" :value="displayValue(field)" @input="updateConfigField(field, $event)" />
+              </label>
+            </article>
+            <button type="button" class="button secondary" @click="addConfigArrayItem(group)">Add {{ group.title }}</button>
+          </fieldset>
           <fieldset v-for="group in configGroups" :key="group.key" class="form-block">
             <legend>{{ group.title }}</legend>
             <label v-for="field in group.fields" :key="field.path.join('.')">

@@ -686,6 +686,37 @@ select {
   margin-bottom: 0;
 }
 
+.array-form-block {
+  gap: 14px;
+}
+
+.array-item-block {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.array-item-block header,
+.array-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.array-controls {
+  justify-content: flex-end;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .field-title {
   font-weight: 700;
 }

@@ -56,7 +56,13 @@ test("creates a standard project and opens the config form", async ({ page }) =>
   );
   await page.route("**/api/projects/my-cool-video/artifact", async (route) => {
     expect(route.request().method()).toBe("PUT");
-    await route.fulfill({ json: { path: "config.json", data: { project_name: "My Cool Video", input_audio: "" } } });
+    const body = await route.request().postDataJSON();
+    expect(body.data.project_name).toBe("My Cool Video");
+    expect(body.data.video).toEqual({ fps: 24, width: 1280, height: 704 });
+    expect(body.data.lyrics).toBeUndefined();
+    expect(body.data.story_idea).toBeUndefined();
+    expect(body.data.actors).toEqual([{ name: "Mara" }]);
+    await route.fulfill({ json: { path: "config.json", data: body.data } });
   });
   await page.route("**/api/projects/my-cool-video/jobs", async (route) => {
     const body = await route.request().postDataJSON();
@@ -104,6 +110,10 @@ test("creates a standard project and opens the config form", async ({ page }) =>
 
   await expect(page).toHaveURL(/\/projects\/my-cool-video\/artifacts\?path=config\.json/);
   await expect(page.getByRole("heading", { name: "config.json" })).toBeVisible();
+  await expect(page.getByRole("spinbutton", { name: /fps/i })).toHaveValue("24");
+  await expect(page.getByRole("spinbutton", { name: /word count min/i })).toHaveValue("40");
+  await page.getByRole("button", { name: "Add actors" }).click();
+  await page.locator(".array-item-block", { hasText: "actors 1" }).getByRole("textbox", { name: /^name/i }).fill("Mara");
   await page.getByRole("button", { name: /save and run pipeline/i }).click();
   await page.getByRole("button", { name: "Save and run", exact: true }).click();
 
