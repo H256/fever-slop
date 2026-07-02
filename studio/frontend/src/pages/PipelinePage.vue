@@ -12,33 +12,67 @@ import StatusBadge from "../components/StatusBadge.vue";
 const route = useRoute();
 const studio = useStudioStore();
 const projectId = computed(() => String(route.params.projectId));
-const pendingAction = ref<Action | null>(null);
+const pendingAction = ref<PipelineAction | null>(null);
 const streamedLogs = ref<string[]>([]);
 const streamState = ref<"idle" | "connected" | "disconnected" | "complete">("idle");
 const logPane = ref<HTMLElement | null>(null);
 let pollTimer: number | undefined;
 let source: EventSource | undefined;
 
-type Action = readonly [string, string];
+type PipelinePhase = "core" | "preparation" | "storyboard" | "generation" | "post_processing";
+type PipelineAction = {
+  id: string;
+  label: string;
+  phase: PipelinePhase;
+};
 
-const standardActions = [
-  ["main-pipeline", "Main pipeline"],
-  ["relay-compact", "Relay compact"],
-  ["anchor-fix", "Anchor fix"],
-  ["msr-references", "MSR references"],
-  ["msr-reference-sheets", "MSR reference sheets"],
-  ["msr-prompt-enrich", "MSR prompt enrichment"],
-  ["storyboard-frames", "Storyboard frames"],
-  ["storyboard-page", "Storyboard page"],
-  ["ltx-render-scenes", "Render selected scenes"],
-  ["concat-video-only", "Concat video only"],
-  ["mux-original-audio", "Mux original audio"],
-  ["full-pipeline", "Full pipeline"]
-] as const;
+type ActionGroup = {
+  phase: PipelinePhase;
+  label: string;
+  actions: PipelineAction[];
+};
 
-const fullAutoActions = [["full-auto", "Full-auto pipeline"]] as const;
+const phaseLabels: Record<PipelinePhase, string> = {
+  core: "Core runs",
+  preparation: "Preparation",
+  storyboard: "Storyboard",
+  generation: "Generation",
+  post_processing: "Post-processing"
+};
+
+const phaseOrder: PipelinePhase[] = ["core", "preparation", "storyboard", "generation", "post_processing"];
+
+const standardActions: PipelineAction[] = [
+  { id: "full-pipeline", label: "Full pipeline", phase: "core" },
+  { id: "main-pipeline", label: "Main pipeline", phase: "core" },
+  { id: "relay-compact", label: "Relay compact", phase: "preparation" },
+  { id: "anchor-fix", label: "Anchor fix", phase: "preparation" },
+  { id: "rebuild-plan", label: "Rebuild plan", phase: "preparation" },
+  { id: "storyboard", label: "Storyboard", phase: "storyboard" },
+  { id: "storyboard-frames", label: "Storyboard frames", phase: "storyboard" },
+  { id: "storyboard-page", label: "Storyboard page", phase: "storyboard" },
+  { id: "msr-references", label: "MSR references", phase: "generation" },
+  { id: "msr-reference-sheets", label: "MSR reference sheets", phase: "generation" },
+  { id: "msr-enrich", label: "MSR enrichment", phase: "generation" },
+  { id: "msr-prompt-enrich", label: "MSR prompt enrichment", phase: "generation" },
+  { id: "ltx-render-scenes", label: "Render selected scenes", phase: "generation" },
+  { id: "final-concat", label: "Final concat", phase: "post_processing" },
+  { id: "concat-video-only", label: "Concat video only", phase: "post_processing" },
+  { id: "mux-original-audio", label: "Mux original audio", phase: "post_processing" }
+];
+
+const fullAutoActions: PipelineAction[] = [{ id: "full-auto", label: "Full-auto pipeline", phase: "core" }];
 
 const actions = computed(() => (studio.currentProject?.project_type === "full_auto" ? fullAutoActions : standardActions));
+const actionGroups = computed<ActionGroup[]>(() =>
+  phaseOrder
+    .map((phase) => ({
+      phase,
+      label: phaseLabels[phase],
+      actions: actions.value.filter((action) => action.phase === phase)
+    }))
+    .filter((group) => group.actions.length > 0)
+);
 const activeJob = computed(() => studio.jobs.find((job) => ["running", "queued"].includes(job.status)) ?? studio.jobs[0] ?? null);
 const hasRunningPipeline = computed(() => studio.jobs.some((job) => ["running", "queued"].includes(job.status)));
 const logs = computed(() => (streamedLogs.value.length ? streamedLogs.value : activeJob.value?.recent_logs ?? activeJob.value?.logs ?? []));
@@ -65,13 +99,13 @@ async function refreshJobs() {
   await studio.loadJobs(projectId.value);
 }
 
-function askToRun(action: Action) {
+function askToRun(action: PipelineAction) {
   pendingAction.value = action;
 }
 
 async function runConfirmed() {
   if (!pendingAction.value) return;
-  const [action] = pendingAction.value;
+  const action = pendingAction.value.id;
   pendingAction.value = null;
   try {
     await studio.startJob(projectId.value, action);
@@ -155,17 +189,24 @@ function stepProgress(job: Job, stepProgressValue: number | null): number {
     <div class="split pipeline-layout">
       <section class="panel action-list">
         <p v-if="hasRunningPipeline" class="job-note">Pipeline is already running. Start buttons are disabled until it finishes.</p>
-        <button
-          v-for="action in actions"
-          :key="action[0]"
-          class="action-button"
-          :disabled="hasRunningPipeline"
-          :title="hasRunningPipeline ? 'Pipeline is already running' : ''"
-          @click="askToRun(action)"
-        >
-          <Play :size="18" />
-          <span>{{ action[1] }}</span>
-        </button>
+        <div class="phase-list">
+          <section v-for="group in actionGroups" :key="group.phase" class="pipeline-phase">
+            <h2 class="phase-header">{{ group.label }}</h2>
+            <div class="phase-actions">
+              <button
+                v-for="action in group.actions"
+                :key="action.id"
+                class="action-button"
+                :disabled="hasRunningPipeline"
+                :title="hasRunningPipeline ? 'Pipeline is already running' : ''"
+                @click="askToRun(action)"
+              >
+                <Play :size="18" />
+                <span>{{ action.label }}</span>
+              </button>
+            </div>
+          </section>
+        </div>
       </section>
       <section class="panel pipeline-monitor">
         <header class="panel-header">
@@ -221,7 +262,7 @@ function stepProgress(job: Job, stepProgressValue: number | null): number {
     <ConfirmDialog
       :open="Boolean(pendingAction)"
       title="Run pipeline job?"
-      :message="`This will start '${pendingAction?.[1]}' for ${projectId}. It may overwrite generated project artifacts, can trigger external tools, and cannot be cancelled from Studio yet.`"
+      :message="`This will start '${pendingAction?.label}' for ${projectId}. It may overwrite generated project artifacts, can trigger external tools, and cannot be cancelled from Studio yet.`"
       confirm-label="Run job"
       @cancel="pendingAction = null"
       @confirm="runConfirmed"

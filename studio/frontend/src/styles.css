@@ -428,6 +428,33 @@ textarea:focus-visible {
   min-width: 300px;
 }
 
+.phase-list,
+.phase-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.pipeline-phase {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--surface-2);
+}
+
+.pipeline-phase:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.phase-header {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .action-button,
 .path-list button {
   justify-content: flex-start;
