@@ -23,6 +23,7 @@ const newImage = ref<File | null>(null);
 const showAddForm = ref(false);
 const lightboxImage = ref("");
 const rerenderingReference = ref(false);
+const startingProcess = ref(false);
 const allReferenceImages = computed(() => studio.currentProject?.artifacts.images.filter((path) => path.includes("/references/")) ?? []);
 const allManifests = computed(() => studio.currentProject?.artifacts.references.filter((path) => path.endsWith("/manifest.json")) ?? []);
 const manifests = computed(() => allManifests.value.filter(isUsedReferencePath));
@@ -35,6 +36,7 @@ const manifestFields = computed(() => collectFields(manifestData.value));
 const selectedReferenceId = computed(() => referenceId(selectedManifestPath.value, "actors") ?? referenceId(selectedManifestPath.value, "locations") ?? "");
 const selectedReferenceKind = computed(() => (selectedManifestPath.value.includes("/actors/") ? "actor" : "location"));
 const selectedReferenceImages = computed(() => referenceImagesForManifest(selectedManifestPath.value));
+const hasActiveProcess = computed(() => studio.jobs.some((job) => ["queued", "running"].includes(job.status)) || rerenderingReference.value || startingProcess.value);
 
 type PathPart = string | number;
 type FieldKind = "boolean" | "number" | "shortText" | "longText" | "simpleArray";
@@ -48,6 +50,7 @@ interface FormField {
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
+  await studio.loadJobs(projectId.value);
   await loadUsedReferences();
   if (manifests.value[0]) await selectManifest(manifests.value[0]);
 });
@@ -85,7 +88,7 @@ async function saveManifest() {
 }
 
 async function rerenderSelectedReference() {
-  if (!selectedReferenceId.value) return;
+  if (!selectedReferenceId.value || hasActiveProcess.value) return;
   rerenderingReference.value = true;
   const job = await studio.startJob(projectId.value, "reference-rerender", undefined, {
     reference_kind: selectedReferenceKind.value,
@@ -97,9 +100,21 @@ async function rerenderSelectedReference() {
     if (!current || current.status === "queued" || current.status === "running") return;
     window.clearInterval(timer);
     rerenderingReference.value = false;
+    await studio.loadJobs(projectId.value);
     await studio.loadProject(projectId.value);
     await selectManifest(selectedManifestPath.value);
   }, 1500);
+}
+
+async function startProcess(action: string) {
+  if (hasActiveProcess.value) return;
+  startingProcess.value = true;
+  try {
+    await studio.startJob(projectId.value, action);
+    await studio.loadJobs(projectId.value);
+  } finally {
+    startingProcess.value = false;
+  }
 }
 
 async function addReference() {
@@ -260,10 +275,14 @@ function optionsForField(field: FormField): string[] {
         <p>Actor and location references used by the active render plan.</p>
       </div>
       <div class="button-row">
-        <button class="button" @click="studio.startJob(projectId, 'msr-references')"><RefreshCw :size="18" /> Render refs</button>
-        <button class="button secondary" @click="studio.startJob(projectId, 'msr-enrich')"><WandSparkles :size="18" /> Rebuild plan</button>
+        <button class="button" :disabled="hasActiveProcess" @click="startProcess('msr-references')"><RefreshCw :size="18" /> Render refs</button>
+        <button class="button secondary" :disabled="hasActiveProcess" @click="startProcess('rebuild-plan')"><WandSparkles :size="18" /> Rebuild plan</button>
       </div>
     </header>
+    <section v-if="hasActiveProcess" class="panel notice-panel">
+      <h2>A backend process is running</h2>
+      <p>Reference controls are disabled until the current job finishes.</p>
+    </section>
     <section v-if="missingActors.length || missingLocations.length" class="panel notice-panel">
       <h2>Missing References</h2>
       <p>These ids are used by the render plan but do not have a manifest.</p>
@@ -299,9 +318,9 @@ function optionsForField(field: FormField): string[] {
         <header>
           <h2>{{ selectedManifestPath || "Select a manifest" }}</h2>
           <div class="button-row">
-            <button class="button secondary" :disabled="!selectedManifestPath" @click="removeFromRenderPlan"><Trash2 :size="18" /> Remove from plan</button>
-            <button class="button secondary" :disabled="!selectedManifestPath || rerenderingReference" @click="rerenderSelectedReference"><RefreshCw :size="18" /> Rerender</button>
-            <button class="button" :disabled="!selectedManifestPath" @click="saveManifest"><Save :size="18" /> Save manifest</button>
+            <button class="button secondary" :disabled="!selectedManifestPath || hasActiveProcess" @click="removeFromRenderPlan"><Trash2 :size="18" /> Remove from plan</button>
+            <button class="button secondary" :disabled="!selectedManifestPath || hasActiveProcess" @click="rerenderSelectedReference"><RefreshCw :size="18" /> Rerender</button>
+            <button class="button" :disabled="!selectedManifestPath || hasActiveProcess" @click="saveManifest"><Save :size="18" /> Save manifest</button>
           </div>
         </header>
         <p class="job-note">After changing prompt or visual description fields, rerender references and rebuild the plan to propagate changes.</p>

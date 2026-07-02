@@ -26,6 +26,7 @@ PIPELINE_ACTIONS = {
     "storyboard-page",
     "msr-reference-sheets",
     "msr-prompt-enrich",
+    "rebuild-plan",
     "concat-video-only",
     "mux-original-audio",
     "main-pipeline",
@@ -46,6 +47,7 @@ PIPELINE_STEPS: dict[str, list[str]] = {
     "storyboard-page": ["Storyboard page"],
     "msr-reference-sheets": ["MSR reference sheets"],
     "msr-prompt-enrich": ["MSR prompt enrichment"],
+    "rebuild-plan": ["MSR reference sheets", "MSR prompt enrichment"],
     "concat-video-only": ["Final concat video-only"],
     "mux-original-audio": ["Mux original audio"],
     "main-pipeline": ["Main pipeline"],
@@ -285,6 +287,10 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipe
     elif action == "msr-prompt-enrich":
         base["video_pipeline"] = "ltx_msr"
         base["stages"] = [PipelineStage.MSR_PROMPT_ENRICH.value]
+    elif action == "rebuild-plan":
+        base["video_pipeline"] = "ltx_msr"
+        base["stages"] = [PipelineStage.MSR_REFERENCE_SHEETS.value, PipelineStage.MSR_PROMPT_ENRICH.value]
+        base["skip_msr_prompt_enrichment"] = False
     elif action == "concat-video-only":
         base["video_pipeline"] = video_pipeline
         base["stages"] = [PipelineStage.CONCAT_VIDEO_ONLY.value]

@@ -352,6 +352,7 @@ class StudioBackendTests(unittest.TestCase):
         self.assertEqual(["msr_prompt_enrich"], build_pipeline_options("msr-prompt-enrich")["stages"])
         self.assertEqual(["concat_video_only"], build_pipeline_options("concat-video-only")["stages"])
         self.assertEqual(["mux_original_audio"], build_pipeline_options("mux-original-audio")["stages"])
+        self.assertEqual(["msr_reference_sheets", "msr_prompt_enrich"], build_pipeline_options("rebuild-plan")["stages"])
 
     def test_pipeline_option_builder_uses_selected_pipeline_mode(self):
         classic = build_pipeline_options("full-pipeline", pipeline_mode="classic")
@@ -532,9 +533,41 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual(200, first.status_code, first.text)
             duplicate = client.post("/api/projects/my-cool-video/jobs", json={"action": "full-pipeline"})
             gate.set()
+            for _ in range(50):
+                if client.get(f"/api/jobs/{first.json()['id']}").json()["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
 
             self.assertEqual(400, duplicate.status_code)
             self.assertIn("Pipeline is already running", duplicate.text)
+
+    def test_api_exposes_process_state_for_active_project_jobs(self):
+        gate = threading.Event()
+
+        def fake_pipeline_handler(config_path, action, *, scenes=None, pipeline_mode=None):
+            return lambda _log: gate.wait(0.5)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+            store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
+            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+
+            first = client.post("/api/projects/my-cool-video/jobs", json={"action": "rebuild-plan"})
+            self.assertEqual(200, first.status_code, first.text)
+            for _ in range(50):
+                processes = client.get("/api/processes?project_id=my-cool-video").json()
+                if processes and processes[0]["status"] == "running":
+                    break
+                time.sleep(0.01)
+            gate.set()
+            for _ in range(50):
+                if client.get(f"/api/jobs/{first.json()['id']}").json()["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+
+            self.assertEqual("rebuild-plan", processes[0]["action"])
+            self.assertEqual("running", processes[0]["status"])
+            self.assertIn("steps", processes[0])
 
 
 if __name__ == "__main__":

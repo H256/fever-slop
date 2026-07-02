@@ -16,6 +16,7 @@ const scenes = ref<RenderScene[]>([]);
 const selectedSceneNumber = ref<number | null>(null);
 const selectedRenderScenes = ref<Set<number>>(new Set());
 const pendingRerender = ref<"selected" | "all" | null>(null);
+const startingRerender = ref(false);
 const draft = ref<Record<string, unknown>>({});
 const selected = computed(() => scenes.value.find((scene) => scene.scene === selectedSceneNumber.value));
 const selectedRenderSceneNumbers = computed(() => [...selectedRenderScenes.value].sort((a, b) => a - b));
@@ -48,9 +49,11 @@ const actors = ref<ReferenceOption[]>([]);
 const locations = ref<ReferenceOption[]>([]);
 const selectedActorIds = computed(() => readPath(draft.value, ["references", "actor_ids"]) as string[] | undefined);
 const selectedLocationId = computed(() => readPath(draft.value, ["references", "location_id"]) as string | undefined);
+const hasActiveProcess = computed(() => studio.jobs.some((job) => ["queued", "running"].includes(job.status)));
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
+  await studio.loadJobs(projectId.value);
   await loadReferences();
   planPath.value = studio.currentProject?.artifacts.render_plans[0] ?? "";
   if (planPath.value) {
@@ -89,11 +92,17 @@ function askRerender(mode: "selected" | "all") {
 async function runRerender() {
   const mode = pendingRerender.value;
   pendingRerender.value = null;
-  if (mode === "selected" && selectedRenderSceneNumbers.value.length) {
-    await studio.startJob(projectId.value, "ltx-render-scenes", selectedRenderSceneNumbers.value);
-  }
-  if (mode === "all") {
-    await studio.startJob(projectId.value, "ltx-render-scenes");
+  startingRerender.value = true;
+  try {
+    if (mode === "selected" && selectedRenderSceneNumbers.value.length) {
+      await studio.startJob(projectId.value, "ltx-render-scenes", selectedRenderSceneNumbers.value);
+    }
+    if (mode === "all") {
+      await studio.startJob(projectId.value, "ltx-render-scenes");
+    }
+    await studio.loadJobs(projectId.value);
+  } finally {
+    startingRerender.value = false;
   }
 }
 
@@ -308,12 +317,16 @@ function cloneJson<T>(value: T): T {
         <p>{{ planPath || "No render plan found." }}</p>
       </div>
       <div class="button-row">
-        <button class="button secondary" :disabled="selectedRenderScenes.size === 0" @click="askRerender('selected')">
+        <button class="button secondary" :disabled="selectedRenderScenes.size === 0 || hasActiveProcess || startingRerender" @click="askRerender('selected')">
           <Play :size="18" /> Rerender selected
         </button>
-        <button class="button" @click="askRerender('all')"><Play :size="18" /> Rerender all</button>
+        <button class="button" :disabled="hasActiveProcess || startingRerender" @click="askRerender('all')"><Play :size="18" /> Rerender all</button>
       </div>
     </header>
+    <section v-if="hasActiveProcess || startingRerender" class="panel notice-panel">
+      <h2>A backend process is running</h2>
+      <p>Render controls are disabled until the current job finishes.</p>
+    </section>
     <div v-if="scenes.length" class="editor-layout">
       <section class="panel scene-table">
         <div v-for="scene in scenes" :key="scene.scene" class="scene-row" :class="{ active: scene.scene === selectedSceneNumber }">

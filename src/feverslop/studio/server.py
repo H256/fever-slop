@@ -227,6 +227,10 @@ def create_app(
     def list_jobs(project_id: str | None = None):
         return jobs.list(project_id)
 
+    @app.get("/api/processes")
+    def list_processes(project_id: str | None = None):
+        return jobs.list(project_id)
+
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str):
         try:
