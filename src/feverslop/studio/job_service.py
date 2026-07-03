@@ -432,14 +432,14 @@ def build_movie_visual_adapter(project_dir: Path, workflow_path: Path):
     )
 
 
-def patch_movie_msr_workflow(project_dir: Path, *, template_path: Path = Path("workflows") / "video_ltxv_msr_1actor_1background_v1.json") -> Path:
+def patch_movie_msr_workflow(project_dir: Path, *, template_path: Path = Path("workflows") / "video_default_ltxv_msr_1actor_1background_v1.json") -> Path:
     from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
 
     if not template_path.exists():
         raise FileNotFoundError(f"Movie MSR workflow template not found: {template_path}")
     workflow = json.loads(template_path.read_text(encoding="utf-8"))
     patched = MovieWorkflowPatcher().strip_audio_inputs(workflow)
-    output_path = project_dir / "movie" / "workflows" / "video_ltxv_msr_movie_native_audio.json"
+    output_path = project_dir / "movie" / "workflows" / "video_default_ltxv_msr_movie_native_audio.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(patched, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return output_path

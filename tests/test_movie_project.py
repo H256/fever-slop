@@ -404,6 +404,15 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertIsInstance(adapter, ComfyUIMovieVisualAdapter)
 
+    def test_movie_workflow_patcher_uses_default_movie_msr_template(self):
+        from feverslop.studio.job_service import patch_movie_msr_workflow
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = patch_movie_msr_workflow(Path(temp_dir))
+
+            self.assertEqual(Path(temp_dir) / "movie" / "workflows" / "video_default_ltxv_msr_movie_native_audio.json", output)
+            self.assertTrue(output.exists())
+
     def test_movie_reference_generator_fills_manifest_paths(self):
         from feverslop.application.movie_references import MovieReferenceSheetGenerator
 
@@ -504,7 +513,7 @@ class MovieProjectTests(unittest.TestCase):
             manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
             self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
-            patched_workflow_path = Path(temp_dir) / "door-below" / "movie" / "workflows" / "video_ltxv_msr_movie_native_audio.json"
+            patched_workflow_path = Path(temp_dir) / "door-below" / "movie" / "workflows" / "video_default_ltxv_msr_movie_native_audio.json"
             self.assertTrue(patched_workflow_path.exists())
             patched_workflow = json.loads(patched_workflow_path.read_text())
             self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in patched_workflow.values()))
