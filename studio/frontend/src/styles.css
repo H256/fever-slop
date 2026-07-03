@@ -836,6 +836,29 @@ select {
   margin-bottom: 0;
 }
 
+.compact-settings-block {
+  padding: 12px;
+}
+
+.switch-row {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  font-weight: 400;
+}
+
+.switch-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.switch-row > span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .array-form-block {
   gap: 14px;
 }

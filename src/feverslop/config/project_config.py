@@ -174,6 +174,7 @@ class ProjectConfig:
     project_dir: Path
     project_name: str
     input_audio: Path
+    silent_mode: bool = False
     lyrics: str = ""
 
     video: VideoConfig = field(default_factory=VideoConfig)
@@ -214,6 +215,11 @@ class ProjectConfig:
         locations_raw = raw.get("locations", [])
 
         input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
+        silent_mode = raw.get("silent_mode", False)
+        if silent_mode is None:
+            silent_mode = False
+        if not isinstance(silent_mode, bool):
+            raise ValueError("silent_mode must be a boolean")
 
         lora_1 = _load_lora_config(lora_1_raw)
         if isinstance(loras_raw, list):
@@ -238,6 +244,7 @@ class ProjectConfig:
             project_dir=project_dir,
             project_name=raw.get("project_name") or input_audio.stem,
             input_audio=input_audio,
+            silent_mode=silent_mode,
             lyrics=_load_multiline_text(raw.get("lyrics", "")),
 
             video=VideoConfig(

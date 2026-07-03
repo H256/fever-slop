@@ -146,7 +146,10 @@ class ScenePromptBuilder:
 
         return clean_llm_text(
             self.llm.complete_prompt(
-                system_prompt=build_i2v_system_prompt(str(segment.get("type", ""))),
+                system_prompt=build_i2v_system_prompt(
+                    str(segment.get("type", "")),
+                    silent_mode=bool(global_context.get("silent_mode", False)),
+                ),
                 prompt=json.dumps(payload, ensure_ascii=False, indent=2),
             )
         )

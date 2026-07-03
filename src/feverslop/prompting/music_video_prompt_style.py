@@ -5,7 +5,15 @@ from typing import Any
 from feverslop.domain.prompt_constraints import build_location_constraint  # noqa: F401
 
 
-def performance_policy(segment_type: str) -> str:
+def performance_policy(segment_type: str, *, silent_mode: bool = False) -> str:
+    if silent_mode:
+        return (
+            "Performance policy: dialogue-free silent mode is active. The subject must not sing, "
+            "must have no lip sync, no vocal performance, no dialogue delivery, no mouth performance, "
+            "and no moving lips. Preserve emotional acting through expressive eyes, facial emotion, "
+            "gaze, posture, hands, body movement, camera movement, and environment."
+        )
+
     mode = str(segment_type or "").strip().lower()
 
     if mode == "vocals":
@@ -78,17 +86,22 @@ Only send the final prompt text. Do not include labels, notes, quotes, markdown,
 """.strip()
 
 
-def build_i2v_system_prompt(segment_type: str) -> str:
+def build_i2v_system_prompt(segment_type: str, *, silent_mode: bool = False) -> str:
+    mixed_vocal_rule = (
+        "Silent mode is active, so never add sung or lip-synced vocal portions."
+        if silent_mode
+        else "If the scene is mixed, allow the vocal portions to be sung with passion while keeping silent portions relaxed and closed-mouth."
+    )
     return f"""
 Convert the user's concept prompt into a dynamic image-to-video prompt.
 
 Use the user's prompt as the full scene foundation. Preserve the original subject, setting, outfit, mood, atmosphere, and scene identity. Infer only the missing video details needed to make the scene feel complete, including time of day, weather, lighting behavior, environmental movement, subject movement, camera movement, and performance energy. Do not add unrelated characters, new locations, major story changes, captions, text overlays, dialogue, or audio instructions.
 
-Use the t2i_prompt or current visual prompt as the visual reference if one is supplied. If the scene is mixed, allow the vocal portions to be sung with passion while keeping silent portions relaxed and closed-mouth.
+Use the t2i_prompt or current visual prompt as the visual reference if one is supplied. {mixed_vocal_rule}
 
 Add fast, cinematic motion by giving the subject a clear action sequence, expressive facial expressions, strong gestures, and intentional camera movement. Keep the subject visible, centered, and clearly framed throughout. Add lighting only as natural scene behavior, such as flickering stage lights, passing sunlight, glowing streetlights, storm flashes, reflections, or shifting shadows, based on what best fits the user's prompt.
 
-{performance_policy(segment_type)}
+{performance_policy(segment_type, silent_mode=silent_mode)}
 
 Output one polished paragraph using this structure:
 
@@ -105,13 +118,35 @@ Rules:
 """.strip()
 
 
-def build_concept_mapper_system_prompt(*, batch: bool = False) -> str:
+def build_concept_mapper_system_prompt(*, batch: bool = False, silent_mode: bool = False) -> str:
     batch_text = (
         "You receive only one batch of timed song sections, but the whole video must remain continuous."
         if batch
         else "You receive the full timed song section list."
     )
     target_text = "CURRENT_BATCH_SEGMENTS" if batch else "SEGMENT_TIMELINE_JSON"
+    segment_rules = (
+        "\n".join(
+            [
+                "Segment rules:",
+                "- Silent mode is active. Treat every segment as dialogue-free and non-vocal in the visuals.",
+                "- Do not create singing, lip-sync, vocal performance, mouth performance, or dialogue delivery.",
+                "- You may use lyrics only as emotional or narrative context.",
+                "- Preserve emotional expression through gestures, posture, gaze, body language, framing, light, and environment.",
+                "- Do not quote lyrics.",
+            ]
+        )
+        if silent_mode
+        else "\n".join(
+            [
+                "Segment rules:",
+                "- For vocal segments, reflect the lyrics and performance energy.",
+                "- For instrumental segments, advance the visual story without sung words. Do not say the character is singing. Do not mention lip sync.",
+                "- For mixed segments, combine lyrical meaning with instrumental mood, but do not force singing across the whole segment.",
+                "- Do not quote lyrics.",
+            ]
+        )
+    )
 
     return f"""
 You are a professional music video director and cinematographer creating a continuous visual story for a text-to-video model.
@@ -129,11 +164,7 @@ Continuity rules:
 - Repeat key visible continuity details instead of referring to previous segments.
 - Never write "the same character", "still", "continues", "next", "after", or "from earlier".
 
-Segment rules:
-- For vocal segments, reflect the lyrics and performance energy.
-- For instrumental segments, advance the visual story without sung words. Do not say the character is singing. Do not mention lip sync.
-- For mixed segments, combine lyrical meaning with instrumental mood, but do not force singing across the whole segment.
-- Do not quote lyrics.
+{segment_rules}
 
 Visual rules:
 - Include visible action, environment, lighting, camera-relevant composition, cinematic detail, and visual emotion.
@@ -166,7 +197,7 @@ Output rules:
 """.strip()
 
 
-def build_detail_system_prompt(label: str, *, segment_type: str = "") -> str:
+def build_detail_system_prompt(label: str, *, segment_type: str = "", silent_mode: bool = False) -> str:
     normalized = label.strip()
     lower = normalized.lower()
     category_rule = "Keep the line limited to the requested label."
@@ -204,7 +235,7 @@ Rules:
 - If the prompt does not clearly imply a value, invent a simple value that fits the scene.
 - {category_rule}
 
-{performance_policy(segment_type)}
+{performance_policy(segment_type, silent_mode=silent_mode)}
 """.strip()
 
 
@@ -218,6 +249,7 @@ def build_video_payload(
     custom_instructions: str = "",
 ) -> dict[str, Any]:
     segment_type = str(segment.get("type", "")).strip().lower()
+    silent_mode = bool(global_context.get("silent_mode", False))
     return {
         "subject": global_context["subject"],
         "story_idea": global_context["story_idea"],
@@ -226,7 +258,8 @@ def build_video_payload(
         "prompt_guidance": global_context.get("prompt_guidance", {}),
         "segment": segment,
         "performance_mode": segment_type,
-        "performance_policy": performance_policy(segment_type),
+        "silent_mode": silent_mode,
+        "performance_policy": performance_policy(segment_type, silent_mode=silent_mode),
         "t2i_prompt": t2i_prompt,
         "scene_concept": concept,
         "camera_motion": scene_details.get("camera_motion", ""),

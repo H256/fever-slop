@@ -107,6 +107,26 @@ class StudioBackendTests(unittest.TestCase):
             metadata = json.loads((root / ".studio" / "project.json").read_text())
             self.assertEqual("standard_music_video", metadata["project_type"])
             self.assertEqual("My Cool Video", metadata["display_name"])
+            self.assertFalse(project["silent_mode"])
+
+    def test_create_project_persists_silent_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            project = store.create_project(
+                ProjectCreateRequest(
+                    project_type="standard_music_video",
+                    name="Silent Video",
+                    silent_mode=True,
+                )
+            )
+
+            root = Path(temp_dir) / "silent-video"
+            config = json.loads((root / "config.json").read_text())
+            metadata = json.loads((root / ".studio" / "project.json").read_text())
+            self.assertTrue(config["silent_mode"])
+            self.assertTrue(metadata["silent_mode"])
+            self.assertTrue(project["silent_mode"])
 
     def test_create_full_auto_project_writes_inputs_and_rejects_duplicate_slug(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -213,6 +233,34 @@ class StudioBackendTests(unittest.TestCase):
                     "demo",
                     ArtifactRequest(path="config.json", data={"project_name": "Demo", "input_audio": "input/song.mp3", "subject_mode": "group"}),
                 )
+
+    def test_config_write_rejects_non_boolean_silent_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+
+            with self.assertRaises(ValueError):
+                store.write_artifact(
+                    "demo",
+                    ArtifactRequest(
+                        path="config.json",
+                        data={"project_name": "Demo", "input_audio": "input/song.mp3", "silent_mode": "true"},
+                    ),
+                )
+
+    def test_config_write_defaults_null_silent_mode_to_false(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+
+            store.write_artifact(
+                "demo",
+                ArtifactRequest(
+                    path="config.json",
+                    data={"project_name": "Demo", "input_audio": "input/song.mp3", "silent_mode": None},
+                ),
+            )
+
+            config = json.loads((Path(temp_dir) / "demo" / "config.json").read_text())
+            self.assertFalse(config["silent_mode"])
 
     def test_patch_render_plan_updates_selected_scene_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -460,6 +508,23 @@ class StudioBackendTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual([("neon-wolves", "A cyberpunk chase", "dark synthwave")], calls)
+
+    def test_api_create_accepts_and_validates_silent_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            client = TestClient(create_app(temp_dir))
+
+            created = client.post(
+                "/api/projects",
+                json={"project_type": "standard_music_video", "name": "Silent Video", "silent_mode": True},
+            )
+            invalid = client.post(
+                "/api/projects",
+                json={"project_type": "standard_music_video", "name": "Bad Silent", "silent_mode": "true"},
+            )
+
+            self.assertEqual(200, created.status_code, created.text)
+            self.assertTrue(created.json()["silent_mode"])
+            self.assertEqual(400, invalid.status_code)
 
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}

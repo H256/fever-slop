@@ -14,6 +14,17 @@ from feverslop.path_utils import coerce_local_path
 console = Console()
 
 
+def parse_optional_bool(value: str | None) -> bool:
+    if value is None:
+        return True
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate a full FeverSlop project from an idea and style.")
     parser.add_argument("--idea", required=True)
@@ -30,6 +41,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keyscale", default=None)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--run-video-pipeline", action="store_true")
+    parser.add_argument(
+        "--silent-mode",
+        nargs="?",
+        const=True,
+        default=False,
+        type=parse_optional_bool,
+        help="Disable singing, lip-sync, and vocal performance prompts while preserving emotional acting.",
+    )
     add_runner_options(parser)
     return parser
 
@@ -48,6 +67,7 @@ def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
         bpm=args.bpm,
         keyscale=args.keyscale,
         seed=int(args.seed),
+        silent_mode=bool(args.silent_mode),
         run_video_pipeline=bool(args.run_video_pipeline),
         runner_options=runner_options_from_args(args),
     )

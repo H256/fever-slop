@@ -3,6 +3,7 @@ export type PathPart = string | number;
 export const DEFAULT_CONFIG = {
   project_name: "",
   input_audio: "",
+  silent_mode: false,
   lyrics: "",
   video: {
     fps: 24,
@@ -135,6 +136,7 @@ export function pruneConfigForSave(config: Record<string, unknown>): Record<stri
   const keepPaths = new Set([
     "project_name",
     "input_audio",
+    "silent_mode",
     "video.fps",
     "video.width",
     "video.height",

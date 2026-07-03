@@ -10,6 +10,8 @@ def validate_project_config(data: Any) -> None:
         raise ValueError("project_name is required")
     if not str(data.get("input_audio") or "").strip():
         raise ValueError("input_audio is required")
+    if data.get("silent_mode") is not None and not isinstance(data["silent_mode"], bool):
+        raise ValueError("silent_mode must be a boolean")
     subject_mode = str(data.get("subject_mode", "multi") or "multi").strip().lower()
     if subject_mode not in {"single", "multi"}:
         raise ValueError("subject_mode must be 'single' or 'multi'")

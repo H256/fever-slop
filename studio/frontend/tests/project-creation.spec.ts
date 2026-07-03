@@ -14,7 +14,7 @@ test("creates a standard project and opens the config form", async ({ page }) =>
   await page.route("**/api/projects", async (route) => {
     if (route.request().method() === "POST") {
       const body = await route.request().postDataJSON();
-      expect(body).toEqual({ project_type: "standard_music_video", name: "My Cool Video" });
+      expect(body).toEqual({ project_type: "standard_music_video", name: "My Cool Video", silent_mode: true });
       await route.fulfill({
         json: {
           id: "my-cool-video",
@@ -68,6 +68,7 @@ test("creates a standard project and opens the config form", async ({ page }) =>
   await page.getByRole("button", { name: /create project/i }).click();
   await page.getByRole("button", { name: /standard/i }).click();
   await page.getByLabel("Project name").fill("My Cool Video");
+  await page.getByRole("switch", { name: /silent mode/i }).click();
   await expect(page.getByText("my-cool-video")).toBeVisible();
   await page.getByRole("button", { name: /create and configure/i }).click();
 
@@ -120,7 +121,8 @@ test("creates a full-auto project and starts its pipeline", async ({ page }) => 
         width: 1280,
         height: 704,
         fps: 24,
-        pipeline_mode: "msr"
+        pipeline_mode: "msr",
+        silent_mode: true
       });
       await route.fulfill({
         json: {
@@ -194,6 +196,7 @@ test("creates a full-auto project and starts its pipeline", async ({ page }) => 
   await page.getByLabel("Song style").fill("dark synthwave with cinematic drums");
   await page.getByLabel("Desired video duration").fill("150");
   await page.getByLabel("Pipeline mode").selectOption("msr");
+  await page.getByRole("switch", { name: /silent mode/i }).click();
   await page.getByRole("button", { name: /start full-auto pipeline/i }).click();
 
   await expect(page).toHaveURL(/\/projects\/neon-wolves\/pipeline/);

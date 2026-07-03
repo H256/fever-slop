@@ -24,7 +24,8 @@ const form = reactive({
   width: 1280,
   height: 704,
   fps: 24 as 16 | 24 | 50,
-  pipelineMode: "msr" as "classic" | "msr"
+  pipelineMode: "msr" as "classic" | "msr",
+  silentMode: false
 });
 
 const badgeLabels: Record<string, string> = {
@@ -77,6 +78,7 @@ function cancelCreate() {
   form.height = 704;
   form.fps = 24;
   form.pipelineMode = "msr";
+  form.silentMode = false;
 }
 
 async function createProject(startFullAuto = false) {
@@ -86,7 +88,8 @@ async function createProject(startFullAuto = false) {
   try {
     const payload: ProjectCreatePayload = {
       project_type: selectedKind.value,
-      name: form.name.trim()
+      name: form.name.trim(),
+      silent_mode: Boolean(form.silentMode)
     };
     if (selectedKind.value === "full_auto") {
       payload.idea = form.idea.trim();
@@ -146,6 +149,16 @@ async function createProject(startFullAuto = false) {
           <input v-model="form.name" type="text" autocomplete="off" />
         </label>
         <p class="project-folder slug-preview"><Folder :size="15" /> {{ slug || "project-folder" }}</p>
+        <fieldset class="form-block compact-settings-block">
+          <legend>Performance</legend>
+          <label class="switch-row">
+            <input v-model="form.silentMode" type="checkbox" role="switch" aria-label="Silent Mode" />
+            <span>
+              <span class="field-title">Silent Mode</span>
+              <span class="field-help">Disables singing and lip-sync prompts while preserving emotional acting. Ideal for instrumental music videos.</span>
+            </span>
+          </label>
+        </fieldset>
         <template v-if="selectedKind === 'full_auto'">
           <label>
             <span>Idea</span>

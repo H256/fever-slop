@@ -161,7 +161,10 @@ Rules for locations:
         )
 
         response = self.llm.complete_prompt(
-            system_prompt=build_concept_mapper_system_prompt(batch=False),
+            system_prompt=build_concept_mapper_system_prompt(
+                batch=False,
+                silent_mode=bool((global_context or {}).get("silent_mode", False)),
+            ),
             prompt=prompt,
         )
 
@@ -188,7 +191,11 @@ Rules for locations:
                 concept_text = str(concept)
 
             camera_motion = self.llm.complete_prompt(
-                system_prompt=build_detail_system_prompt("Camera Motion", segment_type=segment_type),
+                system_prompt=build_detail_system_prompt(
+                    "Camera Motion",
+                    segment_type=segment_type,
+                    silent_mode=bool((global_context or {}).get("silent_mode", False)),
+                ),
                 prompt=json.dumps(
                     {
                         "scene_concept": concept_text,
@@ -200,7 +207,11 @@ Rules for locations:
             ).strip()
 
             character_motion = self.llm.complete_prompt(
-                system_prompt=build_detail_system_prompt("Character Motion", segment_type=segment_type),
+                system_prompt=build_detail_system_prompt(
+                    "Character Motion",
+                    segment_type=segment_type,
+                    silent_mode=bool((global_context or {}).get("silent_mode", False)),
+                ),
                 prompt=json.dumps(
                     {
                         "scene_concept": concept_text,
@@ -265,7 +276,10 @@ Rules for locations:
             )
 
             final_prompt = self.llm.complete_prompt(
-                system_prompt=build_i2v_system_prompt(str(segment.get("type", ""))),
+                system_prompt=build_i2v_system_prompt(
+                    str(segment.get("type", "")),
+                    silent_mode=bool(global_context.get("silent_mode", False)),
+                ),
                 prompt=prompt_payload,
             ).strip()
 

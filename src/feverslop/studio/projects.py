@@ -29,6 +29,7 @@ class RenderPlanPatch:
 class ProjectCreateRequest:
     project_type: str
     name: str
+    silent_mode: bool = False
     idea: str = ""
     song_style: str = ""
     duration_seconds: float = 120.0
@@ -107,6 +108,7 @@ class ProjectStore:
             "name": name,
             "path": root.as_posix(),
             "project_type": metadata.get("project_type", "standard_music_video"),
+            "silent_mode": self._silent_mode(config, metadata),
             "metadata": metadata,
             "status": {
                 "config": "present" if config_path.exists() else "missing",
@@ -137,13 +139,16 @@ class ProjectStore:
 
     def write_artifact(self, project_id: str, request: ArtifactRequest) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, request.path)
+        data = request.data
         if artifact_path.name == "config.json":
             from feverslop.studio.project_validation import validate_project_config
 
-            validate_project_config(request.data)
+            validate_project_config(data)
+            if isinstance(data, dict) and data.get("silent_mode") is None:
+                data = {**data, "silent_mode": False}
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(json.dumps(request.data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        return {"path": request.path, "data": request.data}
+        artifact_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return {"path": request.path, "data": data}
 
     def write_media_data_url(self, project_id: str, path: str, data_url: str) -> dict[str, str]:
         return self.media_store.write_media_data_url(project_id, path, data_url)
@@ -230,6 +235,14 @@ class ProjectStore:
 
     def record_pipeline_run(self, project_id: str, *, action: str, stages: list[str], status: str) -> dict[str, Any]:
         return self.pipeline_state_store.record_pipeline_run(project_id, action=action, stages=stages, status=status)
+
+    @staticmethod
+    def _silent_mode(config: Any, metadata: Any) -> bool:
+        if isinstance(config, dict) and isinstance(config.get("silent_mode", False), bool):
+            return bool(config.get("silent_mode", False))
+        if isinstance(metadata, dict) and isinstance(metadata.get("silent_mode", False), bool):
+            return bool(metadata.get("silent_mode", False))
+        return False
 
     @staticmethod
     def _read_json_file(path: Path, *, default: Any) -> Any:

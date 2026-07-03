@@ -70,6 +70,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "--skip-final-concat",
                 "--diagnostic-original-audio-mux",
                 "--no-original-audio-mux",
+                "--silent-mode",
             ]
         )
 
@@ -110,6 +111,21 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertTrue(args.skip_final_concat)
         self.assertTrue(args.diagnostic_original_audio_mux)
         self.assertTrue(args.no_original_audio_mux)
+        self.assertTrue(args.silent_mode)
+
+    def test_parser_accepts_explicit_silent_mode_false(self):
+        args = full_auto.build_arg_parser().parse_args(
+            [
+                "--idea",
+                "friendship",
+                "--style",
+                "bright pop",
+                "--silent-mode",
+                "false",
+            ]
+        )
+
+        self.assertFalse(args.silent_mode)
 
     def test_request_from_args_maps_runner_options(self):
         args = full_auto.build_arg_parser().parse_args(
@@ -145,6 +161,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "0.7",
                 "--no-lora-split-enabled",
                 "--skip-ltx",
+                "--silent-mode",
             ]
         )
 
@@ -155,6 +172,7 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual(576, request.height)
         self.assertEqual(24, request.fps)
         self.assertTrue(request.run_video_pipeline)
+        self.assertTrue(request.silent_mode)
         self.assertEqual(
             {
                 "app_config": "app_config.json",

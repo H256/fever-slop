@@ -15,10 +15,12 @@ export interface ProjectSummary {
   name: string;
   path: string;
   project_type?: "standard_music_video" | "full_auto";
+  silent_mode?: boolean;
   metadata?: {
     project_type?: "standard_music_video" | "full_auto";
     display_name?: string;
     slug?: string;
+    silent_mode?: boolean;
     full_auto?: {
       idea?: string;
       song_style?: string;
@@ -40,6 +42,7 @@ export interface ProjectSummary {
 export interface ProjectCreatePayload {
   project_type: "standard_music_video" | "full_auto";
   name: string;
+  silent_mode?: boolean;
   idea?: string;
   song_style?: string;
   duration_seconds?: number;

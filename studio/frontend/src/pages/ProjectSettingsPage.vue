@@ -42,7 +42,7 @@ const dirty = computed(() => Boolean(config.value && JSON.stringify(config.value
 const fields = computed(() =>
   config.value
     ? collectObjectFields(config.value, {
-        excludeRootKeys: [...Object.keys(ARRAY_TEMPLATES), "input_audio"],
+        excludeRootKeys: [...Object.keys(ARRAY_TEMPLATES), "input_audio", "silent_mode"],
         helpForField: helpForConfigField,
         primitiveArrayMode: "expand"
       })
@@ -123,6 +123,7 @@ function validateConfig(value: Record<string, unknown> | null, projectSummary: P
   const projectType = projectSummary?.project_type ?? projectSummary?.metadata?.project_type ?? "standard_music_video";
   if (!String(value.project_name ?? "").trim()) errors.push("Project name is required.");
   if (projectType !== "full_auto" && !String(value.input_audio ?? "").trim()) errors.push("Input audio is required.");
+  if (typeof (value.silent_mode ?? false) !== "boolean") errors.push("Silent Mode must be true or false.");
   if (!["single", "multi"].includes(String(value.subject_mode ?? "multi"))) errors.push("Subject mode must be single or multi.");
   const maxSceneActors = Number(value.max_scene_actors ?? 4);
   if (!Number.isFinite(maxSceneActors) || maxSceneActors < 1 || maxSceneActors > 4) errors.push("Max scene actors must be between 1 and 4.");
@@ -138,6 +139,11 @@ function updateField(field: ObjectFormField, event: Event) {
 function updateInputAudio(event: Event) {
   const target = event.target as HTMLInputElement;
   if (config.value) config.value.input_audio = target.value;
+}
+
+function updateSilentMode(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (config.value) config.value.silent_mode = target.checked;
 }
 
 async function uploadAudio(event: Event) {
@@ -286,6 +292,29 @@ function helpForConfigField(path: PathPart[]): string {
           </label>
           <p v-if="audioPath" class="relative-path-display"><strong>Project path:</strong> <code>{{ audioPath }}</code></p>
           <p v-if="uploadError" class="error-text">{{ uploadError }}</p>
+        </section>
+
+        <section class="form-block" aria-labelledby="generation-preferences-title">
+          <div class="section-heading">
+            <div>
+              <h2 id="generation-preferences-title">Generation Preferences</h2>
+              <p>Project-level prompt behavior used by future generation runs.</p>
+            </div>
+          </div>
+          <label class="switch-row">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="Silent Mode"
+              :checked="Boolean(config.silent_mode)"
+              :disabled="saving"
+              @change="updateSilentMode"
+            />
+            <span>
+              <span class="field-title">Silent Mode</span>
+              <span class="field-help">Disables singing and lip-sync prompts while preserving emotional acting. Ideal for instrumental music videos.</span>
+            </span>
+          </label>
         </section>
 
         <fieldset v-for="group in arrayGroups" :key="group.key" class="form-block array-form-block">
