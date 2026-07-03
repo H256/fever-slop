@@ -36,6 +36,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="msr",
         help="msr renders direct 4-panel actor sheets and hero location references; full renders hero plus edit views and sheets.",
     )
+    parser.add_argument("--only-kind", choices=["actor", "location"], default=None)
+    parser.add_argument("--only-id", default=None)
     return parser
 
 
@@ -130,6 +132,12 @@ def run(args: argparse.Namespace) -> list[Path]:
         reference_image_title=args.reference_image_title,
     )
     subjects, locations = load_reference_subjects(args.project_config)
+    if args.only_kind == "actor":
+        subjects = [subject for subject in subjects if subject.id == args.only_id]
+        locations = []
+    elif args.only_kind == "location":
+        subjects = []
+        locations = [location for location in locations if location.id == args.only_id]
     if not subjects and not locations:
         raise ValueError(
             "No reference actors or locations found. Run the prompt/render-plan step first "

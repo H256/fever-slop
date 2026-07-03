@@ -5,6 +5,7 @@ from feverslop.composition import pipeline_runner as _pipeline_runner
 
 PipelineRunContext = _pipeline_runner.PipelineRunContext
 PipelineRunResult = _pipeline_runner.PipelineRunResult
+PipelineStage = _pipeline_runner.PipelineStage
 RenderProgressReporter = _pipeline_runner.RenderProgressReporter
 build_arg_parser = _pipeline_runner.build_arg_parser
 build_run_context = _pipeline_runner.build_run_context

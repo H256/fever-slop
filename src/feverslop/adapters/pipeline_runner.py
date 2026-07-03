@@ -13,5 +13,7 @@ class RunPipelineAdapter:
 
     def run(self, *, project_config_path: Path, options: dict[str, Any]) -> Path | None:
         argv = build_runner_argv(project_config_path, options)
+        for stage in options.get("stages") or []:
+            argv.extend(["--stage", str(stage)])
         result = self._run_pipeline(self._build_arg_parser().parse_args(argv))
         return result.final_video_path

@@ -1,363 +1,137 @@
-![<img height="480" src="./feverslop_logo.png" width="480"/>](./feverslop_logo.png)
+# FeverSlop
 
-# FeverSlop Music Video Pipeline
+FeverSlop is a local music-video generation pipeline and Studio UI. It turns an audio track, lyrics, and visual direction into project artifacts, render plans, ComfyUI image/video jobs, reviewable clips, and a final muxed video.
 
-FeverSlop turns a song into a beat- and vocal-aware music-video render plan, then renders storyboard frames, LTX image-to-video clips, and a final video muxed with the original full-song audio.
+The repository contains two operator surfaces:
 
-The current default LTX path is the non-relay `single_prompt` mode. PromptRelay remains available for workflows with a correctly wired `#PROMPT_RELAY` node, and `auto` mode can choose between relay and single-prompt rendering per scene when both workflows are configured.
+- **CLI pipeline**: `run_pipeline.py` and `full_auto.py`.
+- **FeverSlop Studio**: FastAPI backend plus Vue frontend for project creation, config editing, pipeline jobs, logs, references, review, and final video preview/download.
 
-Full project setup, config keys, all runner parameters, steering examples, LoRA behavior, and debugging notes live in:
-
-```text
-docs/project_workflow.md
-```
-
-## Requirements
-
-- Python 3.12
-- `uv`
-- FFmpeg in `PATH`
-- ComfyUI with the required API workflows and models
-- an OpenAI-compatible LLM endpoint
-- Demucs and Whisper dependencies from the Python environment
-- for Full-Auto: an ACE-Step 1.5 ComfyUI workflow at `workflows/audio_song.json`
-
-Install dependencies:
-
-```powershell
-uv sync
-```
+Core Python packages live under `src/feverslop`. Composition code such as
+`feverslop.composition.generate_render_plan` is kept separate from adapters
+such as `feverslop.adapters.comfyui_video_backend`.
 
 ## Quick Start
 
-For an existing project that already has `config.json` and an input audio file:
+Install Python dependencies from the repository root:
 
-```powershell
-uv run python run_pipeline.py ./projects/my_song
+```bash
+uv sync
 ```
 
-Typical project layout:
+Install frontend dependencies:
 
-```text
-projects/my_song/
-|-- config.json
-|-- input/
-|   `-- my_song.mp3
-`-- output/
-   |-- stems/
-   |-- timeline/
-   |-- prompts/
-   `-- render/
-      |-- render_plan_my_song.json
-      |-- storyboard/
-      `-- ltx_single_prompt/
+```bash
+cd studio/frontend
+bun install
 ```
 
-The final muxed video is normally written under:
+Start Studio backend:
+
+```bash
+uv run python -m feverslop.studio.server
+```
+
+Start Studio frontend in another terminal:
+
+```bash
+cd studio/frontend
+bun run dev
+```
+
+Open:
 
 ```text
-projects/my_song/output/render/ltx_single_prompt/<project_name>.mp4
+http://127.0.0.1:5173
+```
+
+The Vite dev server proxies `/api` to the FastAPI backend on `http://127.0.0.1:8765`.
+
+## Basic Workflows
+
+### Standard Music Video Project
+
+1. Open Studio.
+2. Click **Create Project**.
+3. Choose **Standard - Music Video Project**.
+4. Enter a project name. Studio slugifies it into the project folder name under `projects/`.
+5. Open **Project Settings** and fill `config.json` fields, especially `input_audio`.
+6. Choose `video_pipeline`:
+   - `ltx_msr`: MSR/reference-guided mode.
+   - `ltx_i2v`: classic storyboard/start-frame mode.
+7. Open **Pipeline**, start a job, and monitor progress/logs.
+8. Open **Review** or **Final Video** to inspect outputs.
+
+CLI equivalent for an existing project:
+
+```bash
+uv run python run_pipeline.py ./projects/my-song --skip-tests
 ```
 
 ## Full-Auto
 
-`full_auto.py` creates a complete FeverSlop project from an idea and rough musical style. It generates a structured ACE-Step song brief, lyrics, an MP3 via `workflows/audio_song.json`, `config.json`, and optionally starts the normal video pipeline.
+Full-Auto creates a project from a short idea and song style, renders ACE-Step audio through ComfyUI, writes `config.json`, and can immediately run the video pipeline.
 
-```powershell
-uv run python full_auto.py `
-  --idea "friendship and joy in a bright city" `
-  --style "upbeat contemporary pop, warm, bright, catchy, male vocal" `
-  --project-name joy_demo `
-  --duration-seconds 120 `
-  --width 1280 `
-  --height 704 `
-  --language en `
-  --seed 42
-```
+Studio asks for:
 
-Generated files:
+- project name
+- idea
+- song style
+- desired video duration
+- width and height, default `1280 x 704`
+- FPS, default `24`, allowed `16`, `24`, `50`
+- pipeline mode, **MSR** or **Classic**
 
-```text
-projects/joy_demo/
-|-- config.json
-|-- full_auto_song_spec.json
-|-- lyrics.txt
-`-- input/
-    `-- joy_demo.mp3
-```
+CLI example:
 
-To immediately run a smoke video render after the song/project is created:
-
-```powershell
-uv run python full_auto.py `
-  --idea "friendship and joy in a bright city" `
-  --style "upbeat contemporary pop, warm, bright, catchy, male vocal" `
-  --project-name joy_demo `
-  --duration-seconds 120 `
-  --width 1280 `
-  --height 704 `
-  --language en `
-  --seed 42 `
-  --run-video-pipeline `
-  --skip-tests `
-  --smoke-only `
-  --smoke-scene 1 `
-  --rolling-frame-profile safe
-```
-
-Full-Auto accepts the runner override surface from `run_pipeline.py`, including workflow paths, `--render-mode`, single-prompt node settings, LoRA overrides, smoke flags, skip flags, concat flags, and `--rolling-frame-profile`.
-
-Example with storyboard and video LoRA strength overrides:
-
-```powershell
-uv run python full_auto.py `
-  --idea "friendship and joy in a bright city" `
-  --style "upbeat contemporary pop, warm, bright, catchy, male vocal" `
-  --project-name joy_demo `
-  --run-video-pipeline `
-  --storyboard-lora-strength 0.4 `
-  --video-lora-1-strength-model 0.7 `
-  --video-lora-1-strength-clip 0.6 `
-  --lora-split-enabled `
-  --rolling-frame-profile safe `
+```bash
+uv run python full_auto.py \
+  --idea "A cyberpunk chase through a futuristic city" \
+  --style "dark synthwave with cinematic drums" \
+  --project-name neon-wolves \
+  --duration-seconds 120 \
+  --width 1280 \
+  --height 704 \
+  --fps 24 \
+  --run-video-pipeline \
+  --video-pipeline ltx_msr \
   --skip-tests
 ```
 
-`--width` and `--height` write `video.width` and `video.height` into the generated project config, so prompt generation, storyboard rendering, and video rendering use that resolution.
+## Requirements
 
-## Full-Auto ACE-Step Workflow Contract
+Most useful runs require:
 
-`workflows/audio_song.json` must contain these API workflow nodes by `_meta.title`:
+- FFmpeg in `PATH`.
+- ComfyUI running and reachable from `app_config.json`.
+- Required ComfyUI custom nodes/models for the selected workflows.
+- `workflows/audio_song.json` with ACE-Step nodes for Full-Auto audio generation.
+- An OpenAI-compatible LLM endpoint configured in `app_config.json`.
 
-| Node title | Class | Patched inputs |
-| --- | --- | --- |
-| `ACE_STEP` | `TextEncodeAceStepAudio1.5` | `tags`, `lyrics`, `bpm`, `duration`, `language`, `keyscale`, `timesignature`, `seed` |
-| `KSampler` | `KSampler` | `seed` |
-| `Empty Ace Step 1.5 Latent Audio` | `EmptyAceStep1.5LatentAudio` | `seconds` |
-| `SAVE` | `SaveAudioMP3` | `filename_prefix` |
+## Documentation
 
-`ACE_STEP.duration` and `Empty Ace Step 1.5 Latent Audio.seconds` are always patched together from `--duration-seconds`. `ACE_STEP.seed` and `KSampler.seed` are always patched together from `--seed`. Technical sampling values such as `steps`, `cfg`, `cfg_scale`, `temperature`, `top_p`, `top_k`, `min_p`, `sampler_name`, `scheduler`, and `denoise` stay owned by the workflow in v1.
+- [Setup](docs/setup.md): prerequisites, dependencies, ComfyUI/ACE-Step, local config.
+- [Running](docs/running.md): backend/frontend startup, ports, production build notes.
+- [Pipelines](docs/pipelines.md): standard, Full-Auto, MSR/classic, progress and logs.
+- [Projects](docs/projects.md): folder structure, `config.json`, Project Settings, artifacts.
+- [Examples](docs/examples.md): standard and Full-Auto workflows, API calls, troubleshooting.
+- [Project workflow deep reference](docs/project_workflow.md): detailed legacy CLI reference.
+- [ComfyUI model resolution](docs/comfyui_model_resolution.md): portable workflow model matching.
 
-## Configuration
+## Verification Commands
 
-Global infrastructure config lives at:
+Backend/tests:
 
-```text
-app_config.json
-```
-
-Example:
-
-```json
-{
-  "llm": {
-    "base_url": "http://localhost:8080/v1",
-    "model": "default",
-    "temperature": 0.7,
-    "max_tokens": 4096
-  },
-  "comfyui": {
-    "base_url": "http://127.0.0.1:8188",
-    "prompt_timeout_seconds": 1800,
-    "model_overrides": []
-  }
-}
-```
-
-Project config lives inside each project:
-
-```text
-projects/my_song/config.json
-```
-
-Minimal project config:
-
-```json
-{
-  "project_name": "my_song",
-  "input_audio": "input/my_song.mp3",
-  "lyrics": "",
-  "video": {
-    "fps": 24,
-    "width": 1280,
-    "height": 704
-  }
-}
-```
-
-Important project fields:
-
-- `input_audio`: audio path relative to `config.json`, or absolute.
-- `lyrics`: optional reference lyrics used to correct Whisper text while preserving detected timing.
-- `story_idea`, `style`, `subject`, `locations`: hard visual overrides for prompt generation.
-- `steering.*`: soft instructions injected into specific LLM stages.
-- `prompt_guidance.*`: reusable prompt vocabulary for scene, image, and video prompt generation.
-- `loras` and `lora_split_enabled`: project-level LTX LoRA defaults used by `render_ltx.py` and `run_pipeline.py`.
-
-## Runner Overview
-
-`run_pipeline.py` performs:
-
-1. optional unit tests
-2. main render-plan generation
-3. optional relay prompt compaction
-4. prompt anchor fixing
-5. storyboard rendering
-6. storyboard review page generation
-7. LTX rendering
-8. video-only concat
-9. original full-audio mux
-
-For `--video-pipeline ltx_msr`, the runner skips storyboard/startframe generation, renders actor and location MSR references, writes a `_refs.json` render plan, renders MSR clips, then runs the same final concat and original-audio mux.
-
-MSR workflows have an internal reference frame count, commonly 17 or 41. Keep the rolling preroll longer than that count; with the default 50-frame preroll, 17 is usually safe, 41 can be borderline, and larger values can make reference-sheet frames leak into the rendered clip. Actor references should use a neutral white or black background; location references should remain real background/environment images.
-
-Common runner commands:
-
-```powershell
-uv run python run_pipeline.py ./projects/my_song --smoke-only --smoke-scene 3
-```
-
-```powershell
-uv run python run_pipeline.py ./projects/my_song --no-skip-existing --rolling-frame-profile safe
-```
-
-```powershell
-uv run python run_pipeline.py --project-config ./projects/my_song/config.json --skip-tests
-```
-
-The runner's command-line values override project config values where supported. For LTX rendering, `render_ltx.py` can read scene-duration and LoRA defaults from `config.json`, while explicit CLI values still win.
-
-Run an MSR project end to end:
-
-```powershell
-uv run python run_pipeline.py ./projects/dwarfventure-msr `
-  --video-pipeline ltx_msr `
-  --skip-tests
-```
-
-Reuse existing MSR references after editing only the video workflow:
-
-```powershell
-uv run python run_pipeline.py ./projects/dwarfventure-msr `
-  --video-pipeline ltx_msr `
-  --skip-msr-reference-render `
-  --no-skip-existing `
-  --skip-tests
-```
-
-Render a fresh variant for one scene with a new seed:
-
-```powershell
-uv run python run_pipeline.py ./projects/dwarfventure-msr `
-  --video-pipeline ltx_msr `
-  --skip-msr-reference-render `
-  --randomize-seed `
-  --no-skip-existing `
-  --smoke-only `
-  --smoke-scene 4 `
-  --skip-tests
-```
-
-## Package Layout
-
-Root scripts are public CLIs or compatibility facades. New implementation code lives under `src/feverslop`.
-
-```text
-src/feverslop/
-|-- application/    use cases and pipeline services without concrete adapters
-|-- composition/    wiring for configs, use cases, and adapters
-|-- domain/         render-plan, LTX, postprocessing, and Full-Auto domain types
-|-- ports/          protocols and request types
-|-- adapters/       ComfyUI, local artifacts, LLM, FFmpeg, and runner adapters
-|-- pipeline/       render-plan and timeline builders
-|-- prompting/      prompt generation and prompt repair
-`-- tools/          importable tool implementations
-```
-
-Important composition roots:
-
-```text
-feverslop.composition.generate_render_plan
-feverslop.composition.render_storyboard
-feverslop.composition.render_video
-feverslop.composition.full_auto
-```
-
-The current production LTX render adapter is:
-
-```text
-feverslop.adapters.comfyui_video_backend
-```
-
-The root files `ltx_video_renderer.py`, `storyboard_renderer.py`, and `workflow_patcher.py` are compatibility facades for older imports. See:
-
-```text
-docs/architecture_compatibility.md
-```
-
-## Useful Manual Commands
-
-Generate the main render plan only:
-
-```powershell
-uv run python main.py `
-  --project ./projects/my_song/config.json `
-  --app-config ./app_config.json `
-  --concept-batch-size 10
-```
-
-Render storyboard frames:
-
-```powershell
-uv run python render_storyboard.py `
-  --app-config ./app_config.json `
-  --render-plan ./projects/my_song/output/render/render_plan_my_song.json `
-  --workflow ./workflows/image_t2i_startframe_v1.json `
-  --output-dir ./projects/my_song/output/render/storyboard
-```
-
-Render one LTX smoke scene:
-
-```powershell
-uv run python render_ltx.py `
-  --project-config ./projects/my_song/config.json `
-  --app-config ./app_config.json `
-  --render-plan ./projects/my_song/output/render/render_plan_my_song.json `
-  --workflow ./workflows/video_ltxv_i2v_v1.json `
-  --render-mode single_prompt `
-  --audio ./projects/my_song/input/my_song.mp3 `
-  --storyboard-dir ./projects/my_song/output/render/storyboard `
-  --output-dir ./projects/my_song/output/render/ltx_single_prompt_smoke `
-  --scenes 1 `
-  --no-skip-existing `
-  --debug-workflows-dir ./projects/my_song/output/render/ltx_single_prompt_debug
-```
-
-Create a project asset archive:
-
-```powershell
-uv run python -m tools.project_asset_archive --project ./projects/my_song/config.json
-```
-
-## Debugging
-
-- If LLM JSON is truncated, increase `llm.max_tokens` or use `--concept-batch-size 5` or `10`.
-- If LTX ignores the start frame, make sure storyboard and LTX use the same final render plan, run the prompt anchor fixer, and inspect the saved debug workflow JSON.
-- If vocals are detected incorrectly, inspect `output/timeline/timeline_<song>.json` and tune `vocal_detection` in `config.json`.
-- If clips are too short or too long, regenerate the render plan after adjusting `scene_generation.min_duration` and `max_duration`; do not repair only at LTX time.
-- If ComfyUI rejects a workflow, check the exact missing `_meta.title` anchor and inspect the debug workflow.
-
-## Verification
-
-Run the full test suite:
-
-```powershell
+```bash
+uv run ruff check .
 uv run python -m unittest discover -s tests
 ```
 
-Check tracked changes:
+Frontend:
 
-```powershell
-git status --short
+```bash
+cd studio/frontend
+bun test src
+bun run build
+bun run test:e2e
 ```

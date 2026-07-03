@@ -20,6 +20,8 @@ class FullAutoCliTests(unittest.TestCase):
                 "1024",
                 "--height",
                 "576",
+                "--fps",
+                "50",
                 "--language",
                 "en",
                 "--bpm",
@@ -77,6 +79,7 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual(90.5, args.duration_seconds)
         self.assertEqual(1024, args.width)
         self.assertEqual(576, args.height)
+        self.assertEqual(50, args.fps)
         self.assertEqual("en", args.language)
         self.assertEqual(123, args.bpm)
         self.assertEqual("D major", args.keyscale)
@@ -150,15 +153,16 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual(Path("projects_out"), request.projects_dir)
         self.assertEqual(1024, request.width)
         self.assertEqual(576, request.height)
+        self.assertEqual(24, request.fps)
         self.assertTrue(request.run_video_pipeline)
         self.assertEqual(
             {
                 "app_config": "app_config.json",
                 "concept_batch_size": 5,
                 "storyboard_workflow": "storyboard.json",
-                "reference_hero_workflow": "workflows\\image_t2i_startframe_krea_v1.json",
-                "reference_edit_workflow": "workflows\\image_edit_flux2_klein_1ref_v1.json",
-                "msr_workflow": "workflows\\video_ltxv_msr_1actor_1background_v1.json",
+                "reference_hero_workflow": str(Path("workflows") / "image_t2i_startframe_krea_v1.json"),
+                "reference_edit_workflow": str(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json"),
+                "msr_workflow": str(Path("workflows") / "video_ltxv_msr_1actor_1background_v1.json"),
                 "relay_workflow": "relay.json",
                 "single_prompt_workflow": "single.json",
                 "video_pipeline": "ltx_i2v",

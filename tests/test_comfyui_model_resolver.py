@@ -297,6 +297,33 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                 workflow_path=Path("workflows/test.json"),
             )
 
+    def test_missing_ltx_msr_nodes_include_setup_hint(self):
+        from feverslop.adapters.comfyui_model_resolver import (
+            ComfyUIModelResolutionError,
+            ComfyUIModelResolver,
+        )
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(object_info_for(values=["known.safetensors"]))
+        )
+
+        with self.assertRaisesRegex(
+            ComfyUIModelResolutionError,
+            r"LTXAddVideoICLoRAGuide.*LTXICLoRALoaderModelOnly.*ComfyUI-Licon-MSR.*LTX IC-LoRA",
+        ):
+            resolver.resolve_workflow_models(
+                {
+                    **workflow_with("known.safetensors", class_type="LTXAddVideoICLoRAGuide", title="#MSR_GUIDE"),
+                    **workflow_with(
+                        "known.safetensors",
+                        class_type="LTXICLoRALoaderModelOnly",
+                        node_id="59",
+                        title="#MSR_LORA",
+                    ),
+                },
+                workflow_path=Path("workflows/video_ltxv_msr_1actor_1background_v1.json"),
+            )
+
     def test_strict_override_applies_when_expected_value_matches(self):
         from feverslop.adapters.comfyui_model_resolver import (
             ComfyUIModelResolver,

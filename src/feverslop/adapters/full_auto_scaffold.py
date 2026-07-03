@@ -17,6 +17,8 @@ class LocalProjectScaffold:
         generated_song: GeneratedSong,
         width: int = 1280,
         height: int = 704,
+        fps: int = 24,
+        video_pipeline: str = "ltx_i2v",
     ) -> ProjectScaffoldResult:
         project_dir = Path(projects_dir) / project_slug
         input_dir = project_dir / "input"
@@ -50,10 +52,11 @@ class LocalProjectScaffold:
                     "input_audio": f"input/{audio_path.name}",
                     "lyrics": spec.lyrics,
                     "video": {
-                        "fps": 24,
+                        "fps": int(fps),
                         "width": int(width),
                         "height": int(height),
                     },
+                    "video_pipeline": video_pipeline,
                     "audio": {
                         "demucs_model": "htdemucs_ft",
                         "whisper_model": "large",

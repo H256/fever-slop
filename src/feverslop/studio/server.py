@@ -1,0 +1,404 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import time
+from pathlib import Path
+from typing import Any, Callable
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+
+from feverslop.studio.jobs import (
+    PIPELINE_ACTIONS,
+    JobRegistry,
+    build_pipeline_handler,
+    build_pipeline_options,
+    build_recut_scene_handler,
+    build_reference_rerender_handler,
+    run_with_stream_logging,
+)
+from feverslop.studio.logging import render_log_lines
+from feverslop.studio.projects import ArtifactRequest, ProjectCreateRequest, ProjectStore, RenderPlanPatch, StudioPathError
+
+
+class ArtifactPayload(BaseModel):
+    path: str
+    data: Any
+
+
+class MediaPayload(BaseModel):
+    path: str
+    data_url: str
+
+
+class RenderPlanPatchPayload(BaseModel):
+    path: str
+    scene: int
+    updates: dict[str, Any]
+
+
+class ProjectCreatePayload(BaseModel):
+    project_type: str
+    name: str
+    idea: str = ""
+    song_style: str = ""
+    duration_seconds: float = 120.0
+    width: int = 1280
+    height: int = 704
+    fps: int = 24
+    pipeline_mode: str = "classic"
+
+
+class JobPayload(BaseModel):
+    action: str
+    scenes: list[int] | None = None
+    pipeline_mode: str | None = None
+    thumbnails: list[dict[str, Any]] | None = None
+    reference_kind: str | None = None
+    reference_id: str | None = None
+    raw_clip: str | None = None
+    output_clip: str | None = None
+    raw_in_seconds: float | None = None
+    raw_out_seconds: float | None = None
+    exact: bool = False
+
+
+FullAutoHandlerFactory = Callable[..., Any]
+PipelineHandlerFactory = Callable[..., Any]
+
+
+def create_app(
+    projects_root: str | Path = "projects",
+    *,
+    full_auto_handler: FullAutoHandlerFactory | None = None,
+    pipeline_handler: PipelineHandlerFactory | None = None,
+) -> FastAPI:
+    app = FastAPI(title="FeverSlop Studio")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    store = ProjectStore(projects_root)
+    jobs = JobRegistry()
+
+    @app.get("/api/projects")
+    def list_projects():
+        return store.list_projects()
+
+    @app.post("/api/projects")
+    def create_project(payload: ProjectCreatePayload):
+        return _safe(
+            lambda: store.create_project(
+                ProjectCreateRequest(
+                    project_type=payload.project_type,
+                    name=payload.name,
+                    idea=payload.idea,
+                    song_style=payload.song_style,
+                    duration_seconds=payload.duration_seconds,
+                    width=payload.width,
+                    height=payload.height,
+                    fps=payload.fps,
+                    pipeline_mode=payload.pipeline_mode,
+                )
+            )
+        )
+
+    @app.get("/api/projects/{project_id}")
+    def get_project(project_id: str):
+        try:
+            return store.describe_project(project_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/artifacts")
+    def list_artifacts(project_id: str):
+        return _safe(lambda: store.list_artifacts(project_id))
+
+    @app.get("/api/projects/{project_id}/artifact")
+    def read_artifact(project_id: str, path: str):
+        return _safe(lambda: store.read_artifact(project_id, path))
+
+    @app.put("/api/projects/{project_id}/artifact")
+    def write_artifact(project_id: str, payload: ArtifactPayload):
+        return _safe(lambda: store.write_artifact(project_id, ArtifactRequest(path=payload.path, data=payload.data)))
+
+    @app.patch("/api/projects/{project_id}/render-plan")
+    def patch_render_plan(project_id: str, payload: RenderPlanPatchPayload):
+        return _safe(
+            lambda: store.patch_render_plan(
+                project_id,
+                RenderPlanPatch(path=payload.path, scene=payload.scene, updates=payload.updates),
+            )
+        )
+
+    @app.get("/api/projects/{project_id}/media")
+    def get_media(project_id: str, path: str):
+        return _safe(lambda: FileResponse(store.resolve_media_path(project_id, path)))
+
+    @app.put("/api/projects/{project_id}/media")
+    def write_media(project_id: str, payload: MediaPayload):
+        return _safe(lambda: store.write_media_data_url(project_id, payload.path, payload.data_url))
+
+    @app.post("/api/projects/{project_id}/upload-audio")
+    def upload_audio(project_id: str, file: UploadFile = File(...)):
+        return _safe(lambda: store.store_audio_upload(project_id, file.filename or "", file.content_type or "", file.file))
+
+    @app.get("/api/projects/{project_id}/thumbnail")
+    def get_thumbnail(project_id: str, path: str, at: float = 0.0):
+        def create():
+            return FileResponse(_thumbnail_path(store, project_id, path, at), media_type="image/jpeg")
+
+        return _safe(create)
+
+    @app.post("/api/projects/{project_id}/jobs")
+    def start_job(project_id: str, payload: JobPayload):
+        def create():
+            metadata = store.project_metadata(project_id)
+            if payload.action == "reference-rerender":
+                config_path = store.resolve_project_path(project_id, "config.json")
+                if payload.reference_kind not in {"actor", "location"} or not payload.reference_id:
+                    raise ValueError("reference-rerender requires reference_kind and reference_id")
+                handler = build_reference_rerender_handler(
+                    config_path,
+                    reference_kind=payload.reference_kind,
+                    reference_id=payload.reference_id,
+                )
+            elif payload.action == "recut-scene":
+                if (
+                    not payload.raw_clip
+                    or not payload.output_clip
+                    or payload.raw_in_seconds is None
+                    or payload.raw_out_seconds is None
+                ):
+                    raise ValueError("recut-scene requires raw_clip, output_clip, raw_in_seconds, and raw_out_seconds")
+                handler = build_recut_scene_handler(
+                    store.resolve_project_path(project_id, payload.raw_clip),
+                    store.resolve_project_path(project_id, payload.output_clip),
+                    raw_in_seconds=payload.raw_in_seconds,
+                    raw_out_seconds=payload.raw_out_seconds,
+                    exact=payload.exact,
+                )
+            elif payload.action == "thumbnail-prebuild":
+                requests = payload.thumbnails or []
+
+                def handler(log):
+                    count = 0
+                    for request in requests:
+                        path = str(request.get("path") or "")
+                        for second in request.get("times") or []:
+                            _thumbnail_path(store, project_id, path, float(second))
+                            count += 1
+                    log(f"Generated {count} thumbnails")
+                    return count
+
+            elif payload.action == "thumbnail-cleanup":
+                def handler(log):
+                    log("Clearing thumbnail cache")
+                    return store.clear_thumbnail_cache(project_id)
+
+            elif payload.action == "full-auto":
+                if metadata.get("project_type") != "full_auto":
+                    raise ValueError("full-auto jobs require a full_auto project")
+                factory = full_auto_handler or build_full_auto_handler
+                handler = factory(store=store, project_id=project_id, payload=metadata.get("full_auto") or {})
+
+            else:
+                config_path = store.resolve_project_path(project_id, "config.json")
+                factory = pipeline_handler or build_pipeline_handler
+                pipeline_mode = payload.pipeline_mode or _pipeline_mode_from_config(config_path)
+                handler = factory(config_path, payload.action, scenes=payload.scenes, pipeline_mode=pipeline_mode)
+                handler = _record_pipeline_state(store, project_id, payload.action, handler, scenes=payload.scenes, pipeline_mode=pipeline_mode)
+            return jobs.get(
+                jobs.start(
+                    project_id,
+                    payload.action,
+                    handler,
+                    project_type=str(metadata.get("project_type", "standard_music_video")),
+                    reject_if_project_active=payload.action in PIPELINE_ACTIONS,
+                )
+            )
+
+        return _safe(create)
+
+    @app.get("/api/jobs")
+    def list_jobs(project_id: str | None = None):
+        return jobs.list(project_id)
+
+    @app.get("/api/processes")
+    def list_processes(project_id: str | None = None):
+        return jobs.list(project_id)
+
+    @app.get("/api/jobs/{job_id}")
+    def get_job(job_id: str):
+        try:
+            return jobs.get(job_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"Job not found: {job_id}") from exc
+
+    @app.get("/api/jobs/{job_id}/logs")
+    def stream_job_logs(job_id: str):
+        def events():
+            offset = 0
+            while True:
+                try:
+                    job = jobs.get(job_id)
+                except KeyError:
+                    yield f"event: error\ndata: {json.dumps({'error': 'job not found'})}\n\n"
+                    return
+                logs = job.get("logs") or []
+                for line in logs[offset:]:
+                    yield f"data: {json.dumps({'line': line})}\n\n"
+                offset = len(logs)
+                if job.get("status") in {"succeeded", "failed"}:
+                    yield f"event: status\ndata: {json.dumps({'status': job.get('status')})}\n\n"
+                    return
+                time.sleep(1)
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    return app
+
+
+def _record_pipeline_state(
+    store: ProjectStore,
+    project_id: str,
+    action: str,
+    handler: Callable[[Callable[[str], None]], Any],
+    *,
+    scenes: list[int] | None = None,
+    pipeline_mode: str | None = None,
+):
+    if action not in PIPELINE_ACTIONS:
+        return handler
+
+    def run(log):
+        try:
+            result = handler(log)
+        except Exception:
+            store.record_pipeline_run(project_id, action=action, stages=_pipeline_state_stages(action, scenes=scenes, pipeline_mode=pipeline_mode), status="failed")
+            raise
+        store.record_pipeline_run(project_id, action=action, stages=_pipeline_state_stages(action, scenes=scenes, pipeline_mode=pipeline_mode), status="succeeded")
+        return result
+
+    return run
+
+
+def _pipeline_state_stages(action: str, *, scenes: list[int] | None = None, pipeline_mode: str | None = None) -> list[str]:
+    try:
+        options = build_pipeline_options(action, scenes=scenes, pipeline_mode=pipeline_mode)
+    except ValueError:
+        return [action]
+    stages = options.get("stages")
+    if isinstance(stages, list):
+        return [str(stage) for stage in stages]
+    return [action]
+
+
+class _StudioFullAutoConsole:
+    def __init__(self, log):
+        self.log = log
+
+    def print(self, *values, **_kwargs):
+        for line in render_log_lines(*values):
+            self.log(line)
+
+    def rule(self, title):
+        for line in render_log_lines(str(title)):
+            self.log(line)
+
+
+def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: dict[str, Any], use_case_factory: Callable[[Any], Any] | None = None):
+    def run(log):
+        from feverslop.application.full_auto import FullAutoRequest
+        from feverslop.composition.full_auto import build_full_auto_use_case
+
+        console = _StudioFullAutoConsole(log)
+        use_case = use_case_factory(console) if use_case_factory else build_full_auto_use_case(console=console)
+        pipeline_mode = str(payload.get("pipeline_mode") or "classic")
+        request = FullAutoRequest(
+            idea=str(payload.get("idea") or ""),
+            style=str(payload.get("song_style") or ""),
+            project_name=project_id,
+            projects_dir=store.projects_root,
+            duration_seconds=float(payload.get("duration_seconds") or 120.0),
+            width=int(payload.get("width") or 1280),
+            height=int(payload.get("height") or 704),
+            fps=int(payload.get("fps") or 24),
+            run_video_pipeline=True,
+            runner_options={"skip_tests": True, "video_pipeline": "ltx_msr" if pipeline_mode == "msr" else "ltx_i2v"},
+        )
+        return run_with_stream_logging(lambda: use_case.execute(request), log).project_config_path
+
+    return run
+
+
+def _safe(fn):
+    try:
+        return fn()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (StudioPathError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _pipeline_mode_from_config(config_path: Path) -> str | None:
+    if not config_path.exists():
+        return None
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    value = str(config.get("video_pipeline") or "")
+    if value == "ltx_msr":
+        return "msr"
+    if value == "ltx_i2v":
+        return "classic"
+    return None
+
+
+def _thumbnail_path(store: ProjectStore, project_id: str, path: str, at: float) -> Path:
+    video_path = store.resolve_video_path(project_id, path)
+    seconds = max(0.0, float(at))
+    key = hashlib.sha1(f"{path}:{seconds:.2f}".encode()).hexdigest()
+    thumbnail = store.thumbnail_cache_path(project_id, key)
+    if thumbnail.exists():
+        return thumbnail
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                f"{seconds:.3f}",
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "3",
+                str(thumbnail),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError("Could not generate thumbnail with ffmpeg") from exc
+    return thumbnail
+
+
+app = create_app()
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run("feverslop.studio.server:app", host="127.0.0.1", port=8765, reload=True)
+
+
+if __name__ == "__main__":
+    main()

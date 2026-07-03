@@ -24,6 +24,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration-seconds", type=float, default=120.0)
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=704)
+    parser.add_argument("--fps", type=int, choices=[16, 24, 50], default=24)
     parser.add_argument("--language", default="en")
     parser.add_argument("--bpm", type=int, default=None)
     parser.add_argument("--keyscale", default=None)
@@ -42,6 +43,7 @@ def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
         duration_seconds=float(args.duration_seconds),
         width=int(args.width),
         height=int(args.height),
+        fps=int(args.fps),
         language=args.language,
         bpm=args.bpm,
         keyscale=args.keyscale,

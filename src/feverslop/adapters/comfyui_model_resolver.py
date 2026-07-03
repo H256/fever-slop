@@ -21,6 +21,15 @@ class NoOpComfyUIModelResolver:
 
 
 class ComfyUIModelResolver:
+    missing_node_hints = {
+        "LiconMSR": "Install ComfyUI-Licon-MSR and restart ComfyUI.",
+        "LTXAddVideoICLoRAGuide": "Install ComfyUI-Licon-MSR with LTX IC-LoRA support and restart ComfyUI.",
+        "LTXICLoRALoaderModelOnly": (
+            "Install ComfyUI-Licon-MSR with the LTX IC-LoRA nodes, make the LTX-2.3 Licon MSR LoRA "
+            "available to ComfyUI, and restart ComfyUI."
+        ),
+    }
+
     model_input_markers = (
         "model",
         "ckpt",
@@ -144,10 +153,12 @@ class ComfyUIModelResolver:
             missing.append(f"node {node_id}: {class_type}{title_suffix}")
 
         if missing:
+            hints = self._missing_node_hints(missing)
+            hint_suffix = f" Required setup: {' '.join(hints)}" if hints else ""
             raise ComfyUIModelResolutionError(
                 f"ComfyUI workflow {workflow_path} uses node types that are not available on the "
                 f"configured server. Install the required custom nodes or use a ComfyUI server/workflow "
-                f"with matching custom-node support. Missing node types: {'; '.join(missing)}"
+                f"with matching custom-node support. Missing node types: {'; '.join(missing)}.{hint_suffix}"
             )
 
     def _model_dropdowns(self) -> dict[str, dict[str, list[str]]]:
@@ -303,6 +314,18 @@ class ComfyUIModelResolver:
     @staticmethod
     def _basename(value: str) -> str:
         return value.rstrip("/").split("/")[-1]
+
+    @classmethod
+    def _missing_node_hints(cls, missing: list[str]) -> list[str]:
+        hints: list[str] = []
+        seen: set[str] = set()
+        for item in missing:
+            class_type = item.split(":", 1)[-1].strip().split(" ", 1)[0]
+            hint = cls.missing_node_hints.get(class_type)
+            if hint and hint not in seen:
+                hints.append(hint)
+                seen.add(hint)
+        return hints
 
     @staticmethod
     def _split_error_messages(message: str) -> list[str]:
