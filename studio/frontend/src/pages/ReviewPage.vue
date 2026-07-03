@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { Clapperboard, Play, Redo2, RotateCcw, Save, Scissors, Sparkles, Square, Trash2, Undo2, ZoomIn } from "lucide-vue-next";
+import { Scissors } from "lucide-vue-next";
 import { useRoute } from "vue-router";
 import { api, mediaUrl, thumbnailUrl } from "../api";
 import { useStudioStore } from "../stores/studio";
 import ReviewConfirmDialogs from "../components/ReviewConfirmDialogs.vue";
+import ReviewToolbar from "../components/ReviewToolbar.vue";
+import ReviewTransport from "../components/ReviewTransport.vue";
 import { applyBoundaryTrim, type ClipEdit } from "../lib/timelineTrim";
 import { buildClipEdit, buildTimelineItems, derivedFinalClip, type RenderManifestEntry, type TimelineItem } from "../composables/reviewTimeline";
 import { useReviewTimelineEdits } from "../composables/reviewTimelineEdits";
@@ -347,27 +349,23 @@ async function drawWaveform() {
 
 <template>
   <section class="page">
-    <header class="page-header toolbar-header">
-      <div>
-        <h1>Review</h1>
-        <p>Timeline preview from the active render plan and available raw/final scene clips.</p>
-      </div>
-      <div class="button-row">
-        <button class="icon-button" :disabled="undoStack.length === 0" title="Undo" @click="undoTimeline"><Undo2 :size="18" /></button>
-        <button class="icon-button" :disabled="redoStack.length === 0" title="Redo" @click="redoTimeline"><Redo2 :size="18" /></button>
-        <button class="icon-button" title="Prebuild thumbnails" @click="prebuildThumbnails"><Sparkles :size="18" /></button>
-        <button class="icon-button" title="Clear thumbnail cache" @click="cleanupThumbnails"><Trash2 :size="18" /></button>
-        <label class="zoom-control" title="Timeline zoom">
-          <ZoomIn :size="16" />
-          <input v-model.number="timelineZoom" type="range" min="1" max="6" step="0.25" @input="drawWaveform" />
-        </label>
-        <button class="button secondary" :disabled="staleScenes.length === 0" @click="rebuildStaleScenes">
-          <RotateCcw :size="18" /> Rebuild stale {{ staleScenes.length || "" }}
-        </button>
-        <button class="button secondary" :disabled="!timelineDirty" @click="pendingTimelineSave = true"><Save :size="18" /> Save timeline</button>
-        <button class="button" :disabled="!selectedScene" @click="pendingRetake = true"><Clapperboard :size="18" /> Render retake</button>
-      </div>
-    </header>
+    <ReviewToolbar
+      :redo-count="redoStack.length"
+      :selected-scene="selectedScene"
+      :stale-count="staleScenes.length"
+      :timeline-dirty="timelineDirty"
+      :timeline-zoom="timelineZoom"
+      :undo-count="undoStack.length"
+      @cleanup-thumbnails="cleanupThumbnails"
+      @prebuild-thumbnails="prebuildThumbnails"
+      @rebuild-stale-scenes="rebuildStaleScenes"
+      @render-retake="pendingRetake = true"
+      @save-timeline="pendingTimelineSave = true"
+      @undo-timeline="undoTimeline"
+      @redo-timeline="redoTimeline"
+      @update-timeline-zoom="timelineZoom = $event"
+      @zoom-input="drawWaveform"
+    />
 
     <section class="timeline-editor">
       <div class="timeline-preview panel">
@@ -422,17 +420,16 @@ async function drawWaveform() {
         </aside>
       </div>
 
-      <div class="panel timeline-transport">
-        <div class="button-row">
-          <button class="button secondary" :disabled="playableItems.length === 0" @click="playTimeline"><Play :size="18" /> Play timeline</button>
-          <button class="button secondary" :disabled="!playingTimeline" @click="stopTimeline"><Square :size="16" /> Stop</button>
-        </div>
-        <div class="timeline-scrubber">
-          <span>{{ formatTime(scrubSeconds) }}</span>
-          <input v-model.number="scrubSeconds" type="range" min="0" :max="totalDuration" step="0.01" @input="scrub" />
-          <span>{{ formatTime(totalDuration) }}</span>
-        </div>
-      </div>
+      <ReviewTransport
+        :playable-count="playableItems.length"
+        :playing-timeline="playingTimeline"
+        :scrub-seconds="scrubSeconds"
+        :total-duration="totalDuration"
+        @play-timeline="playTimeline"
+        @stop-timeline="stopTimeline"
+        @update-scrub-seconds="scrubSeconds = $event"
+        @scrub="scrub"
+      />
 
       <section class="panel timeline-panel">
         <div class="timeline-scroll">
