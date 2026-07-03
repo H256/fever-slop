@@ -9,7 +9,7 @@ from feverslop.ports.generate_pipeline import (
     StemSeparatorFactory,
     VocalTimelineAnalyzerFactory,
 )
-from rich.table import Table
+
 
 class AudioTimelinePipeline:
     """Application service boundary for stem, vocal timeline, and beat analysis."""
@@ -50,7 +50,7 @@ class AudioTimelinePipeline:
         log_step = context["log_step"]
         log_file = context["log_file"]
         run_spinner = context["run_spinner"]
-        console = context["console"]
+        reporter = context["reporter"]
 
         log_step("1. Demucs Stem Separation")
         separator = self.separator_factory(config)
@@ -59,12 +59,11 @@ class AudioTimelinePipeline:
             lambda: separator.separate(config.input_audio, paths.stems_dir),
         )
 
-        stem_table = Table(title="Generated Stems")
-        stem_table.add_column("Stem", style="bold")
-        stem_table.add_column("Path", style="cyan")
-        for stem_name in ("vocals", "drums", "bass", "other"):
-            stem_table.add_row(stem_name, str(files[stem_name]))
-        console.print(stem_table)
+        reporter.table(
+            "Generated Stems",
+            ["Stem", "Path"],
+            [[stem_name, str(files[stem_name])] for stem_name in ("vocals", "drums", "bass", "other")],
+        )
 
         log_step("2. Vocal Timeline Analysis")
         vocal_cfg = config.vocal_detection
@@ -87,7 +86,7 @@ class AudioTimelinePipeline:
 
         vocal_count = sum(1 for seg in timeline if seg.kind == "vocals")
         instrumental_count = sum(1 for seg in timeline if seg.kind == "instrumental")
-        console.print(
+        reporter.message(
             f"[green]OK[/green] Timeline segments: "
             f"[yellow]{len(timeline)}[/yellow] total, "
             f"[yellow]{vocal_count}[/yellow] vocals, "
@@ -109,7 +108,7 @@ class AudioTimelinePipeline:
         )
         log_file("Beat Data JSON", beat_json)
         beat_data = context["artifact_store"].read_json(beat_json)
-        console.print(
+        reporter.message(
             f"[green]OK[/green] BPM: [yellow]{beat_data.get('bpm')}[/yellow], "
             f"beats: [yellow]{len(beat_data.get('beats', []))}[/yellow], "
             f"source: [yellow]{beat_data.get('source_used_for_beats')}[/yellow]"

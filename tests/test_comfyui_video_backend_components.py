@@ -399,6 +399,44 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
 
             self.assertTrue((debug_dir / "scene_0001_workflow.json").exists())
 
+    def test_lora_patching_is_delegated_to_lora_workflow_patcher(self):
+        from feverslop.adapters.lora_workflow_patcher import LoraWorkflowPatcher
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, ResolvedLoraConfig
+        from feverslop.adapters.workflow_patcher import WorkflowPatcher
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ltx = LTXWorkflowPatcher(
+                self._settings(
+                    Path(temp_dir),
+                    loras=(
+                        ResolvedLoraConfig(
+                            index=1,
+                            enabled=True,
+                            name="characters/first.safetensors",
+                            strength_model=0.8,
+                            strength_clip=0.6,
+                            name_explicit=True,
+                            strength_model_explicit=True,
+                            strength_clip_explicit=True,
+                        ),
+                    ),
+                )
+            )
+            patcher = WorkflowPatcher(
+                {
+                    "1": {
+                        "inputs": {"lora_name": "", "strength_model": 1.0, "strength_clip": 1.0},
+                        "class_type": "LoraLoader",
+                        "_meta": {"title": "#LORA_1"},
+                    }
+                }
+            )
+
+            ltx.patch_lora_inputs(patcher)
+
+            self.assertIsInstance(ltx.lora_patcher, LoraWorkflowPatcher)
+            self.assertEqual("characters/first.safetensors", patcher.get()["1"]["inputs"]["lora_name"])
+
 
 class FakeQueueClient:
     def __init__(self, history):
@@ -727,12 +765,11 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
         self.assertNotIn("from feverslop.adapters.workflow_patcher import WorkflowPatcher", text)
 
     def test_video_backend_exposes_injected_collaborators(self):
-        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoBackendConfig, ComfyUIVideoRenderBackend
 
         backend = ComfyUIVideoRenderBackend(
             client=object(),
-            ltx_workflow_path="workflow.json",
-            output_dir="out",
+            config=ComfyUIVideoBackendConfig(ltx_workflow_path=Path("workflow.json"), output_dir=Path("out")),
             asset_uploader=FakeAssetUploader(),
             workflow_patcher=FakeWorkflowPatcher(),
             render_queue=FakeRenderQueue(),
@@ -743,6 +780,32 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
         self.assertIsInstance(backend.workflow_patcher, FakeWorkflowPatcher)
         self.assertIsInstance(backend.render_queue, FakeRenderQueue)
         self.assertIsInstance(backend.postprocessor, FakePostprocessor)
+
+    def test_video_backend_uses_render_output_writer_collaborator(self):
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps([self._render_plan_scene()]), encoding="utf-8")
+            storyboard_dir = temp / "storyboard"
+            storyboard_dir.mkdir()
+            (storyboard_dir / "scene_0001.png").write_bytes(b"png")
+            postprocessor = FakePostprocessor()
+            backend = ComfyUIVideoRenderBackend(
+                client=object(),
+                ltx_workflow_path=temp / "workflow.json",
+                output_dir=temp / "ltx",
+                asset_uploader=FakeAssetUploader(),
+                workflow_patcher=FakeWorkflowPatcher(),
+                render_queue=FakeRenderQueue(),
+                postprocessor=postprocessor,
+            )
+
+            backend.render_videos(render_plan, temp / "song.mp3", storyboard_dir)
+
+            self.assertIs(backend.output_writer.postprocessor, postprocessor)
+            self.assertEqual(temp / "ltx" / "render_manifest.json", postprocessor.manifest_calls[0][1])
 
     def test_video_backend_queues_resolved_workflow_after_dynamic_patching(self):
         from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend

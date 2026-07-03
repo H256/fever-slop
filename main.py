@@ -5,7 +5,7 @@ import argparse
 from rich.console import Console
 
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
-from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
+from feverslop.composition.generate_render_plan import execute_generate_render_plan
 from feverslop.path_utils import coerce_local_path
 
 
@@ -45,14 +45,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main():
     args = build_arg_parser().parse_args()
-    build_generate_render_plan_use_case(console=console).execute(
+    execute_generate_render_plan(
         GenerateRenderPlanRequest(
             project_config_path=coerce_local_path(args.project),
             app_config_path=coerce_local_path(args.app_config),
             concept_batch_size=int(args.concept_batch_size or 0),
             render_storyboard=bool(args.render_storyboard),
             zimage_workflow_path=coerce_local_path(args.zimage_workflow) if args.zimage_workflow else None,
-        )
+        ),
+        console=console,
     )
 
 

@@ -10,7 +10,12 @@ from rich.progress import Progress, BarColumn, TaskProgressColumn, TextColumn, T
 
 from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
 from feverslop.application.render_video import RenderVideoScenesRequest
-from feverslop.composition.render_video import build_render_video_scenes_use_case, namespace_to_options
+from feverslop.composition.render_video import (
+    ROLLING_FRAME_PROFILES,
+    build_render_video_scenes_use_case,
+    namespace_to_options,
+    resolve_rolling_frames as resolve_composition_rolling_frames,
+)
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.path_utils import coerce_local_path
@@ -18,13 +23,6 @@ from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
 console = Console()
-
-
-ROLLING_FRAME_PROFILES = {
-    "original": (50, 25, True),
-    "safe": (6, 0, False),
-    "off": (0, 0, False),
-}
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -215,10 +213,7 @@ def _resolve_loras(args: argparse.Namespace, project_config: ProjectConfig | Non
 
 
 def resolve_rolling_frames(args: argparse.Namespace) -> tuple[int, int, bool]:
-    profile_preroll, profile_tail, profile_rounding = ROLLING_FRAME_PROFILES[args.rolling_frame_profile]
-    preroll = profile_preroll if args.preroll_frames is None else args.preroll_frames
-    tail = profile_tail if args.tail_loss_frames is None else args.tail_loss_frames
-    return max(0, int(preroll)), max(0, int(tail)), bool(profile_rounding)
+    return resolve_composition_rolling_frames(namespace_to_options(args))
 
 
 def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:

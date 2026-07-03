@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Callable, Iterator
+
+from feverslop.ports.artifacts import ArtifactStore
+from feverslop.ports.reporting import NullReporter, Reporter
 
 
 @dataclass
 class GenerateRenderPlanContext:
-    request: Any = None
-    config: Any = None
-    paths: Any = None
-    app_config: Any = None
-    video_settings: Any = None
+    request: object = None
+    config: object = None
+    paths: object = None
+    app_config: object = None
+    video_settings: object = None
     song_id: str = ""
-    artifact_store: Any = None
-    console: Any = None
-    log_step: Any = None
-    log_file: Any = None
-    run_spinner: Any = None
+    artifact_store: ArtifactStore | object = None
+    reporter: Reporter = NullReporter()
+    console: object = None
+    log_step: Callable[[str], None] | None = None
+    log_file: Callable[[str, Path], None] | None = None
+    run_spinner: Callable[[str, Callable[[], object]], object] | None = None
 
     timeline_json: Path | None = None
     beat_json: Path | None = None
@@ -32,43 +36,38 @@ class GenerateRenderPlanContext:
     render_plan_json: Path | None = None
 
     stem_files: dict[str, Path] | None = None
-    timeline: Any = None
-    beat_data: dict[str, Any] | None = None
-    repaired_scenes: list[Any] | None = None
+    timeline: object = None
+    beat_data: dict[str, object] | None = None
+    repaired_scenes: list[object] | None = None
     stage1_segments: list[dict] | None = None
-    global_context: dict[str, Any] | None = None
-    concept_prompts: dict[str, Any] | None = None
-    scene_details: dict[str, Any] | None = None
+    global_context: dict[str, object] | None = None
+    concept_prompts: dict[str, object] | None = None
+    scene_details: dict[str, object] | None = None
     render_plan: list[dict] | None = None
-    extra: dict[str, Any] = field(default_factory=dict)
+    order: list[str] | None = None
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> object:
         if hasattr(self, key):
             return getattr(self, key)
-        return self.extra[key]
+        raise KeyError(key)
 
-    def __setitem__(self, key: str, value: Any) -> None:
-        if hasattr(self, key):
-            setattr(self, key, value)
-        else:
-            self.extra[key] = value
+    def __setitem__(self, key: str, value: object) -> None:
+        if not hasattr(self, key):
+            raise KeyError(key)
+        setattr(self, key, value)
 
     def __iter__(self) -> Iterator[str]:
         yield from self.keys()
 
     def keys(self) -> set[str]:
-        return {key for key in self.__dataclass_fields__ if key != "extra"} | set(self.extra)
+        return set(self.__dataclass_fields__)
 
-    def update(self, values: dict[str, Any]) -> None:
+    def update(self, values: dict[str, object]) -> None:
         for key, value in values.items():
             self[key] = value
 
-    def setdefault(self, key: str, default: Any = None) -> Any:
-        try:
-            value = self[key]
-        except KeyError:
-            self[key] = default
-            return default
+    def setdefault(self, key: str, default: object = None) -> object:
+        value = self[key]
         if value is None:
             self[key] = default
             return default

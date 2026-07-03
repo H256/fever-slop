@@ -36,6 +36,12 @@ class RenderLTXCliTests(unittest.TestCase):
 
         self.assertEqual((50, 25, True), resolve_rolling_frames(args))
 
+    def test_rolling_frame_profiles_delegate_to_render_video_composition(self):
+        import render_ltx
+        import feverslop.composition.render_video as render_video_composition
+
+        self.assertIs(render_ltx.ROLLING_FRAME_PROFILES, render_video_composition.ROLLING_FRAME_PROFILES)
+
     def test_single_prompt_render_mode_is_default(self):
         args = self._parse()
 

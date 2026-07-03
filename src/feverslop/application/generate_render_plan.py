@@ -3,17 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import time
-from typing import Any, Callable
+from typing import Callable
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress, TextColumn, TimeElapsedColumn
-from rich.table import Table
-
-from feverslop.config.app_config import AppConfig
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
-from feverslop.config.project_config import ProjectConfig, ProjectPaths
 from feverslop.ports.artifacts import ArtifactStore
+from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
 
 
 @dataclass(frozen=True)
@@ -23,6 +17,16 @@ class GenerateRenderPlanRequest:
     concept_batch_size: int = 0
     render_storyboard: bool = False
     zimage_workflow_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class GenerateRenderPlanExecutionRequest:
+    source_request: GenerateRenderPlanRequest | object
+    config: object
+    paths: object
+    app_config: object
+    video_settings: object
+    song_id: str
 
 
 @dataclass(frozen=True)
@@ -36,54 +40,49 @@ class GenerateRenderPlanResult:
 class GenerateRenderPlanUseCase:
     def __init__(
         self,
-        console: Console | None = None,
-        pipeline_services: list[Any] | None = None,
+        console: object | None = None,
+        reporter: Reporter | None = None,
+        pipeline_services: list[object] | None = None,
         artifact_store: ArtifactStore | None = None,
-        storyboard_renderer_factory: Callable[[AppConfig, Path, Path], Any] | None = None,
+        storyboard_renderer_factory: Callable[[object, Path, Path], object] | None = None,
     ):
-        self.console = console or Console()
+        if reporter is not None:
+            self.reporter = reporter
+        elif console is not None:
+            self.reporter = ConsoleReporter(console)
+        else:
+            self.reporter = NullReporter()
         self.pipeline_services = pipeline_services if pipeline_services is not None else []
         self.artifact_store = artifact_store
         self.storyboard_renderer_factory = storyboard_renderer_factory
 
-    def build_default_pipeline_services(self) -> list[Any]:
+    def build_default_pipeline_services(self) -> list[object]:
         return list(self.pipeline_services)
 
-    def execute_services(self, context: GenerateRenderPlanContext | dict[str, Any]) -> GenerateRenderPlanContext | dict[str, Any]:
+    def execute_services(self, context: GenerateRenderPlanContext | dict[str, object]) -> GenerateRenderPlanContext | dict[str, object]:
         for service in self.pipeline_services:
             context = service.execute(context)
         return context
 
     def log_step(self, title: str):
-        self.console.print()
-        self.console.rule(f"[bold cyan]{title}[/bold cyan]")
+        self.reporter.step(title)
 
     def log_file(self, label: str, path: Path):
-        self.console.print(f"[green]OK[/green] {label}: [cyan]{path}[/cyan]")
+        self.reporter.file(label, path)
 
-    def run_spinner(self, description: str, func: Callable[[], Any]):
-        columns = (
-            TextColumn("[progress.description]{task.description}"),
-            TimeElapsedColumn(),
-        )
-        self._last_progress_columns = columns
-        with Progress(
-            *columns,
-            console=self.console,
-        ) as progress:
-            progress.add_task(description, total=None)
-            return func()
+    def run_spinner(self, description: str, func: Callable[[], object]):
+        return self.reporter.run_progress(description, func)
 
-    def execute(self, request: GenerateRenderPlanRequest) -> GenerateRenderPlanResult:
+    def execute(self, request: GenerateRenderPlanExecutionRequest) -> GenerateRenderPlanResult:
         started_at = time.time()
         if self.artifact_store is None:
             raise ValueError("GenerateRenderPlanUseCase requires an artifact_store")
 
-        config = ProjectConfig.load(request.project_config_path)
-        paths = ProjectPaths.from_config(config)
-        app_config = AppConfig.load(request.app_config_path)
-        video_settings = config.to_video_settings()
-        song_id = getattr(config, "song_id", None) or getattr(config, "project_name", "") or config.input_audio.stem
+        config = request.config
+        paths = request.paths
+        app_config = request.app_config
+        video_settings = request.video_settings
+        song_id = request.song_id
 
         paths.ensure_output_dirs()
         timeline_dir = paths.timeline_dir
@@ -91,14 +90,14 @@ class GenerateRenderPlanUseCase:
         render_dir = paths.render_dir
 
         context = GenerateRenderPlanContext(
-            request=request,
+            request=request.source_request,
             config=config,
             paths=paths,
             app_config=app_config,
             video_settings=video_settings,
             song_id=song_id,
             artifact_store=self.artifact_store,
-            console=self.console,
+            reporter=self.reporter,
             log_step=self.log_step,
             log_file=self.log_file,
             run_spinner=self.run_spinner,
@@ -115,8 +114,8 @@ class GenerateRenderPlanUseCase:
             render_plan_json=render_dir / f"render_plan_{song_id}.json",
         )
 
-        self.console.print(Panel.fit(
-            f"[bold]Music Video Pipeline[/bold]\n\n"
+        self.reporter.panel(
+            f"Music Video Pipeline\n\n"
             f"Project: [cyan]{config.project_name}[/cyan]\n"
             f"Input: [cyan]{config.input_audio}[/cyan]\n"
             f"Output: [cyan]{config.output_dir}[/cyan]\n"
@@ -124,8 +123,7 @@ class GenerateRenderPlanUseCase:
             f"Resolution: [yellow]{video_settings.width}x{video_settings.height}[/yellow]\n"
             f"LLM: [yellow]{app_config.llm.model}[/yellow] @ [cyan]{app_config.llm.base_url}[/cyan]",
             title="Startup",
-            border_style="cyan",
-        ))
+        )
 
         if not config.input_audio.exists():
             raise FileNotFoundError(config.input_audio)
@@ -143,9 +141,9 @@ class GenerateRenderPlanUseCase:
             elapsed=time.time() - started_at,
         )
 
-        if request.render_storyboard:
+        if getattr(request.source_request, "render_storyboard", False):
             self.render_storyboard(
-                request=request,
+                request=request.source_request,
                 app_config=app_config,
                 render_dir=render_dir,
                 render_plan_json=context["render_plan_json"],
@@ -164,32 +162,33 @@ class GenerateRenderPlanUseCase:
         render_plan: list[dict],
         total_frames: int,
         total_duration: float,
-        video_settings: Any,
+        video_settings: object,
         render_plan_json: Path,
         elapsed: float,
     ) -> None:
-        summary = Table(title="Render Plan Summary")
-        summary.add_column("Metric", style="bold")
-        summary.add_column("Value", style="yellow")
-        summary.add_row("Scenes / Cuts", str(len(render_plan)))
-        summary.add_row("Total Frames", str(total_frames))
-        summary.add_row("Total Duration", f"{total_duration:.2f}s")
-        summary.add_row("FPS", str(video_settings.fps))
-        summary.add_row("Resolution", f"{video_settings.width}x{video_settings.height}")
-        self.console.print(summary)
-        self.console.print(Panel.fit(
+        self.reporter.table(
+            "Render Plan Summary",
+            ["Metric", "Value"],
+            [
+                ["Scenes / Cuts", str(len(render_plan))],
+                ["Total Frames", str(total_frames)],
+                ["Total Duration", f"{total_duration:.2f}s"],
+                ["FPS", str(video_settings.fps)],
+                ["Resolution", f"{video_settings.width}x{video_settings.height}"],
+            ],
+        )
+        self.reporter.panel(
             f"[bold green]Done.[/bold green]\n\n"
             f"Elapsed: [yellow]{elapsed:.1f}s[/yellow]\n"
             f"Render plan: [cyan]{render_plan_json}[/cyan]",
             title="Pipeline Complete",
-            border_style="green",
-        ))
+        )
 
     def render_storyboard(
         self,
         *,
-        request: GenerateRenderPlanRequest,
-        app_config: AppConfig,
+        request: object,
+        app_config: object,
         render_dir: Path,
         render_plan_json: Path,
     ) -> None:
@@ -200,6 +199,6 @@ class GenerateRenderPlanUseCase:
 
         renderer = self.storyboard_renderer_factory(app_config, render_dir, request.zimage_workflow_path)
         rendered = renderer.render_storyboard(render_plan_path=render_plan_json)
-        self.console.print(
+        self.reporter.message(
             f"[green]OK[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]"
         )

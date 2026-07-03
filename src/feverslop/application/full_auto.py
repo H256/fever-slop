@@ -4,10 +4,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-
 from feverslop.domain.full_auto import SongSpec
 from feverslop.ports.full_auto import (
     PipelineRunnerPort,
@@ -15,6 +11,7 @@ from feverslop.ports.full_auto import (
     SongAudioGeneratorPort,
     SongBriefGeneratorPort,
 )
+from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
 
 
 @dataclass(frozen=True)
@@ -55,13 +52,19 @@ class FullAutoUseCase:
         song_generator: SongAudioGeneratorPort,
         project_scaffold: ProjectScaffoldPort,
         pipeline_runner: PipelineRunnerPort | None = None,
-        console: Console | None = None,
+        console: object | None = None,
+        reporter: Reporter | None = None,
     ):
         self.brief_generator = brief_generator
         self.song_generator = song_generator
         self.project_scaffold = project_scaffold
         self.pipeline_runner = pipeline_runner
-        self.console = console or Console()
+        if reporter is not None:
+            self.reporter = reporter
+        elif console is not None:
+            self.reporter = ConsoleReporter(console)
+        else:
+            self.reporter = NullReporter()
 
     def execute(self, request: FullAutoRequest) -> FullAutoResult:
         project_slug = slugify_project_name(request.project_name or request.idea)
@@ -107,7 +110,7 @@ class FullAutoUseCase:
             if final_video_path:
                 self.log_file("Final video", final_video_path)
         else:
-            self.console.print("[yellow]Skipping video pipeline; project is prepared for later rendering.[/yellow]")
+            self.reporter.message("[yellow]Skipping video pipeline; project is prepared for later rendering.[/yellow]")
 
         self._print_complete(
             scaffold=scaffold,
@@ -126,39 +129,37 @@ class FullAutoUseCase:
         )
 
     def log_step(self, title: str) -> None:
-        self.console.print()
-        self.console.rule(f"[bold cyan]{title}[/bold cyan]")
+        self.reporter.step(title)
 
     def log_file(self, label: str, path: Path) -> None:
-        self.console.print(f"[green]OK[/green] {label}: [cyan]{path}[/cyan]")
+        self.reporter.file(label, path)
 
     def _print_startup(self, *, request: FullAutoRequest, project_slug: str) -> None:
-        self.console.print(
-            Panel.fit(
-                f"[bold]Full-Auto ACE-Step Pipeline[/bold]\n\n"
-                f"Project: [cyan]{project_slug}[/cyan]\n"
-                f"Duration: [yellow]{float(request.duration_seconds):.1f}s[/yellow]\n"
-                f"Resolution: [yellow]{int(request.width)}x{int(request.height)} @ {int(request.fps)}fps[/yellow]\n"
-                f"Language: [yellow]{request.language}[/yellow]\n"
-                f"Seed: [yellow]{int(request.seed)}[/yellow]\n"
-                f"Video pipeline: [yellow]{'on' if request.run_video_pipeline else 'off'}[/yellow]",
-                title="Startup",
-                border_style="cyan",
-            )
+        self.reporter.panel(
+            f"[bold]Full-Auto ACE-Step Pipeline[/bold]\n\n"
+            f"Project: [cyan]{project_slug}[/cyan]\n"
+            f"Duration: [yellow]{float(request.duration_seconds):.1f}s[/yellow]\n"
+            f"Resolution: [yellow]{int(request.width)}x{int(request.height)} @ {int(request.fps)}fps[/yellow]\n"
+            f"Language: [yellow]{request.language}[/yellow]\n"
+            f"Seed: [yellow]{int(request.seed)}[/yellow]\n"
+            f"Video pipeline: [yellow]{'on' if request.run_video_pipeline else 'off'}[/yellow]",
+            title="Startup",
         )
 
     def _print_song_spec(self, spec: SongSpec) -> None:
-        table = Table(title="Generated Song Brief")
-        table.add_column("Field", style="bold")
-        table.add_column("Value", style="yellow")
-        table.add_row("Title", spec.title)
-        table.add_row("BPM", str(spec.bpm))
-        table.add_row("Duration", f"{float(spec.duration_seconds):.1f}s")
-        table.add_row("Language", spec.language)
-        table.add_row("Key", spec.keyscale)
-        self.console.print(table)
-        self.console.print(Panel(spec.tags, title="ACE-Step Tags", border_style="green"))
-        self.console.print(Panel(spec.visual_story_idea, title="Video Story", border_style="green"))
+        self.reporter.table(
+            "Generated Song Brief",
+            ["Field", "Value"],
+            [
+                ["Title", spec.title],
+                ["BPM", str(spec.bpm)],
+                ["Duration", f"{float(spec.duration_seconds):.1f}s"],
+                ["Language", spec.language],
+                ["Key", spec.keyscale],
+            ],
+        )
+        self.reporter.panel(spec.tags, title="ACE-Step Tags")
+        self.reporter.panel(spec.visual_story_idea, title="Video Story")
 
     def _print_complete(self, *, scaffold, final_video_path: Path | None) -> None:
         lines = [
@@ -169,13 +170,7 @@ class FullAutoUseCase:
         ]
         if final_video_path:
             lines.append(f"Final video: [cyan]{final_video_path}[/cyan]")
-        self.console.print(
-            Panel.fit(
-                "\n".join(lines),
-                title="Full-Auto Complete",
-                border_style="green",
-            )
-        )
+        self.reporter.panel("\n".join(lines), title="Full-Auto Complete")
 
     @staticmethod
     def _apply_overrides(spec: SongSpec, request: FullAutoRequest) -> SongSpec:
