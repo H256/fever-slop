@@ -28,6 +28,7 @@ class FullAutoRequest:
     bpm: int | None = None
     keyscale: str | None = None
     seed: int = 0
+    silent_mode: bool = False
     run_video_pipeline: bool = False
     runner_options: dict[str, Any] = field(default_factory=dict)
 
@@ -93,6 +94,7 @@ class FullAutoUseCase:
             height=int(request.height),
             fps=int(request.fps),
             video_pipeline=str(request.runner_options.get("video_pipeline") or "ltx_i2v"),
+            silent_mode=bool(request.silent_mode),
         )
         self.log_file("Project config", scaffold.project_config_path)
         self.log_file("Lyrics", scaffold.lyrics_path)

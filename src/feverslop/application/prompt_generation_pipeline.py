@@ -290,6 +290,7 @@ class PromptGenerationPipeline:
         config_structured_locations = get_config_value(config, "structured_locations", []) or []
         subject_mode = str(get_config_value(config, "subject_mode", "multi") or "multi")
         max_scene_actors = int(get_config_value(config, "max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
+        silent_mode = bool(get_config_value(config, "silent_mode", False))
 
         story_idea = resolve_text_override(
             configured_value=config_story_idea,
@@ -352,6 +353,7 @@ class PromptGenerationPipeline:
             "structured_locations": structured_locations,
             "subject_mode": subject_mode,
             "max_scene_actors": max_scene_actors,
+            "silent_mode": silent_mode,
             "location_constraint": build_location_constraint(locations),
             "steering": {
                 "global": get_steering_value(config, "global_"),

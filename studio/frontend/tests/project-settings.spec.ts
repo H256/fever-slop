@@ -19,6 +19,7 @@ test("project settings edits saves and resets config", async ({ page }) => {
         data: {
           project_name: "Demo",
           input_audio: "input/song.mp3",
+          silent_mode: false,
           custom_plugin: { empty_but_intentional: "" }
         }
       }
@@ -40,11 +41,36 @@ test("project settings edits saves and resets config", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: /project name/i })).toHaveValue("Demo");
 
   await page.getByRole("textbox", { name: /project name/i }).fill("Changed");
+  await page.getByRole("switch", { name: /silent mode/i }).click();
   await page.getByRole("button", { name: /^save$/i }).click();
 
   expect(savedBody?.data.project_name).toBe("Changed");
+  expect(savedBody?.data.silent_mode).toBe(true);
   expect(savedBody?.data.custom_plugin).toEqual({ empty_but_intentional: "" });
   await expect(page.getByText("Settings saved")).toBeVisible();
+});
+
+test("legacy project settings render silent mode off and persist it after refresh", async ({ page }) => {
+  let savedConfig: Record<string, unknown> = { project_name: "Demo", input_audio: "input/song.mp3" };
+  await page.route("**/api/projects/demo", (route) => route.fulfill({ json: project }));
+  await page.route("**/api/projects/demo/artifact?**", (route) =>
+    route.fulfill({ json: { path: "config.json", data: savedConfig } })
+  );
+  await page.route("**/api/projects/demo/artifact", async (route) => {
+    const body = await route.request().postDataJSON();
+    savedConfig = body.data;
+    await route.fulfill({ json: { path: "config.json", data: savedConfig } });
+  });
+
+  await page.goto("/projects/demo/settings");
+  const toggle = page.getByRole("switch", { name: /silent mode/i });
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await page.getByRole("button", { name: /^save$/i }).click();
+  await expect(page.getByText("Settings saved")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("switch", { name: /silent mode/i })).toBeChecked();
 });
 
 test("project settings shows frontend validation errors", async ({ page }) => {

@@ -63,6 +63,35 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertGreaterEqual(len(llm.calls), 2)
         self.assertIn("T2I RESULT", llm.calls[-1]["prompt"])
 
+    def test_silent_mode_uses_dialogue_free_i2v_policy_for_vocal_segments(self):
+        llm = FakeLLM()
+        builder = ScenePromptBuilder(llm)
+
+        builder.build_i2v_prompt_from_t2i(
+            segment={"segment_id": "segment_001", "type": "vocals", "lyrics": "hello"},
+            concept="Mara performs with grief on the mirror stage.",
+            scene_details={"character_motion": "clutches her chest"},
+            global_context={
+                "subject": "Mara",
+                "story_idea": "A wordless stage performance.",
+                "style": "cinematic realism",
+                "locations": ["Mirror Stage"],
+                "prompt_guidance": {},
+                "silent_mode": True,
+            },
+            t2i_prompt="Mara stands under a spotlight.",
+        )
+
+        system_prompt = llm.calls[0]["system_prompt"].lower()
+        payload = json.loads(llm.calls[0]["prompt"])
+
+        self.assertNotIn("singing with passion", system_prompt)
+        self.assertNotIn("lip sync only during vocal intervals", system_prompt)
+        self.assertIn("dialogue-free", system_prompt)
+        self.assertIn("gaze, posture, hands, body movement", system_prompt)
+        self.assertTrue(payload["silent_mode"])
+        self.assertNotIn("singing with passion", payload["performance_policy"].lower())
+
     def test_zimage_prompt_payload_includes_location_constraint(self):
         llm = FakeLLM()
         builder = ScenePromptBuilder(llm)

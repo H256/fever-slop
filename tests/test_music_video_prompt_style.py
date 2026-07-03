@@ -35,6 +35,14 @@ class PerformancePolicyTests(unittest.TestCase):
         self.assertIn("silent intervals", policy)
         self.assertNotIn("throughout the shot", policy)
 
+    def test_silent_mode_policy_blocks_vocal_performance_for_vocals(self):
+        policy = performance_policy("vocals", silent_mode=True).lower()
+
+        self.assertIn("dialogue-free silent mode", policy)
+        self.assertIn("no vocal performance", policy)
+        self.assertIn("gaze, posture, hands, body movement", policy)
+        self.assertNotIn("singing with passion", policy)
+
 
 class PromptInstructionTests(unittest.TestCase):
     def test_location_constraint_requires_allowed_locations_when_configured(self):
@@ -82,6 +90,14 @@ class PromptInstructionTests(unittest.TestCase):
         self.assertIn("only during vocal intervals", prompt)
         self.assertNotIn("throughout the shot", prompt)
 
+    def test_i2v_system_prompt_silent_mode_removes_vocal_performance_policy(self):
+        prompt = build_i2v_system_prompt("vocals", silent_mode=True).lower()
+
+        self.assertIn("silent mode is active", prompt)
+        self.assertIn("no vocal performance", prompt)
+        self.assertNotIn("singing with passion", prompt)
+        self.assertNotIn("lip sync only during vocal intervals", prompt)
+
     def test_concept_mapper_prompt_requires_continuity_and_standalone_segments(self):
         prompt = build_concept_mapper_system_prompt(batch=True).lower()
 
@@ -94,12 +110,25 @@ class PromptInstructionTests(unittest.TestCase):
         self.assertIn("instrumental segments", prompt)
         self.assertIn("do not say the character is singing", prompt)
 
+    def test_concept_mapper_prompt_silent_mode_removes_vocal_segment_rule(self):
+        prompt = build_concept_mapper_system_prompt(batch=True, silent_mode=True).lower()
+
+        self.assertIn("silent mode is active", prompt)
+        self.assertIn("do not create singing", prompt)
+        self.assertNotIn("for vocal segments, reflect the lyrics", prompt)
+
     def test_detail_prompt_is_label_specific(self):
         prompt = build_detail_system_prompt("Camera Motion", segment_type="vocals").lower()
 
         self.assertIn("output only camera movement phrases", prompt)
         self.assertIn("do not combine multiple categories", prompt)
         self.assertIn("singing with passion", prompt)
+
+    def test_detail_prompt_silent_mode_removes_vocal_performance_policy(self):
+        prompt = build_detail_system_prompt("Character Motion", segment_type="vocals", silent_mode=True).lower()
+
+        self.assertIn("dialogue-free silent mode", prompt)
+        self.assertNotIn("singing with passion", prompt)
 
     def test_video_payload_includes_segment_timing_and_policies(self):
         payload = build_video_payload(

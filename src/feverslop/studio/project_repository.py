@@ -47,6 +47,7 @@ class ProjectRepository:
             "project_type": project_type,
             "display_name": name,
             "slug": slug,
+            "silent_mode": bool(request.silent_mode),
         }
         if project_type == "full_auto":
             metadata["full_auto"] = {
@@ -61,7 +62,11 @@ class ProjectRepository:
         self.write_project_metadata(root, metadata)
         if project_type == "standard_music_video":
             (root / "config.json").write_text(
-                json.dumps({"project_name": name, "input_audio": ""}, indent=2, ensure_ascii=False) + "\n",
+                json.dumps(
+                    {"project_name": name, "input_audio": "", "silent_mode": bool(request.silent_mode)},
+                    indent=2,
+                    ensure_ascii=False,
+                ) + "\n",
                 encoding="utf-8",
             )
         return slug
@@ -76,6 +81,7 @@ class ProjectRepository:
             "project_type": "standard_music_video",
             "display_name": str(config.get("project_name") or project_id) if isinstance(config, dict) else project_id,
             "slug": project_id,
+            "silent_mode": bool(config.get("silent_mode", False)) if isinstance(config, dict) and isinstance(config.get("silent_mode", False), bool) else False,
         }
 
     @staticmethod

@@ -19,6 +19,7 @@ class LocalProjectScaffold:
         height: int = 704,
         fps: int = 24,
         video_pipeline: str = "ltx_i2v",
+        silent_mode: bool = False,
     ) -> ProjectScaffoldResult:
         project_dir = Path(projects_dir) / project_slug
         input_dir = project_dir / "input"
@@ -50,6 +51,7 @@ class LocalProjectScaffold:
                 {
                     "project_name": spec.title,
                     "input_audio": f"input/{audio_path.name}",
+                    "silent_mode": bool(silent_mode),
                     "lyrics": spec.lyrics,
                     "video": {
                         "fps": int(fps),

@@ -40,6 +40,7 @@ class RenderPlanPatchPayload(BaseModel):
 class ProjectCreatePayload(BaseModel):
     project_type: str
     name: str
+    silent_mode: Any = False
     idea: str = ""
     song_style: str = ""
     duration_seconds: float = 120.0
@@ -101,6 +102,7 @@ def create_app(
                 ProjectCreateRequest(
                     project_type=payload.project_type,
                     name=payload.name,
+                    silent_mode=_validated_silent_mode(payload.silent_mode),
                     idea=payload.idea,
                     song_style=payload.song_style,
                     duration_seconds=payload.duration_seconds,
@@ -226,6 +228,14 @@ def _safe(fn):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (StudioPathError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _validated_silent_mode(value: Any) -> bool:
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise ValueError("silent_mode must be a boolean")
+    return value
 
 
 def _thumbnail_path(store: ProjectStore, project_id: str, path: str, at: float) -> Path:

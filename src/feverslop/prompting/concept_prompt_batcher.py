@@ -127,7 +127,10 @@ class ConceptPromptBatcher:
         }
 
         response = self.llm.complete_prompt(
-            system_prompt=build_concept_mapper_system_prompt(batch=True),
+            system_prompt=build_concept_mapper_system_prompt(
+                batch=True,
+                silent_mode=bool(global_context.get("silent_mode", False)),
+            ),
             prompt=json.dumps(payload, ensure_ascii=False, indent=2),
         )
 
