@@ -76,11 +76,13 @@ class ComfyUIMSRVideoRenderBackend:
     def render_video(self, request: VideoRenderRequest) -> Path:
         scene_number = int(request.scene_number)
         rolling = self._rolling_spec(request.scene)
-        comfy_audio_name = self.asset_uploader.resolve_audio_name(
-            request.audio_file,
-            upload_audio=request.upload_audio,
-            uploaded_audio_name=request.uploaded_audio_name,
-        )
+        comfy_audio_name = None
+        if request.upload_audio or request.uploaded_audio_name:
+            comfy_audio_name = self.asset_uploader.resolve_audio_name(
+                request.audio_file,
+                upload_audio=request.upload_audio,
+                uploaded_audio_name=request.uploaded_audio_name,
+            )
         workflow = self.build_workflow(
             request.scene,
             prompt=request.prompt,

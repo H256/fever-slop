@@ -26,6 +26,7 @@ class MovieScaffoldResult:
     project_dir: Path
     story_arch_path: Path
     render_plan_path: Path
+    reference_manifest_path: Path
 
 
 @dataclass(frozen=True)
@@ -86,9 +87,12 @@ class ScaffoldMovieUseCase:
 
         story_arch_path = movie_dir / "story_arch.json"
         render_plan_path = movie_dir / "render_plan.json"
+        reference_manifest_path = movie_dir / "references" / "manifest.json"
         story_arch_path.write_text(json.dumps(asdict(movie.story_arch), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         render_plan_path.write_text(json.dumps(_render_plan(movie), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        return MovieScaffoldResult(slug, project_dir, story_arch_path, render_plan_path)
+        reference_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        reference_manifest_path.write_text(json.dumps(_reference_manifest(movie), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return MovieScaffoldResult(slug, project_dir, story_arch_path, render_plan_path, reference_manifest_path)
 
 
 class AutoProduceMovieUseCase:
@@ -107,6 +111,7 @@ class AutoProduceMovieUseCase:
             scaffolded.project_dir,
             scaffolded.story_arch_path,
             scaffolded.render_plan_path,
+            scaffolded.reference_manifest_path,
             final_video,
         )
 
@@ -148,5 +153,35 @@ def _render_plan(movie: MovieProject) -> dict:
         "resolution": {"width": movie.width, "height": movie.height},
         "audio_policy": "ltx_native",
         "visual_backends": ["krea2", "ltx_msr"],
-        "shots": [asdict(shot) for shot in movie.shots],
+        "shots": [_render_plan_shot(shot) for shot in movie.shots],
+    }
+
+
+def _render_plan_shot(shot) -> dict:
+    data = asdict(shot)
+    data["reference_ids"] = {"actors": ["main_character"], "location": "primary_location"}
+    return data
+
+
+def _reference_manifest(movie: MovieProject) -> dict:
+    return {
+        "project_type": "movie",
+        "actors": [
+            {
+                "id": "main_character",
+                "name": "Main Character",
+                "prompt": f"consistent cinematic protagonist for {movie.name}, drawn from the story premise",
+                "status": "required",
+                "msr_sheet_path": "",
+            }
+        ],
+        "locations": [
+            {
+                "id": "primary_location",
+                "name": "Primary Location",
+                "prompt": "story-consistent cinematic environment, production design, lighting, and atmosphere",
+                "status": "required",
+                "msr_sheet_path": "",
+            }
+        ],
     }

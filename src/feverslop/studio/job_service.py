@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -296,8 +297,6 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
 
 def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
-        from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
-
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         log("[MoviePipeline] Stage: Story-Arch Complete")
         log("[MoviePipeline] Stage: Render Plan Ready")
@@ -305,11 +304,40 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         patched_workflow = patch_movie_msr_workflow(project_dir)
         log(f"[WorkflowPatcher] Movie MSR workflow patched for LTX native audio: {patched_workflow}")
         log("[LTX_MSR_Movie_Adapter] Rendering with LTX 2.3 native audio; no custom audio track supplied")
-        final_video = LocalMovieVisualAdapter().render_movie(project_dir=project_dir, render_plan_path=render_plan_path)
+        final_video = build_movie_visual_adapter(project_dir, patched_workflow).render_movie(
+            project_dir=project_dir,
+            render_plan_path=render_plan_path,
+        )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
         return final_video
 
     return run
+
+
+def build_movie_visual_adapter(project_dir: Path, workflow_path: Path):
+    backend = str(os.environ.get("FEVERSLOP_MOVIE_RENDER_BACKEND") or "local").strip().lower()
+    if backend in {"", "local", "placeholder"}:
+        from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+
+        return LocalMovieVisualAdapter()
+    if backend != "comfyui":
+        raise ValueError("FEVERSLOP_MOVIE_RENDER_BACKEND must be local or comfyui")
+
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+    from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load(os.environ.get("FEVERSLOP_APP_CONFIG", "app_config.json"))
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    return ComfyUIMovieVisualAdapter(
+        client=client,
+        workflow_path=workflow_path,
+        model_resolver=ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides),
+    )
 
 
 def patch_movie_msr_workflow(project_dir: Path, *, template_path: Path = Path("workflows") / "video_ltxv_msr_1actor_1background_v1.json") -> Path:
