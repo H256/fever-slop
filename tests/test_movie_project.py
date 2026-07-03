@@ -368,6 +368,9 @@ class MovieProjectTests(unittest.TestCase):
                 time.sleep(0.01)
             self.assertEqual("succeeded", status["status"])
             self.assertTrue((Path(temp_dir) / "door-below" / "output" / "movie" / "door-below.mp4").exists())
+            manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
+            self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
             patched_workflow_path = Path(temp_dir) / "door-below" / "movie" / "workflows" / "video_ltxv_msr_movie_native_audio.json"
             self.assertTrue(patched_workflow_path.exists())
             patched_workflow = json.loads(patched_workflow_path.read_text())

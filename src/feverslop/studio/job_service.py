@@ -318,6 +318,8 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         log("[MoviePipeline] Stage: Story-Arch Complete")
         log("[MoviePipeline] Stage: Render Plan Ready")
         log("[Krea2_Adapter] Preparing visual consistency references")
+        manifest_path = ensure_movie_references(project_dir)
+        log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
         patched_workflow = patch_movie_msr_workflow(project_dir)
         log(f"[WorkflowPatcher] Movie MSR workflow patched for LTX native audio: {patched_workflow}")
         log("[LTX_MSR_Movie_Adapter] Rendering with LTX 2.3 native audio; no custom audio track supplied")
@@ -329,6 +331,24 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         return final_video
 
     return run
+
+
+def ensure_movie_references(project_dir: Path) -> Path:
+    manifest_path = project_dir / "movie" / "references" / "manifest.json"
+    if movie_references_ready(manifest_path):
+        return manifest_path
+    return build_movie_reference_generator().generate(project_dir=project_dir)
+
+
+def movie_references_ready(manifest_path: Path) -> bool:
+    if not manifest_path.exists():
+        return False
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    actors = manifest.get("actors") or []
+    locations = manifest.get("locations") or []
+    if not actors or not locations:
+        return False
+    return all(str(item.get("msr_sheet_path") or "").strip() for item in [*actors, *locations])
 
 
 def build_movie_references_handler(*, store: ProjectStore, project_id: str) -> JobHandler:
