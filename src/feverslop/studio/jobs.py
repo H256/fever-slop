@@ -37,6 +37,7 @@ PIPELINE_ACTIONS = {
     "final-concat",
     "full-pipeline",
     "full-auto",
+    "movie-full-auto",
 }
 
 
@@ -70,11 +71,23 @@ PIPELINE_STEPS: dict[str, list[str]] = {
         "Project scaffold",
         "Video pipeline",
     ],
+    "movie-full-auto": [
+        "Story-Arch",
+        "Scene planning",
+        "Krea2 visual consistency",
+        "LTX MSR native-audio render",
+        "Final movie",
+    ],
 }
 
 STEP_ALIASES: dict[str, list[str]] = {
     "ACE-Step audio rendering": ["ACE-Step audio", "Rendering ACE-Step audio", "Generated audio"],
     "Project scaffold": ["Creating FeverSlop project", "Project config"],
+    "Story-Arch": ["Story-Arch Complete"],
+    "Scene planning": ["Render Plan Ready", "Planning Scenes"],
+    "Krea2 visual consistency": ["Krea2"],
+    "LTX MSR native-audio render": ["LTX MSR", "native audio"],
+    "Final movie": ["Movie Complete"],
 }
 
 

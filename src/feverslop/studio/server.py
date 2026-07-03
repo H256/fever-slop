@@ -41,6 +41,10 @@ class ProjectCreatePayload(BaseModel):
     project_type: str
     name: str
     silent_mode: Any = False
+    source_type: str = "short_story"
+    story_text: str = ""
+    desired_length: float = 60.0
+    movie_mode: str = "scaffold"
     idea: str = ""
     song_style: str = ""
     duration_seconds: float = 120.0
@@ -103,6 +107,10 @@ def create_app(
                     project_type=payload.project_type,
                     name=payload.name,
                     silent_mode=_validated_silent_mode(payload.silent_mode),
+                    source_type=payload.source_type,
+                    story_text=payload.story_text,
+                    desired_length=payload.desired_length,
+                    movie_mode=payload.movie_mode,
                     idea=payload.idea,
                     song_style=payload.song_style,
                     duration_seconds=payload.duration_seconds,

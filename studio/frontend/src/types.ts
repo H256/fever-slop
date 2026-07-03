@@ -14,10 +14,10 @@ export interface ProjectSummary {
   id: string;
   name: string;
   path: string;
-  project_type?: "standard_music_video" | "full_auto";
+  project_type?: "standard_music_video" | "full_auto" | "movie";
   silent_mode?: boolean;
   metadata?: {
-    project_type?: "standard_music_video" | "full_auto";
+    project_type?: "standard_music_video" | "full_auto" | "movie";
     display_name?: string;
     slug?: string;
     silent_mode?: boolean;
@@ -30,6 +30,14 @@ export interface ProjectSummary {
       fps?: 16 | 24 | 50;
       pipeline_mode?: "classic" | "msr";
     };
+    movie?: {
+      source_type?: "short_story" | "screenplay";
+      story_text?: string;
+      desired_length?: number;
+      width?: number;
+      height?: number;
+      mode?: "scaffold" | "full_auto";
+    };
   };
   status: ProjectStatus;
   artifacts: ProjectArtifacts;
@@ -40,7 +48,7 @@ export interface ProjectSummary {
 }
 
 export interface ProjectCreatePayload {
-  project_type: "standard_music_video" | "full_auto";
+  project_type: "standard_music_video" | "full_auto" | "movie";
   name: string;
   silent_mode?: boolean;
   idea?: string;
@@ -50,6 +58,10 @@ export interface ProjectCreatePayload {
   height?: number;
   fps?: 16 | 24 | 50;
   pipeline_mode?: "classic" | "msr";
+  source_type?: "short_story" | "screenplay";
+  story_text?: string;
+  desired_length?: number;
+  movie_mode?: "scaffold" | "full_auto";
 }
 
 export interface JobStep {

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.studio.project_validation import validate_full_auto_inputs
 from feverslop.studio.projects import ProjectCreateRequest, StudioPathError, slugify_project_name
 
@@ -22,8 +24,8 @@ class ProjectRepository:
 
     def create_project(self, request: ProjectCreateRequest) -> str:
         project_type = str(request.project_type or "").strip()
-        if project_type not in {"standard_music_video", "full_auto"}:
-            raise ValueError("project_type must be standard_music_video or full_auto")
+        if project_type not in {"standard_music_video", "full_auto", "movie"}:
+            raise ValueError("project_type must be standard_music_video, full_auto, or movie")
         name = str(request.name or "").strip()
         if not name:
             raise ValueError("Project name is required")
@@ -41,6 +43,8 @@ class ProjectRepository:
             if not str(request.song_style or "").strip():
                 raise ValueError("Full-auto song style is required")
             validate_full_auto_inputs(request)
+        if project_type == "movie":
+            return self._create_movie_project(request, slug)
 
         root.mkdir(parents=True)
         metadata = {
@@ -69,6 +73,25 @@ class ProjectRepository:
                 ) + "\n",
                 encoding="utf-8",
             )
+        return slug
+
+    def _create_movie_project(self, request: ProjectCreateRequest, slug: str) -> str:
+        result = ScaffoldMovieUseCase(
+            planner=DeterministicMoviePlanner(),
+            projects_root=self.projects_root,
+        ).execute(
+            MovieInput(
+                name=str(request.name).strip(),
+                source_type=str(request.source_type or "short_story"),
+                story_text=str(request.story_text or ""),
+                desired_length=float(request.desired_length),
+                width=int(request.width),
+                height=int(request.height),
+                mode=str(request.movie_mode or "scaffold"),
+            )
+        )
+        if result.project_slug != slug:
+            raise ValueError("Movie project slug mismatch")
         return slug
 
     def project_metadata(self, project_id: str) -> dict[str, Any]:

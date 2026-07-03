@@ -74,6 +74,7 @@ class StudioJobService:
                 ThumbnailPrebuildAction(store),
                 ThumbnailCleanupAction(store),
                 FullAutoAction(store, full_auto_handler),
+                MovieFullAutoAction(store),
             ],
             PipelineAction(store, pipeline_handler),
         )
@@ -182,6 +183,22 @@ class FullAutoAction:
         return factory(store=self.store, project_id=project_id, payload=metadata.get("full_auto") or {})
 
 
+class MovieFullAutoAction:
+    action = "movie-full-auto"
+
+    def __init__(self, store: ProjectStore):
+        self.store = store
+
+    def build(self, project_id: str, request: StudioJobRequest, metadata: dict[str, Any]) -> JobHandler:
+        if metadata.get("project_type") != "movie":
+            raise ValueError("movie-full-auto jobs require a movie project")
+        render_plan_path = self.store.resolve_project_path(project_id, "movie/render_plan.json")
+        if not render_plan_path.exists():
+            raise ValueError("movie-full-auto requires movie/render_plan.json; create the movie scaffold first")
+        handler = build_movie_full_auto_handler(store=self.store, project_id=project_id, render_plan_path=render_plan_path)
+        return record_pipeline_state(self.store, project_id, self.action, handler)
+
+
 class PipelineAction:
     action = "*"
 
@@ -275,6 +292,37 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
         return run_with_stream_logging(lambda: use_case.execute(request), log).project_config_path
 
     return run
+
+
+def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path) -> JobHandler:
+    def run(log: Callable[[str], None]) -> Any:
+        from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+
+        project_dir = store.resolve_project_path(project_id, ".").resolve()
+        log("[MoviePipeline] Stage: Story-Arch Complete")
+        log("[MoviePipeline] Stage: Render Plan Ready")
+        log("[Krea2_Adapter] Preparing visual consistency references")
+        patched_workflow = patch_movie_msr_workflow(project_dir)
+        log(f"[WorkflowPatcher] Movie MSR workflow patched for LTX native audio: {patched_workflow}")
+        log("[LTX_MSR_Movie_Adapter] Rendering with LTX 2.3 native audio; no custom audio track supplied")
+        final_video = LocalMovieVisualAdapter().render_movie(project_dir=project_dir, render_plan_path=render_plan_path)
+        log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+        return final_video
+
+    return run
+
+
+def patch_movie_msr_workflow(project_dir: Path, *, template_path: Path = Path("workflows") / "video_ltxv_msr_1actor_1background_v1.json") -> Path:
+    from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
+
+    if not template_path.exists():
+        raise FileNotFoundError(f"Movie MSR workflow template not found: {template_path}")
+    workflow = json.loads(template_path.read_text(encoding="utf-8"))
+    patched = MovieWorkflowPatcher().strip_audio_inputs(workflow)
+    output_path = project_dir / "movie" / "workflows" / "video_ltxv_msr_movie_native_audio.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(patched, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return output_path
 
 
 def pipeline_mode_from_config(config_path: Path) -> str | None:

@@ -30,6 +30,10 @@ class ProjectCreateRequest:
     project_type: str
     name: str
     silent_mode: bool = False
+    source_type: str = "short_story"
+    story_text: str = ""
+    desired_length: float = 60.0
+    movie_mode: str = "scaffold"
     idea: str = ""
     song_style: str = ""
     duration_seconds: float = 120.0
@@ -249,4 +253,3 @@ class ProjectStore:
         if not path.exists():
             return default
         return json.loads(path.read_text(encoding="utf-8-sig"))
-

@@ -62,8 +62,13 @@ const standardActions: PipelineAction[] = [
 ];
 
 const fullAutoActions: PipelineAction[] = [{ id: "full-auto", label: "Full-auto pipeline", phase: "core" }];
+const movieActions: PipelineAction[] = [{ id: "movie-full-auto", label: "Movie full-auto production", phase: "core" }];
 
-const actions = computed(() => (studio.currentProject?.project_type === "full_auto" ? fullAutoActions : standardActions));
+const actions = computed(() => {
+  if (studio.currentProject?.project_type === "full_auto") return fullAutoActions;
+  if (studio.currentProject?.project_type === "movie") return movieActions;
+  return standardActions;
+});
 const actionGroups = computed<ActionGroup[]>(() =>
   phaseOrder
     .map((phase) => ({
