@@ -12,6 +12,7 @@ class CinematicShot:
     action: str
     expression: str
     location: str
+    dialogue: str = ""
 
 
 @dataclass(frozen=True)

@@ -176,6 +176,46 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual([Path(temp_dir) / "door-below"], reference_generator.calls)
             self.assertEqual(Path(temp_dir) / "door-below" / "output" / "movie" / "door-below.mp4", result.final_video_path)
 
+    def test_screenplay_scaffold_preserves_location_action_and_dialogue(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        screenplay = """
+        INT. ABANDONED STATION - NIGHT
+
+        MARA
+        We go below before sunrise.
+
+        Mara opens a glowing maintenance door and listens to the hum beneath the tracks.
+
+        EXT. ROOFTOP - DAWN
+
+        Mara watches the city wake as the key burns blue in her hand.
+        """
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = ScaffoldMovieUseCase(
+                planner=DeterministicMoviePlanner(),
+                projects_root=Path(temp_dir),
+            ).execute(
+                MovieInput(
+                    name="Door Below",
+                    source_type="screenplay",
+                    story_text=screenplay,
+                    desired_length=24,
+                    mode="scaffold",
+                )
+            )
+
+            render_plan = json.loads(result.render_plan_path.read_text())
+
+            self.assertEqual(2, len(render_plan["shots"]))
+            first = render_plan["shots"][0]
+            self.assertEqual("ABANDONED STATION - NIGHT", first["location"])
+            self.assertIn("glowing maintenance door", first["action"])
+            self.assertEqual("MARA: We go below before sunrise.", first["dialogue"])
+            self.assertIn("interior", first["camera"].lower())
+
     def test_movie_workflow_patcher_removes_audio_inputs(self):
         from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
 
