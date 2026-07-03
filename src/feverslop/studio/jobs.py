@@ -38,6 +38,7 @@ PIPELINE_ACTIONS = {
     "full-pipeline",
     "full-auto",
     "movie-full-auto",
+    "movie-references",
 }
 
 
@@ -74,10 +75,12 @@ PIPELINE_STEPS: dict[str, list[str]] = {
     "movie-full-auto": [
         "Story-Arch",
         "Scene planning",
+        "Movie references",
         "Krea2 visual consistency",
         "LTX MSR native-audio render",
         "Final movie",
     ],
+    "movie-references": ["Movie references"],
 }
 
 STEP_ALIASES: dict[str, list[str]] = {
@@ -86,6 +89,7 @@ STEP_ALIASES: dict[str, list[str]] = {
     "Story-Arch": ["Story-Arch Complete"],
     "Scene planning": ["Render Plan Ready", "Planning Scenes"],
     "Krea2 visual consistency": ["Krea2"],
+    "Movie references": ["Movie references", "Reference sheets"],
     "LTX MSR native-audio render": ["LTX MSR", "native audio"],
     "Final movie": ["Movie Complete"],
 }

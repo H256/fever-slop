@@ -62,7 +62,10 @@ const standardActions: PipelineAction[] = [
 ];
 
 const fullAutoActions: PipelineAction[] = [{ id: "full-auto", label: "Full-auto pipeline", phase: "core" }];
-const movieActions: PipelineAction[] = [{ id: "movie-full-auto", label: "Movie full-auto production", phase: "core" }];
+const movieActions: PipelineAction[] = [
+  { id: "movie-references", label: "Movie references", phase: "preparation" },
+  { id: "movie-full-auto", label: "Movie full-auto production", phase: "core" }
+];
 
 const actions = computed(() => {
   if (studio.currentProject?.project_type === "full_auto") return fullAutoActions;

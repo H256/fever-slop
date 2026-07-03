@@ -1,10 +1,12 @@
 import json
 import os
+import time
 import tempfile
 import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from feverslop.studio.server import create_app
 
@@ -53,6 +55,25 @@ class FakeMoviePostprocessor:
         output_file.write_text("\n".join(str(path) for path in video_files), encoding="utf-8")
         self.concat_lists.append((list(video_files), output_file))
         return output_file
+
+    def concat_clips(self, concat_list, output_file, video_only=False):
+        output_file = Path(output_file)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(b"movie")
+        self.concat_calls.append((Path(concat_list), output_file, video_only))
+        return output_file
+
+
+class FakeMovieImageBackend:
+    def __init__(self):
+        self.requests = []
+
+    def render_image(self, request):
+        self.requests.append(request)
+        output = Path(request.output_dir) / f"scene_{int(request.scene_number):04}.png"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (16, 16), "white").save(output)
+        return output
 
     def concat_clips(self, concat_list, output_file, video_only=False):
         output_file = Path(output_file)
@@ -250,6 +271,32 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertIsInstance(adapter, ComfyUIMovieVisualAdapter)
 
+    def test_movie_reference_generator_fills_manifest_paths(self):
+        from feverslop.application.movie_references import MovieReferenceSheetGenerator
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            manifest_path = temp / "movie" / "references" / "manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(
+                json.dumps({
+                    "actors": [{"id": "main_character", "name": "Mara", "prompt": "gothic protagonist", "msr_sheet_path": ""}],
+                    "locations": [{"id": "primary_location", "name": "Station", "prompt": "abandoned station", "msr_sheet_path": ""}],
+                }),
+                encoding="utf-8",
+            )
+            backend = FakeMovieImageBackend()
+
+            updated = MovieReferenceSheetGenerator(
+                backend=backend,
+                edit_backend=backend,
+            ).generate(project_dir=temp)
+
+            manifest = json.loads(updated.read_text())
+            self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
+            self.assertGreaterEqual(len(backend.requests), 2)
+
     def test_api_creates_movie_project_with_scaffold_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             client = TestClient(create_app(temp_dir))
@@ -318,6 +365,7 @@ class MovieProjectTests(unittest.TestCase):
                 status = client.get(f"/api/jobs/{job_id}").json()
                 if status["status"] == "succeeded":
                     break
+                time.sleep(0.01)
             self.assertEqual("succeeded", status["status"])
             self.assertTrue((Path(temp_dir) / "door-below" / "output" / "movie" / "door-below.mp4").exists())
             patched_workflow_path = Path(temp_dir) / "door-below" / "movie" / "workflows" / "video_ltxv_msr_movie_native_audio.json"
@@ -325,6 +373,36 @@ class MovieProjectTests(unittest.TestCase):
             patched_workflow = json.loads(patched_workflow_path.read_text())
             self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in patched_workflow.values()))
             self.assertFalse(any("audio" in key.lower() for node in patched_workflow.values() for key in node.get("inputs", {})))
+
+    def test_api_starts_movie_reference_job_and_updates_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            client = TestClient(create_app(temp_dir))
+            created = client.post(
+                "/api/projects",
+                json={
+                    "project_type": "movie",
+                    "name": "Door Below",
+                    "source_type": "short_story",
+                    "story_text": "A locksmith finds a glowing door below an abandoned station.",
+                    "desired_length": 30,
+                    "movie_mode": "scaffold",
+                },
+            )
+            self.assertEqual(200, created.status_code, created.text)
+
+            job = client.post("/api/projects/door-below/jobs", json={"action": "movie-references"})
+
+            self.assertEqual(200, job.status_code, job.text)
+            job_id = job.json()["id"]
+            for _ in range(50):
+                status = client.get(f"/api/jobs/{job_id}").json()
+                if status["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+            self.assertEqual("succeeded", status["status"])
+            manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
+            self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
 
     def test_movie_full_auto_rejects_non_movie_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:

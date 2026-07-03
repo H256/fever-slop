@@ -75,6 +75,7 @@ class StudioJobService:
                 ThumbnailPrebuildAction(store),
                 ThumbnailCleanupAction(store),
                 FullAutoAction(store, full_auto_handler),
+                MovieReferencesAction(store),
                 MovieFullAutoAction(store),
             ],
             PipelineAction(store, pipeline_handler),
@@ -200,6 +201,22 @@ class MovieFullAutoAction:
         return record_pipeline_state(self.store, project_id, self.action, handler)
 
 
+class MovieReferencesAction:
+    action = "movie-references"
+
+    def __init__(self, store: ProjectStore):
+        self.store = store
+
+    def build(self, project_id: str, request: StudioJobRequest, metadata: dict[str, Any]) -> JobHandler:
+        if metadata.get("project_type") != "movie":
+            raise ValueError("movie-references jobs require a movie project")
+        manifest_path = self.store.resolve_project_path(project_id, "movie/references/manifest.json")
+        if not manifest_path.exists():
+            raise ValueError("movie-references requires movie/references/manifest.json; create the movie scaffold first")
+        handler = build_movie_references_handler(store=self.store, project_id=project_id)
+        return record_pipeline_state(self.store, project_id, self.action, handler)
+
+
 class PipelineAction:
     action = "*"
 
@@ -312,6 +329,61 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         return final_video
 
     return run
+
+
+def build_movie_references_handler(*, store: ProjectStore, project_id: str) -> JobHandler:
+    def run(log: Callable[[str], None]) -> Any:
+        project_dir = store.resolve_project_path(project_id, ".").resolve()
+        log("[MoviePipeline] Stage: Movie references")
+        manifest_path = build_movie_reference_generator().generate(project_dir=project_dir)
+        log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
+        return manifest_path
+
+    return run
+
+
+def build_movie_reference_generator():
+    backend = str(os.environ.get("FEVERSLOP_MOVIE_REFERENCE_BACKEND") or "local").strip().lower()
+    if backend in {"", "local", "placeholder"}:
+        from feverslop.adapters.movie_references import LocalMovieImageBackend
+        from feverslop.application.movie_references import MovieReferenceSheetGenerator
+
+        local = LocalMovieImageBackend()
+        return MovieReferenceSheetGenerator(backend=local, edit_backend=local)
+    if backend != "comfyui":
+        raise ValueError("FEVERSLOP_MOVIE_REFERENCE_BACKEND must be local or comfyui")
+
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+    from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+    from feverslop.application.movie_references import MovieReferenceSheetGenerator
+    from feverslop.config.app_config import AppConfig
+    from feverslop.ports.rendering import WorkflowAnchorConfig
+
+    app_config = AppConfig.load(os.environ.get("FEVERSLOP_APP_CONFIG", "app_config.json"))
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
+    hero = ComfyUIImageBackend(
+        client=client,
+        workflow_path=os.environ.get("FEVERSLOP_MOVIE_HERO_WORKFLOW", str(Path("workflows") / "image_t2i_startframe_krea_v1.json")),
+        output_dir=Path("."),
+        model_resolver=resolver,
+    )
+    edit = ComfyUIImageBackend(
+        client=client,
+        workflow_path=os.environ.get("FEVERSLOP_MOVIE_EDIT_WORKFLOW", str(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json")),
+        output_dir=Path("."),
+        model_resolver=resolver,
+    )
+    return MovieReferenceSheetGenerator(
+        backend=hero,
+        edit_backend=edit,
+        hero_anchors=WorkflowAnchorConfig(positive_prompt_title="#PROMPT_POSITIVE"),
+        edit_anchors=WorkflowAnchorConfig(positive_prompt_title="#PROMPT_POSITIVE", reference_image_title="#IMAGE_1"),
+    )
 
 
 def build_movie_visual_adapter(project_dir: Path, workflow_path: Path):

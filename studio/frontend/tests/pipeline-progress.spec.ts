@@ -176,6 +176,8 @@ test("shows only movie production actions for movie projects", async ({ page }) 
   await page.goto("/projects/door-below/pipeline");
 
   await expect(page.getByRole("heading", { name: "Core runs" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Preparation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Movie references", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Movie full-auto production", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Full pipeline", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Full-auto pipeline", exact: true })).toHaveCount(0);
