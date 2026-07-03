@@ -9,14 +9,21 @@ from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
-from feverslop.application.generate_render_plan import GenerateRenderPlanUseCase
+from feverslop.application.generate_render_plan import (
+    GenerateRenderPlanExecutionRequest,
+    GenerateRenderPlanRequest,
+    GenerateRenderPlanResult,
+    GenerateRenderPlanUseCase,
+)
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
-from feverslop.audio.beat_analysis import BeatImpactAnalyzer
-from feverslop.audio.beat_analysis import BeatSceneDurationGenerator
-from feverslop.audio.demucs_separator import DemucsSeparator
-from feverslop.audio.vocal_timeline_analyzer import (
+from feverslop.config.app_config import AppConfig
+from feverslop.config.project_config import ProjectConfig, ProjectPaths
+from feverslop.adapters.audio.beat_analysis import BeatImpactAnalyzer
+from feverslop.adapters.audio.beat_analysis import BeatSceneDurationGenerator
+from feverslop.adapters.audio.demucs_separator import DemucsSeparator
+from feverslop.adapters.audio.vocal_timeline_analyzer import (
     VocalTimelineAnalyzer,
     merge_same_kind_segments,
     normalize_empty_vocals,
@@ -69,6 +76,31 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
         ],
         storyboard_renderer_factory=_build_storyboard_renderer,
     )
+
+
+def build_generate_render_plan_execution_request(request: GenerateRenderPlanRequest) -> GenerateRenderPlanExecutionRequest:
+    config = ProjectConfig.load(request.project_config_path)
+    paths = ProjectPaths.from_config(config)
+    app_config = AppConfig.load(request.app_config_path)
+    video_settings = config.to_video_settings()
+    song_id = getattr(config, "song_id", None) or getattr(config, "project_name", "") or config.input_audio.stem
+    return GenerateRenderPlanExecutionRequest(
+        source_request=request,
+        config=config,
+        paths=paths,
+        app_config=app_config,
+        video_settings=video_settings,
+        song_id=song_id,
+    )
+
+
+def execute_generate_render_plan(
+    request: GenerateRenderPlanRequest,
+    *,
+    console: Console | None = None,
+) -> GenerateRenderPlanResult:
+    use_case = build_generate_render_plan_use_case(console=console)
+    return use_case.execute(build_generate_render_plan_execution_request(request))
 
 
 def _build_vocal_analyzer(config):

@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import json
 import shutil
@@ -18,14 +19,72 @@ from feverslop.domain.ltx_rendering import (
 from feverslop.adapters.video_postprocessor import VideoPostProcessor, TrimSpec
 
 
+@dataclass(frozen=True)
+class ComfyUIVideoBackendConfig:
+    ltx_workflow_path: Path
+    output_dir: Path
+    single_prompt_workflow_path: Path | None = None
+    render_mode: str = "relay"
+    width_node_title: str = "#WIDTH"
+    height_node_title: str = "#HEIGHT"
+    load_audio_node_title: str = "#LOAD_AUDIO"
+    trim_audio_node_title: str = "#TRIM_AUDIO"
+    startframe_node_title: str = "#STARTFRAME"
+    frames_node_title: str = "#FRAMES"
+    framerate_node_title: str = "#FRAMERATE"
+    seed_node_title: str = "#SEED"
+    prompt_relay_node_title: str = "#PROMPT_RELAY"
+    single_prompt_node_title: str = "#PROMPT"
+    single_prompt_input_name: str = "text"
+    save_video_node_title: str = "#SAVE_VIDEO"
+
+
+class RenderOutputWriter:
+    def __init__(self, *, output_dir: Path, postprocessor: VideoPostProcessor, postprocess: bool):
+        self.output_dir = output_dir
+        self.postprocessor = postprocessor
+        self.postprocess = postprocess
+
+    def finalize_scene(self, *, scene: dict, raw_clip: Path, final_output_path: Path, rolling: AudioWindowSpec) -> tuple[Path, dict]:
+        scene_number = int(scene["scene"])
+        if self.postprocess:
+            spec = TrimSpec(
+                source_file=raw_clip,
+                output_file=final_output_path,
+                fps=int(scene["fps"]),
+                trim_front_frames=int(rolling["trim_front_frames"]),
+                keep_frames=int(scene["frame_count"]),
+                scene=scene_number,
+            )
+            clip_path = self.postprocessor.trim_clip(spec)
+        else:
+            clip_path = self.output_dir / f"scene_{scene_number:04}.mp4"
+            shutil.copy2(raw_clip, clip_path)
+        return clip_path, {
+            "scene": scene_number,
+            "raw_clip": str(raw_clip),
+            "final_clip": str(clip_path),
+            "scene_frame_count": int(scene["frame_count"]),
+            "render_frame_count": int(rolling["render_frame_count"]),
+            "trim_front_frames": int(rolling["trim_front_frames"]),
+            "tail_loss_frames": int(rolling["tail_loss_frames"]),
+            "audio_start_seconds": float(rolling["audio_start_seconds"]),
+            "audio_duration_seconds": float(rolling["audio_duration_seconds"]),
+        }
+
+    def write_outputs(self, rendered_files: list[Path], manifest_entries: list[dict]) -> None:
+        self.postprocessor.write_concat_list(rendered_files, self.output_dir / "concat_list.txt")
+        self.postprocessor.write_manifest(manifest_entries, self.output_dir / "render_manifest.json")
+
+
 class ComfyUIVideoRenderBackend:
     min_prompt_relay_frames = 6
 
     def __init__(
         self,
         client: ComfyUIClient,
-        ltx_workflow_path: str | Path,
-        output_dir: str | Path,
+        ltx_workflow_path: str | Path | None = None,
+        output_dir: str | Path | None = None,
         single_prompt_workflow_path: str | Path | None = None,
         render_mode: str = "relay",
         width_node_title: str = "#WIDTH",
@@ -69,7 +128,29 @@ class ComfyUIVideoRenderBackend:
         model_resolver=None,
         render_queue: ComfyUIRenderQueue | None = None,
         postprocessor: VideoPostProcessor | None = None,
+        output_writer: RenderOutputWriter | None = None,
+        config: ComfyUIVideoBackendConfig | None = None,
     ):
+        if config is not None:
+            ltx_workflow_path = config.ltx_workflow_path
+            output_dir = config.output_dir
+            single_prompt_workflow_path = config.single_prompt_workflow_path
+            render_mode = config.render_mode
+            width_node_title = config.width_node_title
+            height_node_title = config.height_node_title
+            load_audio_node_title = config.load_audio_node_title
+            trim_audio_node_title = config.trim_audio_node_title
+            startframe_node_title = config.startframe_node_title
+            frames_node_title = config.frames_node_title
+            framerate_node_title = config.framerate_node_title
+            seed_node_title = config.seed_node_title
+            prompt_relay_node_title = config.prompt_relay_node_title
+            single_prompt_node_title = config.single_prompt_node_title
+            single_prompt_input_name = config.single_prompt_input_name
+            save_video_node_title = config.save_video_node_title
+        if ltx_workflow_path is None or output_dir is None:
+            raise ValueError("ltx_workflow_path and output_dir are required unless config is provided")
+
         self.client = client
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
         self.render_queue = render_queue or ComfyUIRenderQueue(client)
@@ -126,6 +207,11 @@ class ComfyUIVideoRenderBackend:
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
             debug=ffmpeg_debug,
+        )
+        self.output_writer = output_writer or RenderOutputWriter(
+            output_dir=self.output_dir,
+            postprocessor=self.postprocessor,
+            postprocess=self.postprocess,
         )
         self.workflow_patcher = workflow_patcher or LTXWorkflowPatcher(
             LTXWorkflowSettings(
@@ -253,35 +339,16 @@ class ComfyUIVideoRenderBackend:
                 rolling=rolling,
             )
 
-            if self.postprocess:
-                spec = TrimSpec(
-                    source_file=raw_clip,
-                    output_file=final_output_path,
-                    fps=int(scene["fps"]),
-                    trim_front_frames=int(rolling["trim_front_frames"]),
-                    keep_frames=int(scene["frame_count"]),
-                    scene=scene_number,
-                )
-                clip_path = self.postprocessor.trim_clip(spec)
-            else:
-                clip_path = self.output_dir / f"scene_{scene_number:04}.mp4"
-                shutil.copy2(raw_clip, clip_path)
-
+            clip_path, manifest_entry = self.output_writer.finalize_scene(
+                scene=scene,
+                raw_clip=raw_clip,
+                final_output_path=final_output_path,
+                rolling=rolling,
+            )
             rendered_files.append(clip_path)
-            manifest_entries.append({
-                "scene": scene_number,
-                "raw_clip": str(raw_clip),
-                "final_clip": str(clip_path),
-                "scene_frame_count": int(scene["frame_count"]),
-                "render_frame_count": int(rolling["render_frame_count"]),
-                "trim_front_frames": int(rolling["trim_front_frames"]),
-                "tail_loss_frames": int(rolling["tail_loss_frames"]),
-                "audio_start_seconds": float(rolling["audio_start_seconds"]),
-                "audio_duration_seconds": float(rolling["audio_duration_seconds"]),
-            })
+            manifest_entries.append(manifest_entry)
 
-        self.postprocessor.write_concat_list(rendered_files, self.output_dir / "concat_list.txt")
-        self.postprocessor.write_manifest(manifest_entries, self.output_dir / "render_manifest.json")
+        self.output_writer.write_outputs(rendered_files, manifest_entries)
         return rendered_files
 
     def render_scene_video(self, scene: dict, comfy_audio_name: str, comfy_startframe_name: str, rolling: AudioWindowSpec) -> Path:

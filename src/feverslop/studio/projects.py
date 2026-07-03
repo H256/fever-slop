@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import base64
 import json
-import os
 import re
 import shutil
-import tempfile
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -72,6 +68,26 @@ def sanitize_audio_filename(value: str) -> str:
 class ProjectStore:
     def __init__(self, projects_root: str | Path = "projects"):
         self.projects_root = Path(projects_root).resolve()
+        from feverslop.studio.artifact_catalog import ArtifactCatalog
+        from feverslop.studio.media_store import MediaStore
+        from feverslop.studio.pipeline_state_store import PipelineStateStore
+        from feverslop.studio.project_repository import ProjectRepository
+
+        self.repository = ProjectRepository(
+            projects_root=self.projects_root,
+            project_root=self.project_root,
+            read_json_file=lambda path: self._read_json_file(path, default={}),
+        )
+        self.artifact_catalog = ArtifactCatalog(self.project_root)
+        self.media_store = MediaStore(
+            self.project_root,
+            self.resolve_project_path,
+            lambda path: self._read_json_file(path, default={}),
+        )
+        self.pipeline_state_store = PipelineStateStore(
+            self.project_root,
+            lambda path: self._read_json_file(path, default={}),
+        )
 
     def list_projects(self) -> list[dict[str, Any]]:
         if not self.projects_root.exists():
@@ -103,82 +119,17 @@ class ProjectStore:
         }
 
     def create_project(self, request: ProjectCreateRequest) -> dict[str, Any]:
-        project_type = str(request.project_type or "").strip()
-        if project_type not in {"standard_music_video", "full_auto"}:
-            raise ValueError("project_type must be standard_music_video or full_auto")
-        name = str(request.name or "").strip()
-        if not name:
-            raise ValueError("Project name is required")
-        slug = slugify_project_name(name)
-        if not slug:
-            raise ValueError("Project slug is empty after slugifying the name")
-        root = (self.projects_root / slug).resolve()
-        if root.parent != self.projects_root:
-            raise StudioPathError("Project id must name a direct child of projects root")
-        if root.exists():
-            raise ValueError(f"Project already exists: {slug}")
-        if project_type == "full_auto":
-            if not str(request.idea or "").strip():
-                raise ValueError("Full-auto idea is required")
-            if not str(request.song_style or "").strip():
-                raise ValueError("Full-auto song style is required")
-            self._validate_full_auto_inputs(request)
-
-        root.mkdir(parents=True)
-        metadata = {
-            "project_type": project_type,
-            "display_name": name,
-            "slug": slug,
-        }
-        if project_type == "full_auto":
-            metadata["full_auto"] = {
-                "idea": str(request.idea).strip(),
-                "song_style": str(request.song_style).strip(),
-                "duration_seconds": float(request.duration_seconds),
-                "width": int(request.width),
-                "height": int(request.height),
-                "fps": int(request.fps),
-                "pipeline_mode": str(request.pipeline_mode or "classic"),
-            }
-        self._write_project_metadata(root, metadata)
-        if project_type == "standard_music_video":
-            (root / "config.json").write_text(
-                json.dumps({"project_name": name, "input_audio": ""}, indent=2, ensure_ascii=False) + "\n",
-                encoding="utf-8",
-            )
+        slug = self.repository.create_project(request)
         return self.describe_project(slug)
 
     def project_metadata(self, project_id: str) -> dict[str, Any]:
-        root = self.project_root(project_id)
-        metadata = self._read_json_file(root / ".studio" / "project.json", default={})
-        if metadata:
-            return metadata
-        config = self._read_json_file(root / "config.json", default={})
-        return {
-            "project_type": "standard_music_video",
-            "display_name": str(config.get("project_name") or project_id),
-            "slug": project_id,
-        }
+        return self.repository.project_metadata(project_id)
 
     def list_artifacts(self, project_id: str) -> dict[str, list[str]]:
-        root = self.project_root(project_id)
-        files = [path for path in root.rglob("*") if path.is_file() and ".studio" not in path.relative_to(root).parts]
-        return {
-            "configs": self._relative_matches(root, files, lambda path: path.name == "config.json"),
-            "render_plans": self._relative_matches(root, files, lambda path: path.name.startswith("render_plan") and path.suffix == ".json"),
-            "references": self._relative_matches(root, files, lambda path: "reference" in path.as_posix() and path.suffix.lower() in {".json", ".png", ".jpg", ".jpeg", ".webp"}),
-            "generated_json": self._relative_matches(root, files, lambda path: path.suffix == ".json" and path.name != "config.json"),
-            "videos": self._relative_matches(root, files, lambda path: path.suffix.lower() in {".mp4", ".mov", ".webm"}),
-            "images": self._relative_matches(root, files, lambda path: path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}),
-            "audio": self._relative_matches(root, files, lambda path: path.suffix.lower() in {".mp3", ".wav", ".m4a", ".flac", ".ogg"}),
-        }
+        return self.artifact_catalog.list_artifacts(project_id)
 
     def artifact_sizes(self, project_id: str) -> dict[str, Any]:
-        root = self.project_root(project_id)
-        totals = {key: 0 for key in ["configs", "render_plans", "references", "generated_json", "videos", "images", "audio", "other"]}
-        for path in (path for path in root.rglob("*") if path.is_file() and ".studio" not in path.relative_to(root).parts):
-            totals[self._artifact_size_group(path)] += path.stat().st_size
-        return {"total_bytes": sum(totals.values()), "by_type": totals}
+        return self.artifact_catalog.artifact_sizes(project_id)
 
     def read_artifact(self, project_id: str, path: str) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, path)
@@ -187,53 +138,18 @@ class ProjectStore:
     def write_artifact(self, project_id: str, request: ArtifactRequest) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, request.path)
         if artifact_path.name == "config.json":
-            self._validate_project_config(request.data)
+            from feverslop.studio.project_validation import validate_project_config
+
+            validate_project_config(request.data)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(json.dumps(request.data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return {"path": request.path, "data": request.data}
 
     def write_media_data_url(self, project_id: str, path: str, data_url: str) -> dict[str, str]:
-        media_path = self.resolve_project_path(project_id, path)
-        if media_path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
-            raise StudioPathError("Unsupported uploaded media type")
-        header, separator, encoded = data_url.partition(",")
-        if not separator or not header.startswith("data:image/"):
-            raise StudioPathError("Expected an image data URL")
-        media_path.parent.mkdir(parents=True, exist_ok=True)
-        media_path.write_bytes(base64.b64decode(encoded))
-        return {"path": path}
+        return self.media_store.write_media_data_url(project_id, path, data_url)
 
     def store_audio_upload(self, project_id: str, filename: str, content_type: str, source) -> dict[str, str]:
-        safe_name = sanitize_audio_filename(filename)
-        suffix = Path(safe_name).suffix.lower()
-        if suffix not in AUDIO_EXTENSIONS or str(content_type or "").lower() not in AUDIO_MIME_TYPES:
-            raise ValueError("Unsupported audio type")
-        root = self.project_root(project_id)
-        input_dir = root / "input"
-        input_dir.mkdir(parents=True, exist_ok=True)
-        target = (input_dir / safe_name).resolve()
-        if not target.is_relative_to(input_dir):
-            raise StudioPathError("Path escapes project input directory")
-
-        fd, temp_name = tempfile.mkstemp(prefix=f".{safe_name}.", suffix=".tmp", dir=input_dir)
-        temp_path = Path(temp_name)
-        try:
-            with os.fdopen(fd, "wb") as temp_file:
-                shutil.copyfileobj(source, temp_file)
-            temp_path.replace(target)
-        except Exception:
-            temp_path.unlink(missing_ok=True)
-            raise
-
-        relative_path = target.relative_to(root).as_posix()
-        config_path = root / "config.json"
-        if config_path.exists():
-            config = self._read_json_file(config_path, default={})
-            if not isinstance(config, dict):
-                config = {}
-            config["input_audio"] = relative_path
-            config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        return {"path": relative_path}
+        return self.media_store.store_audio_upload(project_id, filename, content_type, source)
 
     def patch_render_plan(self, project_id: str, patch: RenderPlanPatch) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, patch.path)
@@ -260,37 +176,6 @@ class ProjectStore:
         path = root / ".studio" / "project.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    @staticmethod
-    def _validate_project_config(data: Any) -> None:
-        if not isinstance(data, dict):
-            raise ValueError("config.json must be a JSON object")
-        if not str(data.get("project_name") or "").strip():
-            raise ValueError("project_name is required")
-        if not str(data.get("input_audio") or "").strip():
-            raise ValueError("input_audio is required")
-        subject_mode = str(data.get("subject_mode", "multi") or "multi").strip().lower()
-        if subject_mode not in {"single", "multi"}:
-            raise ValueError("subject_mode must be 'single' or 'multi'")
-        video_pipeline = data.get("video_pipeline")
-        if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr"}:
-            raise ValueError("video_pipeline must be 'ltx_i2v' or 'ltx_msr'")
-        max_scene_actors = int(data.get("max_scene_actors", 1 if subject_mode == "single" else 4))
-        if max_scene_actors < 1 or max_scene_actors > 4:
-            raise ValueError("max_scene_actors must be between 1 and 4")
-
-    @staticmethod
-    def _validate_full_auto_inputs(request: ProjectCreateRequest) -> None:
-        if float(request.duration_seconds) <= 0:
-            raise ValueError("duration_seconds must be positive")
-        if int(request.width) <= 0:
-            raise ValueError("width must be a positive integer")
-        if int(request.height) <= 0:
-            raise ValueError("height must be a positive integer")
-        if int(request.fps) not in {16, 24, 50}:
-            raise ValueError("fps must be one of 16, 24, or 50")
-        if str(request.pipeline_mode or "classic") not in {"classic", "msr"}:
-            raise ValueError("pipeline_mode must be classic or msr")
 
     def resolve_project_path(self, project_id: str, path: str) -> Path:
         root = self.project_root(project_id)
@@ -344,28 +229,7 @@ class ProjectStore:
         return count
 
     def record_pipeline_run(self, project_id: str, *, action: str, stages: list[str], status: str) -> dict[str, Any]:
-        root = self.project_root(project_id)
-        path = root / ".studio" / "pipeline_state.json"
-        state = self._read_json_file(path, default={})
-        if not isinstance(state, dict):
-            state = {}
-        completed = list(state.get("completed_stages") or [])
-        if status == "succeeded":
-            for stage in stages:
-                if stage not in completed:
-                    completed.append(stage)
-        entry = {
-            "action": action,
-            "stages": stages,
-            "status": status,
-            "updated_at": time.time(),
-        }
-        state["completed_stages"] = completed
-        state["last_run"] = entry
-        state.setdefault("runs", []).append(entry)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        return state
+        return self.pipeline_state_store.record_pipeline_run(project_id, action=action, stages=stages, status=status)
 
     @staticmethod
     def _read_json_file(path: Path, *, default: Any) -> Any:
@@ -373,26 +237,3 @@ class ProjectStore:
             return default
         return json.loads(path.read_text(encoding="utf-8-sig"))
 
-    @staticmethod
-    def _relative_matches(root: Path, files: list[Path], predicate) -> list[str]:
-        return sorted(path.relative_to(root).as_posix() for path in files if predicate(path))
-
-    @staticmethod
-    def _artifact_size_group(path: Path) -> str:
-        suffix = path.suffix.lower()
-        posix = path.as_posix()
-        if path.name == "config.json":
-            return "configs"
-        if path.name.startswith("render_plan") and suffix == ".json":
-            return "render_plans"
-        if "reference" in posix and suffix in {".json", ".png", ".jpg", ".jpeg", ".webp"}:
-            return "references"
-        if suffix in {".mp4", ".mov", ".webm"}:
-            return "videos"
-        if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
-            return "images"
-        if suffix in {".mp3", ".wav", ".m4a", ".flac", ".ogg"}:
-            return "audio"
-        if suffix == ".json":
-            return "generated_json"
-        return "other"

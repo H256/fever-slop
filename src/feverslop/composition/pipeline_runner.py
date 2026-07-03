@@ -27,7 +27,7 @@ from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
-from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
+from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case, execute_generate_render_plan  # noqa: F401
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
 from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
 from feverslop.config.app_config import AppConfig
@@ -384,12 +384,13 @@ def _run_tests_stage(_state: PipelineRunState) -> None:
 
 
 def _run_main_pipeline_stage(state: PipelineRunState) -> None:
-    build_generate_render_plan_use_case(console=console).execute(
+    execute_generate_render_plan(
         GenerateRenderPlanRequest(
             project_config_path=state.context.project_config_path,
             app_config_path=state.app_config_path,
             concept_batch_size=int(state.args.concept_batch_size),
-        )
+        ),
+        console=console,
     )
     state.plan_for_next_step = state.context.render_plan
 

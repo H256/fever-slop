@@ -44,7 +44,7 @@ class GeneratePipelineSmokeTests(unittest.TestCase):
 
         result = use_case.execute_services(context)
 
-        self.assertEqual(["audio", "scene", "prompts", "render_plan"], result.extra["order"])
+        self.assertEqual(["audio", "scene", "prompts", "render_plan"], result.order)
         self.assertEqual("vocals.wav", result.stem_files["vocals"])
         self.assertEqual("scene_prompts.json", result.scene_prompts_json)
         self.assertEqual(1, result.render_plan[0]["scene"])

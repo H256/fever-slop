@@ -10,6 +10,7 @@ from feverslop.application.generate_render_plan import (
     GenerateRenderPlanRequest,
     GenerateRenderPlanUseCase,
 )
+from feverslop.composition.generate_render_plan import build_generate_render_plan_execution_request
 
 
 class FakeArtifactStore:
@@ -87,9 +88,11 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
             )
 
             result = use_case.execute(
-                GenerateRenderPlanRequest(
-                    project_config_path=config_path,
-                    app_config_path=app_config_path,
+                build_generate_render_plan_execution_request(
+                    GenerateRenderPlanRequest(
+                        project_config_path=config_path,
+                        app_config_path=app_config_path,
+                    )
                 )
             )
 

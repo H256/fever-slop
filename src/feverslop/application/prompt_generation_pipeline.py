@@ -13,8 +13,6 @@ from feverslop.ports.generate_pipeline import (
     ScenePromptBuilderFactory,
 )
 from feverslop.domain.prompt_constraints import build_location_constraint
-from rich.panel import Panel
-from rich.table import Table
 
 
 def join_notes(*parts: str) -> str:
@@ -50,9 +48,9 @@ def normalize_location_names(items: Any) -> list[str]:
     return [name for name in names if name]
 
 
-def console_print(console: Any, message: str) -> None:
-    if console is not None:
-        console.print(message)
+def reporter_message(reporter: Any, message: str) -> None:
+    if reporter is not None:
+        reporter.message(message)
 
 
 def call_with_supported_kwargs(func: Callable[..., Any], **kwargs):
@@ -63,6 +61,37 @@ def call_with_supported_kwargs(func: Callable[..., Any], **kwargs):
         if key in signature.parameters
     }
     return func(**supported)
+
+
+def resolve_text_override(
+    *,
+    configured_value: Any,
+    generated_value_factory: Callable[[], str],
+    reporter: Any,
+    message: str,
+) -> str:
+    configured = str(configured_value or "").strip()
+    if configured:
+        reporter_message(reporter, message)
+        return configured
+    return generated_value_factory()
+
+
+def resolve_locations_override(*, configured_locations: Any, generated_locations: Any, reporter: Any) -> list[str]:
+    if configured_locations:
+        reporter_message(reporter, "[yellow]Using locations override from project config.[/yellow]")
+        return configured_locations
+    return normalize_location_names(generated_locations)
+
+
+def validate_and_order_concept_prompts(stage1_segments: list[dict], concept_prompts: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    expected_ids = {seg["segment_id"] for seg in stage1_segments}
+    missing = [seg["segment_id"] for seg in stage1_segments if seg["segment_id"] not in concept_prompts]
+    if missing:
+        raise ValueError(f"Missing concept prompts: {missing}")
+    extra = [segment_id for segment_id in concept_prompts.keys() if segment_id not in expected_ids]
+    ordered = {seg["segment_id"]: concept_prompts[seg["segment_id"]] for seg in stage1_segments}
+    return ordered, extra
 
 
 class PromptGenerationPipeline:
@@ -107,7 +136,7 @@ class PromptGenerationPipeline:
         log_step = context["log_step"]
         log_file = context["log_file"]
         run_spinner = context["run_spinner"]
-        console = context["console"]
+        reporter = context["reporter"]
         artifact_store = context["artifact_store"]
 
         log_step("7. LLM Prompt Pipeline")
@@ -123,7 +152,7 @@ class PromptGenerationPipeline:
             prompt_pipeline=prompt_pipeline,
             all_lyrics=all_lyrics,
             run_spinner=run_spinner,
-            console=console,
+            reporter=reporter,
         )
         prompt_pipeline.save_json(
             resolved_context_json,
@@ -131,15 +160,16 @@ class PromptGenerationPipeline:
             artifact_store=artifact_store,
         )
         log_file("Resolved Context JSON", resolved_context_json)
-        console.print(Panel(global_context["story_idea"], title="Story Idea", border_style="green"))
-        console.print(Panel(global_context["style"], title="Style Block", border_style="green"))
-
-        context_table = Table(title="Resolved Subject / Locations")
-        context_table.add_column("Field", style="bold")
-        context_table.add_column("Value", style="cyan")
-        context_table.add_row("Subject", global_context["subject"])
-        context_table.add_row("Locations", "\n".join(global_context["locations"]))
-        console.print(context_table)
+        reporter.panel(global_context["story_idea"], title="Story Idea")
+        reporter.panel(global_context["style"], title="Style Block")
+        reporter.table(
+            "Resolved Subject / Locations",
+            ["Field", "Value"],
+            [
+                ["Subject", global_context["subject"]],
+                ["Locations", "\n".join(global_context["locations"])],
+            ],
+        )
 
         concept_story_input = join_notes(
             global_context["story_idea"],
@@ -147,7 +177,7 @@ class PromptGenerationPipeline:
             get_steering_value(config, "concepts"),
         )
         if request.concept_batch_size > 0:
-            console.print(
+            reporter.message(
                 f"[cyan]Using batched concept generation: "
                 f"{request.concept_batch_size} segments per batch[/cyan]"
             )
@@ -173,25 +203,9 @@ class PromptGenerationPipeline:
                 ),
             )
 
-        expected_concept_ids = {seg["segment_id"] for seg in stage1_segments}
-        missing_concepts = [
-            seg["segment_id"]
-            for seg in stage1_segments
-            if seg["segment_id"] not in concept_prompts
-        ]
-        extra_concepts = [
-            segment_id
-            for segment_id in concept_prompts.keys()
-            if segment_id not in expected_concept_ids
-        ]
-        if missing_concepts:
-            raise ValueError(f"Missing concept prompts: {missing_concepts}")
+        concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
         if extra_concepts:
-            console.print(f"[yellow]Ignoring extra concept prompt keys: {extra_concepts}[/yellow]")
-        concept_prompts = {
-            seg["segment_id"]: concept_prompts[seg["segment_id"]]
-            for seg in stage1_segments
-        }
+            reporter.message(f"[yellow]Ignoring extra concept prompt keys: {extra_concepts}[/yellow]")
         prompt_pipeline.save_json(
             concept_prompts_json,
             concept_prompts,
@@ -249,8 +263,11 @@ class PromptGenerationPipeline:
         prompt_pipeline: Any,
         all_lyrics: str,
         run_spinner: Callable[[str, Callable[[], Any]], Any],
-        console: Any,
+        reporter: Any = None,
+        console: Any = None,
     ) -> dict:
+        if reporter is None and console is not None:
+            reporter = console
         story_notes = join_notes(
             get_steering_value(config, "global_"),
             get_steering_value(config, "story_idea"),
@@ -274,29 +291,31 @@ class PromptGenerationPipeline:
         subject_mode = str(get_config_value(config, "subject_mode", "multi") or "multi")
         max_scene_actors = int(get_config_value(config, "max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
 
-        if config_story_idea:
-            story_idea = config_story_idea
-            console_print(console, "[yellow]Using story_idea override from project config.[/yellow]")
-        else:
-            story_idea = run_spinner(
+        story_idea = resolve_text_override(
+            configured_value=config_story_idea,
+            reporter=reporter,
+            message="[yellow]Using story_idea override from project config.[/yellow]",
+            generated_value_factory=lambda: run_spinner(
                 "Generating story idea...",
                 lambda: prompt_pipeline.create_story_idea(
                     lyrics=all_lyrics,
                     notes=story_notes,
                 ),
-            )
+            ),
+        )
 
-        if config_style:
-            style_block = config_style
-            console_print(console, "[yellow]Using style override from project config.[/yellow]")
-        else:
-            style_block = run_spinner(
+        style_block = resolve_text_override(
+            configured_value=config_style,
+            reporter=reporter,
+            message="[yellow]Using style override from project config.[/yellow]",
+            generated_value_factory=lambda: run_spinner(
                 "Generating style block...",
                 lambda: prompt_pipeline.create_style_block(
                     lyrics=all_lyrics,
                     notes=style_notes,
                 ),
-            )
+            ),
+        )
 
         subject_locations = run_spinner(
             "Generating subject and locations fallback...",
@@ -306,17 +325,17 @@ class PromptGenerationPipeline:
             ),
         )
 
-        if config_subject:
-            subject = config_subject
-            console_print(console, "[yellow]Using subject override from project config.[/yellow]")
-        else:
-            subject = subject_locations["subject"]
-
-        if config_locations:
-            locations = config_locations
-            console_print(console, "[yellow]Using locations override from project config.[/yellow]")
-        else:
-            locations = normalize_location_names(subject_locations["locations"])
+        subject = resolve_text_override(
+            configured_value=config_subject,
+            reporter=reporter,
+            message="[yellow]Using subject override from project config.[/yellow]",
+            generated_value_factory=lambda: subject_locations["subject"],
+        )
+        locations = resolve_locations_override(
+            configured_locations=config_locations,
+            generated_locations=subject_locations["locations"],
+            reporter=reporter,
+        )
 
         actors = config_items_as_dicts(config_actors) or config_items_as_dicts(subject_locations.get("actors", []))
         structured_locations = (

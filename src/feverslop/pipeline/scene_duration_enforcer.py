@@ -133,39 +133,27 @@ def enforce_scene_duration_constraints(
     if max_duration < min_duration:
         raise ValueError("max_duration must be >= min_duration")
 
-    # First split scenes that exceed max_duration.
+    return renumber_scenes(
+        merge_short_scenes(
+            split_long_scenes(scenes, max_duration=max_duration),
+            min_duration=min_duration,
+            max_duration=max_duration,
+        )
+    )
+
+
+def split_long_scenes(scenes: list[SrtScene], *, max_duration: float) -> list[SrtScene]:
     split_scenes: list[SrtScene] = []
-
     for scene in scenes:
-        duration = scene.duration
+        split_scenes.extend(_split_scene_to_max(scene, max_duration))
+    return split_scenes
 
-        if duration <= max_duration:
-            split_scenes.append(scene)
-            continue
 
-        parts = max(1, int(duration // max_duration))
-        if duration / parts > max_duration:
-            parts += 1
-
-        part_duration = duration / parts
-
-        for i in range(parts):
-            start = scene.start + i * part_duration
-            end = scene.end if i == parts - 1 else scene.start + (i + 1) * part_duration
-            split_scenes.append(
-                SrtScene(
-                    scene=scene.scene,
-                    start=start,
-                    end=end,
-                    text=scene.text,
-                )
-            )
-
-    # Then merge short scenes.
+def merge_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_duration: float) -> list[SrtScene]:
     merged: list[SrtScene] = []
     buffer: SrtScene | None = None
 
-    for scene in split_scenes:
+    for scene in scenes:
         if buffer is None:
             buffer = scene
         else:
@@ -177,11 +165,7 @@ def enforce_scene_duration_constraints(
             )
 
         if buffer.duration >= min_duration:
-            # If buffer got too long, split it again into legal chunks.
-            if buffer.duration > max_duration:
-                merged.extend(_split_scene_to_max(buffer, max_duration))
-            else:
-                merged.append(buffer)
+            merged.extend(_split_scene_to_max(buffer, max_duration))
             buffer = None
 
     if buffer is not None:
@@ -195,60 +179,45 @@ def enforce_scene_duration_constraints(
                 end=buffer.end,
                 text=previous.text or buffer.text,
             )
+            merged.extend(_split_scene_to_max(combined, max_duration))
 
-            if combined.duration <= max_duration:
-                merged.append(combined)
-            else:
-                merged.extend(_split_scene_to_max(combined, max_duration))
+    return merge_remaining_short_scenes(merged, min_duration=min_duration, max_duration=max_duration)
 
-    # Final guard: if any remaining short scene exists, merge it with nearest neighbor if possible.
+
+def merge_remaining_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_duration: float) -> list[SrtScene]:
+    merged = list(scenes)
     stable = False
     while not stable:
         stable = True
-
         for i, scene in enumerate(list(merged)):
             if scene.duration >= min_duration or len(merged) == 1:
                 continue
-
             stable = False
-
             if i < len(merged) - 1:
                 neighbor = merged[i + 1]
-                combined = SrtScene(
-                    scene=scene.scene,
-                    start=scene.start,
-                    end=neighbor.end,
-                    text=scene.text or neighbor.text,
-                )
+                combined = SrtScene(scene=scene.scene, start=scene.start, end=neighbor.end, text=scene.text or neighbor.text)
                 del merged[i:i + 2]
                 merged[i:i] = _split_scene_to_max(combined, max_duration)
                 break
-
             if i > 0:
                 neighbor = merged[i - 1]
-                combined = SrtScene(
-                    scene=neighbor.scene,
-                    start=neighbor.start,
-                    end=scene.end,
-                    text=neighbor.text or scene.text,
-                )
+                combined = SrtScene(scene=neighbor.scene, start=neighbor.start, end=scene.end, text=neighbor.text or scene.text)
                 del merged[i - 1:i + 1]
                 merged[i - 1:i - 1] = _split_scene_to_max(combined, max_duration)
                 break
+    return merged
 
-    # Renumber and force contiguous boundaries from the repaired ranges.
-    repaired = []
-    for index, scene in enumerate(merged, start=1):
-        repaired.append(
-            SrtScene(
-                scene=index,
-                start=scene.start,
-                end=scene.end,
-                text=scene.text or f"Scene {index}",
-            )
+
+def renumber_scenes(scenes: list[SrtScene]) -> list[SrtScene]:
+    return [
+        SrtScene(
+            scene=index,
+            start=scene.start,
+            end=scene.end,
+            text=scene.text or f"Scene {index}",
         )
-
-    return repaired
+        for index, scene in enumerate(scenes, start=1)
+    ]
 
 
 def _split_scene_to_max(scene: SrtScene, max_duration: float) -> list[SrtScene]:

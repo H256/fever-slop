@@ -58,6 +58,10 @@ class ImportBoundaryTests(unittest.TestCase):
     def test_application_layer_does_not_import_concrete_adapters_or_root_modules(self):
         app_root = Path("src/feverslop/application")
         forbidden = [
+            "from feverslop.config",
+            "import feverslop.config",
+            "from rich",
+            "import rich",
             "from feverslop.adapters.",
             "import feverslop.adapters.",
             "from feverslop.audio.",

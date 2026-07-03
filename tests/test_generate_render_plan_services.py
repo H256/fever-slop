@@ -1,10 +1,9 @@
-﻿import unittest
+import unittest
 from pathlib import Path
-
-from rich.progress import SpinnerColumn
+from types import SimpleNamespace
 
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
-from feverslop.application.generate_render_plan import GenerateRenderPlanUseCase
+from feverslop.application.generate_render_plan import GenerateRenderPlanExecutionRequest, GenerateRenderPlanUseCase
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
@@ -22,6 +21,33 @@ class RecordingService:
         context.setdefault("order", []).append(self.name)
         context.update(self.result)
         return context
+
+
+class RecordingReporter:
+    def __init__(self):
+        self.steps = []
+        self.files = []
+        self.messages = []
+        self.progress = []
+
+    def step(self, title):
+        self.steps.append(title)
+
+    def file(self, label, path):
+        self.files.append((label, path))
+
+    def message(self, text):
+        self.messages.append(text)
+
+    def table(self, title, columns, rows):
+        self.messages.append((title, columns, rows))
+
+    def panel(self, text, *, title=None):
+        self.messages.append((title, text))
+
+    def run_progress(self, description, func):
+        self.progress.append(description)
+        return func()
 
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
@@ -85,14 +111,50 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
 
         self.assertIs(services, use_case.pipeline_services)
 
-    def test_run_spinner_avoids_unicode_spinner_column(self):
-        use_case = GenerateRenderPlanUseCase()
+    def test_execute_uses_loaded_request_without_loading_config_files(self):
+        import tempfile
 
-        result = use_case.run_spinner("Doing work", lambda: "done")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.wav"
+            audio.write_bytes(b"dummy")
+            reporter = RecordingReporter()
+            services = [
+                RecordingService(
+                    "render_plan",
+                    {"render_plan": [{"scene": 1, "frame_count": 24, "duration_seconds": 1.0}]},
+                )
+            ]
+            config = SimpleNamespace(
+                project_name="demo",
+                input_audio=audio,
+                output_dir=temp / "output",
+            )
+            paths = SimpleNamespace(
+                ensure_output_dirs=lambda: None,
+                timeline_dir=temp / "timeline",
+                prompts_dir=temp / "prompts",
+                render_dir=temp / "render",
+            )
+            request = GenerateRenderPlanExecutionRequest(
+                source_request=SimpleNamespace(render_storyboard=False, zimage_workflow_path=None),
+                config=config,
+                paths=paths,
+                app_config=SimpleNamespace(llm=SimpleNamespace(model="fake", base_url="http://fake")),
+                video_settings=SimpleNamespace(fps=24, width=1280, height=704),
+                song_id="song",
+            )
+            use_case = GenerateRenderPlanUseCase(
+                reporter=reporter,
+                pipeline_services=services,
+                artifact_store=object(),
+            )
 
-        self.assertEqual("done", result)
-        column_types = [type(column) for column in use_case._last_progress_columns]
-        self.assertNotIn(SpinnerColumn, column_types)
+            result = use_case.execute(request)
+
+            self.assertEqual(1, result.scene_count)
+            self.assertEqual("song", services[0].calls[0]["song_id"])
+            self.assertEqual(temp / "render" / "render_plan_song.json", result.render_plan_path)
 
 
 if __name__ == "__main__":

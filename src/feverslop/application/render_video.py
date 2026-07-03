@@ -4,10 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from rich.console import Console
-
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
+from feverslop.ports.reporting import ConsoleReporter, Reporter
 from feverslop.ports.rendering import VideoRenderBackend, VideoRenderRequest, WorkflowAnchorConfig
 
 
@@ -35,11 +34,12 @@ class RenderVideoScenesUseCase:
         self,
         backend: VideoRenderBackend,
         artifact_store: ArtifactStore,
-        console: Console | None = None,
+        console: object | None = None,
+        reporter: Reporter | None = None,
     ):
         self.backend = backend
         self.artifact_store = artifact_store
-        self.console = console
+        self.reporter = reporter or (ConsoleReporter(console) if console is not None else None)
 
     def execute(self, request: RenderVideoScenesRequest) -> list[Path]:
         plan = RenderPlan.from_dicts(
@@ -86,9 +86,9 @@ class RenderVideoScenesUseCase:
         return rendered
 
     def _log_scene_available(self, output_path: Path, completed: int, total: int, *, skipped: bool) -> None:
-        if self.console is None:
+        if self.reporter is None:
             return
         verb = "Available" if skipped else "Rendered"
-        self.console.print(
+        self.reporter.message(
             f"[green]OK[/green] {verb} scene {completed}/{total}: [cyan]{output_path}[/cyan]"
         )

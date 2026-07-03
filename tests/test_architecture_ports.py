@@ -182,12 +182,12 @@ class ArchitecturePortsTests(unittest.TestCase):
         workflow.validate_workflow(path, ["#PROMPT"])
         self.assertEqual((path, ["#PROMPT"]), workflow.validated)
 
-    def test_main_delegates_pipeline_to_generate_render_plan_use_case(self):
+    def test_main_delegates_pipeline_to_generate_render_plan_composition(self):
         self.assertTrue(hasattr(GenerateRenderPlanUseCase, "execute"))
         source = inspect.getsource(main.main)
 
-        self.assertIn("build_generate_render_plan_use_case", source)
-        self.assertIn(".execute(", source)
+        self.assertIn("execute_generate_render_plan", source)
+        self.assertIn("GenerateRenderPlanRequest", source)
 
     def test_render_storyboard_cli_uses_composition_root(self):
         import render_storyboard
