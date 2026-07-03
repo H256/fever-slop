@@ -83,6 +83,37 @@ class FakeMovieImageBackend:
         return output_file
 
 
+class FakeMovieReferenceGenerator:
+    def __init__(self):
+        self.calls = []
+
+    def generate(self, *, project_dir):
+        project_dir = Path(project_dir)
+        self.calls.append(project_dir)
+        manifest_path = project_dir / "movie" / "references" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["actors"][0]["msr_sheet_path"] = "movie/references/actors/main_character/msr_sheet.png"
+        manifest["locations"][0]["msr_sheet_path"] = "movie/references/locations/primary_location/views/hero.png"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        return manifest_path
+
+
+class ManifestCheckingVisualBackend:
+    def __init__(self):
+        self.calls = []
+
+    def render_movie(self, *, project_dir, render_plan_path):
+        project_dir = Path(project_dir)
+        self.calls.append((project_dir, Path(render_plan_path)))
+        manifest = json.loads((project_dir / "movie" / "references" / "manifest.json").read_text())
+        if not manifest["actors"][0]["msr_sheet_path"] or not manifest["locations"][0]["msr_sheet_path"]:
+            raise AssertionError("movie references must be generated before rendering")
+        output = project_dir / "output" / "movie" / f"{project_dir.name}.mp4"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"movie")
+        return output
+
+
 class MovieProjectTests(unittest.TestCase):
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
@@ -116,6 +147,34 @@ class MovieProjectTests(unittest.TestCase):
             manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
             self.assertEqual("main_character", manifest["actors"][0]["id"])
             self.assertEqual("primary_location", manifest["locations"][0]["id"])
+
+    def test_auto_produce_movie_generates_references_before_rendering(self):
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import AutoProduceMovieUseCase, MovieInput, ScaffoldMovieUseCase
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reference_generator = FakeMovieReferenceGenerator()
+            visual_backend = ManifestCheckingVisualBackend()
+
+            result = AutoProduceMovieUseCase(
+                scaffold=ScaffoldMovieUseCase(
+                    planner=DeterministicMoviePlanner(),
+                    projects_root=Path(temp_dir),
+                ),
+                reference_generator=reference_generator,
+                visual_backend=visual_backend,
+            ).execute(
+                MovieInput(
+                    name="Door Below",
+                    source_type="short_story",
+                    story_text="A locksmith finds a glowing door below an abandoned station.",
+                    desired_length=30,
+                    mode="full_auto",
+                )
+            )
+
+            self.assertEqual([Path(temp_dir) / "door-below"], reference_generator.calls)
+            self.assertEqual(Path(temp_dir) / "door-below" / "output" / "movie" / "door-below.mp4", result.final_video_path)
 
     def test_movie_workflow_patcher_removes_audio_inputs(self):
         from feverslop.adapters.movie_workflow import MovieWorkflowPatcher

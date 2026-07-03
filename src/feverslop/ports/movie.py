@@ -19,3 +19,8 @@ class ScenePlanningPort(Protocol):
 class VisualGenerationPort(Protocol):
     def render_movie(self, *, project_dir: Path, render_plan_path: Path) -> Path:
         """Render a final movie file from a movie render plan."""
+
+
+class ReferenceGenerationPort(Protocol):
+    def generate(self, *, project_dir: Path) -> Path:
+        """Render/fill movie actor and location reference sheets."""

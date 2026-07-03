@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from feverslop.domain.movie import MovieProject
-from feverslop.ports.movie import ScenePlanningPort, StoryGenerationPort, VisualGenerationPort
+from feverslop.ports.movie import ReferenceGenerationPort, ScenePlanningPort, StoryGenerationPort, VisualGenerationPort
 
 
 @dataclass(frozen=True)
@@ -96,12 +96,15 @@ class ScaffoldMovieUseCase:
 
 
 class AutoProduceMovieUseCase:
-    def __init__(self, *, scaffold: ScaffoldMovieUseCase, visual_backend: VisualGenerationPort):
+    def __init__(self, *, scaffold: ScaffoldMovieUseCase, visual_backend: VisualGenerationPort, reference_generator: ReferenceGenerationPort | None = None):
         self.scaffold = scaffold
         self.visual_backend = visual_backend
+        self.reference_generator = reference_generator
 
     def execute(self, request: MovieInput) -> MovieProductionResult:
         scaffolded = self.scaffold.execute(request)
+        if self.reference_generator is not None:
+            self.reference_generator.generate(project_dir=scaffolded.project_dir)
         final_video = self.visual_backend.render_movie(
             project_dir=scaffolded.project_dir,
             render_plan_path=scaffolded.render_plan_path,
