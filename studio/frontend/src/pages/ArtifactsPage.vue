@@ -6,14 +6,23 @@ import { api, mediaUrl } from "../api";
 import {
   addArrayItem,
   ARRAY_TEMPLATES,
-  getPath,
   mergeConfigDefaults,
   moveArrayItem,
   pruneConfigForSave,
   removeArrayItem,
-  setPath,
   type PathPart
 } from "../lib/configForm";
+import {
+  collectArrayGroups,
+  collectObjectFields,
+  displayObjectFieldValue,
+  fieldLabel,
+  groupObjectFields,
+  labelForPath,
+  updateObjectField,
+  type ObjectArrayGroup,
+  type ObjectFormField
+} from "../lib/objectForm";
 import { useStudioStore } from "../stores/studio";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import JsonEditor from "../components/JsonEditor.vue";
@@ -25,27 +34,6 @@ const projectId = computed(() => String(route.params.projectId));
 const selectedPath = ref("");
 const data = ref<unknown>(null);
 const confirmPipelineStart = ref(false);
-type FieldKind = "boolean" | "number" | "shortText" | "longText";
-interface FormField {
-  path: PathPart[];
-  label: string;
-  kind: FieldKind;
-  value: unknown;
-  help: string;
-}
-interface FormGroup {
-  key: string;
-  title: string;
-  path: PathPart[];
-  fields: FormField[];
-}
-interface ArrayGroup {
-  key: string;
-  title: string;
-  path: PathPart[];
-  items: unknown[];
-  template: unknown;
-}
 
 const artifactPaths = computed(() =>
   [
@@ -61,9 +49,17 @@ const isConfig = computed(() => selectedPath.value === "config.json");
 const isJson = computed(() => selectedPath.value.endsWith(".json"));
 const isImage = computed(() => /\.(png|jpe?g|webp|gif)$/i.test(selectedPath.value));
 const isVideo = computed(() => /\.(mp4|mov|webm)$/i.test(selectedPath.value));
-const configFields = computed(() => (isConfig.value ? collectFields(data.value) : []));
-const configGroups = computed(() => groupFields(configFields.value));
-const configArrayGroups = computed(() => (isConfig.value ? collectArrayGroups(data.value) : []));
+const configFields = computed(() =>
+  isConfig.value
+    ? collectObjectFields(data.value, {
+        excludeRootKeys: Object.keys(ARRAY_TEMPLATES),
+        helpForField: helpForConfigField,
+        primitiveArrayMode: "expand"
+      })
+    : []
+);
+const configGroups = computed(() => groupObjectFields(configFields.value));
+const configArrayGroups = computed(() => (isConfig.value ? collectArrayGroups(data.value, ARRAY_TEMPLATES) : []));
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
@@ -95,87 +91,26 @@ async function startStandardPipeline() {
   await router.push(`/projects/${projectId.value}/pipeline`);
 }
 
-function collectFields(value: unknown, path: PathPart[] = []): FormField[] {
-  if (typeof value === "boolean") return [field(path, "boolean", value)];
-  if (typeof value === "number") return [field(path, "number", value)];
-  if (typeof value === "string") return [field(path, value.length > 90 || value.includes("\n") ? "longText" : "shortText", value)];
-  if (Array.isArray(value)) {
-    return value.flatMap((item, index) => collectFields(item, [...path, index]));
-  }
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => path.length > 0 || !(key in ARRAY_TEMPLATES))
-      .flatMap(([key, child]) => collectFields(child, [...path, key]));
-  }
-  return [];
-}
-
-function collectArrayGroups(value: unknown): ArrayGroup[] {
-  if (!value || typeof value !== "object") return [];
-  return Object.entries(ARRAY_TEMPLATES).map(([key, template]) => ({
-    key,
-    title: labelFor([key]),
-    path: [key],
-    items: Array.isArray(getPath(value, [key])) ? (getPath(value, [key]) as unknown[]) : [],
-    template
-  }));
-}
-
-function field(path: PathPart[], kind: FieldKind, value: unknown): FormField {
-  return { path, kind, value, label: labelFor(path), help: helpForConfigField(path) };
-}
-
-function updateConfigField(field: FormField, event: Event) {
+function updateConfigField(field: ObjectFormField, event: Event) {
   const target = event.target as HTMLInputElement | HTMLTextAreaElement;
-  let value: unknown = target.value;
-  if (field.kind === "boolean") value = (target as HTMLInputElement).checked;
-  if (field.kind === "number") value = Number(target.value);
-  if (data.value && typeof data.value === "object") setPath(data.value as Record<string, unknown>, field.path, value);
+  if (data.value && typeof data.value === "object") {
+    updateObjectField(data.value as Record<string, unknown>, field, field.kind === "boolean" ? (target as HTMLInputElement).checked : target.value);
+  }
 }
 
-function addConfigArrayItem(group: ArrayGroup) {
+function addConfigArrayItem(group: ObjectArrayGroup) {
   if (data.value && typeof data.value === "object") addArrayItem(data.value as Record<string, unknown>, group.path, group.template);
 }
 
-function removeConfigArrayItem(group: ArrayGroup, index: number) {
+function removeConfigArrayItem(group: ObjectArrayGroup, index: number) {
   if (data.value && typeof data.value === "object") removeArrayItem(data.value as Record<string, unknown>, group.path, index);
 }
 
-function moveConfigArrayItem(group: ArrayGroup, index: number, direction: -1 | 1) {
+function moveConfigArrayItem(group: ObjectArrayGroup, index: number, direction: -1 | 1) {
   if (data.value && typeof data.value === "object") moveArrayItem(data.value as Record<string, unknown>, group.path, index, direction);
 }
 
-function displayValue(field: FormField): string {
-  return Array.isArray(field.value) ? field.value.join(", ") : String(field.value ?? "");
-}
-
-function groupFields(fields: FormField[]): FormGroup[] {
-  const groups = new Map<string, FormGroup>();
-  for (const field of fields) {
-    const groupPath = field.path.length > 1 ? field.path.slice(0, -1) : [];
-    const key = groupPath.join(".") || "general";
-    if (!groups.has(key)) {
-      groups.set(key, {
-        key,
-        path: groupPath,
-        title: groupPath.length ? labelFor(groupPath) : "General",
-        fields: []
-      });
-    }
-    groups.get(key)?.fields.push(field);
-  }
-  return [...groups.values()];
-}
-
-function labelFor(path: PathPart[]): string {
-  return path.map((part) => (typeof part === "number" ? `#${part + 1}` : part.replaceAll("_", " "))).join(" / ");
-}
-
-function fieldLabel(field: FormField, group: FormGroup): string {
-  return labelFor(field.path.slice(group.path.length));
-}
-
-function optionsForField(field: FormField): string[] {
+function optionsForField(field: ObjectFormField): string[] {
   const key = field.path.join(".");
   const name = String(field.path.at(-1));
   const options: Record<string, string[]> = {
@@ -266,16 +201,16 @@ function helpForConfigField(path: PathPart[]): string {
                   <button type="button" class="button danger compact-button" @click="removeConfigArrayItem(group, index)">Remove</button>
                 </div>
               </header>
-              <label v-for="field in collectFields(_item, [...group.path, index])" :key="field.path.join('.')">
-                <span class="field-title">{{ labelFor(field.path.slice(group.path.length + 1)) }}</span>
+              <label v-for="field in collectObjectFields(_item, { helpForField: helpForConfigField, primitiveArrayMode: 'expand' }, [...group.path, index])" :key="field.path.join('.')">
+                <span class="field-title">{{ labelForPath(field.path.slice(group.path.length + 1)) }}</span>
                 <span class="field-help">{{ field.help }}</span>
-                <select v-if="optionsForField(field).length" :value="displayValue(field)" @change="updateConfigField(field, $event)">
+                <select v-if="optionsForField(field).length" :value="displayObjectFieldValue(field)" @change="updateConfigField(field, $event)">
                   <option v-for="option in optionsForField(field)" :key="option" :value="option">{{ option }}</option>
                 </select>
                 <input v-else-if="field.kind === 'boolean'" type="checkbox" :checked="Boolean(field.value)" @change="updateConfigField(field, $event)" />
                 <input v-else-if="field.kind === 'number'" type="number" :value="field.value" @input="updateConfigField(field, $event)" />
-                <textarea v-else-if="field.kind === 'longText'" class="transcript-area" :value="displayValue(field)" @input="updateConfigField(field, $event)" />
-                <input v-else type="text" :value="displayValue(field)" @input="updateConfigField(field, $event)" />
+                <textarea v-else-if="field.kind === 'longText'" class="transcript-area" :value="displayObjectFieldValue(field)" @input="updateConfigField(field, $event)" />
+                <input v-else type="text" :value="displayObjectFieldValue(field)" @input="updateConfigField(field, $event)" />
               </label>
             </article>
             <button type="button" class="button secondary" @click="addConfigArrayItem(group)">Add {{ group.title }}</button>
@@ -285,13 +220,13 @@ function helpForConfigField(path: PathPart[]): string {
             <label v-for="field in group.fields" :key="field.path.join('.')">
               <span class="field-title">{{ fieldLabel(field, group) }}</span>
               <span class="field-help">{{ field.help }}</span>
-              <select v-if="optionsForField(field).length" :value="displayValue(field)" @change="updateConfigField(field, $event)">
+              <select v-if="optionsForField(field).length" :value="displayObjectFieldValue(field)" @change="updateConfigField(field, $event)">
                 <option v-for="option in optionsForField(field)" :key="option" :value="option">{{ option }}</option>
               </select>
               <input v-else-if="field.kind === 'boolean'" type="checkbox" :checked="Boolean(field.value)" @change="updateConfigField(field, $event)" />
               <input v-else-if="field.kind === 'number'" type="number" :value="field.value" @input="updateConfigField(field, $event)" />
-              <textarea v-else-if="field.kind === 'longText'" class="transcript-area" :value="displayValue(field)" @input="updateConfigField(field, $event)" />
-              <input v-else type="text" :value="displayValue(field)" @input="updateConfigField(field, $event)" />
+              <textarea v-else-if="field.kind === 'longText'" class="transcript-area" :value="displayObjectFieldValue(field)" @input="updateConfigField(field, $event)" />
+              <input v-else type="text" :value="displayObjectFieldValue(field)" @input="updateConfigField(field, $event)" />
             </label>
           </fieldset>
           <details class="advanced-json">

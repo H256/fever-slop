@@ -4,11 +4,13 @@ import { Clapperboard, Play, Redo2, RotateCcw, Save, Scissors, Sparkles, Square,
 import { useRoute } from "vue-router";
 import { api, mediaUrl, thumbnailUrl } from "../api";
 import { useStudioStore } from "../stores/studio";
-import ConfirmDialog from "../components/ConfirmDialog.vue";
+import ReviewConfirmDialogs from "../components/ReviewConfirmDialogs.vue";
 import { applyBoundaryTrim, type ClipEdit } from "../lib/timelineTrim";
 import { buildClipEdit, buildTimelineItems, derivedFinalClip, type RenderManifestEntry, type TimelineItem } from "../composables/reviewTimeline";
 import { useReviewTimelineEdits } from "../composables/reviewTimelineEdits";
-import { choosePlaybackItem, previewStart } from "../composables/reviewTimelinePlayback";
+import { isTimelineMedia as pathIsTimelineMedia, rawPreviewForEdit, renderManifestByScene, type RawPreview } from "../composables/reviewTimelineMedia";
+import { previewStart } from "../composables/reviewTimelinePlayback";
+import { useReviewTimelinePlayback } from "../composables/reviewTimelinePlaybackState";
 import { blockStyle as timelineBlockStyle, buildThumbnailRequests, formatTime, thumbnailFrameTimes, timelineTicks as buildTimelineTicks } from "../composables/reviewTimelinePresentation";
 import { useTimelineHistory } from "../composables/timelineHistory";
 import type { RenderScene } from "../types";
@@ -30,7 +32,7 @@ const exactRecut = ref(true);
 const renderManifest = ref<Record<number, RenderManifestEntry>>({});
 const timelineDirty = ref(false);
 const timelineZoom = ref(1);
-const rawPreview = ref<{ scene: number; clip: string; seconds: number; edge: "IN" | "OUT" } | null>(null);
+const rawPreview = ref<RawPreview | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
 const audioRef = ref<HTMLAudioElement | null>(null);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
@@ -59,10 +61,21 @@ const {
   sceneFps,
   staleScenes
 } = useReviewTimelineEdits(scenes, clipEdits);
-const otherMedia = computed(() => [...allVideos.value, ...allImages.value].filter((path) => !isTimelineMedia(path)));
+const otherMedia = computed(() => [...allVideos.value, ...allImages.value].filter((path) => !pathIsTimelineMedia(path, timelineItems.value)));
 const timelineScaleStyle = computed(() => ({ width: `${timelineZoom.value * 100}%`, minWidth: "100%", "--timeline-zoom": String(timelineZoom.value) }));
 const playheadStyle = computed(() => ({ left: `${((scrubSeconds.value || 0) / (totalDuration.value || 1)) * 100}%` }));
 const timelineTicks = computed(() => buildTimelineTicks(totalDuration.value));
+const { pauseAudio, playAudio, playNextClip, playTimeline, scrub, seekPreview, selectItem, stopTimeline, syncScrubber } = useReviewTimelinePlayback({
+  timelineItems,
+  playableItems,
+  selectedItem,
+  rawPreview,
+  selectedScene,
+  scrubSeconds,
+  playingTimeline,
+  videoRef,
+  audioRef
+});
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
@@ -85,29 +98,6 @@ watch(selectedItem, (item) => {
   cutOut.value = Number(edit.raw_out_seconds ?? seconds.out);
 });
 
-function selectItem(item: TimelineItem) {
-  rawPreview.value = null;
-  selectedScene.value = item.scene;
-  scrubSeconds.value = item.start;
-  seekPreview();
-}
-
-async function scrub() {
-  playingTimeline.value = false;
-  const item = timelineItems.value.find((candidate) => scrubSeconds.value >= candidate.start && scrubSeconds.value <= candidate.end);
-  if (item) selectedScene.value = item.scene;
-  if (audioRef.value) audioRef.value.currentTime = scrubSeconds.value;
-  await seekPreview();
-}
-
-async function seekPreview() {
-  await nextTick();
-  const video = videoRef.value;
-  const item = selectedItem.value;
-  if (!video || !item?.clip) return;
-  video.currentTime = rawPreview.value ? rawPreview.value.seconds : Math.max(0, scrubSeconds.value - previewStart(item));
-}
-
 async function runRetake() {
   pendingRetake.value = false;
   if (selectedScene.value) await studio.startJob(projectId.value, "ltx-render-scenes", [selectedScene.value]);
@@ -118,66 +108,6 @@ async function saveTimeline() {
   if (!planPath.value) return;
   await api.saveArtifact(projectId.value, planPath.value, scenes.value);
   timelineDirty.value = false;
-}
-
-async function playTimeline() {
-  const item = itemForPlaybackStart();
-  if (!item) return;
-  const startSeconds = Math.max(item.start, Math.min(scrubSeconds.value, item.end));
-  rawPreview.value = null;
-  playingTimeline.value = true;
-  selectedScene.value = item.scene;
-  scrubSeconds.value = startSeconds;
-  await nextTick();
-  if (videoRef.value) videoRef.value.currentTime = Math.max(0, startSeconds - previewStart(item));
-  if (audioRef.value) {
-    audioRef.value.currentTime = startSeconds;
-    await audioRef.value.play();
-  }
-  await videoRef.value?.play();
-}
-
-function itemForPlaybackStart(): TimelineItem | undefined {
-  return choosePlaybackItem(playableItems.value, scrubSeconds.value, selectedScene.value);
-}
-
-function stopTimeline() {
-  rawPreview.value = null;
-  playingTimeline.value = false;
-  videoRef.value?.pause();
-  audioRef.value?.pause();
-}
-
-async function playNextClip() {
-  if (!playingTimeline.value || !selectedItem.value) return;
-  const index = playableItems.value.findIndex((item) => item.scene === selectedItem.value?.scene);
-  const next = playableItems.value[index + 1];
-  if (!next) {
-    playingTimeline.value = false;
-    audioRef.value?.pause();
-    return;
-  }
-  selectItem(next);
-  await nextTick();
-  await videoRef.value?.play();
-}
-
-function syncScrubber() {
-  if (!selectedItem.value || !videoRef.value) return;
-  if (rawPreview.value) return;
-  scrubSeconds.value = previewStart(selectedItem.value) + videoRef.value.currentTime;
-  if (audioRef.value && Math.abs(audioRef.value.currentTime - scrubSeconds.value) > 0.25) audioRef.value.currentTime = scrubSeconds.value;
-}
-
-async function playAudio() {
-  if (rawPreview.value) return;
-  if (!audioRef.value) return;
-  audioRef.value.currentTime = scrubSeconds.value;
-  await audioRef.value.play();
-}
-
-function pauseAudio() {
-  if (!playingTimeline.value) audioRef.value?.pause();
 }
 
 async function runRecut() {
@@ -232,20 +162,11 @@ async function cleanupThumbnails() {
   await studio.startJob(projectId.value, "thumbnail-cleanup");
 }
 
-function isTimelineMedia(path: string): boolean {
-  return timelineItems.value.some((item) => item.finalClip === path || item.rawClip === path);
-}
-
 async function loadRenderManifest() {
   const manifestPath = studio.currentProject?.artifacts.generated_json.find((path) => path.endsWith("render_manifest.json"));
   if (!manifestPath) return;
   const data = (await api.artifact(projectId.value, manifestPath)).data;
-  if (!Array.isArray(data)) return;
-  renderManifest.value = Object.fromEntries(
-    data
-      .filter((entry): entry is RenderManifestEntry => Boolean(entry) && typeof entry === "object" && "scene" in entry)
-      .map((entry) => [Number(entry.scene), entry])
-  );
+  renderManifest.value = renderManifestByScene(data);
 }
 
 function startFinalDrag(event: PointerEvent, item: TimelineItem, mode: "left" | "right") {
@@ -369,13 +290,11 @@ function sourceWindowStyle(item: TimelineItem): Record<string, string> {
 }
 
 function updateRawPreview(sceneNumber: number, mode: "left" | "right", edits: ClipEdit[]) {
-  const item = timelineItems.value.find((candidate) => candidate.scene === sceneNumber);
-  const scene = sceneDurationScene(sceneNumber);
-  const edit = edits.find((candidate) => candidate.scene === sceneNumber);
-  if (!item?.rawClip || !scene || !edit) return;
-  const seconds = (mode === "left" ? edit.rawInFrame : edit.rawOutFrame) / sceneFps(scene);
-  rawPreview.value = { scene: sceneNumber, clip: item.rawClip, seconds, edge: mode === "left" ? "IN" : "OUT" };
-  void seekPreview();
+  const preview = rawPreviewForEdit({ sceneNumber, mode, items: timelineItems.value, scenes: scenes.value, edits });
+  if (preview) {
+    rawPreview.value = preview;
+    void seekPreview();
+  }
 }
 
 async function seekWaveform(event: MouseEvent) {
@@ -604,29 +523,17 @@ async function drawWaveform() {
       </div>
     </details>
 
-    <ConfirmDialog
-      :open="pendingRetake"
-      title="Render retake?"
-      :message="`This will rerender scene ${selectedScene}. Existing generated scene clips may be overwritten and jobs cannot be cancelled yet.`"
-      confirm-label="Render retake"
-      @cancel="pendingRetake = false"
-      @confirm="runRetake"
-    />
-    <ConfirmDialog
-      :open="pendingRecut"
-      title="Recut scene?"
-      :message="`This will trim the raw clip for scene ${selectedScene} and overwrite the derived scene clip. The raw clip remains unchanged.`"
-      confirm-label="Recut scene"
-      @cancel="pendingRecut = false"
-      @confirm="runRecut"
-    />
-    <ConfirmDialog
-      :open="pendingTimelineSave"
-      title="Save timeline timing?"
-      message="This rewrites scene start/end/duration/frame_count values in the active render plan. Existing rendered clips may no longer match until rerendered or recut."
-      confirm-label="Save timeline"
-      @cancel="pendingTimelineSave = false"
-      @confirm="saveTimeline"
+    <ReviewConfirmDialogs
+      :pending-retake="pendingRetake"
+      :pending-recut="pendingRecut"
+      :pending-timeline-save="pendingTimelineSave"
+      :selected-scene="selectedScene"
+      @cancel-retake="pendingRetake = false"
+      @confirm-retake="runRetake"
+      @cancel-recut="pendingRecut = false"
+      @confirm-recut="runRecut"
+      @cancel-timeline-save="pendingTimelineSave = false"
+      @confirm-timeline-save="saveTimeline"
     />
   </section>
 </template>

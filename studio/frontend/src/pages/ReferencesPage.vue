@@ -5,6 +5,8 @@ import { useRoute } from "vue-router";
 import { useStudioStore } from "../stores/studio";
 import { api, mediaUrl } from "../api";
 import type { RenderScene } from "../types";
+import type { PathPart } from "../lib/configForm";
+import { collectObjectFields, displayObjectFieldValue, updateObjectField, type ObjectFormField } from "../lib/objectForm";
 
 const route = useRoute();
 const studio = useStudioStore();
@@ -32,21 +34,11 @@ const actorIds = computed(() => new Set(allManifests.value.map((path) => referen
 const locationIds = computed(() => new Set(allManifests.value.map((path) => referenceId(path, "locations")).filter(Boolean) as string[]));
 const missingActors = computed(() => [...usedActorIds.value].filter((id) => !actorIds.value.has(id)));
 const missingLocations = computed(() => [...usedLocationIds.value].filter((id) => id && !locationIds.value.has(id)));
-const manifestFields = computed(() => collectFields(manifestData.value));
+const manifestFields = computed(() => collectObjectFields(manifestData.value, { helpForField: helpForManifestField, primitiveArrayMode: "field" }));
 const selectedReferenceId = computed(() => referenceId(selectedManifestPath.value, "actors") ?? referenceId(selectedManifestPath.value, "locations") ?? "");
 const selectedReferenceKind = computed(() => (selectedManifestPath.value.includes("/actors/") ? "actor" : "location"));
 const selectedReferenceImages = computed(() => referenceImagesForManifest(selectedManifestPath.value));
 const hasActiveProcess = computed(() => studio.jobs.some((job) => ["queued", "running"].includes(job.status)) || rerenderingReference.value || startingProcess.value);
-
-type PathPart = string | number;
-type FieldKind = "boolean" | "number" | "shortText" | "longText" | "simpleArray";
-interface FormField {
-  path: PathPart[];
-  label: string;
-  kind: FieldKind;
-  value: unknown;
-  help: string;
-}
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
@@ -199,28 +191,6 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function collectFields(value: unknown, path: PathPart[] = []): FormField[] {
-  if (typeof value === "boolean") return [field(path, "boolean", value)];
-  if (typeof value === "number") return [field(path, "number", value)];
-  if (typeof value === "string") return [field(path, value.length > 90 || value.includes("\n") ? "longText" : "shortText", value)];
-  if (Array.isArray(value)) {
-    if (value.every((item) => ["string", "number", "boolean"].includes(typeof item))) return [field(path, "simpleArray", value)];
-    return value.flatMap((item, index) => collectFields(item, [...path, index]));
-  }
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => collectFields(child, [...path, key]));
-  }
-  return [];
-}
-
-function field(path: PathPart[], kind: FieldKind, value: unknown): FormField {
-  return { path, kind, value, label: labelFor(path), help: helpForManifestField(path) };
-}
-
-function labelFor(path: PathPart[]): string {
-  return path.map((part) => (typeof part === "number" ? `#${part + 1}` : part.replaceAll("_", " "))).join(" / ");
-}
-
 function helpForManifestField(path: PathPart[]): string {
   const key = path.join(".");
   const descriptions: Record<string, string> = {
@@ -234,30 +204,13 @@ function helpForManifestField(path: PathPart[]): string {
   return descriptions[key] ?? "Optional. May affect reference rendering if the reference pipeline consumes this value.";
 }
 
-function updateManifestField(field: FormField, event: Event) {
+function updateManifestField(field: ObjectFormField, event: Event) {
   if (!manifestData.value) return;
   const target = event.target as HTMLInputElement | HTMLTextAreaElement;
-  let value: unknown = target.value;
-  if (field.kind === "boolean") value = (target as HTMLInputElement).checked;
-  if (field.kind === "number") value = Number(target.value);
-  if (field.kind === "simpleArray") value = target.value.split(",").map((item) => item.trim()).filter(Boolean);
-  setPath(manifestData.value, field.path, value);
+  updateObjectField(manifestData.value, field, field.kind === "boolean" ? (target as HTMLInputElement).checked : target.value);
 }
 
-function setPath(target: Record<string, unknown>, path: PathPart[], value: unknown) {
-  let current: unknown = target;
-  for (const part of path.slice(0, -1)) {
-    if (!(part in (current as Record<string, unknown>))) (current as Record<string, unknown>)[part] = {};
-    current = (current as Record<string, unknown> | unknown[])[part as never];
-  }
-  (current as Record<string, unknown> | unknown[])[path[path.length - 1] as never] = value as never;
-}
-
-function displayValue(field: FormField): string {
-  return Array.isArray(field.value) ? field.value.join(", ") : String(field.value ?? "");
-}
-
-function optionsForField(field: FormField): string[] {
+function optionsForField(field: ObjectFormField): string[] {
   const name = String(field.path.at(-1));
   const options: Record<string, string[]> = {
     kind: ["actor", "location"],
@@ -335,13 +288,13 @@ function optionsForField(field: FormField): string[] {
             <label v-for="field in manifestFields" :key="field.path.join('.')">
               <span class="field-title">{{ field.label }}</span>
               <span class="field-help">{{ field.help }}</span>
-              <select v-if="optionsForField(field).length" :value="displayValue(field)" @change="updateManifestField(field, $event)">
+              <select v-if="optionsForField(field).length" :value="displayObjectFieldValue(field)" @change="updateManifestField(field, $event)">
                 <option v-for="option in optionsForField(field)" :key="option" :value="option">{{ option || "none" }}</option>
               </select>
               <input v-else-if="field.kind === 'boolean'" type="checkbox" :checked="Boolean(field.value)" @change="updateManifestField(field, $event)" />
               <input v-else-if="field.kind === 'number'" type="number" :value="field.value" @input="updateManifestField(field, $event)" />
-              <textarea v-else-if="field.kind === 'longText'" class="transcript-area" :value="displayValue(field)" @input="updateManifestField(field, $event)" />
-              <input v-else type="text" :value="displayValue(field)" @input="updateManifestField(field, $event)" />
+              <textarea v-else-if="field.kind === 'longText'" class="transcript-area" :value="displayObjectFieldValue(field)" @input="updateManifestField(field, $event)" />
+              <input v-else type="text" :value="displayObjectFieldValue(field)" @input="updateManifestField(field, $event)" />
             </label>
           </fieldset>
         </div>
