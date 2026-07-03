@@ -216,6 +216,40 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("MARA: We go below before sunrise.", first["dialogue"])
             self.assertIn("interior", first["camera"].lower())
 
+    def test_screenplay_scaffold_seeds_reference_manifest_from_screenplay_cues(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        screenplay = """
+        INT. ABANDONED STATION - NIGHT
+
+        MARA
+        We go below before sunrise.
+
+        Mara opens a glowing maintenance door beneath the tracks.
+        """
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = ScaffoldMovieUseCase(
+                planner=DeterministicMoviePlanner(),
+                projects_root=Path(temp_dir),
+            ).execute(
+                MovieInput(
+                    name="Door Below",
+                    source_type="screenplay",
+                    story_text=screenplay,
+                    desired_length=12,
+                    mode="scaffold",
+                )
+            )
+
+            manifest = json.loads(result.reference_manifest_path.read_text())
+
+            self.assertEqual("Mara", manifest["actors"][0]["name"])
+            self.assertIn("Mara", manifest["actors"][0]["prompt"])
+            self.assertEqual("Abandoned Station - Night", manifest["locations"][0]["name"])
+            self.assertIn("Abandoned Station - Night", manifest["locations"][0]["prompt"])
+
     def test_movie_workflow_patcher_removes_audio_inputs(self):
         from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
 

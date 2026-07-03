@@ -167,13 +167,15 @@ def _render_plan_shot(shot) -> dict:
 
 
 def _reference_manifest(movie: MovieProject) -> dict:
+    actor_name = _movie_actor_name(movie)
+    location_name = _movie_location_name(movie)
     return {
         "project_type": "movie",
         "actors": [
             {
                 "id": "main_character",
-                "name": "Main Character",
-                "prompt": f"consistent cinematic protagonist for {movie.name}, drawn from the story premise",
+                "name": actor_name,
+                "prompt": f"consistent cinematic protagonist {actor_name} for {movie.name}, drawn from the story premise",
                 "status": "required",
                 "msr_sheet_path": "",
             }
@@ -181,10 +183,27 @@ def _reference_manifest(movie: MovieProject) -> dict:
         "locations": [
             {
                 "id": "primary_location",
-                "name": "Primary Location",
-                "prompt": "story-consistent cinematic environment, production design, lighting, and atmosphere",
+                "name": location_name,
+                "prompt": f"{location_name}, story-consistent cinematic environment, production design, lighting, and atmosphere",
                 "status": "required",
                 "msr_sheet_path": "",
             }
         ],
     }
+
+
+def _movie_actor_name(movie: MovieProject) -> str:
+    for shot in movie.shots:
+        dialogue = str(getattr(shot, "dialogue", "") or "")
+        speaker = dialogue.split(":", 1)[0].strip()
+        if speaker:
+            return speaker.title()
+    return "Main Character"
+
+
+def _movie_location_name(movie: MovieProject) -> str:
+    for shot in movie.shots:
+        location = str(getattr(shot, "location", "") or "").strip()
+        if location and location != "story-consistent cinematic location":
+            return location.title()
+    return "Primary Location"
