@@ -1,33 +1,21 @@
 import { defineStore } from "pinia";
-import { api } from "../api";
-import type { Job, ProjectCreatePayload, ProjectSummary } from "../types";
+import { computed } from "vue";
+import { useJobStore } from "./jobs";
+import { useProjectStore } from "./projects";
 
-export const useStudioStore = defineStore("studio", {
-  state: () => ({
-    projects: [] as ProjectSummary[],
-    currentProject: null as ProjectSummary | null,
-    jobs: [] as Job[],
-    error: ""
-  }),
-  actions: {
-    async loadProjects() {
-      this.projects = await api.projects();
-    },
-    async loadProject(projectId: string) {
-      this.currentProject = await api.project(projectId);
-    },
-    async createProject(payload: ProjectCreatePayload) {
-      const project = await api.createProject(payload);
-      this.projects = [project, ...this.projects.filter((item) => item.id !== project.id)].sort((a, b) => a.id.localeCompare(b.id));
-      return project;
-    },
-    async loadJobs(projectId?: string) {
-      this.jobs = await api.jobs(projectId);
-    },
-    async startJob(projectId: string, action: string, scenes?: number[], extra?: Record<string, unknown>) {
-      const job = await api.startJob(projectId, action, scenes, extra);
-      this.jobs.unshift(job);
-      return job;
-    }
-  }
+export const useStudioStore = defineStore("studio", () => {
+  const projectsStore = useProjectStore();
+  const jobsStore = useJobStore();
+
+  return {
+    currentProject: computed(() => projectsStore.currentProject),
+    error: "",
+    jobs: computed(() => jobsStore.jobs),
+    loadJobs: jobsStore.loadJobs,
+    loadProject: projectsStore.loadProject,
+    loadProjects: projectsStore.loadProjects,
+    projects: computed(() => projectsStore.projects),
+    createProject: projectsStore.createProject,
+    startJob: jobsStore.startJob
+  };
 });

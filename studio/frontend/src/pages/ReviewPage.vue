@@ -5,34 +5,13 @@ import { useRoute } from "vue-router";
 import { api, mediaUrl, thumbnailUrl } from "../api";
 import { useStudioStore } from "../stores/studio";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
-import { applyBoundaryTrim, buildEditState, type ClipEdit } from "../lib/timelineTrim";
+import { applyBoundaryTrim, type ClipEdit } from "../lib/timelineTrim";
+import { buildClipEdit, buildTimelineItems, derivedFinalClip, type RenderManifestEntry, type TimelineItem } from "../composables/reviewTimeline";
+import { useReviewTimelineEdits } from "../composables/reviewTimelineEdits";
+import { choosePlaybackItem, previewStart } from "../composables/reviewTimelinePlayback";
+import { blockStyle as timelineBlockStyle, buildThumbnailRequests, formatTime, thumbnailFrameTimes, timelineTicks as buildTimelineTicks } from "../composables/reviewTimelinePresentation";
+import { useTimelineHistory } from "../composables/timelineHistory";
 import type { RenderScene } from "../types";
-
-interface TimelineItem {
-  scene: number;
-  start: number;
-  end: number;
-  duration: number;
-  rawStart: number;
-  rawEnd: number;
-  rawDuration: number;
-  finalClip: string;
-  rawClip: string;
-  clip: string;
-  status: "final" | "raw" | "missing";
-  preview: string;
-  hasManifestTiming: boolean;
-}
-
-interface RenderManifestEntry {
-  scene: number;
-  audio_start_seconds?: number;
-  audio_duration_seconds?: number;
-  trim_front_frames?: number;
-  scene_frame_count?: number;
-  render_frame_count?: number;
-  tail_loss_frames?: number;
-}
 
 const route = useRoute();
 const studio = useStudioStore();
@@ -51,50 +30,17 @@ const exactRecut = ref(true);
 const renderManifest = ref<Record<number, RenderManifestEntry>>({});
 const timelineDirty = ref(false);
 const timelineZoom = ref(1);
-const undoStack = ref<RenderScene[][]>([]);
-const redoStack = ref<RenderScene[][]>([]);
 const rawPreview = ref<{ scene: number; clip: string; seconds: number; edge: "IN" | "OUT" } | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
 const audioRef = ref<HTMLAudioElement | null>(null);
 const waveformCanvas = ref<HTMLCanvasElement | null>(null);
 let waveformRun = 0;
+const { undoStack, redoStack, pushUndo, undoTimeline: restoreUndoSnapshot, redoTimeline: restoreRedoSnapshot } = useTimelineHistory(scenes);
 const allVideos = computed(() => studio.currentProject?.artifacts.videos ?? []);
 const allImages = computed(() => studio.currentProject?.artifacts.images ?? []);
 const audioSource = computed(() => studio.currentProject?.artifacts.audio?.[0] ?? "");
-const timelineItems = computed<TimelineItem[]>(() =>
-  scenes.value.map((scene, index) => {
-    const sceneNumber = Number(scene.scene);
-    const edit = clipEdits.value[index];
-    const fps = sceneFps(scene);
-    const start = clipEdits.value
-      .slice(0, index)
-      .reduce((total, clip, clipIndex) => total + (clip.rawOutFrame - clip.rawInFrame) / sceneFps(scenes.value[clipIndex]), 0);
-    const duration = edit ? (edit.rawOutFrame - edit.rawInFrame) / fps : Number(scene.duration_seconds ?? 0);
-    const manifest = renderManifest.value[sceneNumber];
-    const fallbackRaw = fallbackRawTiming(scene, start, duration);
-    const rawStart = Number(manifest?.audio_start_seconds ?? fallbackRaw.start);
-    const rawDuration = Number(manifest?.audio_duration_seconds ?? fallbackRaw.duration);
-    const finalClip = findSceneClip(sceneNumber, false);
-    const rawClip = findSceneClip(sceneNumber, true);
-    const clip = finalClip || rawClip;
-    return {
-      scene: sceneNumber,
-      start,
-      end: start + duration,
-      duration,
-      rawStart,
-      rawEnd: rawStart + rawDuration,
-      rawDuration,
-      finalClip,
-      rawClip,
-      clip,
-      status: finalClip ? "final" : rawClip ? "raw" : "missing",
-      preview: scenePreview(scene),
-      hasManifestTiming: Boolean(manifest)
-    };
-  })
-);
-const clipEdits = computed(() => scenes.value.map((scene) => editForScene(scene)));
+const timelineItems = computed<TimelineItem[]>(() => buildTimelineItems({ scenes: scenes.value, videos: allVideos.value, manifest: renderManifest.value }));
+const clipEdits = computed(() => scenes.value.map((scene) => buildClipEdit(scene, renderManifest.value[Number(scene.scene)])));
 const totalDuration = computed(() => Math.max(0, ...timelineItems.value.map((item) => item.end)));
 const selectedItem = computed(() => timelineItems.value.find((item) => item.scene === selectedScene.value) ?? timelineItems.value[0]);
 const selectedClipUrl = computed(() => {
@@ -103,22 +49,20 @@ const selectedClipUrl = computed(() => {
 });
 const audioUrl = computed(() => (audioSource.value ? mediaUrl(projectId.value, audioSource.value) : ""));
 const playableItems = computed(() => timelineItems.value.filter((item) => item.clip));
-const staleScenes = computed(() =>
-  scenes.value
-    .filter((scene) => Boolean((scene.edit as Record<string, unknown> | undefined)?.studio_stale))
-    .map((scene) => Number(scene.scene))
-);
+const {
+  applyClipEdits,
+  clearSceneStale,
+  editSeconds,
+  isSceneStale,
+  markChangedScenesStale,
+  sceneFor: sceneDurationScene,
+  sceneFps,
+  staleScenes
+} = useReviewTimelineEdits(scenes, clipEdits);
 const otherMedia = computed(() => [...allVideos.value, ...allImages.value].filter((path) => !isTimelineMedia(path)));
 const timelineScaleStyle = computed(() => ({ width: `${timelineZoom.value * 100}%`, minWidth: "100%", "--timeline-zoom": String(timelineZoom.value) }));
 const playheadStyle = computed(() => ({ left: `${((scrubSeconds.value || 0) / (totalDuration.value || 1)) * 100}%` }));
-const timelineTicks = computed(() => {
-  const total = totalDuration.value || 0;
-  const step = total > 240 ? 30 : total > 90 ? 15 : 5;
-  const ticks = [] as number[];
-  for (let value = 0; value <= total; value += step) ticks.push(value);
-  if (!ticks.includes(total)) ticks.push(total);
-  return ticks;
-});
+const timelineTicks = computed(() => buildTimelineTicks(totalDuration.value));
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
@@ -194,11 +138,7 @@ async function playTimeline() {
 }
 
 function itemForPlaybackStart(): TimelineItem | undefined {
-  const atScrubber = playableItems.value.find((item) => scrubSeconds.value >= item.start && scrubSeconds.value < item.end);
-  if (atScrubber) return atScrubber;
-  const selected = playableItems.value.find((item) => item.scene === selectedScene.value);
-  if (selected) return selected;
-  return playableItems.value.find((item) => item.start >= scrubSeconds.value) ?? playableItems.value[0];
+  return choosePlaybackItem(playableItems.value, scrubSeconds.value, selectedScene.value);
 }
 
 function stopTimeline() {
@@ -292,24 +232,8 @@ async function cleanupThumbnails() {
   await studio.startJob(projectId.value, "thumbnail-cleanup");
 }
 
-function findSceneClip(sceneNumber: number, raw: boolean): string {
-  const padded = String(sceneNumber).padStart(4, "0");
-  const candidates = allVideos.value.filter((path) => {
-    if (!path.includes(`/scene_${padded}`)) return false;
-    if (path.includes("_debug/")) return false;
-    return raw ? path.includes("_raw") || path.includes("/raw/") : !path.includes("_raw") && !path.includes("/raw/");
-  });
-  return candidates.find((path) => path.includes("/final/")) ?? candidates[0] ?? "";
-}
-
 function isTimelineMedia(path: string): boolean {
   return timelineItems.value.some((item) => item.finalClip === path || item.rawClip === path);
-}
-
-function derivedFinalClip(rawClip: string, sceneNumber: number): string {
-  const padded = String(sceneNumber).padStart(4, "0");
-  if (rawClip.includes("/raw/")) return rawClip.replace("/raw/", "/final/").replace(`scene_${padded}_raw`, `scene_${padded}`);
-  return rawClip.replace(`scene_${padded}_raw`, `scene_${padded}`);
 }
 
 async function loadRenderManifest() {
@@ -322,24 +246,6 @@ async function loadRenderManifest() {
       .filter((entry): entry is RenderManifestEntry => Boolean(entry) && typeof entry === "object" && "scene" in entry)
       .map((entry) => [Number(entry.scene), entry])
   );
-}
-
-function fallbackRawTiming(scene: RenderScene, start: number, duration: number): { start: number; duration: number } {
-  const fps = Number(scene.fps ?? 24) || 24;
-  const edit = (scene.edit ?? {}) as Record<string, unknown>;
-  const editedOut = Number(edit.raw_out_seconds ?? 0);
-  const frameCount = Number(scene.frame_count ?? 0);
-  const renderFrameCount = Number(readPath(scene, ["rolling", "render_frame_count"]) ?? readPath(scene, ["ltx", "render_frame_count"]) ?? 0);
-  const trimFrontFrames = Number(readPath(scene, ["rolling", "trim_front_frames"]) ?? readPath(scene, ["ltx", "trim_front_frames"]) ?? 0);
-  if (renderFrameCount > frameCount) {
-    return { start: Math.max(0, start - trimFrontFrames / fps), duration: renderFrameCount / fps };
-  }
-  if (editedOut > duration) return { start, duration: editedOut };
-  return { start: Math.max(0, start - Math.min(2, start)), duration: duration + Math.min(2, start) + 1 };
-}
-
-function previewStart(item: TimelineItem): number {
-  return item.finalClip ? item.start : item.rawStart;
 }
 
 function startFinalDrag(event: PointerEvent, item: TimelineItem, mode: "left" | "right") {
@@ -411,27 +317,13 @@ function startZoomDrag(event: PointerEvent) {
 }
 
 function undoTimeline() {
-  const previous = undoStack.value.pop();
-  if (!previous) return;
   rawPreview.value = null;
-  redoStack.value.push(scenes.value.map((scene) => cloneScene(scene)));
-  scenes.value = previous.map((scene) => cloneScene(scene));
-  timelineDirty.value = true;
+  if (restoreUndoSnapshot()) timelineDirty.value = true;
 }
 
 function redoTimeline() {
-  const next = redoStack.value.pop();
-  if (!next) return;
   rawPreview.value = null;
-  undoStack.value.push(scenes.value.map((scene) => cloneScene(scene)));
-  scenes.value = next.map((scene) => cloneScene(scene));
-  timelineDirty.value = true;
-}
-
-function pushUndo() {
-  undoStack.value.push(scenes.value.map((scene) => cloneScene(scene)));
-  if (undoStack.value.length > 30) undoStack.value.shift();
-  redoStack.value = [];
+  if (restoreRedoSnapshot()) timelineDirty.value = true;
 }
 
 function sceneIndex(sceneNumber: number): number {
@@ -457,66 +349,15 @@ function snapNear(value: number, targets: number[]): number {
 }
 
 function blockStyle(start: number, duration: number): Record<string, string> {
-  const total = totalDuration.value || 1;
-  return {
-    left: `${(start / total) * 100}%`,
-    width: `${Math.max((duration / total) * 100, 0)}%`
-  };
+  return timelineBlockStyle(start, duration, totalDuration.value);
 }
 
 function thumbnailFrames(path: string, duration: number): { time: number; url: string }[] {
-  const count = Math.max(1, Math.min(8, Math.floor((duration * timelineZoom.value) / 4) + 1));
-  return Array.from({ length: count }, (_, index) => {
-    const time = count === 1 ? Math.max(0, duration * 0.2) : Math.max(0, (duration * index) / (count - 1));
-    return { time, url: thumbnailUrl(projectId.value, path, time) };
-  });
+  return thumbnailFrameTimes(duration, timelineZoom.value).map((time) => ({ time, url: thumbnailUrl(projectId.value, path, time) }));
 }
 
 function thumbnailRequests(): { path: string; times: number[] }[] {
-  const requests = new Map<string, Set<number>>();
-  for (const item of timelineItems.value) {
-    for (const path of [item.rawClip, item.finalClip].filter(Boolean)) {
-      const times = requests.get(path) ?? new Set<number>();
-      thumbnailFrames(path, path === item.rawClip ? item.rawDuration : item.duration).forEach((frame) => times.add(frame.time));
-      requests.set(path, times);
-    }
-  }
-  return [...requests].map(([path, times]) => ({ path, times: [...times] }));
-}
-
-function sceneDurationScene(sceneNumber: number): RenderScene | undefined {
-  return scenes.value.find((scene) => Number(scene.scene) === sceneNumber);
-}
-
-function sceneFps(scene: RenderScene): number {
-  return Number(scene.fps ?? 24) || 24;
-}
-
-function editForScene(scene: RenderScene): ClipEdit {
-  const sceneNumber = Number(scene.scene);
-  const manifest = renderManifest.value[sceneNumber];
-  const fps = sceneFps(scene);
-  const sceneStart = Number(scene.abs_start_seconds ?? 0);
-  const sceneDuration = Number(scene.duration_seconds ?? 0);
-  const rawTiming = fallbackRawTiming(scene, sceneStart, sceneDuration);
-  const frameCount = Number(manifest?.scene_frame_count ?? scene.frame_count ?? Math.round(fps * sceneDuration));
-  const trimFrontFrames = Number(manifest?.trim_front_frames ?? Math.max(0, Math.round((sceneStart - rawTiming.start) * fps)));
-  const fallbackRenderFrameCount = Math.max(trimFrontFrames + frameCount, Math.round(rawTiming.duration * fps));
-  const renderFrameCount = Number(manifest?.render_frame_count ?? fallbackRenderFrameCount);
-  const explicitTailFrames = readPath(scene, ["rolling", "tail_loss_frames"]) ?? readPath(scene, ["ltx", "tail_loss_frames"]);
-  const tailFrames = Math.max(0, Number(manifest?.tail_loss_frames ?? explicitTailFrames ?? renderFrameCount - trimFrontFrames - frameCount));
-  const base = buildEditState({
-    scene: sceneNumber,
-    frameCount,
-    trimFrontFrames,
-    tailFrames
-  });
-  const edit = (scene.edit ?? {}) as Record<string, unknown>;
-  return {
-    ...base,
-    rawInFrame: Number(edit.raw_in_frame ?? base.rawInFrame),
-    rawOutFrame: Number(edit.raw_out_frame ?? base.rawOutFrame)
-  };
+  return buildThumbnailRequests(timelineItems.value, timelineZoom.value);
 }
 
 function sourceWindowStyle(item: TimelineItem): Record<string, string> {
@@ -535,59 +376,6 @@ function updateRawPreview(sceneNumber: number, mode: "left" | "right", edits: Cl
   const seconds = (mode === "left" ? edit.rawInFrame : edit.rawOutFrame) / sceneFps(scene);
   rawPreview.value = { scene: sceneNumber, clip: item.rawClip, seconds, edge: mode === "left" ? "IN" : "OUT" };
   void seekPreview();
-}
-
-function applyClipEdits(edits: ClipEdit[]) {
-  for (const edit of edits) {
-    const scene = sceneDurationScene(edit.scene);
-    if (!scene) continue;
-    const fps = sceneFps(scene);
-    scene.edit = {
-      ...((scene.edit ?? {}) as Record<string, unknown>),
-      raw_in_frame: edit.rawInFrame,
-      raw_out_frame: edit.rawOutFrame,
-      min_raw_in_frame: edit.minRawInFrame,
-      max_raw_out_frame: edit.maxRawOutFrame,
-      raw_in_seconds: edit.rawInFrame / fps,
-      raw_out_seconds: edit.rawOutFrame / fps
-    };
-  }
-}
-
-function markChangedScenesStale(before: ClipEdit[], after: ClipEdit[]) {
-  for (const edit of after) {
-    const previous = before.find((candidate) => candidate.scene === edit.scene);
-    if (!previous || (previous.rawInFrame === edit.rawInFrame && previous.rawOutFrame === edit.rawOutFrame)) continue;
-    markScenesStale([edit.scene], "clip trim changed");
-  }
-}
-
-function editSeconds(sceneNumber: number): { in: number; out: number } {
-  const scene = sceneDurationScene(sceneNumber);
-  const edit = clipEdits.value.find((candidate) => candidate.scene === sceneNumber);
-  const fps = scene ? sceneFps(scene) : 24;
-  return { in: Number(edit?.rawInFrame ?? 0) / fps, out: Number(edit?.rawOutFrame ?? 0) / fps };
-}
-
-function markScenesStale(sceneNumbers: number[], reason: string) {
-  for (const scene of scenes.value) {
-    if (!sceneNumbers.includes(Number(scene.scene))) continue;
-    scene.edit = { ...((scene.edit ?? {}) as Record<string, unknown>), studio_stale: true, studio_stale_reason: reason };
-  }
-}
-
-function clearSceneStale(sceneNumber: number) {
-  const scene = sceneDurationScene(sceneNumber);
-  if (!scene?.edit || typeof scene.edit !== "object") return;
-  const edit = { ...(scene.edit as Record<string, unknown>) };
-  delete edit.studio_stale;
-  delete edit.studio_stale_reason;
-  scene.edit = edit;
-}
-
-function isSceneStale(sceneNumber?: number): boolean {
-  if (!sceneNumber) return false;
-  return Boolean((sceneDurationScene(sceneNumber)?.edit as Record<string, unknown> | undefined)?.studio_stale);
 }
 
 async function seekWaveform(event: MouseEvent) {
@@ -636,24 +424,6 @@ async function drawWaveform() {
   }
 }
 
-function scenePreview(scene: RenderScene): string {
-  return String(readPath(scene, ["ltx", "base_prompt"]) ?? readPath(scene, ["z_image", "prompt"]) ?? readPath(scene, ["metadata", "lyrics"]) ?? "");
-}
-
-function readPath(value: unknown, path: string[]): unknown {
-  let current = value;
-  for (const part of path) {
-    if (!current || typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[part];
-  }
-  return current;
-}
-
-function formatTime(value: number): string {
-  const minutes = Math.floor(value / 60);
-  const seconds = Math.floor(value % 60);
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
 </script>
 
 <template>
