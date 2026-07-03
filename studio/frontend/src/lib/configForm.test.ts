@@ -39,7 +39,7 @@ describe("pruneConfigForSave", () => {
     expect(saved.project_name).toBe("Demo");
     expect(saved.input_audio).toBe("song.mp3");
     expect(saved.video).toEqual({ fps: 24, width: 1280, height: 704 });
-    expect(saved.audio).toEqual({ demucs_model: "htdemucs_ft", whisper_model: "large", language: "de" });
+    expect(saved.audio).toEqual({ demucs_model: "htdemucs_ft", whisper_model: "large", language: "en" });
     expect(saved.lyrics).toBeUndefined();
     expect(saved.story_idea).toBeUndefined();
     expect(saved.locations).toBeUndefined();

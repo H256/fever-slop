@@ -233,6 +233,7 @@ function helpForConfigField(path: PathPart[]): string {
     "audio.demucs_model": "Required. Audio stem separation model.",
     "audio.whisper_model": "Required. Transcription model.",
     "audio.language": "Required. Language hint for transcription.",
+    "scene_generation.seed": "Optional. Use -1 to randomize scene planning each run; any other integer keeps planning reproducible.",
     lora_split_enabled: "Optional. Enables split LoRA handling where supported."
   };
   return descriptions[key] ?? "Optional. Used by generation when the relevant pipeline step consumes it.";

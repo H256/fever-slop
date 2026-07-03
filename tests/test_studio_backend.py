@@ -102,8 +102,11 @@ class StudioBackendTests(unittest.TestCase):
             )
 
             root = Path(temp_dir) / "my-cool-video"
+            config = json.loads((root / "config.json").read_text())
             self.assertEqual("my-cool-video", project["id"])
-            self.assertEqual("My Cool Video", json.loads((root / "config.json").read_text())["project_name"])
+            self.assertEqual("My Cool Video", config["project_name"])
+            self.assertEqual("en", config["audio"]["language"])
+            self.assertEqual(-1, config["scene_generation"]["seed"])
             metadata = json.loads((root / ".studio" / "project.json").read_text())
             self.assertEqual("standard_music_video", metadata["project_type"])
             self.assertEqual("My Cool Video", metadata["display_name"])

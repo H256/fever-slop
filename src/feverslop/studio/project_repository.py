@@ -67,7 +67,13 @@ class ProjectRepository:
         if project_type == "standard_music_video":
             (root / "config.json").write_text(
                 json.dumps(
-                    {"project_name": name, "input_audio": "", "silent_mode": bool(request.silent_mode)},
+                    {
+                        "project_name": name,
+                        "input_audio": "",
+                        "silent_mode": bool(request.silent_mode),
+                        "audio": {"language": "en"},
+                        "scene_generation": {"seed": -1},
+                    },
                     indent=2,
                     ensure_ascii=False,
                 ) + "\n",

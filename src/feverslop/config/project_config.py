@@ -19,7 +19,7 @@ class VideoConfig:
 class AudioConfig:
     demucs_model: str = "htdemucs_ft"
     whisper_model: str = "large"
-    language: str = "de"
+    language: str = "en"
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ class SceneGenerationConfig:
     max_duration: float = 10.0
     bias: float = 0.7
     duration_preset: str = "impact_weighted"
-    seed: int = 42
+    seed: int = -1
 
 
 @dataclass(frozen=True)
@@ -256,7 +256,7 @@ class ProjectConfig:
             audio=AudioConfig(
                 demucs_model=audio_raw.get("demucs_model", "htdemucs_ft"),
                 whisper_model=audio_raw.get("whisper_model", "large"),
-                language=audio_raw.get("language", "de"),
+                language=audio_raw.get("language", "en"),
             ),
 
             scene_generation=SceneGenerationConfig(
@@ -264,7 +264,7 @@ class ProjectConfig:
                 max_duration=float(scene_raw.get("max_duration", 10.0)),
                 bias=float(scene_raw.get("bias", 0.7)),
                 duration_preset=scene_raw.get("duration_preset", "impact_weighted"),
-                seed=int(scene_raw.get("seed", 42)),
+                seed=int(scene_raw.get("seed", -1)),
             ),
 
             vocal_detection=VocalDetectionConfig(
