@@ -13,6 +13,8 @@ class CinematicShot:
     expression: str
     location: str
     dialogue: str = ""
+    actor_ids: tuple[str, ...] = ()
+    location_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -37,3 +39,4 @@ class MovieProject:
     width: int
     height: int
     mode: str
+    config: dict | None = None

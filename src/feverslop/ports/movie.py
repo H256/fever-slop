@@ -12,7 +12,16 @@ class StoryGenerationPort(Protocol):
 
 
 class ScenePlanningPort(Protocol):
-    def plan_shots(self, *, story_arch: StoryArch, desired_length: float, width: int, height: int) -> tuple[CinematicShot, ...]:
+    def plan_shots(
+        self,
+        *,
+        story_arch: StoryArch,
+        desired_length: float,
+        width: int,
+        height: int,
+        min_duration: float = 4.0,
+        max_duration: float = 20.0,
+    ) -> tuple[CinematicShot, ...]:
         """Create a continuous cinematic shot plan."""
 
 

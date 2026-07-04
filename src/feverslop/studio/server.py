@@ -52,6 +52,12 @@ class ProjectCreatePayload(BaseModel):
     height: int = 704
     fps: int = 24
     pipeline_mode: str = "classic"
+    movie_planner_backend: str = "llm"
+    movie_reference_backend: str = "comfyui"
+    movie_render_backend: str = "comfyui"
+    movie_hero_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
+    movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
+    movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
 
 
 class JobPayload(BaseModel):
@@ -118,6 +124,12 @@ def create_app(
                     height=payload.height,
                     fps=payload.fps,
                     pipeline_mode=payload.pipeline_mode,
+                    movie_planner_backend=payload.movie_planner_backend,
+                    movie_reference_backend=payload.movie_reference_backend,
+                    movie_render_backend=payload.movie_render_backend,
+                    movie_hero_workflow=payload.movie_hero_workflow,
+                    movie_edit_workflow=payload.movie_edit_workflow,
+                    movie_msr_workflow=payload.movie_msr_workflow,
                 )
             )
         )

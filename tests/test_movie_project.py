@@ -1,5 +1,4 @@
 import json
-import os
 import time
 import tempfile
 import unittest
@@ -114,6 +113,37 @@ class ManifestCheckingVisualBackend:
         return output
 
 
+class FakeMoviePlanner:
+    def __init__(self):
+        self.story_calls = []
+        self.shot_calls = []
+
+    def generate_story_arch(self, *, title, source_type, story_text, desired_length):
+        from feverslop.domain.movie import StoryArch
+
+        self.story_calls.append((title, source_type, story_text, desired_length))
+        return StoryArch(title=title, premise="LLM premise", beats=("LLM beat",))
+
+    def plan_shots(self, *, story_arch, desired_length, width, height, min_duration=4.0, max_duration=20.0):
+        from feverslop.domain.movie import CinematicShot
+
+        self.shot_calls.append((story_arch, desired_length, width, height))
+        return (
+            CinematicShot(
+                shot_id="shot_0001",
+                description="LLM shot",
+                duration_seconds=float(desired_length),
+                camera="LLM camera",
+                action="LLM action",
+                expression="LLM expression",
+                location="LLM location",
+                dialogue="MARA: LLM line",
+                actor_ids=("mara",),
+                location_id="llm_location",
+            ),
+        )
+
+
 class MovieProjectTests(unittest.TestCase):
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
@@ -147,6 +177,74 @@ class MovieProjectTests(unittest.TestCase):
             manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
             self.assertEqual("main_character", manifest["actors"][0]["id"])
             self.assertEqual("primary_location", manifest["locations"][0]["id"])
+
+    def test_movie_manifest_contains_all_render_plan_reference_ids(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.domain.movie import CinematicShot, StoryArch
+
+        class Planner:
+            def generate_story_arch(self, **_kwargs):
+                return StoryArch(title="Void", premise="At least 3 characters cross a void.", beats=("beat",))
+
+            def plan_shots(self, **_kwargs):
+                return (
+                    CinematicShot(
+                        shot_id="shot_0001",
+                        description="A man enters the void",
+                        duration_seconds=4,
+                        camera="wide",
+                        action="walks",
+                        expression="afraid",
+                        location="The Desolate Void",
+                        actor_ids=("tormented_man",),
+                        location_id="desolate_void",
+                    ),
+                    CinematicShot(
+                        shot_id="shot_0002",
+                        description="A beautiful woman emerges from dark mist with predatory grace",
+                        duration_seconds=4,
+                        camera="close",
+                        action="The succubus glides toward him, arms outstretched",
+                        expression="seductive and hungry",
+                        location="The Desolate Void",
+                        dialogue="Come, rest your weary soul...",
+                        actor_ids=("seductive_succubus",),
+                        location_id="desolate_void",
+                    ),
+                    CinematicShot(
+                        shot_id="shot_0003",
+                        description="A demonic goat blocks the path with twisted horns",
+                        duration_seconds=4,
+                        camera="low angle",
+                        action="The goat stamps in the fog",
+                        expression="defiant",
+                        location="The Desolate Void",
+                        actor_ids=("demonic_goat",),
+                        location_id="desolate_void",
+                    ),
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ScaffoldMovieUseCase(planner=Planner(), projects_root=Path(temp_dir)).execute(
+                MovieInput(
+                    name="Void",
+                    source_type="short_story",
+                    story_text="A man fights a succubus and demonic goat inside a desolate void.",
+                    desired_length=8,
+                )
+            )
+            root = Path(temp_dir) / "void"
+            manifest = json.loads((root / "movie" / "references" / "manifest.json").read_text())
+            plan = json.loads((root / "movie" / "render_plan.json").read_text())
+
+            self.assertEqual("desolate_void", plan["shots"][0]["reference_ids"]["location"])
+            self.assertIn("desolate_void", {location["id"] for location in manifest["locations"]})
+            self.assertIn("demonic_goat", {actor["id"] for actor in manifest["actors"]})
+            self.assertNotIn("come_rest_your_weary_soul", {actor["id"] for actor in manifest["actors"]})
+            succubus = next(actor for actor in manifest["actors"] if actor["id"] == "seductive_succubus")
+            self.assertIn("beautiful woman", succubus["prompt"])
+            self.assertIn("predatory grace", succubus["prompt"])
+            self.assertNotIn("drawn from the story premise", succubus["prompt"])
 
     def test_auto_produce_movie_generates_references_before_rendering(self):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
@@ -250,6 +348,22 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("Abandoned Station - Night", manifest["locations"][0]["name"])
             self.assertIn("Abandoned Station - Night", manifest["locations"][0]["prompt"])
 
+    def test_movie_planner_splits_long_beats_into_varied_shot_durations(self):
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.domain.movie import StoryArch
+
+        shots = DeterministicMoviePlanner().plan_shots(
+            story_arch=StoryArch(title="Inner Fight", premise="A man fights inner demons.", beats=("A man fights his inner demons and breaks.",)),
+            desired_length=120,
+            width=1280,
+            height=704,
+        )
+
+        durations = [shot.duration_seconds for shot in shots]
+        self.assertGreater(len(shots), 5)
+        self.assertLessEqual(max(durations), 20)
+        self.assertGreater(len(set(durations)), 1)
+
     def test_movie_workflow_patcher_removes_audio_inputs(self):
         from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
 
@@ -338,6 +452,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual([], asset_uploader.audio_calls)
             self.assertEqual(1, len(queue.calls))
             self.assertEqual([(postprocessor.concat_lists[0][1], final, False)], postprocessor.concat_calls)
+            self.assertTrue((temp / "output" / "movie" / "ltx_msr_debug" / "scene_0001_workflow.json").exists())
 
     def test_comfyui_movie_adapter_resolves_reference_ids_from_manifest(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
@@ -392,26 +507,122 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
         from feverslop.studio.job_service import build_movie_visual_adapter
 
-        previous = os.environ.get("FEVERSLOP_MOVIE_RENDER_BACKEND")
-        os.environ["FEVERSLOP_MOVIE_RENDER_BACKEND"] = "comfyui"
-        try:
-            adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"))
-        finally:
-            if previous is None:
-                os.environ.pop("FEVERSLOP_MOVIE_RENDER_BACKEND", None)
-            else:
-                os.environ["FEVERSLOP_MOVIE_RENDER_BACKEND"] = previous
+        adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"), movie_config={"render_backend": "comfyui"})
 
         self.assertIsInstance(adapter, ComfyUIMovieVisualAdapter)
+
+    def test_movie_visual_adapter_defaults_to_comfyui_not_placeholder(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+        from feverslop.studio.job_service import build_movie_visual_adapter
+
+        adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"))
+
+        self.assertIsInstance(adapter, ComfyUIMovieVisualAdapter)
+
+    def test_movie_local_visual_adapter_requires_explicit_dev_override(self):
+        from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+        from feverslop.studio.job_service import build_movie_visual_adapter
+
+        adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"), movie_config={"render_backend": "local"})
+
+        self.assertIsInstance(adapter, LocalMovieVisualAdapter)
+
+    def test_movie_reference_generator_defaults_to_comfyui_not_placeholder(self):
+        from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+        from feverslop.application.movie_references import MovieReferenceSheetGenerator
+        from feverslop.studio.job_service import build_movie_reference_generator
+
+        generator = build_movie_reference_generator()
+
+        self.assertIsInstance(generator, MovieReferenceSheetGenerator)
+        self.assertIsInstance(generator.backend, ComfyUIImageBackend)
+
+    def test_movie_local_reference_generator_requires_explicit_dev_override(self):
+        from feverslop.adapters.movie_references import LocalMovieImageBackend
+        from feverslop.studio.job_service import build_movie_reference_generator
+
+        generator = build_movie_reference_generator(movie_config={"reference_backend": "local"})
+
+        self.assertIsInstance(generator.backend, LocalMovieImageBackend)
 
     def test_movie_workflow_patcher_uses_default_movie_msr_template(self):
         from feverslop.studio.job_service import patch_movie_msr_workflow
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output = patch_movie_msr_workflow(Path(temp_dir))
+        output = patch_movie_msr_workflow()
 
-            self.assertEqual(Path(temp_dir) / "movie" / "workflows" / "video_default_ltxv_msr_movie_native_audio.json", output)
-            self.assertTrue(output.exists())
+        self.assertIsInstance(output, dict)
+        self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in output.values()))
+
+    def test_llm_movie_planner_sends_story_and_shot_requests_to_llm(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+
+        class FakeLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt(self, prompt, system_prompt=None):
+                self.calls.append((system_prompt, prompt))
+                if "shot plan" in prompt.lower():
+                    return json.dumps({
+                        "shots": [
+                            {
+                                "description": "Mara opens the door",
+                                "camera": "slow push-in",
+                                "action": "opens a glowing maintenance door",
+                                "expression": "wary focus",
+                                "location": "abandoned station",
+                                "dialogue": "MARA: We go below.",
+                            }
+                        ]
+                    })
+                return json.dumps({"premise": "A locksmith descends below the city.", "beats": ["Mara finds the door."]})
+
+        llm = FakeLLM()
+        planner = LLMMoviePlanner(llm)
+
+        story_arch = planner.generate_story_arch(
+            title="Door Below",
+            source_type="short_story",
+            story_text="A locksmith finds a glowing door below an abandoned station.",
+            desired_length=12,
+        )
+        shots = planner.plan_shots(story_arch=story_arch, desired_length=12, width=1280, height=704)
+
+        self.assertEqual("A locksmith descends below the city.", story_arch.premise)
+        self.assertEqual(("Mara finds the door.",), story_arch.beats)
+        self.assertEqual("slow push-in", shots[0].camera)
+        self.assertEqual("MARA: We go below.", shots[0].dialogue)
+        self.assertEqual(2, len(llm.calls))
+        self.assertIn("story arch", llm.calls[0][1].lower())
+        self.assertIn("shot plan", llm.calls[1][1].lower())
+
+    def test_movie_planner_preserves_requested_minimum_actor_count(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+
+        class OneActorLLM:
+            def complete_prompt(self, prompt, system_prompt=None):
+                if "shot plan" in prompt.lower():
+                    return json.dumps({
+                        "shots": [
+                            {
+                                "description": "Mara enters the archive",
+                                "duration_seconds": 4,
+                                "actor_ids": ["mara"],
+                                "location_id": "archive",
+                            }
+                        ]
+                    })
+                return json.dumps({
+                    "premise": "A story with at least 3 characters entering a haunted archive.",
+                    "beats": ["Mara, Theo, and Lin cross the threshold."],
+                })
+
+        planner = LLMMoviePlanner(OneActorLLM())
+        story_arch = planner.generate_story_arch(title="Archive", source_type="short_story", story_text="at least 3 characters", desired_length=12)
+        shots = planner.plan_shots(story_arch=story_arch, desired_length=12, width=1280, height=704)
+        actor_ids = {actor_id for shot in shots for actor_id in shot.actor_ids}
+
+        self.assertGreaterEqual(len(actor_ids), 3)
 
     def test_movie_reference_generator_fills_manifest_paths(self):
         from feverslop.application.movie_references import MovieReferenceSheetGenerator
@@ -439,31 +650,90 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
             self.assertGreaterEqual(len(backend.requests), 2)
 
-    def test_api_creates_movie_project_with_scaffold_artifacts(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+    def test_movie_reference_sync_adds_missing_render_plan_ids(self):
+        from feverslop.studio.job_service import sync_movie_manifest_with_render_plan
 
-            response = client.post(
-                "/api/projects",
-                json={
-                    "project_type": "movie",
-                    "name": "Door Below",
-                    "source_type": "short_story",
-                    "story_text": "A locksmith finds a glowing door below an abandoned station.",
-                    "desired_length": 30,
-                    "width": 1280,
-                    "height": 704,
-                    "movie_mode": "scaffold",
-                },
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "movie" / "references").mkdir(parents=True)
+            (root / "movie" / "render_plan.json").write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "description": "A man enters the void",
+                        "action": "The tormented man walks through fog",
+                        "location": "The Desolate Void",
+                        "reference_ids": {"actors": ["tormented_man", "demonic_goat"], "location": "desolate_void"},
+                    }
+                ]),
+                encoding="utf-8",
             )
+            (root / "movie" / "references" / "manifest.json").write_text(
+                json.dumps({
+                    "actors": [
+                        {
+                            "id": "tormented_man",
+                            "name": "Tormented Man",
+                            "prompt": "consistent cinematic character Tormented Man for tm3, drawn from the story premise",
+                            "msr_sheet_path": "x.png",
+                        }
+                    ],
+                    "locations": [{"id": "the_desolate_void", "name": "The Desolate Void", "prompt": "", "msr_sheet_path": "y.png"}],
+                }),
+                encoding="utf-8",
+            )
+
+            sync_movie_manifest_with_render_plan(root)
+
+            manifest = json.loads((root / "movie" / "references" / "manifest.json").read_text())
+            self.assertIn("demonic_goat", {actor["id"] for actor in manifest["actors"]})
+            self.assertIn("desolate_void", {location["id"] for location in manifest["locations"]})
+            missing_actor = next(actor for actor in manifest["actors"] if actor["id"] == "demonic_goat")
+            self.assertEqual("", missing_actor["msr_sheet_path"])
+            repaired_actor = next(actor for actor in manifest["actors"] if actor["id"] == "tormented_man")
+            self.assertIn("A man enters the void", repaired_actor["prompt"])
+            self.assertEqual("", repaired_actor["msr_sheet_path"])
+
+    def test_api_creates_movie_project_with_scaffold_artifacts(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fake_planner = FakeMoviePlanner()
+            with patch("feverslop.studio.project_repository.build_movie_planner", return_value=fake_planner):
+                client = TestClient(create_app(temp_dir))
+
+                response = client.post(
+                    "/api/projects",
+                    json={
+                        "project_type": "movie",
+                        "name": "Door Below",
+                        "source_type": "short_story",
+                        "story_text": "A locksmith finds a glowing door below an abandoned station.",
+                        "desired_length": 30,
+                        "width": 1280,
+                        "height": 704,
+                        "movie_mode": "scaffold",
+                    },
+                )
 
             self.assertEqual(200, response.status_code, response.text)
             project = response.json()
             self.assertEqual("movie", project["project_type"])
+            self.assertEqual("present", project["status"]["config"])
             self.assertEqual("present", project["status"]["render_plan"])
             self.assertIn("movie/story_arch.json", project["artifacts"]["generated_json"])
             self.assertIn("movie/render_plan.json", project["artifacts"]["render_plans"])
             self.assertIn("movie/references/manifest.json", project["artifacts"]["references"])
+            config = json.loads((Path(temp_dir) / "door-below" / "config.json").read_text())
+            self.assertEqual("Door Below", config["project_name"])
+            self.assertEqual("A locksmith finds a glowing door below an abandoned station.", config["story_idea"])
+            self.assertEqual({"fps": 24, "width": 1280, "height": 704}, config["video"])
+            self.assertIn("steering", config)
+            self.assertEqual("llm", project["metadata"]["movie"]["planner_backend"])
+            self.assertEqual("comfyui", project["metadata"]["movie"]["reference_backend"])
+            self.assertEqual("comfyui", project["metadata"]["movie"]["render_backend"])
+            self.assertEqual(1, len(fake_planner.story_calls))
+            self.assertEqual(1, len(fake_planner.shot_calls))
 
     def test_api_rejects_invalid_screenplay(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -495,6 +765,9 @@ class MovieProjectTests(unittest.TestCase):
                     "story_text": "A locksmith finds a glowing door below an abandoned station.",
                     "desired_length": 30,
                     "movie_mode": "full_auto",
+                    "movie_planner_backend": "deterministic",
+                    "movie_reference_backend": "local",
+                    "movie_render_backend": "local",
                 },
             )
             self.assertEqual(200, created.status_code, created.text)
@@ -513,11 +786,8 @@ class MovieProjectTests(unittest.TestCase):
             manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
             self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
-            patched_workflow_path = Path(temp_dir) / "door-below" / "movie" / "workflows" / "video_default_ltxv_msr_movie_native_audio.json"
-            self.assertTrue(patched_workflow_path.exists())
-            patched_workflow = json.loads(patched_workflow_path.read_text())
-            self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in patched_workflow.values()))
-            self.assertFalse(any("audio" in key.lower() for node in patched_workflow.values() for key in node.get("inputs", {})))
+            self.assertEqual("local", manifest["generator_backend"])
+            self.assertFalse((Path(temp_dir) / "door-below" / "movie" / "workflows").exists())
 
     def test_api_starts_movie_reference_job_and_updates_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -531,6 +801,8 @@ class MovieProjectTests(unittest.TestCase):
                     "story_text": "A locksmith finds a glowing door below an abandoned station.",
                     "desired_length": 30,
                     "movie_mode": "scaffold",
+                    "movie_planner_backend": "deterministic",
+                    "movie_reference_backend": "local",
                 },
             )
             self.assertEqual(200, created.status_code, created.text)

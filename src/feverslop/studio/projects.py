@@ -41,6 +41,12 @@ class ProjectCreateRequest:
     height: int = 704
     fps: int = 24
     pipeline_mode: str = "classic"
+    movie_planner_backend: str = "llm"
+    movie_reference_backend: str = "comfyui"
+    movie_render_backend: str = "comfyui"
+    movie_hero_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
+    movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
+    movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
 
 
 def slugify_project_name(value: str) -> str:
@@ -107,6 +113,7 @@ class ProjectStore:
         metadata = self.project_metadata(project_id)
         name = str(metadata.get("display_name") or config.get("project_name") or project_id)
         artifacts = self.list_artifacts(project_id)
+        is_movie = metadata.get("project_type") == "movie"
         return {
             "id": project_id,
             "name": name,
@@ -115,7 +122,7 @@ class ProjectStore:
             "silent_mode": self._silent_mode(config, metadata),
             "metadata": metadata,
             "status": {
-                "config": "present" if config_path.exists() else "missing",
+                "config": "present" if config_path.exists() or (is_movie and metadata) else "missing",
                 "render_plan": "present" if artifacts["render_plans"] else "missing",
                 "references": "present" if artifacts["references"] else "missing",
                 "videos": "present" if artifacts["videos"] else "missing",
@@ -147,7 +154,8 @@ class ProjectStore:
         if artifact_path.name == "config.json":
             from feverslop.studio.project_validation import validate_project_config
 
-            validate_project_config(data)
+            metadata = self.project_metadata(project_id)
+            validate_project_config(data, project_type=str(metadata.get("project_type") or "standard_music_video"))
             if isinstance(data, dict) and data.get("silent_mode") is None:
                 data = {**data, "silent_mode": False}
         artifact_path.parent.mkdir(parents=True, exist_ok=True)

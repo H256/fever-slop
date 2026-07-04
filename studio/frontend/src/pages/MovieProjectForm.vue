@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, nextTick, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowLeft, Clapperboard, Folder, WandSparkles } from "lucide-vue-next";
 import { useStudioStore } from "../stores/studio";
@@ -9,6 +9,7 @@ const router = useRouter();
 const studio = useStudioStore();
 
 const submitting = ref(false);
+const submitStatus = ref("");
 const error = ref("");
 const form = reactive({
   name: "",
@@ -17,7 +18,13 @@ const form = reactive({
   desiredLength: 180,
   width: 1280,
   height: 704,
-  mode: "scaffold" as "scaffold" | "full_auto"
+  mode: "scaffold" as "scaffold" | "full_auto",
+  plannerBackend: "llm" as "llm" | "deterministic",
+  referenceBackend: "comfyui" as "comfyui" | "local",
+  renderBackend: "comfyui" as "comfyui" | "local",
+  heroWorkflow: "workflows/image_t2i_startframe_krea_v1.json",
+  editWorkflow: "workflows/image_edit_flux2_klein_1ref_v1.json",
+  msrWorkflow: "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
 });
 
 const slug = computed(() => slugifyProjectName(form.name));
@@ -30,6 +37,7 @@ const validationError = computed(() => {
   if (!Number.isFinite(form.desiredLength) || form.desiredLength <= 0) return "Desired length must be a positive number.";
   if (!Number.isInteger(form.width) || form.width <= 0) return "Width must be a positive integer.";
   if (!Number.isInteger(form.height) || form.height <= 0) return "Height must be a positive integer.";
+  if (!form.heroWorkflow.trim() || !form.editWorkflow.trim() || !form.msrWorkflow.trim()) return "Movie workflow paths are required.";
   return "";
 });
 
@@ -46,6 +54,8 @@ async function createMovieProject() {
   error.value = validationError.value;
   if (error.value) return;
   submitting.value = true;
+  submitStatus.value = form.mode === "full_auto" ? "Creating movie scaffold..." : "Creating movie project...";
+  await nextTick();
   try {
     const payload: ProjectCreatePayload = {
       project_type: "movie",
@@ -55,10 +65,17 @@ async function createMovieProject() {
       desired_length: form.desiredLength,
       width: form.width,
       height: form.height,
-      movie_mode: form.mode
+      movie_mode: form.mode,
+      movie_planner_backend: form.plannerBackend,
+      movie_reference_backend: form.referenceBackend,
+      movie_render_backend: form.renderBackend,
+      movie_hero_workflow: form.heroWorkflow.trim(),
+      movie_edit_workflow: form.editWorkflow.trim(),
+      movie_msr_workflow: form.msrWorkflow.trim()
     };
     const project = await studio.createProject(payload);
     if (form.mode === "full_auto") {
+      submitStatus.value = "Starting movie production job...";
       await studio.startJob(project.id, "movie-full-auto");
       await router.push(`/projects/${project.id}/pipeline`);
     } else {
@@ -68,6 +85,7 @@ async function createMovieProject() {
     error.value = caught instanceof Error ? caught.message : String(caught);
   } finally {
     submitting.value = false;
+    submitStatus.value = "";
   }
 }
 </script>
@@ -82,7 +100,14 @@ async function createMovieProject() {
       </div>
     </header>
 
-    <form class="panel movie-project-form" @submit.prevent="createMovieProject">
+    <form class="panel movie-project-form" :aria-busy="submitting" @submit.prevent="createMovieProject">
+      <section v-if="submitting" class="busy-banner" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <div>
+          <strong>{{ submitStatus }}</strong>
+          <p>Generating story structure and project files. Keep this page open.</p>
+        </div>
+      </section>
       <section class="settings-section">
         <header class="section-header">
           <Clapperboard :size="20" />
@@ -144,11 +169,59 @@ async function createMovieProject() {
         </div>
       </section>
 
+      <details class="settings-section">
+        <summary class="section-header">
+          <WandSparkles :size="20" />
+          <div>
+            <h2>Execution</h2>
+            <p>Defaults use the configured LLM and ComfyUI workflows. Local is only for fast dev tests.</p>
+          </div>
+        </summary>
+        <div class="form-grid-compact">
+          <label>
+            <span>Story planning</span>
+            <select v-model="form.plannerBackend">
+              <option value="llm">LLM</option>
+              <option value="deterministic">Deterministic dev fallback</option>
+            </select>
+          </label>
+          <label>
+            <span>References</span>
+            <select v-model="form.referenceBackend">
+              <option value="comfyui">ComfyUI / Krea workflow</option>
+              <option value="local">Local dev placeholder</option>
+            </select>
+          </label>
+          <label>
+            <span>Movie render</span>
+            <select v-model="form.renderBackend">
+              <option value="comfyui">ComfyUI / LTX MSR</option>
+              <option value="local">Local dev placeholder</option>
+            </select>
+          </label>
+        </div>
+        <div class="settings-stack">
+          <label>
+            <span>Hero reference workflow</span>
+            <input v-model="form.heroWorkflow" type="text" />
+          </label>
+          <label>
+            <span>Edit reference workflow</span>
+            <input v-model="form.editWorkflow" type="text" />
+          </label>
+          <label>
+            <span>Movie MSR workflow</span>
+            <input v-model="form.msrWorkflow" type="text" />
+          </label>
+        </div>
+      </details>
+
       <p v-if="validationError || error" class="form-error">{{ validationError || error }}</p>
       <div class="button-row">
-        <button type="button" class="button secondary" @click="router.push('/')">Cancel</button>
+        <button type="button" class="button secondary" :disabled="submitting" @click="router.push('/')">Cancel</button>
         <button type="submit" class="button" :disabled="Boolean(validationError) || submitting">
-          {{ form.mode === "full_auto" ? "Start movie production" : "Create scaffold" }}
+          <span v-if="submitting" class="spinner small" aria-hidden="true"></span>
+          {{ submitting ? submitStatus : form.mode === "full_auto" ? "Start movie production" : "Create scaffold" }}
         </button>
       </div>
     </form>

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
+
+from feverslop.adapters.workflow_patcher import WorkflowPatcher
 
 
 class MovieWorkflowPatcher:
@@ -9,7 +10,8 @@ class MovieWorkflowPatcher:
     AUDIO_TITLES = {"#LOAD_AUDIO", "#TRIM_AUDIO"}
 
     def strip_audio_inputs(self, workflow: dict[str, Any]) -> dict[str, Any]:
-        patched = deepcopy(workflow)
+        patcher = WorkflowPatcher(workflow)
+        patched = patcher.get()
         removed = {
             node_id
             for node_id, node in patched.items()
@@ -22,7 +24,7 @@ class MovieWorkflowPatcher:
             if not isinstance(inputs, dict):
                 continue
             for key, value in list(inputs.items()):
-                if "audio" in key.lower() or _links_removed_node(value, removed):
+                if _links_removed_node(value, removed):
                     del inputs[key]
         return patched
 

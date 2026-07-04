@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
-import os
 import subprocess
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -197,7 +196,12 @@ class MovieFullAutoAction:
         render_plan_path = self.store.resolve_project_path(project_id, "movie/render_plan.json")
         if not render_plan_path.exists():
             raise ValueError("movie-full-auto requires movie/render_plan.json; create the movie scaffold first")
-        handler = build_movie_full_auto_handler(store=self.store, project_id=project_id, render_plan_path=render_plan_path)
+        handler = build_movie_full_auto_handler(
+            store=self.store,
+            project_id=project_id,
+            render_plan_path=render_plan_path,
+            movie_config=movie_config_from_metadata(metadata),
+        )
         return record_pipeline_state(self.store, project_id, self.action, handler)
 
 
@@ -213,7 +217,11 @@ class MovieReferencesAction:
         manifest_path = self.store.resolve_project_path(project_id, "movie/references/manifest.json")
         if not manifest_path.exists():
             raise ValueError("movie-references requires movie/references/manifest.json; create the movie scaffold first")
-        handler = build_movie_references_handler(store=self.store, project_id=project_id)
+        handler = build_movie_references_handler(
+            store=self.store,
+            project_id=project_id,
+            movie_config=movie_config_from_metadata(metadata),
+        )
         return record_pipeline_state(self.store, project_id, self.action, handler)
 
 
@@ -312,18 +320,20 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
     return run
 
 
-def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path) -> JobHandler:
+def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path, movie_config: dict[str, Any] | None = None) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         log("[MoviePipeline] Stage: Story-Arch Complete")
         log("[MoviePipeline] Stage: Render Plan Ready")
-        log("[Krea2_Adapter] Preparing visual consistency references")
-        manifest_path = ensure_movie_references(project_dir)
+        config = movie_runtime_config(movie_config)
+        log(f"[MoviePipeline] Planner backend: {config['planner_backend']}")
+        log(f"[Krea2_Adapter] Preparing visual consistency references via {config['reference_backend']}")
+        manifest_path = ensure_movie_references(project_dir, movie_config=config)
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
-        patched_workflow = patch_movie_msr_workflow(project_dir)
-        log(f"[WorkflowPatcher] Movie MSR workflow patched for LTX native audio: {patched_workflow}")
-        log("[LTX_MSR_Movie_Adapter] Rendering with LTX 2.3 native audio; no custom audio track supplied")
-        final_video = build_movie_visual_adapter(project_dir, patched_workflow).render_movie(
+        patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
+        log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
+        log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
+        final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_path,
         )
@@ -333,14 +343,19 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
     return run
 
 
-def ensure_movie_references(project_dir: Path) -> Path:
+def ensure_movie_references(project_dir: Path, *, movie_config: dict[str, Any] | None = None) -> Path:
+    config = movie_runtime_config(movie_config)
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
-    if movie_references_ready(manifest_path):
+    sync_movie_manifest_with_render_plan(project_dir)
+    if movie_references_ready(manifest_path, backend=config["reference_backend"]):
         return manifest_path
-    return build_movie_reference_generator().generate(project_dir=project_dir)
+    return mark_movie_reference_backend(
+        build_movie_reference_generator(movie_config=config).generate(project_dir=project_dir),
+        config["reference_backend"],
+    )
 
 
-def movie_references_ready(manifest_path: Path) -> bool:
+def movie_references_ready(manifest_path: Path, *, backend: str | None = None) -> bool:
     if not manifest_path.exists():
         return False
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -348,30 +363,137 @@ def movie_references_ready(manifest_path: Path) -> bool:
     locations = manifest.get("locations") or []
     if not actors or not locations:
         return False
-    return all(str(item.get("msr_sheet_path") or "").strip() for item in [*actors, *locations])
+    if not all(str(item.get("msr_sheet_path") or "").strip() for item in [*actors, *locations]):
+        return False
+    return not backend or manifest.get("generator_backend") == backend
 
 
-def build_movie_references_handler(*, store: ProjectStore, project_id: str) -> JobHandler:
+def build_movie_references_handler(*, store: ProjectStore, project_id: str, movie_config: dict[str, Any] | None = None) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
         project_dir = store.resolve_project_path(project_id, ".").resolve()
-        log("[MoviePipeline] Stage: Movie references")
-        manifest_path = build_movie_reference_generator().generate(project_dir=project_dir)
+        config = movie_runtime_config(movie_config)
+        log(f"[MoviePipeline] Stage: Movie references via {config['reference_backend']}")
+        sync_movie_manifest_with_render_plan(project_dir)
+        manifest_path = mark_movie_reference_backend(
+            build_movie_reference_generator(movie_config=config).generate(project_dir=project_dir),
+            config["reference_backend"],
+        )
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
         return manifest_path
 
     return run
 
 
-def build_movie_reference_generator():
-    backend = str(os.environ.get("FEVERSLOP_MOVIE_REFERENCE_BACKEND") or "local").strip().lower()
-    if backend in {"", "local", "placeholder"}:
+def sync_movie_manifest_with_render_plan(project_dir: Path) -> Path:
+    manifest_path = project_dir / "movie" / "references" / "manifest.json"
+    render_plan_path = project_dir / "movie" / "render_plan.json"
+    if not manifest_path.exists() or not render_plan_path.exists():
+        return manifest_path
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    shots = _movie_plan_shots(json.loads(render_plan_path.read_text(encoding="utf-8")))
+    actors = manifest.setdefault("actors", [])
+    locations = manifest.setdefault("locations", [])
+    actor_map = {str(actor.get("id")): actor for actor in actors if isinstance(actor, dict)}
+    location_map = {str(location.get("id")): location for location in locations if isinstance(location, dict)}
+    changed = False
+    for shot in shots:
+        refs = shot.get("reference_ids") or {}
+        for actor_id in refs.get("actors") or []:
+            actor_id = str(actor_id or "").strip()
+            if not actor_id:
+                continue
+            if actor_id not in actor_map:
+                actor_map[actor_id] = _movie_manifest_ref(actor_id, kind="actor", shot=shot)
+                actors.append(actor_map[actor_id])
+                changed = True
+            elif _needs_movie_prompt_repair(actor_map[actor_id]):
+                _repair_movie_manifest_ref(actor_map[actor_id], kind="actor", shot=shot)
+                changed = True
+        location_id = str(refs.get("location") or "").strip()
+        if not location_id:
+            continue
+        if location_id not in location_map:
+            location_map[location_id] = _movie_manifest_ref(location_id, kind="location", name=str(shot.get("location") or ""), shot=shot)
+            locations.append(location_map[location_id])
+            changed = True
+        elif _needs_movie_prompt_repair(location_map[location_id]):
+            _repair_movie_manifest_ref(location_map[location_id], kind="location", name=str(shot.get("location") or ""), shot=shot)
+            changed = True
+    if changed:
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return manifest_path
+
+
+def _movie_plan_shots(plan: Any) -> list[dict[str, Any]]:
+    if isinstance(plan, list):
+        return [shot for shot in plan if isinstance(shot, dict)]
+    if isinstance(plan, dict):
+        shots = plan.get("shots") or plan.get("scenes") or []
+        return [shot for shot in shots if isinstance(shot, dict)]
+    return []
+
+
+def _movie_manifest_ref(ref_id: str, *, kind: str, name: str = "", shot: dict[str, Any] | None = None) -> dict[str, str]:
+    display_name = name.strip() or ref_id.replace("_", " ").title()
+    prompt = _movie_reference_prompt(display_name, kind=kind, shot=shot)
+    return {
+        "id": ref_id,
+        "name": display_name,
+        "role": "",
+        "visual_description": prompt,
+        "image_prompt": prompt,
+        "prompt": prompt,
+        "status": "required",
+        "msr_sheet_path": "",
+    }
+
+
+def _repair_movie_manifest_ref(ref: dict[str, Any], *, kind: str, name: str = "", shot: dict[str, Any] | None = None) -> None:
+    display_name = name.strip() or str(ref.get("name") or ref.get("id") or "").replace("_", " ").title()
+    prompt = _movie_reference_prompt(display_name, kind=kind, shot=shot)
+    ref["name"] = display_name
+    ref["visual_description"] = prompt
+    ref["image_prompt"] = prompt
+    ref["prompt"] = prompt
+    ref["msr_sheet_path"] = ""
+    ref.pop("sheet_path", None)
+
+
+def _needs_movie_prompt_repair(ref: dict[str, Any]) -> bool:
+    prompt = str(ref.get("prompt") or "").strip().lower()
+    return not prompt or (prompt.startswith("consistent cinematic") and "drawn from the story premise" in prompt)
+
+
+def _movie_reference_prompt(display_name: str, *, kind: str, shot: dict[str, Any] | None = None) -> str:
+    cues = _movie_shot_cues(shot or {})
+    if kind == "actor":
+        prompt = f"Full-body cinematic character reference sheet for {display_name}"
+        if cues:
+            prompt += f". Visual identity and role from scenes: {cues}"
+        return f"{prompt}. Consistent face, hair, body shape, wardrobe, neutral pose, clean studio background, no text."
+    prompt = f"Cinematic environment reference sheet for {display_name}"
+    if cues:
+        prompt += f". Environment and mood from scenes: {cues}"
+    return f"{prompt}. Wide establishing view, production design, lighting, atmosphere, no people, no text."
+
+
+def _movie_shot_cues(shot: dict[str, Any]) -> str:
+    parts = []
+    for key in ("description", "action", "expression", "location", "dialogue"):
+        value = str(shot.get(key) or "").strip()
+        if value and value not in parts:
+            parts.append(value)
+    return "; ".join(parts)[:700]
+
+
+def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
+    backend = movie_runtime_config(movie_config)["reference_backend"]
+    if backend == "local":
         from feverslop.adapters.movie_references import LocalMovieImageBackend
         from feverslop.application.movie_references import MovieReferenceSheetGenerator
 
         local = LocalMovieImageBackend()
         return MovieReferenceSheetGenerator(backend=local, edit_backend=local)
-    if backend != "comfyui":
-        raise ValueError("FEVERSLOP_MOVIE_REFERENCE_BACKEND must be local or comfyui")
 
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
@@ -380,7 +502,7 @@ def build_movie_reference_generator():
     from feverslop.config.app_config import AppConfig
     from feverslop.ports.rendering import WorkflowAnchorConfig
 
-    app_config = AppConfig.load(os.environ.get("FEVERSLOP_APP_CONFIG", "app_config.json"))
+    app_config = AppConfig.load("app_config.json")
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -388,13 +510,13 @@ def build_movie_reference_generator():
     resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
     hero = ComfyUIImageBackend(
         client=client,
-        workflow_path=os.environ.get("FEVERSLOP_MOVIE_HERO_WORKFLOW", str(Path("workflows") / "image_t2i_startframe_krea_v1.json")),
+        workflow_path=backend_config_path(movie_runtime_config(movie_config)["hero_workflow"]),
         output_dir=Path("."),
         model_resolver=resolver,
     )
     edit = ComfyUIImageBackend(
         client=client,
-        workflow_path=os.environ.get("FEVERSLOP_MOVIE_EDIT_WORKFLOW", str(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json")),
+        workflow_path=backend_config_path(movie_runtime_config(movie_config)["edit_workflow"]),
         output_dir=Path("."),
         model_resolver=resolver,
     )
@@ -406,21 +528,19 @@ def build_movie_reference_generator():
     )
 
 
-def build_movie_visual_adapter(project_dir: Path, workflow_path: Path):
-    backend = str(os.environ.get("FEVERSLOP_MOVIE_RENDER_BACKEND") or "local").strip().lower()
-    if backend in {"", "local", "placeholder"}:
+def build_movie_visual_adapter(project_dir: Path, workflow_path: Path, movie_config: dict[str, Any] | None = None, workflow: dict | None = None):
+    backend = movie_runtime_config(movie_config)["render_backend"]
+    if backend == "local":
         from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
 
         return LocalMovieVisualAdapter()
-    if backend != "comfyui":
-        raise ValueError("FEVERSLOP_MOVIE_RENDER_BACKEND must be local or comfyui")
 
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
     from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load(os.environ.get("FEVERSLOP_APP_CONFIG", "app_config.json"))
+    app_config = AppConfig.load("app_config.json")
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -428,21 +548,65 @@ def build_movie_visual_adapter(project_dir: Path, workflow_path: Path):
     return ComfyUIMovieVisualAdapter(
         client=client,
         workflow_path=workflow_path,
+        workflow=workflow,
         model_resolver=ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides),
     )
 
 
-def patch_movie_msr_workflow(project_dir: Path, *, template_path: Path = Path("workflows") / "video_default_ltxv_msr_1actor_1background_v1.json") -> Path:
+def movie_config_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return movie_runtime_config(dict(metadata.get("movie") or {}))
+
+
+def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]:
+    raw = dict(config or {})
+    planner_backend = _movie_backend(raw.get("planner_backend"), default="llm", supported={"llm", "deterministic", "local"})
+    if planner_backend == "local":
+        planner_backend = "deterministic"
+    return {
+        "planner_backend": planner_backend,
+        "reference_backend": _movie_backend(raw.get("reference_backend"), default="comfyui", supported={"comfyui", "local"}),
+        "render_backend": _movie_backend(raw.get("render_backend"), default="comfyui", supported={"comfyui", "local"}),
+        "hero_workflow": _movie_workflow_path(raw.get("hero_workflow"), "workflows/image_t2i_startframe_krea_v1.json"),
+        "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), "workflows/image_edit_flux2_klein_1ref_v1.json"),
+        "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
+    }
+
+
+def mark_movie_reference_backend(manifest_path: Path, backend: str) -> Path:
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    manifest["generator_backend"] = backend
+    Path(manifest_path).write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return Path(manifest_path)
+
+
+def _movie_backend(value: object, *, default: str, supported: set[str]) -> str:
+    backend = str(value or default).strip().lower()
+    if backend == "placeholder":
+        backend = "local"
+    if backend not in supported:
+        raise ValueError(f"movie backend must be one of: {', '.join(sorted(supported))}")
+    return backend
+
+
+def _movie_workflow_path(value: object, default: str) -> str:
+    raw = str(value or default).strip()
+    path = Path(raw)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("movie workflow paths must be repository-relative")
+    return path.as_posix()
+
+
+def backend_config_path(value: str) -> str:
+    return Path(value).as_posix()
+
+
+def patch_movie_msr_workflow(*, template_path: Path = Path("workflows") / "video_default_ltxv_msr_1actor_1background_v1.json") -> dict[str, Any]:
     from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
 
     if not template_path.exists():
         raise FileNotFoundError(f"Movie MSR workflow template not found: {template_path}")
     workflow = json.loads(template_path.read_text(encoding="utf-8"))
-    patched = MovieWorkflowPatcher().strip_audio_inputs(workflow)
-    output_path = project_dir / "movie" / "workflows" / "video_default_ltxv_msr_movie_native_audio.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(patched, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return output_path
+    return MovieWorkflowPatcher().strip_audio_inputs(workflow)
 
 
 def pipeline_mode_from_config(config_path: Path) -> str | None:

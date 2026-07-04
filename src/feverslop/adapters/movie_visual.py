@@ -31,6 +31,7 @@ class ComfyUIMovieVisualAdapter:
         postprocessor: VideoPostProcessor | None = None,
         model_resolver=None,
         fps: int = 24,
+        workflow: dict | None = None,
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -39,6 +40,7 @@ class ComfyUIMovieVisualAdapter:
         self.postprocessor = postprocessor or VideoPostProcessor()
         self.model_resolver = model_resolver
         self.fps = int(fps)
+        self.workflow = workflow
 
     def render_movie(self, *, project_dir: Path, render_plan_path: Path) -> Path:
         project_dir = Path(project_dir)
@@ -58,6 +60,9 @@ class ComfyUIMovieVisualAdapter:
             render_queue=self.render_queue,
             postprocessor=self.postprocessor,
             model_resolver=self.model_resolver,
+            debug_workflows_dir=project_dir / "output" / "movie" / "ltx_msr_debug",
+            workflow=self.workflow,
+            workflow_label=self.workflow_path,
         )
         rendered = []
         for scene in scenes:

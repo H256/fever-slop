@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from copy import deepcopy
 import json
 import random
 import re
@@ -44,11 +45,15 @@ class ComfyUIMSRVideoRenderBackend:
         postprocessor: VideoPostProcessor | None = None,
         model_resolver=None,
         project_dir: str | Path | None = None,
+        workflow: dict | None = None,
+        workflow_label: str | Path | None = None,
     ):
         if int(msr_frame_count) not in {17, 25, 33, 41}:
             raise ValueError("msr_frame_count must be one of 17, 25, 33, 41")
         self.client = client
         self.workflow_path = Path(workflow_path)
+        self.workflow = deepcopy(workflow) if workflow is not None else None
+        self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
         self.output_dir = Path(output_dir)
         self.project_dir = Path(project_dir) if project_dir is not None else None
         self.raw_output_dir = self.output_dir / "raw"
@@ -71,6 +76,8 @@ class ComfyUIMSRVideoRenderBackend:
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
 
     def load_workflow(self) -> dict:
+        if self.workflow is not None:
+            return deepcopy(self.workflow)
         return json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
 
     def render_video(self, request: VideoRenderRequest) -> Path:
@@ -89,7 +96,7 @@ class ComfyUIMSRVideoRenderBackend:
             comfy_audio_name=comfy_audio_name,
             rolling=rolling,
         )
-        workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_path)
+        workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_label)
         self._write_debug_workflow(scene_number, workflow)
         self.raw_output_dir.mkdir(parents=True, exist_ok=True)
         raw_output = self.render_queue.queue_workflow_and_download_first_video(

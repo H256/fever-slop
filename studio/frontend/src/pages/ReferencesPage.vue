@@ -26,12 +26,21 @@ const showAddForm = ref(false);
 const lightboxImage = ref("");
 const rerenderingReference = ref(false);
 const startingProcess = ref(false);
+const processError = ref("");
 const allReferenceImages = computed(() => studio.currentProject?.artifacts.images.filter((path) => path.includes("/references/")) ?? []);
 const allManifests = computed(() => studio.currentProject?.artifacts.references.filter((path) => path.endsWith("/manifest.json")) ?? []);
 const manifests = computed(() => allManifests.value.filter(isUsedReferencePath));
 const otherReferences = computed(() => [...allManifests.value, ...allReferenceImages.value].filter((path) => !isUsedReferencePath(path)));
-const actorIds = computed(() => new Set(allManifests.value.map((path) => referenceId(path, "actors")).filter(Boolean) as string[]));
-const locationIds = computed(() => new Set(allManifests.value.map((path) => referenceId(path, "locations")).filter(Boolean) as string[]));
+const hasMovieManifest = computed(() => allManifests.value.includes("movie/references/manifest.json"));
+const isMovieProject = computed(() => studio.currentProject?.project_type === "movie");
+const actorIds = computed(() => new Set([
+  ...allManifests.value.map((path) => referenceId(path, "actors")).filter(Boolean) as string[],
+  ...(isMovieProject.value && hasMovieManifest.value ? [...usedActorIds.value] : [])
+]));
+const locationIds = computed(() => new Set([
+  ...allManifests.value.map((path) => referenceId(path, "locations")).filter(Boolean) as string[],
+  ...(isMovieProject.value && hasMovieManifest.value ? [...usedLocationIds.value] : [])
+]));
 const missingActors = computed(() => [...usedActorIds.value].filter((id) => !actorIds.value.has(id)));
 const missingLocations = computed(() => [...usedLocationIds.value].filter((id) => id && !locationIds.value.has(id)));
 const manifestFields = computed(() => collectObjectFields(manifestData.value, { helpForField: helpForManifestField, primitiveArrayMode: "field" }));
@@ -50,19 +59,33 @@ onMounted(async () => {
 async function loadUsedReferences() {
   renderPlanPath.value = studio.currentProject?.artifacts.render_plans[0] ?? "";
   if (!renderPlanPath.value) return;
-  scenes.value = (await api.artifact(projectId.value, renderPlanPath.value)).data as RenderScene[];
+  scenes.value = renderPlanScenes((await api.artifact(projectId.value, renderPlanPath.value)).data);
   const actors = new Set<string>();
   const locations = new Set<string>();
   for (const scene of scenes.value) {
     const references = scene.references as Record<string, unknown> | undefined;
+    const referenceIds = scene.reference_ids as Record<string, unknown> | undefined;
     for (const id of (references?.actor_ids as string[] | undefined) ?? []) actors.add(id);
+    for (const id of (referenceIds?.actors as string[] | undefined) ?? []) actors.add(id);
     if (typeof references?.location_id === "string") locations.add(references.location_id);
+    if (typeof referenceIds?.location === "string") locations.add(referenceIds.location);
   }
   usedActorIds.value = actors;
   usedLocationIds.value = locations;
 }
 
+function renderPlanScenes(data: unknown): RenderScene[] {
+  if (Array.isArray(data)) return data as RenderScene[];
+  if (data && typeof data === "object") {
+    const plan = data as Record<string, unknown>;
+    if (Array.isArray(plan.shots)) return plan.shots as RenderScene[];
+    if (Array.isArray(plan.scenes)) return plan.scenes as RenderScene[];
+  }
+  return [];
+}
+
 function isUsedReferencePath(path: string): boolean {
+  if (isMovieProject.value && path === "movie/references/manifest.json") return true;
   const actor = path.match(/\/references\/actors\/([^/]+)\//)?.[1];
   const location = path.match(/\/references\/locations\/([^/]+)\//)?.[1];
   return Boolean((actor && usedActorIds.value.has(actor)) || (location && usedLocationIds.value.has(location)));
@@ -81,11 +104,19 @@ async function saveManifest() {
 
 async function rerenderSelectedReference() {
   if (!selectedReferenceId.value || hasActiveProcess.value) return;
+  processError.value = "";
   rerenderingReference.value = true;
-  const job = await studio.startJob(projectId.value, "reference-rerender", undefined, {
-    reference_kind: selectedReferenceKind.value,
-    reference_id: selectedReferenceId.value
-  });
+  let job;
+  try {
+    job = await studio.startJob(projectId.value, "reference-rerender", undefined, {
+      reference_kind: selectedReferenceKind.value,
+      reference_id: selectedReferenceId.value
+    });
+  } catch (caught) {
+    processError.value = apiErrorMessage(caught);
+    rerenderingReference.value = false;
+    return;
+  }
   const timer = window.setInterval(async () => {
     const jobs = await api.jobs(projectId.value);
     const current = jobs.find((candidate) => candidate.id === job.id);
@@ -101,11 +132,26 @@ async function rerenderSelectedReference() {
 async function startProcess(action: string) {
   if (hasActiveProcess.value) return;
   startingProcess.value = true;
+  processError.value = "";
   try {
-    await studio.startJob(projectId.value, action);
+    await studio.startJob(projectId.value, isMovieProject.value && action === "msr-references" ? "movie-references" : action);
     await studio.loadJobs(projectId.value);
+  } catch (caught) {
+    processError.value = apiErrorMessage(caught);
   } finally {
     startingProcess.value = false;
+  }
+}
+
+function apiErrorMessage(caught: unknown): string {
+  if (!(caught instanceof Error)) return String(caught);
+  const body = "body" in caught ? String((caught as { body?: string }).body ?? "") : "";
+  if (!body) return caught.message;
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    return parsed.detail ? String(parsed.detail) : body;
+  } catch {
+    return body;
   }
 }
 
@@ -235,6 +281,10 @@ function optionsForField(field: ObjectFormField): string[] {
     <section v-if="hasActiveProcess" class="panel notice-panel">
       <h2>A backend process is running</h2>
       <p>Reference controls are disabled until the current job finishes.</p>
+    </section>
+    <section v-if="processError" class="panel pipeline-error">
+      <strong>Could not start reference job</strong>
+      <p>{{ processError }}</p>
     </section>
     <section v-if="missingActors.length || missingLocations.length" class="panel notice-panel">
       <h2>Missing References</h2>

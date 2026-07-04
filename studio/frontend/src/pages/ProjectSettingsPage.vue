@@ -122,7 +122,7 @@ function validateConfig(value: Record<string, unknown> | null, projectSummary: P
   const errors: string[] = [];
   const projectType = projectSummary?.project_type ?? projectSummary?.metadata?.project_type ?? "standard_music_video";
   if (!String(value.project_name ?? "").trim()) errors.push("Project name is required.");
-  if (projectType !== "full_auto" && !String(value.input_audio ?? "").trim()) errors.push("Input audio is required.");
+  if (!["full_auto", "movie"].includes(projectType) && !String(value.input_audio ?? "").trim()) errors.push("Input audio is required.");
   if (typeof (value.silent_mode ?? false) !== "boolean") errors.push("Silent Mode must be true or false.");
   if (!["single", "multi"].includes(String(value.subject_mode ?? "multi"))) errors.push("Subject mode must be single or multi.");
   const maxSceneActors = Number(value.max_scene_actors ?? 4);

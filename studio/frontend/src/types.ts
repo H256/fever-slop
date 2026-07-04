@@ -37,6 +37,12 @@ export interface ProjectSummary {
       width?: number;
       height?: number;
       mode?: "scaffold" | "full_auto";
+      planner_backend?: "llm" | "deterministic";
+      reference_backend?: "comfyui" | "local";
+      render_backend?: "comfyui" | "local";
+      hero_workflow?: string;
+      edit_workflow?: string;
+      msr_workflow?: string;
     };
   };
   status: ProjectStatus;
@@ -62,6 +68,12 @@ export interface ProjectCreatePayload {
   story_text?: string;
   desired_length?: number;
   movie_mode?: "scaffold" | "full_auto";
+  movie_planner_backend?: "llm" | "deterministic";
+  movie_reference_backend?: "comfyui" | "local";
+  movie_render_backend?: "comfyui" | "local";
+  movie_hero_workflow?: string;
+  movie_edit_workflow?: string;
+  movie_msr_workflow?: string;
 }
 
 export interface JobStep {

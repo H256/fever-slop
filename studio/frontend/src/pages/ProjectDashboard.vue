@@ -94,6 +94,18 @@ function formatDuration(seconds?: number): string {
             <strong>{{ movieMetadata?.width || 1280 }} x {{ movieMetadata?.height || 704 }}</strong>
           </div>
           <div>
+            <span>Planner</span>
+            <strong>{{ movieMetadata?.planner_backend || "llm" }}</strong>
+          </div>
+          <div>
+            <span>References</span>
+            <strong>{{ movieMetadata?.reference_backend || "comfyui" }}</strong>
+          </div>
+          <div>
+            <span>Render</span>
+            <strong>{{ movieMetadata?.render_backend || "comfyui" }}</strong>
+          </div>
+          <div>
             <span>Current stage</span>
             <strong>{{ movieJob?.current_step || movieJob?.status || "idle" }}</strong>
           </div>
