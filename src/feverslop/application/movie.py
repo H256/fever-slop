@@ -23,6 +23,10 @@ from feverslop.domain.movie import (
 from feverslop.ports.movie import ReferenceGenerationPort, ScenePlanningPort, StoryGenerationPort, VisualGenerationPort
 
 
+_SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
+_DIALOGUE_CUE_RE = re.compile(r"\b[A-Z][A-Z0-9 _'-]{1,30}:\s+\S")
+
+
 @dataclass(frozen=True)
 class MovieInput:
     name: str
@@ -316,9 +320,9 @@ def apply_movie_continuity_to_shots(shots: tuple[CinematicShot, ...], continuity
         continuity_notes = "; ".join(
             part
             for part in [
-                "; ".join(packet.incoming) if packet else "",
-                "; ".join(packet.required_carryovers) if packet else "",
-                "; ".join(packet.outgoing) if packet else "",
+                "; ".join(_safe_continuity_facts(packet.incoming)) if packet else "",
+                "; ".join(_safe_continuity_facts(packet.required_carryovers)) if packet else "",
+                "; ".join(_safe_continuity_facts(packet.outgoing)) if packet else "",
             ]
             if part
         )
@@ -383,7 +387,7 @@ def build_movie_continuity_fallback(*, bible: MovieBible, shots: tuple[Cinematic
         carryovers = tuple(
             item
             for item in [
-                *(rule.description for rule in bible.continuity if rule.description),
+                *_safe_continuity_facts(rule.description for rule in bible.continuity if rule.description),
                 *(f"{actor_id} identity and wardrobe remain consistent" for actor_id in shot.actor_ids),
                 f"location remains {location.name or shot.location}" if location.name or shot.location else "",
             ]
@@ -427,6 +431,39 @@ def build_movie_continuity_fallback(*, bible: MovieBible, shots: tuple[Cinematic
         scene_continuity=scene_continuity,
         narrative_chain=tuple(narrative_chain),
     )
+
+
+def _safe_continuity_facts(value: object) -> tuple[str, ...]:
+    candidates = _split_continuity_text(value)
+    facts: list[str] = []
+    for candidate in candidates:
+        fact = " ".join(str(candidate or "").split()).strip(" .")
+        if not fact or _looks_like_screenplay_dump(fact):
+            continue
+        if fact not in facts:
+            facts.append(fact)
+    return tuple(facts)
+
+
+def _split_continuity_text(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in re.split(r"[;\n]+", value) if part.strip()]
+    if hasattr(value, "__iter__"):
+        parts: list[str] = []
+        for item in value:
+            parts.extend(_split_continuity_text(item))
+        return parts
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _looks_like_screenplay_dump(text: str) -> bool:
+    if len(text) > 300:
+        return True
+    if _SCREENPLAY_HEADING_RE.search(text):
+        return True
+    return bool(_DIALOGUE_CUE_RE.search(text))
 
 
 def normalize_movie_continuity_plan(plan: MovieContinuityPlan, *, bible: MovieBible, shots: tuple[CinematicShot, ...]) -> MovieContinuityPlan:

@@ -419,6 +419,204 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("spoken in German", prompt)
             self.assertIn("Dialogue language: German", relay["prompt"])
 
+    def test_movie_msr_enrichment_blocks_dialogue_when_shot_has_no_dialogue(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Silent Shot",
+                        "premise": "Mara opens a forbidden book.",
+                        "story_arch": {"title": "Silent Shot", "premise": "Mara opens a forbidden book.", "beats": ["opening"]},
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Silent Shot",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara silently opens the ledger",
+                                "duration_seconds": 4,
+                                "camera": "slow dolly",
+                                "acting": "controlled fear",
+                                "action": "opens the ledger without speaking",
+                                "dialogue": "",
+                                "reference_ids": {"actors": ["mara"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist", "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+            prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
+            relay = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]
+            self.assertIn("No spoken dialogue", prompt)
+            self.assertIn("Do not invent spoken lines", prompt)
+            self.assertIn("No spoken dialogue", relay["prompt"])
+
+    def test_movie_msr_enrichment_drops_screenplay_dumps_from_continuity(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        screenplay_dump = (
+            "EXT. SOMME VALLEY - DAY (1916): German soldiers move through fog; "
+            "INT. TRENCH LINE - CONTINUOUS: KARL: Where is God? HANS: Not here."
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Mud",
+                        "premise": "Soldiers lose faith in the trenches.",
+                        "story_arch": {"title": "Mud", "premise": "Soldiers lose faith in the trenches.", "beats": ["opening"]},
+                        "actors": [{"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier"}],
+                        "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Mud",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Hans looks across the trench",
+                                "duration_seconds": 4,
+                                "camera": "static low angle",
+                                "acting": "haunted silence",
+                                "action": "stares into the shell smoke",
+                                "dialogue": "",
+                                "continuity_notes": f"{screenplay_dump}; Hans keeps the torn gray coat",
+                                "reference_ids": {"actors": ["hans"], "location": "trench"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "continuity_plan.json").write_text(
+                json.dumps(
+                    {
+                        "scene_continuity": {
+                            "shot_0001": {
+                                "incoming": [screenplay_dump],
+                                "required_carryovers": [screenplay_dump, "Hans keeps the torn gray coat"],
+                                "allowed_changes": ["smoke thickens"],
+                                "outgoing": [screenplay_dump],
+                            }
+                        },
+                        "narrative_chain": [
+                            {
+                                "shot_id": "shot_0001",
+                                "story_state_before": screenplay_dump,
+                                "story_state_after": "Hans understands the trench will not answer him.",
+                                "cause_from_previous": screenplay_dump,
+                                "narrative_purpose": "Show Hans losing faith.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier", "msr_sheet_path": "movie/references/actors/hans/msr_sheet.png"}],
+                        "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench", "msr_sheet_path": "movie/references/locations/trench/views/hero.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+            continuity_notes = enriched["shots"][0]["continuity_notes"]
+            prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
+            relay_prompt = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+            for value in (continuity_notes, prompt, relay_prompt):
+                self.assertNotIn("EXT. SOMME VALLEY", value)
+                self.assertNotIn("INT. TRENCH LINE", value)
+                self.assertNotIn("KARL: Where is God?", value)
+                self.assertIn("Hans keeps the torn gray coat", value)
+            for value in (prompt, relay_prompt):
+                self.assertIn("CONTINUITY CONTRACT", value)
+
+    def test_movie_continuity_fallback_drops_screenplay_dumps_from_carryovers(self):
+        from feverslop.application.movie import build_movie_continuity_fallback
+        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+
+        screenplay_dump = (
+            "EXT. SOMME VALLEY - DAY (1916): German soldiers move through fog; "
+            "INT. TRENCH LINE - CONTINUOUS: KARL: Where is God? HANS: Not here."
+        )
+        bible = MovieBible(
+            title="Mud",
+            premise="Soldiers lose faith in the trenches.",
+            story_arch=StoryArch(title="Mud", premise="Soldiers lose faith in the trenches.", beats=("opening",)),
+            actors=(MovieActor(id="hans", name="Hans", visual_description="mud-covered soldier"),),
+            locations=(MovieLocation(id="trench", name="Trench Line", visual_description="muddy trench"),),
+            continuity=(
+                MovieContinuityRule(id="script", description=screenplay_dump),
+                MovieContinuityRule(id="coat", description="Hans keeps the torn gray coat"),
+            ),
+            style_constraints=(),
+            runtime_constraints={},
+        )
+        shots = (
+            CinematicShot(
+                shot_id="shot_0001",
+                description="Hans looks across the trench",
+                duration_seconds=4,
+                camera="static low angle",
+                action="stares into smoke",
+                expression="haunted silence",
+                location="Trench Line",
+                actor_ids=("hans",),
+                location_id="trench",
+            ),
+        )
+
+        plan = build_movie_continuity_fallback(bible=bible, shots=shots)
+        carryovers = plan.scene_continuity["shot_0001"].required_carryovers
+
+        self.assertNotIn(screenplay_dump, carryovers)
+        self.assertIn("Hans keeps the torn gray coat", carryovers)
+
     def test_movie_msr_enrichment_writes_multi_actor_global_reference_prompt(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 
