@@ -17,6 +17,9 @@ from feverslop.studio.jobs import (
     build_reference_rerender_handler,
     run_with_stream_logging,
 )
+from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
+from feverslop.application.movie_artifacts import ensure_movie_bible, write_movie_reference_manifest_from_bible
+from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.studio.logging import render_log_lines
 from feverslop.studio.projects import ProjectStore
 
@@ -323,19 +326,22 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
 def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path, movie_config: dict[str, Any] | None = None) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
         project_dir = store.resolve_project_path(project_id, ".").resolve()
-        log("[MoviePipeline] Stage: Story-Arch Complete")
+        bible_path = ensure_movie_bible(project_dir)
+        log(f"[MoviePipeline] Stage: Movie Bible Ready: {bible_path}")
         log("[MoviePipeline] Stage: Render Plan Ready")
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Planner backend: {config['planner_backend']}")
         log(f"[Krea2_Adapter] Preparing visual consistency references via {config['reference_backend']}")
         manifest_path = ensure_movie_references(project_dir, movie_config=config)
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
+        render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir)
+        log(f"[MoviePipeline] Stage: Movie MSR Prompt Enrichment Ready: {render_plan_msr_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
         log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
         log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
         final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
-            render_plan_path=render_plan_path,
+            render_plan_path=render_plan_msr_path if render_plan_msr_path.exists() else render_plan_path,
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
         return final_video
@@ -346,7 +352,8 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
 def ensure_movie_references(project_dir: Path, *, movie_config: dict[str, Any] | None = None) -> Path:
     config = movie_runtime_config(movie_config)
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
-    sync_movie_manifest_with_render_plan(project_dir)
+    ensure_movie_bible(project_dir)
+    write_movie_reference_manifest_from_bible(project_dir)
     if movie_references_ready(manifest_path, backend=config["reference_backend"]):
         return manifest_path
     return mark_movie_reference_backend(
@@ -373,7 +380,8 @@ def build_movie_references_handler(*, store: ProjectStore, project_id: str, movi
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Stage: Movie references via {config['reference_backend']}")
-        sync_movie_manifest_with_render_plan(project_dir)
+        ensure_movie_bible(project_dir)
+        write_movie_reference_manifest_from_bible(project_dir)
         manifest_path = mark_movie_reference_backend(
             build_movie_reference_generator(movie_config=config).generate(project_dir=project_dir),
             config["reference_backend"],
@@ -395,6 +403,7 @@ def sync_movie_manifest_with_render_plan(project_dir: Path) -> Path:
     locations = manifest.setdefault("locations", [])
     actor_map = {str(actor.get("id")): actor for actor in actors if isinstance(actor, dict)}
     location_map = {str(location.get("id")): location for location in locations if isinstance(location, dict)}
+    actor_shots = _movie_actor_shots_by_id(shots)
     changed = False
     for shot in shots:
         refs = shot.get("reference_ids") or {}
@@ -403,11 +412,11 @@ def sync_movie_manifest_with_render_plan(project_dir: Path) -> Path:
             if not actor_id:
                 continue
             if actor_id not in actor_map:
-                actor_map[actor_id] = _movie_manifest_ref(actor_id, kind="actor", shot=shot)
+                actor_map[actor_id] = _movie_manifest_ref(actor_id, kind="actor", shots=actor_shots.get(actor_id) or [shot])
                 actors.append(actor_map[actor_id])
                 changed = True
             elif _needs_movie_prompt_repair(actor_map[actor_id]):
-                _repair_movie_manifest_ref(actor_map[actor_id], kind="actor", shot=shot)
+                _repair_movie_manifest_ref(actor_map[actor_id], kind="actor", shots=actor_shots.get(actor_id) or [shot])
                 changed = True
         location_id = str(refs.get("location") or "").strip()
         if not location_id:
@@ -433,14 +442,21 @@ def _movie_plan_shots(plan: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _movie_manifest_ref(ref_id: str, *, kind: str, name: str = "", shot: dict[str, Any] | None = None) -> dict[str, str]:
+def _movie_manifest_ref(
+    ref_id: str,
+    *,
+    kind: str,
+    name: str = "",
+    shot: dict[str, Any] | None = None,
+    shots: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
     display_name = name.strip() or ref_id.replace("_", " ").title()
-    prompt = _movie_reference_prompt(display_name, kind=kind, shot=shot)
+    visual_description, prompt = _movie_reference_fields(display_name, kind=kind, shot=shot, shots=shots)
     return {
         "id": ref_id,
         "name": display_name,
         "role": "",
-        "visual_description": prompt,
+        "visual_description": visual_description,
         "image_prompt": prompt,
         "prompt": prompt,
         "status": "required",
@@ -448,11 +464,18 @@ def _movie_manifest_ref(ref_id: str, *, kind: str, name: str = "", shot: dict[st
     }
 
 
-def _repair_movie_manifest_ref(ref: dict[str, Any], *, kind: str, name: str = "", shot: dict[str, Any] | None = None) -> None:
+def _repair_movie_manifest_ref(
+    ref: dict[str, Any],
+    *,
+    kind: str,
+    name: str = "",
+    shot: dict[str, Any] | None = None,
+    shots: list[dict[str, Any]] | None = None,
+) -> None:
     display_name = name.strip() or str(ref.get("name") or ref.get("id") or "").replace("_", " ").title()
-    prompt = _movie_reference_prompt(display_name, kind=kind, shot=shot)
+    visual_description, prompt = _movie_reference_fields(display_name, kind=kind, shot=shot, shots=shots)
     ref["name"] = display_name
-    ref["visual_description"] = prompt
+    ref["visual_description"] = visual_description
     ref["image_prompt"] = prompt
     ref["prompt"] = prompt
     ref["msr_sheet_path"] = ""
@@ -461,20 +484,77 @@ def _repair_movie_manifest_ref(ref: dict[str, Any], *, kind: str, name: str = ""
 
 def _needs_movie_prompt_repair(ref: dict[str, Any]) -> bool:
     prompt = str(ref.get("prompt") or "").strip().lower()
-    return not prompt or (prompt.startswith("consistent cinematic") and "drawn from the story premise" in prompt)
+    visual_description = str(ref.get("visual_description") or "").strip().lower()
+    combined = f"{visual_description}\n{prompt}"
+    return (
+        not prompt
+        or (prompt.startswith("consistent cinematic") and "drawn from the story premise" in prompt)
+        or "visual identity" in combined
+        or "full-body cinematic character reference sheet" in visual_description
+        or "four vertical panels" in visual_description
+        or any(
+            token in combined
+            for token in (
+                "jump cut",
+                "lunges",
+                "bellows",
+                "low-angle shot",
+                "medium shot",
+                "wide shot",
+                "close-up",
+                "eye fluttering",
+                "eyes roll back",
+                "screen fades",
+                "mesmerized",
+                "gaze",
+                "reaches",
+                "'s;",
+            )
+        )
+    )
 
 
-def _movie_reference_prompt(display_name: str, *, kind: str, shot: dict[str, Any] | None = None) -> str:
-    cues = _movie_shot_cues(shot or {})
+def _movie_reference_fields(
+    display_name: str,
+    *,
+    kind: str,
+    shot: dict[str, Any] | None = None,
+    shots: list[dict[str, Any]] | None = None,
+) -> tuple[str, str]:
     if kind == "actor":
-        prompt = f"Full-body cinematic character reference sheet for {display_name}"
-        if cues:
-            prompt += f". Visual identity and role from scenes: {cues}"
-        return f"{prompt}. Consistent face, hair, body shape, wardrobe, neutral pose, clean studio background, no text."
+        actor_shots = shots or ([shot] if shot else [])
+        visual_description = build_movie_actor_visual_description(_movie_actor_shot_cues(actor_shots))
+        return visual_description, build_movie_actor_reference_prompt(display_name, visual_description)
+    cues = _movie_shot_cues(shot or {})
     prompt = f"Cinematic environment reference sheet for {display_name}"
     if cues:
         prompt += f". Environment and mood from scenes: {cues}"
-    return f"{prompt}. Wide establishing view, production design, lighting, atmosphere, no people, no text."
+    prompt = f"{prompt}. Wide establishing view, production design, lighting, atmosphere, no people, no text."
+    return prompt, prompt
+
+
+def _movie_actor_shots_by_id(shots: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    actor_shots: dict[str, list[dict[str, Any]]] = {}
+    for shot in shots:
+        actor_ids = [str(actor_id or "").strip() for actor_id in (shot.get("reference_ids") or {}).get("actors") or []]
+        for actor_id in actor_ids:
+            if actor_id:
+                actor_shots.setdefault(actor_id, []).append(shot)
+    for actor_id, items in list(actor_shots.items()):
+        solo = [shot for shot in items if len((shot.get("reference_ids") or {}).get("actors") or []) == 1]
+        if solo:
+            actor_shots[actor_id] = solo
+    return actor_shots
+
+
+def _movie_actor_shot_cues(shots: list[dict[str, Any]]) -> str:
+    parts = []
+    for shot in shots[:4]:
+        for key in ("description", "expression"):
+            value = str(shot.get(key) or "").strip()
+            if value and value not in parts:
+                parts.append(value)
+    return "; ".join(parts)[:700]
 
 
 def _movie_shot_cues(shot: dict[str, Any]) -> str:

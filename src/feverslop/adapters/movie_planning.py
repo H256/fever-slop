@@ -5,7 +5,7 @@ import re
 from dataclasses import replace
 from math import ceil
 
-from feverslop.domain.movie import CinematicShot, StoryArch
+from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
 
 
 class LLMMoviePlanner:
@@ -23,6 +23,53 @@ class LLMMoviePlanner:
             title=str(data.get("title") or title),
             premise=str(data.get("premise") or story_text).strip(),
             beats=tuple(_beat_text(beat) for beat in beats if _beat_text(beat)),
+        )
+
+    def generate_movie_bible(self, *, title: str, source_type: str, story_text: str, desired_length: float, story_arch: StoryArch, config: dict) -> MovieBible:
+        raw = self.llm.complete_prompt(
+            _movie_bible_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, story_arch=story_arch, config=config),
+            system_prompt="You are a film development producer. Return ONLY valid JSON.",
+        )
+        data = _json_object(raw)
+        return _movie_bible_from_data(data, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
+
+    def plan_shots_from_bible(
+        self,
+        *,
+        bible: MovieBible,
+        desired_length: float,
+        width: int,
+        height: int,
+        min_duration: float = 4.0,
+        max_duration: float = 20.0,
+    ) -> tuple[CinematicShot, ...]:
+        raw = self.llm.complete_prompt(
+            _shot_plan_from_bible_prompt(
+                bible=bible,
+                desired_length=desired_length,
+                width=width,
+                height=height,
+                min_duration=min_duration,
+                max_duration=max_duration,
+            ),
+            system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
+        )
+        data = _json_object(raw)
+        shots = data.get("shots") or []
+        if not isinstance(shots, list) or not shots:
+            return DeterministicMoviePlanner().plan_shots_from_bible(
+                bible=bible,
+                desired_length=desired_length,
+                width=width,
+                height=height,
+                min_duration=min_duration,
+                max_duration=max_duration,
+            )
+        return _shots_from_data(
+            shots,
+            desired_length=desired_length,
+            min_duration=min_duration,
+            max_duration=max_duration,
         )
 
     def plan_shots(
@@ -90,6 +137,40 @@ class DeterministicMoviePlanner:
         beats = _split_screenplay_beats(story_text) if source_type == "screenplay" else _split_beats(text)
         return StoryArch(title=title, premise=text, beats=tuple(beats))
 
+    def generate_movie_bible(self, *, title: str, source_type: str, story_text: str, desired_length: float, story_arch: StoryArch, config: dict) -> MovieBible:
+        return _movie_bible_from_data({}, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
+
+    def plan_shots_from_bible(
+        self,
+        *,
+        bible: MovieBible,
+        desired_length: float,
+        width: int,
+        height: int,
+        min_duration: float = 4.0,
+        max_duration: float = 20.0,
+    ) -> tuple[CinematicShot, ...]:
+        shots = self.plan_shots(
+            story_arch=bible.story_arch,
+            desired_length=desired_length,
+            width=width,
+            height=height,
+            min_duration=min_duration,
+            max_duration=max_duration,
+        )
+        default_actor = bible.actors[0].id if bible.actors else "main_character"
+        default_location = bible.locations[0].id if bible.locations else "primary_location"
+        default_location_name = bible.locations[0].name if bible.locations else "Primary Location"
+        return tuple(
+            replace(
+                shot,
+                actor_ids=shot.actor_ids or (default_actor,),
+                location_id=shot.location_id or default_location,
+                location=default_location_name if not shot.location or shot.location == "story-consistent cinematic location" else shot.location,
+            )
+            for shot in shots
+        )
+
     def plan_shots(
         self,
         *,
@@ -142,6 +223,148 @@ class DeterministicMoviePlanner:
             min_duration=float(min_duration),
             max_duration=float(max_duration),
         )
+
+
+def _movie_bible_from_data(data: dict, *, title: str, story_arch: StoryArch, config: dict, desired_length: float) -> MovieBible:
+    actors = _configured_actors(config) or _actors_from_data(data.get("actors") or [])
+    locations = _configured_locations(config) or _locations_from_data(data.get("locations") or [])
+    if not actors:
+        actors = [MovieActor(id="main_character", name="Main Character", role="lead", visual_description="story-defined cinematic lead character with consistent face, hair, wardrobe, posture, and body shape")]
+    if not locations:
+        locations = [MovieLocation(id="primary_location", name="Primary Location", visual_description="story-defined cinematic location with consistent production design, geography, lighting, and atmosphere")]
+    return MovieBible(
+        title=str(data.get("title") or title),
+        premise=str(data.get("premise") or story_arch.premise).strip(),
+        story_arch=story_arch,
+        actors=tuple(actors),
+        locations=tuple(locations),
+        continuity=tuple(_continuity_from_data(data.get("continuity") or []))
+        or (MovieContinuityRule(id="visual_continuity", description="Keep actor identities, wardrobe, locations, lighting logic, and story geography consistent across shots."),),
+        style_constraints=tuple(str(item).strip() for item in data.get("style_constraints") or _config_style_constraints(config) if str(item).strip()),
+        runtime_constraints={
+            "desired_length": float(desired_length),
+            "max_scene_actors": min(4, max(1, int(config.get("max_scene_actors") or 4))),
+            **({"fps": int(config["fps"])} if config.get("fps") else {}),
+        },
+    )
+
+
+def _configured_actors(config: dict) -> list[MovieActor]:
+    actors = []
+    raw = config.get("actors") if isinstance(config.get("actors"), list) else []
+    for index, actor in enumerate(raw, start=1):
+        if not isinstance(actor, dict):
+            continue
+        actors.append(
+            MovieActor(
+                id=_safe_id(actor.get("id") or actor.get("name")) or f"actor_{index}",
+                name=str(actor.get("name") or actor.get("id") or f"Actor {index}").strip(),
+                role=str(actor.get("role") or "").strip(),
+                visual_description=str(actor.get("visual_description") or actor.get("image_prompt") or actor.get("prompt") or actor.get("name") or f"Actor {index}").strip(),
+            )
+        )
+    return actors
+
+
+def _configured_locations(config: dict) -> list[MovieLocation]:
+    raw = config.get("structured_locations")
+    if not isinstance(raw, list) or not raw:
+        raw = config.get("locations") if isinstance(config.get("locations"), list) else []
+    locations = []
+    for index, location in enumerate(raw, start=1):
+        if isinstance(location, dict):
+            locations.append(
+                MovieLocation(
+                    id=_safe_id(location.get("id") or location.get("name")) or f"location_{index}",
+                    name=str(location.get("name") or location.get("id") or f"Location {index}").strip(),
+                    visual_description=str(location.get("visual_description") or location.get("image_prompt") or location.get("prompt") or location.get("name") or f"Location {index}").strip(),
+                )
+            )
+        elif str(location or "").strip():
+            name = str(location).strip()
+            locations.append(MovieLocation(id=_safe_id(name) or f"location_{index}", name=name, visual_description=name))
+    return locations
+
+
+def _actors_from_data(raw: object) -> list[MovieActor]:
+    actors = []
+    for index, actor in enumerate(raw if isinstance(raw, list) else [], start=1):
+        if not isinstance(actor, dict):
+            continue
+        actors.append(
+            MovieActor(
+                id=_safe_id(actor.get("id") or actor.get("name")) or f"actor_{index}",
+                name=str(actor.get("name") or actor.get("id") or f"Actor {index}").strip(),
+                role=str(actor.get("role") or "").strip(),
+                visual_description=str(actor.get("visual_description") or actor.get("description") or actor.get("name") or f"Actor {index}").strip(),
+            )
+        )
+    return actors
+
+
+def _locations_from_data(raw: object) -> list[MovieLocation]:
+    locations = []
+    for index, location in enumerate(raw if isinstance(raw, list) else [], start=1):
+        if not isinstance(location, dict):
+            continue
+        locations.append(
+            MovieLocation(
+                id=_safe_id(location.get("id") or location.get("name")) or f"location_{index}",
+                name=str(location.get("name") or location.get("id") or f"Location {index}").strip(),
+                visual_description=str(location.get("visual_description") or location.get("description") or location.get("name") or f"Location {index}").strip(),
+            )
+        )
+    return locations
+
+
+def _continuity_from_data(raw: object) -> list[MovieContinuityRule]:
+    rules = []
+    for index, rule in enumerate(raw if isinstance(raw, list) else [], start=1):
+        if isinstance(rule, dict):
+            description = str(rule.get("description") or rule.get("rule") or "").strip()
+            rule_id = _safe_id(rule.get("id") or description) or f"continuity_{index}"
+        else:
+            description = str(rule).strip()
+            rule_id = _safe_id(description) or f"continuity_{index}"
+        if description:
+            rules.append(MovieContinuityRule(id=rule_id, description=description))
+    return rules
+
+
+def _config_style_constraints(config: dict) -> list[str]:
+    values = []
+    for key in ("subject", "style", "prompt_guidance"):
+        value = config.get(key)
+        if value:
+            values.append(json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value))
+    return values
+
+
+def _shots_from_data(shots: list, *, desired_length: float, min_duration: float, max_duration: float) -> tuple[CinematicShot, ...]:
+    duration = max(1.0, float(desired_length) / len(shots))
+    planned = []
+    for index, raw_shot in enumerate(shots, start=1):
+        shot = raw_shot if isinstance(raw_shot, dict) else {"description": str(raw_shot)}
+        planned.append(
+            CinematicShot(
+                shot_id=str(shot.get("shot_id") or f"shot_{index:04}"),
+                description=str(shot.get("description") or shot.get("action") or f"Shot {index}").strip(),
+                duration_seconds=float(shot.get("duration_seconds") or duration),
+                camera=str(shot.get("camera") or "motivated cinematic camera movement").strip(),
+                action=str(shot.get("action") or shot.get("description") or "").strip(),
+                expression=str(shot.get("acting") or shot.get("expression") or "emotionally grounded performance").strip(),
+                location=str(shot.get("location") or "story-consistent cinematic location").strip(),
+                dialogue=str(shot.get("dialogue") or "").strip(),
+                actor_ids=tuple(_string_list(shot.get("actor_ids") or shot.get("actors"))),
+                location_id=_safe_id(shot.get("location_id") or shot.get("location")),
+            )
+        )
+    return _normalize_movie_shots(
+        planned,
+        desired_length=float(desired_length),
+        min_duration=float(min_duration),
+        max_duration=float(max_duration),
+    )
 
 
 def _split_beats(text: str) -> list[str]:
@@ -244,6 +467,64 @@ Rules:
 - If the idea asks for at least N characters, create at least N distinct actor_ids across the shot plan.
 - Use stable snake_case location_id values for recurring locations.
 """.strip()
+
+
+def _movie_bible_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, story_arch: StoryArch, config: dict) -> str:
+    return f"""
+Create a movie bible for this {source_type}.
+Title: {title}
+Target duration seconds: {desired_length}
+Story arch: {json.dumps({"title": story_arch.title, "premise": story_arch.premise, "beats": list(story_arch.beats)}, ensure_ascii=False)}
+Config constraints: {json.dumps(config, ensure_ascii=False)}
+
+Return JSON with:
+{{"title": string, "premise": string, "actors": [{{"id": snake_case, "name": string, "role": string, "visual_description": string}}], "locations": [{{"id": snake_case, "name": string, "visual_description": string}}], "continuity": [{{"id": snake_case, "description": string}}], "style_constraints": [string]}}
+
+Rules:
+- If config.actors is present, use exactly those actor ids and do not invent actor ids.
+- If config.structured_locations or config.locations is present, use exactly those location ids and do not invent location ids.
+- Actor and location visual_description must describe stable visual identity only, not camera moves, shots, dialogue, or reference-sheet layout.
+- Preserve screenplay dialogue cues in continuity/story structure, not in visual descriptions.
+
+Source:
+{story_text}
+""".strip()
+
+
+def _shot_plan_from_bible_prompt(*, bible: MovieBible, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> str:
+    target_shots = max(1, ceil(float(desired_length) / max(1.0, min(float(max_duration), 12.0))))
+    return f"""
+Create a continuous cinematic render plan from this movie bible.
+Bible: {json.dumps({
+        "title": bible.title,
+        "premise": bible.premise,
+        "beats": list(bible.story_arch.beats),
+        "actors": [asdict_like_actor(actor) for actor in bible.actors],
+        "locations": [asdict_like_location(location) for location in bible.locations],
+        "continuity": [rule.description for rule in bible.continuity],
+        "style_constraints": list(bible.style_constraints),
+    }, ensure_ascii=False)}
+Target duration seconds: {desired_length}
+Resolution: {width}x{height}
+Target shot count: about {target_shots}. Prefer varied shot durations from {min_duration:g} to {max_duration:g} seconds. Never exceed {max_duration:g} seconds for one shot.
+
+Return JSON with:
+{{"shots": [{{"description": string, "duration_seconds": number, "camera": string, "action": string, "acting": string, "location": string, "dialogue": string, "actor_ids": [string], "location_id": string, "continuity_notes": string}}]}}
+
+Rules:
+- actor_ids must only use bible actor ids.
+- location_id must only use bible location ids.
+- Never put more than 4 actors in one shot.
+- Preserve dialogue, camera, acting, action, and continuity as separate fields.
+""".strip()
+
+
+def asdict_like_actor(actor: MovieActor) -> dict:
+    return {"id": actor.id, "name": actor.name, "role": actor.role, "visual_description": actor.visual_description}
+
+
+def asdict_like_location(location: MovieLocation) -> dict:
+    return {"id": location.id, "name": location.name, "visual_description": location.visual_description}
 
 
 def _json_object(raw: str) -> dict:

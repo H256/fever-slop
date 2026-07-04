@@ -25,6 +25,39 @@ class StoryArch:
 
 
 @dataclass(frozen=True)
+class MovieActor:
+    id: str
+    name: str
+    role: str = ""
+    visual_description: str = ""
+
+
+@dataclass(frozen=True)
+class MovieLocation:
+    id: str
+    name: str
+    visual_description: str = ""
+
+
+@dataclass(frozen=True)
+class MovieContinuityRule:
+    id: str
+    description: str
+
+
+@dataclass(frozen=True)
+class MovieBible:
+    title: str
+    premise: str
+    story_arch: StoryArch
+    actors: tuple[MovieActor, ...]
+    locations: tuple[MovieLocation, ...]
+    continuity: tuple[MovieContinuityRule, ...]
+    style_constraints: tuple[str, ...]
+    runtime_constraints: dict
+
+
+@dataclass(frozen=True)
 class Screenplay:
     text: str
 
@@ -33,6 +66,7 @@ class Screenplay:
 class MovieProject:
     slug: str
     name: str
+    bible: MovieBible
     story_arch: StoryArch
     shots: tuple[CinematicShot, ...]
     duration_seconds: float

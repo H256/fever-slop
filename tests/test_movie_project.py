@@ -145,6 +145,168 @@ class FakeMoviePlanner:
 
 
 class MovieProjectTests(unittest.TestCase):
+    def test_movie_scaffold_writes_bible_and_uses_it_for_manifest_and_render_plan(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+
+        class BiblePlanner:
+            def generate_story_arch(self, **_kwargs):
+                return StoryArch(title="Archive", premise="Mara unlocks a forbidden archive.", beats=("Mara enters",))
+
+            def generate_movie_bible(self, **kwargs):
+                story_arch = kwargs["story_arch"]
+                return MovieBible(
+                    title=story_arch.title,
+                    premise=story_arch.premise,
+                    story_arch=story_arch,
+                    actors=(MovieActor(id="mara", name="Mara", role="archivist", visual_description="stern archivist in a charcoal coat"),),
+                    locations=(MovieLocation(id="archive", name="Archive", visual_description="white marble archive hall"),),
+                    continuity=(MovieContinuityRule(id="coat", description="Mara always wears the same charcoal coat"),),
+                    style_constraints=("quiet gothic realism",),
+                    runtime_constraints={"max_scene_actors": 1},
+                )
+
+            def plan_shots_from_bible(self, **kwargs):
+                bible = kwargs["bible"]
+                return (
+                    CinematicShot(
+                        shot_id="shot_0001",
+                        description="Mara studies a sealed ledger",
+                        duration_seconds=kwargs["desired_length"],
+                        camera="slow dolly",
+                        action="opens the ledger",
+                        expression="focused",
+                        location=bible.locations[0].name,
+                        dialogue="MARA: It remembers me.",
+                        actor_ids=("mara",),
+                        location_id="archive",
+                    ),
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ScaffoldMovieUseCase(planner=BiblePlanner(), projects_root=Path(temp_dir)).execute(
+                MovieInput(
+                    name="Archive",
+                    source_type="short_story",
+                    story_text="Mara unlocks a forbidden archive and finds a ledger that knows her name.",
+                    desired_length=12,
+                )
+            )
+            root = Path(temp_dir) / "archive"
+            bible = json.loads((root / "movie" / "bible.json").read_text(encoding="utf-8"))
+            manifest = json.loads((root / "movie" / "references" / "manifest.json").read_text(encoding="utf-8"))
+            plan = json.loads((root / "movie" / "render_plan.json").read_text(encoding="utf-8"))
+
+            self.assertEqual("mara", bible["actors"][0]["id"])
+            self.assertEqual("stern archivist in a charcoal coat", bible["actors"][0]["visual_description"])
+            self.assertEqual("archive", bible["locations"][0]["id"])
+            self.assertEqual("Mara always wears the same charcoal coat", bible["continuity"][0]["description"])
+            self.assertEqual("stern archivist in a charcoal coat", manifest["actors"][0]["visual_description"])
+            self.assertIn("Four vertical panels in one image", manifest["actors"][0]["prompt"])
+            self.assertEqual(["mara"], plan["shots"][0]["reference_ids"]["actors"])
+            self.assertEqual("archive", plan["shots"][0]["reference_ids"]["location"])
+            self.assertEqual(["mara"], plan["shots"][0]["actor_ids"])
+            self.assertEqual("archive", plan["shots"][0]["location_id"])
+
+    def test_movie_bible_respects_config_actor_location_constraints(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        config = {
+            "actors": [
+                {"id": "mara", "name": "Mara", "role": "lead", "visual_description": "black-haired archivist in a grey suit"},
+            ],
+            "structured_locations": [
+                {"id": "archive", "name": "Archive", "visual_description": "white seamless archive set"},
+            ],
+            "max_scene_actors": 1,
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir)).execute(
+                MovieInput(
+                    name="Configured Movie",
+                    source_type="short_story",
+                    story_text="Mara and an intruder argue inside the archive about a sealed book.",
+                    desired_length=20,
+                    config=config,
+                )
+            )
+            root = Path(temp_dir) / "configured-movie"
+            bible = json.loads((root / "movie" / "bible.json").read_text(encoding="utf-8"))
+            plan = json.loads((root / "movie" / "render_plan.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(["mara"], [actor["id"] for actor in bible["actors"]])
+            self.assertEqual(["archive"], [location["id"] for location in bible["locations"]])
+            for shot in plan["shots"]:
+                self.assertLessEqual(len(shot["reference_ids"]["actors"]), 1)
+                self.assertTrue(set(shot["reference_ids"]["actors"]).issubset({"mara"}))
+                self.assertEqual("archive", shot["reference_ids"]["location"])
+
+    def test_movie_msr_enrichment_writes_video_prompts_without_reference_sheet_text(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Archive",
+                        "premise": "Mara opens a forbidden book.",
+                        "story_arch": {"title": "Archive", "premise": "Mara opens a forbidden book.", "beats": ["opening"]},
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room"}],
+                        "continuity": [{"id": "coat", "description": "same charcoal coat"}],
+                        "style_constraints": ["gothic realism"],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Archive",
+                        "resolution": {"width": 1280, "height": 704},
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara opens the ledger",
+                                "duration_seconds": 4,
+                                "camera": "slow dolly",
+                                "acting": "controlled fear",
+                                "action": "opens the ledger",
+                                "dialogue": "MARA: It remembers me.",
+                                "continuity_notes": "same charcoal coat",
+                                "reference_ids": {"actors": ["mara"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist", "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+            prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
+
+            self.assertEqual(movie_dir / "render_plan_msr.json", output)
+            self.assertIn("slow dolly", prompt)
+            self.assertIn("MARA: It remembers me.", prompt)
+            self.assertIn("same charcoal coat", prompt)
+            self.assertNotIn("Full-body cinematic character reference sheet", prompt)
+            self.assertNotIn("Four vertical panels", prompt)
+
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
@@ -242,9 +404,90 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("demonic_goat", {actor["id"] for actor in manifest["actors"]})
             self.assertNotIn("come_rest_your_weary_soul", {actor["id"] for actor in manifest["actors"]})
             succubus = next(actor for actor in manifest["actors"] if actor["id"] == "seductive_succubus")
-            self.assertIn("beautiful woman", succubus["prompt"])
-            self.assertIn("predatory grace", succubus["prompt"])
+            self.assertIn("Seductive Succubus", succubus["visual_description"])
+            self.assertNotIn("Full-body cinematic character reference sheet", succubus["visual_description"])
+            self.assertNotIn("Four vertical panels", succubus["visual_description"])
             self.assertNotIn("drawn from the story premise", succubus["prompt"])
+            self.assertNotIn("visual identity", succubus["prompt"].lower())
+            self.assertNotIn("come, rest your weary soul", succubus["prompt"].lower())
+            self.assertNotIn("The Desolate Void", succubus["prompt"])
+            self.assertIn("Four vertical panels in one image", succubus["prompt"])
+            self.assertIn("plain white seamless studio background", succubus["prompt"])
+
+    def test_movie_scaffold_actor_prompts_prefer_solo_shots_over_shared_montage(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.domain.movie import CinematicShot, StoryArch
+
+        class Planner:
+            def generate_story_arch(self, **_kwargs):
+                return StoryArch(title="Void", premise="A man fights a succubus and goat demon.", beats=("beat",))
+
+            def plan_shots(self, **_kwargs):
+                return (
+                    CinematicShot(
+                        shot_id="shot_0001",
+                        description="A low-angle shot of the goat demon, towering and muscular, with massive curved horns.",
+                        duration_seconds=4,
+                        camera="low angle",
+                        action="The goat demon bellows, shaking the dreamscape.",
+                        expression="Menacing, primal",
+                        location="Dreamscape",
+                        actor_ids=("the_goat_demon",),
+                        location_id="dreamscape",
+                    ),
+                    CinematicShot(
+                        shot_id="shot_0002",
+                        description="A split-screen composition showing the succubus on one side and the demon on the other.",
+                        duration_seconds=4,
+                        camera="split-screen",
+                        action="The two entities converge on the man from opposite sides.",
+                        expression="Seductive vs. Ferocious",
+                        location="Dreamscape",
+                        actor_ids=("the_succubus", "the_goat_demon"),
+                        location_id="dreamscape",
+                    ),
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = ScaffoldMovieUseCase(planner=Planner(), projects_root=Path(temp_dir)).execute(
+                MovieInput(
+                    name="Void",
+                    source_type="short_story",
+                    story_text="A man fights a succubus and goat demon inside a dreamscape.",
+                    desired_length=8,
+                )
+            )
+
+            manifest = json.loads(result.reference_manifest_path.read_text())
+            goat = next(actor for actor in manifest["actors"] if actor["id"] == "the_goat_demon")
+            self.assertIn("The Goat Demon", goat["visual_description"])
+            self.assertNotIn("Four vertical panels", goat["visual_description"])
+            self.assertNotIn("massive curved horns", goat["visual_description"])
+            self.assertNotIn("split-screen", goat["prompt"].lower())
+            self.assertNotIn("succubus", goat["prompt"].lower())
+            self.assertNotIn("low-angle", goat["prompt"].lower())
+            self.assertNotIn("shot", goat["prompt"].lower())
+            self.assertNotIn("bellows", goat["prompt"].lower())
+            self.assertNotIn("visual identity", goat["prompt"].lower())
+            self.assertIn("Four vertical panels in one image", goat["prompt"])
+
+    def test_movie_actor_reference_prompts_drop_closeup_and_motion_cues(self):
+        from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
+
+        visual_description = build_movie_actor_visual_description(
+            "Extreme close-up of the man's eye fluttering as the screen fades; "
+            "The man's eyes roll back as he enters a trance-like sleep; "
+            "Unsettled, drifting",
+        )
+        prompt = build_movie_actor_reference_prompt("The Man", visual_description)
+
+        self.assertNotIn("close-up", visual_description.lower())
+        self.assertNotIn("eye fluttering", visual_description.lower())
+        self.assertNotIn("eyes roll back", visual_description.lower())
+        self.assertNotIn("screen fades", visual_description.lower())
+        self.assertIn("Unsettled, drifting", visual_description)
+        self.assertNotIn("Four vertical panels", visual_description)
+        self.assertIn("Four vertical panels in one image", prompt)
 
     def test_auto_produce_movie_generates_references_before_rendering(self):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
@@ -345,8 +588,8 @@ class MovieProjectTests(unittest.TestCase):
 
             self.assertEqual("Mara", manifest["actors"][0]["name"])
             self.assertIn("Mara", manifest["actors"][0]["prompt"])
-            self.assertEqual("Abandoned Station - Night", manifest["locations"][0]["name"])
-            self.assertIn("Abandoned Station - Night", manifest["locations"][0]["prompt"])
+            self.assertEqual("ABANDONED STATION - NIGHT", manifest["locations"][0]["name"])
+            self.assertIn("ABANDONED STATION - NIGHT", manifest["locations"][0]["prompt"])
 
     def test_movie_planner_splits_long_beats_into_varied_shot_durations(self):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
@@ -649,6 +892,14 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
             self.assertGreaterEqual(len(backend.requests), 2)
+            self.assertTrue(
+                backend.requests[0].prompt.startswith("Full-body cinematic character reference sheet for Mara.")
+            )
+            self.assertEqual("gothic protagonist", manifest["actors"][0]["visual_description"])
+            self.assertEqual(1, backend.requests[0].prompt.count("Full-body cinematic character reference sheet"))
+            self.assertIn("1st panel head-and-shoulders closeup", backend.requests[0].prompt)
+            self.assertIn("plain white seamless studio background", backend.requests[0].prompt)
+            self.assertIn("no extra characters", backend.requests[0].prompt)
 
     def test_movie_reference_sync_adds_missing_render_plan_ids(self):
         from feverslop.studio.job_service import sync_movie_manifest_with_render_plan
@@ -693,6 +944,81 @@ class MovieProjectTests(unittest.TestCase):
             repaired_actor = next(actor for actor in manifest["actors"] if actor["id"] == "tormented_man")
             self.assertIn("A man enters the void", repaired_actor["prompt"])
             self.assertEqual("", repaired_actor["msr_sheet_path"])
+
+    def test_movie_reference_sync_rebuilds_mixed_actor_prompts_before_rendering(self):
+        from feverslop.studio.job_service import sync_movie_manifest_with_render_plan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "movie" / "references").mkdir(parents=True)
+            (root / "movie" / "render_plan.json").write_text(
+                json.dumps({
+                    "shots": [
+                        {
+                            "scene": 1,
+                            "description": "The goat demon lunges from the shadows.",
+                            "action": "The goat demon bellows, shaking the dreamscape.",
+                            "expression": "Menacing, primal",
+                            "location": "Dreamscape",
+                            "reference_ids": {"actors": ["the_goat_demon"], "location": "dreamscape"},
+                        },
+                        {
+                            "scene": 2,
+                            "description": "A low-angle shot of the goat demon, towering and muscular, with massive curved horns.",
+                            "action": "The goat demon bellows, shaking the dreamscape.",
+                            "expression": "Menacing, primal",
+                            "location": "Dreamscape",
+                            "reference_ids": {"actors": ["the_goat_demon"], "location": "dreamscape"},
+                        },
+                        {
+                            "scene": 3,
+                            "description": "A split-screen composition shows the succubus and demon closing in on the man.",
+                            "action": "The two entities converge on the man from opposite sides.",
+                            "expression": "Seductive vs. Ferocious",
+                            "location": "Dreamscape",
+                            "reference_ids": {"actors": ["the_succubus", "the_goat_demon"], "location": "dreamscape"},
+                        },
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            mixed_prompt = (
+                "Full-body cinematic character reference sheet for The Goat Demon. "
+                "Visual identity inferred from scenes: The goat demon lunges; "
+                "A split-screen composition shows the succubus and demon closing in on the man. "
+                "Consistent face, hair, body shape, wardrobe, posture, neutral expression, clean studio background, no text."
+            )
+            (root / "movie" / "references" / "manifest.json").write_text(
+                json.dumps({
+                    "actors": [
+                        {
+                            "id": "the_goat_demon",
+                            "name": "The Goat Demon",
+                            "prompt": mixed_prompt,
+                            "visual_description": mixed_prompt,
+                            "image_prompt": mixed_prompt,
+                            "msr_sheet_path": "movie/references/actors/the_goat_demon/msr_sheet.png",
+                        }
+                    ],
+                    "locations": [{"id": "dreamscape", "name": "Dreamscape", "prompt": "Dreamscape", "msr_sheet_path": "x.png"}],
+                }),
+                encoding="utf-8",
+            )
+
+            sync_movie_manifest_with_render_plan(root)
+
+            manifest = json.loads((root / "movie" / "references" / "manifest.json").read_text())
+            goat = next(actor for actor in manifest["actors"] if actor["id"] == "the_goat_demon")
+            self.assertIn("massive curved horns", goat["visual_description"])
+            self.assertNotIn("Four vertical panels", goat["visual_description"])
+            self.assertNotIn("split-screen", goat["prompt"].lower())
+            self.assertNotIn("succubus", goat["prompt"].lower())
+            self.assertNotIn("jump cut", goat["prompt"].lower())
+            self.assertNotIn("lunges", goat["prompt"].lower())
+            self.assertNotIn("bellows", goat["prompt"].lower())
+            self.assertNotIn("visual identity", goat["prompt"].lower())
+            self.assertIn("Four vertical panels in one image", goat["prompt"])
+            self.assertEqual("", goat["msr_sheet_path"])
 
     def test_api_creates_movie_project_with_scaffold_artifacts(self):
         from unittest.mock import patch

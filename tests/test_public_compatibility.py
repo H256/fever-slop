@@ -131,6 +131,7 @@ class PublicCompatibilityTests(unittest.TestCase):
             "compact_relay_prompts.py",
             "fix_ltx_prompt_anchors.py",
             "full_auto.py",
+            "movie_pipeline.py",
             "storyboard_page.py",
             "normalize_render_plan.py",
             "repair_scene_srt.py",

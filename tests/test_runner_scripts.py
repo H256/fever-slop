@@ -1,4 +1,5 @@
 import unittest
+import json
 import os
 from pathlib import Path
 import sys
@@ -6,6 +7,7 @@ import tempfile
 from unittest.mock import patch
 
 from tools.repair_scene_srt import main as repair_scene_srt_main
+import movie_pipeline
 import run_pipeline
 
 
@@ -133,6 +135,124 @@ class RunnerScriptTests(unittest.TestCase):
 
             self.assertTrue(output_srt.exists())
             self.assertIn("00:00:00,000 --> 00:00:02,000", output_srt.read_text(encoding="utf-8"))
+
+    def test_movie_pipeline_parser_accepts_skip_stage_flags(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/tm3",
+                "--reference-backend",
+                "local",
+                "--render-backend",
+                "local",
+                "--skip-movie-bible",
+                "--skip-movie-plan",
+                "--skip-movie-references",
+                "--skip-movie-msr-enrich",
+                "--skip-movie-render",
+                "--force-movie-references",
+            ]
+        )
+
+        self.assertEqual("projects/tm3", args.project_dir)
+        self.assertEqual("local", args.reference_backend)
+        self.assertEqual("local", args.render_backend)
+        self.assertTrue(args.skip_movie_bible)
+        self.assertTrue(args.skip_movie_plan)
+        self.assertTrue(args.skip_movie_references)
+        self.assertTrue(args.skip_movie_msr_enrich)
+        self.assertTrue(args.skip_movie_render)
+        self.assertTrue(args.force_movie_references)
+
+    def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir))
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-render",
+                    ]
+                )
+            )
+
+            manifest = json.loads((project / "movie" / "references" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(project.resolve(), result.project_dir)
+            self.assertEqual(project / "movie" / "references" / "manifest.json", result.reference_manifest_path)
+            self.assertIsNone(result.final_video_path)
+            self.assertEqual("local", manifest["generator_backend"])
+            self.assertEqual("movie/references/actors/mara/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertTrue((project / "movie" / "render_plan_msr.json").exists())
+
+    def test_movie_pipeline_cli_can_skip_references_and_render_with_local_backend(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-references",
+                    ]
+                )
+            )
+
+            self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
+            self.assertTrue(result.final_video_path.exists())
+
+
+def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
+    project = root / "test-movie"
+    references = project / "movie" / "references"
+    references.mkdir(parents=True)
+    (project / "movie" / "render_plan.json").write_text(
+        json.dumps(
+            {
+                "title": "Test Movie",
+                "resolution": {"width": 1280, "height": 704},
+                "shots": [
+                    {
+                        "shot_id": "shot_0001",
+                        "description": "Mara enters the archive",
+                        "duration_seconds": 1,
+                        "reference_ids": {"actors": ["mara"], "location": "archive"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "actors": [
+            {
+                "id": "mara",
+                "name": "Mara",
+                "visual_description": "gothic archivist",
+                "image_prompt": "Full-body cinematic character reference sheet for Mara. gothic archivist. Four vertical panels in one image.",
+                "prompt": "Full-body cinematic character reference sheet for Mara. gothic archivist. Four vertical panels in one image.",
+                "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png" if ready else "",
+            }
+        ],
+        "locations": [
+            {
+                "id": "archive",
+                "name": "Archive",
+                "prompt": "Archive",
+                "msr_sheet_path": "movie/references/locations/archive/views/hero.png" if ready else "",
+            }
+        ],
+        "generator_backend": "local" if ready else "",
+    }
+    (references / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return project
 
 
 if __name__ == "__main__":
