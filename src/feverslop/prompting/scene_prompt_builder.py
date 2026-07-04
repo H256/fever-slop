@@ -201,6 +201,7 @@ class ScenePromptBuilder:
             scene_output = {
                 **segment,
                 "base_concept": concept,
+                "silent_mode": bool(global_context.get("silent_mode", False)),
                 "camera_motion": details.get("camera_motion", ""),
                 "character_motion": details.get("character_motion", ""),
                 "zimage_prompt": t2i_prompt,

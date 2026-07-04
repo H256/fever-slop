@@ -185,7 +185,11 @@ class FullAutoAction:
         if metadata.get("project_type") != "full_auto":
             raise ValueError("full-auto jobs require a full_auto project")
         factory = self.factory or build_full_auto_handler
-        return factory(store=self.store, project_id=project_id, payload=metadata.get("full_auto") or {})
+        return factory(
+            store=self.store,
+            project_id=project_id,
+            payload={**dict(metadata.get("full_auto") or {}), "silent_mode": bool(metadata.get("silent_mode", False))},
+        )
 
 
 class MovieFullAutoAction:
@@ -341,6 +345,7 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
             width=int(payload.get("width") or 1280),
             height=int(payload.get("height") or 704),
             fps=int(payload.get("fps") or 24),
+            silent_mode=bool(payload.get("silent_mode", False)),
             run_video_pipeline=True,
             runner_options={"skip_tests": True, "video_pipeline": "ltx_msr" if pipeline_mode == "msr" else "ltx_i2v"},
         )

@@ -61,6 +61,7 @@ class ProjectRepository:
                 "width": int(request.width),
                 "height": int(request.height),
                 "fps": int(request.fps),
+                "silent_mode": bool(request.silent_mode),
                 "pipeline_mode": str(request.pipeline_mode or "classic"),
             }
         self.write_project_metadata(root, metadata)

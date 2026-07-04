@@ -92,6 +92,41 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertTrue(payload["silent_mode"])
         self.assertNotIn("singing with passion", payload["performance_policy"].lower())
 
+    def test_scene_prompts_persist_silent_mode_for_render_plan(self):
+        llm = FakeLLM()
+        builder = ScenePromptBuilder(llm)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=[
+                    {
+                        "segment_id": "segment_001",
+                        "type": "vocals",
+                        "start": 0.0,
+                        "end": 4.0,
+                        "duration": 4.0,
+                        "lyrics": "hello",
+                    }
+                ],
+                concept_prompts={"segment_001": "Mara tells the story without dialogue."},
+                scene_details={"segment_001": {}},
+                global_context={
+                    "subject": "Mara",
+                    "story_idea": "A wordless stage performance.",
+                    "style": "cinematic realism",
+                    "locations": ["Mirror Stage"],
+                    "prompt_guidance": {},
+                    "silent_mode": True,
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+            )
+
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(data[0]["silent_mode"])
+
     def test_zimage_prompt_payload_includes_location_constraint(self):
         llm = FakeLLM()
         builder = ScenePromptBuilder(llm)

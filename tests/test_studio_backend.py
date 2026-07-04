@@ -159,6 +159,7 @@ class StudioBackendTests(unittest.TestCase):
                     "width": 1920,
                     "height": 1080,
                     "fps": 50,
+                    "silent_mode": False,
                     "pipeline_mode": "msr",
                 },
                 metadata["full_auto"],
@@ -554,6 +555,7 @@ class StudioBackendTests(unittest.TestCase):
                     width=1280,
                     height=704,
                     fps=16,
+                    silent_mode=True,
                     pipeline_mode="classic",
                 )
             )
@@ -572,6 +574,7 @@ class StudioBackendTests(unittest.TestCase):
         self.assertEqual(1280, request.width)
         self.assertEqual(704, request.height)
         self.assertEqual(16, request.fps)
+        self.assertTrue(request.silent_mode)
         self.assertEqual("ltx_i2v", request.runner_options["video_pipeline"])
         self.assertIn("OK nested full-auto pipeline", "\n".join(logs))
 
