@@ -299,6 +299,7 @@ class MovieProjectTests(unittest.TestCase):
             output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
             enriched = json.loads(output.read_text(encoding="utf-8"))
             prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
+            relay = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]
 
             self.assertEqual(movie_dir / "render_plan_msr.json", output)
             self.assertIn("slow dolly", prompt)
@@ -306,6 +307,10 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("same charcoal coat", prompt)
             self.assertNotIn("Full-body cinematic character reference sheet", prompt)
             self.assertNotIn("Four vertical panels", prompt)
+            self.assertEqual(0, relay["frame_start"])
+            self.assertEqual(95, relay["frame_end"])
+            self.assertNotIn("start_frame", relay)
+            self.assertNotIn("end_frame", relay)
 
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase

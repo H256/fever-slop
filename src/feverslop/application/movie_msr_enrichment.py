@@ -38,8 +38,8 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int) -> dict:
         "native_audio": True,
         "msr_prompt_relay": [
             {
-                "start_frame": 0,
-                "end_frame": frame_count - 1,
+                "frame_start": 0,
+                "frame_end": frame_count - 1,
                 "prompt": prompt,
                 "camera": str(shot.get("camera") or "").strip(),
                 "acting": str(shot.get("acting") or shot.get("expression") or "").strip(),
