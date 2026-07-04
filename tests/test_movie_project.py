@@ -194,10 +194,18 @@ class MovieProjectTests(unittest.TestCase):
             )
             root = Path(temp_dir) / "archive"
             bible = json.loads((root / "movie" / "bible.json").read_text(encoding="utf-8"))
+            continuity = json.loads((root / "movie" / "continuity_plan.json").read_text(encoding="utf-8"))
             manifest = json.loads((root / "movie" / "references" / "manifest.json").read_text(encoding="utf-8"))
             plan = json.loads((root / "movie" / "render_plan.json").read_text(encoding="utf-8"))
 
             self.assertEqual("mara", bible["actors"][0]["id"])
+            self.assertIn("continuity_ledger", continuity)
+            self.assertIn("scene_continuity", continuity)
+            self.assertIn("narrative_chain", continuity)
+            self.assertEqual("mara", continuity["continuity_ledger"]["characters"]["mara"]["character_id"])
+            self.assertIn("shot_0001", continuity["scene_continuity"])
+            self.assertEqual("shot_0001", continuity["narrative_chain"][0]["shot_id"])
+            self.assertTrue(plan["shots"][0]["story_state_after"])
             self.assertEqual("stern archivist in a charcoal coat", bible["actors"][0]["visual_description"])
             self.assertEqual("archive", bible["locations"][0]["id"])
             self.assertEqual("Mara always wears the same charcoal coat", bible["continuity"][0]["description"])
@@ -286,6 +294,43 @@ class MovieProjectTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (movie_dir / "continuity_plan.json").write_text(
+                json.dumps(
+                    {
+                        "continuity_ledger": {
+                            "style_bible": {"visual_style": "gothic realism", "palette": "", "lighting": "", "camera": "", "negative_constraints": []},
+                            "characters": {"mara": {"character_id": "mara", "base_identity": "stern archivist", "wardrobe": "same charcoal coat", "carried_props": [], "physical_state": "", "emotional_state": "controlled fear", "last_location": "archive", "last_action": "opens the ledger"}},
+                            "locations": {"archive": {"location_id": "archive", "name": "Archive", "time_of_day": "", "lighting": "", "props": [], "environmental_state": "quiet archive room"}},
+                            "scene_order": ["shot_0001"],
+                        },
+                        "scene_continuity": {
+                            "shot_0001": {
+                                "shot_id": "shot_0001",
+                                "location_id": "archive",
+                                "incoming": ["Mara arrives with the sealed ledger"],
+                                "required_carryovers": ["same charcoal coat"],
+                                "allowed_changes": ["ledger opens"],
+                                "outgoing": ["the ledger recognizes Mara"],
+                                "characters": {"mara": {"character_id": "mara", "base_identity": "stern archivist", "wardrobe": "same charcoal coat", "carried_props": [], "physical_state": "", "emotional_state": "controlled fear", "last_location": "archive", "last_action": "opens the ledger"}},
+                                "location": {"location_id": "archive", "name": "Archive", "time_of_day": "", "lighting": "", "props": [], "environmental_state": "quiet archive room"},
+                            }
+                        },
+                        "narrative_chain": [
+                            {
+                                "shot_id": "shot_0001",
+                                "story_state_before": "Mara has not opened the ledger.",
+                                "story_state_after": "The ledger recognizes Mara.",
+                                "cause_from_previous": "Opening beat.",
+                                "narrative_purpose": "Reveal the supernatural hook.",
+                                "conflict_or_tension": "The archive knows her.",
+                                "turning_point": "The ledger responds.",
+                                "sets_up_next": "Mara must decide whether to keep reading.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
             (movie_dir / "references" / "manifest.json").write_text(
                 json.dumps(
                     {
@@ -305,6 +350,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("slow dolly", prompt)
             self.assertIn("MARA: It remembers me.", prompt)
             self.assertIn("same charcoal coat", prompt)
+            self.assertIn("CONTINUITY CONTRACT", prompt)
             self.assertNotIn("Full-body cinematic character reference sheet", prompt)
             self.assertNotIn("Four vertical panels", prompt)
             self.assertEqual(0, relay["frame_start"])

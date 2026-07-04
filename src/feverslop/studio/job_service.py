@@ -18,7 +18,7 @@ from feverslop.studio.jobs import (
     run_with_stream_logging,
 )
 from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
-from feverslop.application.movie_artifacts import ensure_movie_bible, write_movie_reference_manifest_from_bible
+from feverslop.application.movie_artifacts import ensure_movie_bible, ensure_movie_continuity_plan, write_movie_reference_manifest_from_bible
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.studio.logging import render_log_lines
 from feverslop.studio.projects import ProjectStore
@@ -383,6 +383,8 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         bible_path = ensure_movie_bible(project_dir)
         log(f"[MoviePipeline] Stage: Movie Bible Ready: {bible_path}")
+        continuity_plan_path = ensure_movie_continuity_plan(project_dir)
+        log(f"[MoviePipeline] Stage: Movie Continuity Ready: {continuity_plan_path}")
         log("[MoviePipeline] Stage: Render Plan Ready")
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Planner backend: {config['planner_backend']}")
@@ -441,6 +443,7 @@ def ensure_movie_references(project_dir: Path, *, movie_config: dict[str, Any] |
     config = movie_runtime_config(movie_config)
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
     ensure_movie_bible(project_dir)
+    ensure_movie_continuity_plan(project_dir)
     write_movie_reference_manifest_from_bible(project_dir)
     if movie_references_ready(manifest_path, backend=config["reference_backend"]):
         return manifest_path
@@ -469,6 +472,7 @@ def build_movie_references_handler(*, store: ProjectStore, project_id: str, movi
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Stage: Movie references via {config['reference_backend']}")
         ensure_movie_bible(project_dir)
+        ensure_movie_continuity_plan(project_dir)
         write_movie_reference_manifest_from_bible(project_dir)
         manifest_path = mark_movie_reference_backend(
             build_movie_reference_generator(movie_config=config).generate(project_dir=project_dir),

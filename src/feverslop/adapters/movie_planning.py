@@ -33,6 +33,13 @@ class LLMMoviePlanner:
         data = _json_object(raw)
         return _movie_bible_from_data(data, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
 
+    def generate_movie_continuity_plan(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> dict:
+        raw = self.llm.complete_prompt(
+            _movie_continuity_plan_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, shots=shots, config=config),
+            system_prompt="You are a film continuity supervisor. Return ONLY valid JSON.",
+        )
+        return _json_object(raw)
+
     def plan_shots_from_bible(
         self,
         *,
@@ -139,6 +146,9 @@ class DeterministicMoviePlanner:
 
     def generate_movie_bible(self, *, title: str, source_type: str, story_text: str, desired_length: float, story_arch: StoryArch, config: dict) -> MovieBible:
         return _movie_bible_from_data({}, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
+
+    def generate_movie_continuity_plan(self, **_kwargs) -> dict:
+        return {}
 
     def plan_shots_from_bible(
         self,
@@ -529,6 +539,69 @@ Rules:
 - Never put more than 4 actors in one shot.
 - Preserve dialogue, camera, acting, action, and continuity as separate fields.
 {dialogue_rule}
+""".strip()
+
+
+def _movie_continuity_plan_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> str:
+    dialogue_language = str((bible.runtime_constraints or {}).get("dialogue_language") or "").strip()
+    screenplay_rule = "- Source is a screenplay: preserve scene order, dialogue cues, and character cues. Do not rewrite the screenplay structure." if source_type == "screenplay" else "- Source is an idea/short story: create a stronger causal chain while preserving the premise and constraints."
+    return f"""
+Build a movie continuity plan for AI film generation.
+
+Return valid JSON only. No markdown, no commentary.
+
+Required top-level shape:
+{{
+  "continuity_ledger": {{
+    "style_bible": {{"visual_style": "", "palette": "", "lighting": "", "camera": "", "negative_constraints": []}},
+    "characters": {{"actor_id": {{"character_id": "", "base_identity": "", "wardrobe": "", "carried_props": [], "physical_state": "", "emotional_state": "", "last_location": "", "last_action": ""}}}},
+    "locations": {{"location_id": {{"location_id": "", "name": "", "time_of_day": "", "lighting": "", "props": [], "environmental_state": ""}}}},
+    "scene_order": []
+  }},
+  "scene_continuity": {{
+    "shot_id": {{"shot_id": "", "location_id": "", "incoming": [], "required_carryovers": [], "allowed_changes": [], "outgoing": [], "characters": {{}}, "location": {{}}}}
+  }},
+  "narrative_chain": [
+    {{"shot_id": "", "story_state_before": "", "story_state_after": "", "cause_from_previous": "", "narrative_purpose": "", "conflict_or_tension": "", "turning_point": "", "sets_up_next": ""}}
+  ]
+}}
+
+Rules:
+- Keep actor ids exactly to bible actor ids. Keep location ids exactly to bible location ids.
+- Every shot id from SHOTS must appear once in scene_order, scene_continuity, and narrative_chain.
+- Every shot after the first needs a concrete cause_from_previous.
+- Every shot except the last needs a concrete sets_up_next.
+- required_carryovers are facts the generator must preserve in this shot.
+- allowed_changes are facts allowed or expected to change in this shot.
+- outgoing states become useful incoming state for later shots.
+- Never invent more than {int((bible.runtime_constraints or {}).get("max_scene_actors") or 4)} visible actors in one shot.
+- Dialogue language is {dialogue_language or "unspecified"}; any dialogue continuity must respect it.
+{screenplay_rule}
+
+TITLE: {title}
+TARGET DURATION: {desired_length}
+CONFIG CONSTRAINTS: {json.dumps(config, ensure_ascii=False)}
+BIBLE: {json.dumps({
+        "title": bible.title,
+        "premise": bible.premise,
+        "actors": [asdict_like_actor(actor) for actor in bible.actors],
+        "locations": [asdict_like_location(location) for location in bible.locations],
+        "continuity": [rule.description for rule in bible.continuity],
+        "style_constraints": list(bible.style_constraints),
+    }, ensure_ascii=False)}
+SHOTS: {json.dumps([{
+        "shot_id": shot.shot_id,
+        "description": shot.description,
+        "action": shot.action,
+        "camera": shot.camera,
+        "acting": shot.expression,
+        "dialogue": shot.dialogue,
+        "actor_ids": list(shot.actor_ids),
+        "location_id": shot.location_id,
+        "location": shot.location,
+    } for shot in shots], ensure_ascii=False)}
+SOURCE:
+{story_text}
 """.strip()
 
 

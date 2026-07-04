@@ -10,6 +10,7 @@ from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
 from feverslop.application.movie_artifacts import (
     ensure_movie_bible as ensure_movie_bible_artifact,
+    ensure_movie_continuity_plan as ensure_movie_continuity_plan_artifact,
     ensure_movie_render_plan_matches_bible as ensure_movie_render_plan_matches_bible_artifact,
     write_movie_reference_manifest_from_bible as write_movie_reference_manifest_from_bible_artifact,
 )
@@ -31,6 +32,7 @@ class MoviePipelineResult:
     project_dir: Path
     bible_path: Path | None = None
     render_plan_path: Path | None = None
+    continuity_plan_path: Path | None = None
     render_plan_msr_path: Path | None = None
     reference_manifest_path: Path | None = None
     final_video_path: Path | None = None
@@ -45,6 +47,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--edit-workflow", default=None)
     parser.add_argument("--msr-workflow", default=None)
     parser.add_argument("--skip-movie-bible", action="store_true", help="Reuse existing movie/bible.json.")
+    parser.add_argument("--skip-movie-continuity", action="store_true", help="Reuse existing movie/continuity_plan.json.")
     parser.add_argument("--skip-movie-plan", action="store_true", help="Reuse existing movie/render_plan.json.")
     parser.add_argument("--skip-movie-references", action="store_true", help="Reuse existing movie reference manifest paths.")
     parser.add_argument("--skip-movie-msr-enrich", action="store_true", help="Reuse existing movie/render_plan_msr.json or render the plain plan.")
@@ -68,6 +71,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
     render_plan_path = project_dir / "movie" / "render_plan.json"
     bible_path = project_dir / "movie" / "bible.json"
+    continuity_plan_path = project_dir / "movie" / "continuity_plan.json"
     render_plan_msr_path = project_dir / "movie" / "render_plan_msr.json"
 
     if not args.skip_movie_bible:
@@ -77,6 +81,10 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
 
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
+    if not args.skip_movie_continuity:
+        continuity_plan_path = ensure_movie_continuity_plan_artifact(project_dir)
+    elif not continuity_plan_path.exists():
+        raise FileNotFoundError(f"Movie continuity plan not found: {continuity_plan_path}")
     if not args.skip_movie_plan:
         ensure_movie_render_plan_matches_bible_artifact(project_dir)
     if not manifest_path.exists():
@@ -113,6 +121,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
         project_dir=project_dir,
         bible_path=bible_path,
         render_plan_path=render_plan_path,
+        continuity_plan_path=continuity_plan_path,
         render_plan_msr_path=render_plan_msr_path,
         reference_manifest_path=reference_manifest_path,
         final_video_path=final_video_path,

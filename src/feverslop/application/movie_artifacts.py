@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from feverslop.application.movie import build_movie_actor_reference_prompt
+from feverslop.application.movie import (
+    build_movie_actor_reference_prompt,
+    build_movie_continuity_fallback,
+    movie_bible_from_dict,
+    movie_continuity_plan_to_dict,
+)
+from feverslop.domain.movie import CinematicShot
 
 
 def ensure_movie_bible(project_dir: Path) -> Path:
@@ -29,6 +35,23 @@ def ensure_movie_render_plan_matches_bible(project_dir: Path) -> Path:
     return render_plan_path
 
 
+def ensure_movie_continuity_plan(project_dir: Path) -> Path:
+    project_dir = Path(project_dir)
+    continuity_path = project_dir / "movie" / "continuity_plan.json"
+    if continuity_path.exists():
+        return continuity_path
+    bible_path = ensure_movie_bible(project_dir)
+    render_plan_path = project_dir / "movie" / "render_plan.json"
+    if not render_plan_path.exists():
+        raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
+    bible = movie_bible_from_dict(_read_json(bible_path))
+    render_plan = _read_json(render_plan_path)
+    shots = tuple(_shot_from_render_plan(item, index) for index, item in enumerate(render_plan.get("shots") or [], start=1) if isinstance(item, dict))
+    continuity = build_movie_continuity_fallback(bible=bible, shots=shots)
+    continuity_path.write_text(json.dumps(movie_continuity_plan_to_dict(continuity), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return continuity_path
+
+
 def write_movie_reference_manifest_from_bible(project_dir: Path) -> Path:
     project_dir = Path(project_dir)
     bible_path = ensure_movie_bible(project_dir)
@@ -46,6 +69,31 @@ def write_movie_reference_manifest_from_bible(project_dir: Path) -> Path:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return manifest_path
+
+
+def _shot_from_render_plan(shot: dict, index: int) -> CinematicShot:
+    references = shot.get("reference_ids") if isinstance(shot.get("reference_ids"), dict) else {}
+    actor_ids = shot.get("actor_ids") or references.get("actors") or []
+    return CinematicShot(
+        shot_id=str(shot.get("shot_id") or f"shot_{index:04}"),
+        description=str(shot.get("description") or shot.get("action") or f"Shot {index}").strip(),
+        duration_seconds=float(shot.get("duration_seconds") or shot.get("duration") or 1),
+        camera=str(shot.get("camera") or "").strip(),
+        action=str(shot.get("action") or shot.get("description") or "").strip(),
+        expression=str(shot.get("acting") or shot.get("expression") or "").strip(),
+        location=str(shot.get("location") or "").strip(),
+        dialogue=str(shot.get("dialogue") or "").strip(),
+        actor_ids=tuple(str(item).strip() for item in actor_ids if str(item).strip()),
+        location_id=str(shot.get("location_id") or references.get("location") or "").strip(),
+        continuity_notes=str(shot.get("continuity_notes") or "").strip(),
+        story_state_before=str(shot.get("story_state_before") or "").strip(),
+        story_state_after=str(shot.get("story_state_after") or "").strip(),
+        cause_from_previous=str(shot.get("cause_from_previous") or "").strip(),
+        narrative_purpose=str(shot.get("narrative_purpose") or "").strip(),
+        conflict_or_tension=str(shot.get("conflict_or_tension") or "").strip(),
+        turning_point=str(shot.get("turning_point") or "").strip(),
+        sets_up_next=str(shot.get("sets_up_next") or "").strip(),
+    )
 
 
 def _manifest_actor(actor: dict, current: dict) -> dict:
