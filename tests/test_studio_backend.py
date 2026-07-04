@@ -68,6 +68,51 @@ class StudioBackendTests(unittest.TestCase):
             self.assertNotIn(".studio/thumbnails/scene.jpg", project["artifacts"]["images"])
             self.assertEqual(0, project["artifact_sizes"]["by_type"]["images"])
 
+    def test_describe_project_uses_single_artifact_catalog_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+
+            class SnapshotOnlyCatalog:
+                def catalog_snapshot(self, project_id):
+                    self.project_id = project_id
+                    return {
+                        "artifacts": {
+                            "configs": ["config.json"],
+                            "render_plans": [],
+                            "references": [],
+                            "generated_json": [],
+                            "videos": [],
+                            "images": [],
+                            "audio": [],
+                        },
+                        "artifact_sizes": {
+                            "total_bytes": 2,
+                            "by_type": {
+                                "configs": 2,
+                                "render_plans": 0,
+                                "references": 0,
+                                "generated_json": 0,
+                                "videos": 0,
+                                "images": 0,
+                                "audio": 0,
+                                "other": 0,
+                            },
+                        },
+                    }
+
+                def list_artifacts(self, _project_id):
+                    raise AssertionError("describe_project should not scan artifacts separately")
+
+                def artifact_sizes(self, _project_id):
+                    raise AssertionError("describe_project should not scan sizes separately")
+
+            store.artifact_catalog = SnapshotOnlyCatalog()
+
+            project = store.describe_project("demo")
+
+            self.assertEqual(["config.json"], project["artifacts"]["configs"])
+            self.assertEqual(2, project["artifact_sizes"]["total_bytes"])
+
     def test_clear_thumbnail_cache_removes_cached_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = self._project_store(Path(temp_dir))

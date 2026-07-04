@@ -113,7 +113,8 @@ class ProjectStore:
         config = self._read_json_file(config_path, default={})
         metadata = self.project_metadata(project_id)
         name = str(metadata.get("display_name") or config.get("project_name") or project_id)
-        artifacts = self.list_artifacts(project_id)
+        catalog = self.artifact_catalog.catalog_snapshot(project_id)
+        artifacts = catalog["artifacts"]
         is_movie = metadata.get("project_type") == "movie"
         return {
             "id": project_id,
@@ -129,7 +130,7 @@ class ProjectStore:
                 "videos": "present" if artifacts["videos"] else "missing",
             },
             "artifacts": artifacts,
-            "artifact_sizes": self.artifact_sizes(project_id),
+            "artifact_sizes": catalog["artifact_sizes"],
         }
 
     def create_project(self, request: ProjectCreateRequest) -> dict[str, Any]:
