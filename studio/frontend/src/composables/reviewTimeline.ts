@@ -33,6 +33,21 @@ export interface BuildTimelineItemsInput {
   manifest: Record<number, RenderManifestEntry>;
 }
 
+export function parseReviewRenderPlanScenes(data: unknown): RenderScene[] {
+  const rawScenes = Array.isArray(data)
+    ? data
+    : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).shots)
+      ? ((data as Record<string, unknown>).shots as unknown[])
+      : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).scenes)
+        ? ((data as Record<string, unknown>).scenes as unknown[])
+        : [];
+  return rawScenes.map((value, index) => {
+    const scene = value && typeof value === "object" ? { ...(value as Record<string, unknown>) } : {};
+    scene.scene = Number(scene.scene ?? index + 1);
+    return scene as RenderScene;
+  });
+}
+
 export function buildTimelineItems(input: BuildTimelineItemsInput): TimelineItem[] {
   const edits = input.scenes.map((scene) => buildClipEdit(scene, input.manifest[Number(scene.scene)]));
   return input.scenes.map((scene, index) => {
@@ -122,7 +137,15 @@ export function fallbackRawTiming(scene: RenderScene, start: number, duration: n
 }
 
 function scenePreview(scene: RenderScene): string {
-  return String(readPath(scene, ["ltx", "base_prompt"]) ?? readPath(scene, ["z_image", "prompt"]) ?? readPath(scene, ["metadata", "lyrics"]) ?? "");
+  return String(
+    readPath(scene, ["ltx", "base_prompt"]) ??
+      readPath(scene, ["ltx", "original_style_i2v_prompt"]) ??
+      scene.description ??
+      scene.action ??
+      readPath(scene, ["z_image", "prompt"]) ??
+      readPath(scene, ["metadata", "lyrics"]) ??
+      ""
+  );
 }
 
 function sceneFps(scene: RenderScene): number {

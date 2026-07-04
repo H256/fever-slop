@@ -254,6 +254,7 @@ class MovieRenderAction:
             project_id=project_id,
             render_plan_path=render_plan_msr_path,
             movie_config=config,
+            selected_scenes=request.scenes,
         )
         return record_pipeline_state(self.store, project_id, self.action, handler)
 
@@ -381,7 +382,14 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
     return run
 
 
-def build_movie_render_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path, movie_config: dict[str, Any] | None = None) -> JobHandler:
+def build_movie_render_handler(
+    *,
+    store: ProjectStore,
+    project_id: str,
+    render_plan_path: Path,
+    movie_config: dict[str, Any] | None = None,
+    selected_scenes: list[int] | None = None,
+) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         config = movie_runtime_config(movie_config)
@@ -392,6 +400,7 @@ def build_movie_render_handler(*, store: ProjectStore, project_id: str, render_p
         final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_path,
+            selected_scenes=selected_scenes,
             on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered clip {completed}/{total}: scene {scene_number}"),
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")

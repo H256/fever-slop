@@ -41,7 +41,14 @@ class ScenePlanningPort(Protocol):
 
 
 class VisualGenerationPort(Protocol):
-    def render_movie(self, *, project_dir: Path, render_plan_path: Path, on_clip_rendered: Callable[[int, int, int], None] | None = None) -> Path:
+    def render_movie(
+        self,
+        *,
+        project_dir: Path,
+        render_plan_path: Path,
+        selected_scenes: list[int] | None = None,
+        on_clip_rendered: Callable[[int, int, int], None] | None = None,
+    ) -> Path:
         """Render a final movie file from a movie render plan."""
 
 

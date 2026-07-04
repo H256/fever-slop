@@ -43,6 +43,7 @@ const locations = ref<ReferenceOption[]>([]);
 const selectedActorIds = computed(() => readPath(draft.value, ["references", "actor_ids"]) as string[] | undefined);
 const selectedLocationId = computed(() => readPath(draft.value, ["references", "location_id"]) as string | undefined);
 const hasActiveProcess = computed(() => studio.jobs.some((job) => ["queued", "running"].includes(job.status)));
+const isMovieProject = computed(() => studio.currentProject?.project_type === "movie");
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
@@ -136,10 +137,10 @@ async function runRerender() {
   startingRerender.value = true;
   try {
     if (mode === "selected" && selectedRenderSceneNumbers.value.length) {
-      await studio.startJob(projectId.value, "ltx-render-scenes", selectedRenderSceneNumbers.value);
+      await studio.startJob(projectId.value, isMovieProject.value ? "movie-render" : "ltx-render-scenes", selectedRenderSceneNumbers.value);
     }
     if (mode === "all") {
-      await studio.startJob(projectId.value, "ltx-render-scenes");
+      await studio.startJob(projectId.value, isMovieProject.value ? "movie-render" : "ltx-render-scenes");
     }
     await studio.loadJobs(projectId.value);
   } finally {

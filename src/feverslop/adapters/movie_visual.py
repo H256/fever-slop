@@ -12,7 +12,14 @@ from feverslop.ports.rendering import VideoRenderRequest
 class LocalMovieVisualAdapter:
     """Local placeholder adapter for movie production tests and offline Studio use."""
 
-    def render_movie(self, *, project_dir: Path, render_plan_path: Path, on_clip_rendered: Callable[[int, int, int], None] | None = None) -> Path:
+    def render_movie(
+        self,
+        *,
+        project_dir: Path,
+        render_plan_path: Path,
+        selected_scenes: list[int] | None = None,
+        on_clip_rendered: Callable[[int, int, int], None] | None = None,
+    ) -> Path:
         output_dir = project_dir / "output" / "movie"
         output_dir.mkdir(parents=True, exist_ok=True)
         final = output_dir / f"{project_dir.name}.mp4"
@@ -47,7 +54,14 @@ class ComfyUIMovieVisualAdapter:
         self.fps = int(fps)
         self.workflow = workflow
 
-    def render_movie(self, *, project_dir: Path, render_plan_path: Path, on_clip_rendered: Callable[[int, int, int], None] | None = None) -> Path:
+    def render_movie(
+        self,
+        *,
+        project_dir: Path,
+        render_plan_path: Path,
+        selected_scenes: list[int] | None = None,
+        on_clip_rendered: Callable[[int, int, int], None] | None = None,
+    ) -> Path:
         project_dir = Path(project_dir)
         plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
         output_dir = project_dir / "output" / "movie" / "ltx_msr"
@@ -69,14 +83,20 @@ class ComfyUIMovieVisualAdapter:
             workflow=self.workflow,
             workflow_label=self.workflow_path,
         )
+        selected = {int(scene) for scene in selected_scenes or []}
         rendered = []
-        total = len(scenes)
-        for completed, scene in enumerate(scenes, start=1):
-            rendered.append(
-                backend.render_video(
+        renderable_scenes = [scene for scene in scenes if not selected or int(scene["scene"]) in selected or not (output_dir / f"scene_{int(scene['scene']):04}.mp4").exists()]
+        total = len(renderable_scenes) or len(scenes)
+        rendered_count = 0
+        for scene in scenes:
+            scene_number = int(scene["scene"])
+            clip_path = output_dir / f"scene_{scene_number:04}.mp4"
+            should_render = not selected or scene_number in selected or not clip_path.exists()
+            if should_render:
+                clip_path = backend.render_video(
                     VideoRenderRequest(
                         scene=scene,
-                        scene_number=int(scene["scene"]),
+                        scene_number=scene_number,
                         prompt=str((scene.get("ltx") or {}).get("original_style_i2v_prompt") or scene.get("description") or ""),
                         workflow_path=self.workflow_path,
                         output_dir=output_dir,
@@ -85,12 +105,13 @@ class ComfyUIMovieVisualAdapter:
                         upload_audio=False,
                     )
                 )
-            )
-            if on_clip_rendered is not None:
-                on_clip_rendered(completed, total, int(scene["scene"]))
+                rendered_count += 1
+                if on_clip_rendered is not None:
+                    on_clip_rendered(rendered_count, total, scene_number)
+            rendered.append(clip_path)
 
         concat_list = self.postprocessor.write_concat_list(rendered, output_dir / "concat_list.txt")
-        return self.postprocessor.concat_clips(concat_list, final_output, video_only=False)
+        return self.postprocessor.concat_clips(concat_list, final_output, video_only=False, reencode=True)
 
     def _movie_scenes(self, plan: dict[str, Any], *, project_dir: Path) -> list[dict[str, Any]]:
         raw_scenes = plan.get("scenes") or plan.get("shots") or []

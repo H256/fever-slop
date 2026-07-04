@@ -104,7 +104,7 @@ class VideoPostProcessor:
         )
         return int(result.stdout.strip())
 
-    def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False) -> Path:
+    def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False, reencode: bool = False) -> Path:
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -117,6 +117,16 @@ class VideoPostProcessor:
         ]
         if video_only:
             cmd.extend(["-an", "-c:v", "copy"])
+        elif reencode:
+            cmd.extend([
+                "-c:v", self.video_codec,
+                "-crf", str(self.crf),
+                "-preset", self.preset,
+                "-pix_fmt", "yuv420p",
+                "-c:a", self.audio_codec,
+                "-b:a", self.audio_bitrate,
+                "-movflags", "+faststart",
+            ])
         else:
             cmd.extend(["-c", "copy"])
         cmd.append(str(output_file))

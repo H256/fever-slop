@@ -55,11 +55,11 @@ class FakeMoviePostprocessor:
         self.concat_lists.append((list(video_files), output_file))
         return output_file
 
-    def concat_clips(self, concat_list, output_file, video_only=False):
+    def concat_clips(self, concat_list, output_file, video_only=False, reencode=False):
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_bytes(b"movie")
-        self.concat_calls.append((Path(concat_list), output_file, video_only))
+        self.concat_calls.append((Path(concat_list), output_file, video_only, reencode))
         return output_file
 
 
@@ -740,8 +740,11 @@ class MovieProjectTests(unittest.TestCase):
                 json.dumps({
                     "title": "Door Below",
                     "resolution": {"width": 1280, "height": 704},
-                    "duration_seconds": 2,
-                    "shots": [_movie_shot(temp)],
+                    "duration_seconds": 4,
+                    "shots": [
+                        _movie_shot(temp),
+                        {**_movie_shot(temp), "shot_id": "shot_0002", "description": "The door opens wider."},
+                    ],
                 }),
                 encoding="utf-8",
             )
@@ -759,9 +762,14 @@ class MovieProjectTests(unittest.TestCase):
 
             self.assertEqual(temp / "output" / "movie" / "door-below.mp4", final)
             self.assertEqual([], asset_uploader.audio_calls)
-            self.assertEqual(1, len(queue.calls))
-            self.assertEqual([(postprocessor.concat_lists[0][1], final, False)], postprocessor.concat_calls)
+            self.assertEqual([1, 2], [call[1] for call in queue.calls])
+            self.assertEqual(
+                [temp / "output" / "movie" / "ltx_msr" / "scene_0001.mp4", temp / "output" / "movie" / "ltx_msr" / "scene_0002.mp4"],
+                postprocessor.concat_lists[0][0],
+            )
+            self.assertEqual([(postprocessor.concat_lists[0][1], final, False, True)], postprocessor.concat_calls)
             self.assertTrue((temp / "output" / "movie" / "ltx_msr_debug" / "scene_0001_workflow.json").exists())
+            self.assertTrue((temp / "output" / "movie" / "ltx_msr_debug" / "scene_0002_workflow.json").exists())
 
     def test_comfyui_movie_adapter_resolves_reference_ids_from_manifest(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
@@ -810,6 +818,46 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual(
                 [(temp / "movie" / "references" / "actor.png", True), (temp / "movie" / "references" / "location.png", True)],
                 asset_uploader.reference_calls,
+            )
+
+    def test_comfyui_movie_adapter_rerenders_selected_scenes_and_rebuilds_final(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "movie_msr.json"
+            workflow_path.write_text(json.dumps(_movie_msr_workflow()), encoding="utf-8")
+            render_plan_path = temp / "movie" / "render_plan.json"
+            render_plan_path.parent.mkdir()
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Door Below",
+                    "resolution": {"width": 1280, "height": 704},
+                    "shots": [
+                        _movie_shot(temp),
+                        {**_movie_shot(temp), "shot_id": "shot_0002", "description": "The door answers."},
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            existing_scene = temp / "output" / "movie" / "ltx_msr" / "scene_0001.mp4"
+            existing_scene.parent.mkdir(parents=True)
+            existing_scene.write_bytes(b"old scene 1")
+            queue = FakeMovieRenderQueue()
+            postprocessor = FakeMoviePostprocessor()
+
+            ComfyUIMovieVisualAdapter(
+                client=object(),
+                workflow_path=workflow_path,
+                render_queue=queue,
+                asset_uploader=NativeAudioAssetUploader(),
+                postprocessor=postprocessor,
+            ).render_movie(project_dir=temp, render_plan_path=render_plan_path, selected_scenes=[2])
+
+            self.assertEqual([2], [call[1] for call in queue.calls])
+            self.assertEqual(
+                [existing_scene, temp / "output" / "movie" / "ltx_msr" / "scene_0002.mp4"],
+                postprocessor.concat_lists[0][0],
             )
 
     def test_movie_job_uses_comfyui_adapter_when_configured(self):

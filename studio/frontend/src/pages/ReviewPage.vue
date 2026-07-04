@@ -9,7 +9,7 @@ import ReviewTimelineClipLanes from "../components/ReviewTimelineClipLanes.vue";
 import ReviewToolbar from "../components/ReviewToolbar.vue";
 import ReviewTransport from "../components/ReviewTransport.vue";
 import { applyBoundaryTrim, type ClipEdit } from "../lib/timelineTrim";
-import { buildClipEdit, buildTimelineItems, derivedFinalClip, type RenderManifestEntry, type TimelineItem } from "../composables/reviewTimeline";
+import { buildClipEdit, buildTimelineItems, derivedFinalClip, parseReviewRenderPlanScenes, type RenderManifestEntry, type TimelineItem } from "../composables/reviewTimeline";
 import { useReviewTimelineEdits } from "../composables/reviewTimelineEdits";
 import { isTimelineMedia as pathIsTimelineMedia, rawPreviewForEdit, renderManifestByScene, type RawPreview } from "../composables/reviewTimelineMedia";
 import { previewStart } from "../composables/reviewTimelinePlayback";
@@ -44,6 +44,7 @@ const { undoStack, redoStack, pushUndo, undoTimeline: restoreUndoSnapshot, redoT
 const allVideos = computed(() => studio.currentProject?.artifacts.videos ?? []);
 const allImages = computed(() => studio.currentProject?.artifacts.images ?? []);
 const audioSource = computed(() => studio.currentProject?.artifacts.audio?.[0] ?? "");
+const isMovieProject = computed(() => studio.currentProject?.project_type === "movie");
 const timelineItems = computed<TimelineItem[]>(() => buildTimelineItems({ scenes: scenes.value, videos: allVideos.value, manifest: renderManifest.value }));
 const clipEdits = computed(() => scenes.value.map((scene) => buildClipEdit(scene, renderManifest.value[Number(scene.scene)])));
 const totalDuration = computed(() => Math.max(0, ...timelineItems.value.map((item) => item.end)));
@@ -85,7 +86,7 @@ onMounted(async () => {
   planPath.value = studio.currentProject?.artifacts.render_plans[0] ?? "";
   await loadRenderManifest();
   if (planPath.value) {
-    scenes.value = (await api.artifact(projectId.value, planPath.value)).data as RenderScene[];
+    scenes.value = parseReviewRenderPlanScenes((await api.artifact(projectId.value, planPath.value)).data);
     selectedScene.value = Number(scenes.value[0]?.scene ?? 0) || null;
   }
   await drawWaveform();
@@ -103,7 +104,7 @@ watch(selectedItem, (item) => {
 
 async function runRetake() {
   pendingRetake.value = false;
-  if (selectedScene.value) await studio.startJob(projectId.value, "ltx-render-scenes", [selectedScene.value]);
+  if (selectedScene.value) await studio.startJob(projectId.value, isMovieProject.value ? "movie-render" : "ltx-render-scenes", [selectedScene.value]);
 }
 
 async function saveTimeline() {

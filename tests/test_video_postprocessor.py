@@ -61,6 +61,23 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             run.call_args.kwargs,
         )
 
+    def test_concat_clips_can_reencode_for_native_audio_segments(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            processor.concat_clips(
+                concat_list=Path("concat_list.txt"),
+                output_file=Path("final_concat.mp4"),
+                reencode=True,
+            )
+
+        cmd = run.call_args.args[0]
+        self.assertIn("-c:v", cmd)
+        self.assertIn("libx264", cmd)
+        self.assertIn("-c:a", cmd)
+        self.assertIn("aac", cmd)
+        self.assertNotIn("copy", cmd)
+
     def test_ffmpeg_output_is_visible_in_debug_mode(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg", debug=True)
 

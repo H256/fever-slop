@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTimelineItems, derivedFinalClip, findSceneClip } from "./reviewTimeline";
+import { buildTimelineItems, derivedFinalClip, findSceneClip, parseReviewRenderPlanScenes } from "./reviewTimeline";
 import type { RenderScene } from "../types";
 
 describe("review timeline helpers", () => {
@@ -39,5 +39,21 @@ describe("review timeline helpers", () => {
     expect(items[1].rawDuration).toBe(4);
     expect(items[0].preview).toBe("first");
     expect(items[1].preview).toBe("second");
+  });
+
+  test("parses movie render plan envelopes for review", () => {
+    const scenes = parseReviewRenderPlanScenes({
+      title: "Door Below",
+      shots: [
+        { shot_id: "shot_0001", description: "A lock opens.", duration_seconds: 2 },
+        { shot_id: "shot_0002", description: "The door answers.", duration_seconds: 3 }
+      ]
+    });
+
+    expect(scenes.map((scene) => scene.scene)).toEqual([1, 2]);
+    expect(buildTimelineItems({ scenes, videos: ["output/movie/ltx_msr/scene_0002.mp4"], manifest: {} }).map((item) => item.preview)).toEqual([
+      "A lock opens.",
+      "The door answers."
+    ]);
   });
 });
