@@ -29,8 +29,8 @@ onMounted(async () => {
 });
 
 function pickFinalVideo(paths: string[]): string {
-  const candidates = paths.filter((path) => !path.includes("_video_only") && !/scene_\d+\.mp4$/i.test(path) && !path.includes("/raw/"));
-  return [...candidates, ...paths].sort((a, b) => scoreVideo(b) - scoreVideo(a))[0] ?? "";
+  const candidates = paths.filter((path) => !isNonFinalVideo(path));
+  return candidates.sort((a, b) => scoreVideo(b) - scoreVideo(a))[0] ?? "";
 }
 
 function scoreVideo(path: string): number {
@@ -40,6 +40,10 @@ function scoreVideo(path: string): number {
   if (!path.includes("_video_only")) score += 10;
   if (!/scene_\d+\.mp4$/i.test(path)) score += 10;
   return score;
+}
+
+function isNonFinalVideo(path: string): boolean {
+  return path.includes("_video_only") || path.includes("/raw/") || /(^|\/)scene_\d+(?:_raw)?\.mp4$/i.test(path);
 }
 
 async function buildFinalMovie() {
