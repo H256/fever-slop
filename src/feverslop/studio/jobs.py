@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import threading
 import time
 import uuid
@@ -229,6 +230,20 @@ class JobRegistry:
                     next_step["status"] = "running"
                     next_step["started_at"] = time.time()
                     current = next_step
+        clip_progress = re.search(r"rendered clip\s+(\d+)\s*/\s*(\d+)", text)
+        if clip_progress:
+            completed = int(clip_progress.group(1))
+            total = max(1, int(clip_progress.group(2)))
+            render_step = next((step for step in steps if step["name"] == "LTX MSR native-audio render"), current)
+            if render_step:
+                if current and current is not render_step and current["status"] == "running":
+                    current["status"] = "completed"
+                    current["progress"] = 100
+                    current["completed_at"] = time.time()
+                render_step["status"] = "running"
+                render_step["started_at"] = render_step["started_at"] or time.time()
+                render_step["progress"] = min(100, int((completed / total) * 100))
+                current = render_step
         job["current_step"] = current["name"] if current and current["status"] == "running" else None
         completed = sum(1 for step in steps if step["status"] == "completed")
         job["overall_progress"] = int((completed / len(steps)) * 100) if steps else job.get("progress", 0)

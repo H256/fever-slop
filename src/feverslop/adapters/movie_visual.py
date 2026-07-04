@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
@@ -12,11 +12,16 @@ from feverslop.ports.rendering import VideoRenderRequest
 class LocalMovieVisualAdapter:
     """Local placeholder adapter for movie production tests and offline Studio use."""
 
-    def render_movie(self, *, project_dir: Path, render_plan_path: Path) -> Path:
+    def render_movie(self, *, project_dir: Path, render_plan_path: Path, on_clip_rendered: Callable[[int, int, int], None] | None = None) -> Path:
         output_dir = project_dir / "output" / "movie"
         output_dir.mkdir(parents=True, exist_ok=True)
         final = output_dir / f"{project_dir.name}.mp4"
         final.write_bytes(b"feverslop movie placeholder\n" + render_plan_path.read_bytes())
+        if on_clip_rendered is not None:
+            plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
+            total = len(plan.get("shots") or plan.get("scenes") or []) or 1
+            for completed in range(1, total + 1):
+                on_clip_rendered(completed, total, completed)
         return final
 
 
@@ -42,7 +47,7 @@ class ComfyUIMovieVisualAdapter:
         self.fps = int(fps)
         self.workflow = workflow
 
-    def render_movie(self, *, project_dir: Path, render_plan_path: Path) -> Path:
+    def render_movie(self, *, project_dir: Path, render_plan_path: Path, on_clip_rendered: Callable[[int, int, int], None] | None = None) -> Path:
         project_dir = Path(project_dir)
         plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
         output_dir = project_dir / "output" / "movie" / "ltx_msr"
@@ -65,7 +70,8 @@ class ComfyUIMovieVisualAdapter:
             workflow_label=self.workflow_path,
         )
         rendered = []
-        for scene in scenes:
+        total = len(scenes)
+        for completed, scene in enumerate(scenes, start=1):
             rendered.append(
                 backend.render_video(
                     VideoRenderRequest(
@@ -80,6 +86,8 @@ class ComfyUIMovieVisualAdapter:
                     )
                 )
             )
+            if on_clip_rendered is not None:
+                on_clip_rendered(completed, total, int(scene["scene"]))
 
         concat_list = self.postprocessor.write_concat_list(rendered, output_dir / "concat_list.txt")
         return self.postprocessor.concat_clips(concat_list, final_output, video_only=False)

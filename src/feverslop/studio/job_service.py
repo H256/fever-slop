@@ -373,6 +373,7 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_msr_path if render_plan_msr_path.exists() else render_plan_path,
+            on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered clip {completed}/{total}: scene {scene_number}"),
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
         return final_video
@@ -391,6 +392,7 @@ def build_movie_render_handler(*, store: ProjectStore, project_id: str, render_p
         final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_path,
+            on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered clip {completed}/{total}: scene {scene_number}"),
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
         return final_video

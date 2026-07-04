@@ -312,6 +312,67 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("start_frame", relay)
             self.assertNotIn("end_frame", relay)
 
+    def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Archiv",
+                        "premise": "Mara oeffnet ein verbotenes Buch.",
+                        "story_arch": {"title": "Archiv", "premise": "Mara oeffnet ein verbotenes Buch.", "beats": ["opening"]},
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Archiv",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara opens the ledger",
+                                "duration_seconds": 4,
+                                "camera": "slow dolly",
+                                "acting": "controlled fear",
+                                "action": "opens the ledger",
+                                "dialogue": "MARA: Es erinnert sich an mich.",
+                                "reference_ids": {"actors": ["mara"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist", "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+            prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
+            relay = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]
+            self.assertIn("Dialogue language: German", prompt)
+            self.assertIn("spoken in German", prompt)
+            self.assertIn("Dialogue language: German", relay["prompt"])
+
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
@@ -1044,6 +1105,7 @@ class MovieProjectTests(unittest.TestCase):
                         "width": 1280,
                         "height": 704,
                         "movie_mode": "scaffold",
+                        "dialogue_language": "German",
                     },
                 )
 
@@ -1059,8 +1121,10 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("Door Below", config["project_name"])
             self.assertEqual("A locksmith finds a glowing door below an abandoned station.", config["story_idea"])
             self.assertEqual({"fps": 24, "width": 1280, "height": 704}, config["video"])
+            self.assertEqual("German", config["dialogue_language"])
             self.assertIn("steering", config)
             self.assertEqual("llm", project["metadata"]["movie"]["planner_backend"])
+            self.assertEqual("German", project["metadata"]["movie"]["dialogue_language"])
             self.assertEqual("comfyui", project["metadata"]["movie"]["reference_backend"])
             self.assertEqual("comfyui", project["metadata"]["movie"]["render_backend"])
             self.assertEqual(1, len(fake_planner.story_calls))
@@ -1192,6 +1256,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("succeeded", status["status"])
             self.assertTrue((project_dir / "output" / "movie" / "door-below.mp4").exists())
             self.assertEqual("movie-render", status["action"])
+            self.assertTrue(any("Rendered clip" in line and "1/" in line for line in status["logs"]))
+            render_step = next(step for step in status["steps"] if step["name"] == "LTX MSR native-audio render")
+            self.assertEqual(100, render_step["progress"])
 
     def test_movie_full_auto_rejects_non_movie_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:

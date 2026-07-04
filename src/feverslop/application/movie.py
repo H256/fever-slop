@@ -407,6 +407,7 @@ def _planner_source_text(request: MovieInput, config: dict) -> str:
         ("subject", config.get("subject")),
         ("steering", config.get("steering")),
         ("prompt_guidance", config.get("prompt_guidance")),
+        ("dialogue_language", config.get("dialogue_language")),
         ("actors", config.get("actors")),
         ("locations", config.get("locations")),
     ]:
@@ -518,6 +519,9 @@ def _runtime_constraints(request: MovieInput, config: dict) -> dict:
         "height": int(request.height),
         "max_scene_actors": min(4, max(1, int(config.get("max_scene_actors") or 4))),
     }
+    dialogue_language = str(config.get("dialogue_language") or "").strip()
+    if dialogue_language:
+        constraints["dialogue_language"] = dialogue_language
     for key in ("fps", "width", "height"):
         if key in config:
             constraints[key] = int(config[key])

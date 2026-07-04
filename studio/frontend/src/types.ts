@@ -34,6 +34,7 @@ export interface ProjectSummary {
       source_type?: "short_story" | "screenplay";
       story_text?: string;
       desired_length?: number;
+      dialogue_language?: string;
       width?: number;
       height?: number;
       mode?: "scaffold" | "full_auto";
@@ -67,6 +68,7 @@ export interface ProjectCreatePayload {
   source_type?: "short_story" | "screenplay";
   story_text?: string;
   desired_length?: number;
+  dialogue_language?: string;
   movie_mode?: "scaffold" | "full_auto";
   movie_planner_backend?: "llm" | "deterministic";
   movie_reference_backend?: "comfyui" | "local";

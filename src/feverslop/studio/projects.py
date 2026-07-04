@@ -33,6 +33,7 @@ class ProjectCreateRequest:
     source_type: str = "short_story"
     story_text: str = ""
     desired_length: float = 60.0
+    dialogue_language: str = "English"
     movie_mode: str = "scaffold"
     idea: str = ""
     song_style: str = ""

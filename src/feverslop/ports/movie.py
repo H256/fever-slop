@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 from feverslop.domain.movie import CinematicShot, MovieBible, StoryArch
 
@@ -41,7 +41,7 @@ class ScenePlanningPort(Protocol):
 
 
 class VisualGenerationPort(Protocol):
-    def render_movie(self, *, project_dir: Path, render_plan_path: Path) -> Path:
+    def render_movie(self, *, project_dir: Path, render_plan_path: Path, on_clip_rendered: Callable[[int, int, int], None] | None = None) -> Path:
         """Render a final movie file from a movie render plan."""
 
 

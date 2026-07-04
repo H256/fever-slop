@@ -245,6 +245,7 @@ def _movie_bible_from_data(data: dict, *, title: str, story_arch: StoryArch, con
             "desired_length": float(desired_length),
             "max_scene_actors": min(4, max(1, int(config.get("max_scene_actors") or 4))),
             **({"fps": int(config["fps"])} if config.get("fps") else {}),
+            **({"dialogue_language": _config_dialogue_language(config)} if _config_dialogue_language(config) else {}),
         },
     )
 
@@ -338,6 +339,10 @@ def _config_style_constraints(config: dict) -> list[str]:
         if value:
             values.append(json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value))
     return values
+
+
+def _config_dialogue_language(config: dict) -> str:
+    return str(config.get("dialogue_language") or "").strip()
 
 
 def _shots_from_data(shots: list, *, desired_length: float, min_duration: float, max_duration: float) -> tuple[CinematicShot, ...]:
@@ -470,10 +475,13 @@ Rules:
 
 
 def _movie_bible_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, story_arch: StoryArch, config: dict) -> str:
+    dialogue_language = _config_dialogue_language(config)
+    dialogue_rule = f"- All dialogue in the movie bible and downstream shot plan must be in {dialogue_language} only." if dialogue_language else ""
     return f"""
 Create a movie bible for this {source_type}.
 Title: {title}
 Target duration seconds: {desired_length}
+Dialogue language: {dialogue_language or "unspecified"}
 Story arch: {json.dumps({"title": story_arch.title, "premise": story_arch.premise, "beats": list(story_arch.beats)}, ensure_ascii=False)}
 Config constraints: {json.dumps(config, ensure_ascii=False)}
 
@@ -485,6 +493,7 @@ Rules:
 - If config.structured_locations or config.locations is present, use exactly those location ids and do not invent location ids.
 - Actor and location visual_description must describe stable visual identity only, not camera moves, shots, dialogue, or reference-sheet layout.
 - Preserve screenplay dialogue cues in continuity/story structure, not in visual descriptions.
+{dialogue_rule}
 
 Source:
 {story_text}
@@ -493,6 +502,8 @@ Source:
 
 def _shot_plan_from_bible_prompt(*, bible: MovieBible, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> str:
     target_shots = max(1, ceil(float(desired_length) / max(1.0, min(float(max_duration), 12.0))))
+    dialogue_language = str((bible.runtime_constraints or {}).get("dialogue_language") or "").strip()
+    dialogue_rule = f"- Every dialogue field must be written in {dialogue_language} only. Do not mix in any other spoken language." if dialogue_language else ""
     return f"""
 Create a continuous cinematic render plan from this movie bible.
 Bible: {json.dumps({
@@ -505,6 +516,7 @@ Bible: {json.dumps({
         "style_constraints": list(bible.style_constraints),
     }, ensure_ascii=False)}
 Target duration seconds: {desired_length}
+Dialogue language: {dialogue_language or "unspecified"}
 Resolution: {width}x{height}
 Target shot count: about {target_shots}. Prefer varied shot durations from {min_duration:g} to {max_duration:g} seconds. Never exceed {max_duration:g} seconds for one shot.
 
@@ -516,6 +528,7 @@ Rules:
 - location_id must only use bible location ids.
 - Never put more than 4 actors in one shot.
 - Preserve dialogue, camera, acting, action, and continuity as separate fields.
+{dialogue_rule}
 """.strip()
 
 

@@ -146,6 +146,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "planner_backend": planner_backend,
         "reference_backend": reference_backend,
         "render_backend": render_backend,
+        "dialogue_language": _dialogue_language(request.dialogue_language),
         "hero_workflow": _project_workflow_path(request.movie_hero_workflow, "movie_hero_workflow"),
         "edit_workflow": _project_workflow_path(request.movie_edit_workflow, "movie_edit_workflow"),
         "msr_workflow": _project_workflow_path(request.movie_msr_workflow, "movie_msr_workflow"),
@@ -160,6 +161,7 @@ def movie_default_config(request: ProjectCreateRequest) -> dict[str, Any]:
         width=int(request.width or 1280),
         height=int(request.height or 704),
         fps=int(request.fps or 24),
+        dialogue_language=_dialogue_language(request.dialogue_language),
     )
 
 
@@ -172,15 +174,17 @@ def movie_default_config_from_metadata(metadata: dict[str, Any]) -> dict[str, An
         width=int(movie.get("width") or 1280),
         height=int(movie.get("height") or 704),
         fps=int(movie.get("fps") or 24),
+        dialogue_language=_dialogue_language(movie.get("dialogue_language")),
     )
 
 
-def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, width: int, height: int, fps: int) -> dict[str, Any]:
+def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, width: int, height: int, fps: int, dialogue_language: str) -> dict[str, Any]:
     return {
         "project_name": name,
         "input_audio": "",
         "silent_mode": silent_mode,
         "lyrics": "",
+        "dialogue_language": dialogue_language,
         "video": {
             "fps": fps,
             "width": width,
@@ -300,3 +304,8 @@ def _project_workflow_path(value: str, field: str) -> str:
     if parsed.is_absolute() or ".." in parsed.parts:
         raise ValueError(f"{field} must be a repository-relative path")
     return parsed.as_posix()
+
+
+def _dialogue_language(value: object) -> str:
+    language = str(value or "").strip()
+    return language or "English"

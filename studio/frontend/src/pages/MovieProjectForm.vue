@@ -16,6 +16,7 @@ const form = reactive({
   sourceType: "short_story" as "short_story" | "screenplay",
   storyText: "",
   desiredLength: 180,
+  dialogueLanguage: "English",
   width: 1280,
   height: 704,
   mode: "scaffold" as "scaffold" | "full_auto",
@@ -35,6 +36,7 @@ const validationError = computed(() => {
   if (form.storyText.trim().length < 20) return "Story or screenplay input must be at least 20 characters.";
   if (form.sourceType === "screenplay" && !looksLikeScreenplay(form.storyText)) return "Screenplay input must contain scene headings such as INT. or EXT.";
   if (!Number.isFinite(form.desiredLength) || form.desiredLength <= 0) return "Desired length must be a positive number.";
+  if (!form.dialogueLanguage.trim()) return "Dialogue language is required.";
   if (!Number.isInteger(form.width) || form.width <= 0) return "Width must be a positive integer.";
   if (!Number.isInteger(form.height) || form.height <= 0) return "Height must be a positive integer.";
   if (!form.heroWorkflow.trim() || !form.editWorkflow.trim() || !form.msrWorkflow.trim()) return "Movie workflow paths are required.";
@@ -63,6 +65,7 @@ async function createMovieProject() {
       source_type: form.sourceType,
       story_text: form.storyText.trim(),
       desired_length: form.desiredLength,
+      dialogue_language: form.dialogueLanguage.trim(),
       width: form.width,
       height: form.height,
       movie_mode: form.mode,
@@ -150,6 +153,10 @@ async function createMovieProject() {
           <label>
             <span>Desired length</span>
             <input v-model.number="form.desiredLength" type="number" min="1" step="0.1" />
+          </label>
+          <label>
+            <span>Dialogue language</span>
+            <input v-model="form.dialogueLanguage" type="text" autocomplete="off" />
           </label>
           <label>
             <span>Width</span>

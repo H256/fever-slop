@@ -44,6 +44,7 @@ class ProjectCreatePayload(BaseModel):
     source_type: str = "short_story"
     story_text: str = ""
     desired_length: float = 60.0
+    dialogue_language: str = "English"
     movie_mode: str = "scaffold"
     idea: str = ""
     song_style: str = ""
@@ -116,6 +117,7 @@ def create_app(
                     source_type=payload.source_type,
                     story_text=payload.story_text,
                     desired_length=payload.desired_length,
+                    dialogue_language=payload.dialogue_language,
                     movie_mode=payload.movie_mode,
                     idea=payload.idea,
                     song_style=payload.song_style,

@@ -56,6 +56,7 @@ def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
     location_id = references.get("location") or shot.get("location_id") or ""
     actor_names = _names_for_ids(manifest.get("actors") or bible.get("actors") or [], actor_ids)
     location_name = _name_for_id(manifest.get("locations") or bible.get("locations") or [], location_id)
+    dialogue_language = str((bible.get("runtime_constraints") or {}).get("dialogue_language") or "").strip()
     parts = [
         str(shot.get("description") or "").strip(),
         f"Actors: {', '.join(actor_names)}" if actor_names else "",
@@ -64,6 +65,7 @@ def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
         f"Camera: {shot.get('camera')}" if shot.get("camera") else "",
         f"Acting: {shot.get('acting') or shot.get('expression')}" if shot.get("acting") or shot.get("expression") else "",
         f"Dialogue for native audio: {shot.get('dialogue')}" if shot.get("dialogue") else "",
+        f"Dialogue language: {dialogue_language}. All spoken dialogue/native audio must be spoken in {dialogue_language} only" if dialogue_language else "",
         f"Continuity: {shot.get('continuity_notes')}" if shot.get("continuity_notes") else "",
         f"Style: {'; '.join(str(item) for item in bible.get('style_constraints') or [])}" if bible.get("style_constraints") else "",
     ]
