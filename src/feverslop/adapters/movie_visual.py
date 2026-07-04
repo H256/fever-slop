@@ -180,22 +180,40 @@ def _references_from_ids(reference_ids: dict[str, Any], manifest: dict[str, Any]
     location_id = str(reference_ids.get("location") or "")
     actors = {str(actor.get("id")): actor for actor in manifest.get("actors") or []}
     locations = {str(location.get("id")): location for location in manifest.get("locations") or []}
-    actor_paths = [_required_manifest_path(actors, actor_id, "actor", project_dir) for actor_id in actor_ids]
-    location_path = _required_manifest_path(locations, location_id, "location", project_dir) if location_id else ""
+    actor_items = [_required_manifest_item(actors, actor_id, "actor") for actor_id in actor_ids]
+    location_item = _required_manifest_item(locations, location_id, "location") if location_id else {}
+    actor_paths = [_required_manifest_path(actor, project_dir) for actor in actor_items]
+    location_path = _required_manifest_path(location_item, project_dir) if location_item else ""
     if not actor_paths or not location_path:
         return {}
     return {
         "actor_msr_paths": [path.as_posix() for path in actor_paths],
         "location_msr_path": location_path.as_posix(),
+        "actor_reference_descriptions": [_reference_description(actor) for actor in actor_items],
+        "location_reference_description": _reference_description(location_item),
     }
 
 
-def _required_manifest_path(items: dict[str, dict], item_id: str, kind: str, project_dir: Path) -> Path:
+def _required_manifest_item(items: dict[str, dict], item_id: str, kind: str) -> dict:
     item = items.get(item_id)
     if not item:
         raise ValueError(f"Movie {kind} reference id is missing from manifest: {item_id}")
+    return item
+
+
+def _required_manifest_path(item: dict, project_dir: Path) -> Path:
     value = str(item.get("msr_sheet_path") or item.get("path") or "").strip()
     if not value:
-        raise ValueError(f"Movie {kind} reference {item_id} has no rendered MSR sheet path")
+        raise ValueError(f"Movie reference {item.get('id')} has no rendered MSR sheet path")
     path = Path(value)
     return path if path.is_absolute() else project_dir / path
+
+
+def _reference_description(item: dict) -> dict[str, str]:
+    return {
+        "id": str(item.get("id") or ""),
+        "name": str(item.get("name") or item.get("id") or ""),
+        "role": str(item.get("role") or ""),
+        "visual_description": str(item.get("visual_description") or ""),
+        "image_prompt": str(item.get("image_prompt") or ""),
+    }

@@ -419,6 +419,73 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("spoken in German", prompt)
             self.assertIn("Dialogue language: German", relay["prompt"])
 
+    def test_movie_msr_enrichment_writes_multi_actor_global_reference_prompt(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Duel",
+                        "premise": "Mara and Ivo confront each other.",
+                        "story_arch": {"title": "Duel", "premise": "Mara and Ivo confront each other.", "beats": ["confrontation"]},
+                        "actors": [
+                            {"id": "mara", "name": "Mara", "role": "archivist", "visual_description": "charcoal coat and cropped black hair"},
+                            {"id": "ivo", "name": "Ivo", "role": "rival", "visual_description": "white suit and silver cane"},
+                        ],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Duel",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara and Ivo face each other across the archive table",
+                                "duration_seconds": 4,
+                                "camera": "slow lateral track",
+                                "acting": "restrained suspicion",
+                                "action": "both characters hold their ground",
+                                "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [
+                            {"id": "mara", "name": "Mara", "role": "archivist", "visual_description": "charcoal coat and cropped black hair", "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png"},
+                            {"id": "ivo", "name": "Ivo", "role": "rival", "visual_description": "white suit and silver cane", "msr_sheet_path": "movie/references/actors/ivo/msr_sheet.png"},
+                        ],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+            ltx = enriched["shots"][0]["ltx"]
+            self.assertIn("Reference image 1: Mara", ltx["msr_global_prompt"])
+            self.assertIn("charcoal coat", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 2: Ivo", ltx["msr_global_prompt"])
+            self.assertIn("white suit", ltx["msr_global_prompt"])
+            self.assertIn("Background reference: Archive", ltx["msr_global_prompt"])
+
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner

@@ -39,6 +39,7 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, continuity_plan: di
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "original_style_i2v_prompt": prompt,
+        "msr_global_prompt": _movie_reference_global_prompt(shot, bible=bible, manifest=manifest),
         "native_audio": True,
         "msr_prompt_relay": [
             {
@@ -52,6 +53,29 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, continuity_plan: di
         ],
     }
     return enriched
+
+
+def _movie_reference_global_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
+    references = shot.get("reference_ids") or {}
+    actor_ids = references.get("actors") or shot.get("actor_ids") or []
+    location_id = references.get("location") or shot.get("location_id") or ""
+    actor_items = _items_for_ids(manifest.get("actors") or bible.get("actors") or [], actor_ids)
+    location_item = _item_for_id(manifest.get("locations") or bible.get("locations") or [], location_id)
+    parts = []
+    for index, actor in enumerate(actor_items, start=1):
+        description = _describe_reference_item(actor)
+        if description:
+            parts.append(
+                f"Reference image {index}: {description}. "
+                f"Use reference image {index} for this subject's identity, face, body, wardrobe, and materials."
+            )
+    location_description = _describe_reference_item(location_item)
+    if location_description:
+        parts.append(
+            f"Background reference: {location_description}. "
+            "Use this image as the scene environment, lighting, color palette, atmosphere, and spatial setting."
+        )
+    return " ".join(parts).strip()
 
 
 def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict, continuity_plan: dict) -> str:
@@ -146,6 +170,29 @@ def _name_for_id(items: list[dict], item_id: str) -> str:
         if isinstance(item, dict) and str(item.get("id")) == str(item_id):
             return str(item.get("name") or item_id)
     return str(item_id or "")
+
+
+def _items_for_ids(items: list[dict], ids: list[str]) -> list[dict]:
+    by_id = {str(item.get("id")): item for item in items if isinstance(item, dict)}
+    return [by_id[str(item_id)] for item_id in ids if str(item_id) in by_id]
+
+
+def _item_for_id(items: list[dict], item_id: str) -> dict:
+    for item in items:
+        if isinstance(item, dict) and str(item.get("id")) == str(item_id):
+            return item
+    return {}
+
+
+def _describe_reference_item(item: dict) -> str:
+    if not item:
+        return ""
+    name = str(item.get("name") or item.get("id") or "").strip(" .")
+    role = str(item.get("role") or "").strip(" .")
+    visual = str(item.get("visual_description") or "").strip(" .")
+    image_prompt = str(item.get("image_prompt") or "").strip(" .")
+    chunks = [chunk for chunk in (name, role, visual or image_prompt) if chunk]
+    return ", ".join(chunks)
 
 
 def _fps(bible: dict) -> int:
