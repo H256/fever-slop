@@ -16,9 +16,15 @@ const finalVideoUrl = computed(() => (finalVideo.value ? `${mediaUrl(projectId.v
 const isMovieProject = computed(() => studio.currentProject?.project_type === "movie");
 const startingConcat = ref(false);
 const concatError = ref("");
+const hasActiveProcess = computed(() => studio.jobs.some((job) => ["queued", "running"].includes(job.status)));
+const buildDisabledReason = computed(() => {
+  if (hasActiveProcess.value) return "Build final movie is disabled until the current job finishes.";
+  return "";
+});
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
+  await studio.loadJobs(projectId.value);
   mediaVersion.value = Date.now();
 });
 
@@ -37,6 +43,10 @@ function scoreVideo(path: string): number {
 }
 
 async function buildFinalMovie() {
+  if (hasActiveProcess.value) {
+    concatError.value = buildDisabledReason.value;
+    return;
+  }
   startingConcat.value = true;
   concatError.value = "";
   try {
@@ -46,7 +56,7 @@ async function buildFinalMovie() {
     await studio.loadProject(projectId.value);
     mediaVersion.value = Date.now();
   } catch (caught) {
-    concatError.value = caught instanceof Error ? caught.message : String(caught);
+    concatError.value = apiErrorMessage(caught);
   } finally {
     startingConcat.value = false;
   }
@@ -62,6 +72,18 @@ async function waitForJob(jobId: string): Promise<Job> {
     return job;
   }
 }
+
+function apiErrorMessage(caught: unknown): string {
+  if (!(caught instanceof Error)) return String(caught);
+  const body = "body" in caught ? String((caught as { body?: string }).body ?? "") : "";
+  if (!body) return caught.message;
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    return parsed.detail ? String(parsed.detail) : body;
+  } catch {
+    return body;
+  }
+}
 </script>
 
 <template>
@@ -72,7 +94,7 @@ async function waitForJob(jobId: string): Promise<Job> {
         <p>Preview and download the final rendered video for this project.</p>
       </div>
       <div class="button-row">
-        <button v-if="isMovieProject" class="button secondary" :disabled="startingConcat" @click="buildFinalMovie">
+        <button v-if="isMovieProject" class="button secondary" :disabled="startingConcat || hasActiveProcess" :title="buildDisabledReason" @click="buildFinalMovie">
           <Wrench :size="18" /> {{ startingConcat ? "Starting..." : "Build final movie" }}
         </button>
         <a v-if="finalVideo" class="button" :href="finalVideoUrl" download>
@@ -84,6 +106,10 @@ async function waitForJob(jobId: string): Promise<Job> {
     <section v-if="!finalVideo" class="panel empty">
       <Film :size="22" />
       <p>No final video was found yet. Run final concat or the full pipeline first.</p>
+    </section>
+    <section v-if="hasActiveProcess" class="panel notice-panel">
+      <h2>A backend process is running</h2>
+      <p>{{ buildDisabledReason }}</p>
     </section>
     <section v-if="concatError" class="panel notice-panel">
       <h2>Build failed</h2>
