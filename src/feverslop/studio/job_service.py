@@ -78,6 +78,7 @@ class StudioJobService:
                 ThumbnailCleanupAction(store),
                 FullAutoAction(store, full_auto_handler),
                 MovieReferencesAction(store),
+                MovieRenderAction(store),
                 MovieFullAutoAction(store),
             ],
             PipelineAction(store, pipeline_handler),
@@ -228,6 +229,31 @@ class MovieReferencesAction:
         return record_pipeline_state(self.store, project_id, self.action, handler)
 
 
+class MovieRenderAction:
+    action = "movie-render"
+
+    def __init__(self, store: ProjectStore):
+        self.store = store
+
+    def build(self, project_id: str, request: StudioJobRequest, metadata: dict[str, Any]) -> JobHandler:
+        if metadata.get("project_type") != "movie":
+            raise ValueError("movie-render jobs require a movie project")
+        render_plan_msr_path = self.store.resolve_project_path(project_id, "movie/render_plan_msr.json")
+        if not render_plan_msr_path.exists():
+            raise ValueError("movie-render requires movie/render_plan_msr.json; run Movie full-auto or CLI MSR enrichment first")
+        manifest_path = self.store.resolve_project_path(project_id, "movie/references/manifest.json")
+        config = movie_config_from_metadata(metadata)
+        if not movie_references_ready(manifest_path, backend=config["reference_backend"]):
+            raise ValueError("movie-render requires ready movie references; run Movie references first")
+        handler = build_movie_render_handler(
+            store=self.store,
+            project_id=project_id,
+            render_plan_path=render_plan_msr_path,
+            movie_config=config,
+        )
+        return record_pipeline_state(self.store, project_id, self.action, handler)
+
+
 class PipelineAction:
     action = "*"
 
@@ -342,6 +368,24 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_msr_path if render_plan_msr_path.exists() else render_plan_path,
+        )
+        log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+        return final_video
+
+    return run
+
+
+def build_movie_render_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path, movie_config: dict[str, Any] | None = None) -> JobHandler:
+    def run(log: Callable[[str], None]) -> Any:
+        project_dir = store.resolve_project_path(project_id, ".").resolve()
+        config = movie_runtime_config(movie_config)
+        log(f"[MoviePipeline] Stage: Existing Movie MSR plan: {render_plan_path}")
+        patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
+        log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
+        log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
+        final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
+            project_dir=project_dir,
+            render_plan_path=render_plan_path,
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
         return final_video

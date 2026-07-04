@@ -1152,6 +1152,47 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
 
+    def test_api_starts_movie_render_job_from_existing_msr_plan(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            client = TestClient(create_app(temp_dir))
+            created = client.post(
+                "/api/projects",
+                json={
+                    "project_type": "movie",
+                    "name": "Door Below",
+                    "source_type": "short_story",
+                    "story_text": "A locksmith finds a glowing door below an abandoned station.",
+                    "desired_length": 30,
+                    "movie_mode": "scaffold",
+                    "movie_planner_backend": "deterministic",
+                    "movie_reference_backend": "local",
+                    "movie_render_backend": "local",
+                },
+            )
+            self.assertEqual(200, created.status_code, created.text)
+            project_dir = Path(temp_dir) / "door-below"
+            manifest = json.loads((project_dir / "movie" / "references" / "manifest.json").read_text())
+            manifest["actors"][0]["msr_sheet_path"] = "movie/references/actors/main_character/msr_sheet.png"
+            manifest["locations"][0]["msr_sheet_path"] = "movie/references/locations/primary_location/views/hero.png"
+            manifest["generator_backend"] = "local"
+            (project_dir / "movie" / "references" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+            enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir)
+
+            job = client.post("/api/projects/door-below/jobs", json={"action": "movie-render"})
+
+            self.assertEqual(200, job.status_code, job.text)
+            job_id = job.json()["id"]
+            for _ in range(50):
+                status = client.get(f"/api/jobs/{job_id}").json()
+                if status["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+            self.assertEqual("succeeded", status["status"])
+            self.assertTrue((project_dir / "output" / "movie" / "door-below.mp4").exists())
+            self.assertEqual("movie-render", status["action"])
+
     def test_movie_full_auto_rejects_non_movie_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             client = TestClient(create_app(temp_dir))

@@ -66,6 +66,7 @@ const standardActions: PipelineAction[] = [
 const fullAutoActions: PipelineAction[] = [{ id: "full-auto", label: "Full-auto pipeline", phase: "core" }];
 const movieActions: PipelineAction[] = [
   { id: "movie-references", label: "Movie references", phase: "preparation" },
+  { id: "movie-render", label: "Movie LTX render", phase: "generation" },
   { id: "movie-full-auto", label: "Movie full-auto production", phase: "core" }
 ];
 

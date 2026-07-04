@@ -39,6 +39,7 @@ PIPELINE_ACTIONS = {
     "full-auto",
     "movie-full-auto",
     "movie-references",
+    "movie-render",
 }
 
 
@@ -81,6 +82,7 @@ PIPELINE_STEPS: dict[str, list[str]] = {
         "Final movie",
     ],
     "movie-references": ["Movie references"],
+    "movie-render": ["LTX MSR native-audio render", "Final movie"],
 }
 
 STEP_ALIASES: dict[str, list[str]] = {
