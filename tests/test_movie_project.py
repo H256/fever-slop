@@ -860,6 +860,72 @@ class MovieProjectTests(unittest.TestCase):
                 postprocessor.concat_lists[0][0],
             )
 
+    def test_comfyui_movie_adapter_concat_only_reuses_existing_scene_clips(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "movie_msr.json"
+            workflow_path.write_text(json.dumps(_movie_msr_workflow()), encoding="utf-8")
+            render_plan_path = temp / "movie" / "render_plan.json"
+            render_plan_path.parent.mkdir()
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Door Below",
+                    "resolution": {"width": 1280, "height": 704},
+                    "shots": [
+                        _movie_shot(temp),
+                        {**_movie_shot(temp), "shot_id": "shot_0002", "description": "The door answers."},
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            scene_1 = temp / "output" / "movie" / "ltx_msr" / "scene_0001.mp4"
+            scene_2 = temp / "output" / "movie" / "ltx_msr" / "scene_0002.mp4"
+            scene_1.parent.mkdir(parents=True)
+            scene_1.write_bytes(b"scene 1")
+            scene_2.write_bytes(b"scene 2")
+            queue = FakeMovieRenderQueue()
+            postprocessor = FakeMoviePostprocessor()
+
+            ComfyUIMovieVisualAdapter(
+                client=object(),
+                workflow_path=workflow_path,
+                render_queue=queue,
+                asset_uploader=NativeAudioAssetUploader(),
+                postprocessor=postprocessor,
+            ).render_movie(project_dir=temp, render_plan_path=render_plan_path, concat_only=True)
+
+            self.assertEqual([], queue.calls)
+            self.assertEqual([scene_1, scene_2], postprocessor.concat_lists[0][0])
+
+    def test_comfyui_movie_adapter_concat_only_fails_when_scene_clip_is_missing(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "movie_msr.json"
+            workflow_path.write_text(json.dumps(_movie_msr_workflow()), encoding="utf-8")
+            render_plan_path = temp / "movie" / "render_plan.json"
+            render_plan_path.parent.mkdir()
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Door Below",
+                    "resolution": {"width": 1280, "height": 704},
+                    "shots": [_movie_shot(temp)],
+                }),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "missing rendered movie scene clip"):
+                ComfyUIMovieVisualAdapter(
+                    client=object(),
+                    workflow_path=workflow_path,
+                    render_queue=FakeMovieRenderQueue(),
+                    asset_uploader=NativeAudioAssetUploader(),
+                    postprocessor=FakeMoviePostprocessor(),
+                ).render_movie(project_dir=temp, render_plan_path=render_plan_path, concat_only=True)
+
     def test_movie_job_uses_comfyui_adapter_when_configured(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
         from feverslop.studio.job_service import build_movie_visual_adapter

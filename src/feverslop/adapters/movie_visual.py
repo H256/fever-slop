@@ -18,6 +18,7 @@ class LocalMovieVisualAdapter:
         project_dir: Path,
         render_plan_path: Path,
         selected_scenes: list[int] | None = None,
+        concat_only: bool = False,
         on_clip_rendered: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         output_dir = project_dir / "output" / "movie"
@@ -60,6 +61,7 @@ class ComfyUIMovieVisualAdapter:
         project_dir: Path,
         render_plan_path: Path,
         selected_scenes: list[int] | None = None,
+        concat_only: bool = False,
         on_clip_rendered: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         project_dir = Path(project_dir)
@@ -91,7 +93,9 @@ class ComfyUIMovieVisualAdapter:
         for scene in scenes:
             scene_number = int(scene["scene"])
             clip_path = output_dir / f"scene_{scene_number:04}.mp4"
-            should_render = not selected or scene_number in selected or not clip_path.exists()
+            if concat_only and not clip_path.exists():
+                raise ValueError(f"Cannot build final movie; missing rendered movie scene clip: {clip_path}")
+            should_render = not concat_only and (not selected or scene_number in selected or not clip_path.exists())
             if should_render:
                 clip_path = backend.render_video(
                     VideoRenderRequest(

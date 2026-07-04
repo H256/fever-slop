@@ -79,6 +79,7 @@ class StudioJobService:
                 FullAutoAction(store, full_auto_handler),
                 MovieReferencesAction(store),
                 MovieRenderAction(store),
+                MovieFinalConcatAction(store),
                 MovieFullAutoAction(store),
             ],
             PipelineAction(store, pipeline_handler),
@@ -259,6 +260,28 @@ class MovieRenderAction:
         return record_pipeline_state(self.store, project_id, self.action, handler)
 
 
+class MovieFinalConcatAction:
+    action = "movie-final-concat"
+
+    def __init__(self, store: ProjectStore):
+        self.store = store
+
+    def build(self, project_id: str, request: StudioJobRequest, metadata: dict[str, Any]) -> JobHandler:
+        if metadata.get("project_type") != "movie":
+            raise ValueError("movie-final-concat jobs require a movie project")
+        render_plan_msr_path = self.store.resolve_project_path(project_id, "movie/render_plan_msr.json")
+        if not render_plan_msr_path.exists():
+            raise ValueError("movie-final-concat requires movie/render_plan_msr.json; run Movie MSR enrichment first")
+        handler = build_movie_render_handler(
+            store=self.store,
+            project_id=project_id,
+            render_plan_path=render_plan_msr_path,
+            movie_config=movie_config_from_metadata(metadata),
+            concat_only=True,
+        )
+        return record_pipeline_state(self.store, project_id, self.action, handler)
+
+
 class PipelineAction:
     action = "*"
 
@@ -389,6 +412,7 @@ def build_movie_render_handler(
     render_plan_path: Path,
     movie_config: dict[str, Any] | None = None,
     selected_scenes: list[int] | None = None,
+    concat_only: bool = False,
 ) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
         project_dir = store.resolve_project_path(project_id, ".").resolve()
@@ -396,11 +420,15 @@ def build_movie_render_handler(
         log(f"[MoviePipeline] Stage: Existing Movie MSR plan: {render_plan_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
         log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
-        log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
+        if concat_only:
+            log("[MoviePipeline] Stage: Final movie concat from existing scene clips")
+        else:
+            log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
         final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_path,
             selected_scenes=selected_scenes,
+            concat_only=concat_only,
             on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered clip {completed}/{total}: scene {scene_number}"),
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")

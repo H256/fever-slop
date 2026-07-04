@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
-import { Download, Film } from "lucide-vue-next";
+import { computed, onMounted, ref } from "vue";
+import { Download, Film, Wrench } from "lucide-vue-next";
 import { useRoute } from "vue-router";
 import { mediaUrl } from "../api";
 import { useStudioStore } from "../stores/studio";
@@ -11,6 +11,8 @@ const projectId = computed(() => String(route.params.projectId));
 const videos = computed(() => studio.currentProject?.artifacts.videos ?? []);
 const finalVideo = computed(() => pickFinalVideo(videos.value));
 const finalVideoUrl = computed(() => (finalVideo.value ? mediaUrl(projectId.value, finalVideo.value) : ""));
+const isMovieProject = computed(() => studio.currentProject?.project_type === "movie");
+const startingConcat = ref(false);
 
 onMounted(() => studio.loadProject(projectId.value));
 
@@ -27,6 +29,16 @@ function scoreVideo(path: string): number {
   if (!/scene_\d+\.mp4$/i.test(path)) score += 10;
   return score;
 }
+
+async function buildFinalMovie() {
+  startingConcat.value = true;
+  try {
+    await studio.startJob(projectId.value, "movie-final-concat");
+    await studio.loadJobs(projectId.value);
+  } finally {
+    startingConcat.value = false;
+  }
+}
 </script>
 
 <template>
@@ -36,9 +48,14 @@ function scoreVideo(path: string): number {
         <h1>Final Video</h1>
         <p>Preview and download the final rendered video for this project.</p>
       </div>
-      <a v-if="finalVideo" class="button" :href="finalVideoUrl" download>
-        <Download :size="18" /> Download
-      </a>
+      <div class="button-row">
+        <button v-if="isMovieProject" class="button secondary" :disabled="startingConcat" @click="buildFinalMovie">
+          <Wrench :size="18" /> {{ startingConcat ? "Starting..." : "Build final movie" }}
+        </button>
+        <a v-if="finalVideo" class="button" :href="finalVideoUrl" download>
+          <Download :size="18" /> Download
+        </a>
+      </div>
     </header>
 
     <section v-if="!finalVideo" class="panel empty">
