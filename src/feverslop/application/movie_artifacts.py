@@ -2,24 +2,60 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from dataclasses import dataclass
 
 from feverslop.application.movie import (
-    build_movie_narrative_plan_fallback,
+    MovieInput,
     build_movie_actor_reference_prompt,
     build_movie_continuity_fallback,
+    movie_bible_from_dict,
+    movie_continuity_plan_to_dict,
+)
+from feverslop.application.movie_memory import (
+    build_movie_narrative_plan_fallback,
     build_movie_scene_cards,
     build_movie_screenplay_fallback,
     build_movie_shot_cards,
-    movie_bible_from_dict,
-    movie_continuity_plan_to_dict,
     movie_narrative_plan_to_dict,
+    movie_scene_cards_from_dict,
     movie_scene_cards_to_dict,
+    movie_screenplay_from_dict,
     movie_screenplay_to_dict,
     movie_screenplay_to_markdown,
     movie_shot_cards_to_dict,
 )
 from feverslop.domain.movie import CinematicShot
-from feverslop.application.movie import MovieInput
+
+
+@dataclass(frozen=True)
+class MoviePlanningArtifacts:
+    bible_path: Path
+    screenplay_path: Path
+    narrative_plan_path: Path
+    scene_cards_path: Path
+    shot_cards_path: Path
+    continuity_plan_path: Path
+    render_plan_path: Path
+
+
+def ensure_movie_planning_artifacts(project_dir: Path, *, force_screenplay: bool = False) -> MoviePlanningArtifacts:
+    project_dir = Path(project_dir)
+    bible_path = ensure_movie_bible(project_dir)
+    render_plan_path = ensure_movie_render_plan_matches_bible(project_dir)
+    screenplay_path = ensure_movie_screenplay(project_dir, force=force_screenplay)
+    narrative_plan_path = ensure_movie_narrative_plan(project_dir)
+    scene_cards_path = ensure_movie_scene_cards(project_dir)
+    shot_cards_path = ensure_movie_shot_cards(project_dir)
+    continuity_plan_path = ensure_movie_continuity_plan(project_dir)
+    return MoviePlanningArtifacts(
+        bible_path=bible_path,
+        screenplay_path=screenplay_path,
+        narrative_plan_path=narrative_plan_path,
+        scene_cards_path=scene_cards_path,
+        shot_cards_path=shot_cards_path,
+        continuity_plan_path=continuity_plan_path,
+        render_plan_path=render_plan_path,
+    )
 
 
 def ensure_movie_bible(project_dir: Path) -> Path:
@@ -73,8 +109,6 @@ def ensure_movie_narrative_plan(project_dir: Path) -> Path:
     path = project_dir / "movie" / "narrative_plan.json"
     if path.exists():
         return path
-    from feverslop.application.movie import movie_screenplay_from_dict
-
     bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
     screenplay = movie_screenplay_from_dict(_read_json(ensure_movie_screenplay(project_dir)), fallback_title=project_dir.name, source_type="short_story", bible=bible)
     narrative = build_movie_narrative_plan_fallback(screenplay=screenplay)
@@ -87,8 +121,6 @@ def ensure_movie_scene_cards(project_dir: Path) -> Path:
     path = project_dir / "movie" / "scene_cards.json"
     if path.exists():
         return path
-    from feverslop.application.movie import movie_screenplay_from_dict
-
     bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
     screenplay = movie_screenplay_from_dict(_read_json(ensure_movie_screenplay(project_dir)), fallback_title=project_dir.name, source_type="short_story", bible=bible)
     shots = _shots_from_project_render_plan(project_dir)
@@ -102,24 +134,8 @@ def ensure_movie_shot_cards(project_dir: Path) -> Path:
     path = project_dir / "movie" / "shot_cards.json"
     if path.exists():
         return path
-    from feverslop.application.movie import MovieSceneCard
-
     scene_cards_path = ensure_movie_scene_cards(project_dir)
-    raw_cards = _read_json(scene_cards_path).get("scene_cards") or []
-    scene_cards = tuple(
-        MovieSceneCard(
-            scene_id=str(card.get("scene_id") or ""),
-            shot_ids=tuple(str(shot_id) for shot_id in card.get("shot_ids") or []),
-            dramatic_purpose=str(card.get("dramatic_purpose") or ""),
-            story_state_before=str(card.get("story_state_before") or ""),
-            story_state_after=str(card.get("story_state_after") or ""),
-            active_actor_ids=tuple(str(actor_id) for actor_id in card.get("active_actor_ids") or []),
-            location_id=str(card.get("location_id") or ""),
-            dialogue=str(card.get("dialogue") or ""),
-        )
-        for card in raw_cards
-        if isinstance(card, dict)
-    )
+    scene_cards = movie_scene_cards_from_dict(_read_json(scene_cards_path))
     cards = build_movie_shot_cards(shots=_shots_from_project_render_plan(project_dir), scene_cards=scene_cards)
     path.write_text(json.dumps(movie_shot_cards_to_dict(cards), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path

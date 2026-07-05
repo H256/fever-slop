@@ -12,6 +12,7 @@ from feverslop.application.movie_artifacts import (
     ensure_movie_bible as ensure_movie_bible_artifact,
     ensure_movie_continuity_plan as ensure_movie_continuity_plan_artifact,
     ensure_movie_narrative_plan as ensure_movie_narrative_plan_artifact,
+    ensure_movie_planning_artifacts,
     ensure_movie_render_plan_matches_bible as ensure_movie_render_plan_matches_bible_artifact,
     ensure_movie_scene_cards as ensure_movie_scene_cards_artifact,
     ensure_movie_screenplay as ensure_movie_screenplay_artifact,
@@ -93,35 +94,54 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     continuity_plan_path = project_dir / "movie" / "continuity_plan.json"
     render_plan_msr_path = project_dir / "movie" / "render_plan_msr.json"
 
-    if not args.skip_movie_bible:
-        bible_path = ensure_movie_bible_artifact(project_dir)
-    elif not bible_path.exists():
-        raise FileNotFoundError(f"Movie bible not found: {bible_path}")
-
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
-    if not args.skip_movie_screenplay:
-        screenplay_path = ensure_movie_screenplay_artifact(project_dir, force=args.force_movie_screenplay)
-    elif not screenplay_path.exists():
-        raise FileNotFoundError(f"Movie screenplay not found: {screenplay_path}")
-    if not args.skip_movie_narrative:
-        narrative_plan_path = ensure_movie_narrative_plan_artifact(project_dir)
-    elif not narrative_plan_path.exists():
-        raise FileNotFoundError(f"Movie narrative plan not found: {narrative_plan_path}")
-    if not args.skip_movie_scene_cards:
-        scene_cards_path = ensure_movie_scene_cards_artifact(project_dir)
-    elif not scene_cards_path.exists():
-        raise FileNotFoundError(f"Movie scene cards not found: {scene_cards_path}")
-    if not args.skip_movie_shot_cards:
-        shot_cards_path = ensure_movie_shot_cards_artifact(project_dir)
-    elif not shot_cards_path.exists():
-        raise FileNotFoundError(f"Movie shot cards not found: {shot_cards_path}")
-    if not args.skip_movie_continuity:
-        continuity_plan_path = ensure_movie_continuity_plan_artifact(project_dir)
-    elif not continuity_plan_path.exists():
-        raise FileNotFoundError(f"Movie continuity plan not found: {continuity_plan_path}")
-    if not args.skip_movie_plan:
-        ensure_movie_render_plan_matches_bible_artifact(project_dir)
+    if any(
+        (
+            args.skip_movie_bible,
+            args.skip_movie_screenplay,
+            args.skip_movie_narrative,
+            args.skip_movie_scene_cards,
+            args.skip_movie_shot_cards,
+            args.skip_movie_continuity,
+            args.skip_movie_plan,
+        )
+    ):
+        if not args.skip_movie_bible:
+            bible_path = ensure_movie_bible_artifact(project_dir)
+        elif not bible_path.exists():
+            raise FileNotFoundError(f"Movie bible not found: {bible_path}")
+        if not args.skip_movie_screenplay:
+            screenplay_path = ensure_movie_screenplay_artifact(project_dir, force=args.force_movie_screenplay)
+        elif not screenplay_path.exists():
+            raise FileNotFoundError(f"Movie screenplay not found: {screenplay_path}")
+        if not args.skip_movie_narrative:
+            narrative_plan_path = ensure_movie_narrative_plan_artifact(project_dir)
+        elif not narrative_plan_path.exists():
+            raise FileNotFoundError(f"Movie narrative plan not found: {narrative_plan_path}")
+        if not args.skip_movie_scene_cards:
+            scene_cards_path = ensure_movie_scene_cards_artifact(project_dir)
+        elif not scene_cards_path.exists():
+            raise FileNotFoundError(f"Movie scene cards not found: {scene_cards_path}")
+        if not args.skip_movie_shot_cards:
+            shot_cards_path = ensure_movie_shot_cards_artifact(project_dir)
+        elif not shot_cards_path.exists():
+            raise FileNotFoundError(f"Movie shot cards not found: {shot_cards_path}")
+        if not args.skip_movie_continuity:
+            continuity_plan_path = ensure_movie_continuity_plan_artifact(project_dir)
+        elif not continuity_plan_path.exists():
+            raise FileNotFoundError(f"Movie continuity plan not found: {continuity_plan_path}")
+        if not args.skip_movie_plan:
+            ensure_movie_render_plan_matches_bible_artifact(project_dir)
+    else:
+        planning = ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay)
+        bible_path = planning.bible_path
+        screenplay_path = planning.screenplay_path
+        narrative_plan_path = planning.narrative_plan_path
+        scene_cards_path = planning.scene_cards_path
+        shot_cards_path = planning.shot_cards_path
+        continuity_plan_path = planning.continuity_plan_path
+        render_plan_path = planning.render_plan_path
     if not manifest_path.exists():
         if args.skip_movie_references:
             raise FileNotFoundError(f"Movie reference manifest not found: {manifest_path}")

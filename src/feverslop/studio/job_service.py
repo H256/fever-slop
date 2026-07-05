@@ -18,7 +18,10 @@ from feverslop.studio.jobs import (
     run_with_stream_logging,
 )
 from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
-from feverslop.application.movie_artifacts import ensure_movie_bible, ensure_movie_continuity_plan, write_movie_reference_manifest_from_bible
+from feverslop.application.movie_artifacts import (
+    ensure_movie_planning_artifacts,
+    write_movie_reference_manifest_from_bible,
+)
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.studio.logging import render_log_lines
 from feverslop.studio.projects import ProjectStore
@@ -381,24 +384,27 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
 def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, render_plan_path: Path, movie_config: dict[str, Any] | None = None) -> JobHandler:
     def run(log: Callable[[str], None]) -> Any:
         project_dir = store.resolve_project_path(project_id, ".").resolve()
-        bible_path = ensure_movie_bible(project_dir)
-        log(f"[MoviePipeline] Stage: Movie Bible Ready: {bible_path}")
-        continuity_plan_path = ensure_movie_continuity_plan(project_dir)
-        log(f"[MoviePipeline] Stage: Movie Continuity Ready: {continuity_plan_path}")
-        log("[MoviePipeline] Stage: Render Plan Ready")
+        planning = ensure_movie_planning_artifacts(project_dir)
+        log(f"[MoviePipeline] Stage: Movie Bible Ready: {planning.bible_path}")
+        log(f"[MoviePipeline] Stage: Movie Screenplay Ready: {planning.screenplay_path}")
+        log(f"[MoviePipeline] Stage: Movie Narrative Ready: {planning.narrative_plan_path}")
+        log(f"[MoviePipeline] Stage: Movie Scene Cards Ready: {planning.scene_cards_path}")
+        log(f"[MoviePipeline] Stage: Movie Shot Cards Ready: {planning.shot_cards_path}")
+        log(f"[MoviePipeline] Stage: Movie Continuity Ready: {planning.continuity_plan_path}")
+        log(f"[MoviePipeline] Stage: Render Plan Ready: {planning.render_plan_path}")
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Planner backend: {config['planner_backend']}")
         log(f"[Krea2_Adapter] Preparing visual consistency references via {config['reference_backend']}")
         manifest_path = ensure_movie_references(project_dir, movie_config=config)
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
-        render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir)
+        render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=config["keyframe_mode"])
         log(f"[MoviePipeline] Stage: Movie MSR Prompt Enrichment Ready: {render_plan_msr_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
         log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
         log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
         final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
             project_dir=project_dir,
-            render_plan_path=render_plan_msr_path if render_plan_msr_path.exists() else render_plan_path,
+            render_plan_path=render_plan_msr_path if render_plan_msr_path.exists() else planning.render_plan_path,
             on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered clip {completed}/{total}: scene {scene_number}"),
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
@@ -442,8 +448,7 @@ def build_movie_render_handler(
 def ensure_movie_references(project_dir: Path, *, movie_config: dict[str, Any] | None = None) -> Path:
     config = movie_runtime_config(movie_config)
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
-    ensure_movie_bible(project_dir)
-    ensure_movie_continuity_plan(project_dir)
+    ensure_movie_planning_artifacts(project_dir)
     write_movie_reference_manifest_from_bible(project_dir)
     if movie_references_ready(manifest_path, backend=config["reference_backend"]):
         return manifest_path
@@ -471,8 +476,7 @@ def build_movie_references_handler(*, store: ProjectStore, project_id: str, movi
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Stage: Movie references via {config['reference_backend']}")
-        ensure_movie_bible(project_dir)
-        ensure_movie_continuity_plan(project_dir)
+        ensure_movie_planning_artifacts(project_dir)
         write_movie_reference_manifest_from_bible(project_dir)
         manifest_path = mark_movie_reference_backend(
             build_movie_reference_generator(movie_config=config).generate(project_dir=project_dir),
