@@ -6,6 +6,7 @@ from dataclasses import replace
 from math import ceil
 
 from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+from feverslop.domain.screenplay import HEADING_RE, parse_screenplay, split_screenplay_dialogue
 
 
 class LLMMoviePlanner:
@@ -407,27 +408,8 @@ def _split_beats(text: str) -> list[str]:
     return parts[:12] or [text]
 
 
-_HEADING_RE = re.compile(r"^(INT\.|EXT\.|INT/EXT\.)\s+(.+)$", re.IGNORECASE)
-
-
 def _split_screenplay_beats(text: str) -> list[str]:
-    beats: list[str] = []
-    heading = ""
-    body: list[str] = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        match = _HEADING_RE.match(line)
-        if match:
-            if heading:
-                beats.append("\n".join([heading, *body]))
-            heading = f"{match.group(1).upper()} {match.group(2).strip()}"
-            body = []
-        elif heading:
-            body.append(line)
-    if heading:
-        beats.append("\n".join([heading, *body]))
+    beats = ["\n".join([scene.heading, *scene.body]) for scene in parse_screenplay(text)]
     return beats or _split_beats(" ".join(text.strip().split()))
 
 
@@ -435,38 +417,23 @@ def _parse_screenplay_beat(beat: str) -> dict[str, str] | None:
     lines = [line.strip() for line in beat.splitlines() if line.strip()]
     if not lines:
         return None
-    heading = _HEADING_RE.match(lines[0])
+    heading = HEADING_RE.match(lines[0])
     if heading is None:
         return None
 
     kind = heading.group(1).upper()
     location = heading.group(2).strip()
-    dialogue: list[str] = []
-    actions: list[str] = []
-    index = 1
-    while index < len(lines):
-        line = lines[index]
-        if _is_character_cue(line) and index + 1 < len(lines):
-            dialogue.append(f"{line}: {lines[index + 1]}")
-            index += 2
-            continue
-        actions.append(line)
-        index += 1
+    dialogue_text, actions = split_screenplay_dialogue(lines[1:])
 
     action = " ".join(actions).strip()
     camera = "controlled interior dolly with motivated cinematic framing" if kind.startswith("INT") else "wide exterior establishing move with cinematic depth"
     return {
         "location": location,
-        "dialogue": " ".join(dialogue),
+        "dialogue": dialogue_text,
         "action": action,
         "camera": camera,
-        "expression": "emotion and facial acting follow the dialogue beats" if dialogue else "subtle emotionally grounded acting",
+        "expression": "emotion and facial acting follow the dialogue beats" if dialogue_text else "subtle emotionally grounded acting",
     }
-
-
-def _is_character_cue(line: str) -> bool:
-    words = line.split()
-    return bool(words) and len(words) <= 4 and line.upper() == line and not _HEADING_RE.match(line)
 
 
 def _story_arch_prompt(*, title: str, source_type: str, story_text: str, desired_length: float) -> str:

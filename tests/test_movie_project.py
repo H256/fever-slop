@@ -1204,6 +1204,85 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("MARA: We go below before sunrise.", first["dialogue"])
             self.assertIn("interior", first["camera"].lower())
 
+    def test_screenplay_scaffold_accepts_markdown_scene_headings_and_parentheticals(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        screenplay = """
+        **TITLE: THE MUD AND THE SILENCE**
+
+        **SCENE 1**
+        **EXT. SOMME VALLEY - DAY (1916)**
+
+        Grey mist and churned earth fill the valley.
+
+        **SCENE 2**
+        **INT. TRENCH LINE - CONTINUOUS**
+
+        HANS (22, eyes hollow) leans against a muddy wall. KARL cleans a rifle.
+
+        KARL
+        (whispering)
+        *Ich kann den Boden nicht mehr spüren. Es ist nur noch Matsch.*
+        (I can't feel the ground anymore. It's just mud.)
+
+        HANS
+        *Halt den Mund, Karl. Die Stille ist gefährlicher als der Lärm.*
+        (Shut up, Karl. The silence is more dangerous than the noise.)
+        """
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = ScaffoldMovieUseCase(
+                planner=DeterministicMoviePlanner(),
+                projects_root=Path(temp_dir),
+            ).execute(
+                MovieInput(
+                    name="Mud Silence",
+                    source_type="screenplay",
+                    story_text=screenplay,
+                    desired_length=20,
+                    mode="scaffold",
+                    config={"dialogue_language": "german"},
+                )
+            )
+
+            screenplay_artifact = json.loads(result.screenplay_path.read_text(encoding="utf-8"))
+            render_plan = json.loads(result.render_plan_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(2, len(screenplay_artifact["scenes"]))
+            self.assertEqual("EXT. SOMME VALLEY - DAY (1916)", screenplay_artifact["scenes"][0]["heading"])
+            self.assertEqual("INT. TRENCH LINE - CONTINUOUS", screenplay_artifact["scenes"][1]["heading"])
+            self.assertIn("KARL: Ich kann den Boden nicht mehr spüren. Es ist nur noch Matsch.", screenplay_artifact["scenes"][1]["dialogue"])
+            self.assertIn("HANS: Halt den Mund, Karl. Die Stille ist gefährlicher als der Lärm.", screenplay_artifact["scenes"][1]["dialogue"])
+            self.assertNotIn("whispering", screenplay_artifact["scenes"][1]["dialogue"])
+            self.assertNotIn("I can't feel the ground", screenplay_artifact["scenes"][1]["dialogue"])
+            self.assertEqual("TRENCH LINE - CONTINUOUS", render_plan["shots"][1]["location"])
+            self.assertIn("Ich kann den Boden nicht mehr spüren", render_plan["shots"][1]["dialogue"])
+
+    def test_short_story_scaffold_still_generates_screenplay_from_unformatted_idea(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = ScaffoldMovieUseCase(
+                planner=DeterministicMoviePlanner(),
+                projects_root=Path(temp_dir),
+            ).execute(
+                MovieInput(
+                    name="Unformatted Idea",
+                    source_type="short_story",
+                    story_text="A deserter follows a broken compass through a silent battlefield and finds a buried radio.",
+                    desired_length=24,
+                    mode="scaffold",
+                )
+            )
+
+            screenplay_artifact = json.loads(result.screenplay_path.read_text(encoding="utf-8"))
+
+            self.assertEqual("short_story", screenplay_artifact["source_type"])
+            self.assertGreaterEqual(len(screenplay_artifact["scenes"]), 1)
+            self.assertIn("deserter", screenplay_artifact["scenes"][0]["action"].lower())
+
     def test_screenplay_scaffold_seeds_reference_manifest_from_screenplay_cues(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner

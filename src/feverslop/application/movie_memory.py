@@ -4,6 +4,11 @@ import re
 from dataclasses import asdict
 from typing import Any
 
+from feverslop.domain.screenplay import (
+    is_screenplay_character_cue,
+    parse_screenplay,
+    split_screenplay_dialogue,
+)
 from feverslop.domain.movie import (
     CinematicShot,
     MovieBible,
@@ -13,8 +18,6 @@ from feverslop.domain.movie import (
     MovieScreenplayScene,
     MovieShotCard,
 )
-
-_SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
 
 
 def generate_movie_screenplay(*, planner, request: Any, bible: MovieBible, story_arch, config: dict, source_text: str) -> MovieScreenplayArtifact:
@@ -237,43 +240,28 @@ def movie_shot_cards_to_dict(cards: tuple[MovieShotCard, ...]) -> dict:
 
 
 def _screenplay_scenes_from_text(text: str, *, bible: MovieBible) -> tuple[MovieScreenplayScene, ...]:
-    scenes: list[MovieScreenplayScene] = []
-    heading = ""
-    body: list[str] = []
-    start_line = 1
-    lines = text.splitlines()
-    for line_number, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
-        if not line:
-            continue
-        if _SCREENPLAY_HEADING_RE.match(line):
-            if heading:
-                scenes.append(_screenplay_scene_from_parts(len(scenes) + 1, heading, body, start_line=start_line, end_line=line_number - 1, bible=bible))
-            heading = line
-            body = []
-            start_line = line_number
-        elif heading:
-            body.append(line)
-    if heading:
-        scenes.append(_screenplay_scene_from_parts(len(scenes) + 1, heading, body, start_line=start_line, end_line=len(lines), bible=bible))
+    scenes = [
+        _screenplay_scene_from_parsed(index, scene, bible=bible)
+        for index, scene in enumerate(parse_screenplay(text), start=1)
+    ]
     return tuple(scenes) or _screenplay_scenes_from_beats((text,), bible=bible)
 
 
-def _screenplay_scene_from_parts(index: int, heading: str, body: list[str], *, start_line: int, end_line: int, bible: MovieBible) -> MovieScreenplayScene:
-    dialogue, actions = _split_screenplay_dialogue(body)
-    action = " ".join(actions).strip()
+def _screenplay_scene_from_parsed(index: int, scene, *, bible: MovieBible) -> MovieScreenplayScene:
+    action = scene.action
+    dialogue = scene.dialogue
     actor_ids = tuple(_valid_actor_ids(_dialogue_actor_ids(dialogue), bible)) or _default_bible_actor_ids(bible)
-    location_id = _location_id_from_heading(heading, bible)
-    summary = action or dialogue or heading
+    location_id = _location_id_from_heading(scene.heading, bible)
+    summary = action or dialogue or scene.heading
     return MovieScreenplayScene(
         scene_id=f"scene_{index:04}",
-        heading=heading,
+        heading=scene.heading,
         summary=summary,
         action=action,
         dialogue=dialogue,
         actor_ids=actor_ids,
         location_id=location_id,
-        source_span=f"lines:{start_line}-{end_line}",
+        source_span=f"lines:{scene.start_line}-{scene.end_line}",
     )
 
 
@@ -296,26 +284,11 @@ def _screenplay_scenes_from_beats(beats: tuple[str, ...], *, bible: MovieBible) 
 
 
 def _split_screenplay_dialogue(lines: list[str]) -> tuple[str, list[str]]:
-    dialogue: list[str] = []
-    actions: list[str] = []
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        if _is_screenplay_character_cue(line) and index + 1 < len(lines):
-            dialogue.append(f"{line}: {lines[index + 1]}")
-            index += 2
-            continue
-        if ":" in line and line.split(":", 1)[0].strip().isupper():
-            dialogue.append(line)
-        else:
-            actions.append(line)
-        index += 1
-    return " ".join(dialogue).strip(), actions
+    return split_screenplay_dialogue(lines)
 
 
 def _is_screenplay_character_cue(line: str) -> bool:
-    words = line.split()
-    return bool(words) and len(words) <= 4 and line.upper() == line and not _SCREENPLAY_HEADING_RE.match(line)
+    return is_screenplay_character_cue(line)
 
 
 def _dialogue_actor_ids(dialogue: str) -> list[str]:

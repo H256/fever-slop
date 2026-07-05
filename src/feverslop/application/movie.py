@@ -21,6 +21,7 @@ from feverslop.domain.movie import (
     MovieSceneContinuityPacket,
     MovieShotCard,
 )
+from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.application.movie_memory import (
     build_movie_scene_cards,
     build_movie_shot_cards,
@@ -242,8 +243,7 @@ def validate_movie_input(request: MovieInput) -> None:
 
 
 def _looks_like_screenplay(text: str) -> bool:
-    upper = text.upper()
-    return "INT." in upper or "EXT." in upper
+    return looks_like_screenplay(text)
 
 
 

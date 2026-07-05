@@ -178,7 +178,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
             render_plan_path=render_plan_msr_path,
             workflow_path=Path(config["msr_workflow"]),
             workflow=workflow,
-            output_dir=coerce_local_path(args.debug_workflows_dir, base_dir=project_dir)
+            output_dir=coerce_local_path(args.debug_workflows_dir).resolve()
             if args.debug_workflows_dir
             else project_dir / "output" / "movie" / "ltx_msr_debug",
         )

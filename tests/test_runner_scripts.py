@@ -263,6 +263,33 @@ class RunnerScriptTests(unittest.TestCase):
             self.assertEqual("hero.png", location_node["inputs"]["image"])
             self.assertIn("Mara enters the archive", relay_node["inputs"]["local_prompts"])
 
+    def test_movie_pipeline_debug_workflows_relative_dir_uses_cwd(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            project = _write_movie_project(root, ready=True)
+            debug_dir = root.relative_to(Path.cwd()) / "debug_workflows"
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-references",
+                        "--write-debug-workflows",
+                        "--debug-workflows-dir",
+                        str(debug_dir),
+                        "--skip-movie-render",
+                    ]
+                )
+            )
+
+            self.assertEqual(root / "debug_workflows", result.debug_workflows_dir)
+            self.assertTrue((root / "debug_workflows" / "scene_0001_workflow.json").exists())
+            self.assertFalse((project / "debug_workflows" / "scene_0001_workflow.json").exists())
+
 
 def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
     project = root / "test-movie"
