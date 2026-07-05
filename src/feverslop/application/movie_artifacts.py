@@ -4,12 +4,22 @@ import json
 from pathlib import Path
 
 from feverslop.application.movie import (
+    build_movie_narrative_plan_fallback,
     build_movie_actor_reference_prompt,
     build_movie_continuity_fallback,
+    build_movie_scene_cards,
+    build_movie_screenplay_fallback,
+    build_movie_shot_cards,
     movie_bible_from_dict,
     movie_continuity_plan_to_dict,
+    movie_narrative_plan_to_dict,
+    movie_scene_cards_to_dict,
+    movie_screenplay_to_dict,
+    movie_screenplay_to_markdown,
+    movie_shot_cards_to_dict,
 )
 from feverslop.domain.movie import CinematicShot
+from feverslop.application.movie import MovieInput
 
 
 def ensure_movie_bible(project_dir: Path) -> Path:
@@ -35,6 +45,86 @@ def ensure_movie_render_plan_matches_bible(project_dir: Path) -> Path:
     return render_plan_path
 
 
+def ensure_movie_screenplay(project_dir: Path, *, force: bool = False) -> Path:
+    project_dir = Path(project_dir)
+    screenplay_path = project_dir / "movie" / "screenplay.json"
+    if screenplay_path.exists() and not force:
+        return screenplay_path
+    bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
+    render_plan = _read_json(project_dir / "movie" / "render_plan.json")
+    source_type, story_text, desired_length = _movie_source_metadata(project_dir, render_plan)
+    request = MovieInput(
+        name=str(render_plan.get("title") or project_dir.name),
+        source_type=source_type,
+        story_text=story_text,
+        desired_length=desired_length,
+        width=int((render_plan.get("resolution") or {}).get("width") or 1280),
+        height=int((render_plan.get("resolution") or {}).get("height") or 704),
+        config=_read_json(project_dir / "config.json") if (project_dir / "config.json").exists() else {},
+    )
+    screenplay = build_movie_screenplay_fallback(request=request, bible=bible, story_arch=bible.story_arch, config=request.config)
+    screenplay_path.write_text(json.dumps(movie_screenplay_to_dict(screenplay), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (project_dir / "movie" / "screenplay.md").write_text(movie_screenplay_to_markdown(screenplay), encoding="utf-8")
+    return screenplay_path
+
+
+def ensure_movie_narrative_plan(project_dir: Path) -> Path:
+    project_dir = Path(project_dir)
+    path = project_dir / "movie" / "narrative_plan.json"
+    if path.exists():
+        return path
+    from feverslop.application.movie import movie_screenplay_from_dict
+
+    bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
+    screenplay = movie_screenplay_from_dict(_read_json(ensure_movie_screenplay(project_dir)), fallback_title=project_dir.name, source_type="short_story", bible=bible)
+    narrative = build_movie_narrative_plan_fallback(screenplay=screenplay)
+    path.write_text(json.dumps(movie_narrative_plan_to_dict(narrative), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def ensure_movie_scene_cards(project_dir: Path) -> Path:
+    project_dir = Path(project_dir)
+    path = project_dir / "movie" / "scene_cards.json"
+    if path.exists():
+        return path
+    from feverslop.application.movie import movie_screenplay_from_dict
+
+    bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
+    screenplay = movie_screenplay_from_dict(_read_json(ensure_movie_screenplay(project_dir)), fallback_title=project_dir.name, source_type="short_story", bible=bible)
+    shots = _shots_from_project_render_plan(project_dir)
+    cards = build_movie_scene_cards(screenplay=screenplay, shots=shots)
+    path.write_text(json.dumps(movie_scene_cards_to_dict(cards), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def ensure_movie_shot_cards(project_dir: Path) -> Path:
+    project_dir = Path(project_dir)
+    path = project_dir / "movie" / "shot_cards.json"
+    if path.exists():
+        return path
+    from feverslop.application.movie import MovieSceneCard
+
+    scene_cards_path = ensure_movie_scene_cards(project_dir)
+    raw_cards = _read_json(scene_cards_path).get("scene_cards") or []
+    scene_cards = tuple(
+        MovieSceneCard(
+            scene_id=str(card.get("scene_id") or ""),
+            shot_ids=tuple(str(shot_id) for shot_id in card.get("shot_ids") or []),
+            dramatic_purpose=str(card.get("dramatic_purpose") or ""),
+            story_state_before=str(card.get("story_state_before") or ""),
+            story_state_after=str(card.get("story_state_after") or ""),
+            active_actor_ids=tuple(str(actor_id) for actor_id in card.get("active_actor_ids") or []),
+            location_id=str(card.get("location_id") or ""),
+            dialogue=str(card.get("dialogue") or ""),
+        )
+        for card in raw_cards
+        if isinstance(card, dict)
+    )
+    cards = build_movie_shot_cards(shots=_shots_from_project_render_plan(project_dir), scene_cards=scene_cards)
+    path.write_text(json.dumps(movie_shot_cards_to_dict(cards), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
 def ensure_movie_continuity_plan(project_dir: Path) -> Path:
     project_dir = Path(project_dir)
     continuity_path = project_dir / "movie" / "continuity_plan.json"
@@ -50,6 +140,26 @@ def ensure_movie_continuity_plan(project_dir: Path) -> Path:
     continuity = build_movie_continuity_fallback(bible=bible, shots=shots)
     continuity_path.write_text(json.dumps(movie_continuity_plan_to_dict(continuity), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return continuity_path
+
+
+def _shots_from_project_render_plan(project_dir: Path) -> tuple[CinematicShot, ...]:
+    render_plan = _read_json(Path(project_dir) / "movie" / "render_plan.json")
+    return tuple(_shot_from_render_plan(item, index) for index, item in enumerate(render_plan.get("shots") or [], start=1) if isinstance(item, dict))
+
+
+def _movie_source_metadata(project_dir: Path, render_plan: dict) -> tuple[str, str, float]:
+    metadata_path = project_dir / ".studio" / "project.json"
+    if metadata_path.exists():
+        metadata = _read_json(metadata_path)
+        movie = metadata.get("movie") if isinstance(metadata.get("movie"), dict) else {}
+        source_type = str(movie.get("source_type") or "short_story")
+        story_text = str(movie.get("story_text") or "").strip()
+        desired_length = float(movie.get("desired_length") or render_plan.get("duration_seconds") or 1)
+        if story_text:
+            return source_type, story_text, desired_length
+    shots = render_plan.get("shots") or []
+    story_text = "\n".join(str(shot.get("description") or shot.get("action") or "") for shot in shots if isinstance(shot, dict)).strip()
+    return "short_story", story_text or str(render_plan.get("title") or project_dir.name), float(render_plan.get("duration_seconds") or len(shots) or 1)
 
 
 def write_movie_reference_manifest_from_bible(project_dir: Path) -> Path:

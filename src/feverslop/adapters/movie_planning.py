@@ -40,6 +40,20 @@ class LLMMoviePlanner:
         )
         return _json_object(raw)
 
+    def generate_movie_screenplay(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> dict:
+        raw = self.llm.complete_prompt(
+            _movie_screenplay_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, story_arch=story_arch, config=config),
+            system_prompt="You are a film screenwriter. Return ONLY valid JSON.",
+        )
+        return _json_object(raw)
+
+    def generate_movie_narrative_plan(self, *, title: str, source_type: str, desired_length: float, bible: MovieBible, screenplay, config: dict) -> dict:
+        raw = self.llm.complete_prompt(
+            _movie_narrative_plan_prompt(title=title, source_type=source_type, desired_length=desired_length, bible=bible, screenplay=screenplay, config=config),
+            system_prompt="You are a film story editor. Return ONLY valid JSON.",
+        )
+        return _json_object(raw)
+
     def plan_shots_from_bible(
         self,
         *,
@@ -148,6 +162,12 @@ class DeterministicMoviePlanner:
         return _movie_bible_from_data({}, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
 
     def generate_movie_continuity_plan(self, **_kwargs) -> dict:
+        return {}
+
+    def generate_movie_screenplay(self, **_kwargs) -> dict:
+        return {}
+
+    def generate_movie_narrative_plan(self, **_kwargs) -> dict:
         return {}
 
     def plan_shots_from_bible(
@@ -602,6 +622,67 @@ SHOTS: {json.dumps([{
     } for shot in shots], ensure_ascii=False)}
 SOURCE:
 {story_text}
+""".strip()
+
+
+def _movie_screenplay_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> str:
+    dialogue_language = str((bible.runtime_constraints or {}).get("dialogue_language") or config.get("dialogue_language") or "").strip()
+    screenplay_rule = "Preserve source scene order and dialogue exactly; annotate it into structured scenes." if source_type == "screenplay" else "Write a compact screenplay structure from the idea without exceeding the target duration."
+    return f"""
+Create the canonical structured screenplay for this movie.
+
+Return JSON with:
+{{"title": string, "source_type": "{source_type}", "dialogue_language": string, "scenes": [{{"scene_id": "scene_0001", "heading": string, "summary": string, "action": string, "dialogue": string, "actor_ids": [string], "location_id": string, "source_span": string}}]}}
+
+Rules:
+- {screenplay_rule}
+- actor_ids must only use these ids: {[actor.id for actor in bible.actors]}
+- location_id must only use these ids: {[location.id for location in bible.locations]}
+- Dialogue language is {dialogue_language or "unspecified"}.
+- Keep screenplay text and dialogue out of actor/location visual descriptions.
+
+Title: {title}
+Target duration seconds: {desired_length}
+Story arch: {json.dumps({"title": story_arch.title, "premise": story_arch.premise, "beats": list(story_arch.beats)}, ensure_ascii=False)}
+Bible: {json.dumps({"actors": [asdict_like_actor(actor) for actor in bible.actors], "locations": [asdict_like_location(location) for location in bible.locations]}, ensure_ascii=False)}
+Config: {json.dumps(config, ensure_ascii=False)}
+Source:
+{story_text}
+""".strip()
+
+
+def _movie_narrative_plan_prompt(*, title: str, source_type: str, desired_length: float, bible: MovieBible, screenplay, config: dict) -> str:
+    scenes = [
+        {
+            "scene_id": scene.scene_id,
+            "summary": scene.summary,
+            "action": scene.action,
+            "dialogue": scene.dialogue,
+            "actor_ids": list(scene.actor_ids),
+            "location_id": scene.location_id,
+        }
+        for scene in getattr(screenplay, "scenes", ())
+    ]
+    return f"""
+Create a narrative memory plan from the canonical screenplay.
+
+Return JSON with:
+{{"title": string, "sequences": [{{"sequence_id": string, "title": string, "scene_ids": [string], "dramatic_function": string}}], "causal_chain": [{{"scene_id": string, "story_state_before": string, "story_state_after": string, "cause_from_previous": string, "sets_up_next": string}}], "open_threads": [string]}}
+
+Rules:
+- Use only scene_id values from SCREENPLAY.
+- Preserve scene order.
+- Every scene after the first needs a concrete cause_from_previous.
+- Every scene except the last needs a concrete sets_up_next.
+- This is planning memory only; do not write renderer prompt prose.
+
+Title: {title}
+Source type: {source_type}
+Target duration seconds: {desired_length}
+Bible actors: {[actor.id for actor in bible.actors]}
+Bible locations: {[location.id for location in bible.locations]}
+Config: {json.dumps(config, ensure_ascii=False)}
+SCREENPLAY: {json.dumps(scenes, ensure_ascii=False)}
 """.strip()
 
 

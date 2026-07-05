@@ -156,10 +156,21 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", int(scene.get("height", 0) or 0))
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
         patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
+        self._patch_startframe_input(patcher, scene)
         if comfy_audio_name:
             self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name, rolling=rolling)
 
         return patcher.get()
+
+    def _patch_startframe_input(self, patcher: WorkflowPatcher, scene: dict) -> None:
+        keyframes = scene.get("keyframes") or {}
+        startframe_path = keyframes.get("startframe_path") or keyframes.get("start_frame_path")
+        if not startframe_path:
+            return
+        if not self._has_anchor(patcher, "#STARTFRAME"):
+            raise ValueError("Movie MSR-I2V scene provides a startframe, but workflow is missing #STARTFRAME")
+        image_name = self.asset_uploader.resolve_reference_image_name(self._resolve_project_path(startframe_path))
+        patcher.set_input_by_title("#STARTFRAME", "image", image_name)
 
     def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
         if self.debug_workflows_dir is None:

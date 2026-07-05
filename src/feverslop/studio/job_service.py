@@ -741,6 +741,8 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "hero_workflow": _movie_workflow_path(raw.get("hero_workflow"), "workflows/image_t2i_startframe_krea_v1.json"),
         "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), "workflows/image_edit_flux2_klein_1ref_v1.json"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
+        "movie_video_workflow": _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe"}),
+        "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
     }
 
 

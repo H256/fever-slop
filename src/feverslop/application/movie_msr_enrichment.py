@@ -10,25 +10,30 @@ _SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE
 _DIALOGUE_CUE_RE = re.compile(r"\b[A-Z][A-Z0-9 _'-]{1,30}:\s+\S")
 
 
-def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path) -> Path:
+def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mode: str = "none") -> Path:
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
     bible = _read_json(movie_dir / "bible.json")
     render_plan_path = movie_dir / "render_plan.json"
     reference_manifest_path = movie_dir / "references" / "manifest.json"
     continuity_plan_path = movie_dir / "continuity_plan.json"
+    shot_cards_path = movie_dir / "shot_cards.json"
     render_plan = _read_json(render_plan_path)
     manifest = _read_json(reference_manifest_path)
     continuity_plan = _read_json(continuity_plan_path) if continuity_plan_path.exists() else {}
+    shot_cards = _read_json(shot_cards_path) if shot_cards_path.exists() else {}
 
     enriched = deepcopy(render_plan)
     enriched["movie_bible_path"] = "movie/bible.json"
     if continuity_plan:
         enriched["movie_continuity_plan_path"] = "movie/continuity_plan.json"
     enriched["reference_manifest_path"] = "movie/references/manifest.json"
+    if shot_cards:
+        enriched["movie_shot_cards_path"] = "movie/shot_cards.json"
+    enriched["keyframe_mode"] = keyframe_mode
     enriched["msr_enriched"] = True
     enriched["shots"] = [
-        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible))
+        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode, shot_cards=shot_cards)
         for shot in render_plan.get("shots") or []
     ]
 
@@ -37,8 +42,9 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path) -> Path:
     return output_path
 
 
-def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int) -> dict:
+def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none", shot_cards: dict | None = None) -> dict:
     enriched = deepcopy(shot)
+    shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
     prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
     continuity_notes = "; ".join(_safe_continuity_facts(shot.get("continuity_notes")))
     if continuity_notes:
@@ -62,6 +68,13 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int) -> dict:
             }
         ],
     }
+    if keyframe_mode in {"start", "start-end"}:
+        keyframes = dict(enriched.get("keyframes") or {})
+        if shot_card.get("start_frame_brief") and not keyframes.get("start_frame_prompt"):
+            keyframes["start_frame_prompt"] = shot_card["start_frame_brief"]
+        if keyframe_mode == "start-end" and shot_card.get("end_frame_brief") and not keyframes.get("end_frame_prompt"):
+            keyframes["end_frame_prompt"] = shot_card["end_frame_brief"]
+        enriched["keyframes"] = keyframes
     return enriched
 
 
@@ -197,6 +210,13 @@ def _describe_reference_item(item: dict) -> str:
     image_prompt = str(item.get("image_prompt") or "").strip(" .")
     chunks = [chunk for chunk in (name, role, visual or image_prompt) if chunk]
     return ", ".join(chunks)
+
+
+def _shot_card_for_id(shot_cards: dict, shot_id: str) -> dict:
+    for card in shot_cards.get("shot_cards") or []:
+        if isinstance(card, dict) and str(card.get("shot_id") or "") == shot_id:
+            return card
+    return {}
 
 
 def _fps(bible: dict) -> int:

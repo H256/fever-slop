@@ -145,12 +145,21 @@ class RunnerScriptTests(unittest.TestCase):
                 "--render-backend",
                 "local",
                 "--skip-movie-bible",
+                "--skip-movie-screenplay",
+                "--force-movie-screenplay",
+                "--skip-movie-narrative",
+                "--skip-movie-scene-cards",
+                "--skip-movie-shot-cards",
                 "--skip-movie-continuity",
                 "--skip-movie-plan",
                 "--skip-movie-references",
                 "--skip-movie-msr-enrich",
                 "--skip-movie-render",
                 "--force-movie-references",
+                "--keyframe-mode",
+                "start",
+                "--movie-video-workflow",
+                "msr-i2v-startframe",
             ]
         )
 
@@ -158,12 +167,19 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("local", args.reference_backend)
         self.assertEqual("local", args.render_backend)
         self.assertTrue(args.skip_movie_bible)
+        self.assertTrue(args.skip_movie_screenplay)
+        self.assertTrue(args.force_movie_screenplay)
+        self.assertTrue(args.skip_movie_narrative)
+        self.assertTrue(args.skip_movie_scene_cards)
+        self.assertTrue(args.skip_movie_shot_cards)
         self.assertTrue(args.skip_movie_continuity)
         self.assertTrue(args.skip_movie_plan)
         self.assertTrue(args.skip_movie_references)
         self.assertTrue(args.skip_movie_msr_enrich)
         self.assertTrue(args.skip_movie_render)
         self.assertTrue(args.force_movie_references)
+        self.assertEqual("start", args.keyframe_mode)
+        self.assertEqual("msr-i2v-startframe", args.movie_video_workflow)
 
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:

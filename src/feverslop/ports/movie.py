@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Protocol
 
-from feverslop.domain.movie import CinematicShot, MovieBible, MovieContinuityPlan, StoryArch
+from feverslop.domain.movie import CinematicShot, MovieBible, MovieContinuityPlan, MovieNarrativePlan, MovieScreenplayArtifact, StoryArch
 
 
 class StoryGenerationPort(Protocol):
@@ -39,6 +39,31 @@ class ScenePlanningPort(Protocol):
         config: dict,
     ) -> MovieContinuityPlan | dict:
         """Create a causal continuity ledger for movie shots."""
+
+    def generate_movie_screenplay(
+        self,
+        *,
+        title: str,
+        source_type: str,
+        story_text: str,
+        desired_length: float,
+        bible: MovieBible,
+        story_arch: StoryArch,
+        config: dict,
+    ) -> MovieScreenplayArtifact | dict:
+        """Create or normalize the canonical persisted movie screenplay."""
+
+    def generate_movie_narrative_plan(
+        self,
+        *,
+        title: str,
+        source_type: str,
+        desired_length: float,
+        bible: MovieBible,
+        screenplay: MovieScreenplayArtifact,
+        config: dict,
+    ) -> MovieNarrativePlan | dict:
+        """Create act/sequence causality and setup/payoff memory from the canonical screenplay."""
 
     def plan_shots_from_bible(
         self,

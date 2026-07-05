@@ -96,6 +96,58 @@ class MovieContinuityPlan:
 
 
 @dataclass(frozen=True)
+class MovieScreenplayScene:
+    scene_id: str
+    heading: str
+    summary: str
+    action: str
+    dialogue: str = ""
+    actor_ids: tuple[str, ...] = ()
+    location_id: str = ""
+    source_span: str = ""
+
+
+@dataclass(frozen=True)
+class MovieScreenplayArtifact:
+    title: str
+    source_type: str
+    dialogue_language: str
+    scenes: tuple[MovieScreenplayScene, ...]
+
+
+@dataclass(frozen=True)
+class MovieNarrativePlan:
+    title: str
+    sequences: tuple[dict, ...]
+    causal_chain: tuple[dict, ...]
+    open_threads: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class MovieSceneCard:
+    scene_id: str
+    shot_ids: tuple[str, ...]
+    dramatic_purpose: str
+    story_state_before: str
+    story_state_after: str
+    active_actor_ids: tuple[str, ...]
+    location_id: str
+    dialogue: str = ""
+
+
+@dataclass(frozen=True)
+class MovieShotCard:
+    shot_id: str
+    scene_id: str
+    action: str
+    camera: str
+    acting: str
+    dialogue: str = ""
+    start_frame_brief: str = ""
+    end_frame_brief: str = ""
+
+
+@dataclass(frozen=True)
 class StoryArch:
     title: str
     premise: str

@@ -145,6 +145,50 @@ class FakeMoviePlanner:
 
 
 class MovieProjectTests(unittest.TestCase):
+    def test_movie_scaffold_persists_screenplay_memory_and_shot_cards(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir)).execute(
+                MovieInput(
+                    name="Archive Memory",
+                    source_type="screenplay",
+                    story_text=(
+                        "INT. ARCHIVE - NIGHT\n"
+                        "Mara opens the sealed ledger.\n"
+                        "MARA\n"
+                        "It remembers me.\n"
+                    ),
+                    desired_length=12,
+                    config={
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "archivist in charcoal"}],
+                        "structured_locations": [{"id": "archive", "name": "Archive", "visual_description": "white marble archive"}],
+                        "dialogue_language": "English",
+                    },
+                )
+            )
+
+            root = Path(temp_dir) / "archive-memory"
+            screenplay = json.loads((root / "movie" / "screenplay.json").read_text(encoding="utf-8"))
+            narrative = json.loads((root / "movie" / "narrative_plan.json").read_text(encoding="utf-8"))
+            scene_cards = json.loads((root / "movie" / "scene_cards.json").read_text(encoding="utf-8"))
+            shot_cards = json.loads((root / "movie" / "shot_cards.json").read_text(encoding="utf-8"))
+            plan = json.loads((root / "movie" / "render_plan.json").read_text(encoding="utf-8"))
+
+            self.assertEqual("movie/screenplay.json", plan["movie_screenplay_path"])
+            self.assertEqual("movie/shot_cards.json", plan["movie_shot_cards_path"])
+            self.assertEqual("English", screenplay["dialogue_language"])
+            self.assertEqual(["mara"], screenplay["scenes"][0]["actor_ids"])
+            self.assertEqual("archive", screenplay["scenes"][0]["location_id"])
+            self.assertIn("It remembers me.", screenplay["scenes"][0]["dialogue"])
+            self.assertEqual("scene_0001", narrative["sequences"][0]["scene_ids"][0])
+            self.assertEqual("shot_0001", scene_cards["scene_cards"][0]["shot_ids"][0])
+            self.assertEqual("shot_0001", shot_cards["shot_cards"][0]["shot_id"])
+            self.assertIn("start_frame_brief", shot_cards["shot_cards"][0])
+            self.assertIn("end_frame_brief", shot_cards["shot_cards"][0])
+            self.assertNotIn("INT. ARCHIVE", shot_cards["memory_pack"]["current_shot"]["description"])
+
     def test_movie_scaffold_writes_bible_and_uses_it_for_manifest_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
@@ -1512,6 +1556,38 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertIsInstance(output, dict)
         self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in output.values()))
+
+    def test_movie_workflow_patcher_patches_msr_i2v_startframe_anchor(self):
+        from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
+
+        workflow = {
+            "1": {"class_type": "LoadImage", "_meta": {"title": "#MSR_ACTOR_1"}, "inputs": {"image": ""}},
+            "2": {"class_type": "LoadImage", "_meta": {"title": "#MSR_BACKGROUND"}, "inputs": {"image": ""}},
+            "3": {"class_type": "LTXICLoRALoaderModelOnly", "_meta": {"title": "#MSR_LORA"}, "inputs": {"lora_name": "old.safetensors"}},
+            "4": {"class_type": "LiconMSR", "_meta": {"title": "#MSR_FRAME_COUNT"}, "inputs": {"frame_count": 17}},
+            "5": {"class_type": "PromptRelayEncode", "_meta": {"title": "#PROMPT_RELAY"}, "inputs": {"global_prompt": "", "local_prompts": ""}},
+            "6": {"class_type": "LoadImage", "_meta": {"title": "#STARTFRAME"}, "inputs": {"image": ""}},
+        }
+
+        patched = MovieWorkflowPatcher().patch_msr_i2v_startframe(
+            workflow,
+            startframe_image_name="scene_0001_start.png",
+            msr_lora_name="LTX-2.3-Licon-MSR-V1.safetensors",
+            msr_frame_count=25,
+        )
+
+        self.assertEqual("scene_0001_start.png", patched["6"]["inputs"]["image"])
+        self.assertEqual("LTX-2.3-Licon-MSR-V1.safetensors", patched["3"]["inputs"]["lora_name"])
+        self.assertEqual(25, patched["4"]["inputs"]["frame_count"])
+
+    def test_movie_workflow_patcher_requires_startframe_anchor_for_msr_i2v(self):
+        from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
+
+        with self.assertRaisesRegex(ValueError, "#STARTFRAME"):
+            MovieWorkflowPatcher().patch_msr_i2v_startframe(
+                {"1": {"class_type": "LoadImage", "_meta": {"title": "#MSR_ACTOR_1"}, "inputs": {"image": ""}}},
+                startframe_image_name="scene_0001_start.png",
+            )
 
     def test_llm_movie_planner_sends_story_and_shot_requests_to_llm(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
