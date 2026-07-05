@@ -145,6 +145,8 @@ class RunnerScriptTests(unittest.TestCase):
                 "--render-backend",
                 "local",
                 "--skip-movie-bible",
+                "--skip-movie-story-design",
+                "--force-movie-story-design",
                 "--skip-movie-screenplay",
                 "--force-movie-screenplay",
                 "--skip-movie-narrative",
@@ -170,6 +172,8 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("local", args.reference_backend)
         self.assertEqual("local", args.render_backend)
         self.assertTrue(args.skip_movie_bible)
+        self.assertTrue(args.skip_movie_story_design)
+        self.assertTrue(args.force_movie_story_design)
         self.assertTrue(args.skip_movie_screenplay)
         self.assertTrue(args.force_movie_screenplay)
         self.assertTrue(args.skip_movie_narrative)

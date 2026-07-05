@@ -27,11 +27,13 @@ from feverslop.application.movie_memory import (
     build_movie_shot_cards,
     generate_movie_narrative_plan,
     generate_movie_screenplay,
+    generate_movie_story_design,
     movie_narrative_plan_to_dict,
     movie_scene_cards_to_dict,
     movie_screenplay_to_dict,
     movie_screenplay_to_markdown,
     movie_shot_cards_to_dict,
+    movie_story_design_to_dict,
 )
 from feverslop.ports.movie import ReferenceGenerationPort, ScenePlanningPort, StoryGenerationPort, VisualGenerationPort
 
@@ -62,6 +64,7 @@ class MovieScaffoldResult:
     story_arch_path: Path
     render_plan_path: Path
     reference_manifest_path: Path
+    story_design_path: Path | None = None
     screenplay_path: Path | None = None
     narrative_plan_path: Path | None = None
     scene_cards_path: Path | None = None
@@ -98,11 +101,20 @@ class ScaffoldMovieUseCase:
             story_arch=story_arch,
             config=config,
         )
+        story_design = generate_movie_story_design(
+            planner=self.planner,
+            request=request,
+            bible=bible,
+            story_arch=story_arch,
+            config=config,
+            source_text=_planner_source_text(request, config),
+        )
         screenplay = generate_movie_screenplay(
             planner=self.planner,
             request=request,
             bible=bible,
             story_arch=story_arch,
+            story_design=story_design,
             config=config,
             source_text=_planner_source_text(request, config),
         )
@@ -159,6 +171,7 @@ class ScaffoldMovieUseCase:
 
         story_arch_path = movie_dir / "story_arch.json"
         bible_path = movie_dir / "bible.json"
+        story_design_path = movie_dir / "story_design.json"
         screenplay_path = movie_dir / "screenplay.json"
         screenplay_md_path = movie_dir / "screenplay.md"
         narrative_plan_path = movie_dir / "narrative_plan.json"
@@ -169,6 +182,7 @@ class ScaffoldMovieUseCase:
         reference_manifest_path = movie_dir / "references" / "manifest.json"
         story_arch_path.write_text(json.dumps(asdict(movie.story_arch), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         bible_path.write_text(json.dumps(_bible_dict(movie.bible), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        story_design_path.write_text(json.dumps(movie_story_design_to_dict(story_design), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         screenplay_path.write_text(json.dumps(movie_screenplay_to_dict(screenplay), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         screenplay_md_path.write_text(movie_screenplay_to_markdown(screenplay), encoding="utf-8")
         narrative_plan_path.write_text(json.dumps(movie_narrative_plan_to_dict(narrative_plan), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -187,6 +201,7 @@ class ScaffoldMovieUseCase:
             story_arch_path,
             render_plan_path,
             reference_manifest_path,
+            story_design_path,
             screenplay_path,
             narrative_plan_path,
             scene_cards_path,
@@ -215,6 +230,7 @@ class AutoProduceMovieUseCase:
             story_arch_path=scaffolded.story_arch_path,
             render_plan_path=scaffolded.render_plan_path,
             reference_manifest_path=scaffolded.reference_manifest_path,
+            story_design_path=scaffolded.story_design_path,
             screenplay_path=scaffolded.screenplay_path,
             narrative_plan_path=scaffolded.narrative_plan_path,
             scene_cards_path=scaffolded.scene_cards_path,
@@ -262,6 +278,7 @@ def _render_plan(movie: MovieProject, *, shot_cards: tuple[MovieShotCard, ...] =
         "audio_policy": "ltx_native",
         "visual_backends": ["krea2", "ltx_msr"],
         "movie_screenplay_path": "movie/screenplay.json",
+        "movie_story_design_path": "movie/story_design.json",
         "movie_narrative_plan_path": "movie/narrative_plan.json",
         "movie_scene_cards_path": "movie/scene_cards.json",
         "movie_shot_cards_path": "movie/shot_cards.json",

@@ -170,24 +170,85 @@ class MovieProjectTests(unittest.TestCase):
             )
 
             root = Path(temp_dir) / "archive-memory"
+            story_design = json.loads((root / "movie" / "story_design.json").read_text(encoding="utf-8"))
             screenplay = json.loads((root / "movie" / "screenplay.json").read_text(encoding="utf-8"))
             narrative = json.loads((root / "movie" / "narrative_plan.json").read_text(encoding="utf-8"))
             scene_cards = json.loads((root / "movie" / "scene_cards.json").read_text(encoding="utf-8"))
             shot_cards = json.loads((root / "movie" / "shot_cards.json").read_text(encoding="utf-8"))
             plan = json.loads((root / "movie" / "render_plan.json").read_text(encoding="utf-8"))
 
+            self.assertEqual("movie/story_design.json", plan["movie_story_design_path"])
             self.assertEqual("movie/screenplay.json", plan["movie_screenplay_path"])
             self.assertEqual("movie/shot_cards.json", plan["movie_shot_cards_path"])
+            self.assertIn("act_structure", story_design)
+            self.assertIn("turning_points", story_design)
+            self.assertIn("setup_payoff_threads", story_design)
+            self.assertIn("character_arcs", story_design)
+            self.assertIn("scene_blueprint", story_design)
+            self.assertEqual("scene_0001", story_design["scene_blueprint"][0]["scene_id"])
             self.assertEqual("English", screenplay["dialogue_language"])
             self.assertEqual(["mara"], screenplay["scenes"][0]["actor_ids"])
             self.assertEqual("archive", screenplay["scenes"][0]["location_id"])
             self.assertIn("It remembers me.", screenplay["scenes"][0]["dialogue"])
+            self.assertIn("dramatic_purpose", screenplay["scenes"][0])
+            self.assertIn("conflict", screenplay["scenes"][0])
+            self.assertIn("emotional_turn", screenplay["scenes"][0])
+            self.assertIn("subtext", screenplay["scenes"][0])
+            self.assertIn("dialogue_function", screenplay["scenes"][0])
             self.assertEqual("scene_0001", narrative["sequences"][0]["scene_ids"][0])
             self.assertEqual("shot_0001", scene_cards["scene_cards"][0]["shot_ids"][0])
             self.assertEqual("shot_0001", shot_cards["shot_cards"][0]["shot_id"])
             self.assertIn("start_frame_brief", shot_cards["shot_cards"][0])
             self.assertIn("end_frame_brief", shot_cards["shot_cards"][0])
             self.assertNotIn("INT. ARCHIVE", shot_cards["memory_pack"]["current_shot"]["description"])
+
+    def test_short_story_scaffold_writes_story_design_and_authored_screenplay_fields(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir)).execute(
+                MovieInput(
+                    name="Compass Radio",
+                    source_type="short_story",
+                    story_text="A deserter follows a broken compass through a silent battlefield and finds a buried radio.",
+                    desired_length=36,
+                    config={
+                        "dialogue_language": "German",
+                        "actors": [{"id": "deserter", "name": "Deserter", "visual_description": "mud covered deserter"}],
+                        "structured_locations": [{"id": "battlefield", "name": "Battlefield", "visual_description": "silent battlefield"}],
+                        "max_scene_actors": 1,
+                    },
+                )
+            )
+
+            story_design = json.loads((result.project_dir / "movie" / "story_design.json").read_text(encoding="utf-8"))
+            screenplay = json.loads((result.project_dir / "movie" / "screenplay.json").read_text(encoding="utf-8"))
+
+            self.assertEqual("Compass Radio", story_design["title"])
+            self.assertTrue(story_design["theme"])
+            self.assertGreaterEqual(len(story_design["act_structure"]), 3)
+            self.assertTrue(story_design["turning_points"])
+            self.assertTrue(story_design["setup_payoff_threads"])
+            self.assertTrue(story_design["character_arcs"])
+            self.assertTrue(story_design["scene_blueprint"])
+            blueprint = story_design["scene_blueprint"][0]
+            self.assertEqual("scene_0001", blueprint["scene_id"])
+            self.assertIn("purpose", blueprint)
+            self.assertIn("conflict", blueprint)
+            self.assertIn("subtext", blueprint)
+            self.assertIn("dialogue_function", blueprint)
+            self.assertLessEqual(len(blueprint["required_actors"]), 1)
+            self.assertEqual("battlefield", blueprint["location_id"])
+            scene = screenplay["scenes"][0]
+            self.assertEqual("German", screenplay["dialogue_language"])
+            self.assertEqual(blueprint["purpose"], scene["dramatic_purpose"])
+            self.assertEqual(blueprint["conflict"], scene["conflict"])
+            self.assertEqual(blueprint["emotional_turn"], scene["emotional_turn"])
+            self.assertEqual(blueprint["subtext"], scene["subtext"])
+            self.assertEqual(blueprint["dialogue_function"], scene["dialogue_function"])
+            self.assertEqual(["deserter"], scene["actor_ids"])
+            self.assertEqual("battlefield", scene["location_id"])
 
     def test_movie_scaffold_writes_bible_and_uses_it_for_manifest_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase

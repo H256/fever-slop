@@ -15,6 +15,7 @@ from feverslop.application.movie_memory import (
     build_movie_narrative_plan_fallback,
     build_movie_scene_cards,
     build_movie_screenplay_fallback,
+    build_movie_story_design_fallback,
     build_movie_shot_cards,
     movie_narrative_plan_to_dict,
     movie_scene_cards_from_dict,
@@ -23,6 +24,8 @@ from feverslop.application.movie_memory import (
     movie_screenplay_to_dict,
     movie_screenplay_to_markdown,
     movie_shot_cards_to_dict,
+    movie_story_design_from_dict,
+    movie_story_design_to_dict,
 )
 from feverslop.domain.movie import CinematicShot
 
@@ -30,6 +33,7 @@ from feverslop.domain.movie import CinematicShot
 @dataclass(frozen=True)
 class MoviePlanningArtifacts:
     bible_path: Path
+    story_design_path: Path
     screenplay_path: Path
     narrative_plan_path: Path
     scene_cards_path: Path
@@ -38,10 +42,11 @@ class MoviePlanningArtifacts:
     render_plan_path: Path
 
 
-def ensure_movie_planning_artifacts(project_dir: Path, *, force_screenplay: bool = False) -> MoviePlanningArtifacts:
+def ensure_movie_planning_artifacts(project_dir: Path, *, force_screenplay: bool = False, force_story_design: bool = False) -> MoviePlanningArtifacts:
     project_dir = Path(project_dir)
     bible_path = ensure_movie_bible(project_dir)
     render_plan_path = ensure_movie_render_plan_matches_bible(project_dir)
+    story_design_path = ensure_movie_story_design(project_dir, force=force_story_design)
     screenplay_path = ensure_movie_screenplay(project_dir, force=force_screenplay)
     narrative_plan_path = ensure_movie_narrative_plan(project_dir)
     scene_cards_path = ensure_movie_scene_cards(project_dir)
@@ -49,6 +54,7 @@ def ensure_movie_planning_artifacts(project_dir: Path, *, force_screenplay: bool
     continuity_plan_path = ensure_movie_continuity_plan(project_dir)
     return MoviePlanningArtifacts(
         bible_path=bible_path,
+        story_design_path=story_design_path,
         screenplay_path=screenplay_path,
         narrative_plan_path=narrative_plan_path,
         scene_cards_path=scene_cards_path,
@@ -98,10 +104,33 @@ def ensure_movie_screenplay(project_dir: Path, *, force: bool = False) -> Path:
         height=int((render_plan.get("resolution") or {}).get("height") or 704),
         config=_read_json(project_dir / "config.json") if (project_dir / "config.json").exists() else {},
     )
-    screenplay = build_movie_screenplay_fallback(request=request, bible=bible, story_arch=bible.story_arch, config=request.config)
+    story_design = movie_story_design_from_dict(_read_json(ensure_movie_story_design(project_dir)), fallback_title=request.name, bible=bible)
+    screenplay = build_movie_screenplay_fallback(request=request, bible=bible, story_arch=bible.story_arch, story_design=story_design, config=request.config)
     screenplay_path.write_text(json.dumps(movie_screenplay_to_dict(screenplay), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     (project_dir / "movie" / "screenplay.md").write_text(movie_screenplay_to_markdown(screenplay), encoding="utf-8")
     return screenplay_path
+
+
+def ensure_movie_story_design(project_dir: Path, *, force: bool = False) -> Path:
+    project_dir = Path(project_dir)
+    path = project_dir / "movie" / "story_design.json"
+    if path.exists() and not force:
+        return path
+    bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
+    render_plan = _read_json(project_dir / "movie" / "render_plan.json")
+    source_type, story_text, desired_length = _movie_source_metadata(project_dir, render_plan)
+    request = MovieInput(
+        name=str(render_plan.get("title") or project_dir.name),
+        source_type=source_type,
+        story_text=story_text,
+        desired_length=desired_length,
+        width=int((render_plan.get("resolution") or {}).get("width") or 1280),
+        height=int((render_plan.get("resolution") or {}).get("height") or 704),
+        config=_read_json(project_dir / "config.json") if (project_dir / "config.json").exists() else {},
+    )
+    design = build_movie_story_design_fallback(request=request, bible=bible, story_arch=bible.story_arch, config=request.config)
+    path.write_text(json.dumps(movie_story_design_to_dict(design), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
 
 
 def ensure_movie_narrative_plan(project_dir: Path) -> Path:

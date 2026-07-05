@@ -17,6 +17,7 @@ from feverslop.application.movie_artifacts import (
     ensure_movie_scene_cards as ensure_movie_scene_cards_artifact,
     ensure_movie_screenplay as ensure_movie_screenplay_artifact,
     ensure_movie_shot_cards as ensure_movie_shot_cards_artifact,
+    ensure_movie_story_design as ensure_movie_story_design_artifact,
     write_movie_reference_manifest_from_bible as write_movie_reference_manifest_from_bible_artifact,
 )
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
@@ -37,6 +38,7 @@ from feverslop.studio.job_service import (
 class MoviePipelineResult:
     project_dir: Path
     bible_path: Path | None = None
+    story_design_path: Path | None = None
     screenplay_path: Path | None = None
     narrative_plan_path: Path | None = None
     scene_cards_path: Path | None = None
@@ -58,6 +60,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--edit-workflow", default=None)
     parser.add_argument("--msr-workflow", default=None)
     parser.add_argument("--skip-movie-bible", action="store_true", help="Reuse existing movie/bible.json.")
+    parser.add_argument("--skip-movie-story-design", action="store_true", help="Reuse existing movie/story_design.json.")
+    parser.add_argument("--force-movie-story-design", action="store_true", help="Regenerate movie/story_design.json from project source/render plan.")
     parser.add_argument("--skip-movie-screenplay", action="store_true", help="Reuse existing movie/screenplay.json.")
     parser.add_argument("--force-movie-screenplay", action="store_true", help="Regenerate movie/screenplay.json from project source/render plan.")
     parser.add_argument("--skip-movie-narrative", action="store_true", help="Reuse existing movie/narrative_plan.json.")
@@ -91,6 +95,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
     render_plan_path = project_dir / "movie" / "render_plan.json"
     bible_path = project_dir / "movie" / "bible.json"
+    story_design_path = project_dir / "movie" / "story_design.json"
     screenplay_path = project_dir / "movie" / "screenplay.json"
     narrative_plan_path = project_dir / "movie" / "narrative_plan.json"
     scene_cards_path = project_dir / "movie" / "scene_cards.json"
@@ -103,6 +108,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     if any(
         (
             args.skip_movie_bible,
+            args.skip_movie_story_design,
             args.skip_movie_screenplay,
             args.skip_movie_narrative,
             args.skip_movie_scene_cards,
@@ -115,6 +121,10 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
             bible_path = ensure_movie_bible_artifact(project_dir)
         elif not bible_path.exists():
             raise FileNotFoundError(f"Movie bible not found: {bible_path}")
+        if not args.skip_movie_story_design:
+            story_design_path = ensure_movie_story_design_artifact(project_dir, force=args.force_movie_story_design)
+        elif not story_design_path.exists():
+            raise FileNotFoundError(f"Movie story design not found: {story_design_path}")
         if not args.skip_movie_screenplay:
             screenplay_path = ensure_movie_screenplay_artifact(project_dir, force=args.force_movie_screenplay)
         elif not screenplay_path.exists():
@@ -138,8 +148,9 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
         if not args.skip_movie_plan:
             ensure_movie_render_plan_matches_bible_artifact(project_dir)
     else:
-        planning = ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay)
+        planning = ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay, force_story_design=args.force_movie_story_design)
         bible_path = planning.bible_path
+        story_design_path = planning.story_design_path
         screenplay_path = planning.screenplay_path
         narrative_plan_path = planning.narrative_plan_path
         scene_cards_path = planning.scene_cards_path
@@ -196,6 +207,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     return MoviePipelineResult(
         project_dir=project_dir,
         bible_path=bible_path,
+        story_design_path=story_design_path,
         screenplay_path=screenplay_path,
         narrative_plan_path=narrative_plan_path,
         scene_cards_path=scene_cards_path,

@@ -41,9 +41,25 @@ class LLMMoviePlanner:
         )
         return _json_object(raw)
 
-    def generate_movie_screenplay(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> dict:
+    def generate_movie_story_design(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> dict:
         raw = self.llm.complete_prompt(
-            _movie_screenplay_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, story_arch=story_arch, config=config),
+            _movie_story_design_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, story_arch=story_arch, config=config),
+            system_prompt="You are a dramaturg and story editor. Return ONLY valid JSON.",
+        )
+        return _json_object(raw)
+
+    def generate_movie_screenplay(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, story_design, config: dict) -> dict:
+        raw = self.llm.complete_prompt(
+            _movie_screenplay_prompt(
+                title=title,
+                source_type=source_type,
+                story_text=story_text,
+                desired_length=desired_length,
+                bible=bible,
+                story_arch=story_arch,
+                story_design=story_design,
+                config=config,
+            ),
             system_prompt="You are a film screenwriter. Return ONLY valid JSON.",
         )
         return _json_object(raw)
@@ -163,6 +179,9 @@ class DeterministicMoviePlanner:
         return _movie_bible_from_data({}, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
 
     def generate_movie_continuity_plan(self, **_kwargs) -> dict:
+        return {}
+
+    def generate_movie_story_design(self, **_kwargs) -> dict:
         return {}
 
     def generate_movie_screenplay(self, **_kwargs) -> dict:
@@ -592,25 +611,60 @@ SOURCE:
 """.strip()
 
 
-def _movie_screenplay_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> str:
+def _movie_story_design_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> str:
     dialogue_language = str((bible.runtime_constraints or {}).get("dialogue_language") or config.get("dialogue_language") or "").strip()
-    screenplay_rule = "Preserve source scene order and dialogue exactly; annotate it into structured scenes." if source_type == "screenplay" else "Write a compact screenplay structure from the idea without exceeding the target duration."
+    max_scene_actors = int(config.get("max_scene_actors") or (bible.runtime_constraints or {}).get("max_scene_actors") or 4)
+    screenplay_rule = "Analyze the supplied screenplay without rewriting its order or dialogue." if source_type == "screenplay" else "Design a strong short-film screenplay from the idea before any scene text is written."
+    return f"""
+Create the dramaturgical story design for this movie. This is pre-screenplay story editing, not renderer prompt writing.
+
+Return JSON with:
+{{"title": string, "premise": string, "theme": string, "act_structure": [{{"act_id": string, "title": string, "purpose": string, "scene_ids": [string]}}], "turning_points": [{{"id": string, "scene_id": string, "description": string}}], "setup_payoff_threads": [{{"id": string, "setup_scene_id": string, "payoff_scene_id": string, "description": string}}], "character_arcs": [{{"actor_id": string, "want": string, "need": string, "starting_state": string, "ending_state": string}}], "scene_blueprint": [{{"scene_id": "scene_0001", "purpose": string, "conflict": string, "emotional_turn": string, "subtext": string, "dialogue_function": string, "required_actors": [string], "location_id": string, "expected_duration": number}}]}}
+
+Rules:
+- {screenplay_rule}
+- Write screenplay craft, not a scene list: every scene needs a dramatic purpose, conflict, emotional turn, subtext, and dialogue function.
+- actor_ids/required_actors must only use these ids: {[actor.id for actor in bible.actors]}
+- location_id must only use these ids: {[location.id for location in bible.locations]}
+- No scene may require more than {max_scene_actors} actors.
+- Dialogue language is {dialogue_language or "unspecified"}.
+- Do not include camera, renderer, ComfyUI, MSR, reference-sheet, or visual prompt instructions.
+- Target total duration seconds: {desired_length}.
+
+Title: {title}
+Story arch: {json.dumps({"title": story_arch.title, "premise": story_arch.premise, "beats": list(story_arch.beats)}, ensure_ascii=False)}
+Bible: {json.dumps({"actors": [asdict_like_actor(actor) for actor in bible.actors], "locations": [asdict_like_location(location) for location in bible.locations]}, ensure_ascii=False)}
+Config: {json.dumps(config, ensure_ascii=False)}
+Source:
+{story_text}
+""".strip()
+
+
+def _movie_screenplay_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, story_design, config: dict) -> str:
+    dialogue_language = str((bible.runtime_constraints or {}).get("dialogue_language") or config.get("dialogue_language") or "").strip()
+    screenplay_rule = "Preserve source scene order and dialogue exactly; annotate it into structured scenes. Do not polish or rewrite the supplied screenplay." if source_type == "screenplay" else "Write an actual compact screenplay from STORY DESIGN, not just a scene list, without exceeding the target duration."
+    design = movie_story_design_like(story_design)
     return f"""
 Create the canonical structured screenplay for this movie.
 
 Return JSON with:
-{{"title": string, "source_type": "{source_type}", "dialogue_language": string, "scenes": [{{"scene_id": "scene_0001", "heading": string, "summary": string, "action": string, "dialogue": string, "actor_ids": [string], "location_id": string, "source_span": string}}]}}
+{{"title": string, "source_type": "{source_type}", "dialogue_language": string, "scenes": [{{"scene_id": "scene_0001", "heading": string, "summary": string, "action": string, "dialogue": string, "actor_ids": [string], "location_id": string, "source_span": string, "dramatic_purpose": string, "conflict": string, "emotional_turn": string, "subtext": string, "dialogue_function": string}}]}}
 
 Rules:
 - {screenplay_rule}
+- Every scene must visibly implement its matching STORY DESIGN scene_blueprint.
+- For idea/short_story input, write scenes with playable action, dramatic conflict, emotional turn, and dialogue where useful.
+- For screenplay input, preserve source dialogue and order exactly, but fill dramaturgical annotation fields from STORY DESIGN.
 - actor_ids must only use these ids: {[actor.id for actor in bible.actors]}
 - location_id must only use these ids: {[location.id for location in bible.locations]}
 - Dialogue language is {dialogue_language or "unspecified"}.
 - Keep screenplay text and dialogue out of actor/location visual descriptions.
+- Do not include camera, renderer, ComfyUI, MSR, reference-sheet, or visual prompt instructions.
 
 Title: {title}
 Target duration seconds: {desired_length}
 Story arch: {json.dumps({"title": story_arch.title, "premise": story_arch.premise, "beats": list(story_arch.beats)}, ensure_ascii=False)}
+STORY DESIGN: {json.dumps(design, ensure_ascii=False)}
 Bible: {json.dumps({"actors": [asdict_like_actor(actor) for actor in bible.actors], "locations": [asdict_like_location(location) for location in bible.locations]}, ensure_ascii=False)}
 Config: {json.dumps(config, ensure_ascii=False)}
 Source:
@@ -659,6 +713,19 @@ def asdict_like_actor(actor: MovieActor) -> dict:
 
 def asdict_like_location(location: MovieLocation) -> dict:
     return {"id": location.id, "name": location.name, "visual_description": location.visual_description}
+
+
+def movie_story_design_like(story_design) -> dict:
+    return {
+        "title": getattr(story_design, "title", ""),
+        "premise": getattr(story_design, "premise", ""),
+        "theme": getattr(story_design, "theme", ""),
+        "act_structure": [getattr(item, "__dict__", item) for item in getattr(story_design, "act_structure", ())],
+        "turning_points": [getattr(item, "__dict__", item) for item in getattr(story_design, "turning_points", ())],
+        "setup_payoff_threads": [getattr(item, "__dict__", item) for item in getattr(story_design, "setup_payoff_threads", ())],
+        "character_arcs": [getattr(item, "__dict__", item) for item in getattr(story_design, "character_arcs", ())],
+        "scene_blueprint": [getattr(item, "__dict__", item) for item in getattr(story_design, "scene_blueprint", ())],
+    }
 
 
 def _json_object(raw: str) -> dict:

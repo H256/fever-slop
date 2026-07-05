@@ -386,6 +386,7 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         planning = ensure_movie_planning_artifacts(project_dir)
         log(f"[MoviePipeline] Stage: Movie Bible Ready: {planning.bible_path}")
+        log(f"[MoviePipeline] Stage: Movie Story Design Ready: {planning.story_design_path}")
         log(f"[MoviePipeline] Stage: Movie Screenplay Ready: {planning.screenplay_path}")
         log(f"[MoviePipeline] Stage: Movie Narrative Ready: {planning.narrative_plan_path}")
         log(f"[MoviePipeline] Stage: Movie Scene Cards Ready: {planning.scene_cards_path}")

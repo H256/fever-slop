@@ -105,6 +105,11 @@ class MovieScreenplayScene:
     actor_ids: tuple[str, ...] = ()
     location_id: str = ""
     source_span: str = ""
+    dramatic_purpose: str = ""
+    conflict: str = ""
+    emotional_turn: str = ""
+    subtext: str = ""
+    dialogue_function: str = ""
 
 
 @dataclass(frozen=True)
@@ -113,6 +118,63 @@ class MovieScreenplayArtifact:
     source_type: str
     dialogue_language: str
     scenes: tuple[MovieScreenplayScene, ...]
+
+
+@dataclass(frozen=True)
+class MovieAct:
+    act_id: str
+    title: str
+    purpose: str
+    scene_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class MovieTurningPoint:
+    id: str
+    scene_id: str
+    description: str
+
+
+@dataclass(frozen=True)
+class MovieSetupPayoff:
+    id: str
+    setup_scene_id: str
+    payoff_scene_id: str
+    description: str
+
+
+@dataclass(frozen=True)
+class MovieCharacterArc:
+    actor_id: str
+    want: str = ""
+    need: str = ""
+    starting_state: str = ""
+    ending_state: str = ""
+
+
+@dataclass(frozen=True)
+class MovieSceneBlueprint:
+    scene_id: str
+    purpose: str
+    conflict: str
+    emotional_turn: str
+    subtext: str
+    dialogue_function: str
+    required_actors: tuple[str, ...] = ()
+    location_id: str = ""
+    expected_duration: float = 0.0
+
+
+@dataclass(frozen=True)
+class MovieStoryDesign:
+    title: str
+    premise: str
+    theme: str
+    act_structure: tuple[MovieAct, ...]
+    turning_points: tuple[MovieTurningPoint, ...]
+    setup_payoff_threads: tuple[MovieSetupPayoff, ...]
+    character_arcs: tuple[MovieCharacterArc, ...]
+    scene_blueprint: tuple[MovieSceneBlueprint, ...]
 
 
 @dataclass(frozen=True)
