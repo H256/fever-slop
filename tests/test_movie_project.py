@@ -781,6 +781,10 @@ class MovieProjectTests(unittest.TestCase):
                 self.assertIn("Hans answers without raising his voice", value)
                 self.assertIn("Hans: Halt den Mund, Karl.", value)
                 self.assertIn("Dialogue language: German", value)
+                self.assertIn("Audio contract: diegetic environmental sound effects and scripted dialogue only", value)
+                self.assertNotIn("singing", value.lower())
+                self.assertNotIn("chanting", value.lower())
+                self.assertNotIn("background music", value.lower())
                 self.assertNotIn("Continuity:", value)
                 self.assertNotIn("CONTINUITY CONTRACT", value)
                 self.assertNotIn("Karl whispered that he cannot feel the ground", value)
@@ -895,17 +899,93 @@ class MovieProjectTests(unittest.TestCase):
                 asset_uploader=NativeAudioAssetUploader(),
             )
 
-            patched = backend.build_workflow(scene, prompt=scene["ltx"]["original_style_i2v_prompt"])
+            patched = backend.build_workflow(
+                scene,
+                prompt=scene["ltx"]["original_style_i2v_prompt"],
+                rolling={
+                    "render_frame_count": 171,
+                    "trim_front_frames": 50,
+                    "tail_loss_frames": 25,
+                },
+            )
 
             relay_inputs = patched["27"]["inputs"]
             self.assertIn("Reference image 1: Hans", relay_inputs["global_prompt"])
             self.assertIn("Background reference: Trench Line", relay_inputs["global_prompt"])
             self.assertIn("Hans turns toward Karl in the trench", relay_inputs["local_prompts"])
             self.assertIn("Hans: Halt den Mund, Karl.", relay_inputs["local_prompts"])
+            self.assertEqual(relay_inputs["local_prompts"], plan["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"])
+            self.assertEqual("170", relay_inputs["segment_lengths"])
+            self.assertNotIn("Cinematic atmosphere gathers", relay_inputs["local_prompts"])
+            self.assertNotIn("carries the last motion", relay_inputs["local_prompts"])
+            self.assertNotIn("singing", relay_inputs["local_prompts"].lower())
+            self.assertNotIn("chanting", relay_inputs["local_prompts"].lower())
+            self.assertNotIn("background music", relay_inputs["local_prompts"].lower())
             self.assertNotIn("Continuity:", relay_inputs["local_prompts"])
             self.assertNotIn("CONTINUITY CONTRACT", relay_inputs["local_prompts"])
             self.assertNotIn("Karl whispered that he cannot feel the ground", relay_inputs["local_prompts"])
             self.assertNotIn("Friedrich enters with a memory of home", relay_inputs["local_prompts"])
+
+    def test_movie_msr_silent_shot_prompt_avoids_music_and_vocal_trigger_words(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            movie_dir.mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Silent",
+                        "premise": "Mara waits in a quiet archive.",
+                        "story_arch": {"title": "Silent", "premise": "Mara waits in a quiet archive.", "beats": ["wait"]},
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "dusty archive"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24, "dialogue_language": "English"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Silent",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara listens to dust falling through the archive light",
+                                "duration_seconds": 4,
+                                "action": "Mara stands still and breathes quietly",
+                                "reference_ids": {"actors": ["mara"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "continuity_plan.json").write_text("{}", encoding="utf-8")
+            (movie_dir / "references" / "manifest.json").parent.mkdir(parents=True)
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
+                        "locations": [{"id": "archive", "name": "Archive", "visual_description": "dusty archive", "msr_sheet_path": "location.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+
+            self.assertIn("Audio contract: diegetic environmental sound effects only", prompt)
+            self.assertNotIn("music", prompt.lower())
+            self.assertNotIn("score", prompt.lower())
+            self.assertNotIn("soundtrack", prompt.lower())
+            self.assertNotIn("singing", prompt.lower())
+            self.assertNotIn("chanting", prompt.lower())
 
     def test_movie_continuity_fallback_drops_screenplay_dumps_from_carryovers(self):
         from feverslop.application.movie import build_movie_continuity_fallback

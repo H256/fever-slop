@@ -57,6 +57,7 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_
         "original_style_i2v_prompt": prompt,
         "msr_global_prompt": _movie_reference_global_prompt(shot, bible=bible, manifest=manifest),
         "native_audio": True,
+        "msr_prompt_relay_mode": "single",
         "msr_prompt_relay": [
             {
                 "frame_start": 0,
@@ -127,8 +128,12 @@ def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
 def _dialogue_audio_contract(shot: dict) -> str:
     dialogue = str(shot.get("dialogue") or "").strip()
     if dialogue:
-        return f"Spoken dialogue contract: Only this exact scripted dialogue may be spoken: {dialogue}. Do not invent, repeat, paraphrase, or add other spoken lines."
-    return "Spoken dialogue contract: No spoken dialogue in this shot. Do not invent spoken lines, narration, singing, chanting, murmuring words, or pseudo-dialogue."
+        return (
+            f"Audio contract: diegetic environmental sound effects and scripted dialogue only. "
+            f"Only this exact scripted dialogue may be spoken: {dialogue}. "
+            "Do not invent, repeat, paraphrase, or add other spoken lines."
+        )
+    return "Audio contract: diegetic environmental sound effects only. No spoken dialogue, narration, words, or pseudo-dialogue. Do not invent spoken lines."
 
 
 def _safe_continuity_facts(value: object) -> tuple[str, ...]:

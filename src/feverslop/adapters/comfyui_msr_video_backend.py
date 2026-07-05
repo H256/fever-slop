@@ -358,6 +358,14 @@ def _build_msr_prompt_relay_payload(
     relays = list(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
     timeline_frames = max(1, int(render_frame_count) - 1)
     scene_timeline_frames = max(1, int(scene.get("frame_count", 1)) - 1)
+    if str(ltx.get("msr_prompt_relay_mode") or "").strip().lower() == "single":
+        prompt = str(relays[0].get("prompt") or "").strip() if relays and isinstance(relays[0], dict) else ""
+        prompt = prompt or _msr_gap_prompt(scene)
+        return PromptRelayPayload(
+            global_prompt=global_prompt,
+            local_prompts=prompt,
+            segment_lengths=str(timeline_frames),
+        )
 
     relay_segments: list[dict] = []
     if trim_front_frames > 0:
