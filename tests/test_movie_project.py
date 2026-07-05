@@ -349,8 +349,11 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual(movie_dir / "render_plan_msr.json", output)
             self.assertIn("slow dolly", prompt)
             self.assertIn("MARA: It remembers me.", prompt)
-            self.assertIn("same charcoal coat", prompt)
-            self.assertIn("CONTINUITY CONTRACT", prompt)
+            self.assertEqual("same charcoal coat", enriched["shots"][0]["continuity_notes"])
+            self.assertNotIn("Continuity:", prompt)
+            self.assertNotIn("CONTINUITY CONTRACT", prompt)
+            self.assertNotIn("Continuity:", relay["prompt"])
+            self.assertNotIn("CONTINUITY CONTRACT", relay["prompt"])
             self.assertNotIn("Full-body cinematic character reference sheet", prompt)
             self.assertNotIn("Four vertical panels", prompt)
             self.assertEqual(0, relay["frame_start"])
@@ -568,13 +571,236 @@ class MovieProjectTests(unittest.TestCase):
             continuity_notes = enriched["shots"][0]["continuity_notes"]
             prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
             relay_prompt = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+            self.assertIn("Hans keeps the torn gray coat", continuity_notes)
             for value in (continuity_notes, prompt, relay_prompt):
                 self.assertNotIn("EXT. SOMME VALLEY", value)
                 self.assertNotIn("INT. TRENCH LINE", value)
                 self.assertNotIn("KARL: Where is God?", value)
-                self.assertIn("Hans keeps the torn gray coat", value)
             for value in (prompt, relay_prompt):
-                self.assertIn("CONTINUITY CONTRACT", value)
+                self.assertNotIn("Hans keeps the torn gray coat", value)
+                self.assertNotIn("Continuity:", value)
+                self.assertNotIn("CONTINUITY CONTRACT", value)
+
+    def test_movie_msr_enrichment_uses_only_current_shot_facts_in_video_prompt(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Mud",
+                        "premise": "Soldiers lose faith in the trenches.",
+                        "story_arch": {"title": "Mud", "premise": "Soldiers lose faith in the trenches.", "beats": ["opening", "reply"]},
+                        "actors": [
+                            {"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier"},
+                            {"id": "karl", "name": "Karl", "visual_description": "trembling soldier"},
+                        ],
+                        "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench"}],
+                        "continuity": [],
+                        "style_constraints": ["desaturated trench realism"],
+                        "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Mud",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0002",
+                                "description": "Hans turns toward Karl in the trench",
+                                "duration_seconds": 4,
+                                "camera": "tight handheld close-up",
+                                "acting": "controlled exhaustion",
+                                "action": "Hans answers without raising his voice",
+                                "dialogue": "Hans: Halt den Mund, Karl.",
+                                "continuity_notes": "Karl was trembling beside the rifle; Hans keeps the torn gray coat",
+                                "reference_ids": {"actors": ["hans", "karl"], "location": "trench"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "continuity_plan.json").write_text(
+                json.dumps(
+                    {
+                        "scene_continuity": {
+                            "shot_0002": {
+                                "incoming": ["Karl whispered that he cannot feel the ground"],
+                                "required_carryovers": ["Hans keeps the torn gray coat"],
+                                "allowed_changes": ["Hans answers without raising his voice"],
+                                "outgoing": ["Karl falls silent after Hans answers"],
+                            }
+                        },
+                        "narrative_chain": [
+                            {
+                                "shot_id": "shot_0002",
+                                "story_state_before": "Karl has just confessed fear in the previous beat.",
+                                "story_state_after": "Hans shuts down the fear before it spreads.",
+                                "cause_from_previous": "Karl whispered that he cannot feel the ground.",
+                                "narrative_purpose": "Show Hans suppressing panic.",
+                                "sets_up_next": "Friedrich enters with a memory of home.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [
+                            {"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier", "msr_sheet_path": "movie/references/actors/hans/msr_sheet.png"},
+                            {"id": "karl", "name": "Karl", "visual_description": "trembling soldier", "msr_sheet_path": "movie/references/actors/karl/msr_sheet.png"},
+                        ],
+                        "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench", "msr_sheet_path": "movie/references/locations/trench/views/hero.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+            ltx = enriched["shots"][0]["ltx"]
+            prompt = ltx["original_style_i2v_prompt"]
+            relay_prompt = ltx["msr_prompt_relay"][0]["prompt"]
+            for value in (prompt, relay_prompt):
+                self.assertIn("Hans turns toward Karl in the trench", value)
+                self.assertIn("Hans answers without raising his voice", value)
+                self.assertIn("Hans: Halt den Mund, Karl.", value)
+                self.assertIn("Dialogue language: German", value)
+                self.assertNotIn("Continuity:", value)
+                self.assertNotIn("CONTINUITY CONTRACT", value)
+                self.assertNotIn("Karl whispered that he cannot feel the ground", value)
+                self.assertNotIn("Friedrich enters with a memory of home", value)
+            self.assertIn("Reference image 1: Hans", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 2: Karl", ltx["msr_global_prompt"])
+            self.assertIn("Background reference: Trench Line", ltx["msr_global_prompt"])
+            self.assertNotIn("CONTINUITY CONTRACT", ltx["msr_global_prompt"])
+
+    def test_movie_msr_workflow_prompt_relay_node_excludes_continuity_contract(self):
+        from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            actor_sheet = project / "movie" / "references" / "actors" / "hans" / "msr_sheet.png"
+            location_sheet = project / "movie" / "references" / "locations" / "trench" / "views" / "hero.png"
+            actor_sheet.parent.mkdir(parents=True)
+            location_sheet.parent.mkdir(parents=True)
+            actor_sheet.write_bytes(b"actor")
+            location_sheet.write_bytes(b"location")
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Mud",
+                        "premise": "Hans answers Karl in the trench.",
+                        "story_arch": {"title": "Mud", "premise": "Hans answers Karl in the trench.", "beats": ["reply"]},
+                        "actors": [{"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier"}],
+                        "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench"}],
+                        "continuity": [],
+                        "style_constraints": ["desaturated trench realism"],
+                        "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Mud",
+                        "fps": 24,
+                        "shots": [
+                            {
+                                "shot_id": "shot_0002",
+                                "description": "Hans turns toward Karl in the trench",
+                                "duration_seconds": 4,
+                                "camera": "tight handheld close-up",
+                                "acting": "controlled exhaustion",
+                                "action": "Hans answers without raising his voice",
+                                "dialogue": "Hans: Halt den Mund, Karl.",
+                                "continuity_notes": "Karl whispered that he cannot feel the ground; Hans keeps the torn gray coat",
+                                "reference_ids": {"actors": ["hans"], "location": "trench"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "continuity_plan.json").write_text(
+                json.dumps(
+                    {
+                        "scene_continuity": {
+                            "shot_0002": {
+                                "incoming": ["Karl whispered that he cannot feel the ground"],
+                                "required_carryovers": ["Hans keeps the torn gray coat"],
+                                "outgoing": ["Karl falls silent after Hans answers"],
+                            }
+                        },
+                        "narrative_chain": [
+                            {
+                                "shot_id": "shot_0002",
+                                "story_state_before": "Karl has just confessed fear.",
+                                "sets_up_next": "Friedrich enters with a memory of home.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier", "msr_sheet_path": actor_sheet.relative_to(project).as_posix()}],
+                        "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench", "msr_sheet_path": location_sheet.relative_to(project).as_posix()}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            workflow_path = project / "workflow.json"
+            workflow_path.write_text(
+                json.dumps(
+                    {
+                        "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                        "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                        "27": {"inputs": {"global_prompt": "", "local_prompts": "", "segment_lengths": ""}, "_meta": {"title": "#PROMPT_RELAY"}},
+                        "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            render_plan_msr = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            plan = json.loads(render_plan_msr.read_text(encoding="utf-8"))
+            scene = ComfyUIMovieVisualAdapter(client=object(), workflow_path=workflow_path)._movie_scenes(plan, project_dir=project)[0]
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=object(),
+                workflow_path=workflow_path,
+                output_dir=project / "output",
+                project_dir=project,
+                asset_uploader=NativeAudioAssetUploader(),
+            )
+
+            patched = backend.build_workflow(scene, prompt=scene["ltx"]["original_style_i2v_prompt"])
+
+            relay_inputs = patched["27"]["inputs"]
+            self.assertIn("Reference image 1: Hans", relay_inputs["global_prompt"])
+            self.assertIn("Background reference: Trench Line", relay_inputs["global_prompt"])
+            self.assertIn("Hans turns toward Karl in the trench", relay_inputs["local_prompts"])
+            self.assertIn("Hans: Halt den Mund, Karl.", relay_inputs["local_prompts"])
+            self.assertNotIn("Continuity:", relay_inputs["local_prompts"])
+            self.assertNotIn("CONTINUITY CONTRACT", relay_inputs["local_prompts"])
+            self.assertNotIn("Karl whispered that he cannot feel the ground", relay_inputs["local_prompts"])
+            self.assertNotIn("Friedrich enters with a memory of home", relay_inputs["local_prompts"])
 
     def test_movie_continuity_fallback_drops_screenplay_dumps_from_carryovers(self):
         from feverslop.application.movie import build_movie_continuity_fallback

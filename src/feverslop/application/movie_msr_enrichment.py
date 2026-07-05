@@ -28,7 +28,7 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path) -> Path:
     enriched["reference_manifest_path"] = "movie/references/manifest.json"
     enriched["msr_enriched"] = True
     enriched["shots"] = [
-        _enrich_shot(shot, bible=bible, manifest=manifest, continuity_plan=continuity_plan, fps=_fps(bible))
+        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible))
         for shot in render_plan.get("shots") or []
     ]
 
@@ -37,9 +37,9 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path) -> Path:
     return output_path
 
 
-def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, continuity_plan: dict, fps: int) -> dict:
+def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int) -> dict:
     enriched = deepcopy(shot)
-    prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest, continuity_plan=continuity_plan)
+    prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
     continuity_notes = "; ".join(_safe_continuity_facts(shot.get("continuity_notes")))
     if continuity_notes:
         enriched["continuity_notes"] = continuity_notes
@@ -88,14 +88,13 @@ def _movie_reference_global_prompt(shot: dict, *, bible: dict, manifest: dict) -
     return " ".join(parts).strip()
 
 
-def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict, continuity_plan: dict) -> str:
+def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
     references = shot.get("reference_ids") or {}
     actor_ids = references.get("actors") or shot.get("actor_ids") or []
     location_id = references.get("location") or shot.get("location_id") or ""
     actor_names = _names_for_ids(manifest.get("actors") or bible.get("actors") or [], actor_ids)
     location_name = _name_for_id(manifest.get("locations") or bible.get("locations") or [], location_id)
     dialogue_language = str((bible.get("runtime_constraints") or {}).get("dialogue_language") or "").strip()
-    continuity_notes = "; ".join(_safe_continuity_facts(shot.get("continuity_notes")))
     parts = [
         str(shot.get("description") or "").strip(),
         f"Actors: {', '.join(actor_names)}" if actor_names else "",
@@ -106,8 +105,6 @@ def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict, continuity_p
         f"Dialogue for native audio: {shot.get('dialogue')}" if shot.get("dialogue") else "",
         _dialogue_audio_contract(shot),
         f"Dialogue language: {dialogue_language}. All spoken dialogue/native audio must be spoken in {dialogue_language} only" if dialogue_language else "",
-        f"Continuity: {continuity_notes}" if continuity_notes else "",
-        _continuity_contract(shot, continuity_plan),
         f"Style: {'; '.join(str(item) for item in bible.get('style_constraints') or [])}" if bible.get("style_constraints") else "",
     ]
     prompt = ". ".join(part.strip(" .") for part in parts if str(part).strip())
@@ -119,48 +116,6 @@ def _dialogue_audio_contract(shot: dict) -> str:
     if dialogue:
         return f"Spoken dialogue contract: Only this exact scripted dialogue may be spoken: {dialogue}. Do not invent, repeat, paraphrase, or add other spoken lines."
     return "Spoken dialogue contract: No spoken dialogue in this shot. Do not invent spoken lines, narration, singing, chanting, murmuring words, or pseudo-dialogue."
-
-
-def _continuity_contract(shot: dict, continuity_plan: dict) -> str:
-    if not continuity_plan:
-        return ""
-    shot_id = str(shot.get("shot_id") or "")
-    packet = (continuity_plan.get("scene_continuity") or {}).get(shot_id) or {}
-    narrative = _narrative_for_shot(shot_id, continuity_plan.get("narrative_chain") or [])
-    contract_lines = [
-        _line("Incoming", packet.get("incoming")),
-        _line("Must preserve", packet.get("required_carryovers")),
-        _line("Allowed changes", packet.get("allowed_changes")),
-        _line("Outgoing", packet.get("outgoing")),
-        _line("Story before", narrative.get("story_state_before")),
-        _line("Story after", narrative.get("story_state_after")),
-        _line("Cause from previous", narrative.get("cause_from_previous")),
-        _line("Narrative purpose", narrative.get("narrative_purpose")),
-        _line("Conflict or tension", narrative.get("conflict_or_tension")),
-        _line("Turning point", narrative.get("turning_point")),
-        _line("Sets up next", narrative.get("sets_up_next")),
-    ]
-    contract_lines = [line for line in contract_lines if line]
-    if not contract_lines:
-        return ""
-    lines = [
-        "CONTINUITY CONTRACT:",
-        *contract_lines,
-        "Preserve these continuity facts unless this shot explicitly changes them.",
-    ]
-    return "\n".join(lines)
-
-
-def _narrative_for_shot(shot_id: str, chain: list) -> dict:
-    for item in chain:
-        if isinstance(item, dict) and str(item.get("shot_id") or "") == shot_id:
-            return item
-    return {}
-
-
-def _line(label: str, value: object) -> str:
-    text = "; ".join(_safe_continuity_facts(value))
-    return f"{label}: {text}" if text else ""
 
 
 def _safe_continuity_facts(value: object) -> tuple[str, ...]:
