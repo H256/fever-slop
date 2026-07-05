@@ -21,6 +21,7 @@ from feverslop.application.movie_artifacts import (
 )
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.application.movie_references import MovieReferenceSheetGenerator
+from feverslop.composition.movie_debug_workflows import write_movie_debug_workflows
 from feverslop.path_utils import coerce_local_path
 from feverslop.studio.job_service import (
     build_movie_reference_generator,
@@ -45,6 +46,7 @@ class MoviePipelineResult:
     render_plan_msr_path: Path | None = None
     reference_manifest_path: Path | None = None
     final_video_path: Path | None = None
+    debug_workflows_dir: Path | None = None
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -69,6 +71,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force-movie-references", action="store_true", help="Render movie references even when manifest paths already exist.")
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
     parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe"], default="msr")
+    parser.add_argument("--write-debug-workflows", action="store_true", help="Write patched movie MSR workflow JSONs without queueing ComfyUI.")
+    parser.add_argument("--debug-workflows-dir", default=None, help="Directory for --write-debug-workflows output.")
     return parser
 
 
@@ -162,6 +166,23 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     elif not render_plan_msr_path.exists():
         render_plan_msr_path = None
 
+    debug_workflows_dir: Path | None = None
+    if args.write_debug_workflows:
+        if render_plan_msr_path is None:
+            raise FileNotFoundError("Movie debug workflow export requires movie/render_plan_msr.json; run without --skip-movie-msr-enrich first")
+        if not movie_references_ready(manifest_path, backend=config["reference_backend"]):
+            raise ValueError("Movie debug workflow export requires ready movie references; run without --skip-movie-references first")
+        workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
+        debug_workflows_dir = write_movie_debug_workflows(
+            project_dir=project_dir,
+            render_plan_path=render_plan_msr_path,
+            workflow_path=Path(config["msr_workflow"]),
+            workflow=workflow,
+            output_dir=coerce_local_path(args.debug_workflows_dir, base_dir=project_dir)
+            if args.debug_workflows_dir
+            else project_dir / "output" / "movie" / "ltx_msr_debug",
+        )
+
     final_video_path: Path | None = None
     if not args.skip_movie_render:
         if not movie_references_ready(manifest_path, backend=config["reference_backend"]):
@@ -184,6 +205,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
         render_plan_msr_path=render_plan_msr_path,
         reference_manifest_path=reference_manifest_path,
         final_video_path=final_video_path,
+        debug_workflows_dir=debug_workflows_dir,
     )
 
 

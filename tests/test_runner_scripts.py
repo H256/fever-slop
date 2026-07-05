@@ -160,6 +160,9 @@ class RunnerScriptTests(unittest.TestCase):
                 "start",
                 "--movie-video-workflow",
                 "msr-i2v-startframe",
+                "--write-debug-workflows",
+                "--debug-workflows-dir",
+                "debug/workflows",
             ]
         )
 
@@ -180,6 +183,8 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertTrue(args.force_movie_references)
         self.assertEqual("start", args.keyframe_mode)
         self.assertEqual("msr-i2v-startframe", args.movie_video_workflow)
+        self.assertTrue(args.write_debug_workflows)
+        self.assertEqual("debug/workflows", args.debug_workflows_dir)
 
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -225,6 +230,38 @@ class RunnerScriptTests(unittest.TestCase):
 
             self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
             self.assertTrue(result.final_video_path.exists())
+
+    def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            debug_dir = project / "debug_workflows"
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-references",
+                        "--write-debug-workflows",
+                        "--debug-workflows-dir",
+                        str(debug_dir),
+                        "--skip-movie-render",
+                    ]
+                )
+            )
+
+            debug_workflow = json.loads((debug_dir / "scene_0001_workflow.json").read_text(encoding="utf-8"))
+            actor_node = next(node for node in debug_workflow.values() if node.get("_meta", {}).get("title") == "#MSR_ACTOR_1")
+            location_node = next(node for node in debug_workflow.values() if node.get("_meta", {}).get("title") == "#MSR_BACKGROUND")
+            relay_node = next(node for node in debug_workflow.values() if node.get("_meta", {}).get("title") == "#PROMPT_RELAY")
+            self.assertIsNone(result.final_video_path)
+            self.assertEqual(debug_dir, result.debug_workflows_dir)
+            self.assertEqual("msr_sheet.png", actor_node["inputs"]["image"])
+            self.assertEqual("hero.png", location_node["inputs"]["image"])
+            self.assertIn("Mara enters the archive", relay_node["inputs"]["local_prompts"])
 
 
 def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
