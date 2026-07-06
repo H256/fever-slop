@@ -49,6 +49,7 @@ class ProjectCreateRequest:
     movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
     movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
     movie_msr_i2v_workflow: str = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json"
+    movie_i2v_workflow: str = "workflows/video_ltxv_i2v_v1.json"
     movie_video_workflow: str = "msr"
     movie_continuity_keyframes: str = "none"
 

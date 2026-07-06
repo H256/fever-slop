@@ -1841,6 +1841,358 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("TRENCH LINE - CONTINUOUS", render_plan["shots"][1]["location"])
             self.assertIn("Ich kann den Boden nicht mehr spüren", render_plan["shots"][1]["dialogue"])
 
+    def test_movie_two_ref_edit_workflow_exposes_required_anchors(self):
+        workflow = json.loads(Path("workflows/image_edit_flux2_klein_2ref_v1.json").read_text(encoding="utf-8-sig"))
+        titles = {str(node.get("_meta", {}).get("title") or "") for node in workflow.values()}
+
+        self.assertIn("#BASE_IMAGE", titles)
+        self.assertIn("#CHARACTER_REF", titles)
+        self.assertIn("#PROMPT_POSITIVE", titles)
+        self.assertIn("#PROMPT_NEGATIVE", titles)
+        self.assertIn("#SAVE_IMAGE", titles)
+
+    def test_movie_two_ref_edit_backend_patches_plate_character_and_prompt(self):
+        from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
+
+        class FakeClient:
+            def __init__(self):
+                self.uploads = []
+                self.queued = None
+
+            def upload_image(self, path, *, subfolder, file_type, overwrite):
+                self.uploads.append(Path(path).name)
+                return {"name": Path(path).name, "subfolder": subfolder, "type": file_type}
+
+            def comfy_path_from_upload(self, upload):
+                return f"{upload['subfolder']}/{upload['name']}"
+
+            def queue_prompt(self, workflow):
+                self.queued = workflow
+                return "prompt-1"
+
+            def wait_for_completion(self, prompt_id):
+                return {"prompt_id": prompt_id}
+
+            def extract_output_images(self, history):
+                return [{"filename": "out.png", "subfolder": "", "type": "output"}]
+
+            def download_view_file(self, *, filename, subfolder, file_type, output_path):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"png")
+                return output_path
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow_path = root / "edit.json"
+            workflow_path.write_text(
+                json.dumps(
+                    {
+                        "1": {"class_type": "LoadImage", "inputs": {"image": ""}, "_meta": {"title": "#BASE_IMAGE"}},
+                        "2": {"class_type": "LoadImage", "inputs": {"image": ""}, "_meta": {"title": "#CHARACTER_REF"}},
+                        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}},
+                        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}, "_meta": {"title": "#PROMPT_NEGATIVE"}},
+                        "5": {"class_type": "SaveImage", "inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_IMAGE"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            plate = root / "plate.png"
+            character = root / "character.png"
+            plate.write_bytes(b"plate")
+            character.write_bytes(b"character")
+            client = FakeClient()
+
+            output = MovieTwoRefEditImageBackend(client=client, workflow_path=workflow_path).render_edit(
+                scene_number=1,
+                prompt="Add only Leo.",
+                plate_image=plate,
+                character_image=character,
+                output_dir=root / "out",
+                pass_number=2,
+            )
+
+        self.assertEqual(root / "out" / "scene_0001_pass_02.png", output)
+        self.assertEqual(["plate.png", "character.png"], client.uploads)
+        self.assertEqual("feverslop/movie_edit/plate.png", client.queued["1"]["inputs"]["image"])
+        self.assertEqual("feverslop/movie_edit/character.png", client.queued["2"]["inputs"]["image"])
+        self.assertEqual("Add only Leo.", client.queued["3"]["inputs"]["text"])
+        self.assertEqual("movie_edit/scene_0001_pass_02", client.queued["5"]["inputs"]["filename_prefix"])
+
+    def test_screenplay_scaffold_preserves_multilingual_dialogue_without_translations(self):
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        screenplay = """
+        EXT. STONE CLEARING - DUSK
+
+        MORWENNA
+        (in archaic French)
+        Tu tardes.
+        (You're late.)
+
+        LEO
+        Where am I?
+        """
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = ScaffoldMovieUseCase(
+                planner=DeterministicMoviePlanner(),
+                projects_root=Path(temp_dir),
+            ).execute(
+                MovieInput(
+                    name="Blackwood",
+                    source_type="screenplay",
+                    story_text=screenplay,
+                    desired_length=12,
+                    mode="scaffold",
+                )
+            )
+
+            screenplay_artifact = json.loads(result.screenplay_path.read_text(encoding="utf-8"))
+            dialogue = screenplay_artifact["scenes"][0]["dialogue"]
+
+        self.assertIn("MORWENNA: Tu tardes.", dialogue)
+        self.assertIn("LEO: Where am I?", dialogue)
+        self.assertNotIn("You're late", dialogue)
+        self.assertNotIn("in archaic French", dialogue)
+
+    def test_movie_visual_plan_derives_scene_views_and_shot_blocking(self):
+        from feverslop.application.movie_visual_plan import build_movie_visual_plan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            (project / "movie").mkdir(parents=True)
+            (project / "movie" / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Blackwood",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "scene": 1,
+                                "description": "Leo enters the stone clearing.",
+                                "camera": "wide exterior establishing move",
+                                "action": "Leo sees Morwenna sorting roots at the stone.",
+                                "location": "STONE CLEARING - DUSK",
+                                "location_id": "stone_clearing",
+                                "actor_ids": ["leo", "morwenna"],
+                                "dialogue": "MORWENNA: Tu tardes.",
+                                "duration_seconds": 5,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (project / "movie" / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Blackwood",
+                        "actors": [
+                            {"id": "leo", "name": "Leo", "visual_description": "modern hiker in expensive outdoor gear"},
+                            {"id": "morwenna", "name": "Morwenna", "visual_description": "ancient witch with iron-gray braided hair"},
+                        ],
+                        "locations": [
+                            {"id": "stone_clearing", "name": "Stone Clearing", "visual_description": "mossy forest clearing with a flat ritual stone"},
+                        ],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (project / "movie" / "references").mkdir()
+            (project / "movie" / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [
+                            {"id": "leo", "msr_sheet_path": "movie/references/actors/leo/msr_sheet.png"},
+                            {"id": "morwenna", "sheet_path": "movie/references/actors/morwenna/sheet.png"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = build_movie_visual_plan(project_dir=project)
+            data = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual("Blackwood", data["title"])
+        self.assertEqual("stone_clearing", data["scene_views"][0]["location_id"])
+        self.assertIn(data["shots"][0]["view_id"], {view["view_id"] for view in data["scene_views"]})
+        self.assertEqual(["leo", "morwenna"], data["shots"][0]["selected_actor_ids"])
+        self.assertIn("Scene-only background plate", data["shots"][0]["base_plate_prompt"])
+        self.assertEqual(["leo", "morwenna"], [item["actor_id"] for item in data["shots"][0]["edit_passes"]])
+        self.assertIn("Add only leo", data["shots"][0]["edit_passes"][0]["prompt"])
+        self.assertEqual("movie/references/actors/leo/msr_sheet.png", data["shots"][0]["edit_passes"][0]["reference_image_path"])
+        self.assertEqual("movie/references/actors/morwenna/sheet.png", data["shots"][0]["edit_passes"][1]["reference_image_path"])
+
+    def test_movie_i2v_render_plan_matches_classic_render_contract(self):
+        from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            (project / "movie").mkdir(parents=True)
+            (project / "movie" / "visual_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Blackwood",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "scene": 1,
+                                "duration_seconds": 5,
+                                "view_id": "stone_clearing_wide",
+                                "selected_actor_ids": ["leo"],
+                                "base_plate_prompt": "Scene-only background plate.",
+                                "edit_passes": [{"pass": 1, "actor_id": "leo", "prompt": "Add only leo from Image 2 into Image 1."}],
+                                "video_prompt": "Use the supplied startframe. Leo walks slowly.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = write_movie_i2v_render_plan(project_dir=project)
+            plan = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertIsInstance(plan, list)
+        self.assertEqual(1, plan[0]["scene"])
+        self.assertEqual("Scene-only background plate.", plan[0]["z_image"]["prompt"])
+        self.assertEqual("Use the supplied startframe. Leo walks slowly.", plan[0]["ltx"]["original_style_i2v_prompt"])
+        self.assertEqual("leo", plan[0]["movie"]["edit_passes"][0]["actor_id"])
+        self.assertEqual(120, plan[0]["frame_count"])
+
+    def test_movie_i2v_edit_adapter_renders_base_edit_passes_then_video(self):
+        from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
+
+        class FakeArtifactStore:
+            def __init__(self, scenes):
+                self.scenes = scenes
+
+            def read_render_plan(self, path):
+                return self.scenes
+
+        class FakeBaseBackend:
+            def __init__(self):
+                self.requests = []
+
+            def render_image(self, request):
+                self.requests.append(request)
+                path = request.output_dir / f"scene_{request.scene_number:04}.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"base")
+                return path
+
+        class FakeEditBackend:
+            def __init__(self):
+                self.calls = []
+
+            def render_edit(self, **kwargs):
+                self.calls.append(kwargs)
+                path = Path(kwargs["output_dir"]) / f"scene_{kwargs['scene_number']:04}_pass_{kwargs['pass_number']:02}.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"edit")
+                return path
+
+        class FakeVideoUseCase:
+            def __init__(self):
+                self.request = None
+
+            def execute(self, request):
+                self.request = request
+                final = request.output_dir / "final" / "scene_0001.mp4"
+                final.parent.mkdir(parents=True, exist_ok=True)
+                final.write_bytes(b"clip")
+                return [final]
+
+        class FakePostprocessor:
+            def write_concat_list(self, rendered, output_path):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text("\n".join(str(path) for path in rendered), encoding="utf-8")
+                return output_path
+
+            def concat_clips(self, concat_list, final_output, *, video_only=False, reencode=True):
+                final_output.parent.mkdir(parents=True, exist_ok=True)
+                final_output.write_bytes(b"movie")
+                return final_output
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            character = project / "movie" / "references" / "actors" / "leo" / "hero.png"
+            character.parent.mkdir(parents=True)
+            character.write_bytes(b"hero")
+            scene = {
+                "scene": 1,
+                "width": 1280,
+                "height": 704,
+                "z_image": {"prompt": "base prompt"},
+                "movie": {
+                    "edit_passes": [
+                        {
+                            "pass": 1,
+                            "actor_id": "leo",
+                            "reference_image_path": "movie/references/actors/leo/hero.png",
+                            "prompt": "Add only leo.",
+                        }
+                    ]
+                },
+            }
+            base = FakeBaseBackend()
+            edit = FakeEditBackend()
+            video = FakeVideoUseCase()
+            adapter = ComfyUIMovieI2VEditVisualAdapter(
+                base_image_backend=base,
+                edit_backend=edit,
+                artifact_store=FakeArtifactStore([scene]),
+                video_use_case=video,
+                workflow_path=Path("base.json"),
+                edit_workflow_path=Path("edit.json"),
+                i2v_workflow_path=Path("i2v.json"),
+                postprocessor=FakePostprocessor(),
+            )
+
+            final = adapter.render_movie(project_dir=project, render_plan_path=project / "movie" / "render_plan_i2v.json")
+
+            self.assertEqual(project / "output" / "movie" / f"{project.name}.mp4", final)
+            self.assertEqual(project / "output" / "movie" / "storyboard" / "base", base.requests[0].output_dir)
+            self.assertEqual(project / "output" / "movie" / "storyboard" / "base" / "scene_0001.png", edit.calls[0]["plate_image"])
+            self.assertEqual(character, edit.calls[0]["character_image"])
+            self.assertTrue((project / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").exists())
+            self.assertEqual(project / "output" / "movie" / "storyboard" / "final", video.request.storyboard_dir)
+
+    def test_movie_storyboard_page_lists_visual_plan_shots(self):
+        from feverslop.tools.movie_storyboard_page import generate_movie_storyboard_page
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            (project / "movie").mkdir(parents=True)
+            (project / "output" / "movie" / "storyboard" / "final").mkdir(parents=True)
+            (project / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").write_bytes(b"png")
+            (project / "movie" / "visual_plan.json").write_text(
+                json.dumps(
+                    {
+                        "shots": [
+                            {
+                                "scene": 1,
+                                "shot_id": "shot_0001",
+                                "view_id": "stone_hut_hearth",
+                                "selected_actor_ids": ["leo", "morwenna"],
+                                "video_prompt": "Leo stops breathing as Morwenna turns.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = generate_movie_storyboard_page(project_dir=project)
+            html = output.read_text(encoding="utf-8")
+
+        self.assertIn("stone_hut_hearth", html)
+        self.assertIn("leo, morwenna", html)
+        self.assertIn("scene_0001.png", html)
+
     def test_short_story_scaffold_still_generates_screenplay_from_unformatted_idea(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner

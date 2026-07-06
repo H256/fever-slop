@@ -598,6 +598,25 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("last-to-start", metadata["movie"]["continuity_keyframes"])
             self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json", metadata["movie"]["msr_i2v_workflow"])
 
+    def test_create_movie_project_persists_i2v_edit_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            store.create_project(
+                ProjectCreateRequest(
+                    project_type="movie",
+                    name="I2V Movie",
+                    story_text="A witch traps a hiker in a forest.",
+                    movie_mode="scaffold",
+                    movie_planner_backend="deterministic",
+                    movie_video_workflow="i2v-edit",
+                )
+            )
+
+            metadata = json.loads((Path(temp_dir) / "i2v-movie" / ".studio" / "project.json").read_text())
+
+            self.assertEqual("i2v-edit", metadata["movie"]["movie_video_workflow"])
+
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}
 
