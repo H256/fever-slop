@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
+import random
 
 from rich.console import Console
 
@@ -128,12 +129,15 @@ def _build_llm(app_config):
 
 
 def _build_scene_generator(scene_cfg):
+    seed = int(scene_cfg.seed)
+    if seed == -1:
+        seed = random.SystemRandom().randint(0, 2**31 - 1)
     return BeatSceneDurationGenerator(
         min_duration=scene_cfg.min_duration,
         max_duration=scene_cfg.max_duration,
         bias=scene_cfg.bias,
         duration_preset=scene_cfg.duration_preset,
-        seed=scene_cfg.seed,
+        seed=seed,
     )
 
 

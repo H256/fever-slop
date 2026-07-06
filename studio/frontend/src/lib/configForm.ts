@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG = {
   audio: {
     demucs_model: "htdemucs_ft",
     whisper_model: "large",
-    language: "de"
+    language: "en"
   },
   video_pipeline: "ltx_msr",
   scene_generation: {
@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG = {
     max_duration: 10.0,
     bias: 0.7,
     duration_preset: "impact_weighted",
-    seed: 42
+    seed: -1
   },
   vocal_detection: {
     merge_gap: 0.5,

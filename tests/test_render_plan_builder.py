@@ -53,6 +53,42 @@ class OriginalStylePromptTests(unittest.TestCase):
         self.assertNotIn("no lip", prompt)
         self.assertLess(prompt.index("singer"), 80)
 
+    def test_silent_mode_vocal_prompt_excludes_singing_terms(self):
+        prompt = build_original_style_i2v_prompt(
+            scene={
+                "scene": 1,
+                "type": "vocals",
+                "silent_mode": True,
+                "ltx_base_prompt": "A warrior tells the story through movement under neon rain.",
+                "base_concept": "silent story scene",
+            },
+            seed=7,
+        ).lower()
+
+        self.assertIn("silent", prompt)
+        self.assertIn("no lip", prompt)
+        self.assertIn("no vocal performance", prompt)
+        for banned in ("sings", "singing", "lip sync", "lip-sync"):
+            self.assertNotIn(banned, prompt)
+
+    def test_silent_mode_ignores_legacy_explicit_i2v_prompt_with_singing(self):
+        prompt = build_original_style_i2v_prompt(
+            scene={
+                "scene": 1,
+                "type": "vocals",
+                "silent_mode": True,
+                "zimage_prompt": "A warrior tells the story through movement under neon rain.",
+                "i2v_prompt_from_t2i": "The warrior sings with expressive lip sync.",
+                "base_concept": "silent story scene",
+            },
+            seed=7,
+        ).lower()
+
+        self.assertIn("no vocal performance", prompt)
+        self.assertNotIn("the warrior sings with expressive lip sync", prompt)
+        for banned in ("sings", "singing", "lip sync", "lip-sync"):
+            self.assertNotIn(banned, prompt)
+
     def test_instrumental_prompt_excludes_singing_terms(self):
         prompt = build_original_style_i2v_prompt(
             scene={
@@ -169,6 +205,65 @@ class BuildRenderPlanTests(unittest.TestCase):
             self.assertEqual("relay", by_scene[16]["ltx"]["render_mode_hint"])
             self.assertEqual("single_prompt", by_scene[3]["ltx"]["render_mode_hint"])
             self.assertNotIn("lip sync", by_scene[3]["ltx"]["original_style_i2v_prompt"].lower())
+
+    def test_silent_mode_forces_vocal_relay_segments_to_silent(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+
+            scene_prompts_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "scene": 1,
+                            "segment_id": "s1",
+                            "type": "vocals",
+                            "silent_mode": True,
+                            "start": 0.0,
+                            "end": 2.0,
+                            "duration": 2.0,
+                            "lyrics": "do not sing this",
+                            "base_concept": "silent story action",
+                            "zimage_prompt": "z",
+                            "ltx_base_prompt": "The warrior acts out the story without singing.",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            relay_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "scene": 1,
+                            "prompt_relay": [
+                                {"frame_start": 0, "frame_end": 48, "state": "singing", "lyrics": "do not sing this"}
+                            ],
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+            )
+
+            scene = json.loads(output_path.read_text(encoding="utf-8"))[0]
+            relay = scene["ltx"]["prompt_relay"][0]
+            combined = json.dumps(scene["ltx"], ensure_ascii=False).lower()
+
+        self.assertEqual("instrumental", relay["state"])
+        self.assertIn("no vocal performance", relay["prompt"].lower())
+        self.assertIn("silent", scene["ltx"]["original_style_i2v_prompt"].lower())
+        for banned in ("sings", "singing", "lip sync", "lip-sync"):
+            self.assertNotIn(banned, combined)
 
     def test_render_plan_prefers_explicit_i2v_prompt_from_t2i(self):
         with tempfile.TemporaryDirectory() as temp_dir:

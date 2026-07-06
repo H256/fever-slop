@@ -15,7 +15,13 @@ const sizeEntries = computed(() => {
 });
 const totalBytes = computed(() => studio.currentProject?.artifact_sizes?.total_bytes ?? 0);
 const chartColors = ["#5b5ce2", "#10a37f", "#f2b705", "#e85d75", "#3388dd", "#8f95a3", "#9b59b6", "#555"];
-onMounted(() => studio.loadProject(projectId.value));
+const movieMetadata = computed(() => studio.currentProject?.metadata?.movie);
+const movieJob = computed(() => studio.jobs.find((job) => job.project_id === projectId.value && job.pipeline_type === "movie-full-auto"));
+const isMovieProject = computed(() => studio.currentProject?.project_type === "movie");
+onMounted(() => {
+  void studio.loadProject(projectId.value);
+  void studio.loadJobs(projectId.value);
+});
 
 const pieStyle = computed(() => {
   if (!totalBytes.value || sizeEntries.value.length === 0) return { background: "#eef0f4" };
@@ -47,14 +53,64 @@ function formatBytes(bytes: number): string {
   }
   return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unit]}`;
 }
+
+function formatMovieSource(value?: string): string {
+  return value === "screenplay" ? "screenplay" : "short story";
+}
+
+function formatMovieMode(value?: string): string {
+  return value === "full_auto" ? "full-auto" : "scaffold";
+}
+
+function formatDuration(seconds?: number): string {
+  return Number.isFinite(seconds) ? `${Number(seconds).toFixed(Number(seconds) % 1 ? 1 : 0)}s` : "not set";
+}
 </script>
 
 <template>
-  <section v-if="studio.currentProject" class="page">    <header class="page-header">
+  <section v-if="studio.currentProject" class="page">
+    <header class="page-header">
       <h1>{{ studio.currentProject.name }}</h1>
       <p>{{ studio.currentProject.path }}</p>
     </header>
     <div class="dashboard-grid">
+      <section v-if="isMovieProject" class="panel">
+        <h2>Movie Production</h2>
+        <div class="status-list">
+          <div>
+            <span>Source</span>
+            <strong>{{ formatMovieSource(movieMetadata?.source_type) }}</strong>
+          </div>
+          <div>
+            <span>Mode</span>
+            <strong>{{ formatMovieMode(movieMetadata?.mode) }}</strong>
+          </div>
+          <div>
+            <span>Length</span>
+            <strong>{{ formatDuration(movieMetadata?.desired_length) }}</strong>
+          </div>
+          <div>
+            <span>Resolution</span>
+            <strong>{{ movieMetadata?.width || 1280 }} x {{ movieMetadata?.height || 704 }}</strong>
+          </div>
+          <div>
+            <span>Planner</span>
+            <strong>{{ movieMetadata?.planner_backend || "llm" }}</strong>
+          </div>
+          <div>
+            <span>References</span>
+            <strong>{{ movieMetadata?.reference_backend || "comfyui" }}</strong>
+          </div>
+          <div>
+            <span>Render</span>
+            <strong>{{ movieMetadata?.render_backend || "comfyui" }}</strong>
+          </div>
+          <div>
+            <span>Current stage</span>
+            <strong>{{ movieJob?.current_step || movieJob?.status || "idle" }}</strong>
+          </div>
+        </div>
+      </section>
       <section class="panel">
         <h2>Pipeline Status</h2>
         <div class="status-list">

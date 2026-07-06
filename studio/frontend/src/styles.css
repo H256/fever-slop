@@ -207,6 +207,7 @@ textarea:focus-visible {
   background: white;
   color: var(--ink);
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -424,6 +425,22 @@ textarea:focus-visible {
   cursor: not-allowed;
 }
 
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(95, 93, 205, 0.22);
+  border-top-color: var(--primary);
+  border-radius: 999px;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner.small {
+  width: 14px;
+  height: 14px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+}
+
 .action-list {
   min-width: 300px;
 }
@@ -634,6 +651,12 @@ pre {
   gap: 16px;
 }
 
+.editor-layout > *,
+.path-list,
+.document-panel {
+  min-width: 0;
+}
+
 .scene-table {
   max-height: calc(100vh - 180px);
   overflow: auto;
@@ -756,6 +779,60 @@ pre {
   background: var(--canvas);
 }
 
+.settings-section > label,
+.settings-section > .form-grid-compact,
+.settings-section > .project-folder {
+  margin: 0 14px 14px;
+}
+
+.section-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.section-header p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+}
+
+.movie-project-form {
+  display: grid;
+  gap: 16px;
+  max-width: 920px;
+  padding: 16px;
+}
+
+.busy-banner {
+  position: sticky;
+  top: 12px;
+  z-index: 1;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid #cfd2ff;
+  border-radius: 8px;
+  background: #f4f5ff;
+  box-shadow: var(--shadow);
+}
+
+.busy-banner p {
+  margin: 3px 0 0;
+  color: var(--ink-muted);
+}
+
+.movie-source-text {
+  min-height: 260px;
+}
+
 .settings-section summary {
   min-height: 48px;
   padding: 14px;
@@ -781,6 +858,12 @@ pre {
 .success-text {
   color: #137333;
   font-weight: 700;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .document-panel header {
@@ -1106,8 +1189,12 @@ select {
 .path-list a,
 .path-list button {
   color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
   text-align: left;
   text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .path-list button {
@@ -1157,6 +1244,10 @@ select {
 .artifact-preview figcaption {
   margin-top: 8px;
   color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.document-panel h2 {
   overflow-wrap: anywhere;
 }
 

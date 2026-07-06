@@ -41,6 +41,11 @@ class ProjectCreatePayload(BaseModel):
     project_type: str
     name: str
     silent_mode: Any = False
+    source_type: str = "short_story"
+    story_text: str = ""
+    desired_length: float = 60.0
+    dialogue_language: str = "English"
+    movie_mode: str = "scaffold"
     idea: str = ""
     song_style: str = ""
     duration_seconds: float = 120.0
@@ -48,6 +53,15 @@ class ProjectCreatePayload(BaseModel):
     height: int = 704
     fps: int = 24
     pipeline_mode: str = "classic"
+    movie_planner_backend: str = "llm"
+    movie_reference_backend: str = "comfyui"
+    movie_render_backend: str = "comfyui"
+    movie_hero_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
+    movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
+    movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
+    movie_msr_i2v_workflow: str = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json"
+    movie_video_workflow: str = "msr"
+    movie_continuity_keyframes: str = "none"
 
 
 class JobPayload(BaseModel):
@@ -103,6 +117,11 @@ def create_app(
                     project_type=payload.project_type,
                     name=payload.name,
                     silent_mode=_validated_silent_mode(payload.silent_mode),
+                    source_type=payload.source_type,
+                    story_text=payload.story_text,
+                    desired_length=payload.desired_length,
+                    dialogue_language=payload.dialogue_language,
+                    movie_mode=payload.movie_mode,
                     idea=payload.idea,
                     song_style=payload.song_style,
                     duration_seconds=payload.duration_seconds,
@@ -110,6 +129,15 @@ def create_app(
                     height=payload.height,
                     fps=payload.fps,
                     pipeline_mode=payload.pipeline_mode,
+                    movie_planner_backend=payload.movie_planner_backend,
+                    movie_reference_backend=payload.movie_reference_backend,
+                    movie_render_backend=payload.movie_render_backend,
+                    movie_hero_workflow=payload.movie_hero_workflow,
+                    movie_edit_workflow=payload.movie_edit_workflow,
+                    movie_msr_workflow=payload.movie_msr_workflow,
+                    movie_msr_i2v_workflow=payload.movie_msr_i2v_workflow,
+                    movie_video_workflow=payload.movie_video_workflow,
+                    movie_continuity_keyframes=payload.movie_continuity_keyframes,
                 )
             )
         )

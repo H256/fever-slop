@@ -29,3 +29,37 @@ test("shows and downloads the final project video", async ({ page }) => {
   await expect(page.getByRole("link", { name: /download/i })).toHaveAttribute("download", "");
 });
 
+test("prefers movie final output over raw and scene clips", async ({ page }) => {
+  await page.route("**/api/projects/mud-and-silence", (route) =>
+    route.fulfill({
+      json: {
+        id: "mud-and-silence",
+        name: "Mud and Silence",
+        path: "/tmp/mud-and-silence",
+        project_type: "movie",
+        status: { config: "present", render_plan: "present", references: "present", videos: "present" },
+        artifacts: {
+          configs: ["config.json"],
+          render_plans: ["movie/render_plan_msr.json"],
+          references: ["movie/references/manifest.json"],
+          generated_json: ["movie/render_plan_msr.json"],
+          videos: [
+            "output/movie/ltx_msr/raw/scene_0001_raw.mp4",
+            "output/movie/ltx_msr/scene_0001.mp4",
+            "output/movie/ltx_msr/scene_0002.mp4",
+            "output/movie/mud-and-silence.mp4"
+          ],
+          images: [],
+          audio: []
+        }
+      }
+    })
+  );
+  await page.route("**/api/jobs?project_id=mud-and-silence", (route) => route.fulfill({ json: [] }));
+
+  await page.goto("/projects/mud-and-silence/final-video");
+
+  await expect(page.locator("video")).toHaveAttribute("src", /output%2Fmovie%2Fmud-and-silence\.mp4/);
+  await expect(page.getByText("output/movie/mud-and-silence.mp4")).toBeVisible();
+});
+

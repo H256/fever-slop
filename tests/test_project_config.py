@@ -27,6 +27,27 @@ class ProjectConfigTests(unittest.TestCase):
 
             self.assertFalse(config.silent_mode)
 
+    def test_music_video_language_and_seed_defaults(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "test",
+                        "input_audio": "song.mp3",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertEqual("en", config.audio.language)
+            self.assertEqual(-1, config.scene_generation.seed)
+
     def test_loads_silent_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

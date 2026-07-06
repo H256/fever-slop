@@ -151,3 +151,35 @@ test("omits empty phases for full-auto projects", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Preparation" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Full pipeline", exact: true })).toHaveCount(0);
 });
+
+test("shows only movie production actions for movie projects", async ({ page }) => {
+  const project = {
+    id: "door-below",
+    name: "Door Below",
+    path: "/tmp/door-below",
+    project_type: "movie",
+    status: { config: "missing", render_plan: "present", references: "missing", videos: "missing" },
+    artifacts: {
+      configs: [],
+      render_plans: ["movie/render_plan.json"],
+      references: [],
+      generated_json: ["movie/story_arch.json", "movie/render_plan.json"],
+      videos: [],
+      images: [],
+      audio: []
+    }
+  };
+
+  await page.route("**/api/projects/door-below", (route) => route.fulfill({ json: project }));
+  await page.route("**/api/jobs?project_id=door-below", (route) => route.fulfill({ json: [] }));
+
+  await page.goto("/projects/door-below/pipeline");
+
+  await expect(page.getByRole("heading", { name: "Core runs" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Preparation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Movie references", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Movie LTX render", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Movie full-auto production", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Full pipeline", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Full-auto pipeline", exact: true })).toHaveCount(0);
+});

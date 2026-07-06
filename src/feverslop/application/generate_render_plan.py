@@ -98,6 +98,7 @@ class GenerateRenderPlanUseCase:
             song_id=song_id,
             artifact_store=self.artifact_store,
             reporter=self.reporter,
+            console=_ReporterConsole(self.reporter),
             log_step=self.log_step,
             log_file=self.log_file,
             run_spinner=self.run_spinner,
@@ -202,3 +203,14 @@ class GenerateRenderPlanUseCase:
         self.reporter.message(
             f"[green]OK[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]"
         )
+
+
+class _ReporterConsole:
+    def __init__(self, reporter: Reporter):
+        self.reporter = reporter
+
+    def print(self, *values: object, **_kwargs: object) -> None:
+        self.reporter.message(" ".join(str(value) for value in values))
+
+    def rule(self, title: str) -> None:
+        self.reporter.step(title)

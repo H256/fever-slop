@@ -14,11 +14,13 @@ import ReviewPage from "./pages/ReviewPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
 import ProjectSettingsPage from "./pages/ProjectSettingsPage.vue";
 import FinalVideoPage from "./pages/FinalVideoPage.vue";
+import MovieProjectForm from "./pages/MovieProjectForm.vue";
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", component: ProjectsPage },
+    { path: "/projects/new/movie", component: MovieProjectForm },
     { path: "/projects/:projectId", component: ProjectDashboard },
     { path: "/projects/:projectId/pipeline", component: PipelinePage },
     { path: "/projects/:projectId/render-plan", component: RenderPlanPage },

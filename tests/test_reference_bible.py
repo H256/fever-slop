@@ -319,6 +319,33 @@ class ReferenceBibleTests(unittest.TestCase):
         self.assertIn("full-body", back)
         self.assertIn("portrait reference frame", back)
 
+    def test_direct_msr_actor_sheet_prompt_keeps_music_video_default(self):
+        prompt = ReferenceBibleGenerator._direct_msr_sheet_prompt(
+            ReferenceSubject(id="goat", name="The Goat Demon", image_prompt="massive horned goat demon")
+        )
+
+        self.assertTrue(prompt.startswith("vertical four panel character sheet photos."))
+        self.assertIn("massive horned goat demon", prompt)
+        self.assertIn("1st panel is a closeup", prompt)
+        self.assertIn("2nd panel is front view", prompt)
+        self.assertIn("3rd panel is left view", prompt)
+        self.assertIn("4th panel is back view", prompt)
+        self.assertIn("the panel background is white", prompt)
+
+    def test_direct_msr_actor_sheet_prompt_can_be_injected_by_use_case(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=backend,
+                output_dir=Path(temp_dir),
+                actor_view_names=("msr_sheet",),
+                direct_msr_sheet_prompt_builder=lambda subject: f"custom prompt for {subject.name}",
+            )
+
+            generator.generate_subject_bible(ReferenceSubject(id="goat", name="The Goat Demon"))
+
+            self.assertEqual("custom prompt for The Goat Demon", backend.requests[0].prompt)
+
     def test_actor_reference_prompts_require_plain_white_background(self):
         front_prompt = ReferenceBibleGenerator._view_prompt(
             ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara in a forest"),

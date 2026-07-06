@@ -202,3 +202,87 @@ test("creates a full-auto project and starts its pipeline", async ({ page }) => 
   await expect(page).toHaveURL(/\/projects\/neon-wolves\/pipeline/);
   expect(jobStarted).toBe(true);
 });
+
+test("creates a movie project and starts movie full-auto production", async ({ page }) => {
+  let jobStarted = false;
+  await page.route("**/api/projects", async (route) => {
+    if (route.request().method() === "POST") {
+      const body = await route.request().postDataJSON();
+      expect(body).toEqual({
+        project_type: "movie",
+        name: "Door Below",
+        source_type: "short_story",
+        story_text: "A locksmith finds a glowing door below an abandoned station.",
+        desired_length: 180,
+        width: 1280,
+        height: 704,
+        movie_mode: "full_auto"
+      });
+      await route.fulfill({
+        json: {
+          id: "door-below",
+          name: "Door Below",
+          path: "/tmp/door-below",
+          project_type: "movie",
+          status: { config: "missing", render_plan: "present", references: "missing", videos: "missing" },
+          artifacts: {
+            ...emptyArtifacts,
+            configs: [],
+            render_plans: ["movie/render_plan.json"],
+            generated_json: ["movie/story_arch.json", "movie/render_plan.json"]
+          }
+        }
+      });
+      return;
+    }
+    await route.fulfill({ json: [] });
+  });
+  await page.route("**/api/projects/door-below/jobs", async (route) => {
+    const body = await route.request().postDataJSON();
+    expect(body.action).toBe("movie-full-auto");
+    jobStarted = true;
+    await route.fulfill({
+      json: {
+        id: "movie-job-1",
+        project_id: "door-below",
+        action: "movie-full-auto",
+        pipeline_type: "movie-full-auto",
+        status: "queued",
+        progress: 0,
+        logs: [],
+        recent_logs: [],
+        error: null,
+        result: null
+      }
+    });
+  });
+  await page.route("**/api/projects/door-below", (route) =>
+    route.fulfill({
+      json: {
+        id: "door-below",
+        name: "Door Below",
+        path: "/tmp/door-below",
+        project_type: "movie",
+        status: { config: "missing", render_plan: "present", references: "missing", videos: "missing" },
+        artifacts: {
+          ...emptyArtifacts,
+          configs: [],
+          render_plans: ["movie/render_plan.json"],
+          generated_json: ["movie/story_arch.json", "movie/render_plan.json"]
+        }
+      }
+    })
+  );
+  await page.route("**/api/jobs?project_id=door-below", (route) => route.fulfill({ json: [] }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /create project/i }).click();
+  await page.getByRole("link", { name: /new movie project/i }).click();
+  await page.getByLabel("Project name").fill("Door Below");
+  await page.getByRole("textbox", { name: "Short story idea" }).fill("A locksmith finds a glowing door below an abandoned station.");
+  await page.getByLabel("Mode").selectOption("full_auto");
+  await page.getByRole("button", { name: /start movie production/i }).click();
+
+  await expect(page).toHaveURL(/\/projects\/door-below\/pipeline/);
+  expect(jobStarted).toBe(true);
+});

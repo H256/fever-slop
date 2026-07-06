@@ -187,6 +187,56 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             self.assertIn("The wolf lowers its head", relay["prompt"])
             self.assertNotIn("lip sync", relay["prompt"].lower())
 
+    def test_silent_mode_rejects_singing_llm_segments(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            input_plan = temp / "render_plan_refs.json"
+            output_plan = temp / "render_plan_refs.json"
+            input_plan.write_text(
+                json.dumps([
+                    {
+                        "scene": 2,
+                        "metadata": {
+                            "type": "vocals",
+                            "silent_mode": True,
+                            "lyrics": "Do not sing this",
+                            "base_concept": "The warrior acts out the story silently.",
+                            "camera_motion": "Slow push in.",
+                            "character_motion": "The warrior raises one hand and turns away.",
+                        },
+                        "references": {
+                            "actor_reference_descriptions": [
+                                {"id": "warrior", "name": "Warrior", "visual_description": "Dark-haired warrior"}
+                            ],
+                            "location_reference_description": {"id": "void", "name": "Void", "visual_description": "Neon void"},
+                        },
+                        "ltx": {
+                            "prompt_relay": [
+                                {
+                                    "frame_start": 0,
+                                    "frame_end": 48,
+                                    "state": "singing",
+                                    "prompt": "same scene, character sings with expressive lip sync",
+                                }
+                            ],
+                        },
+                    }
+                ]),
+                encoding="utf-8",
+            )
+            llm = FakeLLM(json.dumps([{"index": 0, "prompt": "Warrior sings the phrase with clear lip sync."}]))
+
+            result = enrich_render_plan_with_msr_prompts(input_plan, output_plan, llm=llm)
+
+            data = json.loads(result.read_text(encoding="utf-8"))
+            relay = data[0]["ltx"]["msr_prompt_relay"][0]
+            combined = json.dumps(data[0]["ltx"], ensure_ascii=False).lower()
+
+        self.assertEqual("instrumental", relay["state"])
+        self.assertIn("stays silent with mouth closed", relay["prompt"])
+        for banned in ("sings", "singing", "lip sync", "lip-sync"):
+            self.assertNotIn(banned, combined)
+
     def test_reports_progress_per_scene(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

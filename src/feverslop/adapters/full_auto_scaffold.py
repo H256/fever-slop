@@ -69,7 +69,7 @@ class LocalProjectScaffold:
                         "max_duration": 10.0,
                         "bias": 0.7,
                         "duration_preset": "impact_weighted",
-                        "seed": 42,
+                        "seed": -1,
                     },
                     "vocal_detection": {
                         "merge_gap": 0.5,

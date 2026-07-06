@@ -37,7 +37,9 @@ def enrich_scene_with_msr_prompts(scene: dict, *, llm: LLMPort | None = None) ->
     result = deepcopy(scene)
     ltx = result.setdefault("ltx", {})
     references = result.get("references") or {}
-    relays = list(ltx.get("prompt_relay") or [])
+    relays = _effective_relays(result, list(ltx.get("prompt_relay") or []))
+    if _scene_silent_mode(result):
+        ltx["prompt_relay"] = relays
 
     ltx["msr_global_prompt"] = build_msr_global_prompt(references)
     ltx["msr_preroll_prompt"] = _build_preroll_prompt(result)
@@ -114,6 +116,7 @@ Rules:
 - Use the named reference actor as the subject anchor.
 - For state "singing": the actor sings the provided lyrics with clear lip sync and expressive acting.
 - For non-singing states: the actor is silent, mouth closed, and physically performs the scene action.
+- If silent_mode is true in the payload, every segment is non-singing even if source lyrics exist.
 - Include camera motion and concrete character/environment motion when provided.
 - Write rich cinematic direction, usually 25 to 45 words per segment, with action, acting, camera behavior, and visible environment effects.
 - Preroll-like or transition-like segments still need concrete cinematic atmosphere and tension, not generic continuity filler.
@@ -129,6 +132,7 @@ def _msr_segment_payload(scene: dict, relays: list[dict]) -> dict:
         "actors": references.get("actor_reference_descriptions") or [],
         "location": references.get("location_reference_description") or {},
         "scene_type": metadata.get("type", ""),
+        "silent_mode": _scene_silent_mode(scene),
         "lyrics": metadata.get("lyrics", ""),
         "base_concept": metadata.get("base_concept", ""),
         "camera_motion": metadata.get("camera_motion", ""),
@@ -150,7 +154,7 @@ def _fallback_segment_prompt(scene: dict, relay: dict) -> str:
     metadata = scene.get("metadata") or {}
     actor = _primary_actor_name(scene.get("references") or {})
     location = _location_name(scene.get("references") or {})
-    state = str(relay.get("state") or "").strip().lower()
+    state = _effective_state(scene, relay)
     lyrics = str(metadata.get("lyrics") or "").strip().strip(".")
     camera = str(metadata.get("camera_motion") or "").strip()
     character_motion = str(metadata.get("character_motion") or "").strip()
@@ -246,6 +250,31 @@ def _is_valid_segment_prompt(prompt: str, relay: dict) -> bool:
     if state == "singing":
         return "sing" in lower and ("lip sync" in lower or "lip-sync" in lower)
     return "lip sync" not in lower and "lip-sync" not in lower
+
+
+def _scene_silent_mode(scene: dict) -> bool:
+    metadata = scene.get("metadata") or {}
+    return bool(metadata.get("silent_mode") or scene.get("silent_mode"))
+
+
+def _effective_state(scene: dict, relay: dict) -> str:
+    if _scene_silent_mode(scene):
+        return "instrumental"
+    return str(relay.get("state") or "").strip().lower()
+
+
+def _effective_relays(scene: dict, relays: list[dict]) -> list[dict]:
+    if not _scene_silent_mode(scene):
+        return relays
+    normalized = []
+    for relay in relays:
+        item = dict(relay)
+        item["state"] = "instrumental"
+        item["lyrics"] = ""
+        item["text"] = ""
+        item["prompt"] = _fallback_segment_prompt(scene, item)
+        normalized.append(item)
+    return normalized
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:

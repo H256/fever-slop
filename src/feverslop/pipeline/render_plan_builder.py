@@ -161,6 +161,21 @@ def _render_mode_hint(scene_type: str, prompt_relay: list[dict]) -> str:
     return "single_prompt"
 
 
+def _scene_silent_mode(scene: dict) -> bool:
+    return bool(scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode"))
+
+
+def _contains_vocal_performance_prompt(value: str) -> bool:
+    lower = str(value or "").lower()
+    return any(token in lower for token in ("sings", "singing", "lip sync", "lip-sync", "lip-syncing", "belts out"))
+
+
+def _effective_relay_state(state: object, scene: dict) -> str:
+    if _scene_silent_mode(scene):
+        return "instrumental"
+    return str(state or "").strip().lower()
+
+
 def _scene_references(scene: dict) -> dict:
     references = dict(scene.get("references") or {})
     actor_ids = list(references.get("actor_ids") or [])
@@ -176,6 +191,7 @@ def _scene_references(scene: dict) -> dict:
 def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     scene_number = int(scene["scene"])
     scene_type = str(scene.get("type", "")).strip().lower()
+    silent_mode = _scene_silent_mode(scene)
     zimage_prompt = str(
         scene.get("t2i_prompt")
         or scene.get("zimage_prompt")
@@ -187,7 +203,7 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
         or scene.get("original_style_i2v_prompt")
         or ""
     ).strip()
-    if explicit_i2v_prompt:
+    if explicit_i2v_prompt and not (_scene_silent_mode(scene) and _contains_vocal_performance_prompt(explicit_i2v_prompt)):
         return explicit_i2v_prompt
 
     base_prompt = str(
@@ -209,7 +225,7 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     emotion = picker.pick("emotion", EMOTION_DETAILS, scene_number, "random")
     location = picker.pick("location", LOCATION_DETAILS, scene_number, "index")
 
-    if scene_type == "vocals":
+    if scene_type == "vocals" and not silent_mode:
         character_motion = picker.pick(
             "vocal_character_motion",
             VOCAL_CHARACTER_MOTION_DETAILS,
@@ -231,7 +247,7 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
         )
         performance = (
             "The visible subject remains present and framed throughout the shot, "
-            "with the mouth relaxed and still."
+            "silent with no vocal performance, no lip movement, and the mouth relaxed and still."
         )
 
     identity = f"Scene identity: {base_concept}." if base_concept else "Scene identity stays unchanged."
@@ -291,12 +307,12 @@ def build_render_plan(
         zimage_prompt = scene["zimage_prompt"]
         t2i_prompt = str(scene.get("t2i_prompt") or scene.get("zimage_prompt") or scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
         ltx_base_prompt = t2i_prompt
-        i2v_prompt_from_t2i = str(
+        original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=video_settings.fps)
+        i2v_prompt_from_t2i = original_style_i2v_prompt if _scene_silent_mode(scene) else str(
             scene.get("i2v_prompt_from_t2i")
             or scene.get("original_style_i2v_prompt")
-            or build_original_style_i2v_prompt(scene, seed=video_settings.fps)
+            or original_style_i2v_prompt
         ).strip()
-        original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=video_settings.fps)
 
         prompt_relay = []
 
@@ -310,7 +326,7 @@ def build_render_plan(
                 continue
 
             frame_start, frame_end = clamped
-            state = relay["state"]
+            state = _effective_relay_state(relay["state"], scene)
 
             if state == "singing":
                 state_prompt = (
@@ -323,7 +339,7 @@ def build_render_plan(
             else:
                 state_prompt = (
                     "During this frame range, the same subject is silent. "
-                    "No singing, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment."
+                    "No vocal performance, mouth closed, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment."
                 )
 
             prompt_relay.append({
@@ -334,7 +350,7 @@ def build_render_plan(
             })
 
         if not prompt_relay:
-            state = "singing" if scene.get("type") == "vocals" else "instrumental"
+            state = "singing" if scene.get("type") == "vocals" and not _scene_silent_mode(scene) else "instrumental"
             if state == "singing":
                 state_prompt = (
                     "The same subject sings with expressive lip sync throughout the shot. "
@@ -343,7 +359,7 @@ def build_render_plan(
             else:
                 state_prompt = (
                     "The same subject is silent throughout the shot. "
-                    "No singing, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment."
+                    "No vocal performance, mouth closed, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment."
                 )
 
             prompt_relay.append({
@@ -375,6 +391,7 @@ def build_render_plan(
             "metadata": {
                 "segment_id": scene["segment_id"],
                 "type": scene["type"],
+                "silent_mode": _scene_silent_mode(scene),
                 "lyrics": scene.get("lyrics", ""),
                 "base_concept": scene.get("base_concept", ""),
                 "camera_motion": scene.get("camera_motion", ""),

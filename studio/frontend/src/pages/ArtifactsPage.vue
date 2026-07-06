@@ -146,7 +146,7 @@ function helpForConfigField(path: PathPart[]): string {
     "scene_generation.max_duration": "Optional. Affects scene segmentation and later clip lengths.",
     "scene_generation.bias": "Optional. Affects scene segmentation balance.",
     "scene_generation.duration_preset": "Optional. Affects scene duration strategy.",
-    "scene_generation.seed": "Optional. Affects deterministic planning where supported.",
+    "scene_generation.seed": "Optional. Use -1 to randomize scene planning each run; any other integer keeps planning reproducible.",
     "lora_1.enabled": "Optional. Affects image/video generation when the workflow uses this LoRA slot.",
     "lora_1.name": "Optional. Affects image/video generation when enabled. ComfyUI LoRA name/path.",
     "lora_1.strength_model": "Optional. Affects generation style/identity strength for the first LoRA slot.",

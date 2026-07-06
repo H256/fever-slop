@@ -59,6 +59,8 @@ class VideoPostProcessor:
         cmd.append(str(spec.output_file))
         self._run_ffmpeg(cmd)
         self._pad_short_clip(spec)
+        if self.reencode:
+            self._pad_short_audio(spec.output_file, spec.duration_seconds)
         return spec.output_file
 
     def _pad_short_clip(self, spec: TrimSpec) -> None:
@@ -104,7 +106,51 @@ class VideoPostProcessor:
         )
         return int(result.stdout.strip())
 
-    def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False) -> Path:
+    def _pad_short_audio(self, video_file: Path, target_duration: float) -> None:
+        audio_duration = self._audio_duration(video_file)
+        if audio_duration is None or audio_duration + 0.05 >= float(target_duration):
+            return
+        padded_file = video_file.with_name(f"{video_file.stem}.audiopad{video_file.suffix}")
+        cmd = [
+            self.ffmpeg_path,
+            "-y",
+            "-i", str(video_file),
+            "-c:v", "copy",
+            "-af", "apad",
+            "-t", f"{float(target_duration):.9f}",
+            "-c:a", self.audio_codec,
+            "-b:a", self.audio_bitrate,
+            "-movflags", "+faststart",
+            str(padded_file),
+        ]
+        self._run_ffmpeg(cmd)
+        os.replace(padded_file, video_file)
+
+    @staticmethod
+    def _audio_duration(video_file: Path) -> float | None:
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v", "error",
+                    "-select_streams", "a:0",
+                    "-show_entries", "stream=duration",
+                    "-of", "default=nokey=1:noprint_wrappers=1",
+                    str(video_file),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError:
+            return None
+        value = result.stdout.strip()
+        if not value or value.upper() == "N/A":
+            return None
+        return float(value)
+
+    def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False, reencode: bool = False) -> Path:
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -117,9 +163,40 @@ class VideoPostProcessor:
         ]
         if video_only:
             cmd.extend(["-an", "-c:v", "copy"])
+        elif reencode:
+            cmd.extend([
+                "-c:v", self.video_codec,
+                "-crf", str(self.crf),
+                "-preset", self.preset,
+                "-pix_fmt", "yuv420p",
+                "-c:a", self.audio_codec,
+                "-b:a", self.audio_bitrate,
+                "-movflags", "+faststart",
+            ])
         else:
             cmd.extend(["-c", "copy"])
         cmd.append(str(output_file))
+        self._run_ffmpeg(cmd)
+        return output_file
+
+    def extract_last_frame(self, source_file: str | Path, output_file: str | Path) -> Path:
+        source_file = Path(source_file)
+        output_file = Path(output_file)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        last_frame_index = max(0, self._frame_count(source_file) - 1)
+        cmd = [
+            self.ffmpeg_path,
+            "-y",
+            "-i",
+            str(source_file),
+            "-vf",
+            f"select=eq(n\\,{last_frame_index})",
+            "-vsync",
+            "0",
+            "-frames:v",
+            "1",
+            str(output_file),
+        ]
         self._run_ffmpeg(cmd)
         return output_file
 

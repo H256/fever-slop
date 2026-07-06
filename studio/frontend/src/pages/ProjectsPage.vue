@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Folder, Music, Plus, WandSparkles, X } from "lucide-vue-next";
+import { Clapperboard, Folder, Music, Plus, WandSparkles, X } from "lucide-vue-next";
 import { api } from "../api";
 import { useStudioStore } from "../stores/studio";
 import type { ProjectCreatePayload } from "../types";
@@ -142,6 +142,11 @@ async function createProject(startFullAuto = false) {
           <strong>Full-Auto Project</strong>
           <span>Creates the song and project automatically from a short brief, with render size and pipeline mode chosen up front.</span>
         </button>
+        <RouterLink class="project-type-card" to="/projects/new/movie">
+          <Clapperboard :size="22" />
+          <strong>New Movie Project</strong>
+          <span>Builds a cinematic movie from prose or screenplay text, with scaffold and full-auto modes.</span>
+        </RouterLink>
       </div>
       <form v-else class="create-project-form" @submit.prevent="createProject(selectedKind === 'full_auto')">
         <label>

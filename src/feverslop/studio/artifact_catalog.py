@@ -9,9 +9,15 @@ class ArtifactCatalog:
         self.project_root = project_root
 
     def list_artifacts(self, project_id: str) -> dict[str, list[str]]:
+        return self.catalog_snapshot(project_id)["artifacts"]
+
+    def artifact_sizes(self, project_id: str) -> dict[str, Any]:
+        return self.catalog_snapshot(project_id)["artifact_sizes"]
+
+    def catalog_snapshot(self, project_id: str) -> dict[str, Any]:
         root = self.project_root(project_id)
         files = [path for path in root.rglob("*") if path.is_file() and ".studio" not in path.relative_to(root).parts]
-        return {
+        artifacts = {
             "configs": self._relative_matches(root, files, lambda path: path.name == "config.json"),
             "render_plans": self._relative_matches(root, files, lambda path: path.name.startswith("render_plan") and path.suffix == ".json"),
             "references": self._relative_matches(root, files, lambda path: "reference" in path.as_posix() and path.suffix.lower() in {".json", ".png", ".jpg", ".jpeg", ".webp"}),
@@ -20,13 +26,10 @@ class ArtifactCatalog:
             "images": self._relative_matches(root, files, lambda path: path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}),
             "audio": self._relative_matches(root, files, lambda path: path.suffix.lower() in {".mp3", ".wav", ".m4a", ".flac", ".ogg"}),
         }
-
-    def artifact_sizes(self, project_id: str) -> dict[str, Any]:
-        root = self.project_root(project_id)
         totals = {key: 0 for key in ["configs", "render_plans", "references", "generated_json", "videos", "images", "audio", "other"]}
-        for path in (path for path in root.rglob("*") if path.is_file() and ".studio" not in path.relative_to(root).parts):
+        for path in files:
             totals[self._artifact_size_group(path)] += path.stat().st_size
-        return {"total_bytes": sum(totals.values()), "by_type": totals}
+        return {"artifacts": artifacts, "artifact_sizes": {"total_bytes": sum(totals.values()), "by_type": totals}}
 
     @staticmethod
     def _relative_matches(root: Path, files: list[Path], predicate: Callable[[Path], bool]) -> list[str]:

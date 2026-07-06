@@ -22,6 +22,8 @@ const studio = useStudioStore();
 const projectId = computed(() => String(route.params.projectId));
 const planPath = ref("");
 const scenes = ref<RenderScene[]>([]);
+const planEnvelope = ref<Record<string, unknown> | null>(null);
+const planSceneKey = ref<"shots" | "scenes" | null>(null);
 const selectedSceneNumber = ref<number | null>(null);
 const selectedRenderScenes = ref<Set<number>>(new Set());
 const pendingRerender = ref<"selected" | "all" | null>(null);
@@ -41,6 +43,7 @@ const locations = ref<ReferenceOption[]>([]);
 const selectedActorIds = computed(() => readPath(draft.value, ["references", "actor_ids"]) as string[] | undefined);
 const selectedLocationId = computed(() => readPath(draft.value, ["references", "location_id"]) as string | undefined);
 const hasActiveProcess = computed(() => studio.jobs.some((job) => ["queued", "running"].includes(job.status)));
+const isMovieProject = computed(() => studio.currentProject?.project_type === "movie");
 
 onMounted(async () => {
   await studio.loadProject(projectId.value);
@@ -49,7 +52,7 @@ onMounted(async () => {
   planPath.value = studio.currentProject?.artifacts.render_plans[0] ?? "";
   if (planPath.value) {
     const artifact = await api.artifact(projectId.value, planPath.value);
-    scenes.value = artifact.data as RenderScene[];
+    loadRenderPlanData(artifact.data);
     selectedSceneNumber.value = scenes.value[0]?.scene ?? null;
   }
 });
@@ -60,9 +63,57 @@ watch(selected, (scene) => {
 
 async function saveScene() {
   if (!selectedSceneNumber.value) return;
-  await api.patchScene(projectId.value, planPath.value, selectedSceneNumber.value, draft.value);
+  syncReferenceShapes(draft.value);
   const index = scenes.value.findIndex((scene) => scene.scene === selectedSceneNumber.value);
   if (index >= 0) scenes.value[index] = { ...(draft.value as RenderScene) };
+  if (planEnvelope.value && planSceneKey.value) {
+    await api.saveArtifact(projectId.value, planPath.value, { ...planEnvelope.value, [planSceneKey.value]: scenes.value });
+  } else {
+    await api.patchScene(projectId.value, planPath.value, selectedSceneNumber.value, draft.value);
+  }
+}
+
+function loadRenderPlanData(data: unknown) {
+  if (Array.isArray(data)) {
+    scenes.value = data.map(normalizeScene);
+    planEnvelope.value = null;
+    planSceneKey.value = null;
+    return;
+  }
+  if (data && typeof data === "object") {
+    const envelope = data as Record<string, unknown>;
+    const key = Array.isArray(envelope.shots) ? "shots" : Array.isArray(envelope.scenes) ? "scenes" : null;
+    scenes.value = key ? (envelope[key] as unknown[]).map(normalizeScene) : [];
+    planEnvelope.value = envelope;
+    planSceneKey.value = key;
+    return;
+  }
+  scenes.value = [];
+  planEnvelope.value = null;
+  planSceneKey.value = null;
+}
+
+function normalizeScene(value: unknown, index: number): RenderScene {
+  const scene = value && typeof value === "object" ? { ...(value as Record<string, unknown>) } : {};
+  scene.scene = Number(scene.scene ?? index + 1);
+  if (!scene.references && scene.reference_ids && typeof scene.reference_ids === "object") {
+    const referenceIds = scene.reference_ids as Record<string, unknown>;
+    scene.references = {
+      actor_ids: Array.isArray(referenceIds.actors) ? referenceIds.actors : [],
+      location_id: typeof referenceIds.location === "string" ? referenceIds.location : ""
+    };
+  }
+  return scene as RenderScene;
+}
+
+function syncReferenceShapes(scene: Record<string, unknown>) {
+  if (!scene.reference_ids || typeof scene.reference_ids !== "object") return;
+  const references = (scene.references ?? {}) as Record<string, unknown>;
+  scene.reference_ids = {
+    ...(scene.reference_ids as Record<string, unknown>),
+    actors: Array.isArray(references.actor_ids) ? references.actor_ids : [],
+    location: typeof references.location_id === "string" ? references.location_id : ""
+  };
 }
 
 function toggleScene(scene: RenderScene) {
@@ -86,10 +137,10 @@ async function runRerender() {
   startingRerender.value = true;
   try {
     if (mode === "selected" && selectedRenderSceneNumbers.value.length) {
-      await studio.startJob(projectId.value, "ltx-render-scenes", selectedRenderSceneNumbers.value);
+      await studio.startJob(projectId.value, isMovieProject.value ? "movie-render" : "ltx-render-scenes", selectedRenderSceneNumbers.value);
     }
     if (mode === "all") {
-      await studio.startJob(projectId.value, "ltx-render-scenes");
+      await studio.startJob(projectId.value, isMovieProject.value ? "movie-render" : "ltx-render-scenes");
     }
     await studio.loadJobs(projectId.value);
   } finally {

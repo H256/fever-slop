@@ -68,6 +68,51 @@ class StudioBackendTests(unittest.TestCase):
             self.assertNotIn(".studio/thumbnails/scene.jpg", project["artifacts"]["images"])
             self.assertEqual(0, project["artifact_sizes"]["by_type"]["images"])
 
+    def test_describe_project_uses_single_artifact_catalog_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+
+            class SnapshotOnlyCatalog:
+                def catalog_snapshot(self, project_id):
+                    self.project_id = project_id
+                    return {
+                        "artifacts": {
+                            "configs": ["config.json"],
+                            "render_plans": [],
+                            "references": [],
+                            "generated_json": [],
+                            "videos": [],
+                            "images": [],
+                            "audio": [],
+                        },
+                        "artifact_sizes": {
+                            "total_bytes": 2,
+                            "by_type": {
+                                "configs": 2,
+                                "render_plans": 0,
+                                "references": 0,
+                                "generated_json": 0,
+                                "videos": 0,
+                                "images": 0,
+                                "audio": 0,
+                                "other": 0,
+                            },
+                        },
+                    }
+
+                def list_artifacts(self, _project_id):
+                    raise AssertionError("describe_project should not scan artifacts separately")
+
+                def artifact_sizes(self, _project_id):
+                    raise AssertionError("describe_project should not scan sizes separately")
+
+            store.artifact_catalog = SnapshotOnlyCatalog()
+
+            project = store.describe_project("demo")
+
+            self.assertEqual(["config.json"], project["artifacts"]["configs"])
+            self.assertEqual(2, project["artifact_sizes"]["total_bytes"])
+
     def test_clear_thumbnail_cache_removes_cached_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = self._project_store(Path(temp_dir))
@@ -102,8 +147,11 @@ class StudioBackendTests(unittest.TestCase):
             )
 
             root = Path(temp_dir) / "my-cool-video"
+            config = json.loads((root / "config.json").read_text())
             self.assertEqual("my-cool-video", project["id"])
-            self.assertEqual("My Cool Video", json.loads((root / "config.json").read_text())["project_name"])
+            self.assertEqual("My Cool Video", config["project_name"])
+            self.assertEqual("en", config["audio"]["language"])
+            self.assertEqual(-1, config["scene_generation"]["seed"])
             metadata = json.loads((root / ".studio" / "project.json").read_text())
             self.assertEqual("standard_music_video", metadata["project_type"])
             self.assertEqual("My Cool Video", metadata["display_name"])
@@ -156,6 +204,7 @@ class StudioBackendTests(unittest.TestCase):
                     "width": 1920,
                     "height": 1080,
                     "fps": 50,
+                    "silent_mode": False,
                     "pipeline_mode": "msr",
                 },
                 metadata["full_auto"],
@@ -526,6 +575,29 @@ class StudioBackendTests(unittest.TestCase):
             self.assertTrue(created.json()["silent_mode"])
             self.assertEqual(400, invalid.status_code)
 
+    def test_create_movie_project_persists_i2v_continuity_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            store.create_project(
+                ProjectCreateRequest(
+                    project_type="movie",
+                    name="Door Below",
+                    story_text="A locksmith follows a door that opens beneath the abandoned station.",
+                    movie_mode="scaffold",
+                    movie_planner_backend="deterministic",
+                    movie_video_workflow="msr-i2v-startframe",
+                    movie_continuity_keyframes="last-to-start",
+                    movie_msr_i2v_workflow="workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json",
+                )
+            )
+
+            metadata = json.loads((Path(temp_dir) / "door-below" / ".studio" / "project.json").read_text())
+
+            self.assertEqual("msr-i2v-startframe", metadata["movie"]["movie_video_workflow"])
+            self.assertEqual("last-to-start", metadata["movie"]["continuity_keyframes"])
+            self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json", metadata["movie"]["msr_i2v_workflow"])
+
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}
 
@@ -551,6 +623,7 @@ class StudioBackendTests(unittest.TestCase):
                     width=1280,
                     height=704,
                     fps=16,
+                    silent_mode=True,
                     pipeline_mode="classic",
                 )
             )
@@ -569,6 +642,7 @@ class StudioBackendTests(unittest.TestCase):
         self.assertEqual(1280, request.width)
         self.assertEqual(704, request.height)
         self.assertEqual(16, request.fps)
+        self.assertTrue(request.silent_mode)
         self.assertEqual("ltx_i2v", request.runner_options["video_pipeline"])
         self.assertIn("OK nested full-auto pipeline", "\n".join(logs))
 

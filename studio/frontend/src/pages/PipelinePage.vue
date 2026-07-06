@@ -15,6 +15,8 @@ const projectId = computed(() => String(route.params.projectId));
 const pendingAction = ref<PipelineAction | null>(null);
 const streamedLogs = ref<string[]>([]);
 const streamState = ref<"idle" | "connected" | "disconnected" | "complete">("idle");
+const startError = ref("");
+const startingAction = ref<PipelineAction | null>(null);
 const logPane = ref<HTMLElement | null>(null);
 let pollTimer: number | undefined;
 let source: EventSource | undefined;
@@ -62,8 +64,18 @@ const standardActions: PipelineAction[] = [
 ];
 
 const fullAutoActions: PipelineAction[] = [{ id: "full-auto", label: "Full-auto pipeline", phase: "core" }];
+const movieActions: PipelineAction[] = [
+  { id: "movie-references", label: "Movie references", phase: "preparation" },
+  { id: "movie-render", label: "Movie LTX render", phase: "generation" },
+  { id: "movie-final-concat", label: "Build final movie", phase: "post_processing" },
+  { id: "movie-full-auto", label: "Movie full-auto production", phase: "core" }
+];
 
-const actions = computed(() => (studio.currentProject?.project_type === "full_auto" ? fullAutoActions : standardActions));
+const actions = computed(() => {
+  if (studio.currentProject?.project_type === "full_auto") return fullAutoActions;
+  if (studio.currentProject?.project_type === "movie") return movieActions;
+  return standardActions;
+});
 const actionGroups = computed<ActionGroup[]>(() =>
   phaseOrder
     .map((phase) => ({
@@ -74,7 +86,7 @@ const actionGroups = computed<ActionGroup[]>(() =>
     .filter((group) => group.actions.length > 0)
 );
 const activeJob = computed(() => studio.jobs.find((job) => ["running", "queued"].includes(job.status)) ?? studio.jobs[0] ?? null);
-const hasRunningPipeline = computed(() => studio.jobs.some((job) => ["running", "queued"].includes(job.status)));
+const hasRunningPipeline = computed(() => Boolean(startingAction.value) || studio.jobs.some((job) => ["running", "queued"].includes(job.status)));
 const logs = computed(() => (streamedLogs.value.length ? streamedLogs.value : activeJob.value?.recent_logs ?? activeJob.value?.logs ?? []));
 const overallProgress = computed(() => activeJob.value?.overall_progress ?? activeJob.value?.progress ?? 0);
 
@@ -106,12 +118,30 @@ function askToRun(action: PipelineAction) {
 async function runConfirmed() {
   if (!pendingAction.value) return;
   const action = pendingAction.value.id;
+  startingAction.value = pendingAction.value;
   pendingAction.value = null;
+  startError.value = "";
+  streamedLogs.value = [`Starting ${startingAction.value.label}...`];
   try {
     await studio.startJob(projectId.value, action);
     await refreshJobs();
   } catch (caught) {
-    streamedLogs.value = [caught instanceof Error ? caught.message : String(caught)];
+    startError.value = apiErrorMessage(caught);
+    streamedLogs.value = [startError.value];
+  } finally {
+    startingAction.value = null;
+  }
+}
+
+function apiErrorMessage(caught: unknown): string {
+  if (!(caught instanceof Error)) return String(caught);
+  const body = "body" in caught ? String((caught as { body?: string }).body ?? "") : "";
+  if (!body) return caught.message;
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    return parsed.detail ? String(parsed.detail) : body;
+  } catch {
+    return body;
   }
 }
 
@@ -188,7 +218,8 @@ function stepProgress(job: Job, stepProgressValue: number | null): number {
     </header>
     <div class="split pipeline-layout">
       <section class="panel action-list">
-        <p v-if="hasRunningPipeline" class="job-note">Pipeline is already running. Start buttons are disabled until it finishes.</p>
+        <p v-if="startingAction" class="job-note">Starting {{ startingAction.label }}...</p>
+        <p v-else-if="hasRunningPipeline" class="job-note">Pipeline is already running. Start buttons are disabled until it finishes.</p>
         <div class="phase-list">
           <section v-for="group in actionGroups" :key="group.phase" class="pipeline-phase">
             <h2 class="phase-header">{{ group.label }}</h2>
@@ -209,17 +240,26 @@ function stepProgress(job: Job, stepProgressValue: number | null): number {
         </div>
       </section>
       <section class="panel pipeline-monitor">
+        <section v-if="startError" class="pipeline-error">
+          <strong>Could not start job</strong>
+          <p>{{ startError }}</p>
+        </section>
         <header class="panel-header">
           <div>
-            <h2>{{ activeJob ? activeJob.pipeline_type ?? activeJob.action : "No running job" }}</h2>
+            <h2>{{ startingAction ? `Starting ${startingAction.label}` : activeJob ? activeJob.pipeline_type ?? activeJob.action : "No running job" }}</h2>
             <p v-if="activeJob" class="job-note">
               Elapsed {{ formatSeconds(activeJob.elapsed_seconds) }} · ETA {{ formatSeconds(activeJob.eta_seconds) }} · Current
               {{ activeJob.current_step ?? "none" }}
             </p>
+            <p v-else-if="startingAction" class="job-note">Request sent. Waiting for backend job registration...</p>
           </div>
           <StatusBadge v-if="activeJob" :status="activeJob.status" />
         </header>
-        <div v-if="!activeJob" class="empty">Start a pipeline job to monitor progress here.</div>
+        <div v-if="!activeJob && !startingAction" class="empty">Start a pipeline job to monitor progress here.</div>
+        <div v-else-if="startingAction" class="progress-row">
+          <span>Starting</span>
+          <div class="indeterminate-progress running" />
+        </div>
         <template v-else>
           <div class="progress-row">
             <span>Overall</span>

@@ -1,4 +1,5 @@
 import unittest
+import json
 import os
 from pathlib import Path
 import sys
@@ -6,6 +7,7 @@ import tempfile
 from unittest.mock import patch
 
 from tools.repair_scene_srt import main as repair_scene_srt_main
+import movie_pipeline
 import run_pipeline
 
 
@@ -133,6 +135,243 @@ class RunnerScriptTests(unittest.TestCase):
 
             self.assertTrue(output_srt.exists())
             self.assertIn("00:00:00,000 --> 00:00:02,000", output_srt.read_text(encoding="utf-8"))
+
+    def test_movie_pipeline_parser_accepts_skip_stage_flags(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/tm3",
+                "--reference-backend",
+                "local",
+                "--render-backend",
+                "local",
+                "--skip-movie-bible",
+                "--force-movie-bible",
+                "--movie-planner-backend",
+                "llm",
+                "--skip-movie-story-design",
+                "--force-movie-story-design",
+                "--skip-movie-screenplay",
+                "--force-movie-screenplay",
+                "--skip-movie-narrative",
+                "--skip-movie-scene-cards",
+                "--skip-movie-shot-cards",
+                "--skip-movie-continuity",
+                "--skip-movie-plan",
+                "--skip-movie-references",
+                "--skip-movie-msr-enrich",
+                "--skip-movie-render",
+                "--force-movie-references",
+                "--keyframe-mode",
+                "start",
+                "--movie-video-workflow",
+                "msr-i2v-startframe",
+                "--continuity-keyframes",
+                "last-to-start",
+                "--msr-i2v-workflow",
+                "msr-i2v.json",
+                "--write-debug-workflows",
+                "--debug-workflows-dir",
+                "debug/workflows",
+            ]
+        )
+
+        self.assertEqual("projects/tm3", args.project_dir)
+        self.assertEqual("local", args.reference_backend)
+        self.assertEqual("local", args.render_backend)
+        self.assertTrue(args.skip_movie_bible)
+        self.assertTrue(args.force_movie_bible)
+        self.assertEqual("llm", args.movie_planner_backend)
+        self.assertTrue(args.skip_movie_story_design)
+        self.assertTrue(args.force_movie_story_design)
+        self.assertTrue(args.skip_movie_screenplay)
+        self.assertTrue(args.force_movie_screenplay)
+        self.assertTrue(args.skip_movie_narrative)
+        self.assertTrue(args.skip_movie_scene_cards)
+        self.assertTrue(args.skip_movie_shot_cards)
+        self.assertTrue(args.skip_movie_continuity)
+        self.assertTrue(args.skip_movie_plan)
+        self.assertTrue(args.skip_movie_references)
+        self.assertTrue(args.skip_movie_msr_enrich)
+        self.assertTrue(args.skip_movie_render)
+        self.assertTrue(args.force_movie_references)
+        self.assertEqual("start", args.keyframe_mode)
+        self.assertEqual("msr-i2v-startframe", args.movie_video_workflow)
+        self.assertEqual("last-to-start", args.continuity_keyframes)
+        self.assertEqual("msr-i2v.json", args.msr_i2v_workflow)
+        self.assertTrue(args.write_debug_workflows)
+        self.assertEqual("debug/workflows", args.debug_workflows_dir)
+
+    def test_movie_pipeline_maps_i2v_msr_workflow_argument_to_i2v_workflow_for_compatibility(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/tm3",
+                "--movie-video-workflow",
+                "msr-i2v-startframe",
+                "--continuity-keyframes",
+                "last-to-start",
+                "--msr-workflow",
+                "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json",
+            ]
+        )
+
+        config = movie_pipeline.config_from_args(args)
+
+        self.assertEqual("workflows/video_default_ltxv_msr_1actor_1background_v1.json", config["msr_workflow"])
+        self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json", config["msr_i2v_workflow"])
+
+    def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir))
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-render",
+                    ]
+                )
+            )
+
+            manifest = json.loads((project / "movie" / "references" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(project.resolve(), result.project_dir)
+            self.assertEqual(project / "movie" / "references" / "manifest.json", result.reference_manifest_path)
+            self.assertIsNone(result.final_video_path)
+            self.assertEqual("local", manifest["generator_backend"])
+            self.assertEqual("movie/references/actors/mara/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertTrue((project / "movie" / "render_plan_msr.json").exists())
+
+    def test_movie_pipeline_cli_can_skip_references_and_render_with_local_backend(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+
+            with patch("builtins.print") as print_mock:
+                result = movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "local",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+
+            self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
+            self.assertTrue(result.final_video_path.exists())
+            self.assertTrue(
+                any("Rendered movie clip 1/" in str(call.args[0]) for call in print_mock.call_args_list)
+            )
+
+    def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            debug_dir = project / "debug_workflows"
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-references",
+                        "--write-debug-workflows",
+                        "--debug-workflows-dir",
+                        str(debug_dir),
+                        "--skip-movie-render",
+                    ]
+                )
+            )
+
+            debug_workflow = json.loads((debug_dir / "scene_0001_workflow.json").read_text(encoding="utf-8"))
+            actor_node = next(node for node in debug_workflow.values() if node.get("_meta", {}).get("title") == "#MSR_ACTOR_1")
+            location_node = next(node for node in debug_workflow.values() if node.get("_meta", {}).get("title") == "#MSR_BACKGROUND")
+            relay_node = next(node for node in debug_workflow.values() if node.get("_meta", {}).get("title") == "#PROMPT_RELAY")
+            self.assertIsNone(result.final_video_path)
+            self.assertEqual(debug_dir, result.debug_workflows_dir)
+            self.assertEqual("msr_sheet.png", actor_node["inputs"]["image"])
+            self.assertEqual("hero.png", location_node["inputs"]["image"])
+            self.assertIn("Mara enters the archive", relay_node["inputs"]["local_prompts"])
+
+    def test_movie_pipeline_debug_workflows_relative_dir_uses_cwd(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            project = _write_movie_project(root, ready=True)
+            debug_dir = root.relative_to(Path.cwd()) / "debug_workflows"
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-references",
+                        "--write-debug-workflows",
+                        "--debug-workflows-dir",
+                        str(debug_dir),
+                        "--skip-movie-render",
+                    ]
+                )
+            )
+
+            self.assertEqual(root / "debug_workflows", result.debug_workflows_dir)
+            self.assertTrue((root / "debug_workflows" / "scene_0001_workflow.json").exists())
+            self.assertFalse((project / "debug_workflows" / "scene_0001_workflow.json").exists())
+
+
+def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
+    project = root / "test-movie"
+    references = project / "movie" / "references"
+    references.mkdir(parents=True)
+    (project / "movie" / "render_plan.json").write_text(
+        json.dumps(
+            {
+                "title": "Test Movie",
+                "resolution": {"width": 1280, "height": 704},
+                "shots": [
+                    {
+                        "shot_id": "shot_0001",
+                        "description": "Mara enters the archive",
+                        "duration_seconds": 1,
+                        "reference_ids": {"actors": ["mara"], "location": "archive"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "actors": [
+            {
+                "id": "mara",
+                "name": "Mara",
+                "visual_description": "gothic archivist",
+                "image_prompt": "Full-body cinematic character reference sheet for Mara. gothic archivist. Four vertical panels in one image.",
+                "prompt": "Full-body cinematic character reference sheet for Mara. gothic archivist. Four vertical panels in one image.",
+                "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png" if ready else "",
+            }
+        ],
+        "locations": [
+            {
+                "id": "archive",
+                "name": "Archive",
+                "prompt": "Archive",
+                "msr_sheet_path": "movie/references/locations/archive/views/hero.png" if ready else "",
+            }
+        ],
+        "generator_backend": "local" if ready else "",
+    }
+    (references / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return project
 
 
 if __name__ == "__main__":

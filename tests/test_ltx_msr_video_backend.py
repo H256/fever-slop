@@ -655,6 +655,140 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
         self.assertNotIn("pre-roll continuity hold", local_prompts)
         self.assertNotIn("tail safety continuation", local_prompts)
 
+    def test_backend_patches_msr_i2v_continuity_handoff_relay_and_guide(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            startframe = temp / "start.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            startframe.write_bytes(b"start")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {
+                        "inputs": {"1": ["1", 0], "frame_count": 41},
+                        "class_type": "LiconMSR",
+                        "_meta": {"title": "#MSR_FRAME_COUNT"},
+                    },
+                    "4": {
+                        "inputs": {
+                            "global_prompt": "",
+                            "local_prompts": "",
+                            "segment_lengths": "",
+                        },
+                        "_meta": {"title": "#PROMPT_RELAY"},
+                    },
+                    "5": {"inputs": {"frame_idx": 0, "strength": 1}, "_meta": {"title": "#MSR_GUIDE"}},
+                    "6": {"inputs": {"value": 0}, "_meta": {"title": "#FRAMES"}},
+                    "7": {"inputs": {"image": ""}, "_meta": {"title": "#STARTFRAME"}},
+                    "8": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow,
+                output_dir=temp / "out",
+            )
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 2,
+                    "fps": 24,
+                    "frame_count": 48,
+                    "keyframes": {"startframe_path": str(startframe)},
+                    "references": {
+                        "actor_msr_paths": [str(actor)],
+                        "location_msr_path": str(location),
+                    },
+                    "ltx": {
+                        "msr_global_prompt": "Reference image 1: Mara. Background reference: Archive.",
+                        "msr_continuity_handoff_prompt": "Mara remains at the archive door as fog curls around her.",
+                        "msr_continuity_handoff_frames": 18,
+                        "msr_continuity_msr_frame_count": 17,
+                        "msr_continuity_guide_frame_idx": 18,
+                        "msr_prompt_relay": [
+                            {
+                                "frame_start": 0,
+                                "frame_end": 47,
+                                "prompt": "Mara steps through the archive door.",
+                            }
+                        ],
+                    },
+                },
+                prompt="fallback prompt",
+                rolling={
+                    "render_frame_count": 73,
+                    "trim_front_frames": 0,
+                    "tail_loss_frames": 25,
+                    "fps": 24,
+                    "scene_frame_count": 48,
+                    "audio_start_seconds": 0.0,
+                    "audio_duration_seconds": 3.0,
+                },
+            )
+
+            relay_inputs = patched["4"]["inputs"]
+            self.assertEqual("Reference image 1: Mara. Background reference: Archive.", relay_inputs["global_prompt"])
+            self.assertEqual("18,54", relay_inputs["segment_lengths"])
+            self.assertEqual(
+                "Mara remains at the archive door as fog curls around her.\n|Mara steps through the archive door.",
+                relay_inputs["local_prompts"],
+            )
+            self.assertEqual(18, patched["5"]["inputs"]["frame_idx"])
+            self.assertEqual(17, patched["3"]["inputs"]["frame_count"])
+
+    def test_backend_strips_global_contracts_from_handoff_and_current_relay_prompts(self):
+        scene = {
+            "scene": 2,
+            "fps": 24,
+            "frame_count": 48,
+            "ltx": {
+                "msr_global_prompt": "Reference image 1: Mara.",
+                "msr_continuity_handoff_prompt": (
+                    "Wide shot of Mara in the fog. Actors: Mara. Location: Archive. "
+                    "Action: she stands at the doorway. Camera: slow push-in. Acting: frozen resolve. "
+                    "Audio contract: diegetic environmental sound effects only. No spoken dialogue. "
+                    "Dialogue language: German. Style: desaturated noir."
+                ),
+                "msr_continuity_handoff_frames": 18,
+                "msr_prompt_relay": [
+                    {
+                        "frame_start": 0,
+                        "frame_end": 47,
+                        "prompt": (
+                            "Close-up of Mara entering. Camera: handheld close-up. "
+                            "Dialogue for native audio: Ich komme. Audio contract: scripted dialogue only. "
+                            "Dialogue language: German. Style: desaturated noir."
+                        ),
+                    }
+                ],
+            },
+        }
+
+        _, local_prompts, segment_lengths = ComfyUIMSRVideoRenderBackend._build_prompt_relay_payload(
+            scene,
+            prompt="fallback",
+            rolling={
+                "render_frame_count": 73,
+                "trim_front_frames": 0,
+                "tail_loss_frames": 25,
+            },
+        )
+
+        self.assertEqual("18,54", segment_lengths)
+        self.assertIn("Wide shot of Mara in the fog", local_prompts)
+        self.assertIn("Close-up of Mara entering", local_prompts)
+        self.assertIn("Dialogue for native audio: Ich komme", local_prompts)
+        self.assertNotIn("Audio contract:", local_prompts)
+        self.assertNotIn("Dialogue language:", local_prompts)
+        self.assertNotIn("Style:", local_prompts)
+        self.assertNotIn("No spoken dialogue", local_prompts)
+
     def test_render_video_patches_audio_anchors_when_present(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -786,6 +920,70 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(24, trim_spec.fps)
             self.assertEqual(6, trim_spec.trim_front_frames)
             self.assertEqual(49, trim_spec.keep_frames)
+
+    def test_backend_patches_i2v_latent_length_to_render_frame_count(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            startframe = temp / "start.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            startframe.write_bytes(b"start")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "5": {"inputs": {"value": 0}, "_meta": {"title": "#FRAMES"}},
+                    "6": {"inputs": {"length": 97}, "class_type": "EmptyLTXVLatentVideo"},
+                    "7": {
+                        "inputs": {"latent": ["6", 0], "image": ["8", 0]},
+                        "class_type": "LTXVImgToVideoInplace",
+                    },
+                    "8": {
+                        "inputs": {"image": ""},
+                        "class_type": "LoadImage",
+                        "_meta": {"title": "#STARTFRAME"},
+                    },
+                }),
+                encoding="utf-8",
+            )
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                preroll_frames=6,
+                tail_loss_frames=25,
+            )
+
+            patched = backend.build_workflow(
+                {
+                    "scene": 11,
+                    "fps": 24,
+                    "frame_count": 240,
+                    "keyframes": {"startframe_path": str(startframe)},
+                    "references": {
+                        "actor_msr_paths": [str(actor)],
+                        "location_msr_path": str(location),
+                    },
+                },
+                prompt="prompt",
+                rolling={
+                    "fps": 24,
+                    "scene_frame_count": 240,
+                    "render_frame_count": 321,
+                    "trim_front_frames": 56,
+                    "tail_loss_frames": 25,
+                    "audio_start_seconds": 0.0,
+                    "audio_duration_seconds": 321 / 24,
+                },
+            )
+
+            self.assertEqual(321, patched["5"]["inputs"]["value"])
+            self.assertEqual(321, patched["6"]["inputs"]["length"])
 
     def test_debug_workflow_is_written_after_model_resolution(self):
         with tempfile.TemporaryDirectory() as temp_dir:

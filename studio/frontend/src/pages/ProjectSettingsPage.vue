@@ -122,7 +122,7 @@ function validateConfig(value: Record<string, unknown> | null, projectSummary: P
   const errors: string[] = [];
   const projectType = projectSummary?.project_type ?? projectSummary?.metadata?.project_type ?? "standard_music_video";
   if (!String(value.project_name ?? "").trim()) errors.push("Project name is required.");
-  if (projectType !== "full_auto" && !String(value.input_audio ?? "").trim()) errors.push("Input audio is required.");
+  if (!["full_auto", "movie"].includes(projectType) && !String(value.input_audio ?? "").trim()) errors.push("Input audio is required.");
   if (typeof (value.silent_mode ?? false) !== "boolean") errors.push("Silent Mode must be true or false.");
   if (!["single", "multi"].includes(String(value.subject_mode ?? "multi"))) errors.push("Subject mode must be single or multi.");
   const maxSceneActors = Number(value.max_scene_actors ?? 4);
@@ -233,6 +233,7 @@ function helpForConfigField(path: PathPart[]): string {
     "audio.demucs_model": "Required. Audio stem separation model.",
     "audio.whisper_model": "Required. Transcription model.",
     "audio.language": "Required. Language hint for transcription.",
+    "scene_generation.seed": "Optional. Use -1 to randomize scene planning each run; any other integer keeps planning reproducible.",
     lora_split_enabled: "Optional. Enables split LoRA handling where supported."
   };
   return descriptions[key] ?? "Optional. Used by generation when the relevant pipeline step consumes it.";

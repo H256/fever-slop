@@ -14,10 +14,10 @@ export interface ProjectSummary {
   id: string;
   name: string;
   path: string;
-  project_type?: "standard_music_video" | "full_auto";
+  project_type?: "standard_music_video" | "full_auto" | "movie";
   silent_mode?: boolean;
   metadata?: {
-    project_type?: "standard_music_video" | "full_auto";
+    project_type?: "standard_music_video" | "full_auto" | "movie";
     display_name?: string;
     slug?: string;
     silent_mode?: boolean;
@@ -30,6 +30,24 @@ export interface ProjectSummary {
       fps?: 16 | 24 | 50;
       pipeline_mode?: "classic" | "msr";
     };
+    movie?: {
+      source_type?: "short_story" | "screenplay";
+      story_text?: string;
+      desired_length?: number;
+      dialogue_language?: string;
+      width?: number;
+      height?: number;
+      mode?: "scaffold" | "full_auto";
+      planner_backend?: "llm" | "deterministic";
+      reference_backend?: "comfyui" | "local";
+      render_backend?: "comfyui" | "local";
+      hero_workflow?: string;
+      edit_workflow?: string;
+      msr_workflow?: string;
+      msr_i2v_workflow?: string;
+      movie_video_workflow?: "msr" | "msr-i2v-startframe";
+      continuity_keyframes?: "none" | "last-to-start";
+    };
   };
   status: ProjectStatus;
   artifacts: ProjectArtifacts;
@@ -40,7 +58,7 @@ export interface ProjectSummary {
 }
 
 export interface ProjectCreatePayload {
-  project_type: "standard_music_video" | "full_auto";
+  project_type: "standard_music_video" | "full_auto" | "movie";
   name: string;
   silent_mode?: boolean;
   idea?: string;
@@ -50,6 +68,20 @@ export interface ProjectCreatePayload {
   height?: number;
   fps?: 16 | 24 | 50;
   pipeline_mode?: "classic" | "msr";
+  source_type?: "short_story" | "screenplay";
+  story_text?: string;
+  desired_length?: number;
+  dialogue_language?: string;
+  movie_mode?: "scaffold" | "full_auto";
+  movie_planner_backend?: "llm" | "deterministic";
+  movie_reference_backend?: "comfyui" | "local";
+  movie_render_backend?: "comfyui" | "local";
+  movie_hero_workflow?: string;
+  movie_edit_workflow?: string;
+  movie_msr_workflow?: string;
+  movie_msr_i2v_workflow?: string;
+  movie_video_workflow?: "msr" | "msr-i2v-startframe";
+  movie_continuity_keyframes?: "none" | "last-to-start";
 }
 
 export interface JobStep {

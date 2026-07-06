@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from copy import deepcopy
 import json
 import random
 import re
@@ -44,11 +45,15 @@ class ComfyUIMSRVideoRenderBackend:
         postprocessor: VideoPostProcessor | None = None,
         model_resolver=None,
         project_dir: str | Path | None = None,
+        workflow: dict | None = None,
+        workflow_label: str | Path | None = None,
     ):
         if int(msr_frame_count) not in {17, 25, 33, 41}:
             raise ValueError("msr_frame_count must be one of 17, 25, 33, 41")
         self.client = client
         self.workflow_path = Path(workflow_path)
+        self.workflow = deepcopy(workflow) if workflow is not None else None
+        self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
         self.output_dir = Path(output_dir)
         self.project_dir = Path(project_dir) if project_dir is not None else None
         self.raw_output_dir = self.output_dir / "raw"
@@ -71,23 +76,27 @@ class ComfyUIMSRVideoRenderBackend:
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
 
     def load_workflow(self) -> dict:
+        if self.workflow is not None:
+            return deepcopy(self.workflow)
         return json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
 
     def render_video(self, request: VideoRenderRequest) -> Path:
         scene_number = int(request.scene_number)
         rolling = self._rolling_spec(request.scene)
-        comfy_audio_name = self.asset_uploader.resolve_audio_name(
-            request.audio_file,
-            upload_audio=request.upload_audio,
-            uploaded_audio_name=request.uploaded_audio_name,
-        )
+        comfy_audio_name = None
+        if request.upload_audio or request.uploaded_audio_name:
+            comfy_audio_name = self.asset_uploader.resolve_audio_name(
+                request.audio_file,
+                upload_audio=request.upload_audio,
+                uploaded_audio_name=request.uploaded_audio_name,
+            )
         workflow = self.build_workflow(
             request.scene,
             prompt=request.prompt,
             comfy_audio_name=comfy_audio_name,
             rolling=rolling,
         )
-        workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_path)
+        workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_label)
         self._write_debug_workflow(scene_number, workflow)
         self.raw_output_dir.mkdir(parents=True, exist_ok=True)
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
@@ -142,15 +151,58 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_msr_raw/scene_{scene_number:04}")
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", self.msr_frame_count)
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
+        self._patch_msr_continuity_handoff_inputs(patcher, scene)
         self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
         patcher.try_set_existing_input_by_title("#WIDTH", "value", int(scene.get("width", 0) or 0))
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", int(scene.get("height", 0) or 0))
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
         patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
+        self._patch_i2v_latent_lengths(patcher, render_frame_count)
+        self._patch_startframe_input(patcher, scene)
         if comfy_audio_name:
             self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name, rolling=rolling)
 
         return patcher.get()
+
+    def _patch_startframe_input(self, patcher: WorkflowPatcher, scene: dict) -> None:
+        keyframes = scene.get("keyframes") or {}
+        startframe_path = keyframes.get("startframe_path") or keyframes.get("start_frame_path")
+        if not startframe_path:
+            return
+        if not self._has_anchor(patcher, "#STARTFRAME"):
+            raise ValueError("Movie MSR-I2V scene provides a startframe, but workflow is missing #STARTFRAME")
+        image_name = self.asset_uploader.resolve_reference_image_name(self._resolve_project_path(startframe_path))
+        patcher.set_input_by_title("#STARTFRAME", "image", image_name)
+
+    @staticmethod
+    def _patch_msr_continuity_handoff_inputs(patcher: WorkflowPatcher, scene: dict) -> None:
+        ltx = scene.get("ltx") or {}
+        if not str(ltx.get("msr_continuity_handoff_prompt") or "").strip():
+            return
+        msr_frame_count = int(ltx.get("msr_continuity_msr_frame_count") or 17)
+        guide_frame_idx = int(ltx.get("msr_continuity_guide_frame_idx") or 18)
+        patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", msr_frame_count)
+        patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", msr_frame_count)
+        patcher.try_set_existing_input_by_title("#MSR_GUIDE", "frame_idx", guide_frame_idx)
+
+    @staticmethod
+    def _patch_i2v_latent_lengths(patcher: WorkflowPatcher, render_frame_count: int) -> None:
+        workflow = patcher.get()
+        latent_node_ids: set[str] = set()
+        for node in workflow.values():
+            if node.get("class_type") != "LTXVImgToVideoInplace":
+                continue
+            latent_input = (node.get("inputs") or {}).get("latent")
+            if isinstance(latent_input, list) and latent_input:
+                latent_node_ids.add(str(latent_input[0]))
+
+        for node_id in latent_node_ids:
+            node = workflow.get(node_id)
+            if not isinstance(node, dict):
+                continue
+            if node.get("class_type") != "EmptyLTXVLatentVideo":
+                continue
+            node.setdefault("inputs", {})["length"] = int(render_frame_count)
 
     def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
         if self.debug_workflows_dir is None:
@@ -249,6 +301,12 @@ class ComfyUIMSRVideoRenderBackend:
         trim_front_frames = int(rolling["trim_front_frames"]) if rolling else 0
         tail_loss_frames = int(rolling["tail_loss_frames"]) if rolling else 0
         ltx = scene.get("ltx") or {}
+        if str(ltx.get("msr_continuity_handoff_prompt") or "").strip():
+            payload = _build_msr_continuity_handoff_payload(
+                scene=scene,
+                render_frame_count=frame_count,
+            )
+            return payload.global_prompt, payload.local_prompts, payload.segment_lengths
         if ltx.get("msr_prompt_relay") or ltx.get("msr_global_prompt"):
             payload = _build_msr_prompt_relay_payload(
                 scene=scene,
@@ -338,6 +396,15 @@ def _build_msr_prompt_relay_payload(
     relays = list(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
     timeline_frames = max(1, int(render_frame_count) - 1)
     scene_timeline_frames = max(1, int(scene.get("frame_count", 1)) - 1)
+    if str(ltx.get("msr_prompt_relay_mode") or "").strip().lower() == "single":
+        prompt = str(relays[0].get("prompt") or "").strip() if relays and isinstance(relays[0], dict) else ""
+        prompt = _strip_relay_global_contracts(prompt)
+        prompt = prompt or _msr_gap_prompt(scene)
+        return PromptRelayPayload(
+            global_prompt=global_prompt,
+            local_prompts=prompt,
+            segment_lengths=str(timeline_frames),
+        )
 
     relay_segments: list[dict] = []
     if trim_front_frames > 0:
@@ -364,7 +431,7 @@ def _build_msr_prompt_relay_payload(
                 cursor = start
 
             relay_segments.append({
-                "prompt": str(relay.get("prompt") or "").strip() or _msr_gap_prompt(scene),
+                "prompt": _strip_relay_global_contracts(str(relay.get("prompt") or "").strip()) or _msr_gap_prompt(scene),
                 "length": max(1, end - start),
             })
             cursor = end
@@ -397,6 +464,62 @@ def _build_msr_prompt_relay_payload(
         local_prompts="\n|".join(local_prompts),
         segment_lengths=",".join(str(length) for length in segment_lengths),
     )
+
+
+def _build_msr_continuity_handoff_payload(
+    *,
+    scene: dict,
+    render_frame_count: int,
+) -> PromptRelayPayload:
+    ltx = scene.get("ltx") or {}
+    timeline_frames = max(1, int(render_frame_count) - 1)
+    handoff_frames = max(1, int(ltx.get("msr_continuity_handoff_frames") or 18))
+    if handoff_frames >= timeline_frames:
+        handoff_frames = max(1, timeline_frames - 1)
+    current_frames = timeline_frames - handoff_frames
+    handoff_prompt = str(ltx.get("msr_continuity_handoff_prompt") or "").strip()
+    handoff_prompt = _strip_relay_global_contracts(handoff_prompt)
+    current_prompt = _strip_relay_global_contracts(_current_msr_prompt(scene))
+    prompts = [handoff_prompt]
+    lengths = [handoff_frames]
+    if current_frames > 0:
+        prompts.append(current_prompt)
+        lengths.append(current_frames)
+    return PromptRelayPayload(
+        global_prompt=str(ltx.get("msr_global_prompt") or ltx.get("base_prompt") or "").strip(),
+        local_prompts="\n|".join(prompts),
+        segment_lengths=",".join(str(length) for length in lengths),
+    )
+
+
+def _current_msr_prompt(scene: dict) -> str:
+    ltx = scene.get("ltx") or {}
+    relays = ltx.get("msr_prompt_relay") or []
+    if relays and isinstance(relays[0], dict):
+        prompt = str(relays[0].get("prompt") or "").strip()
+        if prompt:
+            return prompt
+    return str(ltx.get("original_style_i2v_prompt") or scene.get("description") or "").strip()
+
+
+def _strip_relay_global_contracts(prompt: str) -> str:
+    text = str(prompt or "").strip()
+    if not text:
+        return ""
+    text = re.sub(
+        r"\bAudio contract:\s*.*?(?=\bDialogue language:|\bStyle:|$)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\bDialogue language:\s*.*?(?=\bStyle:|$)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\bStyle:\s*.*$", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _msr_preroll_prompt(scene: dict) -> str:

@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 
-def validate_project_config(data: Any) -> None:
+def validate_project_config(data: Any, *, project_type: str = "standard_music_video") -> None:
     if not isinstance(data, dict):
         raise ValueError("config.json must be a JSON object")
     if not str(data.get("project_name") or "").strip():
         raise ValueError("project_name is required")
-    if not str(data.get("input_audio") or "").strip():
+    if project_type != "movie" and not str(data.get("input_audio") or "").strip():
         raise ValueError("input_audio is required")
     if data.get("silent_mode") is not None and not isinstance(data["silent_mode"], bool):
         raise ValueError("silent_mode must be a boolean")

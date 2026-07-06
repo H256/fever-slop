@@ -48,6 +48,7 @@ class ReferenceBibleGenerator:
         actor_view_names: tuple[str, ...] | None = None,
         location_view_names: tuple[str, ...] | None = None,
         msr_sheet_size: tuple[int, int] = (1280, 704),
+        direct_msr_sheet_prompt_builder: Callable[[ReferenceSubject], str] | None = None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
@@ -60,6 +61,7 @@ class ReferenceBibleGenerator:
         self.actor_view_names = tuple(actor_view_names or view_names or self.view_names)
         self.location_view_names = tuple(location_view_names or view_names or self.view_names)
         self.msr_sheet_size = (int(msr_sheet_size[0]), int(msr_sheet_size[1]))
+        self.direct_msr_sheet_prompt_builder = direct_msr_sheet_prompt_builder
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
         subject_dir = self.output_dir / "actors" / subject.id
@@ -135,7 +137,11 @@ class ReferenceBibleGenerator:
             ImageRenderRequest(
                 scene={"reference_id": subject.id, "view": view_name},
                 scene_number=1,
-                prompt=self._direct_msr_sheet_prompt(subject),
+                prompt=(
+                    self.direct_msr_sheet_prompt_builder(subject)
+                    if self.direct_msr_sheet_prompt_builder is not None
+                    else self._direct_msr_sheet_prompt(subject)
+                ),
                 workflow_path=Path(""),
                 output_dir=view_dir,
                 width=self.msr_sheet_size[0],
