@@ -575,6 +575,29 @@ class StudioBackendTests(unittest.TestCase):
             self.assertTrue(created.json()["silent_mode"])
             self.assertEqual(400, invalid.status_code)
 
+    def test_create_movie_project_persists_i2v_continuity_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            store.create_project(
+                ProjectCreateRequest(
+                    project_type="movie",
+                    name="Door Below",
+                    story_text="A locksmith follows a door that opens beneath the abandoned station.",
+                    movie_mode="scaffold",
+                    movie_planner_backend="deterministic",
+                    movie_video_workflow="msr-i2v-startframe",
+                    movie_continuity_keyframes="last-to-start",
+                    movie_msr_i2v_workflow="workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json",
+                )
+            )
+
+            metadata = json.loads((Path(temp_dir) / "door-below" / ".studio" / "project.json").read_text())
+
+            self.assertEqual("msr-i2v-startframe", metadata["movie"]["movie_video_workflow"])
+            self.assertEqual("last-to-start", metadata["movie"]["continuity_keyframes"])
+            self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json", metadata["movie"]["msr_i2v_workflow"])
+
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}
 

@@ -32,7 +32,15 @@ class LLMMoviePlanner:
             system_prompt="You are a film development producer. Return ONLY valid JSON.",
         )
         data = _json_object(raw)
-        return _movie_bible_from_data(data, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
+        return _movie_bible_from_data(
+            data,
+            title=title,
+            source_type=source_type,
+            source_text=story_text,
+            story_arch=story_arch,
+            config=config,
+            desired_length=desired_length,
+        )
 
     def generate_movie_continuity_plan(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> dict:
         raw = self.llm.complete_prompt(
@@ -158,6 +166,7 @@ class LLMMoviePlanner:
                     dialogue=str(shot.get("dialogue") or "").strip(),
                     actor_ids=tuple(_string_list(shot.get("actor_ids") or shot.get("actors"))),
                     location_id=_safe_id(shot.get("location_id") or shot.get("location")),
+                    transition_from_previous=_transition_from_previous(shot.get("transition_from_previous")),
                 )
             )
         planned = _ensure_minimum_actors(planned, story_arch)
@@ -176,7 +185,15 @@ class DeterministicMoviePlanner:
         return StoryArch(title=title, premise=text, beats=tuple(beats))
 
     def generate_movie_bible(self, *, title: str, source_type: str, story_text: str, desired_length: float, story_arch: StoryArch, config: dict) -> MovieBible:
-        return _movie_bible_from_data({}, title=title, story_arch=story_arch, config=config, desired_length=desired_length)
+        return _movie_bible_from_data(
+            {},
+            title=title,
+            source_type=source_type,
+            source_text=story_text,
+            story_arch=story_arch,
+            config=config,
+            desired_length=desired_length,
+        )
 
     def generate_movie_continuity_plan(self, **_kwargs) -> dict:
         return {}
@@ -275,13 +292,20 @@ class DeterministicMoviePlanner:
         )
 
 
-def _movie_bible_from_data(data: dict, *, title: str, story_arch: StoryArch, config: dict, desired_length: float) -> MovieBible:
-    actors = _configured_actors(config) or _actors_from_data(data.get("actors") or [])
-    locations = _configured_locations(config) or _locations_from_data(data.get("locations") or [])
+def _movie_bible_from_data(data: dict, *, title: str, source_type: str = "", source_text: str = "", story_arch: StoryArch, config: dict, desired_length: float) -> MovieBible:
+    configured_actors = _configured_actors(config)
+    configured_locations = _configured_locations(config)
+    reference_story_arch = _screenplay_reference_arch(story_arch, source_type=source_type, source_text=source_text)
+    story_actors = _actors_from_story_arch(reference_story_arch)
+    story_locations = _locations_from_story_arch(reference_story_arch)
+    data_actors = _actors_from_data(data.get("actors") or [])
+    data_locations = _locations_from_data(data.get("locations") or [])
+    actors = configured_actors or _merge_screenplay_references(story_actors, data_actors) or data_actors
+    locations = configured_locations or _merge_screenplay_references(story_locations, data_locations) or data_locations
     if not actors:
-        actors = [MovieActor(id="main_character", name="Main Character", role="lead", visual_description="story-defined cinematic lead character with consistent face, hair, wardrobe, posture, and body shape")]
+        actors = [MovieActor(id="main_character", name="Main Character", role="lead", visual_description="Main Character")]
     if not locations:
-        locations = [MovieLocation(id="primary_location", name="Primary Location", visual_description="story-defined cinematic location with consistent production design, geography, lighting, and atmosphere")]
+        locations = [MovieLocation(id="primary_location", name="Primary Location", visual_description="Primary Location")]
     return MovieBible(
         title=str(data.get("title") or title),
         premise=str(data.get("premise") or story_arch.premise).strip(),
@@ -300,6 +324,15 @@ def _movie_bible_from_data(data: dict, *, title: str, story_arch: StoryArch, con
     )
 
 
+def _screenplay_reference_arch(story_arch: StoryArch, *, source_type: str, source_text: str) -> StoryArch:
+    if source_type != "screenplay":
+        return story_arch
+    beats = _split_screenplay_beats(source_text)
+    if not beats:
+        return story_arch
+    return replace(story_arch, beats=tuple(beats))
+
+
 def _configured_actors(config: dict) -> list[MovieActor]:
     actors = []
     raw = config.get("actors") if isinstance(config.get("actors"), list) else []
@@ -311,7 +344,7 @@ def _configured_actors(config: dict) -> list[MovieActor]:
                 id=_safe_id(actor.get("id") or actor.get("name")) or f"actor_{index}",
                 name=str(actor.get("name") or actor.get("id") or f"Actor {index}").strip(),
                 role=str(actor.get("role") or "").strip(),
-                visual_description=str(actor.get("visual_description") or actor.get("image_prompt") or actor.get("prompt") or actor.get("name") or f"Actor {index}").strip(),
+                visual_description=_clean_visual_description(actor.get("visual_description") or actor.get("image_prompt") or actor.get("prompt"), str(actor.get("name") or actor.get("id") or f"Actor {index}").strip()),
             )
         )
     return actors
@@ -328,7 +361,7 @@ def _configured_locations(config: dict) -> list[MovieLocation]:
                 MovieLocation(
                     id=_safe_id(location.get("id") or location.get("name")) or f"location_{index}",
                     name=str(location.get("name") or location.get("id") or f"Location {index}").strip(),
-                    visual_description=str(location.get("visual_description") or location.get("image_prompt") or location.get("prompt") or location.get("name") or f"Location {index}").strip(),
+                    visual_description=_clean_visual_description(location.get("visual_description") or location.get("image_prompt") or location.get("prompt"), str(location.get("name") or location.get("id") or f"Location {index}").strip()),
                 )
             )
         elif str(location or "").strip():
@@ -347,7 +380,7 @@ def _actors_from_data(raw: object) -> list[MovieActor]:
                 id=_safe_id(actor.get("id") or actor.get("name")) or f"actor_{index}",
                 name=str(actor.get("name") or actor.get("id") or f"Actor {index}").strip(),
                 role=str(actor.get("role") or "").strip(),
-                visual_description=str(actor.get("visual_description") or actor.get("description") or actor.get("name") or f"Actor {index}").strip(),
+                visual_description=_clean_visual_description(actor.get("visual_description") or actor.get("description"), str(actor.get("name") or actor.get("id") or f"Actor {index}").strip()),
             )
         )
     return actors
@@ -362,10 +395,116 @@ def _locations_from_data(raw: object) -> list[MovieLocation]:
             MovieLocation(
                 id=_safe_id(location.get("id") or location.get("name")) or f"location_{index}",
                 name=str(location.get("name") or location.get("id") or f"Location {index}").strip(),
-                visual_description=str(location.get("visual_description") or location.get("description") or location.get("name") or f"Location {index}").strip(),
+                visual_description=_clean_visual_description(location.get("visual_description") or location.get("description"), str(location.get("name") or location.get("id") or f"Location {index}").strip()),
             )
         )
     return locations
+
+
+def _actors_from_story_arch(story_arch: StoryArch) -> list[MovieActor]:
+    actors: list[MovieActor] = []
+    known_ids: set[str] = set()
+    for beat in story_arch.beats:
+        parsed = _parse_screenplay_beat(beat)
+        if parsed is None:
+            continue
+        for cue in _dialogue_actor_names(parsed["dialogue"]):
+            actor_id = _safe_id(cue)
+            if not actor_id or actor_id in known_ids:
+                continue
+            name = _display_name(cue)
+            actors.append(MovieActor(id=actor_id, name=name, role="character", visual_description=name))
+            known_ids.add(actor_id)
+    return actors
+
+
+def _locations_from_story_arch(story_arch: StoryArch) -> list[MovieLocation]:
+    locations: list[MovieLocation] = []
+    known_ids: set[str] = set()
+    for beat in story_arch.beats:
+        parsed = _parse_screenplay_beat(beat)
+        if parsed is None:
+            continue
+        name = parsed["location"].strip()
+        location_id = _safe_id(name)
+        if not location_id or location_id in known_ids:
+            continue
+        locations.append(MovieLocation(id=location_id, name=name, visual_description=_location_visual_description(name, parsed["action"])))
+        known_ids.add(location_id)
+    return locations
+
+
+def _merge_screenplay_references(story_items: list, data_items: list) -> list:
+    if not story_items:
+        return []
+    by_id = {item.id: item for item in story_items}
+    merged = []
+    for story_item in story_items:
+        data_item = next((item for item in data_items if item.id == story_item.id), None)
+        if data_item is None:
+            merged.append(story_item)
+            continue
+        description = getattr(data_item, "visual_description", "") or getattr(story_item, "visual_description", "")
+        if description == getattr(data_item, "name", "") or description == getattr(story_item, "name", ""):
+            description = getattr(story_item, "visual_description", "")
+        merged.append(replace(data_item, visual_description=description))
+    for data_item in data_items:
+        if data_item.id in by_id or data_item.id in {"main_character", "primary_location"}:
+            continue
+        merged.append(data_item)
+    return merged
+
+
+def _dialogue_actor_names(value: str) -> list[str]:
+    names: list[str] = []
+    for match in re.finditer(r"(?:^|\s)([A-ZÄÖÜ][A-ZÄÖÜ0-9 _'’-]{1,40}):", str(value or "")):
+        name = match.group(1).strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _display_name(value: str) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    return text.title() if text.isupper() else text
+
+
+def _location_visual_description(name: str, action: str) -> str:
+    clean_name = " ".join(str(name or "").split()).strip()
+    visual_action = _visual_location_action(action)
+    if visual_action:
+        return f"{clean_name}. {visual_action}"
+    return clean_name
+
+
+def _visual_location_action(value: str) -> str:
+    text = " ".join(str(value or "").split()).strip(" .;,")
+    if not text:
+        return ""
+    text = re.sub(r"\b[A-ZÄÖÜ][A-ZÄÖÜ0-9 _'’-]{1,40}:\s*[^.?!]+[.?!]?", "", text).strip(" .;,")
+    text = re.sub(r"(?i)\b(?:says?|speaks?|asks?|answers?|whispers?|shouts?)\b[^.?!]*[.?!]?", "", text).strip(" .;,")
+    if not text:
+        return ""
+    sentences = [sentence.strip(" .;,") for sentence in re.split(r"(?<=[.!?])\s+", text) if sentence.strip(" .;,")]
+    return ". ".join(sentences[:2])[:320]
+
+
+def _clean_visual_description(value: object, fallback: str) -> str:
+    text = " ".join(str(value or "").split()).strip(" .;,")
+    fallback_text = " ".join(str(fallback or "").split()).strip() or "Reference"
+    if not text:
+        return fallback_text
+    lower = text.lower()
+    generic_tokens = (
+        "story-defined cinematic",
+        "consistent face",
+        "consistent production design",
+        "body shape",
+        "wardrobe, and posture",
+    )
+    if lower.endswith(" with") or any(token in lower for token in generic_tokens):
+        return fallback_text
+    return text
 
 
 def _continuity_from_data(raw: object) -> list[MovieContinuityRule]:
@@ -412,6 +551,7 @@ def _shots_from_data(shots: list, *, desired_length: float, min_duration: float,
                 dialogue=str(shot.get("dialogue") or "").strip(),
                 actor_ids=tuple(_string_list(shot.get("actor_ids") or shot.get("actors"))),
                 location_id=_safe_id(shot.get("location_id") or shot.get("location")),
+                transition_from_previous=_transition_from_previous(shot.get("transition_from_previous")),
             )
         )
     return _normalize_movie_shots(
@@ -481,12 +621,14 @@ Resolution: {width}x{height}
 Target shot count: about {target_shots}. Prefer varied shot durations from {min_duration:g} to {max_duration:g} seconds. Never exceed {max_duration:g} seconds for one shot.
 
 Return JSON with:
-{{"shots": [{{"description": string, "duration_seconds": number, "camera": string, "action": string, "expression": string, "location": string, "dialogue": string, "actor_ids": [string], "location_id": string}}]}}
+{{"shots": [{{"description": string, "duration_seconds": number, "camera": string, "action": string, "expression": string, "location": string, "dialogue": string, "actor_ids": [string], "location_id": string, "transition_from_previous": "cut|continuous"}}]}}
 
 Rules:
+- Write every non-dialogue prose field in English: description, camera, action, expression, location, and continuity-like text. Only the dialogue field may use the requested spoken dialogue language.
 - If the source or steering names actors/characters, preserve them as stable snake_case actor_ids.
 - If the idea asks for at least N characters, create at least N distinct actor_ids across the shot plan.
 - Use stable snake_case location_id values for recurring locations.
+- Use transition_from_previous="continuous" only when this shot directly continues the previous shot in the same location with overlapping actors, no time jump, no perspective jump, and no new story beat. Otherwise use "cut". First shot is always "cut".
 """.strip()
 
 
@@ -505,9 +647,13 @@ Return JSON with:
 {{"title": string, "premise": string, "actors": [{{"id": snake_case, "name": string, "role": string, "visual_description": string}}], "locations": [{{"id": snake_case, "name": string, "visual_description": string}}], "continuity": [{{"id": snake_case, "description": string}}], "style_constraints": [string]}}
 
 Rules:
+- Write all prose fields in English: premise, actor visual_description, location visual_description, continuity descriptions, and style_constraints. Actor/location names and ids may preserve source/config labels.
 - If config.actors is present, use exactly those actor ids and do not invent actor ids.
 - If config.structured_locations or config.locations is present, use exactly those location ids and do not invent location ids.
+- If source_type is screenplay, derive actors from explicit screenplay character cues and locations from scene headings. Do not add a generic main_character when named cues exist.
 - Actor and location visual_description must describe stable visual identity only, not camera moves, shots, dialogue, or reference-sheet layout.
+- Never use placeholder phrases like "story-defined cinematic character", "story-defined cinematic location", "consistent face", "consistent body shape", or "consistent production design" as visual descriptions.
+- If the source does not give enough appearance detail, use only the clean actor or location name as visual_description.
 - Preserve screenplay dialogue cues in continuity/story structure, not in visual descriptions.
 {dialogue_rule}
 
@@ -537,15 +683,23 @@ Resolution: {width}x{height}
 Target shot count: about {target_shots}. Prefer varied shot durations from {min_duration:g} to {max_duration:g} seconds. Never exceed {max_duration:g} seconds for one shot.
 
 Return JSON with:
-{{"shots": [{{"description": string, "duration_seconds": number, "camera": string, "action": string, "acting": string, "location": string, "dialogue": string, "actor_ids": [string], "location_id": string, "continuity_notes": string}}]}}
+{{"shots": [{{"description": string, "duration_seconds": number, "camera": string, "action": string, "acting": string, "location": string, "dialogue": string, "actor_ids": [string], "location_id": string, "continuity_notes": string, "transition_from_previous": "cut|continuous"}}]}}
 
 Rules:
+- Write every non-dialogue prose field in English: description, camera, action, acting, location, and continuity_notes. Only dialogue may use {dialogue_language or "the requested spoken dialogue language"}.
 - actor_ids must only use bible actor ids.
 - location_id must only use bible location ids.
 - Never put more than 4 actors in one shot.
 - Preserve dialogue, camera, acting, action, and continuity as separate fields.
+- If a voice comes from a radio, transmitter, speaker, recorder, future self, unseen source, or distorted entity, mark it with a clear dialogue cue such as "(Radio)" or "(Distorted Voice)" and describe the device/source in action. Do not write it as visible actor lipsync.
+- Use transition_from_previous="continuous" only when this shot directly continues the previous shot in the same location with overlapping actors, no time jump, no perspective jump, and no new story beat. Otherwise use "cut". First shot is always "cut".
 {dialogue_rule}
 """.strip()
+
+
+def _transition_from_previous(value: object) -> str:
+    transition = str(value or "cut").strip().lower().replace("_", "-")
+    return "continuous" if transition == "continuous" else "cut"
 
 
 def _movie_continuity_plan_prompt(*, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> str:
@@ -573,6 +727,7 @@ Required top-level shape:
 }}
 
 Rules:
+- Write all continuity, state, style, location, and narrative prose in English. Only quoted dialogue text may remain in {dialogue_language or "the requested spoken dialogue language"}.
 - Keep actor ids exactly to bible actor ids. Keep location ids exactly to bible location ids.
 - Every shot id from SHOTS must appear once in scene_order, scene_continuity, and narrative_chain.
 - Every shot after the first needs a concrete cause_from_previous.
@@ -622,6 +777,7 @@ Return JSON with:
 {{"title": string, "premise": string, "theme": string, "act_structure": [{{"act_id": string, "title": string, "purpose": string, "scene_ids": [string]}}], "turning_points": [{{"id": string, "scene_id": string, "description": string}}], "setup_payoff_threads": [{{"id": string, "setup_scene_id": string, "payoff_scene_id": string, "description": string}}], "character_arcs": [{{"actor_id": string, "want": string, "need": string, "starting_state": string, "ending_state": string}}], "scene_blueprint": [{{"scene_id": "scene_0001", "purpose": string, "conflict": string, "emotional_turn": string, "subtext": string, "dialogue_function": string, "required_actors": [string], "location_id": string, "expected_duration": number}}]}}
 
 Rules:
+- Write all story-design prose in English: premise, theme, act purposes, turning points, setup/payoff descriptions, character arcs, scene purpose, conflict, emotional_turn, subtext, and dialogue_function.
 - {screenplay_rule}
 - Write screenplay craft, not a scene list: every scene needs a dramatic purpose, conflict, emotional turn, subtext, and dialogue function.
 - actor_ids/required_actors must only use these ids: {[actor.id for actor in bible.actors]}
@@ -651,6 +807,8 @@ Return JSON with:
 {{"title": string, "source_type": "{source_type}", "dialogue_language": string, "scenes": [{{"scene_id": "scene_0001", "heading": string, "summary": string, "action": string, "dialogue": string, "actor_ids": [string], "location_id": string, "source_span": string, "dramatic_purpose": string, "conflict": string, "emotional_turn": string, "subtext": string, "dialogue_function": string}}]}}
 
 Rules:
+- Write every non-dialogue screenplay field in English: heading, summary, action, source_span, dramatic_purpose, conflict, emotional_turn, subtext, and dialogue_function.
+- Write only the dialogue field in {dialogue_language or "the requested spoken dialogue language"}. Do not put translated dialogue in action or summary.
 - {screenplay_rule}
 - Every scene must visibly implement its matching STORY DESIGN scene_blueprint.
 - For idea/short_story input, write scenes with playable action, dramatic conflict, emotional turn, and dialogue where useful.
@@ -691,6 +849,7 @@ Return JSON with:
 {{"title": string, "sequences": [{{"sequence_id": string, "title": string, "scene_ids": [string], "dramatic_function": string}}], "causal_chain": [{{"scene_id": string, "story_state_before": string, "story_state_after": string, "cause_from_previous": string, "sets_up_next": string}}], "open_threads": [string]}}
 
 Rules:
+- Write all narrative memory prose in English. Preserve quoted dialogue only if needed and only in the screenplay dialogue language.
 - Use only scene_id values from SCREENPLAY.
 - Preserve scene order.
 - Every scene after the first needs a concrete cause_from_previous.
@@ -820,11 +979,19 @@ def _normalize_movie_shots(shots: list[CinematicShot], *, desired_length: float,
         duration = max(1.0, float(shot.duration_seconds))
         parts = max(1, ceil(duration / max_duration))
         for part in range(parts):
+            description = _shot_part_text(shot.description, part=part, parts=parts) if parts > 1 else shot.description
+            action = _shot_part_text(shot.action, part=part, parts=parts) if parts > 1 else shot.action
+            if parts > 1 and part > 0 and action == shot.action:
+                action = f"Continue the same scene beat: {action}"
             expanded.append(
                 replace(
                     shot,
                     shot_id=f"{shot.shot_id}_{part + 1}" if parts > 1 else shot.shot_id,
                     duration_seconds=duration / parts,
+                    description=description,
+                    action=action,
+                    dialogue=shot.dialogue if part == 0 else "",
+                    expression=shot.expression if part == 0 or not shot.dialogue else "silent physical reaction after the dialogue beat",
                 )
             )
     pattern = (0.86, 1.08, 0.94, 1.18, 1.0, 0.78, 1.12)
@@ -832,3 +999,20 @@ def _normalize_movie_shots(shots: list[CinematicShot], *, desired_length: float,
     total = sum(weighted) or 1.0
     scaled = [max(min_duration, min(max_duration, value * float(desired_length) / total)) for value in weighted]
     return tuple(replace(shot, shot_id=f"shot_{index:04}", duration_seconds=round(duration, 3)) for index, (shot, duration) in enumerate(zip(expanded, scaled), start=1))
+
+
+def _shot_part_text(value: str, *, part: int, parts: int) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    sentences = [item.strip() for item in re.split(r"(?<=[.!?])\s+", text) if item.strip()]
+    if len(sentences) >= parts:
+        index = min(part, len(sentences) - 1)
+        return sentences[index]
+    if sentences:
+        if part < len(sentences):
+            return sentences[part]
+        return f"Continue visually from the previous moment: {sentences[-1]}"
+    if part == 0:
+        return text
+    return f"Continue visually from the previous moment: {text}"

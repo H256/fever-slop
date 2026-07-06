@@ -401,11 +401,19 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=config["keyframe_mode"])
         log(f"[MoviePipeline] Stage: Movie MSR Prompt Enrichment Ready: {render_plan_msr_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
+        patched_i2v_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_i2v_workflow"])) if config.get("msr_i2v_workflow") else None
         log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
         log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
-        final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
+        final_video = build_movie_visual_adapter(
+            project_dir,
+            Path(config["msr_workflow"]),
+            movie_config=config,
+            workflow=patched_workflow,
+            i2v_workflow=patched_i2v_workflow,
+        ).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_msr_path if render_plan_msr_path.exists() else planning.render_plan_path,
+            continuity_keyframes=config["continuity_keyframes"],
             on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered clip {completed}/{total}: scene {scene_number}"),
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
@@ -428,16 +436,24 @@ def build_movie_render_handler(
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Stage: Existing Movie MSR plan: {render_plan_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
+        patched_i2v_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_i2v_workflow"])) if config.get("msr_i2v_workflow") else None
         log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
         if concat_only:
             log("[MoviePipeline] Stage: Final movie concat from existing scene clips")
         else:
             log(f"[LTX_MSR_Movie_Adapter] Rendering via {config['render_backend']} with LTX 2.3 native audio; no custom audio track supplied")
-        final_video = build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=patched_workflow).render_movie(
+        final_video = build_movie_visual_adapter(
+            project_dir,
+            Path(config["msr_workflow"]),
+            movie_config=config,
+            workflow=patched_workflow,
+            i2v_workflow=patched_i2v_workflow,
+        ).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_path,
             selected_scenes=selected_scenes,
             concat_only=concat_only,
+            continuity_keyframes=config["continuity_keyframes"],
             on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered clip {completed}/{total}: scene {scene_number}"),
         )
         log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
@@ -705,8 +721,15 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
     )
 
 
-def build_movie_visual_adapter(project_dir: Path, workflow_path: Path, movie_config: dict[str, Any] | None = None, workflow: dict | None = None):
-    backend = movie_runtime_config(movie_config)["render_backend"]
+def build_movie_visual_adapter(
+    project_dir: Path,
+    workflow_path: Path,
+    movie_config: dict[str, Any] | None = None,
+    workflow: dict | None = None,
+    i2v_workflow: dict | None = None,
+):
+    config = movie_runtime_config(movie_config)
+    backend = config["render_backend"]
     if backend == "local":
         from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
 
@@ -726,6 +749,9 @@ def build_movie_visual_adapter(project_dir: Path, workflow_path: Path, movie_con
         client=client,
         workflow_path=workflow_path,
         workflow=workflow,
+        i2v_workflow_path=Path(config["msr_i2v_workflow"]) if config.get("msr_i2v_workflow") else None,
+        i2v_workflow=i2v_workflow,
+        continuity_keyframes=config["continuity_keyframes"],
         model_resolver=ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides),
     )
 
@@ -739,6 +765,8 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     planner_backend = _movie_backend(raw.get("planner_backend"), default="llm", supported={"llm", "deterministic", "local"})
     if planner_backend == "local":
         planner_backend = "deterministic"
+    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe"})
+    msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json" if movie_video_workflow == "msr-i2v-startframe" else ""
     return {
         "planner_backend": planner_backend,
         "reference_backend": _movie_backend(raw.get("reference_backend"), default="comfyui", supported={"comfyui", "local"}),
@@ -746,9 +774,19 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "hero_workflow": _movie_workflow_path(raw.get("hero_workflow"), "workflows/image_t2i_startframe_krea_v1.json"),
         "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), "workflows/image_edit_flux2_klein_1ref_v1.json"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
-        "movie_video_workflow": _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe"}),
+        "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
+        "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
+        "continuity_keyframes": _movie_continuity_keyframes(raw.get("continuity_keyframes"), movie_video_workflow=raw.get("movie_video_workflow")),
     }
+
+
+def _movie_continuity_keyframes(value: object, *, movie_video_workflow: object = None) -> str:
+    mode = _movie_backend(value, default="none", supported={"none", "last-to-start"})
+    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe"})
+    if mode == "last-to-start" and workflow != "msr-i2v-startframe":
+        raise ValueError("continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
+    return mode
 
 
 def mark_movie_reference_backend(manifest_path: Path, backend: str) -> Path:

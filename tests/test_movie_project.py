@@ -41,6 +41,7 @@ class FakeMoviePostprocessor:
         self.trim_specs = []
         self.concat_lists = []
         self.concat_calls = []
+        self.last_frame_extracts = []
 
     def trim_clip(self, spec):
         self.trim_specs.append(spec)
@@ -60,6 +61,14 @@ class FakeMoviePostprocessor:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_bytes(b"movie")
         self.concat_calls.append((Path(concat_list), output_file, video_only, reencode))
+        return output_file
+
+    def extract_last_frame(self, source_file, output_file):
+        source_file = Path(source_file)
+        output_file = Path(output_file)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(b"png")
+        self.last_frame_extracts.append((source_file, output_file))
         return output_file
 
 
@@ -392,6 +401,7 @@ class MovieProjectTests(unittest.TestCase):
                                 "action": "opens the ledger",
                                 "dialogue": "MARA: It remembers me.",
                                 "continuity_notes": "same charcoal coat",
+                                "transition_from_previous": "continuous",
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
                             }
                         ],
@@ -453,12 +463,20 @@ class MovieProjectTests(unittest.TestCase):
 
             self.assertEqual(movie_dir / "render_plan_msr.json", output)
             self.assertIn("slow dolly", prompt)
-            self.assertIn("MARA: It remembers me.", prompt)
+            self.assertIn('Mara says: "It remembers me."', prompt)
+            self.assertNotIn('"MARA:', prompt)
+            self.assertEqual("continuous", enriched["shots"][0]["transition_from_previous"])
             self.assertEqual("same charcoal coat", enriched["shots"][0]["continuity_notes"])
             self.assertNotIn("Continuity:", prompt)
             self.assertNotIn("CONTINUITY CONTRACT", prompt)
             self.assertNotIn("Continuity:", relay["prompt"])
             self.assertNotIn("CONTINUITY CONTRACT", relay["prompt"])
+            self.assertNotIn("Actors:", relay["prompt"])
+            self.assertNotIn("Location:", relay["prompt"])
+            self.assertNotIn("Action:", relay["prompt"])
+            self.assertNotIn("Audio contract:", relay["prompt"])
+            self.assertNotIn("Dialogue language:", relay["prompt"])
+            self.assertNotIn("Style:", relay["prompt"])
             self.assertNotIn("Full-body cinematic character reference sheet", prompt)
             self.assertNotIn("Four vertical panels", prompt)
             self.assertEqual(0, relay["frame_start"])
@@ -523,9 +541,88 @@ class MovieProjectTests(unittest.TestCase):
             enriched = json.loads(output.read_text(encoding="utf-8"))
             prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
             relay = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]
-            self.assertIn("Dialogue language: German", prompt)
-            self.assertIn("spoken in German", prompt)
-            self.assertIn("Dialogue language: German", relay["prompt"])
+            self.assertNotIn("Dialogue language: German", prompt)
+            self.assertNotIn("spoken in German", prompt)
+            self.assertNotIn("Dialogue language: German", relay["prompt"])
+            self.assertIn('Mara says in German: "Es erinnert sich an mich."', relay["prompt"])
+            self.assertNotIn('"MARA:', relay["prompt"])
+            global_prompt = enriched["shots"][0]["ltx"]["msr_global_prompt"]
+            self.assertIn("Reference image 1 (Mara): stern archivist.", global_prompt)
+            self.assertIn("Reference image 2 (Scene): quiet archive room.", global_prompt)
+            self.assertNotIn("Dialogue language: German", global_prompt)
+            self.assertNotIn("Audio contract:", global_prompt)
+            self.assertNotIn("Style:", global_prompt)
+            self.assertNotIn("MARA: Es erinnert sich an mich.", global_prompt)
+
+    def test_movie_msr_enrichment_formats_radio_dialogue_as_diegetic_audio(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Station",
+                        "premise": "Elara hears herself on the radio.",
+                        "story_arch": {"title": "Station", "premise": "Elara hears herself on the radio.", "beats": ["warning"]},
+                        "actors": [{"id": "elara", "name": "Elara", "visual_description": "weathered arctic technician in a frost-covered parka"}],
+                        "locations": [{"id": "radio_room", "name": "Radio Room", "visual_description": "cramped warm room filled with glowing vacuum tubes and an old analog radio transmitter"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Station",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0007",
+                                "description": "Close up of Elara freezing as she hears a voice through the static",
+                                "duration_seconds": 4,
+                                "camera": "extreme close up on Elara's eyes",
+                                "acting": "Elara's eyes widen in terror; she stares at the radio in disbelief",
+                                "action": "The radio plays a recording of Elara's own voice screaming",
+                                "dialogue": "(Radio Voice) Lauf weg! Er ist hier! Er kommt!",
+                                "reference_ids": {"actors": ["elara"], "location": "radio_room"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "elara", "name": "Elara", "visual_description": "weathered arctic technician in a frost-covered parka", "msr_sheet_path": "actor.png"}],
+                        "locations": [{"id": "radio_room", "name": "Radio Room", "visual_description": "cramped warm room filled with glowing vacuum tubes and an old analog radio transmitter", "msr_sheet_path": "location.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+
+            ltx = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]
+            local_prompt = ltx["msr_prompt_relay"][0]["prompt"]
+            global_prompt = ltx["msr_global_prompt"]
+            self.assertIn('The radio plays a recording of Elara\'s own voice screaming in German: "Lauf weg! Er ist hier! Er kommt!"', local_prompt)
+            self.assertNotIn("Radio Voice", local_prompt)
+            self.assertNotIn("Visible actor", local_prompt)
+            self.assertNotIn("Elara says", local_prompt)
+            self.assertNotIn("Elara asks", local_prompt)
+            self.assertNotIn("Audio contract:", local_prompt)
+            self.assertNotIn("Dialogue language:", local_prompt)
+            self.assertEqual(
+                "Reference image 1 (Elara): weathered arctic technician in a frost-covered parka. "
+                "Reference image 2 (Scene): cramped warm room filled with glowing vacuum tubes and an old analog radio transmitter.",
+                global_prompt,
+            )
 
     def test_movie_msr_enrichment_blocks_dialogue_when_shot_has_no_dialogue(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
@@ -584,9 +681,18 @@ class MovieProjectTests(unittest.TestCase):
             enriched = json.loads(output.read_text(encoding="utf-8"))
             prompt = enriched["shots"][0]["ltx"]["original_style_i2v_prompt"]
             relay = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]
-            self.assertIn("No spoken dialogue", prompt)
-            self.assertIn("Do not invent spoken lines", prompt)
-            self.assertIn("No spoken dialogue", relay["prompt"])
+            self.assertNotIn("No spoken dialogue", prompt)
+            self.assertNotIn("Do not invent spoken lines", prompt)
+            self.assertNotIn("No spoken dialogue", relay["prompt"])
+            self.assertNotIn("Audio contract:", relay["prompt"])
+            self.assertNotIn("Dialogue language:", relay["prompt"])
+            self.assertNotIn("Style:", relay["prompt"])
+            global_prompt = enriched["shots"][0]["ltx"]["msr_global_prompt"]
+            self.assertIn("Reference image 1 (Mara): stern archivist.", global_prompt)
+            self.assertIn("Reference image 2 (Scene): quiet archive room.", global_prompt)
+            self.assertNotIn("No spoken dialogue", global_prompt)
+            self.assertNotIn("No off-screen voice", global_prompt)
+            self.assertNotIn("extra voice", global_prompt)
 
     def test_movie_msr_enrichment_drops_screenplay_dumps_from_continuity(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
@@ -779,9 +885,14 @@ class MovieProjectTests(unittest.TestCase):
             for value in (prompt, relay_prompt):
                 self.assertIn("Hans turns toward Karl in the trench", value)
                 self.assertIn("Hans answers without raising his voice", value)
-                self.assertIn("Hans: Halt den Mund, Karl.", value)
-                self.assertIn("Dialogue language: German", value)
-                self.assertIn("Audio contract: diegetic environmental sound effects and scripted dialogue only", value)
+                self.assertIn('Hans says in German: "Halt den Mund, Karl."', value)
+                self.assertNotIn('"Hans:', value)
+                self.assertNotIn("Dialogue language: German", value)
+                self.assertNotIn("Audio contract:", value)
+                self.assertNotIn("Style:", value)
+                self.assertNotIn("Actors:", value)
+                self.assertNotIn("Location:", value)
+                self.assertNotIn("Action:", value)
                 self.assertNotIn("singing", value.lower())
                 self.assertNotIn("chanting", value.lower())
                 self.assertNotIn("background music", value.lower())
@@ -789,10 +900,328 @@ class MovieProjectTests(unittest.TestCase):
                 self.assertNotIn("CONTINUITY CONTRACT", value)
                 self.assertNotIn("Karl whispered that he cannot feel the ground", value)
                 self.assertNotIn("Friedrich enters with a memory of home", value)
-            self.assertIn("Reference image 1: Hans", ltx["msr_global_prompt"])
-            self.assertIn("Reference image 2: Karl", ltx["msr_global_prompt"])
-            self.assertIn("Background reference: Trench Line", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 1 (Hans): mud-covered soldier.", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 2 (Karl): trembling soldier.", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 3 (Scene): muddy trench.", ltx["msr_global_prompt"])
+            self.assertNotIn("Dialogue language: German", ltx["msr_global_prompt"])
+            self.assertNotIn("Audio contract:", ltx["msr_global_prompt"])
+            self.assertNotIn("No non-diegetic music", ltx["msr_global_prompt"])
+            self.assertNotIn("quiet place", ltx["msr_global_prompt"])
+            self.assertNotIn("ambient sounds", ltx["msr_global_prompt"])
+            self.assertNotIn("Style:", ltx["msr_global_prompt"])
             self.assertNotIn("CONTINUITY CONTRACT", ltx["msr_global_prompt"])
+
+    def test_movie_msr_global_prompt_excludes_audio_hints_for_indoor_locations(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Room",
+                        "premise": "Mara waits indoors.",
+                        "story_arch": {"title": "Room", "premise": "Mara waits indoors.", "beats": ["wait"]},
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist"}],
+                        "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Room",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara waits beside the door",
+                                "duration_seconds": 4,
+                                "action": "Mara listens without moving",
+                                "reference_ids": {"actors": ["mara"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
+                        "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room", "msr_sheet_path": "location.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            global_prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_global_prompt"]
+
+            self.assertIn("Reference image 1 (Mara): quiet archivist.", global_prompt)
+            self.assertIn("Reference image 2 (Scene): small indoor archive room.", global_prompt)
+            self.assertNotIn("in a quiet room", global_prompt)
+            self.assertNotIn("ambient sounds", global_prompt)
+
+    def test_movie_msr_global_prompt_ignores_structured_style_constraints(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Room",
+                        "premise": "Mara waits indoors.",
+                        "story_arch": {"title": "Room", "premise": "Mara waits indoors.", "beats": ["wait"]},
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist"}],
+                        "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room"}],
+                        "continuity": [],
+                        "style_constraints": [{"word_count_min": 40}, "desaturated realism"],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Room",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara waits beside the door",
+                                "duration_seconds": 4,
+                                "action": "Mara listens without moving",
+                                "reference_ids": {"actors": ["mara"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
+                        "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room", "msr_sheet_path": "location.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            global_prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_global_prompt"]
+
+            self.assertIn("Reference image 1 (Mara): quiet archivist.", global_prompt)
+            self.assertIn("Reference image 2 (Scene): small indoor archive room.", global_prompt)
+            self.assertNotIn("Style:", global_prompt)
+            self.assertNotIn("desaturated realism", global_prompt)
+            self.assertNotIn("word_count_min", global_prompt)
+
+    def test_movie_msr_enrichment_drops_planning_dumps_from_local_prompt_fields(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Room",
+                        "premise": "Mara waits indoors.",
+                        "story_arch": {"title": "Room", "premise": "Mara waits indoors.", "beats": ["wait"]},
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist"}],
+                        "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Room",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Mara waits beside the door. story_idea: dumped screenplay",
+                                "duration_seconds": 4,
+                                "action": "Mara listens without moving. prompt_guidance: {\"word_count_min\": 40}",
+                                "reference_ids": {"actors": ["mara"], "location": "archive"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
+                        "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room", "msr_sheet_path": "location.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+
+            self.assertIn("Mara waits beside the door", prompt)
+            self.assertIn("Mara listens without moving", prompt)
+            self.assertNotIn("Action:", prompt)
+            self.assertNotIn("Actors:", prompt)
+            self.assertNotIn("Location:", prompt)
+            self.assertNotIn("story_idea", prompt)
+            self.assertNotIn("prompt_guidance", prompt)
+            self.assertNotIn("word_count_min", prompt)
+
+    def test_movie_msr_prompts_use_clean_reference_format_and_avoid_action_duplication(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Station",
+                        "premise": "Lena hears knocking.",
+                        "story_arch": {"title": "Station", "premise": "Lena hears knocking.", "beats": ["knock"]},
+                        "actors": [{"id": "tech", "name": "Technikerin", "visual_description": "Lena, frost-covered field technician in a red parka"}],
+                        "locations": [{"id": "corridor", "name": "KORRIDOR DER STATION - NACHT", "visual_description": "narrow frozen station corridor with flickering emergency lights"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Station",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Hinter einer Metalltür klopft etwas langsam von innen.",
+                                "duration_seconds": 4,
+                                "action": "Hinter einer Metalltür klopft etwas langsam von innen.",
+                                "camera": "controlled interior dolly",
+                                "acting": "silent physical reaction",
+                                "dialogue": "",
+                                "reference_ids": {"actors": ["tech"], "location": "corridor"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [
+                            {
+                                "id": "tech",
+                                "name": "Technikerin",
+                                "role": "character",
+                                "visual_description": "Technikerin, character, Lena, frost-covered field technician in a red parka",
+                                "image_prompt": "Full-body cinematic character reference sheet for Technikerin. Four vertical panels.",
+                                "msr_sheet_path": "actor.png",
+                            }
+                        ],
+                        "locations": [
+                            {
+                                "id": "corridor",
+                                "name": "KORRIDOR DER STATION - NACHT",
+                                "visual_description": "KORRIDOR DER STATION - NACHT, narrow frozen station corridor with flickering emergency lights",
+                                "msr_sheet_path": "location.png",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            ltx = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]
+            global_prompt = ltx["msr_global_prompt"]
+            local_prompt = ltx["msr_prompt_relay"][0]["prompt"]
+
+            self.assertIn("Reference image 1 (Technikerin): Lena, frost-covered field technician in a red parka.", global_prompt)
+            self.assertIn("Reference image 2 (Scene): narrow frozen station corridor with flickering emergency lights.", global_prompt)
+            self.assertNotIn("Use reference image", global_prompt)
+            self.assertNotIn("Background reference", global_prompt)
+            self.assertNotIn("character, Lena", global_prompt)
+            self.assertEqual(1, local_prompt.count("Hinter einer Metalltür klopft etwas langsam von innen"))
+
+    def test_movie_msr_reference_prompt_keeps_placeholder_references_without_story_defined_text(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie_dir = project / "movie"
+            (movie_dir / "references").mkdir(parents=True)
+            (movie_dir / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Station",
+                        "premise": "Lena hears knocking.",
+                        "story_arch": {"title": "Station", "premise": "Lena hears knocking.", "beats": ["knock"]},
+                        "actors": [{"id": "tech", "name": "Technikerin", "visual_description": "Technikerin, story-defined cinematic character with consistent face, hair, body shape, wardrobe, and posture"}],
+                        "locations": [{"id": "corridor", "name": "KORRIDOR DER STATION - NACHT", "visual_description": "KORRIDOR DER STATION - NACHT, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere"}],
+                        "continuity": [],
+                        "style_constraints": [],
+                        "runtime_constraints": {"fps": 24},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Station",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "description": "Hinter einer Metalltür klopft etwas langsam von innen.",
+                                "duration_seconds": 4,
+                                "reference_ids": {"actors": ["tech"], "location": "corridor"},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (movie_dir / "references" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "actors": [{"id": "tech", "name": "Technikerin", "role": "character", "visual_description": "Technikerin, story-defined cinematic character with", "msr_sheet_path": "actor.png"}],
+                        "locations": [{"id": "corridor", "name": "KORRIDOR DER STATION - NACHT", "visual_description": "KORRIDOR DER STATION - NACHT, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere", "msr_sheet_path": "location.png"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
+            global_prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_global_prompt"]
+
+            self.assertIn("Reference image 1 (Technikerin): Technikerin.", global_prompt)
+            self.assertIn("Reference image 2 (Scene): KORRIDOR DER STATION - NACHT.", global_prompt)
+            self.assertNotIn("story-defined", global_prompt)
+            self.assertNotIn("consistent production design", global_prompt)
 
     def test_movie_msr_workflow_prompt_relay_node_excludes_continuity_contract(self):
         from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
@@ -910,10 +1339,11 @@ class MovieProjectTests(unittest.TestCase):
             )
 
             relay_inputs = patched["27"]["inputs"]
-            self.assertIn("Reference image 1: Hans", relay_inputs["global_prompt"])
-            self.assertIn("Background reference: Trench Line", relay_inputs["global_prompt"])
+            self.assertIn("Reference image 1 (Hans): mud-covered soldier.", relay_inputs["global_prompt"])
+            self.assertIn("Reference image 2 (Scene): muddy trench.", relay_inputs["global_prompt"])
             self.assertIn("Hans turns toward Karl in the trench", relay_inputs["local_prompts"])
-            self.assertIn("Hans: Halt den Mund, Karl.", relay_inputs["local_prompts"])
+            self.assertIn('Hans says in German: "Halt den Mund, Karl."', relay_inputs["local_prompts"])
+            self.assertNotIn('"Hans:', relay_inputs["local_prompts"])
             self.assertEqual(relay_inputs["local_prompts"], plan["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"])
             self.assertEqual("170", relay_inputs["segment_lengths"])
             self.assertNotIn("Cinematic atmosphere gathers", relay_inputs["local_prompts"])
@@ -923,6 +1353,12 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("background music", relay_inputs["local_prompts"].lower())
             self.assertNotIn("Continuity:", relay_inputs["local_prompts"])
             self.assertNotIn("CONTINUITY CONTRACT", relay_inputs["local_prompts"])
+            self.assertNotIn("Actors:", relay_inputs["local_prompts"])
+            self.assertNotIn("Location:", relay_inputs["local_prompts"])
+            self.assertNotIn("Action:", relay_inputs["local_prompts"])
+            self.assertNotIn("Audio contract:", relay_inputs["global_prompt"])
+            self.assertNotIn("Dialogue language:", relay_inputs["global_prompt"])
+            self.assertNotIn("Style:", relay_inputs["global_prompt"])
             self.assertNotIn("Karl whispered that he cannot feel the ground", relay_inputs["local_prompts"])
             self.assertNotIn("Friedrich enters with a memory of home", relay_inputs["local_prompts"])
 
@@ -978,9 +1414,14 @@ class MovieProjectTests(unittest.TestCase):
             )
 
             output = enrich_movie_render_plan_with_msr_prompts(project_dir=project)
-            prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+            ltx = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]
+            prompt = ltx["msr_prompt_relay"][0]["prompt"]
 
-            self.assertIn("Audio contract: diegetic environmental sound effects only", prompt)
+            self.assertNotIn("Audio contract:", prompt)
+            self.assertNotIn("Audio contract:", ltx["msr_global_prompt"])
+            self.assertNotIn("No non-diegetic music", ltx["msr_global_prompt"])
+            self.assertNotIn("Dialogue language:", prompt)
+            self.assertNotIn("Style:", prompt)
             self.assertNotIn("music", prompt.lower())
             self.assertNotIn("score", prompt.lower())
             self.assertNotIn("soundtrack", prompt.lower())
@@ -1089,11 +1530,11 @@ class MovieProjectTests(unittest.TestCase):
 
             enriched = json.loads(output.read_text(encoding="utf-8"))
             ltx = enriched["shots"][0]["ltx"]
-            self.assertIn("Reference image 1: Mara", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 1 (Mara): charcoal coat and cropped black hair.", ltx["msr_global_prompt"])
             self.assertIn("charcoal coat", ltx["msr_global_prompt"])
-            self.assertIn("Reference image 2: Ivo", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 2 (Ivo): white suit and silver cane.", ltx["msr_global_prompt"])
             self.assertIn("white suit", ltx["msr_global_prompt"])
-            self.assertIn("Background reference: Archive", ltx["msr_global_prompt"])
+            self.assertIn("Reference image 3 (Scene): quiet archive room.", ltx["msr_global_prompt"])
 
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
@@ -1451,12 +1892,95 @@ class MovieProjectTests(unittest.TestCase):
                 )
             )
 
+            bible = json.loads(result.bible_path.read_text())
             manifest = json.loads(result.reference_manifest_path.read_text())
 
+            self.assertEqual(["mara"], [actor["id"] for actor in bible["actors"]])
+            self.assertNotIn("main_character", [actor["id"] for actor in bible["actors"]])
+            self.assertEqual("Mara", bible["actors"][0]["visual_description"])
+            self.assertNotIn("story-defined", bible["actors"][0]["visual_description"])
+            self.assertIn("ABANDONED STATION - NIGHT", bible["locations"][0]["visual_description"])
+            self.assertIn("glowing maintenance door", bible["locations"][0]["visual_description"])
+            self.assertNotIn("story-defined", bible["locations"][0]["visual_description"])
             self.assertEqual("Mara", manifest["actors"][0]["name"])
             self.assertIn("Mara", manifest["actors"][0]["prompt"])
             self.assertEqual("ABANDONED STATION - NIGHT", manifest["locations"][0]["name"])
             self.assertIn("ABANDONED STATION - NIGHT", manifest["locations"][0]["prompt"])
+
+    def test_llm_movie_bible_uses_screenplay_cues_over_generic_placeholders(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import StoryArch
+
+        class BadBibleLLM:
+            def complete_prompt(self, *_args, **_kwargs):
+                return json.dumps(
+                    {
+                        "actors": [
+                            {
+                                "id": "technikerin",
+                                "name": "Technikerin",
+                                "role": "character",
+                                "visual_description": "Technikerin, story-defined cinematic character with consistent face, hair, body shape, wardrobe, and posture",
+                            },
+                            {
+                                "id": "main_character",
+                                "name": "Main Character",
+                                "role": "character",
+                                "visual_description": "Main Character, story-defined cinematic character with consistent face, hair, body shape, wardrobe, and posture",
+                            },
+                        ],
+                        "locations": [
+                            {
+                                "id": "primary_location",
+                                "name": "Primary Location",
+                                "visual_description": "Primary Location, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere",
+                            }
+                        ],
+                    }
+                )
+
+        story_arch = StoryArch(
+            title="Station",
+            premise="A technician hears a knocking door.",
+            beats=("A technician hears a knocking door in an orbital corridor.",),
+        )
+        screenplay = "INT. KORRIDOR DER STATION - NACHT\n\nTECHNIKERIN\nWer ist da drin?\n\nHinter einer Metalltuer klopft etwas langsam von innen."
+
+        bible = LLMMoviePlanner(BadBibleLLM()).generate_movie_bible(
+            title="Station",
+            source_type="screenplay",
+            story_text=screenplay,
+            desired_length=20,
+            story_arch=story_arch,
+            config={},
+        )
+
+        self.assertEqual(["technikerin"], [actor.id for actor in bible.actors])
+        self.assertEqual("Technikerin", bible.actors[0].visual_description)
+        self.assertEqual(["korridor_der_station_nacht"], [location.id for location in bible.locations])
+        self.assertIn("KORRIDOR DER STATION - NACHT", bible.locations[0].visual_description)
+        self.assertIn("Metalltuer klopft", bible.locations[0].visual_description)
+
+    def test_movie_bible_loader_cleans_generic_location_placeholders(self):
+        from feverslop.application.movie import movie_bible_from_dict
+
+        bible = movie_bible_from_dict(
+            {
+                "title": "Station",
+                "premise": "A technician hears a knocking door.",
+                "story_arch": {"title": "Station", "premise": "A technician hears a knocking door.", "beats": []},
+                "actors": [{"id": "technikerin", "name": "Technikerin", "visual_description": "Technikerin"}],
+                "locations": [
+                    {
+                        "id": "korridor_der_station_nacht",
+                        "name": "KORRIDOR DER STATION - NACHT",
+                        "visual_description": "KORRIDOR DER STATION - NACHT, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere",
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual("KORRIDOR DER STATION - NACHT", bible.locations[0].visual_description)
 
     def test_movie_planner_splits_long_beats_into_varied_shot_durations(self):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
@@ -1473,6 +1997,39 @@ class MovieProjectTests(unittest.TestCase):
         self.assertGreater(len(shots), 5)
         self.assertLessEqual(max(durations), 20)
         self.assertGreater(len(set(durations)), 1)
+
+    def test_movie_planner_does_not_repeat_screenplay_dialogue_when_splitting_long_scene(self):
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+
+        screenplay = """
+        EXT. ARCTIC STATION - NIGHT
+
+        Lena reaches the buried station door. Red warning lights pulse through snow. She raises the radio to her ear. The storm swallows the horizon.
+
+        TECHNICIAN: Is anyone there?
+        """
+        planner = DeterministicMoviePlanner()
+        story_arch = planner.generate_story_arch(
+            title="Ice",
+            source_type="screenplay",
+            story_text=screenplay,
+            desired_length=36,
+        )
+
+        shots = planner.plan_shots(
+            story_arch=story_arch,
+            desired_length=36,
+            width=640,
+            height=480,
+            min_duration=4,
+            max_duration=10,
+        )
+
+        self.assertGreater(len(shots), 1)
+        self.assertEqual(1, sum(1 for shot in shots if "Is anyone there" in shot.dialogue))
+        self.assertEqual("", shots[1].dialogue)
+        self.assertGreater(len({shot.action for shot in shots}), 1)
+        self.assertNotEqual(shots[0].action, shots[1].action)
 
     def test_movie_workflow_patcher_removes_audio_inputs(self):
         from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
@@ -1661,6 +2218,227 @@ class MovieProjectTests(unittest.TestCase):
                 postprocessor.concat_lists[0][0],
             )
 
+    def test_comfyui_movie_adapter_uses_last_frame_as_startframe_for_continuous_transition(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "movie_msr.json"
+            workflow_path.write_text(json.dumps(_movie_msr_workflow()), encoding="utf-8")
+            i2v_workflow_path = temp / "movie_msr_i2v.json"
+            i2v_workflow = {
+                **_movie_msr_workflow(),
+                "11": {"class_type": "LoadImage", "_meta": {"title": "#STARTFRAME"}, "inputs": {"image": ""}},
+            }
+            i2v_workflow_path.write_text(json.dumps(i2v_workflow), encoding="utf-8")
+            render_plan_path = temp / "movie" / "render_plan.json"
+            render_plan_path.parent.mkdir()
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Door Below",
+                    "resolution": {"width": 1280, "height": 704},
+                    "shots": [
+                        _movie_shot(temp),
+                        {
+                            **_movie_shot(temp),
+                            "shot_id": "shot_0002",
+                            "description": "The door opens wider.",
+                            "transition_from_previous": "continuous",
+                        },
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            queue = FakeMovieRenderQueue()
+            asset_uploader = NativeAudioAssetUploader()
+            postprocessor = FakeMoviePostprocessor()
+
+            ComfyUIMovieVisualAdapter(
+                client=object(),
+                workflow_path=workflow_path,
+                i2v_workflow_path=i2v_workflow_path,
+                render_queue=queue,
+                asset_uploader=asset_uploader,
+                postprocessor=postprocessor,
+                continuity_keyframes="last-to-start",
+            ).render_movie(project_dir=temp, render_plan_path=render_plan_path)
+
+            expected_startframe = temp / "output" / "movie" / "keyframes" / "scene_0001_to_0002_start.png"
+            self.assertEqual(
+                [(temp / "output" / "movie" / "ltx_msr" / "scene_0001.mp4", expected_startframe)],
+                postprocessor.last_frame_extracts,
+            )
+            scene_1_workflow = queue.calls[0][0]
+            self.assertFalse(any("#STARTFRAME" == node.get("_meta", {}).get("title") for node in scene_1_workflow.values()))
+            scene_2_workflow = queue.calls[1][0]
+            self.assertEqual("scene_0001_to_0002_start.png", scene_2_workflow["11"]["inputs"]["image"])
+
+    def test_comfyui_movie_adapter_builds_i2v_continuity_handoff_without_front_preroll(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "movie_msr.json"
+            workflow_path.write_text(json.dumps(_movie_msr_workflow()), encoding="utf-8")
+            i2v_workflow_path = temp / "movie_msr_i2v.json"
+            i2v_workflow = {
+                **_movie_msr_workflow(),
+                "4": {
+                    "class_type": "PromptRelayEncode",
+                    "_meta": {"title": "#PROMPT_RELAY"},
+                    "inputs": {"global_prompt": "", "local_prompts": "", "segment_lengths": ""},
+                },
+                "11": {"class_type": "LoadImage", "_meta": {"title": "#STARTFRAME"}, "inputs": {"image": ""}},
+                "12": {
+                    "class_type": "LTXAddVideoICLoRAGuide",
+                    "_meta": {"title": "#MSR_GUIDE"},
+                    "inputs": {"frame_idx": 0, "strength": 1},
+                },
+            }
+            i2v_workflow_path.write_text(json.dumps(i2v_workflow), encoding="utf-8")
+            render_plan_path = temp / "movie" / "render_plan.json"
+            render_plan_path.parent.mkdir()
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Door Below",
+                    "resolution": {"width": 1280, "height": 704},
+                    "shots": [
+                        {
+                            **_movie_shot(temp),
+                            "shot_id": "shot_0001",
+                            "description": "Mara waits at the archive threshold.",
+                            "ltx": {
+                                "msr_global_prompt": "Reference image 1: Mara. Background reference: Archive.",
+                                "msr_prompt_relay": [
+                                    {
+                                        "frame_start": 0,
+                                        "frame_end": 47,
+                                        "prompt": "Mara waits at the archive threshold as fog drifts outward.",
+                                    }
+                                ],
+                            },
+                        },
+                        {
+                            **_movie_shot(temp),
+                            "shot_id": "shot_0002",
+                            "description": "Mara steps through the archive door.",
+                            "transition_from_previous": "continuous",
+                            "ltx": {
+                                "msr_global_prompt": "Reference image 1: Mara. Background reference: Archive.",
+                                "msr_prompt_relay": [
+                                    {
+                                        "frame_start": 0,
+                                        "frame_end": 47,
+                                        "prompt": "Mara steps through the archive door.",
+                                    }
+                                ],
+                            },
+                        },
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            queue = FakeMovieRenderQueue()
+            postprocessor = FakeMoviePostprocessor()
+
+            ComfyUIMovieVisualAdapter(
+                client=object(),
+                workflow_path=workflow_path,
+                i2v_workflow_path=i2v_workflow_path,
+                render_queue=queue,
+                asset_uploader=NativeAudioAssetUploader(),
+                postprocessor=postprocessor,
+                continuity_keyframes="last-to-start",
+            ).render_movie(project_dir=temp, render_plan_path=render_plan_path)
+
+            self.assertEqual(0, postprocessor.trim_specs[1].trim_front_frames)
+            scene_2_workflow = queue.calls[1][0]
+            relay_inputs = scene_2_workflow["4"]["inputs"]
+            self.assertEqual(18, scene_2_workflow["12"]["inputs"]["frame_idx"])
+            self.assertEqual(17, scene_2_workflow["3"]["inputs"]["frame_count"])
+            self.assertTrue(relay_inputs["segment_lengths"].startswith("18,"))
+            self.assertTrue(relay_inputs["local_prompts"].startswith("Mara waits at the archive threshold"))
+            self.assertIn("\n|Mara steps through the archive door.", relay_inputs["local_prompts"])
+
+    def test_comfyui_movie_adapter_does_not_extract_startframe_when_feature_is_off(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "movie_msr.json"
+            workflow_path.write_text(json.dumps(_movie_msr_workflow()), encoding="utf-8")
+            render_plan_path = temp / "movie" / "render_plan.json"
+            render_plan_path.parent.mkdir()
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Door Below",
+                    "resolution": {"width": 1280, "height": 704},
+                    "shots": [
+                        _movie_shot(temp),
+                        {
+                            **_movie_shot(temp),
+                            "shot_id": "shot_0002",
+                            "description": "The door opens wider.",
+                            "transition_from_previous": "continuous",
+                        },
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            queue = FakeMovieRenderQueue()
+            postprocessor = FakeMoviePostprocessor()
+
+            ComfyUIMovieVisualAdapter(
+                client=object(),
+                workflow_path=workflow_path,
+                render_queue=queue,
+                asset_uploader=NativeAudioAssetUploader(),
+                postprocessor=postprocessor,
+            ).render_movie(project_dir=temp, render_plan_path=render_plan_path)
+
+            self.assertEqual([], postprocessor.last_frame_extracts)
+            self.assertFalse(any("#STARTFRAME" == node.get("_meta", {}).get("title") for node in queue.calls[1][0].values()))
+
+    def test_comfyui_movie_adapter_requires_previous_clip_for_selected_continuous_scene(self):
+        from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow_path = temp / "movie_msr_i2v.json"
+            workflow = {
+                **_movie_msr_workflow(),
+                "11": {"class_type": "LoadImage", "_meta": {"title": "#STARTFRAME"}, "inputs": {"image": ""}},
+            }
+            workflow_path.write_text(json.dumps(workflow), encoding="utf-8")
+            render_plan_path = temp / "movie" / "render_plan.json"
+            render_plan_path.parent.mkdir()
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Door Below",
+                    "resolution": {"width": 1280, "height": 704},
+                    "shots": [
+                        _movie_shot(temp),
+                        {
+                            **_movie_shot(temp),
+                            "shot_id": "shot_0002",
+                            "description": "The door answers.",
+                            "transition_from_previous": "continuous",
+                        },
+                    ],
+                }),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "previous movie scene clip"):
+                ComfyUIMovieVisualAdapter(
+                    client=object(),
+                    workflow_path=workflow_path,
+                    render_queue=FakeMovieRenderQueue(),
+                    asset_uploader=NativeAudioAssetUploader(),
+                    postprocessor=FakeMoviePostprocessor(),
+                    continuity_keyframes="last-to-start",
+                ).render_movie(project_dir=temp, render_plan_path=render_plan_path, selected_scenes=[2])
+
     def test_comfyui_movie_adapter_concat_only_reuses_existing_scene_clips(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
 
@@ -1734,6 +2512,19 @@ class MovieProjectTests(unittest.TestCase):
         adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"), movie_config={"render_backend": "comfyui"})
 
         self.assertIsInstance(adapter, ComfyUIMovieVisualAdapter)
+
+    def test_movie_runtime_config_requires_i2v_workflow_for_last_frame_keyframes(self):
+        from feverslop.studio.job_service import movie_runtime_config
+
+        with self.assertRaisesRegex(ValueError, "msr-i2v-startframe"):
+            movie_runtime_config({"continuity_keyframes": "last-to-start"})
+
+        config = movie_runtime_config({
+            "movie_video_workflow": "msr-i2v-startframe",
+            "continuity_keyframes": "last-to-start",
+        })
+
+        self.assertEqual("last-to-start", config["continuity_keyframes"])
 
     def test_movie_visual_adapter_defaults_to_comfyui_not_placeholder(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
@@ -1851,6 +2642,70 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual(2, len(llm.calls))
         self.assertIn("story arch", llm.calls[0][1].lower())
         self.assertIn("shot plan", llm.calls[1][1].lower())
+        self.assertIn("Write every non-dialogue prose field in English", llm.calls[1][1])
+        self.assertIn("Only the dialogue field may use", llm.calls[1][1])
+
+    def test_llm_movie_planner_prompts_require_english_visual_prose_except_dialogue(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import StoryArch
+
+        class CapturingLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt(self, prompt, system_prompt=None):
+                self.calls.append(prompt)
+                if "movie bible" in prompt.lower():
+                    return json.dumps({"actors": [], "locations": []})
+                if "dramaturgical story design" in prompt.lower():
+                    return json.dumps({})
+                if "canonical structured screenplay" in prompt.lower():
+                    return json.dumps({})
+                if "narrative memory plan" in prompt.lower():
+                    return json.dumps({})
+                if "continuity plan" in prompt.lower():
+                    return json.dumps({})
+                if "render plan" in prompt.lower():
+                    return json.dumps({"shots": []})
+                return json.dumps({"premise": "A technician enters a lighthouse.", "beats": ["The light fails."]})
+
+        planner = LLMMoviePlanner(CapturingLLM())
+        story_arch = StoryArch(title="Light", premise="A technician enters a lighthouse.", beats=("The light fails.",))
+        bible = planner.generate_movie_bible(
+            title="Light",
+            source_type="short_story",
+            story_text="Eine Technikerin repariert einen Leuchtturm.",
+            desired_length=30,
+            story_arch=story_arch,
+            config={"dialogue_language": "German"},
+        )
+        planner.generate_movie_story_design(
+            title="Light",
+            source_type="short_story",
+            story_text="Eine Technikerin repariert einen Leuchtturm.",
+            desired_length=30,
+            bible=bible,
+            story_arch=story_arch,
+            config={"dialogue_language": "German"},
+        )
+        planner.generate_movie_screenplay(
+            title="Light",
+            source_type="short_story",
+            story_text="Eine Technikerin repariert einen Leuchtturm.",
+            desired_length=30,
+            bible=bible,
+            story_arch=story_arch,
+            story_design=None,
+            config={"dialogue_language": "German"},
+        )
+        planner.plan_shots_from_bible(bible=bible, desired_length=30, width=640, height=480)
+
+        prompts = "\n\n".join(planner.llm.calls)
+        self.assertIn("actor visual_description", prompts)
+        self.assertIn("Write all story-design prose in English", prompts)
+        self.assertIn("Write every non-dialogue screenplay field in English", prompts)
+        self.assertIn("Write every non-dialogue prose field in English", prompts)
+        self.assertIn("Only dialogue may use German", prompts)
 
     def test_movie_planner_preserves_requested_minimum_actor_count(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner

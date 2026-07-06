@@ -87,53 +87,127 @@ def _movie_reference_global_prompt(shot: dict, *, bible: dict, manifest: dict) -
     location_item = _item_for_id(manifest.get("locations") or bible.get("locations") or [], location_id)
     parts = []
     for index, actor in enumerate(actor_items, start=1):
-        description = _describe_reference_item(actor)
+        description = _describe_reference_item(actor, item_type="actor")
         if description:
-            parts.append(
-                f"Reference image {index}: {description}. "
-                f"Use reference image {index} for this subject's identity, face, body, wardrobe, and materials."
-            )
-    location_description = _describe_reference_item(location_item)
+            label = _reference_label(actor, fallback=f"Actor {index}")
+            parts.append(f"Reference image {index} ({label}): {description}.")
+    location_description = _describe_reference_item(location_item, item_type="scene")
     if location_description:
-        parts.append(
-            f"Background reference: {location_description}. "
-            "Use this image as the scene environment, lighting, color palette, atmosphere, and spatial setting."
-        )
+        parts.append(f"Reference image {len(actor_items) + 1} (Scene): {location_description}.")
     return " ".join(parts).strip()
 
 
 def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
     references = shot.get("reference_ids") or {}
     actor_ids = references.get("actors") or shot.get("actor_ids") or []
-    location_id = references.get("location") or shot.get("location_id") or ""
     actor_names = _names_for_ids(manifest.get("actors") or bible.get("actors") or [], actor_ids)
-    location_name = _name_for_id(manifest.get("locations") or bible.get("locations") or [], location_id)
+    description = _clean_movie_prompt_field(shot.get("description"))
+    action = _clean_movie_prompt_field(shot.get("action"))
+    camera = _clean_movie_prompt_field(shot.get("camera"))
+    acting = _clean_movie_prompt_field(shot.get("acting") or shot.get("expression"))
     dialogue_language = str((bible.get("runtime_constraints") or {}).get("dialogue_language") or "").strip()
+    dialogue_direction = _local_dialogue_direction(shot, actor_names, dialogue_language=dialogue_language)
+    action_part = "" if action and dialogue_direction.casefold().startswith(action.casefold()) else action
     parts = [
-        str(shot.get("description") or "").strip(),
-        f"Actors: {', '.join(actor_names)}" if actor_names else "",
-        f"Location: {location_name}" if location_name else "",
-        f"Action: {shot.get('action')}" if shot.get("action") else "",
-        f"Camera: {shot.get('camera')}" if shot.get("camera") else "",
-        f"Acting: {shot.get('acting') or shot.get('expression')}" if shot.get("acting") or shot.get("expression") else "",
-        f"Dialogue for native audio: {shot.get('dialogue')}" if shot.get("dialogue") else "",
-        _dialogue_audio_contract(shot),
-        f"Dialogue language: {dialogue_language}. All spoken dialogue/native audio must be spoken in {dialogue_language} only" if dialogue_language else "",
-        f"Style: {'; '.join(str(item) for item in bible.get('style_constraints') or [])}" if bible.get("style_constraints") else "",
+        description,
+        action_part if action_part and action_part != description else "",
+        f"Camera: {camera}" if camera else "",
+        f"Acting: {acting}" if acting else "",
+        dialogue_direction,
     ]
-    prompt = ". ".join(part.strip(" .") for part in parts if str(part).strip())
+    prompt = ". ".join(part.strip() for part in parts if str(part).strip())
     return _strip_reference_sheet_language(prompt)
 
 
-def _dialogue_audio_contract(shot: dict) -> str:
+def _local_dialogue_direction(shot: dict, actor_names: list[str], *, dialogue_language: str) -> str:
     dialogue = str(shot.get("dialogue") or "").strip()
-    if dialogue:
-        return (
-            f"Audio contract: diegetic environmental sound effects and scripted dialogue only. "
-            f"Only this exact scripted dialogue may be spoken: {dialogue}. "
-            "Do not invent, repeat, paraphrase, or add other spoken lines."
-        )
-    return "Audio contract: diegetic environmental sound effects only. No spoken dialogue, narration, words, or pseudo-dialogue. Do not invent spoken lines."
+    if not dialogue:
+        return ""
+    cue, spoken_text = _dialogue_cue_and_text(dialogue)
+    device = _diegetic_audio_device(cue, dialogue)
+    language_phrase = f" in {dialogue_language}" if dialogue_language else ""
+    if device:
+        return _diegetic_audio_direction(device=device, spoken_text=spoken_text, shot=shot, language_phrase=language_phrase, actor_names=actor_names)
+    speaker = _dialogue_speaker(dialogue, actor_names)
+    verb = _dialogue_verb(spoken_text)
+    if speaker:
+        return f"{speaker} {verb}{language_phrase}: \"{spoken_text}\""
+    return f"The visible referenced actor {verb}{language_phrase}: \"{spoken_text}\""
+
+
+def _dialogue_cue_and_text(dialogue: str) -> tuple[str, str]:
+    text = str(dialogue or "").strip()
+    parenthetical = re.match(r"^\(([^)]+)\)\s*(.+)$", text, flags=re.DOTALL)
+    if parenthetical:
+        return parenthetical.group(1).strip(), parenthetical.group(2).strip()
+    if ":" in text:
+        cue, spoken = text.split(":", 1)
+        return cue.strip(), spoken.strip()
+    return "", _spoken_dialogue_text(text)
+
+
+def _diegetic_audio_device(cue: str, dialogue: str) -> str:
+    text = f"{cue} {dialogue}".casefold()
+    if any(token in text for token in ("radio", "transmitter", "speaker", "recording", "distorted voice", "voice")):
+        if "radio" in text or "transmitter" in text:
+            return "radio"
+        if "speaker" in text:
+            return "speaker"
+        return "radio"
+    return ""
+
+
+def _diegetic_audio_direction(*, device: str, spoken_text: str, shot: dict, language_phrase: str, actor_names: list[str]) -> str:
+    action = _clean_movie_prompt_field(shot.get("action"))
+    if action and ("voice" in action.casefold() or device in action.casefold()):
+        phrase = action.rstrip(".")
+        return f"{phrase}{language_phrase}: \"{spoken_text}\""
+    if device == "speaker":
+        return f"The speaker emits a diegetic voice{language_phrase}: \"{spoken_text}\""
+    actor_name = actor_names[0] if actor_names else "the visible actor"
+    return f"The radio plays a recording of {actor_name}'s own voice screaming{language_phrase}: \"{spoken_text}\""
+
+
+def _dialogue_verb(spoken_text: str) -> str:
+    return "asks" if str(spoken_text or "").strip().endswith("?") else "says"
+
+
+def _dialogue_speaker(dialogue: str, actor_names: list[str]) -> str:
+    cue = str(dialogue or "").split(":", 1)[0].strip()
+    if ":" in str(dialogue or "") and cue:
+        for actor_name in actor_names:
+            if cue.casefold() == str(actor_name).strip().casefold():
+                return str(actor_name).strip()
+        return cue
+    if len(actor_names) == 1:
+        return actor_names[0]
+    return ""
+
+
+def _spoken_dialogue_text(dialogue: str) -> str:
+    lines = []
+    for raw_line in str(dialogue or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if ":" in line:
+            line = line.split(":", 1)[1].strip()
+        if line:
+            lines.append(line)
+    return " ".join(lines).strip()
+
+
+def _clean_movie_prompt_field(value: object) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if not text:
+        return ""
+    text = re.split(
+        r"\s+(?:story_idea|steering|prompt_guidance|dialogue_language)\s*:",
+        text,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    return text.strip(" .")
 
 
 def _safe_continuity_facts(value: object) -> tuple[str, ...]:
@@ -206,15 +280,50 @@ def _item_for_id(items: list[dict], item_id: str) -> dict:
     return {}
 
 
-def _describe_reference_item(item: dict) -> str:
+def _reference_label(item: dict, *, fallback: str) -> str:
+    return str(item.get("name") or item.get("id") or fallback).strip(" .") or fallback
+
+
+def _describe_reference_item(item: dict, *, item_type: str) -> str:
     if not item:
         return ""
     name = str(item.get("name") or item.get("id") or "").strip(" .")
-    role = str(item.get("role") or "").strip(" .")
     visual = str(item.get("visual_description") or "").strip(" .")
     image_prompt = str(item.get("image_prompt") or "").strip(" .")
-    chunks = [chunk for chunk in (name, role, visual or image_prompt) if chunk]
-    return ", ".join(chunks)
+    text = visual or image_prompt or name
+    return _clean_reference_description(text, name=name, item_type=item_type)
+
+
+def _clean_reference_description(value: str, *, name: str, item_type: str) -> str:
+    text = " ".join(str(value or "").split()).strip(" .")
+    if not text:
+        return name
+    text = _strip_reference_sheet_language(text)
+    prefixes = [name, "character", "scene", "location", "background"]
+    changed = True
+    while changed:
+        changed = False
+        for prefix in prefixes:
+            prefix = str(prefix or "").strip()
+            if not prefix:
+                continue
+            pattern = rf"^{re.escape(prefix)}\s*,\s*"
+            new_text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip(" .")
+            if new_text != text:
+                text = new_text
+                changed = True
+    if item_type == "actor":
+        text = re.sub(r"\bstory-defined cinematic character with\b", "", text, flags=re.IGNORECASE)
+    else:
+        text = re.sub(r"\bstory-defined cinematic location with\b", "", text, flags=re.IGNORECASE)
+    text = " ".join(text.split()).strip(" .,")
+    generic_placeholders = {
+        "consistent face, hair, body shape, wardrobe, and posture",
+        "consistent production design, geography, lighting, and atmosphere",
+    }
+    if not text or text in generic_placeholders:
+        return name
+    return text
 
 
 def _shot_card_for_id(shot_cards: dict, shot_id: str) -> dict:

@@ -100,6 +100,7 @@ class VisualGenerationPort(Protocol):
         render_plan_path: Path,
         selected_scenes: list[int] | None = None,
         concat_only: bool = False,
+        continuity_keyframes: str = "none",
         on_clip_rendered: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         """Render a final movie file from a movie render plan."""

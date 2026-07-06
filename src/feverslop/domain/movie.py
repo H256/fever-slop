@@ -23,6 +23,7 @@ class CinematicShot:
     conflict_or_tension: str = ""
     turning_point: str = ""
     sets_up_next: str = ""
+    transition_from_previous: str = "cut"
 
 
 @dataclass(frozen=True)
@@ -207,6 +208,8 @@ class MovieShotCard:
     dialogue: str = ""
     start_frame_brief: str = ""
     end_frame_brief: str = ""
+    transition_from_previous: str = "cut"
+    transition_reason: str = ""
 
 
 @dataclass(frozen=True)

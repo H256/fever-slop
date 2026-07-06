@@ -298,6 +298,8 @@ def _render_plan_shot(shot, config: dict, *, shot_card: MovieShotCard | None = N
         data["shot_card"] = asdict(shot_card)
         data["start_frame_brief"] = shot_card.start_frame_brief
         data["end_frame_brief"] = shot_card.end_frame_brief
+        data["transition_from_previous"] = shot_card.transition_from_previous
+        data["transition_reason"] = shot_card.transition_reason
     return data
 
 
@@ -883,7 +885,10 @@ def _location_from_dict(location: dict, index: int) -> MovieLocation:
     return MovieLocation(
         id=location_id,
         name=name,
-        visual_description=str(location.get("visual_description") or location.get("image_prompt") or location.get("prompt") or name).strip(),
+        visual_description=_clean_movie_location_visual_description(
+            location.get("visual_description") or location.get("image_prompt") or location.get("prompt"),
+            name,
+        ),
     )
 
 
@@ -894,7 +899,7 @@ def _default_movie_actor(request: MovieInput, index: int) -> MovieActor:
         id=_safe_id(name, "main_character"),
         name=name,
         role="lead",
-        visual_description=f"{name}, story-defined cinematic character with consistent face, body shape, hair, wardrobe, and posture",
+        visual_description=name,
     )
 
 
@@ -903,7 +908,7 @@ def _default_movie_location(request: MovieInput, index: int) -> MovieLocation:
     return MovieLocation(
         id=_safe_id(location_name, "primary_location"),
         name=location_name,
-        visual_description="story-defined cinematic location with consistent production design, lighting, geography, and atmosphere",
+        visual_description=location_name,
     )
 
 
@@ -913,7 +918,7 @@ def _generic_actor_from_id(actor_id: str, index: int) -> MovieActor:
         id=_safe_id(actor_id, f"actor_{index}"),
         name=name,
         role="character",
-        visual_description=f"{name}, story-defined cinematic character with consistent face, hair, body shape, wardrobe, and posture",
+        visual_description=name,
     )
 
 
@@ -922,8 +927,26 @@ def _generic_location_from_id(location_id: str, name: str, index: int) -> MovieL
     return MovieLocation(
         id=_safe_id(location_id, f"location_{index}"),
         name=display_name,
-        visual_description=f"{display_name}, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere",
+        visual_description=display_name,
     )
+
+
+def _clean_movie_location_visual_description(value: object, fallback: str) -> str:
+    text = " ".join(str(value or "").split()).strip(" .;,")
+    fallback_text = " ".join(str(fallback or "").split()).strip() or "Location"
+    if not text:
+        return fallback_text
+    lower = text.lower()
+    generic_tokens = (
+        "story-defined cinematic location",
+        "consistent production design",
+        "consistent production",
+        "geography, lighting, and atmosphere",
+        "lighting, geography, and atmosphere",
+    )
+    if lower.endswith(" with") or any(token in lower for token in generic_tokens):
+        return fallback_text
+    return text
 
 
 def _style_constraints(config: dict) -> tuple[str, ...]:
@@ -1162,6 +1185,7 @@ def _strip_actor_prompt_boilerplate(value: str) -> str:
     text = re.sub(r"(?is)^.*?Full-body cinematic character reference sheet for [^.]+[.]\s*", "", text)
     text = re.sub(r"(?is)\bFour vertical panels in one image\b.*$", "", text)
     text = re.sub(r"(?is)\bConsistent face\b.*$", "", text)
+    text = re.sub(r"(?is),?\s*story-defined cinematic character\b.*$", "", text)
     return text
 
 

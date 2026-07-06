@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from feverslop.application.movie import (
     MovieInput,
     build_movie_actor_reference_prompt,
     build_movie_continuity_fallback,
+    generate_movie_bible,
+    _bible_dict,
     movie_bible_from_dict,
     movie_continuity_plan_to_dict,
 )
@@ -77,6 +79,39 @@ def ensure_movie_bible(project_dir: Path) -> Path:
     manifest = _read_json(manifest_path) if manifest_path.exists() else {"actors": [], "locations": []}
     bible = _legacy_bible_from_render_plan(render_plan, manifest, project_dir=project_dir)
     bible_path.write_text(json.dumps(bible, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return bible_path
+
+
+def regenerate_movie_bible(project_dir: Path, *, planner) -> Path:
+    project_dir = Path(project_dir)
+    render_plan_path = project_dir / "movie" / "render_plan.json"
+    if not render_plan_path.exists():
+        raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
+    render_plan = _read_json(render_plan_path)
+    source_type, story_text, desired_length = _movie_source_metadata(project_dir, render_plan)
+    config = _read_json(project_dir / "config.json") if (project_dir / "config.json").exists() else {}
+    title = str(render_plan.get("title") or project_dir.name)
+    request = MovieInput(
+        name=title,
+        source_type=source_type,
+        story_text=story_text,
+        desired_length=desired_length,
+        width=int((render_plan.get("resolution") or {}).get("width") or 1280),
+        height=int((render_plan.get("resolution") or {}).get("height") or 704),
+        config=config,
+    )
+    story_arch = planner.generate_story_arch(
+        title=request.name,
+        source_type=request.source_type,
+        story_text=story_text,
+        desired_length=float(request.desired_length),
+    )
+    bible = generate_movie_bible(planner=planner, request=request, story_arch=story_arch, config=config)
+    movie_dir = project_dir / "movie"
+    movie_dir.mkdir(parents=True, exist_ok=True)
+    (movie_dir / "story_arch.json").write_text(json.dumps(asdict(story_arch), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    bible_path = movie_dir / "bible.json"
+    bible_path.write_text(json.dumps(_bible_dict(bible), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return bible_path
 
 
@@ -248,7 +283,13 @@ def _shot_from_render_plan(shot: dict, index: int) -> CinematicShot:
         conflict_or_tension=str(shot.get("conflict_or_tension") or "").strip(),
         turning_point=str(shot.get("turning_point") or "").strip(),
         sets_up_next=str(shot.get("sets_up_next") or "").strip(),
+        transition_from_previous=_transition_from_previous(shot.get("transition_from_previous")),
     )
+
+
+def _transition_from_previous(value: object) -> str:
+    transition = str(value or "cut").strip().lower().replace("_", "-")
+    return "continuous" if transition == "continuous" else "cut"
 
 
 def _manifest_actor(actor: dict, current: dict) -> dict:
@@ -319,9 +360,9 @@ def _legacy_bible_from_render_plan(render_plan: dict, manifest: dict, *, project
         },
     }
     if not bible["actors"]:
-        bible["actors"] = [{"id": "main_character", "name": "Main Character", "role": "lead", "visual_description": "story-defined cinematic lead character"}]
+        bible["actors"] = [{"id": "main_character", "name": "Main Character", "role": "lead", "visual_description": "Main Character"}]
     if not bible["locations"]:
-        bible["locations"] = [{"id": "primary_location", "name": "Primary Location", "visual_description": "story-defined cinematic location"}]
+        bible["locations"] = [{"id": "primary_location", "name": "Primary Location", "visual_description": "Primary Location"}]
     return bible
 
 

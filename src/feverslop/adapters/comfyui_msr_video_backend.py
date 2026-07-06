@@ -151,11 +151,13 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_msr_raw/scene_{scene_number:04}")
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", self.msr_frame_count)
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
+        self._patch_msr_continuity_handoff_inputs(patcher, scene)
         self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
         patcher.try_set_existing_input_by_title("#WIDTH", "value", int(scene.get("width", 0) or 0))
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", int(scene.get("height", 0) or 0))
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
         patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
+        self._patch_i2v_latent_lengths(patcher, render_frame_count)
         self._patch_startframe_input(patcher, scene)
         if comfy_audio_name:
             self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name, rolling=rolling)
@@ -171,6 +173,36 @@ class ComfyUIMSRVideoRenderBackend:
             raise ValueError("Movie MSR-I2V scene provides a startframe, but workflow is missing #STARTFRAME")
         image_name = self.asset_uploader.resolve_reference_image_name(self._resolve_project_path(startframe_path))
         patcher.set_input_by_title("#STARTFRAME", "image", image_name)
+
+    @staticmethod
+    def _patch_msr_continuity_handoff_inputs(patcher: WorkflowPatcher, scene: dict) -> None:
+        ltx = scene.get("ltx") or {}
+        if not str(ltx.get("msr_continuity_handoff_prompt") or "").strip():
+            return
+        msr_frame_count = int(ltx.get("msr_continuity_msr_frame_count") or 17)
+        guide_frame_idx = int(ltx.get("msr_continuity_guide_frame_idx") or 18)
+        patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", msr_frame_count)
+        patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", msr_frame_count)
+        patcher.try_set_existing_input_by_title("#MSR_GUIDE", "frame_idx", guide_frame_idx)
+
+    @staticmethod
+    def _patch_i2v_latent_lengths(patcher: WorkflowPatcher, render_frame_count: int) -> None:
+        workflow = patcher.get()
+        latent_node_ids: set[str] = set()
+        for node in workflow.values():
+            if node.get("class_type") != "LTXVImgToVideoInplace":
+                continue
+            latent_input = (node.get("inputs") or {}).get("latent")
+            if isinstance(latent_input, list) and latent_input:
+                latent_node_ids.add(str(latent_input[0]))
+
+        for node_id in latent_node_ids:
+            node = workflow.get(node_id)
+            if not isinstance(node, dict):
+                continue
+            if node.get("class_type") != "EmptyLTXVLatentVideo":
+                continue
+            node.setdefault("inputs", {})["length"] = int(render_frame_count)
 
     def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
         if self.debug_workflows_dir is None:
@@ -269,6 +301,12 @@ class ComfyUIMSRVideoRenderBackend:
         trim_front_frames = int(rolling["trim_front_frames"]) if rolling else 0
         tail_loss_frames = int(rolling["tail_loss_frames"]) if rolling else 0
         ltx = scene.get("ltx") or {}
+        if str(ltx.get("msr_continuity_handoff_prompt") or "").strip():
+            payload = _build_msr_continuity_handoff_payload(
+                scene=scene,
+                render_frame_count=frame_count,
+            )
+            return payload.global_prompt, payload.local_prompts, payload.segment_lengths
         if ltx.get("msr_prompt_relay") or ltx.get("msr_global_prompt"):
             payload = _build_msr_prompt_relay_payload(
                 scene=scene,
@@ -360,6 +398,7 @@ def _build_msr_prompt_relay_payload(
     scene_timeline_frames = max(1, int(scene.get("frame_count", 1)) - 1)
     if str(ltx.get("msr_prompt_relay_mode") or "").strip().lower() == "single":
         prompt = str(relays[0].get("prompt") or "").strip() if relays and isinstance(relays[0], dict) else ""
+        prompt = _strip_relay_global_contracts(prompt)
         prompt = prompt or _msr_gap_prompt(scene)
         return PromptRelayPayload(
             global_prompt=global_prompt,
@@ -392,7 +431,7 @@ def _build_msr_prompt_relay_payload(
                 cursor = start
 
             relay_segments.append({
-                "prompt": str(relay.get("prompt") or "").strip() or _msr_gap_prompt(scene),
+                "prompt": _strip_relay_global_contracts(str(relay.get("prompt") or "").strip()) or _msr_gap_prompt(scene),
                 "length": max(1, end - start),
             })
             cursor = end
@@ -425,6 +464,62 @@ def _build_msr_prompt_relay_payload(
         local_prompts="\n|".join(local_prompts),
         segment_lengths=",".join(str(length) for length in segment_lengths),
     )
+
+
+def _build_msr_continuity_handoff_payload(
+    *,
+    scene: dict,
+    render_frame_count: int,
+) -> PromptRelayPayload:
+    ltx = scene.get("ltx") or {}
+    timeline_frames = max(1, int(render_frame_count) - 1)
+    handoff_frames = max(1, int(ltx.get("msr_continuity_handoff_frames") or 18))
+    if handoff_frames >= timeline_frames:
+        handoff_frames = max(1, timeline_frames - 1)
+    current_frames = timeline_frames - handoff_frames
+    handoff_prompt = str(ltx.get("msr_continuity_handoff_prompt") or "").strip()
+    handoff_prompt = _strip_relay_global_contracts(handoff_prompt)
+    current_prompt = _strip_relay_global_contracts(_current_msr_prompt(scene))
+    prompts = [handoff_prompt]
+    lengths = [handoff_frames]
+    if current_frames > 0:
+        prompts.append(current_prompt)
+        lengths.append(current_frames)
+    return PromptRelayPayload(
+        global_prompt=str(ltx.get("msr_global_prompt") or ltx.get("base_prompt") or "").strip(),
+        local_prompts="\n|".join(prompts),
+        segment_lengths=",".join(str(length) for length in lengths),
+    )
+
+
+def _current_msr_prompt(scene: dict) -> str:
+    ltx = scene.get("ltx") or {}
+    relays = ltx.get("msr_prompt_relay") or []
+    if relays and isinstance(relays[0], dict):
+        prompt = str(relays[0].get("prompt") or "").strip()
+        if prompt:
+            return prompt
+    return str(ltx.get("original_style_i2v_prompt") or scene.get("description") or "").strip()
+
+
+def _strip_relay_global_contracts(prompt: str) -> str:
+    text = str(prompt or "").strip()
+    if not text:
+        return ""
+    text = re.sub(
+        r"\bAudio contract:\s*.*?(?=\bDialogue language:|\bStyle:|$)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\bDialogue language:\s*.*?(?=\bStyle:|$)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\bStyle:\s*.*$", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _msr_preroll_prompt(scene: dict) -> str:

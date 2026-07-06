@@ -44,6 +44,9 @@ export interface ProjectSummary {
       hero_workflow?: string;
       edit_workflow?: string;
       msr_workflow?: string;
+      msr_i2v_workflow?: string;
+      movie_video_workflow?: "msr" | "msr-i2v-startframe";
+      continuity_keyframes?: "none" | "last-to-start";
     };
   };
   status: ProjectStatus;
@@ -76,6 +79,9 @@ export interface ProjectCreatePayload {
   movie_hero_workflow?: string;
   movie_edit_workflow?: string;
   movie_msr_workflow?: string;
+  movie_msr_i2v_workflow?: string;
+  movie_video_workflow?: "msr" | "msr-i2v-startframe";
+  movie_continuity_keyframes?: "none" | "last-to-start";
 }
 
 export interface JobStep {

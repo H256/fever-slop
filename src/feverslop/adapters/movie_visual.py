@@ -19,6 +19,7 @@ class LocalMovieVisualAdapter:
         render_plan_path: Path,
         selected_scenes: list[int] | None = None,
         concat_only: bool = False,
+        continuity_keyframes: str = "none",
         on_clip_rendered: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         output_dir = project_dir / "output" / "movie"
@@ -45,6 +46,9 @@ class ComfyUIMovieVisualAdapter:
         model_resolver=None,
         fps: int = 24,
         workflow: dict | None = None,
+        i2v_workflow_path: str | Path | None = None,
+        i2v_workflow: dict | None = None,
+        continuity_keyframes: str = "none",
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -54,6 +58,9 @@ class ComfyUIMovieVisualAdapter:
         self.model_resolver = model_resolver
         self.fps = int(fps)
         self.workflow = workflow
+        self.i2v_workflow_path = Path(i2v_workflow_path) if i2v_workflow_path is not None else None
+        self.i2v_workflow = i2v_workflow
+        self.continuity_keyframes = _continuity_keyframes(continuity_keyframes)
 
     def render_movie(
         self,
@@ -62,6 +69,7 @@ class ComfyUIMovieVisualAdapter:
         render_plan_path: Path,
         selected_scenes: list[int] | None = None,
         concat_only: bool = False,
+        continuity_keyframes: str = "none",
         on_clip_rendered: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         project_dir = Path(project_dir)
@@ -72,37 +80,44 @@ class ComfyUIMovieVisualAdapter:
         if not scenes:
             raise ValueError("Movie render plan has no shots or scenes to render")
 
-        backend = ComfyUIMSRVideoRenderBackend(
-            client=self.client,
+        backend = self._build_backend(
             workflow_path=self.workflow_path,
+            workflow=self.workflow,
             output_dir=output_dir,
             project_dir=project_dir,
-            asset_uploader=self.asset_uploader,
-            render_queue=self.render_queue,
-            postprocessor=self.postprocessor,
-            model_resolver=self.model_resolver,
-            debug_workflows_dir=project_dir / "output" / "movie" / "ltx_msr_debug",
-            workflow=self.workflow,
-            workflow_label=self.workflow_path,
         )
+        i2v_backend = self._build_i2v_backend(output_dir=output_dir, project_dir=project_dir)
         selected = {int(scene) for scene in selected_scenes or []}
+        keyframe_mode = _continuity_keyframes(continuity_keyframes if continuity_keyframes != "none" else self.continuity_keyframes)
+        if selected and keyframe_mode == "last-to-start":
+            _validate_selected_continuity_dependencies(scenes, output_dir=output_dir, selected=selected)
         rendered = []
         renderable_scenes = [scene for scene in scenes if not selected or int(scene["scene"]) in selected or not (output_dir / f"scene_{int(scene['scene']):04}.mp4").exists()]
         total = len(renderable_scenes) or len(scenes)
         rendered_count = 0
-        for scene in scenes:
+        for index, scene in enumerate(scenes):
             scene_number = int(scene["scene"])
             clip_path = output_dir / f"scene_{scene_number:04}.mp4"
             if concat_only and not clip_path.exists():
                 raise ValueError(f"Cannot build final movie; missing rendered movie scene clip: {clip_path}")
             should_render = not concat_only and (not selected or scene_number in selected or not clip_path.exists())
             if should_render:
-                clip_path = backend.render_video(
+                use_i2v = self._attach_continuity_startframe(
+                    scene,
+                    scene_number=scene_number,
+                    previous_clip=output_dir / f"scene_{scene_number - 1:04}.mp4",
+                    previous_scene=scenes[index - 1] if index > 0 else None,
+                    project_dir=project_dir,
+                    mode=keyframe_mode,
+                    selected=selected,
+                )
+                scene_backend = i2v_backend if use_i2v and i2v_backend is not None else backend
+                clip_path = scene_backend.render_video(
                     VideoRenderRequest(
                         scene=scene,
                         scene_number=scene_number,
                         prompt=str((scene.get("ltx") or {}).get("original_style_i2v_prompt") or scene.get("description") or ""),
-                        workflow_path=self.workflow_path,
+                        workflow_path=scene_backend.workflow_path,
                         output_dir=output_dir,
                         audio_file=project_dir / "movie" / "ltx_native_audio.wav",
                         storyboard_dir=project_dir / "movie" / "storyboard",
@@ -116,6 +131,75 @@ class ComfyUIMovieVisualAdapter:
 
         concat_list = self.postprocessor.write_concat_list(rendered, output_dir / "concat_list.txt")
         return self.postprocessor.concat_clips(concat_list, final_output, video_only=False, reencode=True)
+
+    def _build_backend(self, *, workflow_path: Path, workflow: dict | None, output_dir: Path, project_dir: Path) -> ComfyUIMSRVideoRenderBackend:
+        return ComfyUIMSRVideoRenderBackend(
+            client=self.client,
+            workflow_path=workflow_path,
+            output_dir=output_dir,
+            project_dir=project_dir,
+            asset_uploader=self.asset_uploader,
+            render_queue=self.render_queue,
+            postprocessor=self.postprocessor,
+            model_resolver=self.model_resolver,
+            debug_workflows_dir=project_dir / "output" / "movie" / "ltx_msr_debug",
+            workflow=workflow,
+            workflow_label=workflow_path,
+        )
+
+    def _build_i2v_backend(self, *, output_dir: Path, project_dir: Path) -> ComfyUIMSRVideoRenderBackend | None:
+        if self.i2v_workflow_path is None and self.i2v_workflow is None:
+            return None
+        workflow_path = self.i2v_workflow_path or self.workflow_path
+        return ComfyUIMSRVideoRenderBackend(
+            client=self.client,
+            workflow_path=workflow_path,
+            output_dir=output_dir,
+            project_dir=project_dir,
+            asset_uploader=self.asset_uploader,
+            render_queue=self.render_queue,
+            postprocessor=self.postprocessor,
+            model_resolver=self.model_resolver,
+            debug_workflows_dir=project_dir / "output" / "movie" / "ltx_msr_debug",
+            workflow=self.i2v_workflow,
+            workflow_label=workflow_path,
+            preroll_frames=0,
+        )
+
+    def _attach_continuity_startframe(
+        self,
+        scene: dict[str, Any],
+        *,
+        scene_number: int,
+        previous_clip: Path,
+        previous_scene: dict[str, Any] | None,
+        project_dir: Path,
+        mode: str,
+        selected: set[int],
+    ) -> bool:
+        if mode != "last-to-start" or scene_number <= 1:
+            return False
+        if _transition_from_previous(scene) != "continuous":
+            return False
+        if not _continuous_transition_is_valid(scene, previous_scene=previous_scene):
+            return False
+        if not previous_clip.exists():
+            detail = " for selected re-render" if selected else ""
+            raise ValueError(f"Cannot use last-frame continuity{detail}; missing previous movie scene clip: {previous_clip}")
+        output_file = project_dir / "output" / "movie" / "keyframes" / f"scene_{scene_number - 1:04}_to_{scene_number:04}_start.png"
+        startframe_path = self.postprocessor.extract_last_frame(previous_clip, output_file)
+        keyframes = dict(scene.get("keyframes") or {})
+        keyframes["startframe_path"] = startframe_path.as_posix()
+        keyframes["startframe_source_scene"] = scene_number - 1
+        keyframes["startframe_mode"] = "last_frame_from_previous"
+        scene["keyframes"] = keyframes
+        ltx = dict(scene.get("ltx") or {})
+        ltx["msr_continuity_handoff_prompt"] = _continuity_handoff_prompt(previous_scene)
+        ltx["msr_continuity_handoff_frames"] = 18
+        ltx["msr_continuity_msr_frame_count"] = 17
+        ltx["msr_continuity_guide_frame_idx"] = 18
+        scene["ltx"] = ltx
+        return True
 
     def _movie_scenes(self, plan: dict[str, Any], *, project_dir: Path) -> list[dict[str, Any]]:
         raw_scenes = plan.get("scenes") or plan.get("shots") or []
@@ -139,6 +223,7 @@ class ComfyUIMovieVisualAdapter:
                 "original_style_i2v_prompt": _movie_scene_prompt(scene),
             }
             scene["references"] = scene.get("references") or _references_from_ids(scene.get("reference_ids") or {}, reference_manifest, project_dir)
+            scene["transition_from_previous"] = _transition_from_previous(scene)
             if not scene.get("references"):
                 raise ValueError(f"Movie shot {scene['scene']} is missing MSR references")
             scenes.append(scene)
@@ -166,6 +251,66 @@ def _movie_slug(plan: dict[str, Any], project_dir: Path) -> str:
     if not title:
         return project_dir.name
     return "".join(char.lower() if char.isalnum() else "-" for char in title).strip("-") or project_dir.name
+
+
+def _continuity_keyframes(value: object) -> str:
+    mode = str(value or "none").strip().lower()
+    if mode not in {"none", "last-to-start"}:
+        raise ValueError("continuity_keyframes must be one of: last-to-start, none")
+    return mode
+
+
+def _transition_from_previous(scene: dict[str, Any]) -> str:
+    transition = str(scene.get("transition_from_previous") or "cut").strip().lower().replace("_", "-")
+    return "continuous" if transition == "continuous" else "cut"
+
+
+def _continuity_handoff_prompt(previous_scene: dict[str, Any] | None) -> str:
+    fallback = "Hold the previous scene end state as the shot begins."
+    if not previous_scene:
+        return fallback
+    ltx = previous_scene.get("ltx") or {}
+    relays = ltx.get("msr_prompt_relay") or []
+    if relays and isinstance(relays[-1], dict):
+        prompt = str(relays[-1].get("prompt") or "").strip()
+        if prompt:
+            return prompt
+    for key in ("original_style_i2v_prompt", "base_prompt"):
+        prompt = str(ltx.get(key) or "").strip()
+        if prompt:
+            return prompt
+    return str(previous_scene.get("description") or "").strip() or fallback
+
+
+def _continuous_transition_is_valid(scene: dict[str, Any], *, previous_scene: dict[str, Any] | None) -> bool:
+    if int(scene.get("scene") or 0) <= 1 or not previous_scene:
+        return False
+    current_refs = scene.get("reference_ids") if isinstance(scene.get("reference_ids"), dict) else {}
+    previous_refs = previous_scene.get("reference_ids") if isinstance(previous_scene.get("reference_ids"), dict) else {}
+    current_location = str(scene.get("location_id") or current_refs.get("location") or "").strip()
+    previous_location = str(previous_scene.get("location_id") or previous_refs.get("location") or "").strip()
+    if current_location and previous_location and current_location != previous_location:
+        return False
+    current_actors = _actor_ids(scene, current_refs)
+    previous_actors = _actor_ids(previous_scene, previous_refs)
+    if current_actors and previous_actors and not current_actors.intersection(previous_actors):
+        return False
+    return True
+
+
+def _actor_ids(scene: dict[str, Any], refs: dict[str, Any]) -> set[str]:
+    return {str(item).strip() for item in (scene.get("actor_ids") or refs.get("actors") or []) if str(item).strip()}
+
+
+def _validate_selected_continuity_dependencies(scenes: list[dict[str, Any]], *, output_dir: Path, selected: set[int]) -> None:
+    scenes_by_number = {int(scene["scene"]): scene for scene in scenes}
+    for scene_number in sorted(selected):
+        scene = scenes_by_number.get(scene_number)
+        if not scene or scene_number <= 1 or _transition_from_previous(scene) != "continuous":
+            continue
+        previous_clip = output_dir / f"scene_{scene_number - 1:04}.mp4"
+        if not previous_clip.exists():
+            raise ValueError(f"Cannot use last-frame continuity for selected re-render; missing previous movie scene clip: {previous_clip}")
 
 
 def _load_reference_manifest(project_dir: Path) -> dict[str, Any]:

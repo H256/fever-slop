@@ -13,6 +13,7 @@ from feverslop.application.movie_artifacts import (
     ensure_movie_continuity_plan as ensure_movie_continuity_plan_artifact,
     ensure_movie_narrative_plan as ensure_movie_narrative_plan_artifact,
     ensure_movie_planning_artifacts,
+    regenerate_movie_bible as regenerate_movie_bible_artifact,
     ensure_movie_render_plan_matches_bible as ensure_movie_render_plan_matches_bible_artifact,
     ensure_movie_scene_cards as ensure_movie_scene_cards_artifact,
     ensure_movie_screenplay as ensure_movie_screenplay_artifact,
@@ -59,7 +60,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hero-workflow", default=None)
     parser.add_argument("--edit-workflow", default=None)
     parser.add_argument("--msr-workflow", default=None)
+    parser.add_argument("--msr-i2v-workflow", default=None)
     parser.add_argument("--skip-movie-bible", action="store_true", help="Reuse existing movie/bible.json.")
+    parser.add_argument("--force-movie-bible", action="store_true", help="Regenerate movie/bible.json from the configured movie planner.")
+    parser.add_argument("--movie-planner-backend", choices=["llm", "deterministic", "local"], default=None)
     parser.add_argument("--skip-movie-story-design", action="store_true", help="Reuse existing movie/story_design.json.")
     parser.add_argument("--force-movie-story-design", action="store_true", help="Regenerate movie/story_design.json from project source/render plan.")
     parser.add_argument("--skip-movie-screenplay", action="store_true", help="Reuse existing movie/screenplay.json.")
@@ -75,6 +79,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force-movie-references", action="store_true", help="Render movie references even when manifest paths already exist.")
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
     parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe"], default="msr")
+    parser.add_argument("--continuity-keyframes", choices=["none", "last-to-start"], default="none")
     parser.add_argument("--write-debug-workflows", action="store_true", help="Write patched movie MSR workflow JSONs without queueing ComfyUI.")
     parser.add_argument("--debug-workflows-dir", default=None, help="Directory for --write-debug-workflows output.")
     return parser
@@ -82,11 +87,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
     config: dict[str, Any] = {}
-    for key in ("reference_backend", "render_backend", "hero_workflow", "edit_workflow", "msr_workflow", "movie_video_workflow", "keyframe_mode"):
+    for key in ("reference_backend", "render_backend", "hero_workflow", "edit_workflow", "msr_workflow", "msr_i2v_workflow", "movie_video_workflow", "keyframe_mode", "continuity_keyframes"):
         value = getattr(args, key, None)
         if value:
             config[key] = value
+    if (
+        config.get("movie_video_workflow") == "msr-i2v-startframe"
+        and config.get("continuity_keyframes") == "last-to-start"
+        and _looks_like_i2v_workflow(config.get("msr_workflow"))
+        and not config.get("msr_i2v_workflow")
+    ):
+        config["msr_i2v_workflow"] = config.pop("msr_workflow")
     return movie_runtime_config(config)
+
+
+def _looks_like_i2v_workflow(value: object) -> bool:
+    return "i2v" in Path(str(value or "")).name.lower()
 
 
 def run(args: argparse.Namespace) -> MoviePipelineResult:
@@ -117,7 +133,12 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
             args.skip_movie_plan,
         )
     ):
-        if not args.skip_movie_bible:
+        if args.force_movie_bible:
+            from feverslop.studio.project_repository import build_movie_planner
+
+            planner_backend = args.movie_planner_backend or "llm"
+            bible_path = regenerate_movie_bible_artifact(project_dir, planner=build_movie_planner({"planner_backend": planner_backend}))
+        elif not args.skip_movie_bible:
             bible_path = ensure_movie_bible_artifact(project_dir)
         elif not bible_path.exists():
             raise FileNotFoundError(f"Movie bible not found: {bible_path}")
@@ -148,6 +169,11 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
         if not args.skip_movie_plan:
             ensure_movie_render_plan_matches_bible_artifact(project_dir)
     else:
+        if args.force_movie_bible:
+            from feverslop.studio.project_repository import build_movie_planner
+
+            planner_backend = args.movie_planner_backend or "llm"
+            bible_path = regenerate_movie_bible_artifact(project_dir, planner=build_movie_planner({"planner_backend": planner_backend}))
         planning = ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay, force_story_design=args.force_movie_story_design)
         bible_path = planning.bible_path
         story_design_path = planning.story_design_path
@@ -202,6 +228,10 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
         final_video_path = _build_visual_adapter(project_dir, config, workflow).render_movie(
             project_dir=project_dir,
             render_plan_path=render_plan_msr_path or render_plan_path,
+            continuity_keyframes=config["continuity_keyframes"],
+            on_clip_rendered=lambda completed, total, scene_number: print(
+                f"Rendered movie clip {completed}/{total}: scene {scene_number}"
+            ),
         )
 
     return MoviePipelineResult(
@@ -231,7 +261,14 @@ def _build_reference_generator(config: dict[str, Any]):
 def _build_visual_adapter(project_dir: Path, config: dict[str, Any], workflow: dict):
     if config["render_backend"] == "local":
         return LocalMovieVisualAdapter()
-    return build_movie_visual_adapter(project_dir, Path(config["msr_workflow"]), movie_config=config, workflow=workflow)
+    i2v_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_i2v_workflow"])) if config.get("msr_i2v_workflow") else None
+    return build_movie_visual_adapter(
+        project_dir,
+        Path(config["msr_workflow"]),
+        movie_config=config,
+        workflow=workflow,
+        i2v_workflow=i2v_workflow,
+    )
 
 
 def main() -> None:

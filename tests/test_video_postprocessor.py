@@ -110,16 +110,65 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             patch("feverslop.adapters.video_postprocessor.subprocess.run") as run,
             patch("feverslop.adapters.video_postprocessor.os.replace") as replace,
         ):
-            run.side_effect = [None, ffprobe_result, None]
+            audio_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="10.000000\n", stderr="")
+            run.side_effect = [None, ffprobe_result, None, audio_result]
             output = processor.trim_clip(spec)
 
         self.assertEqual(Path("scene_0001.mp4"), output)
-        self.assertEqual(3, run.call_count)
+        self.assertEqual(4, run.call_count)
         pad_cmd = run.call_args_list[2].args[0]
         self.assertIn("tpad=stop_mode=clone:stop=1", pad_cmd)
         self.assertIn("-frames:v", pad_cmd)
         self.assertIn("10", pad_cmd)
         replace.assert_called_once_with(Path("scene_0001.padded.mp4"), Path("scene_0001.mp4"))
+
+    def test_trim_clip_pads_short_audio_to_requested_duration(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        spec = TrimSpec(
+            source_file=Path("raw.mp4"),
+            output_file=Path("scene_0001.mp4"),
+            fps=24,
+            trim_front_frames=0,
+            keep_frames=240,
+            scene=1,
+        )
+
+        frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="240\n", stderr="")
+        short_audio_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="1.948000\n", stderr="")
+        with (
+            patch("feverslop.adapters.video_postprocessor.subprocess.run") as run,
+            patch("feverslop.adapters.video_postprocessor.os.replace") as replace,
+        ):
+            run.side_effect = [None, frame_count_result, short_audio_result, None]
+            output = processor.trim_clip(spec)
+
+        self.assertEqual(Path("scene_0001.mp4"), output)
+        audio_pad_cmd = run.call_args_list[3].args[0]
+        self.assertIn("-af", audio_pad_cmd)
+        self.assertIn("apad", audio_pad_cmd)
+        self.assertIn("-t", audio_pad_cmd)
+        self.assertIn("10.000000000", audio_pad_cmd)
+        replace.assert_called_once_with(Path("scene_0001.audiopad.mp4"), Path("scene_0001.mp4"))
+
+    def test_extract_last_frame_writes_single_png(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="240\n", stderr="")
+
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            run.side_effect = [frame_count_result, None]
+            output = processor.extract_last_frame(
+                source_file=Path("scene_0001.mp4"),
+                output_file=Path("keyframes/scene_0002_start.png"),
+            )
+
+        cmd = run.call_args_list[1].args[0]
+        self.assertEqual(Path("keyframes/scene_0002_start.png"), output)
+        self.assertIn("-vf", cmd)
+        self.assertIn("select=eq(n\\,239)", cmd)
+        self.assertIn("-vsync", cmd)
+        self.assertIn("0", cmd)
+        self.assertIn("-frames:v", cmd)
+        self.assertIn("1", cmd)
 
 
 if __name__ == "__main__":

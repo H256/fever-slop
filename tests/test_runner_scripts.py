@@ -145,6 +145,9 @@ class RunnerScriptTests(unittest.TestCase):
                 "--render-backend",
                 "local",
                 "--skip-movie-bible",
+                "--force-movie-bible",
+                "--movie-planner-backend",
+                "llm",
                 "--skip-movie-story-design",
                 "--force-movie-story-design",
                 "--skip-movie-screenplay",
@@ -162,6 +165,10 @@ class RunnerScriptTests(unittest.TestCase):
                 "start",
                 "--movie-video-workflow",
                 "msr-i2v-startframe",
+                "--continuity-keyframes",
+                "last-to-start",
+                "--msr-i2v-workflow",
+                "msr-i2v.json",
                 "--write-debug-workflows",
                 "--debug-workflows-dir",
                 "debug/workflows",
@@ -172,6 +179,8 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("local", args.reference_backend)
         self.assertEqual("local", args.render_backend)
         self.assertTrue(args.skip_movie_bible)
+        self.assertTrue(args.force_movie_bible)
+        self.assertEqual("llm", args.movie_planner_backend)
         self.assertTrue(args.skip_movie_story_design)
         self.assertTrue(args.force_movie_story_design)
         self.assertTrue(args.skip_movie_screenplay)
@@ -187,8 +196,28 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertTrue(args.force_movie_references)
         self.assertEqual("start", args.keyframe_mode)
         self.assertEqual("msr-i2v-startframe", args.movie_video_workflow)
+        self.assertEqual("last-to-start", args.continuity_keyframes)
+        self.assertEqual("msr-i2v.json", args.msr_i2v_workflow)
         self.assertTrue(args.write_debug_workflows)
         self.assertEqual("debug/workflows", args.debug_workflows_dir)
+
+    def test_movie_pipeline_maps_i2v_msr_workflow_argument_to_i2v_workflow_for_compatibility(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/tm3",
+                "--movie-video-workflow",
+                "msr-i2v-startframe",
+                "--continuity-keyframes",
+                "last-to-start",
+                "--msr-workflow",
+                "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json",
+            ]
+        )
+
+        config = movie_pipeline.config_from_args(args)
+
+        self.assertEqual("workflows/video_default_ltxv_msr_1actor_1background_v1.json", config["msr_workflow"])
+        self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json", config["msr_i2v_workflow"])
 
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -219,21 +248,25 @@ class RunnerScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_movie_project(Path(temp_dir), ready=True)
 
-            result = movie_pipeline.run(
-                movie_pipeline.build_arg_parser().parse_args(
-                    [
-                        str(project),
-                        "--reference-backend",
-                        "local",
-                        "--render-backend",
-                        "local",
-                        "--skip-movie-references",
-                    ]
+            with patch("builtins.print") as print_mock:
+                result = movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "local",
+                            "--skip-movie-references",
+                        ]
+                    )
                 )
-            )
 
             self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
             self.assertTrue(result.final_video_path.exists())
+            self.assertTrue(
+                any("Rendered movie clip 1/" in str(call.args[0]) for call in print_mock.call_args_list)
+            )
 
     def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -227,9 +227,22 @@ def build_movie_shot_cards(*, shots: tuple[CinematicShot, ...], scene_cards: tup
                 dialogue=shot.dialogue,
                 start_frame_brief=_start_frame_brief(shot),
                 end_frame_brief=_end_frame_brief(shot),
+                transition_from_previous=_transition_from_previous(shot.transition_from_previous),
+                transition_reason=_transition_reason(shot),
             )
         )
     return tuple(cards)
+
+
+def _transition_from_previous(value: object) -> str:
+    transition = str(value or "cut").strip().lower().replace("_", "-")
+    return "continuous" if transition == "continuous" else "cut"
+
+
+def _transition_reason(shot: CinematicShot) -> str:
+    if _transition_from_previous(shot.transition_from_previous) != "continuous":
+        return "hard cut or new setup"
+    return "planned as a direct continuation of the previous shot"
 
 
 def movie_screenplay_to_dict(screenplay: MovieScreenplayArtifact) -> dict:

@@ -25,7 +25,10 @@ const form = reactive({
   renderBackend: "comfyui" as "comfyui" | "local",
   heroWorkflow: "workflows/image_t2i_startframe_krea_v1.json",
   editWorkflow: "workflows/image_edit_flux2_klein_1ref_v1.json",
-  msrWorkflow: "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
+  msrWorkflow: "workflows/video_default_ltxv_msr_1actor_1background_v1.json",
+  msrI2vWorkflow: "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json",
+  movieVideoWorkflow: "msr" as "msr" | "msr-i2v-startframe",
+  continuityKeyframes: "none" as "none" | "last-to-start"
 });
 
 const slug = computed(() => slugifyProjectName(form.name));
@@ -40,6 +43,12 @@ const validationError = computed(() => {
   if (!Number.isInteger(form.width) || form.width <= 0) return "Width must be a positive integer.";
   if (!Number.isInteger(form.height) || form.height <= 0) return "Height must be a positive integer.";
   if (!form.heroWorkflow.trim() || !form.editWorkflow.trim() || !form.msrWorkflow.trim()) return "Movie workflow paths are required.";
+  if (form.continuityKeyframes === "last-to-start" && form.movieVideoWorkflow !== "msr-i2v-startframe") {
+    return "Last-frame continuity requires the MSR + I2V startframe video workflow.";
+  }
+  if (form.movieVideoWorkflow === "msr-i2v-startframe" && !form.msrI2vWorkflow.trim()) {
+    return "MSR I2V workflow path is required for startframe rendering.";
+  }
   return "";
 });
 
@@ -74,7 +83,10 @@ async function createMovieProject() {
       movie_render_backend: form.renderBackend,
       movie_hero_workflow: form.heroWorkflow.trim(),
       movie_edit_workflow: form.editWorkflow.trim(),
-      movie_msr_workflow: form.msrWorkflow.trim()
+      movie_msr_workflow: form.msrWorkflow.trim(),
+      movie_msr_i2v_workflow: form.msrI2vWorkflow.trim(),
+      movie_video_workflow: form.movieVideoWorkflow,
+      movie_continuity_keyframes: form.continuityKeyframes
     };
     const project = await studio.createProject(payload);
     if (form.mode === "full_auto") {
@@ -206,6 +218,20 @@ async function createMovieProject() {
               <option value="local">Local dev placeholder</option>
             </select>
           </label>
+          <label>
+            <span>Video workflow</span>
+            <select v-model="form.movieVideoWorkflow">
+              <option value="msr">MSR only</option>
+              <option value="msr-i2v-startframe">MSR + I2V startframe</option>
+            </select>
+          </label>
+          <label>
+            <span>Continuity keyframes</span>
+            <select v-model="form.continuityKeyframes">
+              <option value="none">None</option>
+              <option value="last-to-start">Last frame to next startframe</option>
+            </select>
+          </label>
         </div>
         <div class="settings-stack">
           <label>
@@ -219,6 +245,10 @@ async function createMovieProject() {
           <label>
             <span>Movie MSR workflow</span>
             <input v-model="form.msrWorkflow" type="text" />
+          </label>
+          <label>
+            <span>Movie MSR I2V workflow</span>
+            <input v-model="form.msrI2vWorkflow" type="text" />
           </label>
         </div>
       </details>
