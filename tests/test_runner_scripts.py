@@ -239,6 +239,25 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", config["edit_workflow"])
         self.assertEqual("workflows/video_ltxv_i2v_v1.json", config["i2v_workflow"])
 
+    def test_movie_pipeline_accepts_startframe_director_workflow_mode(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/demo",
+                "--movie-video-workflow",
+                "startframe-director",
+            ]
+        )
+
+        config = movie_pipeline.config_from_args(args)
+
+        self.assertEqual("startframe-director", args.movie_video_workflow)
+        self.assertEqual("startframe-director", config["movie_video_workflow"])
+        self.assertEqual("workflows/image_t2i_startframe_ideogram_director_v1.json", config["director_workflow"])
+        self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", config["mask_workflow"])
+        self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", config["identity_repair_workflow"])
+        self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", config["detail_workflow"])
+        self.assertEqual("workflows/video_ltxv_i2v_v1.json", config["i2v_workflow"])
+
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_movie_project(Path(temp_dir))
@@ -320,6 +339,40 @@ class RunnerScriptTests(unittest.TestCase):
             self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
             self.assertTrue(result.final_video_path.exists())
             self.assertTrue((project / "output" / "movie" / "storyboard" / "index.html").exists())
+
+    def test_movie_pipeline_startframe_director_local_backend_writes_contracts_and_final(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--movie-video-workflow",
+                        "startframe-director",
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-bible",
+                        "--skip-movie-story-design",
+                        "--skip-movie-screenplay",
+                        "--skip-movie-narrative",
+                        "--skip-movie-scene-cards",
+                        "--skip-movie-shot-cards",
+                        "--skip-movie-continuity",
+                        "--skip-movie-plan",
+                        "--skip-movie-references",
+                    ]
+                )
+            )
+
+            self.assertEqual(project / "movie" / "identity_ledger.json", result.identity_ledger_path)
+            self.assertEqual(project / "movie" / "startframe_plan.json", result.startframe_plan_path)
+            self.assertEqual(project / "movie" / "startframe_director_prompts.json", result.startframe_director_prompts_path)
+            self.assertTrue((project / "movie" / "startframe_validation.json").exists())
+            self.assertTrue((project / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").exists())
+            self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
 
     def test_movie_pipeline_i2v_edit_prints_rich_stage_logs(self):
         from feverslop.composition import movie_pipeline as movie_pipeline_module

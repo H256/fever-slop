@@ -618,6 +618,29 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("i2v-edit", metadata["movie"]["movie_video_workflow"])
             self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", metadata["movie"]["edit_workflow"])
 
+    def test_create_movie_project_persists_startframe_director_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            store.create_project(
+                ProjectCreateRequest(
+                    project_type="movie",
+                    name="Director Movie",
+                    story_text="An archivist opens a sealed ledger.",
+                    movie_mode="scaffold",
+                    movie_planner_backend="deterministic",
+                    movie_video_workflow="startframe-director",
+                )
+            )
+
+            metadata = json.loads((Path(temp_dir) / "director-movie" / ".studio" / "project.json").read_text())
+
+            self.assertEqual("startframe-director", metadata["movie"]["movie_video_workflow"])
+            self.assertEqual("workflows/image_t2i_startframe_ideogram_director_v1.json", metadata["movie"]["director_workflow"])
+            self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", metadata["movie"]["mask_workflow"])
+            self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", metadata["movie"]["identity_repair_workflow"])
+            self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", metadata["movie"]["detail_workflow"])
+
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}
 

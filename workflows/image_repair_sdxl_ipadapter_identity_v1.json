@@ -1,0 +1,205 @@
+{
+  "1": {
+    "inputs": {
+      "image": "WomanPortraitRed.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#INPUT_IMAGE"
+    }
+  },
+  "2": {
+    "inputs": {
+      "image": "WomanPortraitRed.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#IDENTITY_REFERENCE"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image": "WomanPortraitRed.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REGION_MASK_IMAGE"
+    }
+  },
+  "4": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "#REGION_MASK"
+    }
+  },
+  "5": {
+    "inputs": {
+      "ckpt_name": "SDXL 1.0\\realistic\\realvisxlV50_v50Bakedvae.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "#SDXL_CHECKPOINT"
+    }
+  },
+  "6": {
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "image": [
+        "2",
+        0
+      ],
+      "preset": "FACEID PLUS V2",
+      "lora_strength": 0.55,
+      "provider": "CUDA",
+      "weight": 0.8,
+      "weight_faceidv2": 1.05,
+      "weight_type": "linear",
+      "combine_embeds": "average",
+      "start_at": 0.0,
+      "end_at": 0.75,
+      "embeds_scaling": "V only",
+      "cache_mode": "all",
+      "use_tiled": false,
+      "use_batch": false,
+      "sharpening": 0.0,
+      "attn_mask": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "easy ipadapterApplyADV",
+    "_meta": {
+      "title": "#IPADAPTER_FACEID"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "cinematic startframe, same character identity, same wardrobe, same hairstyle, coherent face, natural skin texture, film still",
+      "clip": [
+        "5",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "#PROMPT_POSITIVE"
+    }
+  },
+  "8": {
+    "inputs": {
+      "text": "wrong person, changed outfit, changed hair, duplicate face, distorted face, deformed hands, artifacts, text, watermark",
+      "clip": [
+        "5",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "#PROMPT_NEGATIVE"
+    }
+  },
+  "9": {
+    "inputs": {
+      "pixels": [
+        "1",
+        0
+      ],
+      "vae": [
+        "5",
+        2
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "Encode input image"
+    }
+  },
+  "10": {
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "mask": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {
+      "title": "#LATENT_MASK"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seed": 123456789,
+      "steps": 8,
+      "cfg": 4.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.42,
+      "model": [
+        "6",
+        0
+      ],
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "8",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "#DENOISE"
+    }
+  },
+  "12": {
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "5",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decode repaired image"
+    }
+  },
+  "13": {
+    "inputs": {
+      "filename_prefix": "startframe_identity_repair",
+      "images": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "#SAVE_IMAGE"
+    }
+  }
+}

@@ -3526,6 +3526,49 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("Movie I2V render plan", logs)
             self.assertIn("Storyboard review page", logs)
 
+    def test_api_movie_full_auto_startframe_director_writes_contracts_and_job_logs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            client = TestClient(create_app(temp_dir))
+            created = client.post(
+                "/api/projects",
+                json={
+                    "project_type": "movie",
+                    "name": "Director Story",
+                    "source_type": "screenplay",
+                    "story_text": "EXT. ARCHIVE DOOR - DAY\n\nMARA\nIt opens.",
+                    "desired_length": 12,
+                    "movie_mode": "full_auto",
+                    "movie_planner_backend": "deterministic",
+                    "movie_reference_backend": "local",
+                    "movie_render_backend": "local",
+                    "movie_video_workflow": "startframe-director",
+                },
+            )
+            self.assertEqual(200, created.status_code, created.text)
+
+            job = client.post("/api/projects/director-story/jobs", json={"action": "movie-full-auto"})
+
+            self.assertEqual(200, job.status_code, job.text)
+            job_id = job.json()["id"]
+            for _ in range(50):
+                status = client.get(f"/api/jobs/{job_id}").json()
+                if status["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+
+            project_dir = Path(temp_dir) / "director-story"
+            self.assertEqual("succeeded", status["status"])
+            self.assertTrue((project_dir / "movie" / "identity_ledger.json").exists())
+            self.assertTrue((project_dir / "movie" / "startframe_plan.json").exists())
+            self.assertTrue((project_dir / "movie" / "startframe_director_prompts.json").exists())
+            self.assertTrue((project_dir / "movie" / "startframe_validation.json").exists())
+            self.assertTrue((project_dir / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").exists())
+            self.assertTrue((project_dir / "output" / "movie" / "director-story.mp4").exists())
+            logs = "\n".join(status["logs"])
+            self.assertIn("Movie identity ledger", logs)
+            self.assertIn("Movie startframe plan", logs)
+            self.assertIn("Movie director prompts", logs)
+
     def test_movie_full_auto_regenerates_missing_planning_artifacts_for_legacy_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             client = TestClient(create_app(temp_dir))

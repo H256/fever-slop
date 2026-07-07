@@ -142,7 +142,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
     planner_backend = _movie_planner_backend(request.movie_planner_backend)
     reference_backend = _supported_backend(request.movie_reference_backend, "movie_reference_backend", {"comfyui", "local"}, default="comfyui")
     render_backend = _supported_backend(request.movie_render_backend, "movie_render_backend", {"comfyui", "local"}, default="comfyui")
-    movie_video_workflow = _supported_backend(request.movie_video_workflow, "movie_video_workflow", {"msr", "msr-i2v-startframe", "i2v-edit"}, default="msr")
+    movie_video_workflow = _supported_backend(request.movie_video_workflow, "movie_video_workflow", {"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"}, default="msr")
     continuity_keyframes = _supported_backend(request.movie_continuity_keyframes, "movie_continuity_keyframes", {"none", "last-to-start"}, default="none")
     if continuity_keyframes == "last-to-start" and movie_video_workflow != "msr-i2v-startframe":
         raise ValueError("movie_continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
@@ -156,6 +156,10 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "dialogue_language": _dialogue_language(request.dialogue_language),
         "hero_workflow": _project_workflow_path(request.movie_hero_workflow, "movie_hero_workflow"),
         "edit_workflow": edit_workflow,
+        "director_workflow": _project_workflow_path(request.movie_director_workflow, "movie_director_workflow"),
+        "mask_workflow": _project_workflow_path(request.movie_mask_workflow, "movie_mask_workflow"),
+        "identity_repair_workflow": _project_workflow_path(request.movie_identity_repair_workflow, "movie_identity_repair_workflow"),
+        "detail_workflow": _project_workflow_path(request.movie_detail_workflow, "movie_detail_workflow"),
         "msr_workflow": _project_workflow_path(request.movie_msr_workflow, "movie_msr_workflow"),
         "msr_i2v_workflow": _project_workflow_path(request.movie_msr_i2v_workflow, "movie_msr_i2v_workflow"),
         "i2v_workflow": _project_workflow_path(request.movie_i2v_workflow, "movie_i2v_workflow"),

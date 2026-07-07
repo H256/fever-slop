@@ -426,6 +426,37 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
             log(f"[MoviePipeline] Stage: Storyboard review page: {storyboard_page}")
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
             return final_video
+        if config["movie_video_workflow"] == "startframe-director":
+            from feverslop.adapters.startframe_director_visual import LocalStartframeDirectorVisualAdapter
+            from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
+            from feverslop.application.startframe_i2v_render_plan import write_startframe_i2v_render_plan
+            from feverslop.application.startframe_identity import build_startframe_identity_ledger
+            from feverslop.application.startframe_plan import build_startframe_plan
+            from feverslop.application.startframe_validation import write_local_startframe_validation
+
+            log("[MoviePipeline] Stage: Movie identity ledger")
+            identity_ledger_path = build_startframe_identity_ledger(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie identity ledger ready: {identity_ledger_path}")
+            log("[MoviePipeline] Stage: Movie startframe plan")
+            startframe_plan_path = build_startframe_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie startframe plan ready: {startframe_plan_path}")
+            log("[MoviePipeline] Stage: Movie director prompts")
+            prompts_path = build_startframe_director_prompts(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie director prompts ready: {prompts_path}")
+            render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie I2V render plan ready: {render_plan_i2v_path}")
+            if config["render_backend"] != "local":
+                raise NotImplementedError("ComfyUI startframe-director rendering requires validated SAM3/IPAdapter workflows")
+            final_video = LocalStartframeDirectorVisualAdapter().render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_i2v_path,
+                on_startframe_step=lambda event: log(f"[MoviePipeline] {_format_movie_startframe_step(event)}"),
+                on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered I2V clip {completed}/{total}: scene {scene_number}"),
+            )
+            validation_path = write_local_startframe_validation(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie startframe validation ready: {validation_path}")
+            log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+            return final_video
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=config["keyframe_mode"])
         log(f"[MoviePipeline] Stage: Movie MSR Prompt Enrichment Ready: {render_plan_msr_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
@@ -850,7 +881,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     planner_backend = _movie_backend(raw.get("planner_backend"), default="llm", supported={"llm", "deterministic", "local"})
     if planner_backend == "local":
         planner_backend = "deterministic"
-    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit"})
+    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"})
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json" if movie_video_workflow == "msr-i2v-startframe" else ""
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
     return {
@@ -859,6 +890,10 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "render_backend": _movie_backend(raw.get("render_backend"), default="comfyui", supported={"comfyui", "local"}),
         "hero_workflow": _movie_workflow_path(raw.get("hero_workflow"), "workflows/image_t2i_startframe_krea_v1.json"),
         "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), edit_workflow_default),
+        "director_workflow": _movie_workflow_path(raw.get("director_workflow"), "workflows/image_t2i_startframe_ideogram_director_v1.json"),
+        "mask_workflow": _movie_workflow_path(raw.get("mask_workflow"), "workflows/image_mask_sam3_actor_regions_v1.json"),
+        "identity_repair_workflow": _movie_workflow_path(raw.get("identity_repair_workflow"), "workflows/image_repair_sdxl_ipadapter_identity_v1.json"),
+        "detail_workflow": _movie_workflow_path(raw.get("detail_workflow"), "workflows/image_detail_easyuse_startframe_v1.json"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
         "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), "workflows/video_ltxv_i2v_v1.json"),
@@ -870,7 +905,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
 
 def _movie_continuity_keyframes(value: object, *, movie_video_workflow: object = None) -> str:
     mode = _movie_backend(value, default="none", supported={"none", "last-to-start"})
-    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit"})
+    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"})
     if mode == "last-to-start" and workflow != "msr-i2v-startframe":
         raise ValueError("continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
     return mode
