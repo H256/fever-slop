@@ -1,10 +1,13 @@
 import unittest
 import json
+import io
 import os
 from pathlib import Path
 import sys
 import tempfile
 from unittest.mock import patch
+
+from rich.console import Console
 
 from tools.repair_scene_srt import main as repair_scene_srt_main
 import movie_pipeline
@@ -317,6 +320,45 @@ class RunnerScriptTests(unittest.TestCase):
             self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
             self.assertTrue(result.final_video_path.exists())
             self.assertTrue((project / "output" / "movie" / "storyboard" / "index.html").exists())
+
+    def test_movie_pipeline_i2v_edit_prints_rich_stage_logs(self):
+        from feverslop.composition import movie_pipeline as movie_pipeline_module
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            buffer = io.StringIO()
+            console = Console(file=buffer, force_terminal=False, color_system=None, width=120)
+
+            with patch.object(movie_pipeline_module, "console", console, create=True):
+                movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "i2v-edit",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "local",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+
+            output = buffer.getvalue()
+
+        self.assertIn("Movie visual plan", output)
+        self.assertIn("Movie I2V render plan", output)
+        self.assertIn("Storyboard review page", output)
+        self.assertIn("Movie complete", output)
 
     def test_movie_pipeline_i2v_edit_uses_comfy_adapter_for_comfy_render_backend(self):
         class FakeAdapter:

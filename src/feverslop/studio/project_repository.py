@@ -146,6 +146,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
     continuity_keyframes = _supported_backend(request.movie_continuity_keyframes, "movie_continuity_keyframes", {"none", "last-to-start"}, default="none")
     if continuity_keyframes == "last-to-start" and movie_video_workflow != "msr-i2v-startframe":
         raise ValueError("movie_continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
+    edit_workflow = _movie_edit_workflow(request.movie_edit_workflow, movie_video_workflow=movie_video_workflow)
     return {
         "planner_backend": planner_backend,
         "reference_backend": reference_backend,
@@ -154,7 +155,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "continuity_keyframes": continuity_keyframes,
         "dialogue_language": _dialogue_language(request.dialogue_language),
         "hero_workflow": _project_workflow_path(request.movie_hero_workflow, "movie_hero_workflow"),
-        "edit_workflow": _project_workflow_path(request.movie_edit_workflow, "movie_edit_workflow"),
+        "edit_workflow": edit_workflow,
         "msr_workflow": _project_workflow_path(request.movie_msr_workflow, "movie_msr_workflow"),
         "msr_i2v_workflow": _project_workflow_path(request.movie_msr_i2v_workflow, "movie_msr_i2v_workflow"),
         "i2v_workflow": _project_workflow_path(request.movie_i2v_workflow, "movie_i2v_workflow"),
@@ -312,6 +313,13 @@ def _project_workflow_path(value: str, field: str) -> str:
     if parsed.is_absolute() or ".." in parsed.parts:
         raise ValueError(f"{field} must be a repository-relative path")
     return parsed.as_posix()
+
+
+def _movie_edit_workflow(value: str, *, movie_video_workflow: str) -> str:
+    default_1ref = "workflows/image_edit_flux2_klein_1ref_v1.json"
+    if movie_video_workflow == "i2v-edit" and str(value or "").strip() in {"", default_1ref}:
+        return "workflows/image_edit_flux2_klein_2ref_v1.json"
+    return _project_workflow_path(value, "movie_edit_workflow")
 
 
 def _dialogue_language(value: object) -> str:

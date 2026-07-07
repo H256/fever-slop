@@ -616,6 +616,7 @@ class StudioBackendTests(unittest.TestCase):
             metadata = json.loads((Path(temp_dir) / "i2v-movie" / ".studio" / "project.json").read_text())
 
             self.assertEqual("i2v-edit", metadata["movie"]["movie_video_workflow"])
+            self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", metadata["movie"]["edit_workflow"])
 
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}

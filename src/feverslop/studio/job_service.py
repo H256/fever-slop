@@ -398,6 +398,33 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         log(f"[Krea2_Adapter] Preparing visual consistency references via {config['reference_backend']}")
         manifest_path = ensure_movie_references(project_dir, movie_config=config)
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
+        if config["movie_video_workflow"] == "i2v-edit":
+            from feverslop.adapters.movie_i2v_visual import LocalMovieI2VEditVisualAdapter
+            from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
+            from feverslop.application.movie_visual_plan import build_movie_visual_plan
+            from feverslop.tools.movie_storyboard_page import generate_movie_storyboard_page
+
+            log("[MoviePipeline] Stage: Movie visual plan")
+            visual_plan_path = build_movie_visual_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie visual plan ready: {visual_plan_path}")
+            log("[MoviePipeline] Stage: Movie I2V render plan")
+            render_plan_i2v_path = write_movie_i2v_render_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie I2V render plan ready: {render_plan_i2v_path}")
+            log(f"[MoviePipeline] Stage: Movie I2V/edit render via {config['render_backend']}")
+            adapter = (
+                LocalMovieI2VEditVisualAdapter()
+                if config["render_backend"] == "local"
+                else build_movie_i2v_edit_visual_adapter(project_dir, config)
+            )
+            final_video = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_i2v_path,
+                on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered I2V clip {completed}/{total}: scene {scene_number}"),
+            )
+            storyboard_page = generate_movie_storyboard_page(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Storyboard review page: {storyboard_page}")
+            log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+            return final_video
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=config["keyframe_mode"])
         log(f"[MoviePipeline] Stage: Movie MSR Prompt Enrichment Ready: {render_plan_msr_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
@@ -753,6 +780,53 @@ def build_movie_visual_adapter(
         i2v_workflow=i2v_workflow,
         continuity_keyframes=config["continuity_keyframes"],
         model_resolver=ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides),
+    )
+
+
+def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+    from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+    from feverslop.adapters.local_artifacts import JsonArtifactStore
+    from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
+    from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
+    from feverslop.adapters.video_postprocessor import VideoPostProcessor
+    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load("app_config.json")
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
+    ltx_dir = project_dir / "output" / "movie" / "ltx_i2v"
+    video_use_case = build_render_video_scenes_use_case(
+        RenderVideoCompositionOptions(
+            workflow_path=config["i2v_workflow"],
+            single_prompt_workflow_path=config["i2v_workflow"],
+            output_dir=ltx_dir,
+            video_pipeline="ltx_i2v",
+        )
+    )
+    return ComfyUIMovieI2VEditVisualAdapter(
+        base_image_backend=ComfyUIImageBackend(
+            client=client,
+            workflow_path=backend_config_path(config["hero_workflow"]),
+            output_dir=project_dir / "output" / "movie" / "storyboard" / "base",
+            model_resolver=model_resolver,
+        ),
+        edit_backend=MovieTwoRefEditImageBackend(
+            client=client,
+            workflow_path=backend_config_path(config["edit_workflow"]),
+            model_resolver=model_resolver,
+        ),
+        artifact_store=JsonArtifactStore(),
+        video_use_case=video_use_case,
+        workflow_path=Path(config["hero_workflow"]),
+        edit_workflow_path=Path(config["edit_workflow"]),
+        i2v_workflow_path=Path(config["i2v_workflow"]),
+        postprocessor=VideoPostProcessor(),
     )
 
 

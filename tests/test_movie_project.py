@@ -3338,6 +3338,50 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("local", manifest["generator_backend"])
             self.assertFalse((Path(temp_dir) / "door-below" / "movie" / "workflows").exists())
 
+    def test_api_movie_full_auto_i2v_edit_writes_storyboard_and_job_logs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            client = TestClient(create_app(temp_dir))
+            created = client.post(
+                "/api/projects",
+                json={
+                    "project_type": "movie",
+                    "name": "Witch Story",
+                    "source_type": "screenplay",
+                    "story_text": "EXT. BLACKWOOD FOREST - DAY\n\nMORWENNA\nTu tardes.",
+                    "desired_length": 12,
+                    "movie_mode": "full_auto",
+                    "movie_planner_backend": "deterministic",
+                    "movie_reference_backend": "local",
+                    "movie_render_backend": "local",
+                    "movie_video_workflow": "i2v-edit",
+                },
+            )
+            self.assertEqual(200, created.status_code, created.text)
+
+            job = client.post("/api/projects/witch-story/jobs", json={"action": "movie-full-auto"})
+
+            self.assertEqual(200, job.status_code, job.text)
+            job_id = job.json()["id"]
+            for _ in range(50):
+                status = client.get(f"/api/jobs/{job_id}").json()
+                if status["status"] == "succeeded":
+                    break
+                time.sleep(0.01)
+
+            project_dir = Path(temp_dir) / "witch-story"
+            metadata = json.loads((project_dir / ".studio" / "project.json").read_text())
+
+            self.assertEqual("succeeded", status["status"])
+            self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", metadata["movie"]["edit_workflow"])
+            self.assertTrue((project_dir / "movie" / "visual_plan.json").exists())
+            self.assertTrue((project_dir / "movie" / "render_plan_i2v.json").exists())
+            self.assertTrue((project_dir / "output" / "movie" / "storyboard" / "index.html").exists())
+            self.assertTrue((project_dir / "output" / "movie" / "witch-story.mp4").exists())
+            logs = "\n".join(status["logs"])
+            self.assertIn("Movie visual plan", logs)
+            self.assertIn("Movie I2V render plan", logs)
+            self.assertIn("Storyboard review page", logs)
+
     def test_movie_full_auto_regenerates_missing_planning_artifacts_for_legacy_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             client = TestClient(create_app(temp_dir))
