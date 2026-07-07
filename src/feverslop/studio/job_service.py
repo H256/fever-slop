@@ -885,6 +885,7 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
 def build_movie_startframe_director_visual_adapter(project_dir: Path, config: dict[str, Any]):
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
+    from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
     from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
     from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
     from feverslop.config.app_config import AppConfig
@@ -895,10 +896,15 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
     )
     ltx_dir = project_dir / "output" / "movie" / "ltx_startframe_director"
+    i2v_workflow_path = write_startframe_i2v_empty_audio_workflow(
+        project_dir=project_dir,
+        workflow_path=Path(config["i2v_workflow"]),
+        patcher=MovieWorkflowPatcher(),
+    )
     video_use_case = build_render_video_scenes_use_case(
         RenderVideoCompositionOptions(
-            workflow_path=config["i2v_workflow"],
-            single_prompt_workflow_path=config["i2v_workflow"],
+            workflow_path=i2v_workflow_path,
+            single_prompt_workflow_path=i2v_workflow_path,
             output_dir=ltx_dir,
             video_pipeline="ltx_i2v",
         )
@@ -909,7 +915,7 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
         mask_workflow_path=backend_config_path(config["mask_workflow"]),
         identity_repair_workflow_path=backend_config_path(config["identity_repair_workflow"]),
         detail_workflow_path=backend_config_path(config["detail_workflow"]),
-        i2v_workflow_path=backend_config_path(config["i2v_workflow"]),
+        i2v_workflow_path=i2v_workflow_path,
         video_use_case=video_use_case,
         validator=Gemma4StartframeValidator(
             base_url=config["startframe_validator_base_url"],
@@ -921,6 +927,15 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
 
 def movie_config_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return movie_runtime_config(dict(metadata.get("movie") or {}))
+
+
+def write_startframe_i2v_empty_audio_workflow(*, project_dir: Path, workflow_path: Path, patcher) -> Path:
+    workflow = json.loads(Path(workflow_path).read_text(encoding="utf-8-sig"))
+    stripped = patcher.strip_audio_inputs(workflow)
+    output = project_dir / "output" / "movie" / "startframes" / "workflows" / "ltx_i2v_empty_audio.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(stripped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return output
 
 
 def _startframe_debug_workflows_dir(project_dir: Path, config: dict[str, Any]) -> Path | None:
@@ -942,6 +957,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         planner_backend = "deterministic"
     movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"})
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json" if movie_video_workflow == "msr-i2v-startframe" else ""
+    i2v_default = "workflows/video_ltxv_i2v_native_audio_v1.json" if movie_video_workflow == "startframe-director" else "workflows/video_ltxv_i2v_v1.json"
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
     return {
         "planner_backend": planner_backend,
@@ -964,7 +980,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "startframe_validator_model": str(raw.get("startframe_validator_model") or "gemma4-26b-a4b:vision"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
-        "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), "workflows/video_ltxv_i2v_v1.json"),
+        "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), i2v_default),
         "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
         "continuity_keyframes": _movie_continuity_keyframes(raw.get("continuity_keyframes"), movie_video_workflow=raw.get("movie_video_workflow")),

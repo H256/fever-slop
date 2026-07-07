@@ -22,7 +22,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
         detail_workflow_path: str | Path,
         video_use_case,
         validator,
-        i2v_workflow_path: str | Path = "workflows/video_ltxv_i2v_v1.json",
+        i2v_workflow_path: str | Path = "workflows/video_ltxv_i2v_native_audio_v1.json",
         model_resolver=None,
         debug_workflows_dir: str | Path | None = None,
     ):

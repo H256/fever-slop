@@ -260,7 +260,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("http://llm.elysium.lan/v1", config["startframe_validator_base_url"])
         self.assertEqual("gemma4-26b-a4b:vision", config["startframe_validator_model"])
         self.assertFalse(config["startframe_write_debug_workflows"])
-        self.assertEqual("workflows/video_ltxv_i2v_v1.json", config["i2v_workflow"])
+        self.assertEqual("workflows/video_ltxv_i2v_native_audio_v1.json", config["i2v_workflow"])
 
     def test_movie_pipeline_accepts_startframe_validator_overrides(self):
         args = movie_pipeline.build_arg_parser().parse_args(
@@ -602,6 +602,9 @@ class RunnerScriptTests(unittest.TestCase):
 
     def test_movie_pipeline_startframe_director_passes_debug_workflows_dir_to_comfy_adapter(self):
         class FakeAdapter:
+            def __init__(self, **_kwargs):
+                pass
+
             def render_movie(self, *, project_dir, render_plan_path, **_kwargs):
                 final = project_dir / "output" / "movie" / "startframe-comfy.mp4"
                 final.parent.mkdir(parents=True, exist_ok=True)
@@ -643,6 +646,71 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertTrue(config["startframe_write_debug_workflows"])
         self.assertEqual(debug_dir, Path(config["startframe_debug_workflows_dir"]))
         self.assertEqual(debug_dir, result.debug_workflows_dir)
+
+    def test_startframe_director_ltx_handoff_uses_empty_audio_i2v_workflow(self):
+        captured = {}
+
+        class FakeAdapter:
+            def __init__(self, **_kwargs):
+                pass
+
+            def render_movie(self, *, project_dir, render_plan_path, **_kwargs):
+                final = project_dir / "output" / "movie" / "startframe-comfy.mp4"
+                final.parent.mkdir(parents=True, exist_ok=True)
+                final.write_bytes(b"mp4")
+                return final
+
+        class FakeComfyClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        class FakeValidator:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        def fake_use_case(options):
+            captured["workflow_path"] = Path(options.workflow_path)
+            captured["single_prompt_workflow_path"] = Path(options.single_prompt_workflow_path)
+            return object()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+
+            with (
+                patch("feverslop.adapters.startframe_director_comfyui.ComfyUIStartframeDirectorVisualAdapter", FakeAdapter),
+                patch("feverslop.adapters.comfyui_client.ComfyUIClient", FakeComfyClient),
+                patch("feverslop.adapters.gemma4_startframe_validator.Gemma4StartframeValidator", FakeValidator),
+                patch("feverslop.composition.render_video.build_render_video_scenes_use_case", side_effect=fake_use_case),
+            ):
+                movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "startframe-director",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "comfyui",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+
+            self.assertEqual(captured["workflow_path"], captured["single_prompt_workflow_path"])
+            self.assertEqual(project / "output" / "movie" / "startframes" / "workflows" / "ltx_i2v_empty_audio.json", captured["workflow_path"])
+            workflow = json.loads(captured["workflow_path"].read_text(encoding="utf-8"))
+            classes = {node.get("class_type") for node in workflow.values()}
+            self.assertNotIn("LoadAudio", classes)
+            self.assertIn("LTXVEmptyLatentAudio", classes)
 
     def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
         with tempfile.TemporaryDirectory() as temp_dir:

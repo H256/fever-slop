@@ -600,6 +600,7 @@ def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
 def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[str, Any]):
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
+    from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
     from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
     from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
     from feverslop.config.app_config import AppConfig
@@ -610,10 +611,15 @@ def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[st
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
     )
     ltx_dir = project_dir / "output" / "movie" / "ltx_startframe_director"
+    i2v_workflow_path = _write_startframe_i2v_empty_audio_workflow(
+        project_dir=project_dir,
+        workflow_path=Path(config["i2v_workflow"]),
+        patcher=MovieWorkflowPatcher(),
+    )
     video_use_case = build_render_video_scenes_use_case(
         RenderVideoCompositionOptions(
-            workflow_path=config["i2v_workflow"],
-            single_prompt_workflow_path=config["i2v_workflow"],
+            workflow_path=i2v_workflow_path,
+            single_prompt_workflow_path=i2v_workflow_path,
             output_dir=ltx_dir,
             video_pipeline="ltx_i2v",
         )
@@ -624,7 +630,7 @@ def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[st
         mask_workflow_path=config["mask_workflow"],
         identity_repair_workflow_path=config["identity_repair_workflow"],
         detail_workflow_path=config["detail_workflow"],
-        i2v_workflow_path=config["i2v_workflow"],
+        i2v_workflow_path=i2v_workflow_path,
         video_use_case=video_use_case,
         validator=Gemma4StartframeValidator(
             base_url=config["startframe_validator_base_url"],
@@ -643,6 +649,15 @@ def _startframe_debug_workflows_dir(project_dir: Path, args: argparse.Namespace)
     if raw:
         return coerce_local_path(raw).resolve()
     return project_dir / "output" / "movie" / "startframes" / "debug_workflows"
+
+
+def _write_startframe_i2v_empty_audio_workflow(*, project_dir: Path, workflow_path: Path, patcher) -> Path:
+    workflow = json.loads(Path(workflow_path).read_text(encoding="utf-8-sig"))
+    stripped = patcher.strip_audio_inputs(workflow)
+    output = project_dir / "output" / "movie" / "startframes" / "workflows" / "ltx_i2v_empty_audio.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(stripped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return output
 
 
 def main() -> None:
