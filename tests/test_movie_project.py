@@ -2026,6 +2026,56 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual("movie/references/actors/leo/msr_sheet.png", data["shots"][0]["edit_passes"][0]["reference_image_path"])
         self.assertEqual("movie/references/actors/morwenna/sheet.png", data["shots"][0]["edit_passes"][1]["reference_image_path"])
 
+    def test_movie_visual_plan_edit_prompts_anchor_characters_to_floor_and_screen_zones(self):
+        from feverslop.application.movie_visual_plan import build_movie_visual_plan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            (project / "movie").mkdir(parents=True)
+            (project / "movie" / "render_plan.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Blackwood",
+                        "shots": [
+                            {
+                                "shot_id": "shot_0001",
+                                "scene": 1,
+                                "description": "Morwenna waits inside the hut.",
+                                "camera": "wide interior view",
+                                "action": "Morwenna stands near the hearth while Leo enters.",
+                                "location": "STONE HUT - DAY",
+                                "location_id": "stone_hut",
+                                "actor_ids": ["morwenna", "leo"],
+                                "duration_seconds": 5,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (project / "movie" / "bible.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Blackwood",
+                        "actors": [{"id": "morwenna", "name": "Morwenna"}, {"id": "leo", "name": "Leo"}],
+                        "locations": [{"id": "stone_hut", "name": "Stone Hut", "visual_description": "stone interior with hearth, baskets, jars, and tools"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            output = build_movie_visual_plan(project_dir=project)
+            data = json.loads(output.read_text(encoding="utf-8"))
+
+        first_pass = data["shots"][0]["edit_passes"][0]
+        second_pass = data["shots"][0]["edit_passes"][1]
+        self.assertEqual("center-right foreground floor area", first_pass["placement_zone"])
+        self.assertEqual("center-left foreground floor area", second_pass["placement_zone"])
+        self.assertIn("Place morwenna in the center-right foreground floor area", first_pass["prompt"])
+        self.assertIn("feet must touch the visible floor plane", first_pass["prompt"])
+        self.assertIn("Do not place the character on shelves, baskets, barrels, pots, tools, furniture, walls, or inside containers", first_pass["prompt"])
+        self.assertIn("full-body standing human scale", first_pass["prompt"])
+
     def test_movie_i2v_render_plan_matches_classic_render_contract(self):
         from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
 

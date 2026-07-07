@@ -119,10 +119,16 @@ def _base_plate_prompt(shot: dict[str, Any], location: dict[str, Any], framing: 
 def _edit_passes(actor_ids: list[str], actors: dict[str, dict[str, Any]], actor_reference_paths: dict[str, str]) -> list[dict[str, Any]]:
     passes = []
     for index, actor_id in enumerate(actor_ids, start=1):
+        placement_zone = _placement_zone(index)
         prompt = "\n".join([
             "Image 1 is the current scene plate.",
             f"Image 2 is the character reference image for {actor_id}.",
             f"Add only {actor_id} from Image 2 into Image 1 at natural scale.",
+            f"Place {actor_id} in the {placement_zone}.",
+            "The character's feet must touch the visible floor plane or ground plane, with believable contact shadows.",
+            "Use full-body standing human scale relative to doors, hearths, furniture, shelves, jars, tools, and stones in Image 1.",
+            "Do not place the character on shelves, baskets, barrels, pots, tools, furniture, walls, or inside containers.",
+            "Do not make the character miniature, floating, sitting in props, embedded in objects, or cropped by nearby objects unless the shot action explicitly says so.",
             "Preserve the existing scene plate and every already-present character exactly.",
             "Preserve the identity, clothing, and natural proportions of the character from Image 2.",
             "Do not add extra people, duplicate characters, captions, labels, logos, watermarks, or readable text.",
@@ -131,12 +137,24 @@ def _edit_passes(actor_ids: list[str], actors: dict[str, dict[str, Any]], actor_
             "pass": index,
             "actor_id": actor_id,
             "actor_name": str(actors.get(actor_id, {}).get("name") or actor_id),
+            "placement_zone": placement_zone,
             "input_plate_path": "",
             "reference_image_path": actor_reference_paths.get(actor_id, f"movie/references/actors/{actor_id}/hero.png"),
             "output_path": "",
             "prompt": prompt,
         })
     return passes
+
+
+def _placement_zone(index: int) -> str:
+    zones = [
+        "center-right foreground floor area",
+        "center-left foreground floor area",
+        "center midground floor area",
+        "right midground floor area",
+        "left midground floor area",
+    ]
+    return zones[(max(1, index) - 1) % len(zones)]
 
 
 def _video_prompt(shot: dict[str, Any]) -> str:
