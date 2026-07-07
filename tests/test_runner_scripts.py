@@ -259,6 +259,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", config["detail_workflow"])
         self.assertEqual("http://llm.elysium.lan/v1", config["startframe_validator_base_url"])
         self.assertEqual("gemma4-26b-a4b:vision", config["startframe_validator_model"])
+        self.assertFalse(config["startframe_write_debug_workflows"])
         self.assertEqual("workflows/video_ltxv_i2v_v1.json", config["i2v_workflow"])
 
     def test_movie_pipeline_accepts_startframe_validator_overrides(self):
@@ -598,6 +599,50 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual(project / "movie" / "render_plan_i2v.json", adapter.render_plan_path)
         self.assertEqual(project / "output" / "movie" / "startframe-comfy.mp4", result.final_video_path)
         self.assertIn("Movie startframe-director render: rendered repair 3/7: scene 1 actor mara", output)
+
+    def test_movie_pipeline_startframe_director_passes_debug_workflows_dir_to_comfy_adapter(self):
+        class FakeAdapter:
+            def render_movie(self, *, project_dir, render_plan_path, **_kwargs):
+                final = project_dir / "output" / "movie" / "startframe-comfy.mp4"
+                final.parent.mkdir(parents=True, exist_ok=True)
+                final.write_bytes(b"mp4")
+                return final
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            debug_dir = project / "debug" / "startframe-workflows"
+
+            with patch("feverslop.composition.movie_pipeline._build_startframe_director_visual_adapter", return_value=FakeAdapter(), create=True) as builder:
+                result = movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "startframe-director",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "comfyui",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                            "--write-debug-workflows",
+                            "--debug-workflows-dir",
+                            str(debug_dir),
+                        ]
+                    )
+                )
+
+        config = builder.call_args.args[1]
+        self.assertTrue(config["startframe_write_debug_workflows"])
+        self.assertEqual(debug_dir, Path(config["startframe_debug_workflows_dir"]))
+        self.assertEqual(debug_dir, result.debug_workflows_dir)
 
     def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
         with tempfile.TemporaryDirectory() as temp_dir:

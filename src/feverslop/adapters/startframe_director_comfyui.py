@@ -24,6 +24,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
         validator,
         i2v_workflow_path: str | Path = "workflows/video_ltxv_i2v_v1.json",
         model_resolver=None,
+        debug_workflows_dir: str | Path | None = None,
     ):
         self.client = client
         self.director_workflow_path = Path(director_workflow_path)
@@ -34,6 +35,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
         self.video_use_case = video_use_case
         self.validator = validator
         self.model_resolver = model_resolver
+        self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
 
     def render_movie(
         self,
@@ -155,7 +157,12 @@ class ComfyUIStartframeDirectorVisualAdapter:
         )
         patcher.set_input_by_title("#SAVE_IMAGE", "filename_prefix", f"startframe/director/scene_{scene:04}")
         _patch_seed_inputs(patcher, 300000 + scene)
-        return self._queue_and_download(patcher.get(), self.director_workflow_path, project_dir / "output" / "movie" / "startframes" / "director" / f"scene_{scene:04}.png")
+        return self._queue_and_download(
+            patcher.get(),
+            self.director_workflow_path,
+            project_dir / "output" / "movie" / "startframes" / "director" / f"scene_{scene:04}.png",
+            debug_name=f"scene_{scene:04}_director",
+        )
 
     def _render_mask(
         self,
@@ -172,7 +179,12 @@ class ComfyUIStartframeDirectorVisualAdapter:
         patcher.set_input_by_title("#INPUT_IMAGE", "image", self._upload(source_image, "feverslop/startframe/director"))
         patcher.set_existing_input_by_title("#SEGMENT_PROMPT", "prompt", _mask_prompt(actor_id, actor_contract))
         patcher.set_input_by_title("#SAVE_MASK", "filename_prefix", f"startframe/masks/scene_{scene:04}_{actor_id}")
-        return self._queue_and_download(patcher.get(), self.mask_workflow_path, project_dir / "output" / "movie" / "startframes" / "masks" / f"scene_{scene:04}_{actor_id}.png")
+        return self._queue_and_download(
+            patcher.get(),
+            self.mask_workflow_path,
+            project_dir / "output" / "movie" / "startframes" / "masks" / f"scene_{scene:04}_{actor_id}.png",
+            debug_name=f"scene_{scene:04}_mask_{actor_id}",
+        )
 
     def _render_identity_repair(
         self,
@@ -201,7 +213,12 @@ class ComfyUIStartframeDirectorVisualAdapter:
         patcher.set_existing_input_by_title("#DENOISE", "denoise", 0.36)
         _patch_seed_inputs(patcher, 400000 + scene)
         patcher.set_input_by_title("#SAVE_IMAGE", "filename_prefix", f"startframe/repair/scene_{scene:04}_{actor_id}")
-        return self._queue_and_download(patcher.get(), self.identity_repair_workflow_path, project_dir / "output" / "movie" / "startframes" / "repair" / f"scene_{scene:04}_{actor_id}.png")
+        return self._queue_and_download(
+            patcher.get(),
+            self.identity_repair_workflow_path,
+            project_dir / "output" / "movie" / "startframes" / "repair" / f"scene_{scene:04}_{actor_id}.png",
+            debug_name=f"scene_{scene:04}_repair_{actor_id}",
+        )
 
     def _render_detail(self, *, project_dir: Path, scene: int, source_image: Path, shot: dict[str, Any]) -> Path:
         patcher = WorkflowPatcher(_read_json(self.detail_workflow_path))
@@ -213,11 +230,17 @@ class ComfyUIStartframeDirectorVisualAdapter:
             pass
         _patch_seed_inputs(patcher, 500000 + scene)
         patcher.set_input_by_title("#SAVE_IMAGE", "filename_prefix", f"startframe/detail/scene_{scene:04}")
-        return self._queue_and_download(patcher.get(), self.detail_workflow_path, project_dir / "output" / "movie" / "startframes" / "detail" / f"scene_{scene:04}.png")
+        return self._queue_and_download(
+            patcher.get(),
+            self.detail_workflow_path,
+            project_dir / "output" / "movie" / "startframes" / "detail" / f"scene_{scene:04}.png",
+            debug_name=f"scene_{scene:04}_detail",
+        )
 
-    def _queue_and_download(self, workflow: dict[str, Any], workflow_path: Path, output_path: Path) -> Path:
+    def _queue_and_download(self, workflow: dict[str, Any], workflow_path: Path, output_path: Path, *, debug_name: str) -> Path:
         if self.model_resolver is not None:
             workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=workflow_path)
+        self._write_debug_workflow(debug_name, workflow)
         prompt_id = self.client.queue_prompt(workflow)
         history = self.client.wait_for_completion(prompt_id)
         images = self.client.extract_output_images(history)
@@ -236,6 +259,16 @@ class ComfyUIStartframeDirectorVisualAdapter:
         if hasattr(self.client, "comfy_path_from_upload"):
             return self.client.comfy_path_from_upload(upload)
         return ComfyUIVideoAssetUploader.comfy_path_from_upload(upload)
+
+    def _write_debug_workflow(self, debug_name: str, workflow: dict[str, Any]) -> None:
+        if self.debug_workflows_dir is None:
+            return
+        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in debug_name)
+        (self.debug_workflows_dir / f"{safe_name}.json").write_text(
+            json.dumps(workflow, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
 
 def _read_json(path: Path) -> dict[str, Any]:

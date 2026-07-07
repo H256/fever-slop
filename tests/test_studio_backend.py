@@ -642,6 +642,7 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", metadata["movie"]["identity_repair_workflow"])
             self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", metadata["movie"]["detail_workflow"])
             self.assertEqual("http://localhost:8188", metadata["movie"]["startframe_comfyui_base_url"])
+            self.assertFalse(metadata["movie"]["startframe_write_debug_workflows"])
             self.assertEqual("http://llm.elysium.lan/v1", metadata["movie"]["startframe_validator_base_url"])
             self.assertEqual("gemma4-26b-a4b:vision", metadata["movie"]["startframe_validator_model"])
 
@@ -665,6 +666,28 @@ class StudioBackendTests(unittest.TestCase):
 
             self.assertEqual("ideogram", metadata["movie"]["startframe_director_backend"])
             self.assertEqual("workflows/image_t2i_startframe_ideogram_director_v1.json", metadata["movie"]["director_workflow"])
+
+    def test_create_movie_project_persists_startframe_debug_workflow_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            store.create_project(
+                ProjectCreateRequest(
+                    project_type="movie",
+                    name="Debug Director Movie",
+                    story_text="An archivist opens a sealed ledger.",
+                    movie_mode="scaffold",
+                    movie_planner_backend="deterministic",
+                    movie_video_workflow="startframe-director",
+                    movie_startframe_write_debug_workflows=True,
+                    movie_startframe_debug_workflows_dir="debug/startframes",
+                )
+            )
+
+            metadata = json.loads((Path(temp_dir) / "debug-director-movie" / ".studio" / "project.json").read_text())
+
+            self.assertTrue(metadata["movie"]["startframe_write_debug_workflows"])
+            self.assertEqual("debug/startframes", metadata["movie"]["startframe_debug_workflows_dir"])
 
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}

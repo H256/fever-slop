@@ -205,6 +205,7 @@ class StartframeEngineTests(unittest.TestCase):
                 detail_workflow_path=Path("workflows/image_detail_easyuse_startframe_v1.json"),
                 video_use_case=video,
                 validator=validator,
+                debug_workflows_dir=project / "output" / "movie" / "startframes" / "debug_workflows",
             ).render_movie(project_dir=project, render_plan_path=render_plan_path)
 
             self.assertEqual(project / "output" / "movie" / "startframe-director.mp4", final_video)
@@ -226,6 +227,13 @@ class StartframeEngineTests(unittest.TestCase):
             self.assertIn("charcoal coat", _node_by_title(mask, "#SEGMENT_PROMPT")["inputs"]["prompt"])
             self.assertIn("feverslop/startframe/director/", _node_by_title(repair, "#INPUT_IMAGE")["inputs"]["image"])
             self.assertIn("feverslop/startframe/masks/", _node_by_title(repair, "#REGION_MASK_IMAGE")["inputs"]["image"])
+            debug_dir = project / "output" / "movie" / "startframes" / "debug_workflows"
+            self.assertTrue((debug_dir / "scene_0001_director.json").exists())
+            self.assertTrue((debug_dir / "scene_0001_mask_mara.json").exists())
+            self.assertTrue((debug_dir / "scene_0001_repair_ivo.json").exists())
+            self.assertTrue((debug_dir / "scene_0001_detail.json").exists())
+            exported_director = json.loads((debug_dir / "scene_0001_director.json").read_text(encoding="utf-8"))
+            self.assertIn("Mara and Ivo cross the threshold.", _node_by_title(exported_director, "#PROMPT_POSITIVE")["inputs"]["text"])
 
     def test_gemma4_validator_normalizes_non_json_text_fallback(self):
         from feverslop.adapters.gemma4_startframe_validator import normalize_validation_response

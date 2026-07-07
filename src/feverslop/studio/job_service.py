@@ -915,11 +915,24 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
             base_url=config["startframe_validator_base_url"],
             model=config["startframe_validator_model"],
         ),
+        debug_workflows_dir=_startframe_debug_workflows_dir(project_dir, config),
     )
 
 
 def movie_config_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return movie_runtime_config(dict(metadata.get("movie") or {}))
+
+
+def _startframe_debug_workflows_dir(project_dir: Path, config: dict[str, Any]) -> Path | None:
+    if not config.get("startframe_write_debug_workflows"):
+        return None
+    raw = str(config.get("startframe_debug_workflows_dir") or "").strip()
+    if not raw:
+        return project_dir / "output" / "movie" / "startframes" / "debug_workflows"
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    return project_dir / path
 
 
 def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]:
@@ -945,6 +958,8 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "identity_repair_workflow": _movie_workflow_path(raw.get("identity_repair_workflow"), "workflows/image_repair_sdxl_ipadapter_identity_v1.json"),
         "detail_workflow": _movie_workflow_path(raw.get("detail_workflow"), "workflows/image_detail_easyuse_startframe_v1.json"),
         "startframe_comfyui_base_url": str(raw.get("startframe_comfyui_base_url") or "http://localhost:8188").rstrip("/"),
+        "startframe_write_debug_workflows": bool(raw.get("startframe_write_debug_workflows", False)),
+        "startframe_debug_workflows_dir": str(raw.get("startframe_debug_workflows_dir") or ""),
         "startframe_validator_base_url": str(raw.get("startframe_validator_base_url") or "http://llm.elysium.lan/v1").rstrip("/"),
         "startframe_validator_model": str(raw.get("startframe_validator_model") or "gemma4-26b-a4b:vision"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),

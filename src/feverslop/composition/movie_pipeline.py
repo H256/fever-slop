@@ -359,6 +359,13 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)
         final_video_path: Path | None = None
         startframe_validation_path = project_dir / "movie" / "startframe_validation.json"
+        startframe_debug_workflows_dir = _startframe_debug_workflows_dir(project_dir, args)
+        if startframe_debug_workflows_dir is not None:
+            config = {
+                **config,
+                "startframe_write_debug_workflows": True,
+                "startframe_debug_workflows_dir": startframe_debug_workflows_dir,
+            }
         if not args.skip_movie_render:
             _log_stage("Movie startframe-director render", f"rendering via {config['render_backend']}")
             if config["render_backend"] != "local":
@@ -398,6 +405,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             startframe_validation_path=startframe_validation_path if startframe_validation_path.exists() else None,
             reference_manifest_path=reference_manifest_path,
             final_video_path=final_video_path,
+            debug_workflows_dir=startframe_debug_workflows_dir,
         )
 
     if config["movie_video_workflow"] == "i2v-edit":
@@ -622,7 +630,19 @@ def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[st
             base_url=config["startframe_validator_base_url"],
             model=config["startframe_validator_model"],
         ),
+        debug_workflows_dir=config.get("startframe_debug_workflows_dir")
+        if config.get("startframe_write_debug_workflows")
+        else None,
     )
+
+
+def _startframe_debug_workflows_dir(project_dir: Path, args: argparse.Namespace) -> Path | None:
+    if not bool(getattr(args, "write_debug_workflows", False)):
+        return None
+    raw = getattr(args, "debug_workflows_dir", None)
+    if raw:
+        return coerce_local_path(raw).resolve()
+    return project_dir / "output" / "movie" / "startframes" / "debug_workflows"
 
 
 def main() -> None:
