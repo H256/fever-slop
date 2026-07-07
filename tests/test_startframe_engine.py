@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from PIL import Image
 
 
 class StartframeEngineTests(unittest.TestCase):
@@ -62,6 +63,8 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertEqual([384, 105, 896, 668], prompt["compositional_deconstruction"]["elements"][0]["bbox"])
         self.assertIn("gothic archivist", prompt["compositional_deconstruction"]["elements"][0]["desc"])
         self.assertIn("readable text", data["shots"][0]["negative_prompt"])
+        self.assertIn("split screen", data["shots"][0]["negative_prompt"])
+        self.assertIn("contact sheet", data["shots"][0]["negative_prompt"])
 
     def test_ideogram_director_workflow_exposes_patch_anchors(self):
         workflow = json.loads(Path("workflows/image_t2i_startframe_ideogram_director_v1.json").read_text(encoding="utf-8-sig"))
@@ -136,6 +139,48 @@ class StartframeEngineTests(unittest.TestCase):
 
                 self.assertTrue(contract["classes"].issubset(classes))
                 self.assertTrue(contract["anchors"].issubset(titles))
+
+    def test_comfyui_startframe_director_orchestrator_runs_all_stage_workflows(self):
+        from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
+        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
+        from feverslop.application.startframe_i2v_render_plan import write_startframe_i2v_render_plan
+        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_plan import build_startframe_plan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_two_actor_startframe_project(Path(temp_dir))
+            build_startframe_identity_ledger(project_dir=project)
+            build_startframe_plan(project_dir=project)
+            build_startframe_director_prompts(project_dir=project, candidate_count=1)
+            render_plan_path = write_startframe_i2v_render_plan(project_dir=project)
+            client = FakeComfyClient()
+            validator = FakeGemmaValidator()
+            video = FakeVideoUseCase()
+
+            final_video = ComfyUIStartframeDirectorVisualAdapter(
+                client=client,
+                director_workflow_path=Path("workflows/image_t2i_startframe_ideogram_director_v1.json"),
+                mask_workflow_path=Path("workflows/image_mask_sam3_actor_regions_v1.json"),
+                identity_repair_workflow_path=Path("workflows/image_repair_sdxl_ipadapter_identity_v1.json"),
+                detail_workflow_path=Path("workflows/image_detail_easyuse_startframe_v1.json"),
+                video_use_case=video,
+                validator=validator,
+            ).render_movie(project_dir=project, render_plan_path=render_plan_path)
+
+            self.assertEqual(project / "output" / "movie" / "startframe-director.mp4", final_video)
+            self.assertTrue((project / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").exists())
+            self.assertEqual(["director", "mask", "repair", "mask", "repair", "detail"], client.stage_titles)
+            self.assertEqual(["scene_0001.png"], video.startframes)
+            self.assertEqual(1, len(validator.calls))
+            validation = json.loads((project / "movie" / "startframe_validation.json").read_text(encoding="utf-8"))
+            self.assertTrue(validation["shots"][0]["pass"])
+
+            director = client.workflows[0]
+            positive = _node_by_title(director, "#PROMPT_POSITIVE")
+            self.assertIn("Mara and Ivo cross the threshold.", positive["inputs"]["text"])
+            repair = client.workflows[2]
+            self.assertIn("feverslop/startframe/director/", _node_by_title(repair, "#INPUT_IMAGE")["inputs"]["image"])
+            self.assertIn("feverslop/startframe/masks/", _node_by_title(repair, "#REGION_MASK_IMAGE")["inputs"]["image"])
 
 
 def _write_startframe_project(root: Path) -> Path:
@@ -224,3 +269,165 @@ def _write_startframe_project(root: Path) -> Path:
         encoding="utf-8",
     )
     return project
+
+
+def _write_two_actor_startframe_project(root: Path) -> Path:
+    project = root / "two-actor-movie"
+    movie = project / "movie"
+    references = movie / "references"
+    references.mkdir(parents=True)
+    (movie / "bible.json").write_text(
+        json.dumps(
+            {
+                "title": "Signal Below",
+                "actors": [
+                    {"id": "mara", "name": "Mara", "visual_description": "silver-haired archivist in a charcoal coat"},
+                    {"id": "ivo", "name": "Ivo", "visual_description": "young courier in a patched copper jacket"},
+                ],
+                "locations": [
+                    {"id": "archive", "name": "Archive", "visual_description": "dusty municipal archive"},
+                    {"id": "station", "name": "Station", "visual_description": "abandoned underground signal station"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (movie / "render_plan.json").write_text(
+        json.dumps(
+            {
+                "title": "Signal Below",
+                "resolution": {"width": 768, "height": 512},
+                "shots": [
+                    {
+                        "scene": 1,
+                        "shot_id": "shot_0001",
+                        "description": "Mara and Ivo cross the threshold.",
+                        "action": "Mara and Ivo cross the threshold.",
+                        "camera": "wide two-shot",
+                        "location_id": "archive",
+                        "duration_seconds": 3,
+                        "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (movie / "continuity_plan.json").write_text(
+        json.dumps({"scene_continuity": {"shot_0001": {"required_carryovers": ["Mara keeps the ledger under one arm"]}}}),
+        encoding="utf-8",
+    )
+    (references / "manifest.json").write_text(
+        json.dumps(
+            {
+                "actors": [
+                    {
+                        "id": "mara",
+                        "name": "Mara",
+                        "visual_description": "silver-haired archivist in a charcoal coat",
+                        "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png",
+                    },
+                    {
+                        "id": "ivo",
+                        "name": "Ivo",
+                        "visual_description": "young courier in a patched copper jacket",
+                        "msr_sheet_path": "movie/references/actors/ivo/msr_sheet.png",
+                    },
+                ],
+                "locations": [
+                    {
+                        "id": "archive",
+                        "name": "Archive",
+                        "visual_description": "dusty municipal archive",
+                        "msr_sheet_path": "movie/references/locations/archive/views/hero.png",
+                    },
+                    {
+                        "id": "station",
+                        "name": "Station",
+                        "visual_description": "abandoned underground signal station",
+                        "msr_sheet_path": "movie/references/locations/station/views/hero.png",
+                    },
+                ],
+                "generator_backend": "local",
+            }
+        ),
+        encoding="utf-8",
+    )
+    for rel in (
+        "movie/references/actors/mara/msr_sheet.png",
+        "movie/references/actors/ivo/msr_sheet.png",
+        "movie/references/locations/archive/views/hero.png",
+        "movie/references/locations/station/views/hero.png",
+    ):
+        path = project / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (128, 128), "white").save(path)
+    return project
+
+
+def _node_by_title(workflow: dict, title: str) -> dict:
+    return next(node for node in workflow.values() if node.get("_meta", {}).get("title") == title)
+
+
+class FakeComfyClient:
+    def __init__(self):
+        self.workflows = []
+        self.stage_titles = []
+        self._prompt_counter = 0
+
+    def upload_image(self, file_path, subfolder="", file_type="input", overwrite=True, upload_name=None):
+        name = upload_name or Path(file_path).name
+        return {"name": name, "subfolder": subfolder, "type": file_type}
+
+    @staticmethod
+    def comfy_path_from_upload(upload):
+        return f"{upload['subfolder']}/{upload['name']}" if upload.get("subfolder") else upload["name"]
+
+    def queue_prompt(self, workflow):
+        self.workflows.append(workflow)
+        titles = {str(node.get("_meta", {}).get("title") or "") for node in workflow.values()}
+        if "#SAVE_MASK" in titles:
+            self.stage_titles.append("mask")
+        elif "#IPADAPTER_FACEID" in titles:
+            self.stage_titles.append("repair")
+        elif "#DETAILER" in titles:
+            self.stage_titles.append("detail")
+        else:
+            self.stage_titles.append("director")
+        self._prompt_counter += 1
+        return f"prompt-{self._prompt_counter}"
+
+    def wait_for_completion(self, prompt_id):
+        return {"outputs": {"1": {"images": [{"filename": f"{prompt_id}.png", "subfolder": "", "type": "output"}]}}}
+
+    @staticmethod
+    def extract_output_images(history_entry):
+        return next(iter(history_entry["outputs"].values()))["images"]
+
+    @staticmethod
+    def download_view_file(filename, output_path, subfolder="", file_type="output"):
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (64, 64), "white").save(output_path)
+        return output_path
+
+
+class FakeGemmaValidator:
+    def __init__(self):
+        self.calls = []
+
+    def validate_startframe(self, *, image_path, shot_contract, identity_ledger):
+        self.calls.append((Path(image_path), shot_contract, identity_ledger))
+        return {"pass": True, "score": 0.91, "issues": [], "notes": "ok"}
+
+
+class FakeVideoUseCase:
+    def __init__(self):
+        self.startframes = []
+
+    def execute(self, request):
+        self.startframes = sorted(path.name for path in Path(request.storyboard_dir).glob("scene_*.png"))
+        output = Path(request.output_dir) / "clip_0001.mp4"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"clip")
+        return [output]

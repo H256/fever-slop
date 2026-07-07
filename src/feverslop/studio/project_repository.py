@@ -160,6 +160,8 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "mask_workflow": _project_workflow_path(request.movie_mask_workflow, "movie_mask_workflow"),
         "identity_repair_workflow": _project_workflow_path(request.movie_identity_repair_workflow, "movie_identity_repair_workflow"),
         "detail_workflow": _project_workflow_path(request.movie_detail_workflow, "movie_detail_workflow"),
+        "startframe_validator_base_url": str(request.movie_startframe_validator_base_url or "http://llm.elysium.lan/v1").rstrip("/"),
+        "startframe_validator_model": str(request.movie_startframe_validator_model or "gemma4-26b-a4b:vision"),
         "msr_workflow": _project_workflow_path(request.movie_msr_workflow, "movie_msr_workflow"),
         "msr_i2v_workflow": _project_workflow_path(request.movie_msr_i2v_workflow, "movie_msr_i2v_workflow"),
         "i2v_workflow": _project_workflow_path(request.movie_i2v_workflow, "movie_i2v_workflow"),

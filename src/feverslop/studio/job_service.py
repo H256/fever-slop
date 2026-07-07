@@ -445,15 +445,22 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
             log(f"[MoviePipeline] Stage: Movie director prompts ready: {prompts_path}")
             render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)
             log(f"[MoviePipeline] Stage: Movie I2V render plan ready: {render_plan_i2v_path}")
-            if config["render_backend"] != "local":
-                raise NotImplementedError("ComfyUI startframe-director rendering requires validated SAM3/IPAdapter workflows")
-            final_video = LocalStartframeDirectorVisualAdapter().render_movie(
+            adapter = (
+                LocalStartframeDirectorVisualAdapter()
+                if config["render_backend"] == "local"
+                else build_movie_startframe_director_visual_adapter(project_dir, config)
+            )
+            final_video = adapter.render_movie(
                 project_dir=project_dir,
                 render_plan_path=render_plan_i2v_path,
                 on_startframe_step=lambda event: log(f"[MoviePipeline] {_format_movie_startframe_step(event)}"),
                 on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered I2V clip {completed}/{total}: scene {scene_number}"),
             )
-            validation_path = write_local_startframe_validation(project_dir=project_dir)
+            validation_path = (
+                write_local_startframe_validation(project_dir=project_dir)
+                if config["render_backend"] == "local"
+                else project_dir / "movie" / "startframe_validation.json"
+            )
             log(f"[MoviePipeline] Stage: Movie startframe validation ready: {validation_path}")
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
             return final_video
@@ -872,6 +879,42 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
     )
 
 
+def build_movie_startframe_director_visual_adapter(project_dir: Path, config: dict[str, Any]):
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
+    from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
+    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load("app_config.json")
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    ltx_dir = project_dir / "output" / "movie" / "ltx_startframe_director"
+    video_use_case = build_render_video_scenes_use_case(
+        RenderVideoCompositionOptions(
+            workflow_path=config["i2v_workflow"],
+            single_prompt_workflow_path=config["i2v_workflow"],
+            output_dir=ltx_dir,
+            video_pipeline="ltx_i2v",
+        )
+    )
+    return ComfyUIStartframeDirectorVisualAdapter(
+        client=client,
+        director_workflow_path=backend_config_path(config["director_workflow"]),
+        mask_workflow_path=backend_config_path(config["mask_workflow"]),
+        identity_repair_workflow_path=backend_config_path(config["identity_repair_workflow"]),
+        detail_workflow_path=backend_config_path(config["detail_workflow"]),
+        i2v_workflow_path=backend_config_path(config["i2v_workflow"]),
+        video_use_case=video_use_case,
+        validator=Gemma4StartframeValidator(
+            base_url=config["startframe_validator_base_url"],
+            model=config["startframe_validator_model"],
+        ),
+    )
+
+
 def movie_config_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return movie_runtime_config(dict(metadata.get("movie") or {}))
 
@@ -894,6 +937,8 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "mask_workflow": _movie_workflow_path(raw.get("mask_workflow"), "workflows/image_mask_sam3_actor_regions_v1.json"),
         "identity_repair_workflow": _movie_workflow_path(raw.get("identity_repair_workflow"), "workflows/image_repair_sdxl_ipadapter_identity_v1.json"),
         "detail_workflow": _movie_workflow_path(raw.get("detail_workflow"), "workflows/image_detail_easyuse_startframe_v1.json"),
+        "startframe_validator_base_url": str(raw.get("startframe_validator_base_url") or "http://llm.elysium.lan/v1").rstrip("/"),
+        "startframe_validator_model": str(raw.get("startframe_validator_model") or "gemma4-26b-a4b:vision"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
         "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), "workflows/video_ltxv_i2v_v1.json"),

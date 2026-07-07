@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+import base64
+import json
+from pathlib import Path
+from typing import Any
+
+import requests
+
+from feverslop.domain.llm_parsing import extract_json_object
+
+
+class Gemma4StartframeValidator:
+    def __init__(
+        self,
+        *,
+        base_url: str = "http://llm.elysium.lan/v1",
+        model: str = "gemma4-26b-a4b:vision",
+        timeout_seconds: float = 180.0,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.timeout_seconds = float(timeout_seconds)
+
+    def validate_startframe(
+        self,
+        *,
+        image_path: str | Path,
+        shot_contract: dict[str, Any],
+        identity_ledger: dict[str, Any],
+    ) -> dict[str, Any]:
+        image_path = Path(image_path)
+        payload = {
+            "model": self.model,
+            "temperature": 0,
+            "max_tokens": 1024,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a strict film continuity and character identity validator. "
+                        "Return ONLY JSON with keys: pass, score, issues, notes."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Validate whether this startframe matches the shot contract, story continuity, "
+                                "character identity, wardrobe, location, and action moment. "
+                                "Use a high bar; identity includes clothing. JSON contract:\n"
+                                + json.dumps(
+                                    {
+                                        "shot_contract": shot_contract,
+                                        "identity_ledger": identity_ledger,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": _image_data_url(image_path)},
+                        },
+                    ],
+                },
+            ],
+        }
+        response = requests.post(f"{self.base_url}/chat/completions", json=payload, timeout=self.timeout_seconds)
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+        result = extract_json_object(content)
+        return {
+            "pass": bool(result.get("pass")),
+            "score": float(result.get("score") or 0.0),
+            "issues": [str(item) for item in result.get("issues") or []],
+            "notes": str(result.get("notes") or ""),
+        }
+
+
+def _image_data_url(image_path: Path) -> str:
+    suffix = image_path.suffix.lower()
+    mime = "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png"
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"

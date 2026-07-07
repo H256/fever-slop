@@ -640,6 +640,8 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", metadata["movie"]["mask_workflow"])
             self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", metadata["movie"]["identity_repair_workflow"])
             self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", metadata["movie"]["detail_workflow"])
+            self.assertEqual("http://llm.elysium.lan/v1", metadata["movie"]["startframe_validator_base_url"])
+            self.assertEqual("gemma4-26b-a4b:vision", metadata["movie"]["startframe_validator_model"])
 
     def test_build_full_auto_handler_passes_render_inputs_and_pipeline_mode(self):
         captured = {}

@@ -22,7 +22,8 @@ def build_startframe_director_prompts(*, project_dir: Path, candidate_count: int
                 "positive_prompt": json.dumps(prompt, ensure_ascii=False),
                 "negative_prompt": (
                     "extra people, duplicate characters, readable text, watermark, logo, "
-                    "captions, malformed hands, wrong wardrobe, wrong location"
+                    "captions, malformed hands, wrong wardrobe, wrong location, split screen, "
+                    "contact sheet, comic panels, multiple panels, storyboard sheet, reference sheet"
                 ),
                 "width": int(shot.get("width") or 1280),
                 "height": int(shot.get("height") or 704),
@@ -76,4 +77,3 @@ def _ideogram_prompt(shot: dict[str, Any], identity: dict[str, Any]) -> dict[str
             "required_carryovers": list((shot.get("continuity_in") or {}).get("required_carryovers") or []),
         },
     }
-

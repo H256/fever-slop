@@ -256,7 +256,27 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", config["mask_workflow"])
         self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", config["identity_repair_workflow"])
         self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", config["detail_workflow"])
+        self.assertEqual("http://llm.elysium.lan/v1", config["startframe_validator_base_url"])
+        self.assertEqual("gemma4-26b-a4b:vision", config["startframe_validator_model"])
         self.assertEqual("workflows/video_ltxv_i2v_v1.json", config["i2v_workflow"])
+
+    def test_movie_pipeline_accepts_startframe_validator_overrides(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/demo",
+                "--movie-video-workflow",
+                "startframe-director",
+                "--startframe-validator-base-url",
+                "http://llm.elysium.lan/v1/",
+                "--startframe-validator-model",
+                "gemma4-26b-a4b",
+            ]
+        )
+
+        config = movie_pipeline.config_from_args(args)
+
+        self.assertEqual("http://llm.elysium.lan/v1", config["startframe_validator_base_url"])
+        self.assertEqual("gemma4-26b-a4b", config["startframe_validator_model"])
 
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -503,6 +523,59 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual(project / "movie" / "render_plan_i2v.json", adapter.render_plan_path)
         self.assertEqual(project / "output" / "movie" / "comfy.mp4", result.final_video_path)
         self.assertIn("Movie startframe: rendered edit 2/15: scene 1 actor morwenna", output)
+
+    def test_movie_pipeline_startframe_director_uses_comfy_adapter_for_comfy_render_backend(self):
+        class FakeAdapter:
+            def __init__(self):
+                self.render_plan_path = None
+
+            def render_movie(self, *, project_dir, render_plan_path, on_clip_rendered=None, on_startframe_step=None, **_kwargs):
+                self.render_plan_path = render_plan_path
+                if on_startframe_step is not None:
+                    on_startframe_step({"kind": "repair", "completed": 3, "total": 7, "scene": 1, "actor_id": "mara"})
+                final = project_dir / "output" / "movie" / "startframe-comfy.mp4"
+                final.parent.mkdir(parents=True, exist_ok=True)
+                final.write_bytes(b"mp4")
+                return final
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            adapter = FakeAdapter()
+            buffer = io.StringIO()
+            console = Console(file=buffer, force_terminal=False, color_system=None, width=160)
+
+            with (
+                patch("feverslop.composition.movie_pipeline._build_startframe_director_visual_adapter", return_value=adapter, create=True) as builder,
+                patch("feverslop.composition.movie_pipeline.console", console, create=True),
+            ):
+                result = movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "startframe-director",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "comfyui",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+            output = buffer.getvalue()
+
+        builder.assert_called_once()
+        self.assertEqual(project / "movie" / "render_plan_i2v.json", adapter.render_plan_path)
+        self.assertEqual(project / "output" / "movie" / "startframe-comfy.mp4", result.final_video_path)
+        self.assertIn("Movie startframe-director render: rendered repair 3/7: scene 1 actor mara", output)
 
     def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
         with tempfile.TemporaryDirectory() as temp_dir:
