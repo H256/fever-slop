@@ -106,7 +106,13 @@ class ComfyUIStartframeDirectorVisualAdapter:
 
             for actor in shot.get("actors") or []:
                 actor_id = str(actor.get("actor_id") or "")
-                mask = self._render_mask(project_dir=project_dir, scene=scene, actor=actor, source_image=current)
+                mask = self._render_mask(
+                    project_dir=project_dir,
+                    scene=scene,
+                    actor=actor,
+                    source_image=current,
+                    identity_ledger=identity,
+                )
                 completed = _notify(on_startframe_step, completed, total, scene, "mask", actor_id)
                 current = self._render_identity_repair(
                     project_dir=project_dir,
@@ -142,17 +148,29 @@ class ComfyUIStartframeDirectorVisualAdapter:
         patcher = WorkflowPatcher(_read_json(self.director_workflow_path))
         patcher.set_existing_input_by_title_any("#PROMPT_POSITIVE", "text", str(prompt.get("positive_prompt") or ""))
         patcher.set_existing_input_by_title_any("#PROMPT_NEGATIVE", "text", str(prompt.get("negative_prompt") or ""))
-        patcher.set_existing_input_by_title("#WIDTH", "value", int(prompt.get("width") or shot.get("width") or 1280))
-        patcher.set_existing_input_by_title("#HEIGHT", "value", int(prompt.get("height") or shot.get("height") or 704))
+        _patch_dimensions(
+            patcher,
+            width=int(prompt.get("width") or shot.get("width") or 1280),
+            height=int(prompt.get("height") or shot.get("height") or 704),
+        )
         patcher.set_input_by_title("#SAVE_IMAGE", "filename_prefix", f"startframe/director/scene_{scene:04}")
         _patch_seed_inputs(patcher, 300000 + scene)
         return self._queue_and_download(patcher.get(), self.director_workflow_path, project_dir / "output" / "movie" / "startframes" / "director" / f"scene_{scene:04}.png")
 
-    def _render_mask(self, *, project_dir: Path, scene: int, actor: dict[str, Any], source_image: Path) -> Path:
+    def _render_mask(
+        self,
+        *,
+        project_dir: Path,
+        scene: int,
+        actor: dict[str, Any],
+        source_image: Path,
+        identity_ledger: dict[str, Any],
+    ) -> Path:
         actor_id = str(actor.get("actor_id") or "")
+        actor_contract = (identity_ledger.get("actors") or {}).get(actor_id) or {}
         patcher = WorkflowPatcher(_read_json(self.mask_workflow_path))
         patcher.set_input_by_title("#INPUT_IMAGE", "image", self._upload(source_image, "feverslop/startframe/director"))
-        patcher.set_existing_input_by_title("#SEGMENT_PROMPT", "prompt", f"the visible body and face of actor {actor_id}")
+        patcher.set_existing_input_by_title("#SEGMENT_PROMPT", "prompt", _mask_prompt(actor_id, actor_contract))
         patcher.set_input_by_title("#SAVE_MASK", "filename_prefix", f"startframe/masks/scene_{scene:04}_{actor_id}")
         return self._queue_and_download(patcher.get(), self.mask_workflow_path, project_dir / "output" / "movie" / "startframes" / "masks" / f"scene_{scene:04}_{actor_id}.png")
 
@@ -233,6 +251,17 @@ def _patch_seed_inputs(patcher: WorkflowPatcher, seed: int) -> None:
             inputs["noise_seed"] = seed
 
 
+def _patch_dimensions(patcher: WorkflowPatcher, *, width: int, height: int) -> None:
+    try:
+        patcher.set_existing_input_by_title("#WIDTH", "value", width)
+        patcher.set_existing_input_by_title("#HEIGHT", "value", height)
+        return
+    except KeyError:
+        pass
+    patcher.set_existing_input_by_title("#DIMENSIONS", "width", width)
+    patcher.set_existing_input_by_title("#DIMENSIONS", "height", height)
+
+
 def _repair_prompt(actor_id: str, actor_contract: dict[str, Any]) -> str:
     wardrobe = (actor_contract.get("wardrobe") or {}).get("description") or ""
     face = (actor_contract.get("face") or {}).get("description") or ""
@@ -241,6 +270,16 @@ def _repair_prompt(actor_id: str, actor_contract: dict[str, Any]) -> str:
         f"Preserve pose, action, lighting, background, hands, and unmasked pixels. "
         f"Identity: {face}. Wardrobe must remain: {wardrobe}."
     )
+
+
+def _mask_prompt(actor_id: str, actor_contract: dict[str, Any]) -> str:
+    name = str(actor_contract.get("name") or actor_id)
+    wardrobe = (actor_contract.get("wardrobe") or {}).get("description") or ""
+    face = (actor_contract.get("face") or {}).get("description") or ""
+    details = ", ".join(part for part in (face, wardrobe) if part)
+    if details:
+        return f"the visible full body, face, hair, and clothing of {name}: {details}"
+    return f"the visible full body, face, hair, and clothing of {name}"
 
 
 def _notify(callback, completed: int, total: int, scene: int, kind: str, actor_id: str = "") -> int:

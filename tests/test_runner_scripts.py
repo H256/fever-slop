@@ -252,7 +252,8 @@ class RunnerScriptTests(unittest.TestCase):
 
         self.assertEqual("startframe-director", args.movie_video_workflow)
         self.assertEqual("startframe-director", config["movie_video_workflow"])
-        self.assertEqual("workflows/image_t2i_startframe_ideogram_director_v1.json", config["director_workflow"])
+        self.assertEqual("krea2", config["startframe_director_backend"])
+        self.assertEqual("workflows/image_t2i_startframe_krea_v1.json", config["director_workflow"])
         self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", config["mask_workflow"])
         self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", config["identity_repair_workflow"])
         self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", config["detail_workflow"])
@@ -266,6 +267,8 @@ class RunnerScriptTests(unittest.TestCase):
                 "projects/demo",
                 "--movie-video-workflow",
                 "startframe-director",
+                "--startframe-comfyui-base-url",
+                "http://localhost:8188/",
                 "--startframe-validator-base-url",
                 "http://llm.elysium.lan/v1/",
                 "--startframe-validator-model",
@@ -275,8 +278,25 @@ class RunnerScriptTests(unittest.TestCase):
 
         config = movie_pipeline.config_from_args(args)
 
+        self.assertEqual("http://localhost:8188", config["startframe_comfyui_base_url"])
         self.assertEqual("http://llm.elysium.lan/v1", config["startframe_validator_base_url"])
         self.assertEqual("gemma4-26b-a4b", config["startframe_validator_model"])
+
+    def test_movie_pipeline_accepts_ideogram_startframe_director_backend(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/demo",
+                "--movie-video-workflow",
+                "startframe-director",
+                "--startframe-director-backend",
+                "ideogram",
+            ]
+        )
+
+        config = movie_pipeline.config_from_args(args)
+
+        self.assertEqual("ideogram", config["startframe_director_backend"])
+        self.assertEqual("workflows/image_t2i_startframe_ideogram_director_v1.json", config["director_workflow"])
 
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -390,6 +410,8 @@ class RunnerScriptTests(unittest.TestCase):
             self.assertEqual(project / "movie" / "identity_ledger.json", result.identity_ledger_path)
             self.assertEqual(project / "movie" / "startframe_plan.json", result.startframe_plan_path)
             self.assertEqual(project / "movie" / "startframe_director_prompts.json", result.startframe_director_prompts_path)
+            prompts = json.loads(result.startframe_director_prompts_path.read_text(encoding="utf-8"))
+            self.assertEqual("krea2", prompts["shots"][0]["director_backend"])
             self.assertTrue((project / "movie" / "startframe_validation.json").exists())
             self.assertTrue((project / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").exists())
             self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)

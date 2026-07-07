@@ -133,9 +133,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hero-workflow", default=None)
     parser.add_argument("--edit-workflow", default=None)
     parser.add_argument("--director-workflow", default=None)
+    parser.add_argument("--startframe-director-backend", choices=["krea2", "ideogram"], default=None)
     parser.add_argument("--mask-workflow", default=None)
     parser.add_argument("--identity-repair-workflow", default=None)
     parser.add_argument("--detail-workflow", default=None)
+    parser.add_argument("--startframe-comfyui-base-url", default=None)
     parser.add_argument("--startframe-validator-base-url", default=None)
     parser.add_argument("--startframe-validator-model", default=None)
     parser.add_argument("--msr-workflow", default=None)
@@ -173,9 +175,11 @@ def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "hero_workflow",
         "edit_workflow",
         "director_workflow",
+        "startframe_director_backend",
         "mask_workflow",
         "identity_repair_workflow",
         "detail_workflow",
+        "startframe_comfyui_base_url",
         "startframe_validator_base_url",
         "startframe_validator_model",
         "msr_workflow",
@@ -346,8 +350,11 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         identity_ledger_path = build_startframe_identity_ledger(project_dir=project_dir)
         _log_stage("Movie startframe plan", "deriving shot contracts, bboxes, and continuity requirements")
         startframe_plan_path = build_startframe_plan(project_dir=project_dir)
-        _log_stage("Movie director prompts", "writing structured Ideogram prompts")
-        startframe_director_prompts_path = build_startframe_director_prompts(project_dir=project_dir)
+        _log_stage("Movie director prompts", f"writing {config['startframe_director_backend']} director prompts")
+        startframe_director_prompts_path = build_startframe_director_prompts(
+            project_dir=project_dir,
+            director_backend=config["startframe_director_backend"],
+        )
         _log_stage("Movie I2V render plan", "writing classic I2V handoff plan")
         render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)
         final_video_path: Path | None = None
@@ -548,7 +555,7 @@ def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
 
     app_config = AppConfig.load("app_config.json")
     client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
+        base_url=str(config.get("startframe_comfyui_base_url") or app_config.comfyui.base_url),
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
     )
     model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)

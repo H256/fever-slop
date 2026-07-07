@@ -53,18 +53,45 @@ class StartframeEngineTests(unittest.TestCase):
             build_startframe_identity_ledger(project_dir=project)
             build_startframe_plan(project_dir=project)
 
-            output = build_startframe_director_prompts(project_dir=project, candidate_count=3)
+            output = build_startframe_director_prompts(project_dir=project, candidate_count=3, director_backend="ideogram")
             data = json.loads(output.read_text(encoding="utf-8"))
 
         prompt_text = data["shots"][0]["positive_prompt"]
         prompt = json.loads(prompt_text)
         self.assertEqual(3, data["shots"][0]["candidate_count"])
-        self.assertEqual("Mara opens the sealed ledger.", prompt["high_level_description"])
-        self.assertEqual([384, 105, 896, 668], prompt["compositional_deconstruction"]["elements"][0]["bbox"])
-        self.assertIn("gothic archivist", prompt["compositional_deconstruction"]["elements"][0]["desc"])
+        self.assertEqual("Mara opens the sealed ledger.", prompt["scene_summary"])
+        self.assertEqual([384, 105, 896, 668], prompt["objects"][0]["bounding_box"])
+        self.assertIn("gothic archivist", prompt["objects"][0]["description"])
+        self.assertNotIn("continuity_constraints", prompt)
+        self.assertNotIn("required_carryovers", prompt)
         self.assertIn("readable text", data["shots"][0]["negative_prompt"])
         self.assertIn("split screen", data["shots"][0]["negative_prompt"])
         self.assertIn("contact sheet", data["shots"][0]["negative_prompt"])
+
+    def test_krea2_director_prompts_are_single_frame_plain_cinematic_prompts(self):
+        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
+        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_plan import build_startframe_plan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_two_actor_startframe_project(Path(temp_dir))
+            build_startframe_identity_ledger(project_dir=project)
+            build_startframe_plan(project_dir=project)
+
+            output = build_startframe_director_prompts(project_dir=project, candidate_count=2, director_backend="krea2")
+            data = json.loads(output.read_text(encoding="utf-8"))
+
+        shot = data["shots"][0]
+        self.assertEqual("krea2", shot["director_backend"])
+        self.assertEqual("workflows/image_t2i_startframe_krea_v1.json", shot["workflow"])
+        self.assertEqual(2, shot["candidate_count"])
+        self.assertIn("single cinematic film still", shot["positive_prompt"])
+        self.assertIn("Mara", shot["positive_prompt"])
+        self.assertIn("charcoal coat", shot["positive_prompt"])
+        self.assertIn("Ivo", shot["positive_prompt"])
+        self.assertIn("copper jacket", shot["positive_prompt"])
+        self.assertNotIn("{", shot["positive_prompt"])
+        self.assertNotIn("required_carryovers", shot["positive_prompt"])
 
     def test_ideogram_director_workflow_exposes_patch_anchors(self):
         workflow = json.loads(Path("workflows/image_t2i_startframe_ideogram_director_v1.json").read_text(encoding="utf-8-sig"))
@@ -75,6 +102,19 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertIn("#SAVE_IMAGE", titles)
         self.assertIn("#WIDTH", titles)
         self.assertIn("#HEIGHT", titles)
+
+    def test_krea2_director_workflow_exposes_patch_anchors(self):
+        workflow = json.loads(Path("workflows/image_t2i_startframe_krea_v1.json").read_text(encoding="utf-8-sig"))
+        titles = {str(node.get("_meta", {}).get("title") or "") for node in workflow.values()}
+        classes = {str(node.get("class_type") or "") for node in workflow.values()}
+
+        self.assertIn("#PROMPT_POSITIVE", titles)
+        self.assertIn("#PROMPT_NEGATIVE", titles)
+        self.assertIn("#SAVE_IMAGE", titles)
+        self.assertIn("#DIMENSIONS", titles)
+        self.assertIn("UNETLoader", classes)
+        self.assertIn("CLIPLoader", classes)
+        self.assertNotIn("LoraLoaderModelOnly", classes)
 
     def test_startframe_comfyui_stage_workflows_expose_patch_anchors(self):
         expected = {
@@ -151,7 +191,7 @@ class StartframeEngineTests(unittest.TestCase):
             project = _write_two_actor_startframe_project(Path(temp_dir))
             build_startframe_identity_ledger(project_dir=project)
             build_startframe_plan(project_dir=project)
-            build_startframe_director_prompts(project_dir=project, candidate_count=1)
+            build_startframe_director_prompts(project_dir=project, candidate_count=1, director_backend="krea2")
             render_plan_path = write_startframe_i2v_render_plan(project_dir=project)
             client = FakeComfyClient()
             validator = FakeGemmaValidator()
@@ -159,7 +199,7 @@ class StartframeEngineTests(unittest.TestCase):
 
             final_video = ComfyUIStartframeDirectorVisualAdapter(
                 client=client,
-                director_workflow_path=Path("workflows/image_t2i_startframe_ideogram_director_v1.json"),
+                director_workflow_path=Path("workflows/image_t2i_startframe_krea_v1.json"),
                 mask_workflow_path=Path("workflows/image_mask_sam3_actor_regions_v1.json"),
                 identity_repair_workflow_path=Path("workflows/image_repair_sdxl_ipadapter_identity_v1.json"),
                 detail_workflow_path=Path("workflows/image_detail_easyuse_startframe_v1.json"),
@@ -178,9 +218,31 @@ class StartframeEngineTests(unittest.TestCase):
             director = client.workflows[0]
             positive = _node_by_title(director, "#PROMPT_POSITIVE")
             self.assertIn("Mara and Ivo cross the threshold.", positive["inputs"]["text"])
+            self.assertEqual(768, _node_by_title(director, "#DIMENSIONS")["inputs"]["width"])
+            self.assertEqual(512, _node_by_title(director, "#DIMENSIONS")["inputs"]["height"])
             repair = client.workflows[2]
+            mask = client.workflows[1]
+            self.assertIn("Mara", _node_by_title(mask, "#SEGMENT_PROMPT")["inputs"]["prompt"])
+            self.assertIn("charcoal coat", _node_by_title(mask, "#SEGMENT_PROMPT")["inputs"]["prompt"])
             self.assertIn("feverslop/startframe/director/", _node_by_title(repair, "#INPUT_IMAGE")["inputs"]["image"])
             self.assertIn("feverslop/startframe/masks/", _node_by_title(repair, "#REGION_MASK_IMAGE")["inputs"]["image"])
+
+    def test_gemma4_validator_normalizes_non_json_text_fallback(self):
+        from feverslop.adapters.gemma4_startframe_validator import normalize_validation_response
+
+        result = normalize_validation_response(
+            """
+            Pass: False
+            Score: 0.9
+            Issues: ["Action moment discrepancy: ledger is held with both hands."]
+            Notes: Identity, wardrobe, and location are consistent.
+            """
+        )
+
+        self.assertFalse(result["pass"])
+        self.assertEqual(0.9, result["score"])
+        self.assertEqual(["Action moment discrepancy: ledger is held with both hands."], result["issues"])
+        self.assertIn("Identity", result["notes"])
 
 
 def _write_startframe_project(root: Path) -> Path:

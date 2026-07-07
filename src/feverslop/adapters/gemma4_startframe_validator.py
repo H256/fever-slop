@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import ast
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +73,11 @@ class Gemma4StartframeValidator:
         response = requests.post(f"{self.base_url}/chat/completions", json=payload, timeout=self.timeout_seconds)
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
+        return normalize_validation_response(content)
+
+
+def normalize_validation_response(content: str) -> dict[str, Any]:
+    try:
         result = extract_json_object(content)
         return {
             "pass": bool(result.get("pass")),
@@ -78,6 +85,54 @@ class Gemma4StartframeValidator:
             "issues": [str(item) for item in result.get("issues") or []],
             "notes": str(result.get("notes") or ""),
         }
+    except ValueError:
+        return _validation_from_text(content)
+
+
+def _validation_from_text(content: str) -> dict[str, Any]:
+    text = str(content or "")
+    passed = _extract_bool(text, default=False)
+    score = _extract_score(text)
+    issues = _extract_issues(text)
+    notes = _extract_notes(text)
+    return {"pass": passed, "score": score, "issues": issues, "notes": notes}
+
+
+def _extract_bool(text: str, *, default: bool) -> bool:
+    matches = re.findall(r"\bpass\s*:\s*(true|false|yes|no)\b", text, flags=re.IGNORECASE)
+    if not matches:
+        return default
+    value = matches[-1].lower()
+    return value in {"true", "yes"}
+
+
+def _extract_score(text: str) -> float:
+    matches = re.findall(r"\bscore\s*:\s*([0-9]+(?:\.[0-9]+)?)", text, flags=re.IGNORECASE)
+    if not matches:
+        return 0.0
+    return float(matches[-1])
+
+
+def _extract_issues(text: str) -> list[str]:
+    matches = re.findall(r"\bissues\s*:\s*(\[[^\]]*\]|[^\n]+)", text, flags=re.IGNORECASE)
+    if not matches:
+        return []
+    raw = matches[-1].strip()
+    if raw.startswith("["):
+        try:
+            value = ast.literal_eval(raw)
+            if isinstance(value, list):
+                return [str(item) for item in value]
+        except (SyntaxError, ValueError):
+            pass
+    return [item.strip(" -\"'") for item in re.split(r";|\n", raw) if item.strip(" -\"'")]
+
+
+def _extract_notes(text: str) -> str:
+    matches = re.findall(r"\bnotes\s*:\s*(.+)", text, flags=re.IGNORECASE)
+    if not matches:
+        return text.strip()[:1000]
+    return matches[-1].strip().strip("\"'")
 
 
 def _image_data_url(image_path: Path) -> str:

@@ -58,10 +58,12 @@ class ProjectCreatePayload(BaseModel):
     movie_render_backend: str = "comfyui"
     movie_hero_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
     movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
-    movie_director_workflow: str = "workflows/image_t2i_startframe_ideogram_director_v1.json"
+    movie_startframe_director_backend: str = "krea2"
+    movie_director_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
     movie_mask_workflow: str = "workflows/image_mask_sam3_actor_regions_v1.json"
     movie_identity_repair_workflow: str = "workflows/image_repair_sdxl_ipadapter_identity_v1.json"
     movie_detail_workflow: str = "workflows/image_detail_easyuse_startframe_v1.json"
+    movie_startframe_comfyui_base_url: str = "http://localhost:8188"
     movie_startframe_validator_base_url: str = "http://llm.elysium.lan/v1"
     movie_startframe_validator_model: str = "gemma4-26b-a4b:vision"
     movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
@@ -141,10 +143,12 @@ def create_app(
                     movie_render_backend=payload.movie_render_backend,
                     movie_hero_workflow=payload.movie_hero_workflow,
                     movie_edit_workflow=payload.movie_edit_workflow,
+                    movie_startframe_director_backend=payload.movie_startframe_director_backend,
                     movie_director_workflow=payload.movie_director_workflow,
                     movie_mask_workflow=payload.movie_mask_workflow,
                     movie_identity_repair_workflow=payload.movie_identity_repair_workflow,
                     movie_detail_workflow=payload.movie_detail_workflow,
+                    movie_startframe_comfyui_base_url=payload.movie_startframe_comfyui_base_url,
                     movie_startframe_validator_base_url=payload.movie_startframe_validator_base_url,
                     movie_startframe_validator_model=payload.movie_startframe_validator_model,
                     movie_msr_workflow=payload.movie_msr_workflow,

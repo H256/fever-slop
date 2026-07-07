@@ -143,6 +143,12 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
     reference_backend = _supported_backend(request.movie_reference_backend, "movie_reference_backend", {"comfyui", "local"}, default="comfyui")
     render_backend = _supported_backend(request.movie_render_backend, "movie_render_backend", {"comfyui", "local"}, default="comfyui")
     movie_video_workflow = _supported_backend(request.movie_video_workflow, "movie_video_workflow", {"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"}, default="msr")
+    startframe_director_backend = _supported_backend(
+        request.movie_startframe_director_backend,
+        "movie_startframe_director_backend",
+        {"krea2", "ideogram"},
+        default="krea2",
+    )
     continuity_keyframes = _supported_backend(request.movie_continuity_keyframes, "movie_continuity_keyframes", {"none", "last-to-start"}, default="none")
     if continuity_keyframes == "last-to-start" and movie_video_workflow != "msr-i2v-startframe":
         raise ValueError("movie_continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
@@ -152,14 +158,19 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "reference_backend": reference_backend,
         "render_backend": render_backend,
         "movie_video_workflow": movie_video_workflow,
+        "startframe_director_backend": startframe_director_backend,
         "continuity_keyframes": continuity_keyframes,
         "dialogue_language": _dialogue_language(request.dialogue_language),
         "hero_workflow": _project_workflow_path(request.movie_hero_workflow, "movie_hero_workflow"),
         "edit_workflow": edit_workflow,
-        "director_workflow": _project_workflow_path(request.movie_director_workflow, "movie_director_workflow"),
+        "director_workflow": _project_workflow_path(
+            _default_movie_director_workflow(request.movie_director_workflow, startframe_director_backend),
+            "movie_director_workflow",
+        ),
         "mask_workflow": _project_workflow_path(request.movie_mask_workflow, "movie_mask_workflow"),
         "identity_repair_workflow": _project_workflow_path(request.movie_identity_repair_workflow, "movie_identity_repair_workflow"),
         "detail_workflow": _project_workflow_path(request.movie_detail_workflow, "movie_detail_workflow"),
+        "startframe_comfyui_base_url": str(request.movie_startframe_comfyui_base_url or "http://localhost:8188").rstrip("/"),
         "startframe_validator_base_url": str(request.movie_startframe_validator_base_url or "http://llm.elysium.lan/v1").rstrip("/"),
         "startframe_validator_model": str(request.movie_startframe_validator_model or "gemma4-26b-a4b:vision"),
         "msr_workflow": _project_workflow_path(request.movie_msr_workflow, "movie_msr_workflow"),
@@ -326,6 +337,18 @@ def _movie_edit_workflow(value: str, *, movie_video_workflow: str) -> str:
     if movie_video_workflow == "i2v-edit" and str(value or "").strip() in {"", default_1ref}:
         return "workflows/image_edit_flux2_klein_2ref_v1.json"
     return _project_workflow_path(value, "movie_edit_workflow")
+
+
+def _default_movie_director_workflow(value: str, backend: str) -> str:
+    raw = str(value or "").strip()
+    krea_default = "workflows/image_t2i_startframe_krea_v1.json"
+    if raw:
+        if backend == "ideogram" and raw == krea_default:
+            return "workflows/image_t2i_startframe_ideogram_director_v1.json"
+        return raw
+    if backend == "ideogram":
+        return "workflows/image_t2i_startframe_ideogram_director_v1.json"
+    return krea_default
 
 
 def _dialogue_language(value: object) -> str:
