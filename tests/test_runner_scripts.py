@@ -403,8 +403,10 @@ class RunnerScriptTests(unittest.TestCase):
             def __init__(self):
                 self.render_plan_path = None
 
-            def render_movie(self, *, project_dir, render_plan_path, on_clip_rendered=None, **_kwargs):
+            def render_movie(self, *, project_dir, render_plan_path, on_clip_rendered=None, on_startframe_step=None, **_kwargs):
                 self.render_plan_path = render_plan_path
+                if on_startframe_step is not None:
+                    on_startframe_step({"kind": "edit", "completed": 2, "total": 15, "scene": 1, "actor_id": "morwenna"})
                 final = project_dir / "output" / "movie" / "comfy.mp4"
                 final.parent.mkdir(parents=True, exist_ok=True)
                 final.write_bytes(b"mp4")
@@ -413,8 +415,13 @@ class RunnerScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_movie_project(Path(temp_dir), ready=True)
             adapter = FakeAdapter()
+            buffer = io.StringIO()
+            console = Console(file=buffer, force_terminal=False, color_system=None, width=160)
 
-            with patch("feverslop.composition.movie_pipeline._build_i2v_edit_visual_adapter", return_value=adapter, create=True) as builder:
+            with (
+                patch("feverslop.composition.movie_pipeline._build_i2v_edit_visual_adapter", return_value=adapter, create=True) as builder,
+                patch("feverslop.composition.movie_pipeline.console", console, create=True),
+            ):
                 result = movie_pipeline.run(
                     movie_pipeline.build_arg_parser().parse_args(
                         [
@@ -437,10 +444,12 @@ class RunnerScriptTests(unittest.TestCase):
                         ]
                     )
                 )
+            output = buffer.getvalue()
 
         builder.assert_called_once()
         self.assertEqual(project / "movie" / "render_plan_i2v.json", adapter.render_plan_path)
         self.assertEqual(project / "output" / "movie" / "comfy.mp4", result.final_video_path)
+        self.assertIn("Movie startframe: rendered edit 2/15: scene 1 actor morwenna", output)
 
     def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
         with tempfile.TemporaryDirectory() as temp_dir:

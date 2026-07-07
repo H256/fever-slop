@@ -2211,6 +2211,100 @@ class MovieProjectTests(unittest.TestCase):
             self.assertTrue((project / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").exists())
             self.assertEqual(project / "output" / "movie" / "storyboard" / "final", video.request.storyboard_dir)
 
+    def test_movie_i2v_edit_adapter_reports_startframe_step_progress(self):
+        from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
+
+        class FakeArtifactStore:
+            def read_render_plan(self, _path):
+                return [
+                    {
+                        "scene": 1,
+                        "z_image": {"prompt": "base one"},
+                        "movie": {
+                            "edit_passes": [
+                                {"pass": 1, "actor_id": "leo", "reference_image_path": "movie/references/actors/leo/hero.png", "prompt": "Add leo."},
+                                {"pass": 2, "actor_id": "morwenna", "reference_image_path": "movie/references/actors/morwenna/hero.png", "prompt": "Add morwenna."},
+                            ]
+                        },
+                    },
+                    {
+                        "scene": 2,
+                        "z_image": {"prompt": "base two"},
+                        "movie": {
+                            "edit_passes": [
+                                {"pass": 1, "actor_id": "leo", "reference_image_path": "movie/references/actors/leo/hero.png", "prompt": "Add leo."},
+                            ]
+                        },
+                    },
+                ]
+
+        class FakeBaseBackend:
+            def render_image(self, request):
+                path = request.output_dir / f"scene_{request.scene_number:04}.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"base")
+                return path
+
+        class FakeEditBackend:
+            def render_edit(self, **kwargs):
+                path = Path(kwargs["output_dir"]) / f"scene_{kwargs['scene_number']:04}_pass_{kwargs['pass_number']:02}.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"edit")
+                return path
+
+        class FakeVideoUseCase:
+            def execute(self, request):
+                final = request.output_dir / "final" / "scene_0001.mp4"
+                final.parent.mkdir(parents=True, exist_ok=True)
+                final.write_bytes(b"clip")
+                return [final]
+
+        class FakePostprocessor:
+            def write_concat_list(self, rendered, output_path):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text("\n".join(str(path) for path in rendered), encoding="utf-8")
+                return output_path
+
+            def concat_clips(self, concat_list, final_output, *, video_only=False, reencode=True):
+                final_output.parent.mkdir(parents=True, exist_ok=True)
+                final_output.write_bytes(b"movie")
+                return final_output
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            for actor_id in ("leo", "morwenna"):
+                character = project / "movie" / "references" / "actors" / actor_id / "hero.png"
+                character.parent.mkdir(parents=True, exist_ok=True)
+                character.write_bytes(b"hero")
+            events = []
+            adapter = ComfyUIMovieI2VEditVisualAdapter(
+                base_image_backend=FakeBaseBackend(),
+                edit_backend=FakeEditBackend(),
+                artifact_store=FakeArtifactStore(),
+                video_use_case=FakeVideoUseCase(),
+                workflow_path=Path("base.json"),
+                edit_workflow_path=Path("edit.json"),
+                i2v_workflow_path=Path("i2v.json"),
+                postprocessor=FakePostprocessor(),
+            )
+
+            adapter.render_movie(
+                project_dir=project,
+                render_plan_path=project / "movie" / "render_plan_i2v.json",
+                on_startframe_step=lambda event: events.append(event),
+            )
+
+        self.assertEqual(
+            [
+                ("base", 1, 5, 1, ""),
+                ("edit", 2, 5, 1, "leo"),
+                ("edit", 3, 5, 1, "morwenna"),
+                ("base", 4, 5, 2, ""),
+                ("edit", 5, 5, 2, "leo"),
+            ],
+            [(event["kind"], event["completed"], event["total"], event["scene"], event.get("actor_id", "")) for event in events],
+        )
+
     def test_movie_storyboard_page_lists_visual_plan_shots(self):
         from feverslop.tools.movie_storyboard_page import generate_movie_storyboard_page
 

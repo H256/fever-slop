@@ -419,6 +419,7 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
             final_video = adapter.render_movie(
                 project_dir=project_dir,
                 render_plan_path=render_plan_i2v_path,
+                on_startframe_step=lambda event: log(f"[MoviePipeline] {_format_movie_startframe_step(event)}"),
                 on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered I2V clip {completed}/{total}: scene {scene_number}"),
             )
             storyboard_page = generate_movie_storyboard_page(project_dir=project_dir)
@@ -500,6 +501,16 @@ def ensure_movie_references(project_dir: Path, *, movie_config: dict[str, Any] |
         build_movie_reference_generator(movie_config=config).generate(project_dir=project_dir),
         config["reference_backend"],
     )
+
+
+def _format_movie_startframe_step(event: dict[str, Any]) -> str:
+    kind = str(event.get("kind") or "step")
+    completed = int(event.get("completed") or 0)
+    total = int(event.get("total") or 0)
+    scene = int(event.get("scene") or 0)
+    actor_id = str(event.get("actor_id") or "").strip()
+    actor_suffix = f" actor {actor_id}" if actor_id else ""
+    return f"Rendered startframe {kind} {completed}/{total}: scene {scene}{actor_suffix}"
 
 
 def movie_references_ready(manifest_path: Path, *, backend: str | None = None) -> bool:

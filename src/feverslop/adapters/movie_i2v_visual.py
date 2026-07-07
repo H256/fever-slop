@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable
+from typing import Any, Callable
 
 from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
 
@@ -17,6 +17,7 @@ class LocalMovieI2VEditVisualAdapter:
         concat_only: bool = False,
         continuity_keyframes: str = "none",
         on_clip_rendered: Callable[[int, int, int], None] | None = None,
+        on_startframe_step: Callable[[dict[str, Any]], None] | None = None,
     ) -> Path:
         output_dir = Path(project_dir) / "output" / "movie"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -58,9 +59,10 @@ class ComfyUIMovieI2VEditVisualAdapter:
         concat_only: bool = False,
         continuity_keyframes: str = "none",
         on_clip_rendered: Callable[[int, int, int], None] | None = None,
+        on_startframe_step: Callable[[dict[str, Any]], None] | None = None,
     ) -> Path:
         project_dir = Path(project_dir)
-        storyboard_dir = self._render_startframes(project_dir=project_dir, render_plan_path=render_plan_path)
+        storyboard_dir = self._render_startframes(project_dir=project_dir, render_plan_path=render_plan_path, on_startframe_step=on_startframe_step)
         ltx_dir = project_dir / "output" / "movie" / "ltx_i2v"
         rendered = self.video_use_case.execute(
             SimpleNamespace(
@@ -89,8 +91,16 @@ class ComfyUIMovieI2VEditVisualAdapter:
             reencode=True,
         )
 
-    def _render_startframes(self, *, project_dir: Path, render_plan_path: Path) -> Path:
+    def _render_startframes(
+        self,
+        *,
+        project_dir: Path,
+        render_plan_path: Path,
+        on_startframe_step: Callable[[dict[str, Any]], None] | None = None,
+    ) -> Path:
         scenes = self.artifact_store.read_render_plan(render_plan_path)
+        total_steps = _startframe_step_count(scenes)
+        completed_steps = 0
         base_dir = project_dir / "output" / "movie" / "storyboard" / "base"
         edit_dir = project_dir / "output" / "movie" / "storyboard" / "edit"
         final_dir = project_dir / "output" / "movie" / "storyboard" / "final"
@@ -111,6 +121,14 @@ class ComfyUIMovieI2VEditVisualAdapter:
                     height=int(scene.get("height") or 704),
                 )
             )
+            completed_steps += 1
+            _notify_startframe_step(
+                on_startframe_step,
+                kind="base",
+                completed=completed_steps,
+                total=total_steps,
+                scene_number=scene_number,
+            )
             current_path = base_path
             for edit_pass in (scene.get("movie") or {}).get("edit_passes") or []:
                 current_path = self.edit_backend.render_edit(
@@ -121,6 +139,49 @@ class ComfyUIMovieI2VEditVisualAdapter:
                     output_dir=edit_dir,
                     pass_number=int(edit_pass["pass"]),
                 )
+                completed_steps += 1
+                _notify_startframe_step(
+                    on_startframe_step,
+                    kind="edit",
+                    completed=completed_steps,
+                    total=total_steps,
+                    scene_number=scene_number,
+                    actor_id=str(edit_pass.get("actor_id") or ""),
+                    pass_number=int(edit_pass["pass"]),
+                )
             final_path = final_dir / f"scene_{scene_number:04}.png"
             final_path.write_bytes(Path(current_path).read_bytes())
         return final_dir
+
+
+def _startframe_step_count(scenes: list[dict[str, Any]]) -> int:
+    total = 0
+    for scene in scenes:
+        total += 1
+        total += len((scene.get("movie") or {}).get("edit_passes") or [])
+    return total
+
+
+def _notify_startframe_step(
+    callback: Callable[[dict[str, Any]], None] | None,
+    *,
+    kind: str,
+    completed: int,
+    total: int,
+    scene_number: int,
+    actor_id: str = "",
+    pass_number: int | None = None,
+) -> None:
+    if callback is None:
+        return
+    event: dict[str, Any] = {
+        "kind": kind,
+        "completed": completed,
+        "total": total,
+        "scene": scene_number,
+    }
+    if actor_id:
+        event["actor_id"] = actor_id
+    if pass_number is not None:
+        event["pass"] = pass_number
+    callback(event)

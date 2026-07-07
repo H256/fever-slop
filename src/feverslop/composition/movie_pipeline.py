@@ -315,6 +315,10 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             final_video_path = adapter.render_movie(
                 project_dir=project_dir,
                 render_plan_path=render_plan_i2v_path,
+                on_startframe_step=lambda event: _log_stage(
+                    "Movie startframe",
+                    _format_startframe_step(event),
+                ),
                 on_clip_rendered=lambda completed, total, scene_number: _log_stage(
                     "Movie I2V clip",
                     f"rendered {completed}/{total}: scene {scene_number}",
@@ -401,6 +405,16 @@ def _log_stage(title: str, detail: str = "") -> None:
     if detail:
         message = f"{message}: {detail}"
     console.print(message)
+
+
+def _format_startframe_step(event: dict[str, Any]) -> str:
+    kind = str(event.get("kind") or "step")
+    completed = int(event.get("completed") or 0)
+    total = int(event.get("total") or 0)
+    scene = int(event.get("scene") or 0)
+    actor_id = str(event.get("actor_id") or "").strip()
+    actor_suffix = f" actor {actor_id}" if actor_id else ""
+    return f"rendered {kind} {completed}/{total}: scene {scene}{actor_suffix}"
 
 
 def _build_reference_generator(config: dict[str, Any]):
