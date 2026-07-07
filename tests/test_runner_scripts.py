@@ -360,6 +360,44 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertIn("Storyboard review page", output)
         self.assertIn("Movie complete", output)
 
+    def test_movie_pipeline_i2v_edit_prints_stage_progress_counts(self):
+        from feverslop.composition import movie_pipeline as movie_pipeline_module
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            buffer = io.StringIO()
+            console = Console(file=buffer, force_terminal=False, color_system=None, width=160)
+
+            with patch.object(movie_pipeline_module, "console", console, create=True):
+                movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "i2v-edit",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "local",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+
+            output = buffer.getvalue()
+
+        self.assertIn("Movie pipeline stages", output)
+        self.assertIn("8/8", output)
+        self.assertIn("100%", output)
+
     def test_movie_pipeline_i2v_edit_uses_comfy_adapter_for_comfy_render_backend(self):
         class FakeAdapter:
             def __init__(self):

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
@@ -38,6 +39,57 @@ from feverslop.studio.job_service import (
 
 
 console = Console()
+
+MOVIE_BASE_STAGE_TITLES = {
+    "Movie planning",
+    "Movie reference manifest",
+    "Movie references",
+}
+
+MOVIE_I2V_EDIT_STAGE_TITLES = {
+    *MOVIE_BASE_STAGE_TITLES,
+    "Movie visual plan",
+    "Movie I2V render plan",
+    "Movie I2V/edit render",
+    "Storyboard review page",
+    "Movie complete",
+}
+
+
+class MovieStageProgressReporter:
+    def __init__(self, stage_titles: set[str], *, console: Console = console):
+        self.stage_titles = set(stage_titles)
+        self.total = len(self.stage_titles)
+        self.progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        )
+        self.task_id = None
+        self.completed = 0
+        self.seen: set[str] = set()
+
+    def __enter__(self) -> MovieStageProgressReporter:
+        self.progress.__enter__()
+        self.task_id = self.progress.add_task("Movie pipeline stages", total=self.total)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.progress.__exit__(exc_type, exc_value, traceback)
+
+    def advance(self, title: str) -> None:
+        if title not in self.stage_titles or title in self.seen or self.task_id is None:
+            return
+        self.seen.add(title)
+        self.completed = min(self.total, self.completed + 1)
+        self.progress.update(self.task_id, completed=self.completed)
+
+
+_stage_progress: MovieStageProgressReporter | None = None
 
 
 @dataclass(frozen=True)
@@ -114,8 +166,25 @@ def _looks_like_i2v_workflow(value: object) -> bool:
 
 
 def run(args: argparse.Namespace) -> MoviePipelineResult:
-    project_dir = coerce_local_path(args.project_dir).resolve()
     config = config_from_args(args)
+    with MovieStageProgressReporter(stage_titles=_movie_stage_titles(config), console=console) as progress:
+        global _stage_progress
+        previous_progress = _stage_progress
+        _stage_progress = progress
+        try:
+            return _run(args, config)
+        finally:
+            _stage_progress = previous_progress
+
+
+def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
+    if config["movie_video_workflow"] == "i2v-edit":
+        return MOVIE_I2V_EDIT_STAGE_TITLES
+    return MOVIE_BASE_STAGE_TITLES
+
+
+def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResult:
+    project_dir = coerce_local_path(args.project_dir).resolve()
     _log_stage("Movie pipeline", f"{project_dir} ({config['movie_video_workflow']})")
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
     render_plan_path = project_dir / "movie" / "render_plan.json"
@@ -326,6 +395,8 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
 
 
 def _log_stage(title: str, detail: str = "") -> None:
+    if _stage_progress is not None:
+        _stage_progress.advance(title)
     message = f"[bold cyan]{title}[/bold cyan]"
     if detail:
         message = f"{message}: {detail}"
