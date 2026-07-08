@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from feverslop.adapters.movie_planning import DeterministicMoviePlanner, LLMMoviePlanner
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+from feverslop.ports.reporting import Reporter
 from feverslop.studio.project_validation import validate_full_auto_inputs
 from feverslop.studio.projects import ProjectCreateRequest, StudioPathError, slugify_project_name
 
@@ -17,10 +18,12 @@ class ProjectRepository:
         projects_root: Path,
         project_root: Callable[[str], Path],
         read_json_file: Callable[[Path], Any],
+        reporter: Reporter | None = None,
     ):
         self.projects_root = projects_root
         self.project_root = project_root
         self.read_json_file = read_json_file
+        self.reporter = reporter
 
     def create_project(self, request: ProjectCreateRequest) -> str:
         project_type = str(request.project_type or "").strip()
@@ -88,6 +91,7 @@ class ProjectRepository:
         result = ScaffoldMovieUseCase(
             planner=build_movie_planner(movie_config),
             projects_root=self.projects_root,
+            reporter=self.reporter,
         ).execute(
             MovieInput(
                 name=str(request.name).strip(),

@@ -9,7 +9,9 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from rich.console import Console
 
+from feverslop.ports.reporting import ConsoleReporter
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.job_service import (
     StudioFullAutoConsole as _StudioFullAutoConsole,  # noqa: F401
@@ -107,7 +109,8 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    store = ProjectStore(projects_root)
+    console = Console()
+    store = ProjectStore(projects_root, reporter=ConsoleReporter(console))
     jobs = JobRegistry()
     job_service = StudioJobService(
         store=store,

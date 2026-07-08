@@ -2395,13 +2395,13 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("main_character", [actor["id"] for actor in bible["actors"]])
             self.assertEqual("Mara", bible["actors"][0]["visual_description"])
             self.assertNotIn("story-defined", bible["actors"][0]["visual_description"])
-            self.assertIn("ABANDONED STATION - NIGHT", bible["locations"][0]["visual_description"])
-            self.assertIn("glowing maintenance door", bible["locations"][0]["visual_description"])
+            self.assertIn("ABANDONED STATION", bible["locations"][0]["visual_description"])
+            self.assertNotIn("Mara", bible["locations"][0]["visual_description"])
             self.assertNotIn("story-defined", bible["locations"][0]["visual_description"])
             self.assertEqual("Mara", manifest["actors"][0]["name"])
             self.assertIn("Mara", manifest["actors"][0]["prompt"])
             self.assertEqual("ABANDONED STATION - NIGHT", manifest["locations"][0]["name"])
-            self.assertIn("ABANDONED STATION - NIGHT", manifest["locations"][0]["prompt"])
+            self.assertIn("ABANDONED STATION", manifest["locations"][0]["prompt"])
 
     def test_llm_movie_bible_uses_screenplay_cues_over_generic_placeholders(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
@@ -3757,6 +3757,222 @@ class MovieProjectTests(unittest.TestCase):
 
             self.assertEqual(400, job.status_code)
             self.assertIn("movie", job.text.lower())
+
+
+class TestLocationMergeHelpers(unittest.TestCase):
+    """Tests for location fuzzy matching, deduplication, and visual description cleanup."""
+
+    def test_location_base_name_strips_time_of_day(self):
+        from feverslop.adapters.movie_planning import _location_base_name
+
+        self.assertEqual("BLACKWOOD FOREST", _location_base_name("EXT. BLACKWOOD FOREST - DAY"))
+        self.assertEqual("Blackwood Forest", _location_base_name("Blackwood Forest - NIGHT"))
+        self.assertEqual("Blackwood Forest", _location_base_name("Blackwood Forest - DUSK"))
+        self.assertEqual("Blackwood Forest", _location_base_name("Blackwood Forest - Dawn"))
+        self.assertEqual("Blackwood Forest", _location_base_name("Blackwood Forest - MOMENTS LATER"))
+        self.assertEqual("Blackwood Forest", _location_base_name("Blackwood Forest - LATE AFTERNOON"))
+        self.assertEqual("Blackwood Forest", _location_base_name("Blackwood Forest - CONTINUOUS"))
+
+    def test_location_base_name_strips_parentheticals(self):
+        from feverslop.adapters.movie_planning import _location_base_name
+
+        self.assertEqual("Hut", _location_base_name("Hut (2024)"))
+        self.assertEqual("Hut", _location_base_name("Hut (Interior)"))
+        self.assertEqual("Clearing", _location_base_name("Clearing - DAY (2024)"))
+
+    def test_location_base_name_strips_int_ext(self):
+        from feverslop.adapters.movie_planning import _location_base_name
+
+        self.assertEqual("HUT", _location_base_name("INT. HUT"))
+        self.assertEqual("HUT", _location_base_name("EXT. HUT - NIGHT"))
+        self.assertEqual("HUT", _location_base_name("INT/EXT. HUT"))
+
+    def test_location_base_name_complex(self):
+        from feverslop.adapters.movie_planning import _location_base_name
+
+        self.assertEqual("BLACKWOOD FOREST", _location_base_name("EXT. BLACKWOOD FOREST - DAY (2024)"))
+        self.assertEqual("STONE HUT", _location_base_name("INT. STONE HUT - NIGHT (2024)"))
+        self.assertEqual("Clearing near the river", _location_base_name("Clearing near the river - LATE AFTERNOON"))
+
+    def test_location_id_matches_exact(self):
+        from feverslop.adapters.movie_planning import _location_id_matches
+
+        self.assertTrue(_location_id_matches("blackwood_forest", "blackwood_forest", name_a="Blackwood Forest", name_b="Blackwood Forest"))
+
+    def test_location_id_matches_fuzzy(self):
+        from feverslop.adapters.movie_planning import _location_id_matches
+
+        self.assertTrue(_location_id_matches(
+            "blackwood_forest_day_2024", "blackwood_forest",
+            name_a="EXT. BLACKWOOD FOREST - DAY (2024)",
+            name_b="Blackwood Forest"
+        ))
+
+    def test_location_id_matches_different(self):
+        from feverslop.adapters.movie_planning import _location_id_matches
+
+        self.assertFalse(_location_id_matches(
+            "hut", "clearing",
+            name_a="INT. HUT - NIGHT",
+            name_b="Clearing"
+        ))
+
+    def test_location_visual_description_basic(self):
+        from feverslop.adapters.movie_planning import _location_visual_description
+
+        desc = _location_visual_description("EXT. FOREST - DAY", "Trees tower overhead. The wind howls through the branches.", character_names=("Leo",))
+        self.assertIn("FOREST", desc)
+        self.assertIn("trees", desc.lower())
+
+    def test_location_visual_description_strips_character_actions(self):
+        from feverslop.adapters.movie_planning import _location_visual_description
+
+        desc = _location_visual_description("EXT. HUT - NIGHT", "Rain pours down. LEO clutches his chest. He runs away. Lightning strikes nearby.", character_names=("LEO",))
+        self.assertNotIn("LEO", desc)
+        self.assertNotIn("Leo", desc)
+        self.assertNotIn("clutches", desc)
+        self.assertNotIn("runs away", desc)
+
+    def test_location_visual_description_strips_pronoun_actions(self):
+        from feverslop.adapters.movie_planning import _location_visual_description
+
+        desc = _location_visual_description("EXT. CLEARING", "The ground is muddy. He walks forward. She turns around. A bird flies overhead.", character_names=())
+        self.assertNotIn("He walks", desc)
+        self.assertNotIn("She turns", desc)
+        self.assertIn("bird", desc.lower())
+
+    def test_location_visual_description_strips_camera_directions(self):
+        from feverslop.adapters.movie_planning import _location_visual_description
+
+        desc = _location_visual_description("INT. ROOM", "Camera pans across the desk. CUT TO wide shot. The room is dimly lit.", character_names=())
+        self.assertNotIn("Camera", desc)
+        self.assertNotIn("CUT TO", desc)
+
+    def test_location_visual_description_strips_dialogue_verbs(self):
+        from feverslop.adapters.movie_planning import _location_visual_description
+
+        desc = _location_visual_description("EXT. STREET", "The street is empty. LEO says nothing. The streetlights flicker.", character_names=("LEO",))
+        self.assertNotIn("says", desc)
+
+    def test_is_character_action_pronoun(self):
+        from feverslop.adapters.movie_planning import _is_character_action
+
+        self.assertTrue(_is_character_action("He walks forward.", character_names=()))
+        self.assertTrue(_is_character_action("She turns around.", character_names=()))
+        self.assertTrue(_is_character_action("They leave the room.", character_names=()))
+        self.assertTrue(_is_character_action("It breaks.", character_names=()))
+
+    def test_is_character_action_possessive(self):
+        from feverslop.adapters.movie_planning import _is_character_action
+
+        self.assertTrue(_is_character_action("His hand shakes.", character_names=()))
+        self.assertTrue(_is_character_action("Her eyes widen.", character_names=()))
+        self.assertTrue(_is_character_action("Their footsteps echo.", character_names=()))
+
+    def test_is_character_action_name(self):
+        from feverslop.adapters.movie_planning import _is_character_action
+
+        self.assertTrue(_is_character_action("LEO clutches his chest.", character_names=("LEO",)))
+        self.assertTrue(_is_character_action("Leo runs forward.", character_names=("LEO",)))
+        self.assertFalse(_is_character_action("The old tree cracks.", character_names=("LEO",)))
+
+    def test_is_character_action_camera(self):
+        from feverslop.adapters.movie_planning import _is_character_action
+
+        self.assertTrue(_is_character_action("Camera pans left.", character_names=()))
+        self.assertTrue(_is_character_action("CUT TO wide shot.", character_names=()))
+        self.assertTrue(_is_character_action("FADE TO BLACK.", character_names=()))
+        self.assertTrue(_is_character_action("DISSOLVE TO interior.", character_names=()))
+        self.assertTrue(_is_character_action("WE SEE the landscape.", character_names=()))
+
+    def test_is_character_action_vo_os(self):
+        from feverslop.adapters.movie_planning import _is_character_action
+
+        self.assertTrue(_is_character_action("LEO (V.O.) narrates.", character_names=("LEO",)))
+        self.assertTrue(_is_character_action("LEO (O.S.) calls out.", character_names=("LEO",)))
+
+    def test_is_character_action_environment_false(self):
+        from feverslop.adapters.movie_planning import _is_character_action
+
+        self.assertFalse(_is_character_action("The wind howls through the trees.", character_names=("LEO",)))
+        self.assertFalse(_is_character_action("Rain pours down on the streets.", character_names=()))
+        self.assertFalse(_is_character_action("The moon rises over the forest.", character_names=()))
+
+    def test_location_base_collides_exact(self):
+        from feverslop.adapters.movie_planning import _location_base_collides
+
+        self.assertTrue(_location_base_collides("hut", {"hut"}))
+        self.assertFalse(_location_base_collides("clearing", {"hut"}))
+
+    def test_location_base_collides_substring(self):
+        from feverslop.adapters.movie_planning import _location_base_collides
+
+        self.assertTrue(_location_base_collides("hut", {"stone_hut"}))
+        self.assertTrue(_location_base_collides("stone_hut", {"hut"}))
+        self.assertFalse(_location_base_collides("hut", {"cabin"}))
+
+    def test_merge_screenplay_fuzzy_matches_locations(self):
+        from feverslop.adapters.movie_planning import _merge_screenplay_references
+        from feverslop.domain.movie import MovieLocation
+
+        llm_locations = [
+            MovieLocation(id="blackwood_forest", name="Blackwood Forest", visual_description="A dense ancient forest with towering oaks."),
+            MovieLocation(id="hut", name="Hut", visual_description="A stone hut on a hill."),
+        ]
+        screenplay_locations = [
+            MovieLocation(id="ext_blackwood_forest_day_2024", name="EXT. BLACKWOOD FOREST - DAY (2024)", visual_description="Blackwood Forest. Day (2024). Trees tower overhead."),
+        ]
+        merged = _merge_screenplay_references(screenplay_locations, llm_locations)
+        # merged: fuzzy-matched screenplay->LLM (keeps LLM description) + unmatched LLM hut
+        self.assertEqual(len(merged), 2)
+        # The fuzzy-matched item preserves screenplay's ID but gets LLM's description
+        matched_ids = {m.id for m in merged}
+        self.assertIn("blackwood_forest", matched_ids)
+        self.assertIn("hut", matched_ids)
+        merged_forest = next(m for m in merged if m.id == "blackwood_forest")
+        self.assertEqual(merged_forest.visual_description, "A dense ancient forest with towering oaks.")
+
+    def test_merge_screenplay_fallback_keeps_screenplay_description(self):
+        from feverslop.adapters.movie_planning import _merge_screenplay_references
+        from feverslop.domain.movie import MovieLocation
+
+        llm_locations = [
+            MovieLocation(id="clearing", name="Clearing", visual_description="Clearing."),
+        ]
+        screenplay_locations = [
+            MovieLocation(id="clearing_near_the_river", name="Clearing near the river", visual_description="Clearing near the river. Water flows nearby."),
+        ]
+        merged = _merge_screenplay_references(screenplay_locations, llm_locations)
+        # Different base IDs: screenplay kept as-is, LLM "clearing" appended as unmatched
+        self.assertEqual(len(merged), 2)
+        screenplay_item = next(m for m in merged if m.id == "clearing_near_the_river")
+        self.assertEqual(screenplay_item.visual_description, "Clearing near the river. Water flows nearby.")
+
+    def test_merge_screenplay_fallback_promotes_screenplay_when_llm_description_is_just_name(self):
+        from feverslop.adapters.movie_planning import _merge_screenplay_references
+        from feverslop.domain.movie import MovieLocation
+
+        llm_locations = [
+            MovieLocation(id="hut", name="Hut", visual_description="Hut"),
+        ]
+        screenplay_locations = [
+            MovieLocation(id="hut", name="Hut", visual_description="Stone hut on a hill. Moss on the walls."),
+        ]
+        merged = _merge_screenplay_references(screenplay_locations, llm_locations)
+        self.assertEqual(len(merged), 1)
+        # When LLM description == LLM name, fallback to screenplay description
+        self.assertEqual(merged[0].visual_description, "Stone hut on a hill. Moss on the walls.")
+
+    def test_merge_screenplay_no_llm_uses_screenplay_only(self):
+        from feverslop.adapters.movie_planning import _merge_screenplay_references
+        from feverslop.domain.movie import MovieLocation
+
+        screenplay_locations = [
+            MovieLocation(id="mysterious_gate", name="Mysterious Gate", visual_description="Mysterious Gate. Old iron bars."),
+        ]
+        merged = _merge_screenplay_references(screenplay_locations, [])
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].id, "mysterious_gate")
 
 
 def _movie_msr_workflow() -> dict:

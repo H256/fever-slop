@@ -36,6 +36,7 @@ from feverslop.application.movie_memory import (
     movie_story_design_to_dict,
 )
 from feverslop.ports.movie import ReferenceGenerationPort, ScenePlanningPort, StoryGenerationPort, VisualGenerationPort
+from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
 
 
 _SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
@@ -77,9 +78,15 @@ class MovieProductionResult(MovieScaffoldResult):
 
 
 class ScaffoldMovieUseCase:
-    def __init__(self, *, planner: StoryGenerationPort & ScenePlanningPort, projects_root: Path):
+    def __init__(self, *, planner: StoryGenerationPort & ScenePlanningPort, projects_root: Path, console: object | None = None, reporter: Reporter | None = None):
         self.planner = planner
         self.projects_root = Path(projects_root)
+        if reporter is not None:
+            self.reporter = reporter
+        elif console is not None:
+            self.reporter = ConsoleReporter(console)
+        else:
+            self.reporter = NullReporter()
 
     def execute(self, request: MovieInput) -> MovieScaffoldResult:
         validate_movie_input(request)
@@ -89,18 +96,26 @@ class ScaffoldMovieUseCase:
         movie_dir.mkdir(parents=True, exist_ok=False)
 
         config = dict(request.config or {})
+
+        self.reporter.step("[bold cyan]Step 1/7[/] — Generating story architecture...")
         story_arch = self.planner.generate_story_arch(
             title=request.name,
             source_type=request.source_type,
             story_text=_planner_source_text(request, config),
             desired_length=float(request.desired_length),
         )
+        self.reporter.message(f"  Story arch: {len(story_arch.beats)} beats")
+
+        self.reporter.step("[bold cyan]Step 2/7[/] — Generating movie bible...")
         bible = generate_movie_bible(
             planner=self.planner,
             request=request,
             story_arch=story_arch,
             config=config,
         )
+        self.reporter.message(f"  Movie bible: {len(bible.actors)} actors, {len(bible.locations)} locations")
+
+        self.reporter.step("[bold cyan]Step 3/7[/] — Generating story design...")
         story_design = generate_movie_story_design(
             planner=self.planner,
             request=request,
@@ -109,6 +124,9 @@ class ScaffoldMovieUseCase:
             config=config,
             source_text=_planner_source_text(request, config),
         )
+        self.reporter.message(f"  Story design: {len(story_design.act_structure)} acts, {len(story_design.scene_blueprint)} scenes")
+
+        self.reporter.step("[bold cyan]Step 4/7[/] — Generating screenplay...")
         screenplay = generate_movie_screenplay(
             planner=self.planner,
             request=request,
@@ -118,6 +136,9 @@ class ScaffoldMovieUseCase:
             config=config,
             source_text=_planner_source_text(request, config),
         )
+        self.reporter.message(f"  Screenplay: {len(screenplay.scenes)} scenes")
+
+        self.reporter.step("[bold cyan]Step 5/7[/] — Generating narrative plan...")
         narrative_plan = generate_movie_narrative_plan(
             planner=self.planner,
             request=request,
@@ -125,6 +146,9 @@ class ScaffoldMovieUseCase:
             screenplay=screenplay,
             config=config,
         )
+        self.reporter.message(f"  Narrative plan: {len(narrative_plan.sequences)} sequences, {len(narrative_plan.causal_chain)} causal links")
+
+        self.reporter.step("[bold cyan]Step 6/7[/] — Planning movie shots...")
         shots = plan_movie_shots_from_bible(
             planner=self.planner,
             bible=bible,
@@ -134,9 +158,14 @@ class ScaffoldMovieUseCase:
             min_duration=float(request.min_scene_duration),
             max_duration=float(request.max_scene_duration),
         )
+        self.reporter.message(f"  Planned {len(shots)} shots")
+
         bible = augment_movie_bible_from_shot_references(bible, shots, config=config)
         shots = constrain_movie_shots_to_bible(shots, bible)
+
+        self.reporter.step("[bold cyan]Step 7/7[/] — Generating continuity plan...")
         continuity_plan = generate_movie_continuity_plan(planner=self.planner, request=request, bible=bible, shots=shots, config=config)
+        self.reporter.message(f"  Continuity plan: {len(continuity_plan.narrative_chain)} narrative beats, {len(continuity_plan.scene_continuity)} scenes")
         shots = apply_movie_continuity_to_shots(shots, continuity_plan)
         scene_cards = build_movie_scene_cards(screenplay=screenplay, shots=shots)
         shot_cards = build_movie_shot_cards(shots=shots, scene_cards=scene_cards)

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from feverslop.ports.reporting import Reporter
+
 
 class StudioPathError(ValueError):
     pass
@@ -92,7 +94,7 @@ def sanitize_audio_filename(value: str) -> str:
 
 
 class ProjectStore:
-    def __init__(self, projects_root: str | Path = "projects"):
+    def __init__(self, projects_root: str | Path = "projects", reporter: Reporter | None = None):
         self.projects_root = Path(projects_root).resolve()
         from feverslop.studio.artifact_catalog import ArtifactCatalog
         from feverslop.studio.media_store import MediaStore
@@ -103,6 +105,7 @@ class ProjectStore:
             projects_root=self.projects_root,
             project_root=self.project_root,
             read_json_file=lambda path: self._read_json_file(path, default={}),
+            reporter=reporter,
         )
         self.artifact_catalog = ArtifactCatalog(self.project_root)
         self.media_store = MediaStore(
