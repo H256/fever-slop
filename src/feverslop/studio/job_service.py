@@ -398,6 +398,34 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         log(f"[Krea2_Adapter] Preparing visual consistency references via {config['reference_backend']}")
         manifest_path = ensure_movie_references(project_dir, movie_config=config)
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
+        if config["movie_video_workflow"] == "i2v-edit":
+            from feverslop.adapters.movie_i2v_visual import LocalMovieI2VEditVisualAdapter
+            from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
+            from feverslop.application.movie_visual_plan import build_movie_visual_plan
+            from feverslop.tools.movie_storyboard_page import generate_movie_storyboard_page
+
+            log("[MoviePipeline] Stage: Movie visual plan")
+            visual_plan_path = build_movie_visual_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie visual plan ready: {visual_plan_path}")
+            log("[MoviePipeline] Stage: Movie I2V render plan")
+            render_plan_i2v_path = write_movie_i2v_render_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie I2V render plan ready: {render_plan_i2v_path}")
+            log(f"[MoviePipeline] Stage: Movie I2V/edit render via {config['render_backend']}")
+            adapter = (
+                LocalMovieI2VEditVisualAdapter()
+                if config["render_backend"] == "local"
+                else build_movie_i2v_edit_visual_adapter(project_dir, config)
+            )
+            final_video = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_i2v_path,
+                on_startframe_step=lambda event: log(f"[MoviePipeline] {_format_movie_startframe_step(event)}"),
+                on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered I2V clip {completed}/{total}: scene {scene_number}"),
+            )
+            storyboard_page = generate_movie_storyboard_page(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Storyboard review page: {storyboard_page}")
+            log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+            return final_video
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=config["keyframe_mode"])
         log(f"[MoviePipeline] Stage: Movie MSR Prompt Enrichment Ready: {render_plan_msr_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
@@ -473,6 +501,16 @@ def ensure_movie_references(project_dir: Path, *, movie_config: dict[str, Any] |
         build_movie_reference_generator(movie_config=config).generate(project_dir=project_dir),
         config["reference_backend"],
     )
+
+
+def _format_movie_startframe_step(event: dict[str, Any]) -> str:
+    kind = str(event.get("kind") or "step")
+    completed = int(event.get("completed") or 0)
+    total = int(event.get("total") or 0)
+    scene = int(event.get("scene") or 0)
+    actor_id = str(event.get("actor_id") or "").strip()
+    actor_suffix = f" actor {actor_id}" if actor_id else ""
+    return f"Rendered startframe {kind} {completed}/{total}: scene {scene}{actor_suffix}"
 
 
 def movie_references_ready(manifest_path: Path, *, backend: str | None = None) -> bool:
@@ -756,6 +794,53 @@ def build_movie_visual_adapter(
     )
 
 
+def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+    from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+    from feverslop.adapters.local_artifacts import JsonArtifactStore
+    from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
+    from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
+    from feverslop.adapters.video_postprocessor import VideoPostProcessor
+    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load("app_config.json")
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
+    ltx_dir = project_dir / "output" / "movie" / "ltx_i2v"
+    video_use_case = build_render_video_scenes_use_case(
+        RenderVideoCompositionOptions(
+            workflow_path=config["i2v_workflow"],
+            single_prompt_workflow_path=config["i2v_workflow"],
+            output_dir=ltx_dir,
+            video_pipeline="ltx_i2v",
+        )
+    )
+    return ComfyUIMovieI2VEditVisualAdapter(
+        base_image_backend=ComfyUIImageBackend(
+            client=client,
+            workflow_path=backend_config_path(config["hero_workflow"]),
+            output_dir=project_dir / "output" / "movie" / "storyboard" / "base",
+            model_resolver=model_resolver,
+        ),
+        edit_backend=MovieTwoRefEditImageBackend(
+            client=client,
+            workflow_path=backend_config_path(config["edit_workflow"]),
+            model_resolver=model_resolver,
+        ),
+        artifact_store=JsonArtifactStore(),
+        video_use_case=video_use_case,
+        workflow_path=Path(config["hero_workflow"]),
+        edit_workflow_path=Path(config["edit_workflow"]),
+        i2v_workflow_path=Path(config["i2v_workflow"]),
+        postprocessor=VideoPostProcessor(),
+    )
+
+
 def movie_config_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return movie_runtime_config(dict(metadata.get("movie") or {}))
 
@@ -765,16 +850,18 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     planner_backend = _movie_backend(raw.get("planner_backend"), default="llm", supported={"llm", "deterministic", "local"})
     if planner_backend == "local":
         planner_backend = "deterministic"
-    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe"})
+    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit"})
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json" if movie_video_workflow == "msr-i2v-startframe" else ""
+    edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
     return {
         "planner_backend": planner_backend,
         "reference_backend": _movie_backend(raw.get("reference_backend"), default="comfyui", supported={"comfyui", "local"}),
         "render_backend": _movie_backend(raw.get("render_backend"), default="comfyui", supported={"comfyui", "local"}),
         "hero_workflow": _movie_workflow_path(raw.get("hero_workflow"), "workflows/image_t2i_startframe_krea_v1.json"),
-        "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), "workflows/image_edit_flux2_klein_1ref_v1.json"),
+        "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), edit_workflow_default),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
+        "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), "workflows/video_ltxv_i2v_v1.json"),
         "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
         "continuity_keyframes": _movie_continuity_keyframes(raw.get("continuity_keyframes"), movie_video_workflow=raw.get("movie_video_workflow")),
@@ -783,7 +870,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
 
 def _movie_continuity_keyframes(value: object, *, movie_video_workflow: object = None) -> str:
     mode = _movie_backend(value, default="none", supported={"none", "last-to-start"})
-    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe"})
+    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit"})
     if mode == "last-to-start" and workflow != "msr-i2v-startframe":
         raise ValueError("continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
     return mode

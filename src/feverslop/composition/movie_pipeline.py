@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
 from feverslop.application.movie_artifacts import (
@@ -35,6 +38,60 @@ from feverslop.studio.job_service import (
 )
 
 
+console = Console()
+
+MOVIE_BASE_STAGE_TITLES = {
+    "Movie planning",
+    "Movie reference manifest",
+    "Movie references",
+}
+
+MOVIE_I2V_EDIT_STAGE_TITLES = {
+    *MOVIE_BASE_STAGE_TITLES,
+    "Movie visual plan",
+    "Movie I2V render plan",
+    "Movie I2V/edit render",
+    "Storyboard review page",
+    "Movie complete",
+}
+
+
+class MovieStageProgressReporter:
+    def __init__(self, stage_titles: set[str], *, console: Console = console):
+        self.stage_titles = set(stage_titles)
+        self.total = len(self.stage_titles)
+        self.progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        )
+        self.task_id = None
+        self.completed = 0
+        self.seen: set[str] = set()
+
+    def __enter__(self) -> MovieStageProgressReporter:
+        self.progress.__enter__()
+        self.task_id = self.progress.add_task("Movie pipeline stages", total=self.total)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.progress.__exit__(exc_type, exc_value, traceback)
+
+    def advance(self, title: str) -> None:
+        if title not in self.stage_titles or title in self.seen or self.task_id is None:
+            return
+        self.seen.add(title)
+        self.completed = min(self.total, self.completed + 1)
+        self.progress.update(self.task_id, completed=self.completed)
+
+
+_stage_progress: MovieStageProgressReporter | None = None
+
+
 @dataclass(frozen=True)
 class MoviePipelineResult:
     project_dir: Path
@@ -47,6 +104,8 @@ class MoviePipelineResult:
     render_plan_path: Path | None = None
     continuity_plan_path: Path | None = None
     render_plan_msr_path: Path | None = None
+    visual_plan_path: Path | None = None
+    render_plan_i2v_path: Path | None = None
     reference_manifest_path: Path | None = None
     final_video_path: Path | None = None
     debug_workflows_dir: Path | None = None
@@ -61,6 +120,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--edit-workflow", default=None)
     parser.add_argument("--msr-workflow", default=None)
     parser.add_argument("--msr-i2v-workflow", default=None)
+    parser.add_argument("--i2v-workflow", default=None)
     parser.add_argument("--skip-movie-bible", action="store_true", help="Reuse existing movie/bible.json.")
     parser.add_argument("--force-movie-bible", action="store_true", help="Regenerate movie/bible.json from the configured movie planner.")
     parser.add_argument("--movie-planner-backend", choices=["llm", "deterministic", "local"], default=None)
@@ -78,7 +138,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-movie-render", action="store_true", help="Stop after syncing/rendering movie references.")
     parser.add_argument("--force-movie-references", action="store_true", help="Render movie references even when manifest paths already exist.")
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
-    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe"], default="msr")
+    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit"], default="msr")
     parser.add_argument("--continuity-keyframes", choices=["none", "last-to-start"], default="none")
     parser.add_argument("--write-debug-workflows", action="store_true", help="Write patched movie MSR workflow JSONs without queueing ComfyUI.")
     parser.add_argument("--debug-workflows-dir", default=None, help="Directory for --write-debug-workflows output.")
@@ -87,7 +147,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
     config: dict[str, Any] = {}
-    for key in ("reference_backend", "render_backend", "hero_workflow", "edit_workflow", "msr_workflow", "msr_i2v_workflow", "movie_video_workflow", "keyframe_mode", "continuity_keyframes"):
+    for key in ("reference_backend", "render_backend", "hero_workflow", "edit_workflow", "msr_workflow", "msr_i2v_workflow", "i2v_workflow", "movie_video_workflow", "keyframe_mode", "continuity_keyframes"):
         value = getattr(args, key, None)
         if value:
             config[key] = value
@@ -106,8 +166,26 @@ def _looks_like_i2v_workflow(value: object) -> bool:
 
 
 def run(args: argparse.Namespace) -> MoviePipelineResult:
-    project_dir = coerce_local_path(args.project_dir).resolve()
     config = config_from_args(args)
+    with MovieStageProgressReporter(stage_titles=_movie_stage_titles(config), console=console) as progress:
+        global _stage_progress
+        previous_progress = _stage_progress
+        _stage_progress = progress
+        try:
+            return _run(args, config)
+        finally:
+            _stage_progress = previous_progress
+
+
+def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
+    if config["movie_video_workflow"] == "i2v-edit":
+        return MOVIE_I2V_EDIT_STAGE_TITLES
+    return MOVIE_BASE_STAGE_TITLES
+
+
+def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResult:
+    project_dir = coerce_local_path(args.project_dir).resolve()
+    _log_stage("Movie pipeline", f"{project_dir} ({config['movie_video_workflow']})")
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
     render_plan_path = project_dir / "movie" / "render_plan.json"
     bible_path = project_dir / "movie" / "bible.json"
@@ -133,47 +211,59 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
             args.skip_movie_plan,
         )
     ):
+        _log_stage("Movie planning", "using requested skip/force flags")
         if args.force_movie_bible:
             from feverslop.studio.project_repository import build_movie_planner
 
             planner_backend = args.movie_planner_backend or "llm"
+            _log_stage("Movie bible", f"regenerating via {planner_backend}")
             bible_path = regenerate_movie_bible_artifact(project_dir, planner=build_movie_planner({"planner_backend": planner_backend}))
         elif not args.skip_movie_bible:
+            _log_stage("Movie bible", "ensuring artifact")
             bible_path = ensure_movie_bible_artifact(project_dir)
         elif not bible_path.exists():
             raise FileNotFoundError(f"Movie bible not found: {bible_path}")
         if not args.skip_movie_story_design:
+            _log_stage("Movie story design", "ensuring artifact")
             story_design_path = ensure_movie_story_design_artifact(project_dir, force=args.force_movie_story_design)
         elif not story_design_path.exists():
             raise FileNotFoundError(f"Movie story design not found: {story_design_path}")
         if not args.skip_movie_screenplay:
+            _log_stage("Movie screenplay", "ensuring canonical screenplay")
             screenplay_path = ensure_movie_screenplay_artifact(project_dir, force=args.force_movie_screenplay)
         elif not screenplay_path.exists():
             raise FileNotFoundError(f"Movie screenplay not found: {screenplay_path}")
         if not args.skip_movie_narrative:
+            _log_stage("Movie narrative", "ensuring narrative memory")
             narrative_plan_path = ensure_movie_narrative_plan_artifact(project_dir)
         elif not narrative_plan_path.exists():
             raise FileNotFoundError(f"Movie narrative plan not found: {narrative_plan_path}")
         if not args.skip_movie_scene_cards:
+            _log_stage("Movie scene cards", "ensuring scene cards")
             scene_cards_path = ensure_movie_scene_cards_artifact(project_dir)
         elif not scene_cards_path.exists():
             raise FileNotFoundError(f"Movie scene cards not found: {scene_cards_path}")
         if not args.skip_movie_shot_cards:
+            _log_stage("Movie shot cards", "ensuring shot cards")
             shot_cards_path = ensure_movie_shot_cards_artifact(project_dir)
         elif not shot_cards_path.exists():
             raise FileNotFoundError(f"Movie shot cards not found: {shot_cards_path}")
         if not args.skip_movie_continuity:
+            _log_stage("Movie continuity", "ensuring continuity plan")
             continuity_plan_path = ensure_movie_continuity_plan_artifact(project_dir)
         elif not continuity_plan_path.exists():
             raise FileNotFoundError(f"Movie continuity plan not found: {continuity_plan_path}")
         if not args.skip_movie_plan:
+            _log_stage("Movie render plan", "syncing render plan with bible")
             ensure_movie_render_plan_matches_bible_artifact(project_dir)
     else:
         if args.force_movie_bible:
             from feverslop.studio.project_repository import build_movie_planner
 
             planner_backend = args.movie_planner_backend or "llm"
+            _log_stage("Movie bible", f"regenerating via {planner_backend}")
             bible_path = regenerate_movie_bible_artifact(project_dir, planner=build_movie_planner({"planner_backend": planner_backend}))
+        _log_stage("Movie planning", "ensuring bible, screenplay, cards, continuity, and render plan")
         planning = ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay, force_story_design=args.force_movie_story_design)
         bible_path = planning.bible_path
         story_design_path = planning.story_design_path
@@ -186,17 +276,74 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     if not manifest_path.exists():
         if args.skip_movie_references:
             raise FileNotFoundError(f"Movie reference manifest not found: {manifest_path}")
+        _log_stage("Movie reference manifest", "creating from bible")
         manifest_path = write_movie_reference_manifest_from_bible_artifact(project_dir)
 
+    _log_stage("Movie reference manifest", "syncing actor/location ids")
     write_movie_reference_manifest_from_bible_artifact(project_dir)
     reference_manifest_path: Path | None = manifest_path
 
     if not args.skip_movie_references:
         if args.force_movie_references or not movie_references_ready(manifest_path, backend=config["reference_backend"]):
+            _log_stage("Movie references", f"rendering via {config['reference_backend']}")
             reference_manifest_path = mark_movie_reference_backend(
                 _build_reference_generator(config).generate(project_dir=project_dir),
                 config["reference_backend"],
             )
+        else:
+            _log_stage("Movie references", "ready; reusing existing sheets")
+    else:
+        _log_stage("Movie references", "skipped; reusing manifest paths")
+
+    if config["movie_video_workflow"] == "i2v-edit":
+        from feverslop.adapters.movie_i2v_visual import LocalMovieI2VEditVisualAdapter
+        from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
+        from feverslop.application.movie_visual_plan import build_movie_visual_plan
+        from feverslop.tools.movie_storyboard_page import generate_movie_storyboard_page
+
+        _log_stage("Movie visual plan", "deriving scene views and character edit passes")
+        visual_plan_path = build_movie_visual_plan(project_dir=project_dir)
+        _log_stage("Movie I2V render plan", "writing classic I2V adapter plan")
+        render_plan_i2v_path = write_movie_i2v_render_plan(project_dir=project_dir)
+        final_video_path: Path | None = None
+        if not args.skip_movie_render:
+            _log_stage("Movie I2V/edit render", f"rendering via {config['render_backend']}")
+            if config["render_backend"] != "local":
+                adapter = _build_i2v_edit_visual_adapter(project_dir, config)
+            else:
+                adapter = LocalMovieI2VEditVisualAdapter()
+            final_video_path = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_i2v_path,
+                on_startframe_step=lambda event: _log_stage(
+                    "Movie startframe",
+                    _format_startframe_step(event),
+                ),
+                on_clip_rendered=lambda completed, total, scene_number: _log_stage(
+                    "Movie I2V clip",
+                    f"rendered {completed}/{total}: scene {scene_number}",
+                ),
+            )
+        else:
+            _log_stage("Movie I2V/edit render", "skipped")
+        _log_stage("Storyboard review page", "writing HTML review page")
+        generate_movie_storyboard_page(project_dir=project_dir)
+        _log_stage("Movie complete", str(final_video_path or render_plan_i2v_path))
+        return MoviePipelineResult(
+            project_dir=project_dir,
+            bible_path=bible_path,
+            story_design_path=story_design_path,
+            screenplay_path=screenplay_path,
+            narrative_plan_path=narrative_plan_path,
+            scene_cards_path=scene_cards_path,
+            shot_cards_path=shot_cards_path,
+            render_plan_path=render_plan_path,
+            continuity_plan_path=continuity_plan_path,
+            visual_plan_path=visual_plan_path,
+            render_plan_i2v_path=render_plan_i2v_path,
+            reference_manifest_path=reference_manifest_path,
+            final_video_path=final_video_path,
+        )
 
     if not args.skip_movie_msr_enrich:
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=args.keyframe_mode)
@@ -251,6 +398,25 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
     )
 
 
+def _log_stage(title: str, detail: str = "") -> None:
+    if _stage_progress is not None:
+        _stage_progress.advance(title)
+    message = f"[bold cyan]{title}[/bold cyan]"
+    if detail:
+        message = f"{message}: {detail}"
+    console.print(message)
+
+
+def _format_startframe_step(event: dict[str, Any]) -> str:
+    kind = str(event.get("kind") or "step")
+    completed = int(event.get("completed") or 0)
+    total = int(event.get("total") or 0)
+    scene = int(event.get("scene") or 0)
+    actor_id = str(event.get("actor_id") or "").strip()
+    actor_suffix = f" actor {actor_id}" if actor_id else ""
+    return f"rendered {kind} {completed}/{total}: scene {scene}{actor_suffix}"
+
+
 def _build_reference_generator(config: dict[str, Any]):
     if config["reference_backend"] == "local":
         local = LocalMovieImageBackend()
@@ -268,6 +434,53 @@ def _build_visual_adapter(project_dir: Path, config: dict[str, Any], workflow: d
         movie_config=config,
         workflow=workflow,
         i2v_workflow=i2v_workflow,
+    )
+
+
+def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+    from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+    from feverslop.adapters.local_artifacts import JsonArtifactStore
+    from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
+    from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
+    from feverslop.adapters.video_postprocessor import VideoPostProcessor
+    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load("app_config.json")
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
+    ltx_dir = project_dir / "output" / "movie" / "ltx_i2v"
+    video_use_case = build_render_video_scenes_use_case(
+        RenderVideoCompositionOptions(
+            workflow_path=config["i2v_workflow"],
+            single_prompt_workflow_path=config["i2v_workflow"],
+            output_dir=ltx_dir,
+            video_pipeline="ltx_i2v",
+        )
+    )
+    return ComfyUIMovieI2VEditVisualAdapter(
+        base_image_backend=ComfyUIImageBackend(
+            client=client,
+            workflow_path=config["hero_workflow"],
+            output_dir=project_dir / "output" / "movie" / "storyboard" / "base",
+            model_resolver=model_resolver,
+        ),
+        edit_backend=MovieTwoRefEditImageBackend(
+            client=client,
+            workflow_path=config["edit_workflow"],
+            model_resolver=model_resolver,
+        ),
+        artifact_store=JsonArtifactStore(),
+        video_use_case=video_use_case,
+        workflow_path=Path(config["hero_workflow"]),
+        edit_workflow_path=Path(config["edit_workflow"]),
+        i2v_workflow_path=Path(config["i2v_workflow"]),
+        postprocessor=VideoPostProcessor(),
     )
 
 

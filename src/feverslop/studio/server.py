@@ -60,6 +60,7 @@ class ProjectCreatePayload(BaseModel):
     movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
     movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
     movie_msr_i2v_workflow: str = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json"
+    movie_i2v_workflow: str = "workflows/video_ltxv_i2v_v1.json"
     movie_video_workflow: str = "msr"
     movie_continuity_keyframes: str = "none"
 
@@ -136,6 +137,7 @@ def create_app(
                     movie_edit_workflow=payload.movie_edit_workflow,
                     movie_msr_workflow=payload.movie_msr_workflow,
                     movie_msr_i2v_workflow=payload.movie_msr_i2v_workflow,
+                    movie_i2v_workflow=payload.movie_i2v_workflow,
                     movie_video_workflow=payload.movie_video_workflow,
                     movie_continuity_keyframes=payload.movie_continuity_keyframes,
                 )

@@ -1,10 +1,13 @@
 import unittest
 import json
+import io
 import os
 from pathlib import Path
 import sys
 import tempfile
 from unittest.mock import patch
+
+from rich.console import Console
 
 from tools.repair_scene_srt import main as repair_scene_srt_main
 import movie_pipeline
@@ -219,6 +222,23 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("workflows/video_default_ltxv_msr_1actor_1background_v1.json", config["msr_workflow"])
         self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json", config["msr_i2v_workflow"])
 
+    def test_movie_pipeline_accepts_i2v_edit_workflow_mode(self):
+        args = movie_pipeline.build_arg_parser().parse_args(
+            [
+                "projects/demo",
+                "--movie-video-workflow",
+                "i2v-edit",
+            ]
+        )
+
+        config = movie_pipeline.config_from_args(args)
+
+        self.assertEqual("i2v-edit", args.movie_video_workflow)
+        self.assertEqual("i2v-edit", config["movie_video_workflow"])
+        self.assertEqual("workflows/image_t2i_startframe_krea_v1.json", config["hero_workflow"])
+        self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", config["edit_workflow"])
+        self.assertEqual("workflows/video_ltxv_i2v_v1.json", config["i2v_workflow"])
+
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_movie_project(Path(temp_dir))
@@ -267,6 +287,169 @@ class RunnerScriptTests(unittest.TestCase):
             self.assertTrue(
                 any("Rendered movie clip 1/" in str(call.args[0]) for call in print_mock.call_args_list)
             )
+
+    def test_movie_pipeline_i2v_edit_local_backend_writes_i2v_plan_and_final(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args(
+                    [
+                        str(project),
+                        "--movie-video-workflow",
+                        "i2v-edit",
+                        "--reference-backend",
+                        "local",
+                        "--render-backend",
+                        "local",
+                        "--skip-movie-bible",
+                        "--skip-movie-story-design",
+                        "--skip-movie-screenplay",
+                        "--skip-movie-narrative",
+                        "--skip-movie-scene-cards",
+                        "--skip-movie-shot-cards",
+                        "--skip-movie-continuity",
+                        "--skip-movie-plan",
+                        "--skip-movie-references",
+                    ]
+                )
+            )
+
+            self.assertEqual(project / "movie" / "visual_plan.json", result.visual_plan_path)
+            self.assertEqual(project / "movie" / "render_plan_i2v.json", result.render_plan_i2v_path)
+            self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
+            self.assertTrue(result.final_video_path.exists())
+            self.assertTrue((project / "output" / "movie" / "storyboard" / "index.html").exists())
+
+    def test_movie_pipeline_i2v_edit_prints_rich_stage_logs(self):
+        from feverslop.composition import movie_pipeline as movie_pipeline_module
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            buffer = io.StringIO()
+            console = Console(file=buffer, force_terminal=False, color_system=None, width=120)
+
+            with patch.object(movie_pipeline_module, "console", console, create=True):
+                movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "i2v-edit",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "local",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+
+            output = buffer.getvalue()
+
+        self.assertIn("Movie visual plan", output)
+        self.assertIn("Movie I2V render plan", output)
+        self.assertIn("Storyboard review page", output)
+        self.assertIn("Movie complete", output)
+
+    def test_movie_pipeline_i2v_edit_prints_stage_progress_counts(self):
+        from feverslop.composition import movie_pipeline as movie_pipeline_module
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            buffer = io.StringIO()
+            console = Console(file=buffer, force_terminal=False, color_system=None, width=160)
+
+            with patch.object(movie_pipeline_module, "console", console, create=True):
+                movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "i2v-edit",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "local",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+
+            output = buffer.getvalue()
+
+        self.assertIn("Movie pipeline stages", output)
+        self.assertIn("8/8", output)
+        self.assertIn("100%", output)
+
+    def test_movie_pipeline_i2v_edit_uses_comfy_adapter_for_comfy_render_backend(self):
+        class FakeAdapter:
+            def __init__(self):
+                self.render_plan_path = None
+
+            def render_movie(self, *, project_dir, render_plan_path, on_clip_rendered=None, on_startframe_step=None, **_kwargs):
+                self.render_plan_path = render_plan_path
+                if on_startframe_step is not None:
+                    on_startframe_step({"kind": "edit", "completed": 2, "total": 15, "scene": 1, "actor_id": "morwenna"})
+                final = project_dir / "output" / "movie" / "comfy.mp4"
+                final.parent.mkdir(parents=True, exist_ok=True)
+                final.write_bytes(b"mp4")
+                return final
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            adapter = FakeAdapter()
+            buffer = io.StringIO()
+            console = Console(file=buffer, force_terminal=False, color_system=None, width=160)
+
+            with (
+                patch("feverslop.composition.movie_pipeline._build_i2v_edit_visual_adapter", return_value=adapter, create=True) as builder,
+                patch("feverslop.composition.movie_pipeline.console", console, create=True),
+            ):
+                result = movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--movie-video-workflow",
+                            "i2v-edit",
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "comfyui",
+                            "--skip-movie-bible",
+                            "--skip-movie-story-design",
+                            "--skip-movie-screenplay",
+                            "--skip-movie-narrative",
+                            "--skip-movie-scene-cards",
+                            "--skip-movie-shot-cards",
+                            "--skip-movie-continuity",
+                            "--skip-movie-plan",
+                            "--skip-movie-references",
+                        ]
+                    )
+                )
+            output = buffer.getvalue()
+
+        builder.assert_called_once()
+        self.assertEqual(project / "movie" / "render_plan_i2v.json", adapter.render_plan_path)
+        self.assertEqual(project / "output" / "movie" / "comfy.mp4", result.final_video_path)
+        self.assertIn("Movie startframe: rendered edit 2/15: scene 1 actor morwenna", output)
 
     def test_movie_pipeline_cli_can_write_debug_workflows_without_rendering(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -349,6 +532,30 @@ def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
         ),
         encoding="utf-8",
     )
+    (project / "movie" / "bible.json").write_text(
+        json.dumps(
+            {
+                "title": "Test Movie",
+                "actors": [
+                    {"id": "mara", "name": "Mara", "visual_description": "gothic archivist"},
+                ],
+                "locations": [
+                    {"id": "archive", "name": "Archive", "visual_description": "dusty archive room"},
+                ],
+                "runtime_constraints": {"fps": 24},
+            }
+        ),
+        encoding="utf-8",
+    )
+    for name in (
+        "story_design.json",
+        "screenplay.json",
+        "narrative_plan.json",
+        "scene_cards.json",
+        "shot_cards.json",
+        "continuity_plan.json",
+    ):
+        (project / "movie" / name).write_text("{}", encoding="utf-8")
     manifest = {
         "actors": [
             {
