@@ -33,7 +33,7 @@ class LLMMoviePlanner:
             system_prompt="You are a film development producer. Return ONLY valid JSON.",
         )
         data = extract_json_object(raw)
-        return _movie_bible_from_data(
+        bible = _movie_bible_from_data(
             data,
             title=title,
             source_type=source_type,
@@ -42,6 +42,40 @@ class LLMMoviePlanner:
             config=config,
             desired_length=desired_length,
         )
+        if config.get("refine_location_prompts"):
+            refined = self.refine_locations(bible.locations, source_text=story_text)
+            bible = replace(bible, locations=tuple(refined))
+        return bible
+
+    def refine_locations(self, locations: tuple[MovieLocation, ...], *, source_text: str) -> list[MovieLocation]:
+        """Refine location visual_description and image_prompt via a single batch LLM call."""
+        try:
+            raw = self.llm.complete_prompt(
+                _refine_location_prompts_prompt(locations, source_text),
+                system_prompt="You are a production designer. Return ONLY valid JSON.",
+            )
+            data = extract_json_object(raw)
+        except Exception:
+            return list(locations)
+        refined_by_id: dict[str, dict] = {}
+        for item in data.get("locations") or []:
+            if isinstance(item, dict) and item.get("id"):
+                refined_by_id[str(item["id"])] = item
+        result: list[MovieLocation] = []
+        for loc in locations:
+            refined = refined_by_id.get(loc.id)
+            if refined:
+                result.append(
+                    MovieLocation(
+                        id=loc.id,
+                        name=loc.name,
+                        visual_description=str(refined.get("visual_description") or loc.visual_description).strip(),
+                        image_prompt=str(refined.get("image_prompt") or loc.visual_description).strip(),
+                    )
+                )
+            else:
+                result.append(loc)
+        return result
 
     def generate_movie_continuity_plan(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> dict:
         raw = self.llm.complete_prompt(
@@ -760,6 +794,40 @@ Source:
 """.strip()
 
 
+def _refine_location_prompts_prompt(locations: tuple[MovieLocation, ...], source_text: str) -> str:
+    loc_data = [
+        {"id": loc.id, "name": loc.name, "visual_description": loc.visual_description}
+        for loc in locations
+    ]
+    return f"""
+Refine the visual_description and image_prompt for each location below.
+
+Current locations:
+{json.dumps(loc_data, ensure_ascii=False)}
+
+Source screenplay/story:
+{source_text}
+
+Return JSON with:
+{{"locations": [{{"id": string, "visual_description": string, "image_prompt": string}}]}}
+
+Rules for visual_description:
+- Describe only the physical environment, production design, and atmosphere of the location.
+- Remove all character names, character actions, dialogue, narrative prose, and camera directions.
+- Remove screenplay heading syntax (all-caps labels, "INT./EXT.", time-of-day suffixes).
+- If the current description is a bare word or heading (e.g. "GARDEN"), expand it into a descriptive, evocative environment prose sentence using the source text for context.
+- Keep location-defining objects, textures, materials, and lighting (e.g. hearth, jars, trees, bark faces, stone, roots, fog, light quality).
+- Write in English, one concise paragraph (up to 200 characters).
+
+Rules for image_prompt:
+- This prompt will be fed directly to an image generator to create a reference environment photograph.
+- It must describe a wide establishing view of the location's production design, lighting, and atmosphere.
+- It must end with: "Wide establishing view, production design, lighting, atmosphere, no people, no text."
+- No characters, no action, no narrative, no camera moves.
+- Write in English.
+""".strip()
+
+
 def _shot_plan_from_bible_prompt(*, bible: MovieBible, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> str:
     target_shots = max(1, ceil(float(desired_length) / max(1.0, min(float(max_duration), 12.0))))
     dialogue_language = str((bible.runtime_constraints or {}).get("dialogue_language") or "").strip()
@@ -969,7 +1037,7 @@ def asdict_like_actor(actor: MovieActor) -> dict:
 
 
 def asdict_like_location(location: MovieLocation) -> dict:
-    return {"id": location.id, "name": location.name, "visual_description": location.visual_description}
+    return {"id": location.id, "name": location.name, "visual_description": location.visual_description, "image_prompt": location.image_prompt}
 
 
 def movie_story_design_like(story_design) -> dict:

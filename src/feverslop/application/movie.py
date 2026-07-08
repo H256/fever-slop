@@ -353,8 +353,8 @@ def _reference_manifest(movie: MovieProject) -> dict:
                 "id": location.id,
                 "name": location.name,
                 "visual_description": location.visual_description,
-                "image_prompt": location.visual_description,
-                "prompt": location.visual_description,
+                "image_prompt": location.image_prompt or location.visual_description,
+                "prompt": location.image_prompt or location.visual_description,
                 "status": "required",
                 "msr_sheet_path": "",
             }

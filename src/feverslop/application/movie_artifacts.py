@@ -310,13 +310,14 @@ def _manifest_actor(actor: dict, current: dict) -> dict:
 
 def _manifest_location(location: dict, current: dict) -> dict:
     visual_description = str(location.get("visual_description") or location.get("name") or location.get("id") or "").strip()
+    image_prompt = str(location.get("image_prompt") or visual_description).strip()
     return {
         **current,
         "id": location.get("id"),
         "name": location.get("name") or location.get("id"),
         "visual_description": visual_description,
-        "image_prompt": visual_description,
-        "prompt": visual_description,
+        "image_prompt": image_prompt,
+        "prompt": image_prompt,
         "status": current.get("status") or "required",
         "msr_sheet_path": current.get("msr_sheet_path") or "",
     }

@@ -75,6 +75,7 @@ class ProjectCreatePayload(BaseModel):
     movie_i2v_workflow: str = "workflows/video_ltxv_i2v_v1.json"
     movie_video_workflow: str = "msr"
     movie_continuity_keyframes: str = "none"
+    movie_refine_location_prompts: bool = False
 
 
 class JobPayload(BaseModel):
@@ -163,6 +164,7 @@ def create_app(
                     movie_i2v_workflow=payload.movie_i2v_workflow,
                     movie_video_workflow=payload.movie_video_workflow,
                     movie_continuity_keyframes=payload.movie_continuity_keyframes,
+                    movie_refine_location_prompts=payload.movie_refine_location_prompts,
                 )
             )
         )

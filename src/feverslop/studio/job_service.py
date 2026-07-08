@@ -985,6 +985,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
         "continuity_keyframes": _movie_continuity_keyframes(raw.get("continuity_keyframes"), movie_video_workflow=raw.get("movie_video_workflow")),
+        "refine_location_prompts": bool(raw.get("refine_location_prompts", False)),
     }
 
 

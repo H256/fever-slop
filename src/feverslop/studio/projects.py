@@ -64,6 +64,7 @@ class ProjectCreateRequest:
     movie_i2v_workflow: str = "workflows/video_ltxv_i2v_v1.json"
     movie_video_workflow: str = "msr"
     movie_continuity_keyframes: str = "none"
+    movie_refine_location_prompts: bool = False
 
 
 def slugify_project_name(value: str) -> str:

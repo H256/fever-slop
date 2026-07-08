@@ -4025,5 +4025,252 @@ def _movie_shot(project_dir: Path) -> dict:
     }
 
 
-if __name__ == "__main__":
-    unittest.main()
+    if __name__ == "__main__":
+        unittest.main()
+
+
+class TestRefineLocationPrompts(unittest.TestCase):
+    """Tests for LLM-based location description refinement."""
+
+    def test_refine_locations_prompt_includes_location_data(self):
+        from feverslop.adapters.movie_planning import _refine_location_prompts_prompt
+        from feverslop.domain.movie import MovieLocation
+
+        locations = (
+            MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
+            MovieLocation(id="stone_hut", name="Stone Hut", visual_description="Stone Hut"),
+        )
+        prompt = _refine_location_prompts_prompt(locations, "EXT. GARDEN - DAY\nA wild herb garden.")
+
+        self.assertIn('"id": "garden"', prompt)
+        self.assertIn('"id": "stone_hut"', prompt)
+        self.assertIn("GARDEN", prompt)
+        self.assertIn("physical environment", prompt.lower())
+        self.assertIn("no people", prompt)
+        self.assertIn("no text", prompt)
+
+    def test_refine_locations_prompt_rules_are_present(self):
+        from feverslop.adapters.movie_planning import _refine_location_prompts_prompt
+        from feverslop.domain.movie import MovieLocation
+
+        locations = (MovieLocation(id="x", name="X", visual_description="X"),)
+        prompt = _refine_location_prompts_prompt(locations, "test")
+
+        self.assertIn("visual_description", prompt)
+        self.assertIn("image_prompt", prompt)
+        self.assertIn("Remove all character names", prompt)
+        self.assertIn("Wide establishing view", prompt)
+        self.assertIn("production design", prompt)
+
+    def test_refine_locations_success(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import MovieLocation
+
+        class FakeLLM:
+            def complete_prompt(self, prompt, *, system_prompt):
+                return '{"locations": [{"id": "garden", "visual_description": "Overgrown herb garden with stone paths", "image_prompt": "Overgrown herb garden with stone paths. Wide establishing view, production design, lighting, atmosphere, no people, no text."}]}'
+
+        planner = LLMMoviePlanner(FakeLLM())
+        locations = (
+            MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
+        )
+        result = planner.refine_locations(locations, source_text="EXT. GARDEN - DAY")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].id, "garden")
+        self.assertIn("herb garden", result[0].visual_description.lower())
+        self.assertIn("no people", result[0].image_prompt.lower())
+
+    def test_refine_locations_fallback_on_parse_error(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import MovieLocation
+
+        class FakeLLM:
+            def complete_prompt(self, prompt, *, system_prompt):
+                raise ConnectionError("llm down")
+
+        planner = LLMMoviePlanner(FakeLLM())
+        locations = (
+            MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
+        )
+        result = planner.refine_locations(locations, source_text="test")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].id, "garden")
+        self.assertEqual(result[0].visual_description, "GARDEN")
+
+    def test_refine_locations_fallback_on_invalid_json(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import MovieLocation
+
+        class FakeLLM:
+            def complete_prompt(self, prompt, *, system_prompt):
+                return "not json at all"
+
+        planner = LLMMoviePlanner(FakeLLM())
+        locations = (
+            MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
+        )
+        result = planner.refine_locations(locations, source_text="test")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].id, "garden")
+        self.assertEqual(result[0].visual_description, "GARDEN")
+
+    def test_refine_locations_skips_missing_ids(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import MovieLocation
+
+        class FakeLLM:
+            def complete_prompt(self, prompt, *, system_prompt):
+                return '{"locations": [{"id": "other", "visual_description": "Something", "image_prompt": "Something"}]}'
+
+        planner = LLMMoviePlanner(FakeLLM())
+        locations = (
+            MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
+        )
+        result = planner.refine_locations(locations, source_text="test")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].id, "garden")
+        self.assertEqual(result[0].visual_description, "GARDEN")
+        self.assertEqual(result[0].image_prompt, "")
+
+    def test_refine_locations_wired_into_generate_movie_bible(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import StoryArch
+
+        class FakeLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt(self, prompt, *, system_prompt):
+                self.calls.append(system_prompt)
+                if "film development producer" in system_prompt:
+                    return '{"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]}'
+                elif "production designer" in system_prompt:
+                    return '{"locations": [{"id": "loc", "visual_description": "Refined environment", "image_prompt": "Refined environment. Wide establishing view, production design, lighting, atmosphere, no people, no text."}]}'
+                return "{}"
+
+        llm = FakeLLM()
+        planner = LLMMoviePlanner(llm)
+        bible = planner.generate_movie_bible(
+            title="Test",
+            source_type="short_story",
+            story_text="Test story",
+            desired_length=12,
+            story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
+            config={"refine_location_prompts": True},
+        )
+        self.assertEqual(len(bible.locations), 1)
+        self.assertEqual(bible.locations[0].id, "loc")
+        self.assertIn("Refined environment", bible.locations[0].visual_description)
+        self.assertIn("no people", bible.locations[0].image_prompt)
+        self.assertEqual(2, len(llm.calls))
+
+    def test_refine_locations_not_wired_without_config(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import StoryArch
+
+        class FakeLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt(self, prompt, *, system_prompt):
+                self.calls.append(system_prompt)
+                return '{"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]}'
+
+        llm = FakeLLM()
+        planner = LLMMoviePlanner(llm)
+        planner.generate_movie_bible(
+            title="Test",
+            source_type="short_story",
+            story_text="Test story",
+            desired_length=12,
+            story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
+            config={},
+        )
+        self.assertEqual(1, len(llm.calls))
+        self.assertNotIn("production designer", llm.calls[0])
+
+    def test_reference_manifest_prefers_image_prompt(self):
+        from feverslop.application.movie import _reference_manifest
+        from feverslop.domain.movie import MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
+
+        bible = MovieBible(
+            title="Test",
+            premise="Test",
+            story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
+            actors=(MovieActor(id="a", name="A", role="r", visual_description="A"),),
+            locations=(MovieLocation(id="loc", name="LOC", visual_description="LOC", image_prompt="Refined. Wide establishing view, production design, lighting, atmosphere, no people, no text."),),
+            continuity=(),
+            style_constraints=(),
+            runtime_constraints={},
+        )
+        project = MovieProject(
+            slug="test",
+            name="Test",
+            bible=bible,
+            story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
+            shots=(),
+            duration_seconds=12,
+            width=1280,
+            height=704,
+            mode="scaffold",
+        )
+        manifest = _reference_manifest(project)
+        loc = manifest["locations"][0]
+        self.assertEqual("LOC", loc["visual_description"])
+        self.assertIn("Refined", loc["image_prompt"])
+        self.assertIn("no people", loc["image_prompt"])
+
+    def test_reference_manifest_falls_back_to_visual_description(self):
+        from feverslop.application.movie import _reference_manifest
+        from feverslop.domain.movie import MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
+
+        bible = MovieBible(
+            title="Test",
+            premise="Test",
+            story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
+            actors=(MovieActor(id="a", name="A", role="r", visual_description="A"),),
+            locations=(MovieLocation(id="loc", name="LOC", visual_description="LOC", image_prompt=""),),
+            continuity=(),
+            style_constraints=(),
+            runtime_constraints={},
+        )
+        project = MovieProject(
+            slug="test",
+            name="Test",
+            bible=bible,
+            story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
+            shots=(),
+            duration_seconds=12,
+            width=1280,
+            height=704,
+            mode="scaffold",
+        )
+        manifest = _reference_manifest(project)
+        loc = manifest["locations"][0]
+        self.assertEqual("LOC", loc["image_prompt"])
+        self.assertEqual("LOC", loc["prompt"])
+
+    def test_manifest_location_prefers_image_prompt(self):
+        from feverslop.application.movie_artifacts import _manifest_location
+
+        result = _manifest_location(
+            {"id": "loc", "name": "LOC", "visual_description": "LOC", "image_prompt": "Refined env."},
+            {},
+        )
+        self.assertEqual("LOC", result["visual_description"])
+        self.assertEqual("Refined env.", result["image_prompt"])
+        self.assertEqual("Refined env.", result["prompt"])
+
+    def test_manifest_location_falls_back(self):
+        from feverslop.application.movie_artifacts import _manifest_location
+
+        result = _manifest_location(
+            {"id": "loc", "name": "LOC", "visual_description": "LOC"},
+            {},
+        )
+        self.assertEqual("LOC", result["visual_description"])
+        self.assertEqual("LOC", result["image_prompt"])

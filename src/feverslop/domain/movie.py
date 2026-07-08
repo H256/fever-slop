@@ -232,6 +232,7 @@ class MovieLocation:
     id: str
     name: str
     visual_description: str = ""
+    image_prompt: str = ""
 
 
 @dataclass(frozen=True)
