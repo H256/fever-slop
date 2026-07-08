@@ -671,10 +671,12 @@ class RunnerScriptTests(unittest.TestCase):
         def fake_use_case(options):
             captured["workflow_path"] = Path(options.workflow_path)
             captured["single_prompt_workflow_path"] = Path(options.single_prompt_workflow_path)
+            captured["debug_workflows_dir"] = options.debug_workflows_dir
             return object()
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_movie_project(Path(temp_dir), ready=True)
+            debug_dir = project / "debug" / "startframe-workflows"
 
             with (
                 patch("feverslop.adapters.startframe_director_comfyui.ComfyUIStartframeDirectorVisualAdapter", FakeAdapter),
@@ -701,11 +703,15 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-continuity",
                             "--skip-movie-plan",
                             "--skip-movie-references",
+                            "--write-debug-workflows",
+                            "--debug-workflows-dir",
+                            str(debug_dir),
                         ]
                     )
                 )
 
             self.assertEqual(captured["workflow_path"], captured["single_prompt_workflow_path"])
+            self.assertEqual(debug_dir, Path(captured["debug_workflows_dir"]))
             self.assertEqual(project / "output" / "movie" / "startframes" / "workflows" / "ltx_i2v_empty_audio.json", captured["workflow_path"])
             workflow = json.loads(captured["workflow_path"].read_text(encoding="utf-8"))
             classes = {node.get("class_type") for node in workflow.values()}

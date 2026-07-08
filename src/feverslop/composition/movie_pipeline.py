@@ -622,6 +622,9 @@ def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[st
             single_prompt_workflow_path=i2v_workflow_path,
             output_dir=ltx_dir,
             video_pipeline="ltx_i2v",
+            debug_workflows_dir=config.get("startframe_debug_workflows_dir")
+            if config.get("startframe_write_debug_workflows")
+            else None,
         )
     )
     return ComfyUIStartframeDirectorVisualAdapter(

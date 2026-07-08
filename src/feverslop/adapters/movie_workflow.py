@@ -35,6 +35,7 @@ class MovieWorkflowPatcher:
             if not _is_link(audio_latent):
                 continue
             if self._is_empty_audio_latent(patched, audio_latent):
+                self._repair_empty_audio_latent(patched, audio_latent)
                 continue
             replacement = self._build_empty_audio_latent(
                 patched,
@@ -67,6 +68,14 @@ class MovieWorkflowPatcher:
     def _is_empty_audio_latent(self, workflow: dict[str, Any], value: Any) -> bool:
         node = workflow.get(str(value[0])) if _is_link(value) else None
         return isinstance(node, dict) and node.get("class_type") == "LTXVEmptyLatentAudio"
+
+    def _repair_empty_audio_latent(self, workflow: dict[str, Any], value: Any) -> None:
+        node = workflow.get(str(value[0])) if _is_link(value) else None
+        if not isinstance(node, dict):
+            return
+        audio_vae = self._find_audio_vae_link(workflow)
+        if audio_vae is not None:
+            node.setdefault("inputs", {})["audio_vae"] = audio_vae
 
     def _build_empty_audio_latent(
         self,
@@ -142,6 +151,19 @@ class MovieWorkflowPatcher:
     def _find_input_by_title(self, workflow: dict[str, Any], title: str) -> list[Any] | None:
         for node_id, node in workflow.items():
             if node.get("_meta", {}).get("title") == title:
+                return [node_id, 0]
+        return None
+
+    def _find_audio_vae_link(self, workflow: dict[str, Any]) -> list[Any] | None:
+        for node in workflow.values():
+            if node.get("class_type") == "LTXVAudioVAEDecode":
+                audio_vae = (node.get("inputs") or {}).get("audio_vae")
+                if _is_link(audio_vae):
+                    return list(audio_vae)
+        for node_id, node in workflow.items():
+            inputs = node.get("inputs") if isinstance(node.get("inputs"), dict) else {}
+            vae_name = str(inputs.get("vae_name") or "").lower()
+            if node.get("class_type") == "VAELoaderKJ" and "audio" in vae_name:
                 return [node_id, 0]
         return None
 

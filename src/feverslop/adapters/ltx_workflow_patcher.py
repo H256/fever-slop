@@ -96,14 +96,19 @@ class LTXWorkflowPatcher:
         required_titles = [
             self.settings.width_node_title,
             self.settings.height_node_title,
-            self.settings.load_audio_node_title,
-            self.settings.trim_audio_node_title,
             self.settings.startframe_node_title,
             self.settings.frames_node_title,
             self.settings.framerate_node_title,
             self.settings.seed_node_title,
             self.settings.save_video_node_title,
         ]
+        if not self._uses_empty_audio(patcher):
+            required_titles.extend(
+                [
+                    self.settings.load_audio_node_title,
+                    self.settings.trim_audio_node_title,
+                ]
+            )
         if mode != "single_prompt":
             required_titles.append(self.settings.prompt_relay_node_title)
         for lora in self.active_loras():
@@ -169,15 +174,17 @@ class LTXWorkflowPatcher:
         patcher.set_input_by_title(self.settings.framerate_node_title, "value", fps)
         patcher.set_input_by_title(self.settings.seed_node_title, "noise_seed", self.seed_for_scene(scene_number))
 
-        patcher.set_input_by_title(self.settings.load_audio_node_title, "audio", comfy_audio_name)
-        patcher.try_set_existing_input_by_title(
-            self.settings.load_audio_node_title,
-            "audioUI",
-            f"/api/view?filename={comfy_audio_name}&type=input",
-        )
+        if self.has_node_title(patcher, self.settings.load_audio_node_title):
+            patcher.set_input_by_title(self.settings.load_audio_node_title, "audio", comfy_audio_name)
+            patcher.try_set_existing_input_by_title(
+                self.settings.load_audio_node_title,
+                "audioUI",
+                f"/api/view?filename={comfy_audio_name}&type=input",
+            )
 
-        patcher.set_input_by_title(self.settings.trim_audio_node_title, "start_index", float(rolling["audio_start_seconds"]))
-        patcher.set_input_by_title(self.settings.trim_audio_node_title, "duration", float(rolling["audio_duration_seconds"]))
+        if self.has_node_title(patcher, self.settings.trim_audio_node_title):
+            patcher.set_input_by_title(self.settings.trim_audio_node_title, "start_index", float(rolling["audio_start_seconds"]))
+            patcher.set_input_by_title(self.settings.trim_audio_node_title, "duration", float(rolling["audio_duration_seconds"]))
         patcher.set_input_by_title(self.settings.startframe_node_title, "image", comfy_startframe_name)
 
         self.patch_prompt_inputs(
@@ -206,6 +213,18 @@ class LTXWorkflowPatcher:
 
     def active_loras(self) -> tuple[ResolvedLoraConfig, ...]:
         return self.lora_patcher.active_loras()
+
+    @staticmethod
+    def has_node_title(patcher: WorkflowPatcher, title: str) -> bool:
+        try:
+            patcher.find_node_by_meta_title(title)
+            return True
+        except KeyError:
+            return False
+
+    @staticmethod
+    def _uses_empty_audio(patcher: WorkflowPatcher) -> bool:
+        return bool(patcher.find_nodes_by_class_type("LTXVEmptyLatentAudio"))
 
     def patch_prompt_inputs(
         self,

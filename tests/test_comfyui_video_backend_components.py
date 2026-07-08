@@ -233,6 +233,85 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
 
             patcher.validate_workflow(mode="single_prompt")
 
+    def test_validation_accepts_empty_audio_workflow_without_audio_anchors(self):
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            settings = self._settings(temp)
+            settings.ltx_workflow_path.write_text(
+                json.dumps(
+                    {
+                        "1": {"inputs": {"value": 1280}, "_meta": {"title": "#WIDTH"}},
+                        "2": {"inputs": {"value": 704}, "_meta": {"title": "#HEIGHT"}},
+                        "3": {"inputs": {"image": ""}, "_meta": {"title": "#STARTFRAME"}},
+                        "4": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMES"}},
+                        "5": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMERATE"}},
+                        "6": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                        "7": {
+                            "inputs": {"global_prompt": "", "local_prompts": "", "segment_lengths": ""},
+                            "_meta": {"title": "#PROMPT_RELAY"},
+                        },
+                        "8": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                        "9": {"inputs": {}, "class_type": "LTXVEmptyLatentAudio"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            LTXWorkflowPatcher(settings).validate_workflow(mode="relay")
+
+    def test_empty_audio_workflow_build_skips_removed_audio_anchors(self):
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.domain.ltx_rendering import AudioWindowSpec
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            settings = self._settings(temp, render_mode="single_prompt")
+            settings.single_prompt_workflow_path.write_text(
+                json.dumps(
+                    {
+                        "1": {"inputs": {"value": 1280}, "_meta": {"title": "#WIDTH"}},
+                        "2": {"inputs": {"value": 704}, "_meta": {"title": "#HEIGHT"}},
+                        "3": {"inputs": {"image": ""}, "_meta": {"title": "#STARTFRAME"}},
+                        "4": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMES"}},
+                        "5": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMERATE"}},
+                        "6": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                        "7": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}},
+                        "8": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                        "9": {"inputs": {}, "class_type": "LTXVEmptyLatentAudio"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            workflow = LTXWorkflowPatcher(settings).build_workflow(
+                scene={
+                    "scene": 1,
+                    "fps": 24,
+                    "width": 1280,
+                    "height": 704,
+                    "ltx": {"original_style_i2v_prompt": "prompt"},
+                },
+                comfy_audio_name="song.mp3",
+                comfy_startframe_name="scene_0001.png",
+                rolling=AudioWindowSpec(
+                    scene_frame_count=24,
+                    render_frame_count=24,
+                    trim_front_frames=0,
+                    tail_loss_frames=0,
+                    fps=24,
+                    audio_start_seconds=0,
+                    audio_duration_seconds=1,
+                ),
+            )
+
+            titles = {node.get("_meta", {}).get("title") for node in workflow.values()}
+            self.assertNotIn("#LOAD_AUDIO", titles)
+            self.assertNotIn("#TRIM_AUDIO", titles)
+            startframe_node = next(node for node in workflow.values() if node["_meta"]["title"] == "#STARTFRAME")
+            self.assertEqual("scene_0001.png", startframe_node["inputs"]["image"])
+
     def test_workflow_loading_accepts_utf8_bom(self):
         from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
 

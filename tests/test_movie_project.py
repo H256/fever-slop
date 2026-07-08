@@ -2577,6 +2577,31 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual(["30", 0], patched["40"]["inputs"]["latent_image"])
         self.assertEqual(["52", 0], patched["56"]["inputs"]["audio"])
 
+    def test_movie_workflow_patcher_repairs_empty_audio_latent_vae_link(self):
+        from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
+
+        workflow = {
+            "2": {"class_type": "VAELoaderKJ", "inputs": {"vae_name": "LTX23_video_vae_bf16.safetensors"}},
+            "5": {"class_type": "VAELoaderKJ", "inputs": {"vae_name": "LTX23_audio_vae_bf16.safetensors"}},
+            "22": {"class_type": "PrimitiveInt", "_meta": {"title": "#FRAMES"}, "inputs": {"value": 224}},
+            "25": {"class_type": "PrimitiveInt", "_meta": {"title": "#FRAMERATE"}, "inputs": {"value": 24}},
+            "30": {"class_type": "LTXVConcatAVLatent", "inputs": {"audio_latent": ["61", 0]}},
+            "52": {"class_type": "LTXVAudioVAEDecode", "inputs": {"audio_vae": ["5", 0], "samples": ["51", 1]}},
+            "61": {
+                "class_type": "LTXVEmptyLatentAudio",
+                "inputs": {
+                    "frames_number": ["22", 0],
+                    "frame_rate": ["25", 0],
+                    "batch_size": 1,
+                    "audio_vae": ["2", 0],
+                },
+            },
+        }
+
+        patched = MovieWorkflowPatcher().strip_audio_inputs(workflow)
+
+        self.assertEqual(["5", 0], patched["61"]["inputs"]["audio_vae"])
+
     def test_msr_backend_renders_without_custom_audio_when_upload_disabled(self):
         from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
         from feverslop.ports.rendering import VideoRenderRequest

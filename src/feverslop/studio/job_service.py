@@ -907,6 +907,7 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
             single_prompt_workflow_path=i2v_workflow_path,
             output_dir=ltx_dir,
             video_pipeline="ltx_i2v",
+            debug_workflows_dir=_startframe_debug_workflows_dir(project_dir, config),
         )
     )
     return ComfyUIStartframeDirectorVisualAdapter(
