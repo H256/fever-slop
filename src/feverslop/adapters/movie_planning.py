@@ -5,6 +5,7 @@ import re
 from dataclasses import replace
 from math import ceil
 
+from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
 from feverslop.domain.screenplay import HEADING_RE, parse_screenplay, split_screenplay_dialogue
 
@@ -18,7 +19,7 @@ class LLMMoviePlanner:
             _story_arch_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length),
             system_prompt="You are a film writer. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
+        data = extract_json_object(raw)
         beats = data.get("beats") or []
         return StoryArch(
             title=str(data.get("title") or title),
@@ -31,7 +32,7 @@ class LLMMoviePlanner:
             _movie_bible_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, story_arch=story_arch, config=config),
             system_prompt="You are a film development producer. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
+        data = extract_json_object(raw)
         return _movie_bible_from_data(
             data,
             title=title,
@@ -47,14 +48,14 @@ class LLMMoviePlanner:
             _movie_continuity_plan_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, shots=shots, config=config),
             system_prompt="You are a film continuity supervisor. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def generate_movie_story_design(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> dict:
         raw = self.llm.complete_prompt(
             _movie_story_design_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, story_arch=story_arch, config=config),
             system_prompt="You are a dramaturg and story editor. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def generate_movie_screenplay(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, story_design, config: dict) -> dict:
         raw = self.llm.complete_prompt(
@@ -70,14 +71,14 @@ class LLMMoviePlanner:
             ),
             system_prompt="You are a film screenwriter. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def generate_movie_narrative_plan(self, *, title: str, source_type: str, desired_length: float, bible: MovieBible, screenplay, config: dict) -> dict:
         raw = self.llm.complete_prompt(
             _movie_narrative_plan_prompt(title=title, source_type=source_type, desired_length=desired_length, bible=bible, screenplay=screenplay, config=config),
             system_prompt="You are a film story editor. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def plan_shots_from_bible(
         self,
@@ -100,7 +101,7 @@ class LLMMoviePlanner:
             ),
             system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
+        data = extract_json_object(raw)
         shots = data.get("shots") or []
         if not isinstance(shots, list) or not shots:
             return DeterministicMoviePlanner().plan_shots_from_bible(
@@ -139,7 +140,7 @@ class LLMMoviePlanner:
             ),
             system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
+        data = extract_json_object(raw)
         shots = data.get("shots") or []
         if not isinstance(shots, list) or not shots:
             return DeterministicMoviePlanner().plan_shots(
@@ -885,22 +886,6 @@ def movie_story_design_like(story_design) -> dict:
         "character_arcs": [getattr(item, "__dict__", item) for item in getattr(story_design, "character_arcs", ())],
         "scene_blueprint": [getattr(item, "__dict__", item) for item in getattr(story_design, "scene_blueprint", ())],
     }
-
-
-def _json_object(raw: str) -> dict:
-    text = str(raw or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    if not text.startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            text = text[start : end + 1]
-    data = json.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError("Movie planner LLM response must be a JSON object")
-    return data
 
 
 def _beat_text(beat) -> str:
