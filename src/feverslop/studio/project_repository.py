@@ -103,7 +103,7 @@ class ProjectRepository:
                 mode=str(request.movie_mode or "scaffold"),
                 min_scene_duration=float(config["scene_generation"]["min_duration"]),
                 max_scene_duration=float(config["scene_generation"]["max_duration"]),
-                config=config,
+                config={**config, **movie_config},
             )
         )
         if result.project_slug != slug:
