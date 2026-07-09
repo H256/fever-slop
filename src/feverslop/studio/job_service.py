@@ -956,10 +956,11 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     planner_backend = _movie_backend(raw.get("planner_backend"), default="llm", supported={"llm", "deterministic", "local"})
     if planner_backend == "local":
         planner_backend = "deterministic"
-    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"})
+    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"})
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json" if movie_video_workflow == "msr-i2v-startframe" else ""
     i2v_default = "workflows/video_ltxv_i2v_native_audio_v1.json" if movie_video_workflow == "startframe-director" else "workflows/video_ltxv_i2v_v1.json"
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
+    ingredients_default = "workflows/video_ltxv_ingredients_v1.json" if movie_video_workflow == "ingredients" else ""
     return {
         "planner_backend": planner_backend,
         "reference_backend": _movie_backend(raw.get("reference_backend"), default="comfyui", supported={"comfyui", "local"}),
@@ -982,6 +983,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
         "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), i2v_default),
+        "ingredients_workflow": _movie_workflow_path(raw.get("ingredients_workflow"), ingredients_default) if ingredients_default or raw.get("ingredients_workflow") else "",
         "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
         "continuity_keyframes": _movie_continuity_keyframes(raw.get("continuity_keyframes"), movie_video_workflow=raw.get("movie_video_workflow")),
@@ -991,7 +993,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
 
 def _movie_continuity_keyframes(value: object, *, movie_video_workflow: object = None) -> str:
     mode = _movie_backend(value, default="none", supported={"none", "last-to-start"})
-    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"})
+    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"})
     if mode == "last-to-start" and workflow != "msr-i2v-startframe":
         raise ValueError("continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
     return mode
