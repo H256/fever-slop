@@ -5,7 +5,7 @@ import re
 from copy import deepcopy
 from pathlib import Path
 
-from feverslop.application.movie_references import SceneReferenceSheetBuilder
+
 
 
 _SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
@@ -34,9 +34,8 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mod
         enriched["movie_shot_cards_path"] = "movie/shot_cards.json"
     enriched["keyframe_mode"] = keyframe_mode
     enriched["msr_enriched"] = True
-    scene_builder = SceneReferenceSheetBuilder(project_dir=project_dir, manifest=manifest)
     enriched["shots"] = [
-        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode, shot_cards=shot_cards, scene_builder=scene_builder)
+        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode, shot_cards=shot_cards)
         for shot in render_plan.get("shots") or []
     ]
 
@@ -45,12 +44,8 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mod
     return output_path
 
 
-def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none", shot_cards: dict | None = None, scene_builder: SceneReferenceSheetBuilder | None = None) -> dict:
+def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none", shot_cards: dict | None = None) -> dict:
     enriched = deepcopy(shot)
-    if scene_builder is not None:
-        scene_result = scene_builder.build(shot)
-        enriched["scene_reference_sheet"] = scene_result["sheet_path"]
-        enriched["scene_reference_sheet_description"] = scene_result.get("scene_reference_sheet_description", "")
     shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
     prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
     continuity_notes = "; ".join(_safe_continuity_facts(shot.get("continuity_notes")))
@@ -65,7 +60,6 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_
         "msr_global_prompt": _movie_reference_global_prompt(shot, bible=bible, manifest=manifest),
         "native_audio": True,
         "msr_prompt_relay_mode": "single",
-        "scene_reference_sheet_description": enriched.get("scene_reference_sheet_description", ""),
         "msr_prompt_relay": [
             {
                 "frame_start": 0,

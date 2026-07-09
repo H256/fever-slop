@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
-from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject, compose_scene_reference_sheet, generate_scene_sheet_description
+from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
@@ -106,89 +106,3 @@ def _project_reference_path(value: object) -> str:
 
 def _resolve_reference_path(value: str) -> str:
     return _project_reference_path(value)
-
-
-class SceneReferenceSheetBuilder:
-    def __init__(
-        self,
-        *,
-        project_dir: str | Path,
-        manifest: dict,
-        size: tuple[int, int] = (1280, 704),
-    ):
-        self.project_dir = Path(project_dir)
-        self.manifest = manifest
-        self.size = size
-
-    def build(self, shot: dict) -> dict:
-        actor_ids = shot.get("reference_ids", {}).get("actors") or shot.get("actor_ids") or []
-        location_id = shot.get("reference_ids", {}).get("location") or shot.get("location_id") or ""
-
-        images = []
-        for actor_id in actor_ids:
-            actor_item = _item_for_id(self.manifest.get("actors") or [], actor_id)
-            if actor_item:
-                logical = _pick_existing_path(
-                    [actor_item.get("msr_sheet_path"), actor_item.get("sheet_path")],
-                    self.project_dir,
-                )
-                if logical:
-                    images.append({
-                        "path": logical,
-                        "type": "actor",
-                        "id": actor_id,
-                        "visual_description": str(actor_item.get("visual_description") or "").strip(),
-                    })
-
-        if location_id:
-            location_item = _item_for_id(self.manifest.get("locations") or [], location_id)
-            if location_item:
-                logical = _pick_existing_path(
-                    [location_item.get("msr_sheet_path"), location_item.get("sheet_path")],
-                    self.project_dir,
-                )
-                if logical:
-                    images.append({
-                        "path": logical,
-                        "type": "location",
-                        "id": location_id,
-                        "visual_description": str(location_item.get("visual_description") or "").strip(),
-                    })
-
-        if not images:
-            return {"sheet_path": "", "image_count": 0, "images": [], "scene_reference_sheet_description": ""}
-
-        image_paths = [self.project_dir / img["path"] for img in images]
-        shot_id = shot.get("shot_id") or f"scene_{shot.get('scene')}"
-        output_path = self.project_dir / "movie" / "scene_sheets" / f"{shot_id}_scene.png"
-        num_cols = min(len(images), 4)
-        compose_scene_reference_sheet(image_paths, output_path, size=self.size, columns=num_cols)
-
-        relative_sheet = output_path.relative_to(self.project_dir).as_posix()
-        description = generate_scene_sheet_description(images, num_cols, self.size)
-        return {
-            "sheet_path": relative_sheet,
-            "image_count": len(images),
-            "images": images,
-            "scene_reference_sheet_description": description,
-        }
-
-
-def _pick_existing_path(candidates: list[str | None], project_dir: Path) -> str:
-    for candidate in candidates:
-        if not candidate:
-            continue
-        logical = _resolve_reference_path(str(candidate))
-        if not logical:
-            continue
-        full = project_dir / logical
-        if full.exists():
-            return logical
-    return ""
-
-
-def _item_for_id(items: list[dict], item_id: str) -> dict | None:
-    for item in items:
-        if isinstance(item, dict) and str(item.get("id")) == str(item_id):
-            return item
-    return None

@@ -157,6 +157,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-movie-plan", action="store_true", help="Reuse existing movie/render_plan.json.")
     parser.add_argument("--skip-movie-references", action="store_true", help="Reuse existing movie reference manifest paths.")
     parser.add_argument("--skip-movie-msr-enrich", action="store_true", help="Reuse existing movie/render_plan_msr.json or render the plain plan.")
+    parser.add_argument("--skip-movie-ingredients-sheets", action="store_true", help="Skip Ingredients scene sheet composition.")
     parser.add_argument("--skip-movie-render", action="store_true", help="Stop after syncing/rendering movie references.")
     parser.add_argument("--force-movie-references", action="store_true", help="Render movie references even when manifest paths already exist.")
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
@@ -239,6 +240,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     shot_cards_path = project_dir / "movie" / "shot_cards.json"
     continuity_plan_path = project_dir / "movie" / "continuity_plan.json"
     render_plan_msr_path = project_dir / "movie" / "render_plan_msr.json"
+    render_plan_ingredients_path = project_dir / "movie" / "render_plan_ingredients.json"
 
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
@@ -462,6 +464,13 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=args.keyframe_mode)
     elif not render_plan_msr_path.exists():
         render_plan_msr_path = None
+
+    if not args.skip_movie_ingredients_sheets:
+        from feverslop.application.movie_ingredients_sheets import enrich_movie_render_plan_with_ingredients_sheets
+        _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
+        render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(project_dir=project_dir)
+    elif not render_plan_ingredients_path.exists():
+        render_plan_ingredients_path = None
 
     debug_workflows_dir: Path | None = None
     if args.write_debug_workflows:
