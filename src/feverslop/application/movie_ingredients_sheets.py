@@ -11,13 +11,24 @@ from feverslop.application.reference_bible import (
 )
 
 
-def enrich_movie_render_plan_with_ingredients_sheets(*, project_dir: Path) -> Path:
+def enrich_movie_render_plan_with_ingredients_sheets(
+    *,
+    project_dir: Path,
+    sheet_scale: float = 3.0,
+) -> Path:
     """Compose per-shot Ingredients scene reference sheets and write
     movie/render_plan_ingredients.json.
 
     Reads render_plan.json + references/manifest.json, composes letterboxed
     scene sheets, generates structured descriptions, and persists the result.
-    Fully independent of the MSR pipeline."""
+    Fully independent of the MSR pipeline.
+
+    Parameters
+    ----------
+    project_dir: Project root.
+    sheet_scale: Multiplier over the project resolution.  Default 3 so the
+                 sheet has enough resolution for the model to downscale.
+    """
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
     render_plan_path = movie_dir / "render_plan.json"
@@ -29,6 +40,10 @@ def enrich_movie_render_plan_with_ingredients_sheets(*, project_dir: Path) -> Pa
     continuity_plan = _read_json(continuity_plan_path) if continuity_plan_path.exists() else {}
     shot_cards = _read_json(shot_cards_path) if shot_cards_path.exists() else {}
 
+    base_w, base_h = _read_json(render_plan_path).get("resolution", {}).get("width", 1280), \
+        _read_json(render_plan_path).get("resolution", {}).get("height", 704)
+    sheet_size = (int(base_w * sheet_scale), int(base_h * sheet_scale))
+
     enriched = deepcopy(render_plan)
     enriched["movie_bible_path"] = "movie/bible.json"
     if continuity_plan:
@@ -38,7 +53,11 @@ def enrich_movie_render_plan_with_ingredients_sheets(*, project_dir: Path) -> Pa
         enriched["movie_shot_cards_path"] = "movie/shot_cards.json"
     enriched["ingredients_enriched"] = True
 
-    builder = IngredientsSceneSheetBuilder(project_dir=project_dir, manifest=manifest)
+    builder = IngredientsSceneSheetBuilder(
+        project_dir=project_dir,
+        manifest=manifest,
+        size=sheet_size,
+    )
     enriched["shots"] = [
         _enrich_shot(shot, builder=builder, manifest=manifest)
         for shot in render_plan.get("shots") or []

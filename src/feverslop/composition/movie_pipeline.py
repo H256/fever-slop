@@ -468,7 +468,10 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     if not args.skip_movie_ingredients_sheets:
         from feverslop.application.movie_ingredients_sheets import enrich_movie_render_plan_with_ingredients_sheets
         _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
-        render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(project_dir=project_dir)
+        render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
+            project_dir=project_dir,
+            sheet_scale=config.get("ingredients_sheet_scale", 3.0),
+        )
     elif not render_plan_ingredients_path.exists():
         render_plan_ingredients_path = None
 
