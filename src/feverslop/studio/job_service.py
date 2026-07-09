@@ -374,7 +374,7 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
             fps=int(payload.get("fps") or 24),
             silent_mode=bool(payload.get("silent_mode", False)),
             run_video_pipeline=True,
-            runner_options={"skip_tests": True, "video_pipeline": "ltx_msr" if pipeline_mode == "msr" else "ltx_i2v"},
+            runner_options={"skip_tests": True, "video_pipeline": "ltx_msr" if pipeline_mode == "msr" else "ltx_ingredients" if pipeline_mode == "ingredients" else "ltx_i2v"},
         )
         return run_with_stream_logging(lambda: use_case.execute(request), log).project_config_path
 
@@ -1049,6 +1049,8 @@ def pipeline_mode_from_config(config_path: Path) -> str | None:
     value = str(config.get("video_pipeline") or "")
     if value == "ltx_msr":
         return "msr"
+    if value == "ltx_ingredients":
+        return "ingredients"
     if value == "ltx_i2v":
         return "classic"
     return None
