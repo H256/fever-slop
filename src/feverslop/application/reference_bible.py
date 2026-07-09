@@ -505,9 +505,11 @@ def generate_scene_sheet_description(images: list[dict], num_cols: int, size: tu
         col = index % num_cols
         position = _panel_position_label(row, col, num_rows, num_cols, index, len(images))
         type_label = _type_label(img.get("type", "actor"))
+        anchor = str(img.get("id") or "").strip()
         description = str(img.get("visual_description") or img.get("name") or "").strip()
         if description:
-            lines.append(f"**{position} ({type_label}):** {description}")
+            label = f"{type_label}, {anchor}" if anchor else type_label
+            lines.append(f"**{position} ({label}):** {description}")
 
     return "\n".join(lines)
 

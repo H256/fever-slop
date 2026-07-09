@@ -588,45 +588,52 @@ class SceneSheetDescriptionTests(unittest.TestCase):
         self.assertEqual("", generate_scene_sheet_description([], 1, (1280, 704)))
 
     def test_single_actor(self):
-        images = [{"type": "actor", "visual_description": "a young woman with long brown hair"}]
+        images = [{"type": "actor", "id": "leo", "visual_description": "a young woman with long brown hair"}]
         num_cols = math.ceil(math.sqrt(len(images)))
         desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         self.assertIn("### Reference Sheet Description", desc)
-        self.assertIn("**Full (Character):** a young woman with long brown hair", desc)
+        self.assertIn("**Full (Character, leo):** a young woman with long brown hair", desc)
 
     def test_two_images_left_right(self):
         images = [
-            {"type": "actor", "visual_description": "a woman with brown hair"},
-            {"type": "location", "visual_description": "a cobblestone alley"},
+            {"type": "actor", "id": "leo", "visual_description": "a woman with brown hair"},
+            {"type": "location", "id": "forest", "visual_description": "a cobblestone alley"},
         ]
         num_cols = math.ceil(math.sqrt(len(images)))
         desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         lines = desc.split("\n")
-        self.assertIn("**Left (Character):** a woman with brown hair", lines)
-        self.assertIn("**Right (Setting):** a cobblestone alley", lines)
+        self.assertIn("**Left (Character, leo):** a woman with brown hair", lines)
+        self.assertIn("**Right (Setting, forest):** a cobblestone alley", lines)
 
     def test_three_images_last_row_single(self):
         images = [
-            {"type": "actor", "visual_description": "actor one"},
-            {"type": "actor", "visual_description": "actor two"},
-            {"type": "location", "visual_description": "a garden"},
+            {"type": "actor", "id": "actor_one", "visual_description": "actor one"},
+            {"type": "actor", "id": "actor_two", "visual_description": "actor two"},
+            {"type": "location", "id": "garden", "visual_description": "a garden"},
         ]
         num_cols = math.ceil(math.sqrt(len(images)))
         self.assertEqual(2, num_cols)
         desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         lines = desc.split("\n")
-        self.assertIn("**Top Row Left (Character):** actor one", lines)
-        self.assertIn("**Top Row Right (Character):** actor two", lines)
-        self.assertIn("**Bottom Row (Setting):** a garden", lines)
+        self.assertIn("**Top Row Left (Character, actor_one):** actor one", lines)
+        self.assertIn("**Top Row Right (Character, actor_two):** actor two", lines)
+        self.assertIn("**Bottom Row (Setting, garden):** a garden", lines)
 
     def test_fallback_to_name_when_no_visual_description(self):
-        images = [{"type": "actor", "name": "Alice"}]
+        images = [{"type": "actor", "id": "alice", "name": "Alice"}]
         num_cols = math.ceil(math.sqrt(len(images)))
         desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         self.assertIn("Alice", desc)
+        self.assertIn("alice", desc)
 
     def test_description_starts_with_header(self):
-        images = [{"type": "actor", "visual_description": "test"}]
+        images = [{"type": "actor", "id": "test_id", "visual_description": "test"}]
         num_cols = math.ceil(math.sqrt(len(images)))
         desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         self.assertTrue(desc.startswith("### Reference Sheet Description"))
+
+    def test_no_anchor_omits_id(self):
+        images = [{"type": "actor", "visual_description": "a mysterious figure"}]
+        num_cols = math.ceil(math.sqrt(len(images)))
+        desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
+        self.assertIn("**Full (Character):** a mysterious figure", desc)
