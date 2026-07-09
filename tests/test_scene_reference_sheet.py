@@ -1,4 +1,5 @@
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,14 +24,14 @@ class FitContainImageTests(unittest.TestCase):
         src = Image.new("RGB", (200, 100), color=(255, 0, 0))
         result = _fit_contain_image(src, (100, 200))
         self.assertEqual((100, 200), result.size)
-        self.assertEqual((255, 255, 255), result.getpixel((0, 0)))
+        self.assertEqual((0, 0, 0), result.getpixel((0, 0)))
         self.assertEqual((255, 0, 0), result.getpixel((50, 90)))
 
     def test_fit_contain_tall_into_wide_letterboxes(self):
         src = Image.new("RGB", (100, 200), color=(0, 0, 255))
         result = _fit_contain_image(src, (200, 100))
         self.assertEqual((200, 100), result.size)
-        self.assertEqual((255, 255, 255), result.getpixel((0, 0)))
+        self.assertEqual((0, 0, 0), result.getpixel((0, 0)))
         self.assertEqual((0, 0, 255), result.getpixel((90, 50)))
 
     def test_fit_contain_same_size_returns_copy(self):
@@ -41,12 +42,12 @@ class FitContainImageTests(unittest.TestCase):
         self.assertEqual((0, 255, 0), result.getpixel((99, 99)))
         self.assertIsNot(src, result)
 
-    def test_fit_contain_smaller_fits_without_scaling_up(self):
+    def test_fit_contain_smaller_scales_up_to_fill(self):
         src = Image.new("RGB", (50, 50), color=(128, 128, 128))
         result = _fit_contain_image(src, (100, 100))
         self.assertEqual((100, 100), result.size)
-        self.assertEqual((255, 255, 255), result.getpixel((0, 0)))
-        self.assertEqual((128, 128, 128), result.getpixel((25, 25)))
+        self.assertEqual((128, 128, 128), result.getpixel((0, 0)))
+        self.assertEqual((128, 128, 128), result.getpixel((99, 99)))
 
     def test_fit_contain_output_dimensions_exact(self):
         for target in ((300, 200), (200, 300), (100, 100), (1, 1)):
@@ -58,13 +59,17 @@ class FitContainImageTests(unittest.TestCase):
         src = Image.new("RGB", (100, 50), color=(200, 100, 50))
         result = _fit_contain_image(src, (200, 200))
         self.assertEqual((200, 200), result.size)
-        scaled_w, scaled_h = 100, 50
-        offset_x = (200 - scaled_w) // 2
-        offset_y = (200 - scaled_h) // 2
-        self.assertEqual((255, 255, 255), result.getpixel((0, 0)))
-        self.assertEqual((255, 255, 255), result.getpixel((0, 199)))
-        self.assertEqual((200, 100, 50), result.getpixel((offset_x, offset_y)))
-        self.assertEqual((200, 100, 50), result.getpixel((offset_x + scaled_w - 1, offset_y + scaled_h - 1)))
+        self.assertEqual((0, 0, 0), result.getpixel((0, 0)))
+        self.assertEqual((0, 0, 0), result.getpixel((0, 199)))
+        fitted = result.getpixel((100, 100))
+        self.assertEqual((200, 100, 50), fitted)
+
+    def test_fit_contain_custom_background_visible_when_letterboxed(self):
+        src = Image.new("RGB", (200, 100), color=(255, 255, 255))
+        result = _fit_contain_image(src, (100, 100), bg=(128, 0, 128))
+        self.assertEqual((100, 100), result.size)
+        self.assertEqual((128, 0, 128), result.getpixel((0, 0)))
+        self.assertEqual((255, 255, 255), result.getpixel((50, 50)))
 
 
 class ComposeSceneReferenceSheetTests(unittest.TestCase):
@@ -111,10 +116,25 @@ class ComposeSceneReferenceSheetTests(unittest.TestCase):
             compose_scene_reference_sheet([img], out, size=(400, 300))
             with Image.open(out) as sheet:
                 self.assertEqual((400, 300), sheet.size)
-                self.assertEqual((255, 255, 255), sheet.getpixel((0, 0)))
-                self.assertEqual((255, 255, 255), sheet.getpixel((399, 0)))
+                self.assertEqual((0, 0, 0), sheet.getpixel((0, 0)))
+                self.assertEqual((0, 0, 0), sheet.getpixel((399, 0)))
 
-    def test_compose_scene_sheet_explicit_columns(self):
+    def test_compose_scene_sheet_ceil_sqrt_layout(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            imgs = [
+                self._make_image(100, 100, (255, 0, 0), tmp),
+                self._make_image(100, 100, (0, 255, 0), tmp),
+                self._make_image(100, 100, (0, 0, 255), tmp),
+            ]
+            out = tmp / "sqrt_layout.png"
+            compose_scene_reference_sheet(imgs, out, size=(600, 400))
+            with Image.open(out) as sheet:
+                self.assertEqual((600, 400), sheet.size)
+                cols = math.ceil(math.sqrt(3))
+                self.assertEqual(2, cols)
+
+    def test_compose_scene_sheet_five_images(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             imgs = [
@@ -124,10 +144,12 @@ class ComposeSceneReferenceSheetTests(unittest.TestCase):
                 self._make_image(100, 100, (255, 255, 0), tmp),
                 self._make_image(100, 100, (255, 0, 255), tmp),
             ]
-            out = tmp / "explicit_cols.png"
-            compose_scene_reference_sheet(imgs, out, size=(300, 400), columns=2)
+            out = tmp / "five_imgs.png"
+            compose_scene_reference_sheet(imgs, out, size=(600, 400))
             with Image.open(out) as sheet:
-                self.assertEqual((300, 400), sheet.size)
+                self.assertEqual((600, 400), sheet.size)
+                cols = math.ceil(math.sqrt(5))
+                self.assertEqual(3, cols)
 
     def test_compose_scene_sheet_empty_raises(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -144,6 +166,34 @@ class ComposeSceneReferenceSheetTests(unittest.TestCase):
             self.assertFalse(out.parent.exists())
             compose_scene_reference_sheet([img], out)
             self.assertTrue(out.exists())
+
+    def test_compose_scene_sheet_black_background(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            img = self._make_image(50, 50, (255, 255, 255), tmp)
+            out = tmp / "black_bg.png"
+            compose_scene_reference_sheet([img], out, size=(400, 300))
+            with Image.open(out) as sheet:
+                self.assertEqual((0, 0, 0), sheet.getpixel((0, 0)))
+                self.assertEqual((0, 0, 0), sheet.getpixel((399, 299)))
+
+    def test_compose_scene_sheet_gap_between_cells(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            imgs = [
+                self._make_image(100, 100, (255, 0, 0), tmp),
+                self._make_image(100, 100, (0, 255, 0), tmp),
+            ]
+            out = tmp / "gap_test.png"
+            compose_scene_reference_sheet(imgs, out, size=(600, 400))
+            with Image.open(out) as sheet:
+                self.assertEqual((600, 400), sheet.size)
+                gap = 16
+                cols = math.ceil(math.sqrt(2))
+                cell_w = (600 - gap * (cols + 1)) // cols
+                mid = gap + cell_w + gap // 2
+                mid_pixel = sheet.getpixel((mid, 200))
+                self.assertEqual((0, 0, 0), mid_pixel)
 
 
 class IngredientsSheetBuilderTests(unittest.TestCase):
@@ -348,6 +398,39 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
             self.assertIn("scene_reference_sheet_description", result)
             self.assertEqual("", result["scene_reference_sheet_description"])
 
+    def test_builder_ceil_sqrt_layout_for_three_images(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            actors_dir = tmp / "movie" / "references" / "actors"
+            imgs = []
+            for i, color in enumerate([(255, 0, 0), (0, 255, 0), (0, 0, 255)], 1):
+                d = actors_dir / f"actor_{i}"
+                d.mkdir(parents=True, exist_ok=True)
+                p = self._make_image(200, 200, color, d)
+                imgs.append(p.relative_to(tmp).as_posix())
+
+            manifest = {
+                "actors": [
+                    {"id": f"actor_{i}", "name": f"A{i}", "sheet_path": p}
+                    for i, p in enumerate(imgs, 1)
+                ],
+                "locations": [],
+            }
+            shot = {
+                "shot_id": "shot_010",
+                "scene": 1,
+                "reference_ids": {"actors": ["actor_1", "actor_2", "actor_3"]},
+            }
+
+            builder = IngredientsSceneSheetBuilder(project_dir=tmp, manifest=manifest)
+            result = builder.build(shot)
+
+            self.assertEqual(3, result["image_count"])
+            with Image.open(tmp / "movie" / "ingredients_sheets" / "shot_010_ingredients.png") as _sheet:
+                cols = math.ceil(math.sqrt(3))
+                self.assertEqual(2, cols)
+
 
 class IngredientsEnrichmentWiringTests(unittest.TestCase):
 
@@ -502,11 +585,12 @@ class TypeLabelTests(unittest.TestCase):
 class SceneSheetDescriptionTests(unittest.TestCase):
 
     def test_empty_images_returns_empty(self):
-        self.assertEqual("", generate_scene_sheet_description([], 2, (1280, 704)))
+        self.assertEqual("", generate_scene_sheet_description([], 1, (1280, 704)))
 
     def test_single_actor(self):
         images = [{"type": "actor", "visual_description": "a young woman with long brown hair"}]
-        desc = generate_scene_sheet_description(images, 1, (1280, 704))
+        num_cols = math.ceil(math.sqrt(len(images)))
+        desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         self.assertIn("### Reference Sheet Description", desc)
         self.assertIn("**Full (Character):** a young woman with long brown hair", desc)
 
@@ -515,7 +599,8 @@ class SceneSheetDescriptionTests(unittest.TestCase):
             {"type": "actor", "visual_description": "a woman with brown hair"},
             {"type": "location", "visual_description": "a cobblestone alley"},
         ]
-        desc = generate_scene_sheet_description(images, 2, (1280, 704))
+        num_cols = math.ceil(math.sqrt(len(images)))
+        desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         lines = desc.split("\n")
         self.assertIn("**Left (Character):** a woman with brown hair", lines)
         self.assertIn("**Right (Setting):** a cobblestone alley", lines)
@@ -526,7 +611,9 @@ class SceneSheetDescriptionTests(unittest.TestCase):
             {"type": "actor", "visual_description": "actor two"},
             {"type": "location", "visual_description": "a garden"},
         ]
-        desc = generate_scene_sheet_description(images, 2, (1280, 704))
+        num_cols = math.ceil(math.sqrt(len(images)))
+        self.assertEqual(2, num_cols)
+        desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         lines = desc.split("\n")
         self.assertIn("**Top Row Left (Character):** actor one", lines)
         self.assertIn("**Top Row Right (Character):** actor two", lines)
@@ -534,10 +621,12 @@ class SceneSheetDescriptionTests(unittest.TestCase):
 
     def test_fallback_to_name_when_no_visual_description(self):
         images = [{"type": "actor", "name": "Alice"}]
-        desc = generate_scene_sheet_description(images, 1, (1280, 704))
+        num_cols = math.ceil(math.sqrt(len(images)))
+        desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         self.assertIn("Alice", desc)
 
     def test_description_starts_with_header(self):
         images = [{"type": "actor", "visual_description": "test"}]
-        desc = generate_scene_sheet_description(images, 1, (1280, 704))
+        num_cols = math.ceil(math.sqrt(len(images)))
+        desc = generate_scene_sheet_description(images, num_cols, (1280, 704))
         self.assertTrue(desc.startswith("### Reference Sheet Description"))

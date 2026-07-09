@@ -6,7 +6,7 @@ import json
 import math
 from typing import Callable, Any
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
 
@@ -357,17 +357,10 @@ def _fit_image_cover(image: Image.Image, size: tuple[int, int]) -> Image.Image:
     return resized.crop((left, top, left + width, top + height))
 
 
-def _fit_contain_image(image: Image.Image, size: tuple[int, int]) -> Image.Image:
-    width, height = size
-    scale = min(width / image.width, height / image.height)
-    if image.width <= width and image.height <= height:
-        scale = 1
-    resized_size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
-    resized = image.resize(resized_size)
-    offset_x = (width - resized.width) // 2
-    offset_y = (height - resized.height) // 2
-    canvas = Image.new("RGB", (width, height), "white")
-    canvas.paste(resized, (offset_x, offset_y))
+def _fit_contain_image(image: Image.Image, size: tuple[int, int], bg: tuple[int, int, int] = (0, 0, 0)) -> Image.Image:
+    fitted = ImageOps.contain(image, size, Image.LANCZOS)
+    canvas = Image.new("RGB", size, bg)
+    canvas.paste(fitted, ((size[0] - fitted.width) // 2, (size[1] - fitted.height) // 2))
     return canvas
 
 
@@ -419,20 +412,18 @@ def compose_scene_reference_sheet(
 
     images = [Image.open(path).convert("RGB") for path in image_paths]
     width, height = int(size[0]), int(size[1])
-    if columns is None:
-        columns = min(len(images), 4)
-    rows = math.ceil(len(images) / columns)
-    cell_w = width // columns
-    cell_h = height // rows
-    sheet = Image.new("RGB", (width, height), "white")
+    cols = math.ceil(math.sqrt(len(images)))
+    rows = math.ceil(len(images) / cols)
+    gap = 16
+    cell_w = (width - gap * (cols + 1)) // cols
+    cell_h = (height - gap * (rows + 1)) // rows
+    sheet = Image.new("RGB", (width, height), (0, 0, 0))
 
     for index, image in enumerate(images):
-        col = index % columns
-        row = index // columns
-        x = col * cell_w
-        y = row * cell_h
+        row = index // cols
+        col = index % cols
         fitted = _fit_contain_image(image, (cell_w, cell_h))
-        sheet.paste(fitted, (x, y))
+        sheet.paste(fitted, (gap + col * (cell_w + gap), gap + row * (cell_h + gap)))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output_path)
@@ -452,7 +443,7 @@ def _panel_position_label(row: int, col: int, num_rows: int, num_cols: int, inde
     is_last_row = row == num_rows - 1
     remaining = total - index - 1
 
-    if is_last_row and remaining == 0 and col == 0:
+    if total > 1 and is_last_row and remaining == 0 and col == 0:
         if num_rows == 2:
             row_name = "Bottom"
         elif num_rows <= 3:

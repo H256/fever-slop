@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 
@@ -108,8 +109,8 @@ class IngredientsSceneSheetBuilder:
         image_paths = [self.project_dir / img["path"] for img in images]
         shot_id = shot.get("shot_id") or f"scene_{shot.get('scene')}"
         output_path = self.project_dir / "movie" / "ingredients_sheets" / f"{shot_id}_ingredients.png"
-        num_cols = min(len(images), 4)
-        compose_scene_reference_sheet(image_paths, output_path, size=self.size, columns=num_cols)
+        num_cols = math.ceil(math.sqrt(len(images)))
+        compose_scene_reference_sheet(image_paths, output_path, size=self.size)
 
         relative_sheet = output_path.relative_to(self.project_dir).as_posix()
         description = generate_scene_sheet_description(images, num_cols, self.size)
