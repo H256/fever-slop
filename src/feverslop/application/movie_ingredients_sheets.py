@@ -9,6 +9,7 @@ from feverslop.application.reference_bible import (
     compose_scene_reference_sheet,
     generate_scene_sheet_description,
 )
+from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 
 
 def enrich_movie_render_plan_with_ingredients_sheets(
@@ -35,8 +36,10 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     reference_manifest_path = movie_dir / "references" / "manifest.json"
     continuity_plan_path = movie_dir / "continuity_plan.json"
     shot_cards_path = movie_dir / "shot_cards.json"
+    bible_path = movie_dir / "bible.json"
     render_plan = _read_json(render_plan_path)
     manifest = _read_json(reference_manifest_path)
+    bible = _read_json(bible_path) if bible_path.exists() else {}
     continuity_plan = _read_json(continuity_plan_path) if continuity_plan_path.exists() else {}
     shot_cards = _read_json(shot_cards_path) if shot_cards_path.exists() else {}
 
@@ -59,7 +62,7 @@ def enrich_movie_render_plan_with_ingredients_sheets(
         size=sheet_size,
     )
     enriched["shots"] = [
-        _enrich_shot(shot, builder=builder, manifest=manifest)
+        _enrich_shot(shot, builder=builder, manifest=manifest, bible=bible)
         for shot in render_plan.get("shots") or []
     ]
 
@@ -68,15 +71,18 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     return output_path
 
 
-def _enrich_shot(shot: dict, *, builder: "IngredientsSceneSheetBuilder", manifest: dict) -> dict:
+def _enrich_shot(shot: dict, *, builder: "IngredientsSceneSheetBuilder", manifest: dict, bible: dict) -> dict:
     enriched = deepcopy(shot)
     sheet_result = builder.build(shot)
     enriched["ingredients_scene_sheet"] = sheet_result["sheet_path"]
     enriched["ingredients_scene_sheet_description"] = sheet_result.get("scene_reference_sheet_description", "")
+    target_prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
+    enriched["ingredients_target_prompt"] = "### Target Description\n" + target_prompt
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "native_audio": True,
         "ingredients_scene_sheet_description": enriched.get("ingredients_scene_sheet_description", ""),
+        "ingredients_target_prompt": enriched["ingredients_target_prompt"],
     }
     return enriched
 

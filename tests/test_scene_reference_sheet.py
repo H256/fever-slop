@@ -434,10 +434,12 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
 
 class IngredientsEnrichmentWiringTests(unittest.TestCase):
 
-    def _make_project(self, tmp):
+    def _make_project(self, tmp, with_bible=True, shot_fields=None):
         movie = tmp / "movie"
         refs = movie / "references"
         refs.mkdir(parents=True, exist_ok=True)
+        if shot_fields is None:
+            shot_fields = {}
         (movie / "render_plan.json").write_text(
             json.dumps({
                 "resolution": {"width": 1280, "height": 720},
@@ -448,6 +450,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
                         "duration_seconds": 2,
                         "description": "A test scene",
                         "reference_ids": {"actors": ["actor_1"], "location": "loc_1"},
+                        **shot_fields,
                     }
                 ],
             }),
@@ -455,11 +458,21 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
         )
         (refs / "manifest.json").write_text(
             json.dumps({
-                "actors": [{"id": "actor_1", "name": "Alice"}],
-                "locations": [{"id": "loc_1", "name": "Room"}],
+                "actors": [{"id": "actor_1", "name": "Alice", "visual_description": "a woman with brown hair"}],
+                "locations": [{"id": "loc_1", "name": "Room", "visual_description": "a quiet room"}],
             }),
             encoding="utf-8",
         )
+        if with_bible:
+            (movie / "bible.json").write_text(
+                json.dumps({
+                    "title": "Test",
+                    "actors": [{"id": "actor_1", "name": "Alice"}],
+                    "locations": [{"id": "loc_1", "name": "Room"}],
+                    "runtime_constraints": {"fps": 24},
+                }),
+                encoding="utf-8",
+            )
         return tmp
 
     def test_enrichment_writes_render_plan_ingredients(self):
@@ -524,6 +537,87 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             shot = data["shots"][0]
             self.assertEqual("", shot["ingredients_scene_sheet"])
             self.assertEqual("", shot["ingredients_scene_sheet_description"])
+
+    def test_enrichment_shot_has_ingredients_target_prompt_at_both_levels(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp, shot_fields={
+                "camera": "slow dolly",
+                "acting": "controlled fear",
+                "action": "opens the ledger",
+                "dialogue": "Alice: It remembers me.",
+            })
+            out = enrich_movie_render_plan_with_ingredients_sheets(project_dir=tmp)
+            data = json.loads(out.read_text(encoding="utf-8"))
+            shot = data["shots"][0]
+
+            self.assertIn("ingredients_target_prompt", shot)
+            self.assertIn("ingredients_target_prompt", shot["ltx"])
+            self.assertEqual(shot["ingredients_target_prompt"], shot["ltx"]["ingredients_target_prompt"])
+            prompt = shot["ingredients_target_prompt"]
+            self.assertTrue(prompt.startswith("### Target Description\n"))
+            self.assertIn("slow dolly", prompt)
+            self.assertIn("controlled fear", prompt)
+            self.assertNotIn("Full-body cinematic character reference sheet", prompt)
+            self.assertNotIn("Four vertical panels", prompt)
+
+    def test_enrichment_target_prompt_includes_actor_names_and_dialogue_language(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            movie = tmp / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True, exist_ok=True)
+            (movie / "render_plan.json").write_text(
+                json.dumps({
+                    "resolution": {"width": 1280, "height": 720},
+                    "shots": [
+                        {
+                            "shot_id": "shot_001",
+                            "scene": 1,
+                            "duration_seconds": 2,
+                            "description": "Mara speaks",
+                            "dialogue": "MARA: Hola mundo.",
+                            "reference_ids": {"actors": ["mara"], "location": "loc_1"},
+                        }
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            (refs / "manifest.json").write_text(
+                json.dumps({
+                    "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist"}],
+                    "locations": [{"id": "loc_1", "name": "Room", "visual_description": "a quiet room"}],
+                }),
+                encoding="utf-8",
+            )
+            (movie / "bible.json").write_text(
+                json.dumps({
+                    "title": "Test",
+                    "actors": [{"id": "mara", "name": "Mara"}],
+                    "locations": [{"id": "loc_1", "name": "Room"}],
+                    "runtime_constraints": {"fps": 24, "dialogue_language": "Spanish"},
+                }),
+                encoding="utf-8",
+            )
+
+            out = enrich_movie_render_plan_with_ingredients_sheets(project_dir=tmp)
+            data = json.loads(out.read_text(encoding="utf-8"))
+            prompt = data["shots"][0]["ingredients_target_prompt"]
+
+            self.assertIn("Mara", prompt)
+            self.assertIn("Spanish", prompt)
+            self.assertIn("Hola mundo", prompt)
+
+    def test_enrichment_target_prompt_graceful_without_bible(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp, with_bible=False)
+            out = enrich_movie_render_plan_with_ingredients_sheets(project_dir=tmp)
+            data = json.loads(out.read_text(encoding="utf-8"))
+            prompt = data["shots"][0]["ingredients_target_prompt"]
+
+            self.assertIsInstance(prompt, str)
+            self.assertIn("A test scene", prompt)
 
 
 class PanelPositionLabelTests(unittest.TestCase):

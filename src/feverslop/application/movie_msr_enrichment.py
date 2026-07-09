@@ -134,7 +134,8 @@ def _local_dialogue_direction(shot: dict, actor_names: list[str], *, dialogue_la
     verb = _dialogue_verb(spoken_text)
     if speaker:
         return f"{speaker} {verb}{language_phrase}: \"{spoken_text}\""
-    return f"The visible referenced actor {verb}{language_phrase}: \"{spoken_text}\""
+    fallback = actor_names[0] if actor_names else "The visible referenced actor"
+    return f"{fallback} {verb}{language_phrase}: \"{spoken_text}\""
 
 
 def _dialogue_cue_and_text(dialogue: str) -> tuple[str, str]:
