@@ -5,6 +5,8 @@ import re
 from copy import deepcopy
 from pathlib import Path
 
+from feverslop.application.movie_references import SceneReferenceSheetBuilder
+
 
 _SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
 _DIALOGUE_CUE_RE = re.compile(r"\b[A-Z][A-Z0-9 _'-]{1,30}:\s+\S")
@@ -32,8 +34,9 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mod
         enriched["movie_shot_cards_path"] = "movie/shot_cards.json"
     enriched["keyframe_mode"] = keyframe_mode
     enriched["msr_enriched"] = True
+    scene_builder = SceneReferenceSheetBuilder(project_dir=project_dir, manifest=manifest)
     enriched["shots"] = [
-        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode, shot_cards=shot_cards)
+        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode, shot_cards=shot_cards, scene_builder=scene_builder)
         for shot in render_plan.get("shots") or []
     ]
 
@@ -42,8 +45,11 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mod
     return output_path
 
 
-def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none", shot_cards: dict | None = None) -> dict:
+def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none", shot_cards: dict | None = None, scene_builder: SceneReferenceSheetBuilder | None = None) -> dict:
     enriched = deepcopy(shot)
+    if scene_builder is not None:
+        scene_result = scene_builder.build(shot)
+        enriched["scene_reference_sheet"] = scene_result["sheet_path"]
     shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
     prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
     continuity_notes = "; ".join(_safe_continuity_facts(shot.get("continuity_notes")))

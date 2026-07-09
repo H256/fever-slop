@@ -1235,8 +1235,8 @@ class MovieProjectTests(unittest.TestCase):
             location_sheet = project / "movie" / "references" / "locations" / "trench" / "views" / "hero.png"
             actor_sheet.parent.mkdir(parents=True)
             location_sheet.parent.mkdir(parents=True)
-            actor_sheet.write_bytes(b"actor")
-            location_sheet.write_bytes(b"location")
+            Image.new("RGB", (10, 10), color=(255, 0, 0)).save(actor_sheet)
+            Image.new("RGB", (10, 10), color=(0, 0, 255)).save(location_sheet)
             (movie_dir / "bible.json").write_text(
                 json.dumps(
                     {

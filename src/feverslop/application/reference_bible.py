@@ -357,6 +357,20 @@ def _fit_image_cover(image: Image.Image, size: tuple[int, int]) -> Image.Image:
     return resized.crop((left, top, left + width, top + height))
 
 
+def _fit_contain_image(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    width, height = size
+    scale = min(width / image.width, height / image.height)
+    if image.width <= width and image.height <= height:
+        scale = 1
+    resized_size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    resized = image.resize(resized_size)
+    offset_x = (width - resized.width) // 2
+    offset_y = (height - resized.height) // 2
+    canvas = Image.new("RGB", (width, height), "white")
+    canvas.paste(resized, (offset_x, offset_y))
+    return canvas
+
+
 def compose_reference_sheet(image_paths: list[Path], output_path: Path, *, labels: bool = True) -> Path:
     images = [Image.open(path).convert("RGB") for path in image_paths]
     if not images:
@@ -391,6 +405,38 @@ def reference_sheet_columns(*, width: int, height: int, image_count: int) -> int
     if width > height:
         return min(3, image_count)
     return image_count
+
+
+def compose_scene_reference_sheet(
+    image_paths: list[Path],
+    output_path: Path,
+    *,
+    size: tuple[int, int] = (1280, 704),
+    columns: int | None = None,
+) -> Path:
+    if not image_paths:
+        raise ValueError("Cannot compose a scene reference sheet from an empty list")
+
+    images = [Image.open(path).convert("RGB") for path in image_paths]
+    width, height = int(size[0]), int(size[1])
+    if columns is None:
+        columns = min(len(images), 4)
+    rows = math.ceil(len(images) / columns)
+    cell_w = width // columns
+    cell_h = height // rows
+    sheet = Image.new("RGB", (width, height), "white")
+
+    for index, image in enumerate(images):
+        col = index % columns
+        row = index // columns
+        x = col * cell_w
+        y = row * cell_h
+        fitted = _fit_contain_image(image, (cell_w, cell_h))
+        sheet.paste(fitted, (x, y))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(output_path)
+    return output_path
 
 
 def _infer_reference_artifact_base_dir(output_dir: Path) -> Path:
