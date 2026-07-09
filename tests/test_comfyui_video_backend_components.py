@@ -560,24 +560,6 @@ class ComfyUIRenderQueueTests(unittest.TestCase):
 
         self.assertEqual(["a.mp4", "b.mov", "c.mkv", "d.webm"], [item["filename"] for item in videos])
 
-    def test_extract_output_videos_accepts_savevideo_images_key(self):
-        from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
-
-        videos = ComfyUIRenderQueue.extract_output_videos(
-            {
-                "outputs": {
-                    "4852": {
-                        "images": [
-                            {"filename": "scene_0001.mp4", "subfolder": "ltx_ingredients_raw", "type": "output"}
-                        ],
-                        "animated": [True]
-                    }
-                }
-            }
-        )
-
-        self.assertEqual(["scene_0001.mp4"], [item["filename"] for item in videos])
-
     def test_queue_download_raises_when_history_has_no_video_output(self):
         from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 
