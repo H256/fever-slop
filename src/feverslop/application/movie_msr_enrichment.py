@@ -50,6 +50,7 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_
     if scene_builder is not None:
         scene_result = scene_builder.build(shot)
         enriched["scene_reference_sheet"] = scene_result["sheet_path"]
+        enriched["scene_reference_sheet_description"] = scene_result.get("scene_reference_sheet_description", "")
     shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
     prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
     continuity_notes = "; ".join(_safe_continuity_facts(shot.get("continuity_notes")))
@@ -64,6 +65,7 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_
         "msr_global_prompt": _movie_reference_global_prompt(shot, bible=bible, manifest=manifest),
         "native_audio": True,
         "msr_prompt_relay_mode": "single",
+        "scene_reference_sheet_description": enriched.get("scene_reference_sheet_description", ""),
         "msr_prompt_relay": [
             {
                 "frame_start": 0,

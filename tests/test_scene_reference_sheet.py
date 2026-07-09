@@ -5,7 +5,13 @@ from pathlib import Path
 from PIL import Image
 
 from feverslop.application.movie_references import SceneReferenceSheetBuilder
-from feverslop.application.reference_bible import _fit_contain_image, compose_scene_reference_sheet
+from feverslop.application.reference_bible import (
+    _fit_contain_image,
+    _panel_position_label,
+    _type_label,
+    compose_scene_reference_sheet,
+    generate_scene_sheet_description,
+)
 
 
 class FitContainImageTests(unittest.TestCase):
@@ -398,3 +404,228 @@ class MSREnrichmentSceneSheetWiringTests(unittest.TestCase):
             self.assertIn("scene_reference_sheet", shot)
             ltx = shot.get("ltx") or {}
             self.assertNotIn("scene_reference_sheet", ltx)
+
+
+class PanelPositionLabelTests(unittest.TestCase):
+
+    def test_single_image_full(self):
+        self.assertEqual("Full", _panel_position_label(0, 0, 1, 1, 0, 1))
+
+    def test_single_row_two_cols(self):
+        self.assertEqual("Left", _panel_position_label(0, 0, 1, 2, 0, 2))
+        self.assertEqual("Right", _panel_position_label(0, 1, 1, 2, 1, 2))
+
+    def test_two_rows_two_cols(self):
+        self.assertEqual("Top Row Left", _panel_position_label(0, 0, 2, 2, 0, 4))
+        self.assertEqual("Top Row Right", _panel_position_label(0, 1, 2, 2, 1, 4))
+        self.assertEqual("Bottom Row Left", _panel_position_label(1, 0, 2, 2, 2, 4))
+        self.assertEqual("Bottom Row Right", _panel_position_label(1, 1, 2, 2, 3, 4))
+
+    def test_three_images_two_cols_last_row_single(self):
+        self.assertEqual("Top Row Left", _panel_position_label(0, 0, 2, 2, 0, 3))
+        self.assertEqual("Top Row Right", _panel_position_label(0, 1, 2, 2, 1, 3))
+        self.assertEqual("Bottom Row", _panel_position_label(1, 0, 2, 2, 2, 3))
+
+    def test_single_row_three_cols(self):
+        self.assertEqual("Left", _panel_position_label(0, 0, 1, 3, 0, 3))
+        self.assertEqual("Center", _panel_position_label(0, 1, 1, 3, 1, 3))
+        self.assertEqual("Right", _panel_position_label(0, 2, 1, 3, 2, 3))
+
+    def test_single_row_four_cols(self):
+        self.assertEqual("Left", _panel_position_label(0, 0, 1, 4, 0, 4))
+        self.assertEqual("Center-Left", _panel_position_label(0, 1, 1, 4, 1, 4))
+        self.assertEqual("Center-Right", _panel_position_label(0, 2, 1, 4, 2, 4))
+        self.assertEqual("Right", _panel_position_label(0, 3, 1, 4, 3, 4))
+
+    def test_three_rows_middle(self):
+        self.assertEqual("Top Row Left", _panel_position_label(0, 0, 3, 2, 0, 6))
+        self.assertEqual("Middle Row Right", _panel_position_label(1, 1, 3, 2, 3, 6))
+        self.assertEqual("Bottom Row Right", _panel_position_label(2, 1, 3, 2, 5, 6))
+
+    def test_many_rows_uses_numbered(self):
+        self.assertEqual("Row 3 Left", _panel_position_label(2, 0, 5, 2, 4, 10))
+        self.assertEqual("Bottom Row Right", _panel_position_label(4, 1, 5, 2, 9, 10))
+
+
+class TypeLabelTests(unittest.TestCase):
+
+    def test_actor_becomes_character(self):
+        self.assertEqual("Character", _type_label("actor"))
+
+    def test_location_becomes_setting(self):
+        self.assertEqual("Setting", _type_label("location"))
+
+    def test_prop_stays_prop(self):
+        self.assertEqual("Prop", _type_label("prop"))
+
+    def test_unknown_titlecased(self):
+        self.assertEqual("Other", _type_label("other"))
+
+
+class SceneSheetDescriptionTests(unittest.TestCase):
+
+    def test_empty_images_returns_empty(self):
+        self.assertEqual("", generate_scene_sheet_description([], 2, (1280, 704)))
+
+    def test_single_actor(self):
+        images = [{"type": "actor", "visual_description": "a young woman with long brown hair"}]
+        desc = generate_scene_sheet_description(images, 1, (1280, 704))
+        self.assertIn("### Reference Sheet Description", desc)
+        self.assertIn("**Full (Character):** a young woman with long brown hair", desc)
+
+    def test_two_images_left_right(self):
+        images = [
+            {"type": "actor", "visual_description": "a woman with brown hair"},
+            {"type": "location", "visual_description": "a cobblestone alley"},
+        ]
+        desc = generate_scene_sheet_description(images, 2, (1280, 704))
+        lines = desc.split("\n")
+        self.assertIn("**Left (Character):** a woman with brown hair", lines)
+        self.assertIn("**Right (Setting):** a cobblestone alley", lines)
+
+    def test_three_images_last_row_single(self):
+        images = [
+            {"type": "actor", "visual_description": "actor one"},
+            {"type": "actor", "visual_description": "actor two"},
+            {"type": "location", "visual_description": "a garden"},
+        ]
+        desc = generate_scene_sheet_description(images, 2, (1280, 704))
+        lines = desc.split("\n")
+        self.assertIn("**Top Row Left (Character):** actor one", lines)
+        self.assertIn("**Top Row Right (Character):** actor two", lines)
+        self.assertIn("**Bottom Row (Setting):** a garden", lines)
+
+    def test_fallback_to_name_when_no_visual_description(self):
+        images = [{"type": "actor", "name": "Alice"}]
+        desc = generate_scene_sheet_description(images, 1, (1280, 704))
+        self.assertIn("Alice", desc)
+
+    def test_description_starts_with_header(self):
+        images = [{"type": "actor", "visual_description": "test"}]
+        desc = generate_scene_sheet_description(images, 1, (1280, 704))
+        self.assertTrue(desc.startswith("### Reference Sheet Description"))
+
+
+class SceneReferenceSheetBuilderDescriptionTests(unittest.TestCase):
+
+    @staticmethod
+    def _make_image(w: int, h: int, color: tuple[int, int, int], parent: Path) -> Path:
+        p = parent / f"img_{w}x{h}_{color[0]}_{color[1]}_{color[2]}.png"
+        Image.new("RGB", (w, h), color=color).save(p)
+        return p
+
+    def _make_project(self, tmp: Path) -> Path:
+        movie = tmp / "movie"
+        refs = movie / "references"
+        actors_dir = refs / "actors" / "actor_1"
+        actors_dir.mkdir(parents=True, exist_ok=True)
+        locs_dir = refs / "locations" / "loc_1"
+        locs_dir.mkdir(parents=True, exist_ok=True)
+        return tmp
+
+    def test_builder_returns_description_with_visual_descriptions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            actor_sheet = self._make_image(200, 200, (255, 0, 0), tmp / "movie" / "references" / "actors" / "actor_1")
+            loc_sheet = self._make_image(200, 200, (0, 0, 255), tmp / "movie" / "references" / "locations" / "loc_1")
+
+            manifest = {
+                "actors": [{
+                    "id": "actor_1",
+                    "name": "Alice",
+                    "visual_description": "a young woman with long brown hair",
+                    "msr_sheet_path": actor_sheet.relative_to(tmp).as_posix(),
+                    "sheet_path": actor_sheet.relative_to(tmp).as_posix(),
+                }],
+                "locations": [{
+                    "id": "loc_1",
+                    "name": "Garden",
+                    "visual_description": "a bright sunlit garden with tall trees",
+                    "msr_sheet_path": loc_sheet.relative_to(tmp).as_posix(),
+                    "sheet_path": loc_sheet.relative_to(tmp).as_posix(),
+                }],
+            }
+            shot = {"shot_id": "shot_001", "scene": 1, "reference_ids": {"actors": ["actor_1"], "location": "loc_1"}}
+
+            builder = SceneReferenceSheetBuilder(project_dir=tmp, manifest=manifest)
+            result = builder.build(shot)
+
+            self.assertIn("scene_reference_sheet_description", result)
+            desc = result["scene_reference_sheet_description"]
+            self.assertIn("### Reference Sheet Description", desc)
+            self.assertIn("Character", desc)
+            self.assertIn("Setting", desc)
+            self.assertIn("young woman with long brown hair", desc)
+            self.assertIn("bright sunlit garden", desc)
+
+    def test_builder_empty_no_description(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            manifest = {"actors": [], "locations": []}
+            shot = {"shot_id": "shot_002", "scene": 1}
+
+            builder = SceneReferenceSheetBuilder(project_dir=tmp, manifest=manifest)
+            result = builder.build(shot)
+
+            self.assertIn("scene_reference_sheet_description", result)
+            self.assertEqual("", result["scene_reference_sheet_description"])
+
+
+class MSREnrichmentSceneSheetDescriptionTests(unittest.TestCase):
+
+    def test_enrichment_passes_description_to_shot(self):
+        from feverslop.application import movie_msr_enrichment
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            movie = tmp / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True, exist_ok=True)
+            (movie / "bible.json").write_text(
+                '{"runtime_constraints": {"fps": 24}, "actors": [], "locations": []}',
+                encoding="utf-8",
+            )
+            (movie / "render_plan.json").write_text(
+                json.dumps({
+                    "resolution": {"width": 1280, "height": 720},
+                    "shots": [
+                        {
+                            "shot_id": "shot_001",
+                            "scene": 1,
+                            "duration_seconds": 2,
+                            "description": "A test scene",
+                            "reference_ids": {"actors": [], "location": ""},
+                        }
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            (refs / "manifest.json").write_text(
+                json.dumps({"actors": [], "locations": []}),
+                encoding="utf-8",
+            )
+
+            original_builder = movie_msr_enrichment.SceneReferenceSheetBuilder
+
+            class DescBuilder:
+                def build(self, shot):
+                    return {
+                        "sheet_path": "movie/scene_sheets/shot_001_scene.png",
+                        "image_count": 1,
+                        "images": [],
+                        "scene_reference_sheet_description": "### Reference Sheet Description\n**Full (Character):** test description",
+                    }
+
+            movie_msr_enrichment.SceneReferenceSheetBuilder = lambda *a, **kw: DescBuilder()
+            try:
+                movie_msr_enrichment.enrich_movie_render_plan_with_msr_prompts(project_dir=tmp)
+                output = json.loads((tmp / "movie" / "render_plan_msr.json").read_text(encoding="utf-8"))
+            finally:
+                movie_msr_enrichment.SceneReferenceSheetBuilder = original_builder
+
+            shot = output["shots"][0]
+            self.assertIn("scene_reference_sheet_description", shot)
+            self.assertIn("### Reference Sheet Description", shot["scene_reference_sheet_description"])
+            self.assertIn("scene_reference_sheet_description", shot.get("ltx", {}))

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
-from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject, compose_scene_reference_sheet
+from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject, compose_scene_reference_sheet, generate_scene_sheet_description
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
@@ -133,7 +133,12 @@ class SceneReferenceSheetBuilder:
                     self.project_dir,
                 )
                 if logical:
-                    images.append({"path": logical, "type": "actor", "id": actor_id})
+                    images.append({
+                        "path": logical,
+                        "type": "actor",
+                        "id": actor_id,
+                        "visual_description": str(actor_item.get("visual_description") or "").strip(),
+                    })
 
         if location_id:
             location_item = _item_for_id(self.manifest.get("locations") or [], location_id)
@@ -143,21 +148,29 @@ class SceneReferenceSheetBuilder:
                     self.project_dir,
                 )
                 if logical:
-                    images.append({"path": logical, "type": "location", "id": location_id})
+                    images.append({
+                        "path": logical,
+                        "type": "location",
+                        "id": location_id,
+                        "visual_description": str(location_item.get("visual_description") or "").strip(),
+                    })
 
         if not images:
-            return {"sheet_path": "", "image_count": 0, "images": []}
+            return {"sheet_path": "", "image_count": 0, "images": [], "scene_reference_sheet_description": ""}
 
         image_paths = [self.project_dir / img["path"] for img in images]
         shot_id = shot.get("shot_id") or f"scene_{shot.get('scene')}"
         output_path = self.project_dir / "movie" / "scene_sheets" / f"{shot_id}_scene.png"
-        compose_scene_reference_sheet(image_paths, output_path, size=self.size)
+        num_cols = min(len(images), 4)
+        compose_scene_reference_sheet(image_paths, output_path, size=self.size, columns=num_cols)
 
         relative_sheet = output_path.relative_to(self.project_dir).as_posix()
+        description = generate_scene_sheet_description(images, num_cols, self.size)
         return {
             "sheet_path": relative_sheet,
             "image_count": len(images),
             "images": images,
+            "scene_reference_sheet_description": description,
         }
 
 

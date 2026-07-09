@@ -439,6 +439,88 @@ def compose_scene_reference_sheet(
     return output_path
 
 
+def _panel_position_label(row: int, col: int, num_rows: int, num_cols: int, index: int, total: int) -> str:
+    """Return a human-readable grid position label."""
+    if total == 1:
+        return "Full"
+
+    row_names = ("Top", "Middle", "Bottom")
+    col_labels_2 = ("Left", "Right")
+    col_labels_3 = ("Left", "Center", "Right")
+    col_labels_4 = ("Left", "Center-Left", "Center-Right", "Right")
+
+    is_last_row = row == num_rows - 1
+    remaining = total - index - 1
+
+    if is_last_row and remaining == 0 and col == 0:
+        if num_rows == 2:
+            row_name = "Bottom"
+        elif num_rows <= 3:
+            row_name = row_names[row]
+        else:
+            row_name = f"Row {row + 1}"
+        return f"{row_name} Row"
+
+    if num_rows == 1:
+        row_name = ""
+    elif num_rows == 2:
+        row_name = "Top" if row == 0 else "Bottom"
+    else:
+        if row == 0:
+            row_name = "Top"
+        elif row == num_rows - 1:
+            row_name = "Bottom"
+        else:
+            row_name = "Middle" if num_rows == 3 else f"Row {row + 1}"
+
+    if num_cols == 1:
+        return row_name or "Full"
+    elif num_cols == 2:
+        col_label = col_labels_2[col]
+    elif num_cols == 3:
+        col_label = col_labels_3[col]
+    else:
+        col_label = col_labels_4[min(col, 3)]
+
+    if not row_name:
+        return col_label
+    if row_name.startswith("Row "):
+        return f"{row_name} {col_label}"
+    return f"{row_name} Row {col_label}"
+
+
+def _type_label(item_type: str) -> str:
+    labels = {
+        "actor": "Character",
+        "location": "Setting",
+        "prop": "Prop",
+    }
+    return labels.get(item_type, item_type.title())
+
+
+def generate_scene_sheet_description(images: list[dict], num_cols: int, size: tuple[int, int]) -> str:
+    """Generate a structured description of the scene reference sheet layout.
+
+    Each image dict should contain 'type' and 'visual_description'.
+    """
+    if not images:
+        return ""
+
+    num_rows = math.ceil(len(images) / num_cols)
+    lines = ["### Reference Sheet Description"]
+
+    for index, img in enumerate(images):
+        row = index // num_cols
+        col = index % num_cols
+        position = _panel_position_label(row, col, num_rows, num_cols, index, len(images))
+        type_label = _type_label(img.get("type", "actor"))
+        description = str(img.get("visual_description") or img.get("name") or "").strip()
+        if description:
+            lines.append(f"**{position} ({type_label}):** {description}")
+
+    return "\n".join(lines)
+
+
 def _infer_reference_artifact_base_dir(output_dir: Path) -> Path:
     if output_dir.name == "references" and output_dir.parent.name == "output":
         return output_dir.parent.parent
