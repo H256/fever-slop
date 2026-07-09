@@ -11,7 +11,7 @@ RUNNER_ARGUMENTS = (
     ("reference_hero_workflow", ("--reference-hero-workflow",), {"default": str(Path("workflows") / "image_t2i_startframe_krea_v1.json")}),
     ("reference_edit_workflow", ("--reference-edit-workflow",), {"default": str(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json")}),
     ("msr_workflow", ("--msr-workflow",), {"default": str(Path("workflows") / "video_ltxv_msr_1actor_1background_v1.json")}),
-    ("ingredients_workflow", ("--ingredients-workflow",), {"default": str(Path("workflows") / "video_ltxv_ingredients_v1.json")}),
+    ("ingredients_workflow", ("--ingredients-workflow",), {"default": str(Path("workflows") / "video_ltxv_ingredients_audio_v1.json")}),
     ("relay_workflow", ("--relay-workflow",), {"default": ""}),
     ("single_prompt_workflow", ("--single-prompt-workflow",), {"default": str(Path("workflows") / "video_ltxv_i2v_v1.json")}),
     ("video_pipeline", ("--video-pipeline",), {"choices": ["ltx_i2v", "ltx_msr", "ltx_ingredients"], "default": "ltx_i2v"}),
