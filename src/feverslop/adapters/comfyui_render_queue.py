@@ -36,7 +36,7 @@ class ComfyUIRenderQueue:
         videos = []
         outputs = history_entry.get("outputs", {})
         for node_id, node_output in outputs.items():
-            for key in ("videos", "gifs", "files", "output"):
+            for key in ("videos", "gifs", "files", "output", "images"):
                 for item in node_output.get(key, []):
                     filename = item.get("filename")
                     if filename and filename.lower().endswith((".mp4", ".mov", ".mkv", ".webm")):
