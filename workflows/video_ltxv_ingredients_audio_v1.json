@@ -229,42 +229,6 @@
       "title": "LTXV Audio VAE Decode"
     }
   },
-  "4849": {
-    "inputs": {
-      "fps": [
-        "5098",
-        0
-      ],
-      "bit_depth": 8,
-      "images": [
-        "5065",
-        0
-      ],
-      "audio": [
-        "4848",
-        0
-      ]
-    },
-    "class_type": "CreateVideo",
-    "_meta": {
-      "title": "Create Video"
-    }
-  },
-  "4852": {
-    "inputs": {
-      "filename_prefix": "output",
-      "format": "auto",
-      "codec": "auto",
-      "video": [
-        "4849",
-        0
-      ]
-    },
-    "class_type": "SaveVideo",
-    "_meta": {
-      "title": "#SAVE_VIDEO"
-    }
-  },
   "4922": {
     "inputs": {
       "lora_name": "ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
@@ -362,7 +326,7 @@
   },
   "5023": {
     "inputs": {
-      "text_encoder": "gemma_3_12B_it_heretic_fp8_e4m3fn.safetensors",
+      "text_encoder": "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
       "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
       "device": "default"
     },
@@ -629,6 +593,35 @@
     "class_type": "SolidMask",
     "_meta": {
       "title": "SolidMask"
+    }
+  },
+  "5114": {
+    "inputs": {
+      "frame_rate": [
+        "5098",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "ingredients",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "5065",
+        0
+      ],
+      "audio": [
+        "4848",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "#SAVE_VIDEO"
     }
   }
 }
