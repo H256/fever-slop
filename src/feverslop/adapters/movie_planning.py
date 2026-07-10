@@ -45,6 +45,9 @@ class LLMMoviePlanner:
         if config.get("refine_location_prompts"):
             refined = self.refine_locations(bible.locations, source_text=story_text)
             bible = replace(bible, locations=tuple(refined))
+        if config.get("refine_actor_prompts"):
+            refined = self.refine_actors(bible.actors, source_text=story_text, premise=bible.premise)
+            bible = replace(bible, actors=tuple(refined))
         return bible
 
     def refine_locations(self, locations: tuple[MovieLocation, ...], *, source_text: str) -> list[MovieLocation]:
@@ -75,6 +78,36 @@ class LLMMoviePlanner:
                 )
             else:
                 result.append(loc)
+        return result
+
+    def refine_actors(self, actors: tuple[MovieActor, ...], *, source_text: str, premise: str) -> list[MovieActor]:
+        """Refine actor visual_description via a single batch LLM call."""
+        try:
+            raw = self.llm.complete_prompt(
+                _refine_actor_prompts_prompt(actors, source_text, premise),
+                system_prompt="You are a character designer. Return ONLY valid JSON.",
+            )
+            data = extract_json_object(raw)
+        except Exception:
+            return list(actors)
+        refined_by_id: dict[str, dict] = {}
+        for item in data.get("actors") or []:
+            if isinstance(item, dict) and item.get("id"):
+                refined_by_id[str(item["id"])] = item
+        result: list[MovieActor] = []
+        for actor in actors:
+            refined = refined_by_id.get(actor.id)
+            if refined:
+                result.append(
+                    MovieActor(
+                        id=actor.id,
+                        name=actor.name,
+                        role=actor.role,
+                        visual_description=str(refined.get("visual_description") or actor.visual_description).strip(),
+                    )
+                )
+            else:
+                result.append(actor)
         return result
 
     def generate_movie_continuity_plan(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> dict:
@@ -824,6 +857,45 @@ Rules for image_prompt:
 - It must describe a wide establishing view of the location's production design, lighting, and atmosphere.
 - It must end with: "Wide establishing view, production design, lighting, atmosphere, no people, no text."
 - No characters, no action, no narrative, no camera moves.
+- Write in English.
+""".strip()
+
+
+def _refine_actor_prompts_prompt(actors: tuple[MovieActor, ...], source_text: str, premise: str) -> str:
+    actor_data = [
+        {"id": actor.id, "name": actor.name, "role": actor.role, "visual_description": actor.visual_description}
+        for actor in actors
+    ]
+    return f"""
+Refine the visual_description and image_prompt for each actor below.
+
+Premise: {premise}
+
+Current actors:
+{json.dumps(actor_data, ensure_ascii=False)}
+
+Source screenplay/story:
+{source_text}
+
+Return JSON with:
+{{"actors": [{{"id": string, "visual_description": string, "image_prompt": string}}]}}
+
+Rules for visual_description:
+- Describe only the stable physical appearance and clothing of the actor. This is a reference-sheet description, not a scene description.
+- MUST include: ethnicity/race fitting the setting and character context, face shape and features, skin tone, hair color and hairstyle, body type/stature, approximate age.
+- MUST include: specific clothing/uniform with era-appropriate details (e.g., field-grey M1916 Schützentaucher for WWI German soldier, not just "uniform").
+- MUST include: distinguishing marks if present or implied (scars, freckles, glasses, beard/stubble, missing teeth, etc.).
+- Remove all character actions, emotions, dialogue, narrative prose, camera directions, and scene context.
+- Remove screenplay heading syntax and time-of-day suffixes.
+- If the current description is vague (e.g., "mud covered soldier"), expand it into specific physical details using the source text and premise for context clues.
+- Write in English, one concise paragraph (up to 250 characters).
+- Never use placeholder phrases like "story-defined cinematic character", "consistent face", "consistent body shape".
+
+Rules for image_prompt:
+- This prompt will be fed to an image generator to create a 4-panel character reference sheet.
+- It must describe: full body front view, three-quarter face, close-up face, and full body profile, all showing the same consistent character.
+- It must end with: "Four vertical panels in one image, full body front view, three-quarter face, close-up face, full body profile, white seamless background, neutral expression, consistent face, consistent wardrobe."
+- No action, no narrative, no camera moves, no other characters.
 - Write in English.
 """.strip()
 

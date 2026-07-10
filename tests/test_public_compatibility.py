@@ -135,6 +135,7 @@ class PublicCompatibilityTests(unittest.TestCase):
             "storyboard_page.py",
             "normalize_render_plan.py",
             "repair_scene_srt.py",
+            "scaffold_movie.py",
             "trim_existing_ltx_clips.py",
             "ltx_video_renderer.py",
             "storyboard_renderer.py",

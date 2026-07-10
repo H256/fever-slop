@@ -186,6 +186,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "msr_i2v_workflow": _project_workflow_path(request.movie_msr_i2v_workflow, "movie_msr_i2v_workflow"),
         "i2v_workflow": _project_workflow_path(request.movie_i2v_workflow, "movie_i2v_workflow"),
         "refine_location_prompts": bool(request.movie_refine_location_prompts),
+        "refine_actor_prompts": bool(request.movie_refine_actor_prompts),
     }
 
 
