@@ -28,7 +28,10 @@ def _sentence_limit(value: str, max_chars: int = 850) -> str:
     value = _clean_text(value)
     if len(value) <= max_chars:
         return value
-    return value[:max_chars].rsplit(" ", 1)[0].strip()
+    truncated = value[:max_chars].rsplit(" ", 1)[0].strip()
+    while truncated and truncated[-1] in ".,;:!?":
+        truncated = truncated.rstrip(".,;:!? ")
+    return truncated
 
 
 class LTXPromptAnchorFixer:

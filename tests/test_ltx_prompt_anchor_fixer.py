@@ -64,6 +64,18 @@ class LTXPromptAnchorFixerTests(unittest.TestCase):
         self.assertIn("kneeling among moss and roots", prompt)
         self.assertNotIn("stands beside a gnarled tree", prompt)
 
+    def test_sentence_limit_avoids_trailing_punctuation(self):
+        from feverslop.prompting.ltx_prompt_anchor_fixer import _sentence_limit
+        # When max_chars lands inside a word followed by punctuation, rsplit
+        # can leave a fragment like "A." — the fix should strip trailing punctuation.
+        text = "A. B. C. D. E. F. G. H. I. J. K. L. M. N. O. P. Q. R. S. T."
+        result = _sentence_limit(text, max_chars=20)
+        # Result should not end with trailing punctuation that makes it look malformed
+        self.assertNotEqual(".", result)
+        self.assertNotEqual("..", result)
+        # Should strip trailing punctuation when fragment is too short
+        self.assertFalse(result.endswith("."), f"Result should not end with lone period: {result!r}")
+
 
 if __name__ == "__main__":
     unittest.main()
