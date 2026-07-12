@@ -37,6 +37,29 @@ class ComfyUIVideoBackendConfig:
     single_prompt_node_title: str = "#PROMPT"
     single_prompt_input_name: str = "text"
     save_video_node_title: str = "#SAVE_VIDEO"
+    # LoRA settings
+    character_lora_node_title: str | None = "#LORA_1"
+    character_lora_strength: float | None = None
+    lora_1_enabled: bool = False
+    lora_1_name: str = ""
+    lora_1_strength_model: float = 1.0
+    lora_1_strength_clip: float = 1.0
+    lora_1_strengths_explicit: bool = False
+    lora_1_node_title: str = "#LORA_1"
+    loras: tuple = ()
+    lora_split_enabled: bool = False
+    # Seed settings
+    randomize_seed: bool = False
+    seed_offset: int = 100000
+    # Render settings
+    segment_length_mode: str = "frames_minus_one"
+    min_duration: float = 2.0
+    max_duration: float = 10.0
+    allow_out_of_range_clips: bool = False
+    debug_workflows_dir: str | Path | None = None
+    preroll_frames: int = 0
+    tail_loss_frames: int = 0
+    round_render_frames_to_8n1: bool = False
 
 
 class RenderOutputWriter:
@@ -148,6 +171,26 @@ class ComfyUIVideoRenderBackend:
             single_prompt_node_title = config.single_prompt_node_title
             single_prompt_input_name = config.single_prompt_input_name
             save_video_node_title = config.save_video_node_title
+            character_lora_node_title = config.character_lora_node_title
+            character_lora_strength = config.character_lora_strength
+            lora_1_enabled = config.lora_1_enabled
+            lora_1_name = config.lora_1_name
+            lora_1_strength_model = config.lora_1_strength_model
+            lora_1_strength_clip = config.lora_1_strength_clip
+            lora_1_strengths_explicit = config.lora_1_strengths_explicit
+            lora_1_node_title = config.lora_1_node_title
+            loras = config.loras
+            lora_split_enabled = config.lora_split_enabled
+            randomize_seed = config.randomize_seed
+            seed_offset = config.seed_offset
+            segment_length_mode = config.segment_length_mode
+            min_duration = config.min_duration
+            max_duration = config.max_duration
+            allow_out_of_range_clips = config.allow_out_of_range_clips
+            debug_workflows_dir = config.debug_workflows_dir
+            preroll_frames = config.preroll_frames
+            tail_loss_frames = config.tail_loss_frames
+            round_render_frames_to_8n1 = config.round_render_frames_to_8n1
         if ltx_workflow_path is None or output_dir is None:
             raise ValueError("ltx_workflow_path and output_dir are required unless config is provided")
 
