@@ -236,6 +236,18 @@ Rules for locations:
         scene_details: dict,
         global_context: dict,
     ) -> list[dict]:
+        segment_ids = {seg["segment_id"] for seg in stage1_segments}
+        missing_in_concepts = segment_ids - set(concept_prompts.keys())
+        missing_in_details = segment_ids - set(scene_details.keys())
+        if missing_in_concepts or missing_in_details:
+            parts = []
+            if missing_in_concepts:
+                parts.append(f"concept_prompts: {sorted(missing_in_concepts)}")
+            if missing_in_details:
+                parts.append(f"scene_details: {sorted(missing_in_details)}")
+            raise ValueError(
+                f"Segment IDs from stage1_segments missing in upstream results: {', '.join(parts)}"
+            )
         result = []
 
         for segment in stage1_segments:

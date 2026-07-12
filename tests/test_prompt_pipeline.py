@@ -52,6 +52,22 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
         self.assertIn('"actors"', llm.calls[0]["system_prompt"])
         self.assertEqual("singer", result["actors"][0]["id"])
 
+    def test_create_final_scene_prompts_raises_for_missing_segments(self):
+        """Missing segment IDs should produce a clear error, not a raw KeyError."""
+        llm = FakeConceptLLM()
+        pipeline = MusicVideoPromptPipeline(llm)
+
+        with self.assertRaisesRegex(ValueError, "segment_002"):
+            pipeline.create_final_scene_prompts(
+                stage1_segments=[
+                    {"segment_id": "segment_001"},
+                    {"segment_id": "segment_002"},
+                ],
+                concept_prompts={"segment_001": "concept one"},
+                scene_details={"segment_001": {"camera_motion": "static", "character_motion": "singing"}},
+                global_context={"subject": "a singer", "story_idea": "", "style": "", "locations": []},
+            )
+
     def test_subject_and_locations_prompt_requests_story_phase_locations(self):
         llm = FakeSubjectLocationLLM()
         pipeline = MusicVideoPromptPipeline(llm)
