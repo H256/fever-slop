@@ -51,7 +51,7 @@ class FakeRunner:
 
     def run(self, *, project_config_path, options):
         self.calls.append((Path(project_config_path), dict(options)))
-        return Path(project_config_path).parent / "output" / "render" / "ltx_single_prompt" / "Joy_Demo.mp4"
+        return Path(project_config_path).parent / "output" / "render" / "ltx_single_prompt" / "joy-demo.mp4"
 
 
 class FakeConsole:
@@ -99,15 +99,15 @@ class FullAutoUseCaseTests(unittest.TestCase):
                 )
             )
 
-            project_dir = Path(temp_dir) / "Joy_Demo"
+            project_dir = Path(temp_dir) / "joy-demo"
             self.assertEqual(project_dir / "config.json", result.project_config_path)
-            self.assertEqual(project_dir / "input" / "Joy_Demo.mp3", result.audio_path)
+            self.assertEqual(project_dir / "input" / "joy-demo.mp3", result.audio_path)
             self.assertIsNone(result.final_video_path)
             self.assertEqual([], runner.calls)
 
             config = json.loads((project_dir / "config.json").read_text(encoding="utf-8"))
             self.assertEqual("Joy Demo", config["project_name"])
-            self.assertEqual("input/Joy_Demo.mp3", config["input_audio"])
+            self.assertEqual("input/joy-demo.mp3", config["input_audio"])
             self.assertEqual("[Verse]\nhello", config["lyrics"])
             self.assertEqual({"fps": 24, "width": 1024, "height": 576}, config["video"])
             self.assertEqual("friends walking into sunlight", config["story_idea"])
@@ -144,10 +144,10 @@ class FullAutoUseCaseTests(unittest.TestCase):
             )
 
             self.assertEqual(1, len(runner.calls))
-            self.assertEqual(Path(temp_dir) / "Joy_Demo" / "config.json", runner.calls[0][0])
+            self.assertEqual(Path(temp_dir) / "joy-demo" / "config.json", runner.calls[0][0])
             self.assertEqual({"smoke_only": True}, runner.calls[0][1])
             self.assertEqual(
-                Path(temp_dir) / "Joy_Demo" / "output" / "render" / "ltx_single_prompt" / "Joy_Demo.mp4",
+                Path(temp_dir) / "joy-demo" / "output" / "render" / "ltx_single_prompt" / "joy-demo.mp4",
                 result.final_video_path,
             )
 
