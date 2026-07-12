@@ -502,5 +502,32 @@ class ProjectConfigLyricsTests(unittest.TestCase):
             self.assertEqual("[Verse]\nfirst line\nsecond line", config.lyrics)
 
 
+class SlugifyProjectNameTests(unittest.TestCase):
+    def test_slugify_normalizes_spaces_and_special_chars(self):
+        from feverslop.domain.slug_utils import slugify_project_name
+        self.assertEqual("my-song-video", slugify_project_name("My Song Video!"))
+
+    def test_slugify_handles_empty_and_whitespace(self):
+        from feverslop.domain.slug_utils import slugify_project_name
+        self.assertEqual("", slugify_project_name(""))
+        self.assertEqual("", slugify_project_name("   "))
+
+    def test_slugify_collapses_multiple_separators(self):
+        from feverslop.domain.slug_utils import slugify_project_name
+        self.assertEqual("my-project", slugify_project_name("my___project"))
+        self.assertEqual("my-project", slugify_project_name("my---project"))
+
+    def test_slugify_imports_are_consistent(self):
+        from feverslop.domain.slug_utils import slugify_project_name as domain_slug
+        from feverslop.studio.projects import slugify_project_name as studio_slug
+        from feverslop.application.full_auto import slugify_project_name as app_slug
+        from feverslop.application.movie import slugify_project_name as movie_slug
+        test_cases = ["Hello World", "test_project", "My Song!", ""]
+        for case in test_cases:
+            self.assertEqual(domain_slug(case), studio_slug(case))
+            self.assertEqual(domain_slug(case), app_slug(case))
+            self.assertEqual(domain_slug(case), movie_slug(case))
+
+
 if __name__ == "__main__":
     unittest.main()

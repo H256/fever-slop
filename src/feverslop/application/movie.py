@@ -22,6 +22,7 @@ from feverslop.domain.movie import (
     MovieShotCard,
 )
 from feverslop.domain.screenplay import looks_like_screenplay
+from feverslop.domain.slug_utils import slugify_project_name
 from feverslop.application.movie_memory import (
     build_movie_scene_cards,
     build_movie_shot_cards,
@@ -290,11 +291,6 @@ def validate_movie_input(request: MovieInput) -> None:
 def _looks_like_screenplay(text: str) -> bool:
     return looks_like_screenplay(text)
 
-
-
-def slugify_project_name(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
-    return re.sub(r"-+", "-", slug)
 
 
 def _render_plan(movie: MovieProject, *, shot_cards: tuple[MovieShotCard, ...] = ()) -> dict:

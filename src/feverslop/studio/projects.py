@@ -68,10 +68,7 @@ class ProjectCreateRequest:
     movie_refine_actor_prompts: bool = False
 
 
-def slugify_project_name(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
-    return re.sub(r"-+", "-", slug)
-
+from feverslop.domain.slug_utils import slugify_project_name
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
 AUDIO_MIME_TYPES = {
