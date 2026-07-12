@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 
 from feverslop.pipeline.scene_duration_enforcer import (
@@ -33,6 +35,44 @@ class SceneDurationHelperTests(unittest.TestCase):
 
         self.assertEqual(1, result[0].scene)
         self.assertEqual("Scene 1", result[0].text)
+
+
+class SrtDomainTests(unittest.TestCase):
+    def test_parse_srt_timestamp_basic(self):
+        from feverslop.domain.srt import parse_srt_timestamp
+        self.assertAlmostEqual(0.0, parse_srt_timestamp("00:00:00,000"))
+        self.assertAlmostEqual(61.5, parse_srt_timestamp("00:01:01,500"))
+
+    def test_format_srt_timestamp_roundtrip(self):
+        from feverslop.domain.srt import parse_srt_timestamp, format_srt_timestamp
+        original = "01:23:45,678"
+        seconds = parse_srt_timestamp(original)
+        formatted = format_srt_timestamp(seconds)
+        self.assertEqual(original, formatted)
+
+    def test_parse_srt_blocks_empty_file(self):
+        from feverslop.domain.srt import parse_srt_blocks
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".srt", delete=False) as f:
+            f.write("")
+            f.flush()
+            path = f.name
+        result = parse_srt_blocks(path)
+        os.unlink(path)
+        self.assertEqual([], result)
+
+    def test_parse_srt_blocks_valid_content(self):
+        from feverslop.domain.srt import parse_srt_blocks
+        content = "1\n00:00:00,000 --> 00:00:02,500\nHello\n\n2\n00:00:02,500 --> 00:00:05,000\nWorld"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".srt", delete=False) as f:
+            f.write(content)
+            f.flush()
+            path = f.name
+        result = parse_srt_blocks(path)
+        os.unlink(path)
+        self.assertEqual(2, len(result))
+        self.assertEqual(1, result[0].index)
+        self.assertAlmostEqual(0.0, result[0].start)
+        self.assertEqual("Hello", result[0].text)
 
 
 if __name__ == "__main__":

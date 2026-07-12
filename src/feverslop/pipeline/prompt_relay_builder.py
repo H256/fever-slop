@@ -1,41 +1,24 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
-import re
 
+from feverslop.domain.srt import parse_srt_blocks
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
 
 
-def parse_srt_time(value: str) -> float:
-    h, m, rest = value.strip().split(":")
-    s, ms = rest.split(",")
-    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
-
-
 def parse_scene_srt(srt_file: str | Path) -> list[dict]:
-    text = Path(srt_file).read_text(encoding="utf-8").strip()
-    blocks = re.split(r"\n\s*\n", text)
-
-    scenes = []
-
-    for block in blocks:
-        lines = [line.strip() for line in block.splitlines() if line.strip()]
-        if len(lines) < 2:
-            continue
-
-        index = int(lines[0])
-        start_raw, end_raw = [x.strip() for x in lines[1].split("-->")]
-        label = lines[2] if len(lines) >= 3 else f"SCENE {index}"
-
-        scenes.append({
-            "scene": index,
-            "start": parse_srt_time(start_raw),
-            "end": parse_srt_time(end_raw),
-            "label": label,
-        })
-
-    return scenes
+    """Parse SRT file to scene dicts (legacy interface)."""
+    blocks = parse_srt_blocks(srt_file)
+    return [
+        {
+            "scene": block.index,
+            "start": block.start,
+            "end": block.end,
+            "label": block.text or f"SCENE {block.index}",
+        }
+        for block in blocks
+    ]
 
 
 def overlap(
