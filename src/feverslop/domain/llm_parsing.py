@@ -19,11 +19,24 @@ def extract_json_object(text: str) -> dict:
         start = text.find("{", pos)
         if start == -1:
             break
-        # Find matching brace via depth counting
+        # Find matching brace via depth counting, skipping string literals
         depth = 0
+        in_string = False
+        escaped = False
         for i in range(start, len(text)):
-            if text[i] in "{}":
-                depth += 1 if text[i] == "{" else -1
+            ch = text[i]
+            if escaped:
+                escaped = False
+                continue
+            if ch == "\\":
+                if in_string:
+                    escaped = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if not in_string and ch in "{}":
+                depth += 1 if ch == "{" else -1
                 if depth == 0:
                     end = i
                     break

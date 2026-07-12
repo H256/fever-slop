@@ -48,6 +48,18 @@ class LLMParsingTests(unittest.TestCase):
         result = extract_json_object(text)
         self.assertEqual(result, {"key": "value"})
 
+    def test_extract_json_object_handles_braces_inside_string_values(self):
+        """Braces inside JSON string values should not confuse depth counter."""
+        text = '{"prompt": "A person wearing {jeans"}'
+        result = extract_json_object(text)
+        self.assertEqual(result, {"prompt": "A person wearing {jeans"})
+
+    def test_extract_json_object_handles_unbalanced_closing_brace_in_string(self):
+        """Unbalanced closing brace inside string should not truncate JSON."""
+        text = '{"prompt": "value}"}'
+        result = extract_json_object(text)
+        self.assertEqual(result, {"prompt": "value}"})
+
     def test_extract_json_object_handles_nested_braces_in_preamble(self):
         """Preamble contains curly braces — should still find the main JSON object."""
         text = 'Some explanation {not json} follows: {"real": "json", "nested": {"a": 1}}. End.'
