@@ -169,6 +169,17 @@ def _load_structured_location(raw, index: int) -> StructuredLocationConfig:
     )
 
 
+def _validate_numeric_fields(raw: dict, fields: tuple[str, ...]) -> None:
+    for field_name in fields:
+        if field_name in raw:
+            try:
+                val = int(raw[field_name])
+                if val <= 0:
+                    raise ValueError("must be positive")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid '{field_name}': {raw[field_name]!r} ({exc})") from exc
+
+
 @dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
@@ -215,6 +226,7 @@ class ProjectConfig:
         locations_raw = raw.get("locations", [])
 
         input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
+        _validate_numeric_fields(video_raw, ("fps", "width", "height"))
         silent_mode = raw.get("silent_mode", False)
         if silent_mode is None:
             silent_mode = False

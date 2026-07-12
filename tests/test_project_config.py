@@ -502,6 +502,62 @@ class ProjectConfigLyricsTests(unittest.TestCase):
             self.assertEqual("[Verse]\nfirst line\nsecond line", config.lyrics)
 
 
+class ProjectConfigValidationTests(unittest.TestCase):
+    def test_rejects_invalid_fps_type(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "project_name": "test",
+                    "input_audio": "song.mp3",
+                    "video": {"fps": "bad"},
+                }),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                ProjectConfig.load(config_path)
+            self.assertIn("fps", str(ctx.exception).lower())
+
+    def test_rejects_invalid_width_type(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "project_name": "test",
+                    "input_audio": "song.mp3",
+                    "video": {"width": "bad"},
+                }),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                ProjectConfig.load(config_path)
+            self.assertIn("width", str(ctx.exception).lower())
+
+    def test_rejects_invalid_height_type(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "project_name": "test",
+                    "input_audio": "song.mp3",
+                    "video": {"height": 0},
+                }),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                ProjectConfig.load(config_path)
+            self.assertIn("height", str(ctx.exception).lower())
+
+
 class SlugifyProjectNameTests(unittest.TestCase):
     def test_slugify_normalizes_spaces_and_special_chars(self):
         from feverslop.domain.slug_utils import slugify_project_name
