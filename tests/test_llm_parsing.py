@@ -20,7 +20,8 @@ class LLMParsingTests(unittest.TestCase):
         self.assertEqual({"segment_001": "A scene."}, extract_json_object(text))
 
     def test_extract_json_object_fails_with_clear_message(self):
-        with self.assertRaisesRegex(ValueError, "No.*JSON object found"):
+        from feverslop.errors import FeverSlopLMLError
+        with self.assertRaisesRegex(FeverSlopLMLError, "No.*JSON object found"):
             extract_json_object("no json here")
 
     def test_extract_json_object_handles_trailing_text_after_fence(self):

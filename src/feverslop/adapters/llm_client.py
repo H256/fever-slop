@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from openai import OpenAI
+from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
+
+from feverslop.errors import FeverSlopLMLError
 
 
 class LocalOpenAIClient:
@@ -38,12 +40,15 @@ class LocalOpenAIClient:
             "content": prompt,
         })
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stream=False,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                stream=False,
+            )
+        except (APIConnectionError, APITimeoutError, RateLimitError) as exc:
+            raise FeverSlopLMLError(f"LLM API error: {exc}") from exc
 
         return response.choices[0].message.content.strip()

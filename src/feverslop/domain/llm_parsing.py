@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 
+from feverslop.errors import FeverSlopLMLError
+
 
 def extract_json_object(text: str) -> dict:
     text = text.strip()
@@ -35,6 +37,6 @@ def extract_json_object(text: str) -> dict:
             last_error = exc
             pos = start + 1
 
-    raise ValueError(
+    raise FeverSlopLMLError(
         f"No valid JSON object found in LLM response:\n{text}"
     ) from last_error
