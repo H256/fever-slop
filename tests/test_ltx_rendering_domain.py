@@ -26,6 +26,31 @@ class LTXRenderingDomainTests(unittest.TestCase):
         self.assertAlmostEqual(8.0, spec.audio_start_seconds)
         self.assertAlmostEqual(176 / 25, spec.audio_duration_seconds)
 
+    def test_effective_preroll_is_integer_not_float(self):
+        spec = build_audio_window_spec(
+            scene_number=2,
+            fps=24,
+            scene_frame_count=101,
+            scene_start_seconds=10.0,
+            preroll_frames=50,
+            tail_loss_frames=25,
+            round_render_frames_to_8n1=True,
+        )
+        self.assertIsInstance(spec.trim_front_frames, int)
+
+    def test_audio_duration_seconds_is_rounded(self):
+        spec = build_audio_window_spec(
+            scene_number=1,
+            fps=24,
+            scene_frame_count=101,
+            scene_start_seconds=0.0,
+            preroll_frames=0,
+            tail_loss_frames=0,
+            round_render_frames_to_8n1=False,
+        )
+        self.assertIsInstance(spec.audio_duration_seconds, float)
+        self.assertEqual(round(spec.audio_duration_seconds, 6), spec.audio_duration_seconds)
+
     def test_first_scene_audio_window_does_not_seek_before_zero(self):
         spec = build_audio_window_spec(
             scene_number=1,
