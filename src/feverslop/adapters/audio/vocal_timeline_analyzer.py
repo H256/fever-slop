@@ -8,7 +8,7 @@ import numpy as np
 import whisper
 
 
-@dataclass
+@dataclass(frozen=True)
 class TimelineSegment:
     start: float
     end: float
@@ -235,11 +235,20 @@ def normalize_empty_vocals(
     timeline: list[TimelineSegment],
     min_text_chars: int = 3,
 ) -> list[TimelineSegment]:
+    result = []
     for seg in timeline:
         if seg.kind == "vocals" and len(seg.text.strip()) < min_text_chars:
-            seg.kind = "instrumental"
-            seg.text = ""
-    return timeline
+            result.append(
+                TimelineSegment(
+                    start=seg.start,
+                    end=seg.end,
+                    kind="instrumental",
+                    text="",
+                )
+            )
+        else:
+            result.append(seg)
+    return result
 
 
 def merge_same_kind_segments(
@@ -249,20 +258,30 @@ def merge_same_kind_segments(
     if not timeline:
         return []
 
-    merged = [timeline[0]]
+    merged: list[TimelineSegment] = []
+    current = timeline[0]
 
     for seg in timeline[1:]:
-        last = merged[-1]
-
-        same_kind = last.kind == seg.kind
-        close_enough = seg.start - last.end <= merge_gap
+        same_kind = current.kind == seg.kind
+        close_enough = seg.start - current.end <= merge_gap
 
         if same_kind and close_enough:
-            last.end = max(last.end, seg.end)
-
+            new_end = max(current.end, seg.end)
+            new_text = current.text
             if seg.text.strip():
-                last.text = (last.text + " " + seg.text).strip()
+                if new_text:
+                    new_text = (new_text + " " + seg.text).strip()
+                else:
+                    new_text = seg.text.strip()
+            current = TimelineSegment(
+                start=current.start,
+                end=new_end,
+                kind=current.kind,
+                text=new_text,
+            )
         else:
-            merged.append(seg)
+            merged.append(current)
+            current = seg
 
+    merged.append(current)
     return merged
