@@ -59,6 +59,7 @@ The Vite dev server proxies `/api` to the FastAPI backend on `http://127.0.0.1:8
 6. Choose `video_pipeline`:
    - `ltx_msr`: MSR/reference-guided mode.
    - `ltx_i2v`: classic storyboard/start-frame mode.
+   - `ltx_ingredients`: per-scene ingredients sheets with audio latent injection.
 7. Open **Pipeline**, start a job, and monitor progress/logs.
 8. Open **Review** or **Final Video** to inspect outputs.
 
@@ -68,9 +69,94 @@ CLI equivalent for an existing project:
 uv run python run_pipeline.py ./projects/my-song --skip-tests
 ```
 
+### Video Pipeline Modes
+
+Three rendering pipelines control how the video is generated:
+
+```bash
+# Classic — storyboard/start-frame driven
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline ltx_i2v --skip-tests
+
+# MSR — actor/location reference-sheet driven
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline ltx_msr --skip-tests
+
+# Ingredients — per-scene reference sheets with audio latent
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline ltx_ingredients --skip-tests
+```
+
+### Render Modes
+
+Each pipeline renders prompts using one of three modes:
+
+```bash
+# single_prompt — patches #PROMPT (default, simplest)
+uv run python run_pipeline.py ./projects/my-song \
+  --render-mode single_prompt --skip-tests
+
+# relay — patches #PROMPT_RELAY for multi-scene continuity
+uv run python run_pipeline.py ./projects/my-song \
+  --render-mode relay \
+  --relay-workflow ./workflows/video_ltxv_relay_v1.json --skip-tests
+
+# auto — picks per-scene from the render plan hints
+uv run python run_pipeline.py ./projects/my-song \
+  --render-mode auto \
+  --single-prompt-workflow ./workflows/video_ltxv_i2v_v1.json \
+  --relay-workflow ./workflows/video_ltxv_relay_v1.json --skip-tests
+```
+
+### Movie Pipeline Modes
+
+Four movie rendering workflows control shot generation:
+
+```bash
+# MSR — reference-sheet driven (default)
+uv run python movie_pipeline.py ./projects/my-movie
+
+# I2V/Edit — classic edit-workflow driven
+uv run python movie_pipeline.py ./projects/my-movie \
+  --movie-video-workflow i2v-edit
+
+# Startframe Director — multi-stage (Krea2/Ideogram -> mask -> repair -> detail -> validate -> LTX I2V)
+uv run python movie_pipeline.py ./projects/my-movie \
+  --movie-video-workflow startframe-director \
+  --startframe-director-backend krea2
+
+# Ingredients — per-shot target prompts through an ingredients workflow
+uv run python movie_pipeline.py ./projects/my-movie \
+  --movie-video-workflow ingredients
+```
+
+### Rendering Tweaks
+
+Control frame rolling, LoRA handling, and seeding:
+
+```bash
+# Low-VRAM rolling profile (6 preroll, 0 tail)
+uv run python run_pipeline.py ./projects/my-song \
+  --rolling-frame-profile safe --skip-tests
+
+# LoRA split (halve base strength, add second anchor at full strength)
+uv run python run_pipeline.py ./projects/my-song \
+  --lora-split-enabled --skip-tests
+
+# Random seed per scene instead of deterministic scene-number seeds
+uv run python run_pipeline.py ./projects/my-song \
+  --randomize-seed --skip-tests
+```
+
 ## Full-Auto
 
 Full-Auto creates a project from a short idea and song style, renders ACE-Step audio through ComfyUI, writes `config.json`, and can immediately run the video pipeline.
+
+Three pipeline modes are available:
+
+- **Classic** (`ltx_i2v`): storyboard/start-frame driven rendering.
+- **MSR** (`ltx_msr`): reference-sheet driven rendering with actor/location identity.
+- **Ingredients** (`ltx_ingredients`): per-scene ingredients sheets with audio latent injection.
 
 Studio asks for:
 
@@ -95,6 +181,18 @@ uv run python full_auto.py \
   --fps 24 \
   --run-video-pipeline \
   --video-pipeline ltx_msr \
+  --skip-tests
+```
+
+Full-Auto with ingredients mode:
+
+```bash
+uv run python full_auto.py \
+  --idea "A cyberpunk chase through a futuristic city" \
+  --style "dark synthwave with cinematic drums" \
+  --project-name neon-wolves \
+  --run-video-pipeline \
+  --video-pipeline ltx_ingredients \
   --skip-tests
 ```
 
