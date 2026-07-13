@@ -38,7 +38,7 @@ Historical internal tracker reference removed for the public history.
 - When a feature idea is picked from `docs/ideas/inbox.md`, do not jump straight to a plan. First use the `/grill me` workflow with the user to challenge assumptions, clarify scope, define non-goals, identify risks, and capture concrete acceptance criteria.
 - Before writing a plan for an extension or behavior change, inspect the affected code paths and summarize the relevant files, interfaces, and constraints. Skip this only for pure documentation or clearly code-independent planning.
 - After the feature has been specified through `/grill me` and the affected code has been inspected, use `/writing plans` to turn the captured information into the plan document under `docs/ideas/planned/`.
-- Develop each planned feature on its own git branch. Use the `codex/` prefix by default unless the user requests another branch name.
+Historical internal branch reference removed for the public history.
 - Record the intended branch name in the plan document before implementation starts, so paused work can be resumed later from the correct branch.
 - After implementation, move the plan file to `docs/ideas/done/`.
 - After completing an implementation task from a planned idea, commit the finished changes before handing the work back, unless the user explicitly asks not to commit or unresolved verification failures make a commit misleading.
