@@ -4,7 +4,7 @@ from typing import Protocol
 
 
 class LLMPort(Protocol):
-    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
+    def complete_prompt(self, system_prompt: str, prompt: str, timeout: float | None = None) -> str:
         """Return a completion for a system prompt and user prompt."""
 
 
