@@ -59,7 +59,7 @@ class BeatImpactAnalyzer:
     ) -> dict:
         y_mix, sr = self._load_mono(final_mix_path)
         if y_mix is None:
-            raise ValueError("final_mix_path ist ungültig")
+            raise ValueError("final_mix_path is invalid")
 
         y_drums, _ = self._load_mono(drums_path)
         y_bass, _ = self._load_mono(bass_path)
@@ -193,7 +193,7 @@ class BeatSceneDurationGenerator:
     def generate(self, beat_data: dict) -> str:
         beats = beat_data["beats"]
         if not beats:
-            raise ValueError("beat_data['beats'] ist leer")
+            raise ValueError("beat_data['beats'] is empty")
 
         song_end = float(beat_data.get("duration", beats[-1]["time"]))
         rng = random.Random(self.seed)
