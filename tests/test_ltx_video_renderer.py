@@ -493,7 +493,9 @@ class LTXLoraTests(unittest.TestCase):
             },
         })
 
-        with self.assertRaisesRegex(ValueError, "#LORA_1"):
+        from feverslop.errors import FeverSlopWorkflowError
+
+        with self.assertRaisesRegex(FeverSlopWorkflowError, "#LORA_1"):
             renderer._patch_lora_inputs(patcher)
 
     def test_render_scene_queues_workflow_after_lora_1_explicit_strength_patch(self):
@@ -608,7 +610,9 @@ class LTXLoraTests(unittest.TestCase):
                 lora_1_name="characters/test.safetensors",
             )
 
-            with self.assertRaisesRegex(ValueError, "#LORA_1.*workflow.json"):
+            from feverslop.errors import FeverSlopWorkflowError
+
+            with self.assertRaisesRegex(FeverSlopWorkflowError, "#LORA_1.*workflow.json"):
                 renderer.validate_workflow(mode="relay")
 
     def test_lora_split_enabled_does_not_require_split_anchor_during_validation(self):
@@ -650,7 +654,9 @@ class LTXLoraTests(unittest.TestCase):
                 lora_1_name="characters/test.safetensors",
             )
 
-            with self.assertRaisesRegex(ValueError, "#LORA_1.*single.json"):
+            from feverslop.errors import FeverSlopWorkflowError
+
+            with self.assertRaisesRegex(FeverSlopWorkflowError, "#LORA_1.*single.json"):
                 renderer.validate_workflow(mode="single_prompt")
 
     def test_single_prompt_validation_accepts_prompt_positive_fallback(self):

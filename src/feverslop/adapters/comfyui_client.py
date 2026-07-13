@@ -6,8 +6,10 @@ import time
 import uuid
 import requests
 
+from feverslop.errors import FeverSlopWorkflowError
 
-class ComfyUIHTTPError(RuntimeError):
+
+class ComfyUIHTTPError(FeverSlopWorkflowError):
     pass
 
 

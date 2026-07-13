@@ -6,9 +6,10 @@ import json
 from typing import Any
 
 from feverslop.config.comfyui import ComfyUIModelOverride
+from feverslop.errors import FeverSlopAdaptationError
 
 
-class ComfyUIModelResolutionError(RuntimeError):
+class ComfyUIModelResolutionError(FeverSlopAdaptationError):
     pass
 
 

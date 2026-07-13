@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.errors import FeverSlopWorkflowError
 
 
 @dataclass(frozen=True)
@@ -124,4 +125,4 @@ class LoraWorkflowPatcher:
                 strength_clip=strength_clip,
             )
         except KeyError as exc:
-            raise ValueError(f"Missing or incompatible LoRA workflow anchor {title}") from exc
+            raise FeverSlopWorkflowError(f"Missing or incompatible LoRA workflow anchor {title}") from exc

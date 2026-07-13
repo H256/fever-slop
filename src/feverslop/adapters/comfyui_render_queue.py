@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
+from feverslop.errors import FeverSlopRenderError
 
 
 class ComfyUIRenderQueue:
@@ -21,7 +22,7 @@ class ComfyUIRenderQueue:
 
         videos = self.extract_output_videos(history)
         if not videos:
-            raise RuntimeError(f"No video output for scene {scene_number}")
+            raise FeverSlopRenderError(f"No video output for scene {scene_number}")
 
         first = videos[0]
         return self.client.download_view_file(

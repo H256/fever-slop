@@ -6,6 +6,7 @@ import json
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+from feverslop.errors import FeverSlopRenderError
 from feverslop.ports.rendering import ImageRenderRequest
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 
@@ -121,7 +122,7 @@ class ComfyUIImageBackend:
         images = self.client.extract_output_images(history)
 
         if not images:
-            raise RuntimeError(f"No image output for scene {scene_number}")
+            raise FeverSlopRenderError(f"No image output for scene {scene_number}")
 
         first = images[0]
         return self.client.download_view_file(

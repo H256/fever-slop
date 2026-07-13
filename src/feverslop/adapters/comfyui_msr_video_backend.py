@@ -12,6 +12,7 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.errors import FeverSlopValidationError
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayload,
@@ -49,7 +50,7 @@ class ComfyUIMSRVideoRenderBackend:
         workflow_label: str | Path | None = None,
     ):
         if int(msr_frame_count) not in {17, 25, 33, 41}:
-            raise ValueError("msr_frame_count must be one of 17, 25, 33, 41")
+            raise FeverSlopValidationError("msr_frame_count must be one of 17, 25, 33, 41")
         self.client = client
         self.workflow_path = Path(workflow_path)
         self.workflow = deepcopy(workflow) if workflow is not None else None
@@ -132,12 +133,12 @@ class ComfyUIMSRVideoRenderBackend:
         actor_reference_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths", [])
         actor_paths = [self._resolve_project_path(path) for path in actor_reference_paths]
         if not actor_paths:
-            raise ValueError(f"Scene {scene_number} references at least 1 actor for ltx_msr")
+            raise FeverSlopValidationError(f"Scene {scene_number} references at least 1 actor for ltx_msr")
         if len(actor_paths) > 4:
-            raise ValueError(f"Scene {scene_number} references at most 4 actors for ltx_msr")
+            raise FeverSlopValidationError(f"Scene {scene_number} references at most 4 actors for ltx_msr")
         location_path = references.get("location_msr_path") or references.get("location_sheet_path")
         if not location_path:
-            raise ValueError(f"Scene {scene_number} is missing references.location_msr_path")
+            raise FeverSlopValidationError(f"Scene {scene_number} is missing references.location_msr_path")
         location_path = self._resolve_project_path(location_path)
 
         patcher = WorkflowPatcher(self.load_workflow())
@@ -170,7 +171,7 @@ class ComfyUIMSRVideoRenderBackend:
         if not startframe_path:
             return
         if not self._has_anchor(patcher, "#STARTFRAME"):
-            raise ValueError("Movie MSR-I2V scene provides a startframe, but workflow is missing #STARTFRAME")
+            raise FeverSlopValidationError("Movie MSR-I2V scene provides a startframe, but workflow is missing #STARTFRAME")
         image_name = self.asset_uploader.resolve_reference_image_name(self._resolve_project_path(startframe_path))
         patcher.set_input_by_title("#STARTFRAME", "image", image_name)
 

@@ -6,6 +6,7 @@ import json
 import os
 
 from feverslop.domain.postprocessing import TrimSpec
+from feverslop.errors import FeverSlopAdaptationError
 
 
 class VideoPostProcessor:
@@ -261,9 +262,14 @@ class VideoPostProcessor:
         if self.debug:
             subprocess.run(cmd, check=True)
             return
-        subprocess.run(
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise FeverSlopAdaptationError(
+                f"FFmpeg failed: {exc.returncode} for command: {' '.join(cmd)}"
+            ) from exc

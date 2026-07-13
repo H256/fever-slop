@@ -363,7 +363,9 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                 "ingredients_scene_sheet": "missing.png",
                 "ltx": {},
             }
-            with self.assertRaises(ValueError) as ctx:
+            from feverslop.errors import FeverSlopValidationError
+
+            with self.assertRaises(FeverSlopValidationError) as ctx:
                 backend.build_workflow(scene, prompt="prompt")
             self.assertIn("#INGREDIENTS", str(ctx.exception))
 
@@ -387,7 +389,9 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                 "frame_count": 49,
                 "ltx": {},
             }
-            with self.assertRaises(ValueError) as ctx:
+            from feverslop.errors import FeverSlopValidationError
+
+            with self.assertRaises(FeverSlopValidationError) as ctx:
                 backend.build_workflow(scene, prompt="prompt")
             self.assertIn("ingredients_scene_sheet", str(ctx.exception))
 

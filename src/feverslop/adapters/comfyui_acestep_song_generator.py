@@ -7,6 +7,7 @@ import json
 
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.errors import FeverSlopRenderError
 from feverslop.domain.full_auto import GeneratedSong, SongSpec
 
 
@@ -129,7 +130,7 @@ class ComfyUIAceStepSongGenerator:
             filename = str(item.get("filename", ""))
             if item.get("kind") == "audio" or filename.lower().endswith((".mp3", ".wav", ".flac", ".ogg", ".m4a")):
                 return item
-        raise RuntimeError("No audio output found in ACE-STEP ComfyUI history")
+        raise FeverSlopRenderError("No audio output found in ACE-STEP ComfyUI history")
 
     @staticmethod
     def _extract_output_files(history: dict) -> list[dict]:

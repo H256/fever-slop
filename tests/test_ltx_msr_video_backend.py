@@ -260,7 +260,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             workflow.write_text("{}", encoding="utf-8")
             backend = ComfyUIMSRVideoRenderBackend(client=FakeClient(), workflow_path=workflow, output_dir=temp / "out")
 
-            with self.assertRaisesRegex(ValueError, "at least 1 actor"):
+            from feverslop.errors import FeverSlopValidationError
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "at least 1 actor"):
                 backend.build_workflow(
                     {
                         "scene": 1,

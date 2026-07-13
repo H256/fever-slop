@@ -222,7 +222,9 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(ValueError, "#PROMPT_RELAY"):
+            from feverslop.errors import FeverSlopWorkflowError
+
+            with self.assertRaisesRegex(FeverSlopWorkflowError, "#PROMPT_RELAY"):
                 LTXWorkflowPatcher(settings).validate_workflow(mode="relay")
 
     def test_single_prompt_validation_accepts_prompt_positive_fallback(self):
@@ -349,7 +351,9 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(ValueError, "#LORA_1"):
+            from feverslop.errors import FeverSlopWorkflowError
+
+            with self.assertRaisesRegex(FeverSlopWorkflowError, "#LORA_1"):
                 LTXWorkflowPatcher(settings).validate_workflow(mode="relay")
 
     def test_single_prompt_build_workflow_patches_original_style_prompt(self):
@@ -565,7 +569,9 @@ class ComfyUIRenderQueueTests(unittest.TestCase):
 
         queue = ComfyUIRenderQueue(FakeQueueClient({"outputs": {"1": {"files": [{"filename": "note.txt"}]}}}))
 
-        with self.assertRaisesRegex(RuntimeError, "No video output for scene 7"):
+        from feverslop.errors import FeverSlopRenderError
+
+        with self.assertRaisesRegex(FeverSlopRenderError, "No video output for scene 7"):
             queue.queue_workflow_and_download_first_video(
                 {"workflow": True},
                 scene_number=7,
