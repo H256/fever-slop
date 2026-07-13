@@ -41,6 +41,15 @@ from feverslop.tools.reference_bible import run as render_reference_bible
 from feverslop.tools.storyboard_page import parse_scene_list
 from feverslop.tools.storyboard_page import generate_storyboard_page
 
+_REFERENCE_BIBLE_PARSER = None
+
+
+def _get_reference_bible_parser():
+    global _REFERENCE_BIBLE_PARSER
+    if _REFERENCE_BIBLE_PARSER is None:
+        _REFERENCE_BIBLE_PARSER = build_reference_bible_arg_parser()
+    return _REFERENCE_BIBLE_PARSER
+
 
 console = Console()
 
@@ -485,7 +494,7 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
 def _run_msr_references_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline != "ltx_msr":
         raise ValueError("msr_references requires --video-pipeline ltx_msr")
-    reference_args = build_reference_bible_arg_parser().parse_args([
+    reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
         "--app-config",
