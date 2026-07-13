@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import librosa
 import numpy as np
 import whisper
 
-
-@dataclass(frozen=True)
-class TimelineSegment:
-    start: float
-    end: float
-    kind: str  # "vocals" oder "instrumental"
-    text: str = ""
+from feverslop.domain.timeline import TimelineSegment
 
 
 class VocalTimelineAnalyzer:
