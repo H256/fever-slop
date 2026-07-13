@@ -4,6 +4,7 @@ import json
 import math
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 from feverslop.application.reference_bible import (
     compose_scene_reference_sheet,
@@ -147,7 +148,7 @@ class IngredientsSceneSheetBuilder:
         }
 
 
-def _pick_existing_path(value: object | None, project_dir: Path) -> str:
+def _pick_existing_path(value: Any | None, project_dir: Path) -> str:
     if not value:
         return ""
     candidate = str(value).strip()

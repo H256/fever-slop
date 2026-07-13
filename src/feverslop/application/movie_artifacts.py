@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from dataclasses import asdict, dataclass
+from typing import Any
 
 from feverslop.application.movie import (
     MovieInput,
@@ -288,7 +289,7 @@ def _shot_from_render_plan(shot: dict, index: int) -> CinematicShot:
     )
 
 
-def _transition_from_previous(value: object) -> str:
+def _transition_from_previous(value: Any) -> str:
     transition = str(value or "cut").strip().lower().replace("_", "-")
     return "continuous" if transition == "continuous" else "cut"
 

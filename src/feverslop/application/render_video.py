@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
@@ -34,7 +34,7 @@ class RenderVideoScenesUseCase:
         self,
         backend: VideoRenderBackend,
         artifact_store: ArtifactStore,
-        console: object | None = None,
+        console: Any | None = None,
         reporter: Reporter | None = None,
     ):
         self.backend = backend

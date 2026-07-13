@@ -4,6 +4,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 from feverslop.errors import FeverSlopValidationError
 from feverslop.domain.movie import (
@@ -80,7 +81,7 @@ class MovieProductionResult(MovieScaffoldResult):
 
 
 class ScaffoldMovieUseCase:
-    def __init__(self, *, planner: StoryGenerationPort & ScenePlanningPort, projects_root: Path, console: object | None = None, reporter: Reporter | None = None):
+    def __init__(self, *, planner: StoryGenerationPort & ScenePlanningPort, projects_root: Path, console: Any | None = None, reporter: Reporter | None = None):
         self.planner = planner
         self.projects_root = Path(projects_root)
         if reporter is not None:
@@ -547,7 +548,7 @@ def build_movie_continuity_fallback(*, bible: MovieBible, shots: tuple[Cinematic
     )
 
 
-def _safe_continuity_facts(value: object) -> tuple[str, ...]:
+def _safe_continuity_facts(value: Any) -> tuple[str, ...]:
     candidates = _split_continuity_text(value)
     facts: list[str] = []
     for candidate in candidates:
@@ -559,7 +560,7 @@ def _safe_continuity_facts(value: object) -> tuple[str, ...]:
     return tuple(facts)
 
 
-def _split_continuity_text(value: object) -> list[str]:
+def _split_continuity_text(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, str):
@@ -957,7 +958,7 @@ def _generic_location_from_id(location_id: str, name: str, index: int) -> MovieL
     )
 
 
-def _clean_movie_location_visual_description(value: object, fallback: str) -> str:
+def _clean_movie_location_visual_description(value: Any, fallback: str) -> str:
     text = " ".join(str(value or "").split()).strip(" .;,")
     fallback_text = " ".join(str(fallback or "").split()).strip() or "Location"
     if not text:
@@ -1121,12 +1122,12 @@ def _default_location_id(config: dict) -> str:
     return "primary_location"
 
 
-def _safe_id(value: object, fallback: str) -> str:
+def _safe_id(value: Any, fallback: str) -> str:
     raw = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
     return raw or fallback
 
 
-def _string_list(value: object) -> list[str]:
+def _string_list(value: Any) -> list[str]:
     if isinstance(value, list | tuple):
         return [str(item).strip() for item in value if str(item).strip()]
     if isinstance(value, str) and value.strip():

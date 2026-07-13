@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
@@ -22,11 +22,11 @@ class GenerateRenderPlanRequest:
 
 @dataclass(frozen=True)
 class GenerateRenderPlanExecutionRequest:
-    source_request: GenerateRenderPlanRequest | object
-    config: object
-    paths: object
-    app_config: object
-    video_settings: object
+    source_request: GenerateRenderPlanRequest | Any
+    config: Any
+    paths: Any
+    app_config: Any
+    video_settings: Any
     song_id: str
 
 
@@ -41,11 +41,11 @@ class GenerateRenderPlanResult:
 class GenerateRenderPlanUseCase:
     def __init__(
         self,
-        console: object | None = None,
+        console: Any | None = None,
         reporter: Reporter | None = None,
-        pipeline_services: list[object] | None = None,
+        pipeline_services: list[Any] | None = None,
         artifact_store: ArtifactStore | None = None,
-        storyboard_renderer_factory: Callable[[object, Path, Path], object] | None = None,
+        storyboard_renderer_factory: Callable[[Any, Path, Path], Any] | None = None,
     ):
         if reporter is not None:
             self.reporter = reporter
@@ -57,10 +57,10 @@ class GenerateRenderPlanUseCase:
         self.artifact_store = artifact_store
         self.storyboard_renderer_factory = storyboard_renderer_factory
 
-    def build_default_pipeline_services(self) -> list[object]:
+    def build_default_pipeline_services(self) -> list[Any]:
         return list(self.pipeline_services)
 
-    def execute_services(self, context: GenerateRenderPlanContext | dict[str, object]) -> GenerateRenderPlanContext | dict[str, object]:
+    def execute_services(self, context: GenerateRenderPlanContext | dict[str, Any]) -> GenerateRenderPlanContext | dict[str, Any]:
         for service in self.pipeline_services:
             context = service.execute(context)
         return context
@@ -71,7 +71,7 @@ class GenerateRenderPlanUseCase:
     def log_file(self, label: str, path: Path):
         self.reporter.file(label, path)
 
-    def run_spinner(self, description: str, func: Callable[[], object]):
+    def run_spinner(self, description: str, func: Callable[[], Any]):
         return self.reporter.run_progress(description, func)
 
     def execute(self, request: GenerateRenderPlanExecutionRequest) -> GenerateRenderPlanResult:
@@ -164,7 +164,7 @@ class GenerateRenderPlanUseCase:
         render_plan: list[dict],
         total_frames: int,
         total_duration: float,
-        video_settings: object,
+        video_settings: Any,
         render_plan_json: Path,
         elapsed: float,
     ) -> None:
@@ -189,8 +189,8 @@ class GenerateRenderPlanUseCase:
     def render_storyboard(
         self,
         *,
-        request: object,
-        app_config: object,
+        request: Any,
+        app_config: Any,
         render_dir: Path,
         render_plan_json: Path,
     ) -> None:

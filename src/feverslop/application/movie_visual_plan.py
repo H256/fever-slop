@@ -182,7 +182,7 @@ def _framing_bucket(value: str) -> str:
     return "medium"
 
 
-def _slug(value: object) -> str:
+def _slug(value: Any) -> str:
     text = str(value or "").lower()
     slug = "".join(char if char.isalnum() else "_" for char in text).strip("_")
     while "__" in slug:

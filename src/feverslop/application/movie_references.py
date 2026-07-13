@@ -97,7 +97,7 @@ def _movie_reference_size(project_dir: Path) -> tuple[int, int]:
     return (int(resolution.get("width") or 1280), int(resolution.get("height") or 704))
 
 
-def _project_reference_path(value: object) -> str:
+def _project_reference_path(value: Any) -> str:
     path = str(value or "").strip().replace("\\", "/")
     if not path or Path(path).is_absolute() or path.startswith("movie/"):
         return path

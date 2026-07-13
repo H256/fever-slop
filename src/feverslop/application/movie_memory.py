@@ -234,7 +234,7 @@ def build_movie_shot_cards(*, shots: tuple[CinematicShot, ...], scene_cards: tup
     return tuple(cards)
 
 
-def _transition_from_previous(value: object) -> str:
+def _transition_from_previous(value: Any) -> str:
     transition = str(value or "cut").strip().lower().replace("_", "-")
     return "continuous" if transition == "continuous" else "cut"
 
@@ -496,7 +496,7 @@ def _dialogue_actor_ids(dialogue: str) -> list[str]:
     return ids
 
 
-def _valid_actor_ids(raw_ids: object, bible: MovieBible) -> tuple[str, ...]:
+def _valid_actor_ids(raw_ids: Any, bible: MovieBible) -> tuple[str, ...]:
     valid = {actor.id for actor in bible.actors}
     ids = []
     for raw_id in _string_list(raw_ids):
@@ -610,12 +610,12 @@ def _end_frame_brief(shot: CinematicShot) -> str:
     return f"Ending frame: {shot.story_state_after or shot.action or shot.description}; preserve actor identity and location geography."
 
 
-def _safe_id(value: object) -> str:
+def _safe_id(value: Any) -> str:
     raw = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
     return raw
 
 
-def _string_list(value: object) -> list[str]:
+def _string_list(value: Any) -> list[str]:
     if isinstance(value, list | tuple):
         return [str(item).strip() for item in value if str(item).strip()]
     if isinstance(value, str) and value.strip():
