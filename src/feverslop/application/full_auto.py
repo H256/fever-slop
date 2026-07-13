@@ -6,6 +6,7 @@ from typing import Any
 
 from feverslop.domain.full_auto import SongSpec
 from feverslop.domain.slug_utils import slugify_project_name
+from feverslop.errors import FeverSlopConfigError
 from feverslop.ports.full_auto import (
     PipelineRunnerPort,
     ProjectScaffoldPort,
@@ -104,7 +105,7 @@ class FullAutoUseCase:
         final_video_path = None
         if request.run_video_pipeline:
             if self.pipeline_runner is None:
-                raise ValueError("FullAutoUseCase requires a pipeline_runner when run_video_pipeline is true")
+                raise FeverSlopConfigError("FullAutoUseCase requires a pipeline_runner when run_video_pipeline is true")
             self.log_step("4. Running video pipeline")
             final_video_path = self.pipeline_runner.run(
                 project_config_path=scaffold.project_config_path,
