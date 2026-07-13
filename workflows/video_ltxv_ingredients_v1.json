@@ -43,7 +43,7 @@
   },
   "2612": {
     "inputs": {
-      "text": "collage, moodboard, grid layout, split screen, multiple panels, duplicated character, wrong face, changed identity, wrong outfit, missing accessories, incorrect props, extra limbs, warped hands, broken anatomy, floating objects, inconsistent scale, unstable character, flickering, blurry face, low detail, bad motion, jump cuts, chaotic camera movement, distorted background",
+      "text": "title, text-overlay, watermark, text, subtitle, collage, moodboard, grid layout, split screen, multiple panels, duplicated character, wrong face, changed identity, wrong outfit, missing accessories, incorrect props, extra limbs, warped hands, broken anatomy, floating objects, inconsistent scale, unstable character, flickering, blurry face, low detail, bad motion, jump cuts, chaotic camera movement, distorted background",
       "clip": [
         "5023",
         0
@@ -225,7 +225,7 @@
   "4845": {
     "inputs": {
       "av_latent": [
-        "4829",
+        "5110",
         0
       ]
     },
@@ -570,6 +570,20 @@
     "class_type": "VHS_VideoCombine",
     "_meta": {
       "title": "#SAVE_VIDEO"
+    }
+  },
+  "5110": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "4829",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
     }
   }
 }
