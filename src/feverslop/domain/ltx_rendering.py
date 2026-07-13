@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from feverslop.errors import FeverSlopValidationError
+
 from dataclasses import dataclass
 
 
@@ -91,7 +93,7 @@ class PromptRelayPayloadBuilder:
 
     def __init__(self, segment_length_mode: str = "frames_minus_one"):
         if segment_length_mode not in {"frames_minus_one", "frames"}:
-            raise ValueError("segment_length_mode must be 'frames_minus_one' or 'frames'")
+            raise FeverSlopValidationError("segment_length_mode must be 'frames_minus_one' or 'frames'")
         self.segment_length_mode = segment_length_mode
 
     def build(
@@ -170,7 +172,7 @@ class PromptRelayPayloadBuilder:
 
         total = sum(segment_lengths)
         if total != timeline_frames:
-            raise ValueError(
+            raise FeverSlopValidationError(
                 f"PromptRelay segment length mismatch for scene {scene.get('scene')}: "
                 f"sum={total}, expected={timeline_frames}, mode={self.segment_length_mode}, "
                 f"render_frame_count={render_frame_count}, scene_frame_count={scene.get('frame_count')}, "

@@ -6,6 +6,7 @@ import time
 from typing import Callable
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
 
@@ -76,7 +77,7 @@ class GenerateRenderPlanUseCase:
     def execute(self, request: GenerateRenderPlanExecutionRequest) -> GenerateRenderPlanResult:
         started_at = time.time()
         if self.artifact_store is None:
-            raise ValueError("GenerateRenderPlanUseCase requires an artifact_store")
+            raise FeverSlopConfigError("GenerateRenderPlanUseCase requires an artifact_store")
 
         config = request.config
         paths = request.paths
@@ -194,9 +195,9 @@ class GenerateRenderPlanUseCase:
         render_plan_json: Path,
     ) -> None:
         if not request.zimage_workflow_path:
-            raise ValueError("--zimage-workflow is required when --render-storyboard is used")
+            raise FeverSlopValidationError("--zimage-workflow is required when --render-storyboard is used")
         if self.storyboard_renderer_factory is None:
-            raise ValueError("Storyboard rendering requires a storyboard_renderer_factory")
+            raise FeverSlopConfigError("Storyboard rendering requires a storyboard_renderer_factory")
 
         renderer = self.storyboard_renderer_factory(app_config, render_dir, request.zimage_workflow_path)
         rendered = renderer.render_storyboard(render_plan_path=render_plan_json)

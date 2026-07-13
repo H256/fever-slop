@@ -5,6 +5,7 @@ import re
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
+from feverslop.errors import FeverSlopValidationError
 from feverslop.domain.movie import (
     CinematicShot,
     MovieActor,
@@ -271,21 +272,21 @@ class AutoProduceMovieUseCase:
 
 def validate_movie_input(request: MovieInput) -> None:
     if request.source_type not in {"short_story", "screenplay"}:
-        raise ValueError("source_type must be short_story or screenplay")
+        raise FeverSlopValidationError("source_type must be short_story or screenplay")
     if not request.name.strip():
-        raise ValueError("Movie project name is required")
+        raise FeverSlopValidationError("Movie project name is required")
     if not slugify_project_name(request.name):
-        raise ValueError("Movie project slug is empty after slugifying the name")
+        raise FeverSlopValidationError("Movie project slug is empty after slugifying the name")
     if len(request.story_text.strip()) < 20:
-        raise ValueError("Movie story input is too short")
+        raise FeverSlopValidationError("Movie story input is too short")
     if float(request.desired_length) <= 0:
-        raise ValueError("desired_length must be positive")
+        raise FeverSlopValidationError("desired_length must be positive")
     if int(request.width) <= 0 or int(request.height) <= 0:
-        raise ValueError("resolution width and height must be positive")
+        raise FeverSlopValidationError("resolution width and height must be positive")
     if request.mode not in {"scaffold", "full_auto"}:
-        raise ValueError("movie mode must be scaffold or full_auto")
+        raise FeverSlopValidationError("movie mode must be scaffold or full_auto")
     if request.source_type == "screenplay" and not _looks_like_screenplay(request.story_text):
-        raise ValueError("screenplay input must contain scene headings such as INT. or EXT.")
+        raise FeverSlopValidationError("screenplay input must contain scene headings such as INT. or EXT.")
 
 
 def _looks_like_screenplay(text: str) -> bool:

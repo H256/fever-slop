@@ -19,3 +19,11 @@ class FeverSlopConfigError(FeverSlopError):
 
 class FeverSlopWorkflowError(FeverSlopRenderError):
     """Error from ComfyUI workflow patching or validation."""
+
+
+class FeverSlopValidationError(FeverSlopError):
+    """Error from input or parameter validation."""
+
+
+class FeverSlopAdaptationError(FeverSlopError):
+    """Error from adapter layer (third-party exception wrapper)."""

@@ -20,6 +20,7 @@ from rich.progress import (
 )
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from feverslop.errors import FeverSlopError
 from feverslop.adapters.pipeline_runner_options import add_runner_options
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
@@ -301,6 +302,9 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
         write_step(f"Stage {STAGE_LABELS[stage]}")
         try:
             STAGE_RUNNERS[stage](state)
+        except FeverSlopError as exc:
+            console.print(f"[red]Pipeline error:[/red] {exc}")
+            raise
         except Exception as exc:
             raise RuntimeError(f"{STAGE_LABELS[stage]} failed: {exc}") from exc
 

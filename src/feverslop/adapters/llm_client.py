@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
+import random
 import time
 
 from feverslop.errors import FeverSlopLMLError
@@ -34,6 +35,7 @@ class LocalOpenAIClient:
         self,
         prompt: str,
         system_prompt: str | None = None,
+        timeout: float | None = None,
     ) -> str:
         messages = []
 
@@ -57,13 +59,15 @@ class LocalOpenAIClient:
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
                     stream=False,
+                    timeout=timeout,
                 )
                 return response.choices[0].message.content.strip()
             except RETRYABLE_ERRORS as exc:
                 last_error = exc
                 if attempt < self.max_retries - 1:
-                    delay = self.retry_base_delay * (2 ** attempt)
-                    time.sleep(delay)
+                    base_delay = self.retry_base_delay * (2 ** attempt)
+                    jitter = random.uniform(0, base_delay)
+                    time.sleep(base_delay + jitter)
 
         raise FeverSlopLMLError(
             f"LLM API error after {self.max_retries} attempts: {last_error}"

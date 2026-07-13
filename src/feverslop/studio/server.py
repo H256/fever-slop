@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from rich.console import Console
 
+from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.reporting import ConsoleReporter
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.job_service import (
@@ -281,7 +282,7 @@ def _safe(fn):
         return fn()
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (StudioPathError, ValueError, KeyError) as exc:
+    except (StudioPathError, ValueError, KeyError, FeverSlopValidationError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
