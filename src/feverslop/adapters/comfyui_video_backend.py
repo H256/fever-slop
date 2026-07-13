@@ -10,6 +10,7 @@ from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings, ResolvedLoraConfig
+from feverslop.errors import FeverSlopRenderError, FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
@@ -192,7 +193,7 @@ class ComfyUIVideoRenderBackend:
             tail_loss_frames = config.tail_loss_frames
             round_render_frames_to_8n1 = config.round_render_frames_to_8n1
         if ltx_workflow_path is None or output_dir is None:
-            raise ValueError("ltx_workflow_path and output_dir are required unless config is provided")
+            raise FeverSlopValidationError("ltx_workflow_path and output_dir are required unless config is provided")
 
         self.client = client
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
@@ -230,10 +231,10 @@ class ComfyUIVideoRenderBackend:
         self.seed_offset = seed_offset
 
         if segment_length_mode not in {"frames_minus_one", "frames"}:
-            raise ValueError("segment_length_mode must be 'frames_minus_one' or 'frames'")
+            raise FeverSlopValidationError("segment_length_mode must be 'frames_minus_one' or 'frames'")
         self.segment_length_mode = segment_length_mode
         if render_mode not in {"relay", "single_prompt", "auto"}:
-            raise ValueError("render_mode must be 'relay', 'single_prompt', or 'auto'")
+            raise FeverSlopValidationError("render_mode must be 'relay', 'single_prompt', or 'auto'")
         self.render_mode = render_mode
 
         self.min_duration = min_duration
@@ -313,7 +314,7 @@ class ComfyUIVideoRenderBackend:
             upload_startframes=request.upload_startframes,
         )
         if not rendered:
-            raise RuntimeError(f"No rendered video returned for scene {request.scene_number}")
+            raise FeverSlopRenderError(f"No rendered video returned for scene {request.scene_number}")
         return rendered[0]
 
     def render_videos(
@@ -360,14 +361,14 @@ class ComfyUIVideoRenderBackend:
 
             duration = float(scene["duration_seconds"])
             if not self.allow_out_of_range_clips and (duration < self.min_duration or duration > self.max_duration):
-                raise ValueError(
+                raise FeverSlopValidationError(
                     f"Scene {scene_number} duration {duration:.3f}s is outside "
                     f"{self.min_duration:.3f}s..{self.max_duration:.3f}s."
                 )
 
             startframe_path = storyboard_dir / f"scene_{scene_number:04}.png"
             if not startframe_path.exists():
-                raise FileNotFoundError(f"Missing storyboard startframe: {startframe_path}")
+                raise FeverSlopRenderError(f"Missing storyboard startframe: {startframe_path}")
 
             comfy_startframe_name = self.asset_uploader.resolve_startframe_name(
                 startframe_path,

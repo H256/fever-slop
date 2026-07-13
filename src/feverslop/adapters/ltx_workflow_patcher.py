@@ -8,6 +8,7 @@ import random
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.adapters.lora_workflow_patcher import LoraPatchSettings, LoraWorkflowPatcher
 from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder
+from feverslop.errors import FeverSlopWorkflowError
 
 
 @dataclass(frozen=True)
@@ -118,7 +119,7 @@ class LTXWorkflowPatcher:
             try:
                 patcher.find_node_by_meta_title(title)
             except KeyError as exc:
-                raise ValueError(f"Missing workflow anchor {title} in workflow file {workflow_path}") from exc
+                raise FeverSlopWorkflowError(f"Missing workflow anchor {title} in workflow file {workflow_path}") from exc
 
         if mode == "single_prompt":
             prompt_title_candidates = [
@@ -134,7 +135,7 @@ class LTXWorkflowPatcher:
                     continue
             else:
                 anchors = ", ".join(dict.fromkeys(prompt_title_candidates))
-                raise ValueError(f"Missing workflow anchor {anchors} in workflow file {workflow_path}")
+                raise FeverSlopWorkflowError(f"Missing workflow anchor {anchors} in workflow file {workflow_path}")
 
     def render_mode_for_scene(self, scene: dict) -> str:
         if self.settings.render_mode != "auto":

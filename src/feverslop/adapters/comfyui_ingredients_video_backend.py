@@ -12,6 +12,7 @@ from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.ltx_rendering import AudioWindowSpec, build_audio_window_spec
+from feverslop.errors import FeverSlopValidationError
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -125,11 +126,11 @@ class ComfyUIIngredientsVideoRenderBackend:
 
     def _patch_ingredients_input(self, patcher: WorkflowPatcher, scene: dict) -> None:
         if not self._has_anchor(patcher, "#INGREDIENTS"):
-            raise ValueError("Ingredients workflow is missing #INGREDIENTS anchor")
+            raise FeverSlopValidationError("Ingredients workflow is missing #INGREDIENTS anchor")
 
         sheet_path = scene.get("ingredients_scene_sheet") or ""
         if not sheet_path:
-            raise ValueError(f"Scene {scene.get('scene')} is missing ingredients_scene_sheet path")
+            raise FeverSlopValidationError(f"Scene {scene.get('scene')} is missing ingredients_scene_sheet path")
 
         image_name = self.asset_uploader.resolve_reference_image_name(
             self._resolve_project_path(sheet_path)

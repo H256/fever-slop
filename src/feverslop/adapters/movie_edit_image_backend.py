@@ -5,6 +5,7 @@ from pathlib import Path
 
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.errors import FeverSlopRenderError
 
 
 class MovieTwoRefEditImageBackend:
@@ -44,7 +45,7 @@ class MovieTwoRefEditImageBackend:
         history = self.client.wait_for_completion(prompt_id)
         images = self.client.extract_output_images(history)
         if not images:
-            raise RuntimeError(f"No edit image output for scene {scene_number} pass {pass_number}")
+            raise FeverSlopRenderError(f"No edit image output for scene {scene_number} pass {pass_number}")
 
         first = images[0]
         return self.client.download_view_file(
