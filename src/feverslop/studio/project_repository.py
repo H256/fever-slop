@@ -8,7 +8,8 @@ from feverslop.adapters.movie_planning import DeterministicMoviePlanner, LLMMovi
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.ports.reporting import Reporter
 from feverslop.studio.project_validation import validate_full_auto_inputs
-from feverslop.studio.projects import ProjectCreateRequest, StudioPathError, slugify_project_name
+from feverslop.domain.slug_utils import slugify_project_name
+from feverslop.studio.projects import ProjectCreateRequest, StudioPathError
 
 
 class ProjectRepository:

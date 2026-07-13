@@ -912,7 +912,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(raw_output, render_queue.calls[0]["output_path"])
             self.assertEqual(81, render_queue.calls[0]["workflow"]["5"]["inputs"]["value"])
             self.assertEqual(3.25, render_queue.calls[0]["workflow"]["7"]["inputs"]["start_index"])
-            self.assertEqual(80 / 24, render_queue.calls[0]["workflow"]["7"]["inputs"]["duration"])
+            self.assertAlmostEqual(80 / 24, render_queue.calls[0]["workflow"]["7"]["inputs"]["duration"], places=4)
             self.assertEqual(1, len(postprocessor.trim_specs))
             trim_spec = postprocessor.trim_specs[0]
             self.assertEqual(raw_output, trim_spec.source_file)

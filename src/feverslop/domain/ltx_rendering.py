@@ -64,7 +64,7 @@ def build_audio_window_spec(
     tail = max(0, int(tail_loss_frames))
 
     audio_start = max(0.0, float(scene_start_seconds) - preroll / float(fps))
-    effective_preroll = round((float(scene_start_seconds) - audio_start) * fps)
+    effective_preroll = int(round((float(scene_start_seconds) - audio_start) * fps))
 
     base_render_frame_count = scene_frame_count + effective_preroll + tail
     render_frame_count = (
@@ -73,7 +73,7 @@ def build_audio_window_spec(
         else base_render_frame_count
     )
     effective_tail = tail + (render_frame_count - base_render_frame_count)
-    audio_duration = max(0.0, (render_frame_count - 1) / float(fps))
+    audio_duration = round(max(0.0, (render_frame_count - 1) / float(fps)), 6)
 
     return AudioWindowSpec(
         scene_frame_count=scene_frame_count,

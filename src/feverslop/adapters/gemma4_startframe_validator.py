@@ -9,6 +9,8 @@ from typing import Any
 
 import requests
 
+from feverslop.errors import FeverSlopLMLError
+
 from feverslop.domain.llm_parsing import extract_json_object
 
 
@@ -85,7 +87,7 @@ def normalize_validation_response(content: str) -> dict[str, Any]:
             "issues": [str(item) for item in result.get("issues") or []],
             "notes": str(result.get("notes") or ""),
         }
-    except ValueError:
+    except FeverSlopLMLError:
         return _validation_from_text(content)
 
 

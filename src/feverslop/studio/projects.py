@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from feverslop.domain.slug_utils import slugify_project_name  # noqa: F401 -- re-exported for backward compatibility
 from feverslop.ports.reporting import Reporter
 
 
@@ -66,11 +67,6 @@ class ProjectCreateRequest:
     movie_continuity_keyframes: str = "none"
     movie_refine_location_prompts: bool = False
     movie_refine_actor_prompts: bool = False
-
-
-def slugify_project_name(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
-    return re.sub(r"-+", "-", slug)
 
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}

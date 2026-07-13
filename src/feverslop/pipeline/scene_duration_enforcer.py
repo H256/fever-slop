@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
+from feverslop.domain.srt import SrtBlock, format_srt_timestamp, parse_srt_blocks
 from feverslop.ports.artifacts import ArtifactStore
 
 @dataclass(frozen=True)
@@ -18,69 +18,14 @@ class SrtScene:
         return self.end - self.start
 
 
-def parse_srt_timestamp(value: str) -> float:
-    value = value.strip()
-    hours, minutes, rest = value.split(":")
-    seconds, millis = rest.split(",")
-    return (
-        int(hours) * 3600
-        + int(minutes) * 60
-        + int(seconds)
-        + int(millis) / 1000.0
-    )
-
-
-def format_srt_timestamp(seconds: float) -> str:
-    seconds = max(0.0, float(seconds))
-    millis_total = round(seconds * 1000)
-
-    millis = millis_total % 1000
-    total_seconds = millis_total // 1000
-
-    sec = total_seconds % 60
-    total_minutes = total_seconds // 60
-
-    minute = total_minutes % 60
-    hour = total_minutes // 60
-
-    return f"{hour:02}:{minute:02}:{sec:02},{millis:03}"
+def _to_srt_scene(block: SrtBlock) -> SrtScene:
+    return SrtScene(scene=block.index, start=block.start, end=block.end, text=block.text)
 
 
 def parse_scene_srt(path: str | Path) -> list[SrtScene]:
-    text = Path(path).read_text(encoding="utf-8").strip()
-
-    if not text:
-        return []
-
-    blocks = re.split(r"\n\s*\n", text)
-    scenes: list[SrtScene] = []
-
-    for block in blocks:
-        lines = [line.strip() for line in block.splitlines() if line.strip()]
-
-        if len(lines) < 2:
-            continue
-
-        try:
-            scene_no = int(lines[0])
-        except ValueError:
-            continue
-
-        match = re.match(
-            r"(.+?)\s*-->\s*(.+)",
-            lines[1],
-        )
-
-        if not match:
-            continue
-
-        start = parse_srt_timestamp(match.group(1))
-        end = parse_srt_timestamp(match.group(2))
-        body = "\n".join(lines[2:]) if len(lines) > 2 else ""
-
-        scenes.append(SrtScene(scene=scene_no, start=start, end=end, text=body))
-
-    return scenes
+    """Parse SRT file to SrtScene objects using shared domain parser."""
+    blocks = parse_srt_blocks(path)
+    return [_to_srt_scene(block) for block in blocks]
 
 
 def write_scene_srt(

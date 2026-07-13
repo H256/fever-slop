@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.domain.full_auto import SongSpec
+from feverslop.domain.slug_utils import slugify_project_name
 from feverslop.ports.full_auto import (
     PipelineRunnerPort,
     ProjectScaffoldPort,
@@ -187,11 +188,3 @@ class FullAutoUseCase:
             visual_story_idea=spec.visual_story_idea,
             visual_style=spec.visual_style,
         )
-
-
-def slugify_project_name(value: str) -> str:
-    import re
-
-    raw = str(value or "").strip()
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw).strip("._-")
-    return safe or "full_auto_song"
