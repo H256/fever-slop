@@ -64,7 +64,15 @@ class LyricTimelineAligner:
                 f"{expected_keys}, got {actual_keys}"
             )
 
+        corrected_segments = {}
         for segment, key in zip(vocal_segments, expected_keys, strict=True):
-            segment.text = str(corrected[key]).strip()
+            corrected_segments[id(segment)] = TimelineSegment(
+                start=segment.start,
+                end=segment.end,
+                kind=segment.kind,
+                text=str(corrected[key]).strip(),
+            )
 
-        return timeline
+        return [
+            corrected_segments.get(id(seg), seg) for seg in timeline
+        ]

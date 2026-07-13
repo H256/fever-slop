@@ -1,0 +1,104 @@
+import unittest
+
+from feverslop.adapters.audio.vocal_timeline_analyzer import (
+    TimelineSegment,
+    merge_same_kind_segments,
+    normalize_empty_vocals,
+)
+
+
+class TimelineSegmentImmutabilityTests(unittest.TestCase):
+    def test_timeline_segment_is_frozen(self):
+        seg = TimelineSegment(start=0.0, end=1.0, kind="vocals", text="hello")
+        with self.assertRaises(Exception):
+            seg.start = 99.0
+
+    def test_normalize_empty_vocals_does_not_mutate_original(self):
+        original = [
+            TimelineSegment(start=0.0, end=1.0, kind="vocals", text="ab"),
+            TimelineSegment(start=1.0, end=2.0, kind="vocals", text="valid text"),
+        ]
+        first_kind_before = original[0].kind
+
+        result = normalize_empty_vocals(original, min_text_chars=3)
+
+        self.assertEqual(first_kind_before, original[0].kind)
+        self.assertEqual("instrumental", result[0].kind)
+        self.assertEqual("vocals", result[1].kind)
+
+    def test_normalize_empty_vocals_idempotent(self):
+        timeline = [
+            TimelineSegment(start=0.0, end=1.0, kind="vocals", text="ab"),
+            TimelineSegment(start=1.0, end=2.0, kind="vocals", text="valid text"),
+        ]
+        result1 = normalize_empty_vocals(timeline, min_text_chars=3)
+        result2 = normalize_empty_vocals(timeline, min_text_chars=3)
+
+        self.assertEqual(len(result1), len(result2))
+        for a, b in zip(result1, result2):
+            self.assertEqual(a, b)
+
+    def test_merge_same_kind_segments_does_not_mutate_original(self):
+        original = [
+            TimelineSegment(start=0.0, end=1.0, kind="vocals", text="first"),
+            TimelineSegment(start=1.1, end=2.0, kind="vocals", text="second"),
+        ]
+        original_end = original[0].end
+
+        result = merge_same_kind_segments(original, merge_gap=0.5)
+
+        self.assertEqual(original_end, original[0].end)
+        self.assertEqual(1, len(result))
+        self.assertEqual("first second", result[0].text)
+        self.assertAlmostEqual(2.0, result[0].end)
+
+    def test_merge_same_kind_segments_idempotent(self):
+        timeline = [
+            TimelineSegment(start=0.0, end=1.0, kind="vocals", text="first"),
+            TimelineSegment(start=1.1, end=2.0, kind="vocals", text="second"),
+            TimelineSegment(start=3.0, end=4.0, kind="instrumental"),
+        ]
+        result1 = merge_same_kind_segments(timeline, merge_gap=0.5)
+        result2 = merge_same_kind_segments(timeline, merge_gap=0.5)
+
+        self.assertEqual(len(result1), len(result2))
+        for a, b in zip(result1, result2):
+            self.assertEqual(a, b)
+
+    def test_merge_preserves_text_only_when_non_empty(self):
+        timeline = [
+            TimelineSegment(start=0.0, end=1.0, kind="vocals", text="hello"),
+            TimelineSegment(start=1.1, end=2.0, kind="vocals", text=""),
+        ]
+        result = merge_same_kind_segments(timeline, merge_gap=0.5)
+
+        self.assertEqual(1, len(result))
+        self.assertEqual("hello", result[0].text)
+
+    def test_merge_empty_text_first_preserves_second(self):
+        timeline = [
+            TimelineSegment(start=0.0, end=1.0, kind="vocals", text=""),
+            TimelineSegment(start=1.1, end=2.0, kind="vocals", text="world"),
+        ]
+        result = merge_same_kind_segments(timeline, merge_gap=0.5)
+
+        self.assertEqual(1, len(result))
+        self.assertEqual("world", result[0].text)
+
+    def test_normalize_preserves_instrumental_segments(self):
+        timeline = [
+            TimelineSegment(start=0.0, end=1.0, kind="instrumental"),
+            TimelineSegment(start=1.0, end=2.0, kind="vocals", text="valid"),
+        ]
+        result = normalize_empty_vocals(timeline, min_text_chars=3)
+
+        self.assertEqual(2, len(result))
+        self.assertEqual("instrumental", result[0].kind)
+        self.assertEqual("vocals", result[1].kind)
+
+    def test_merge_empty_timeline(self):
+        self.assertEqual([], merge_same_kind_segments([]))
+
+
+if __name__ == "__main__":
+    unittest.main()
