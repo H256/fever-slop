@@ -24,11 +24,8 @@ from feverslop.config.project_config import ProjectConfig, ProjectPaths
 from feverslop.adapters.audio.beat_analysis import BeatImpactAnalyzer
 from feverslop.adapters.audio.beat_analysis import BeatSceneDurationGenerator
 from feverslop.adapters.audio.demucs_separator import DemucsSeparator
-from feverslop.adapters.audio.vocal_timeline_analyzer import (
-    VocalTimelineAnalyzer,
-    merge_same_kind_segments,
-    normalize_empty_vocals,
-)
+from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+from feverslop.domain.timeline_transform import merge_same_kind_segments, normalize_empty_vocals
 from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.pipeline.scene_duration_enforcer import (
