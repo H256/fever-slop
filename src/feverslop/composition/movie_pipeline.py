@@ -234,6 +234,8 @@ def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
         return MOVIE_I2V_EDIT_STAGE_TITLES
     if config["movie_video_workflow"] == "startframe-director":
         return MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES
+    if config["movie_video_workflow"] == "ingredients":
+        return MOVIE_INGREDIENTS_STAGE_TITLES
     return MOVIE_BASE_STAGE_TITLES
 
 
@@ -484,11 +486,12 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         if render_plan_ingredients_path is None:
             raise FileNotFoundError(f"Movie ingredients render plan not found: {render_plan_ingredients_path}")
 
+        ingredients_debug_workflows_dir = _ingredients_debug_workflows_dir(project_dir, args)
         final_video_path: Path | None = None
         if not args.skip_movie_render:
             _log_stage("Movie Ingredients render", f"rendering via {config['render_backend']}")
             if config["render_backend"] != "local":
-                adapter = _build_ingredients_adapter(project_dir, config)
+                adapter = _build_ingredients_adapter(project_dir, config, debug_workflows_dir=ingredients_debug_workflows_dir)
             else:
                 adapter = LocalMovieVisualAdapter()
             final_video_path = adapter.render_movie(
@@ -515,6 +518,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             render_plan_ingredients_path=render_plan_ingredients_path,
             reference_manifest_path=reference_manifest_path,
             final_video_path=final_video_path,
+            debug_workflows_dir=ingredients_debug_workflows_dir,
         )
 
     if not args.skip_movie_msr_enrich:
@@ -619,7 +623,7 @@ def _build_visual_adapter(project_dir: Path, config: dict[str, Any], workflow: d
     )
 
 
-def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any]):
+def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, debug_workflows_dir: Path | None = None):
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
     from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
@@ -639,6 +643,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any]):
         output_dir=ltx_dir,
         project_dir=project_dir,
         model_resolver=model_resolver,
+        debug_workflows_dir=debug_workflows_dir,
     )
     return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
 
@@ -745,6 +750,15 @@ def _startframe_debug_workflows_dir(project_dir: Path, args: argparse.Namespace)
     if raw:
         return coerce_local_path(raw).resolve()
     return project_dir / "output" / "movie" / "startframes" / "debug_workflows"
+
+
+def _ingredients_debug_workflows_dir(project_dir: Path, args: argparse.Namespace) -> Path | None:
+    if not bool(getattr(args, "write_debug_workflows", False)):
+        return None
+    raw = getattr(args, "debug_workflows_dir", None)
+    if raw:
+        return coerce_local_path(raw).resolve()
+    return project_dir / "output" / "movie" / "ltx_ingredients" / "debug_workflows"
 
 
 def _write_startframe_i2v_empty_audio_workflow(*, project_dir: Path, workflow_path: Path, patcher) -> Path:
