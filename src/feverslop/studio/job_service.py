@@ -426,6 +426,47 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
             log(f"[MoviePipeline] Stage: Storyboard review page: {storyboard_page}")
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
             return final_video
+        if config["movie_video_workflow"] == "startframe-director":
+            from feverslop.adapters.startframe_director_visual import LocalStartframeDirectorVisualAdapter
+            from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
+            from feverslop.application.startframe_i2v_render_plan import write_startframe_i2v_render_plan
+            from feverslop.application.startframe_identity import build_startframe_identity_ledger
+            from feverslop.application.startframe_plan import build_startframe_plan
+            from feverslop.application.startframe_validation import write_local_startframe_validation
+
+            log("[MoviePipeline] Stage: Movie identity ledger")
+            identity_ledger_path = build_startframe_identity_ledger(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie identity ledger ready: {identity_ledger_path}")
+            log("[MoviePipeline] Stage: Movie startframe plan")
+            startframe_plan_path = build_startframe_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie startframe plan ready: {startframe_plan_path}")
+            log(f"[MoviePipeline] Stage: Movie director prompts ({config['startframe_director_backend']})")
+            prompts_path = build_startframe_director_prompts(
+                project_dir=project_dir,
+                director_backend=config["startframe_director_backend"],
+            )
+            log(f"[MoviePipeline] Stage: Movie director prompts ready: {prompts_path}")
+            render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)
+            log(f"[MoviePipeline] Stage: Movie I2V render plan ready: {render_plan_i2v_path}")
+            adapter = (
+                LocalStartframeDirectorVisualAdapter()
+                if config["render_backend"] == "local"
+                else build_movie_startframe_director_visual_adapter(project_dir, config)
+            )
+            final_video = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_i2v_path,
+                on_startframe_step=lambda event: log(f"[MoviePipeline] {_format_movie_startframe_step(event)}"),
+                on_clip_rendered=lambda completed, total, scene_number: log(f"[MoviePipeline] Rendered I2V clip {completed}/{total}: scene {scene_number}"),
+            )
+            validation_path = (
+                write_local_startframe_validation(project_dir=project_dir)
+                if config["render_backend"] == "local"
+                else project_dir / "movie" / "startframe_validation.json"
+            )
+            log(f"[MoviePipeline] Stage: Movie startframe validation ready: {validation_path}")
+            log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+            return final_video
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=config["keyframe_mode"])
         log(f"[MoviePipeline] Stage: Movie MSR Prompt Enrichment Ready: {render_plan_msr_path}")
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
@@ -807,7 +848,7 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
 
     app_config = AppConfig.load("app_config.json")
     client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
+        base_url=str(config.get("startframe_comfyui_base_url") or app_config.comfyui.base_url),
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
     )
     model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
@@ -841,8 +882,73 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
     )
 
 
+def build_movie_startframe_director_visual_adapter(project_dir: Path, config: dict[str, Any]):
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
+    from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
+    from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
+    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load("app_config.json")
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    ltx_dir = project_dir / "output" / "movie" / "ltx_startframe_director"
+    i2v_workflow_path = write_startframe_i2v_empty_audio_workflow(
+        project_dir=project_dir,
+        workflow_path=Path(config["i2v_workflow"]),
+        patcher=MovieWorkflowPatcher(),
+    )
+    video_use_case = build_render_video_scenes_use_case(
+        RenderVideoCompositionOptions(
+            workflow_path=i2v_workflow_path,
+            single_prompt_workflow_path=i2v_workflow_path,
+            output_dir=ltx_dir,
+            video_pipeline="ltx_i2v",
+            debug_workflows_dir=_startframe_debug_workflows_dir(project_dir, config),
+        )
+    )
+    return ComfyUIStartframeDirectorVisualAdapter(
+        client=client,
+        director_workflow_path=backend_config_path(config["director_workflow"]),
+        mask_workflow_path=backend_config_path(config["mask_workflow"]),
+        identity_repair_workflow_path=backend_config_path(config["identity_repair_workflow"]),
+        detail_workflow_path=backend_config_path(config["detail_workflow"]),
+        i2v_workflow_path=i2v_workflow_path,
+        video_use_case=video_use_case,
+        validator=Gemma4StartframeValidator(
+            base_url=config["startframe_validator_base_url"],
+            model=config["startframe_validator_model"],
+        ),
+        debug_workflows_dir=_startframe_debug_workflows_dir(project_dir, config),
+    )
+
+
 def movie_config_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return movie_runtime_config(dict(metadata.get("movie") or {}))
+
+
+def write_startframe_i2v_empty_audio_workflow(*, project_dir: Path, workflow_path: Path, patcher) -> Path:
+    workflow = json.loads(Path(workflow_path).read_text(encoding="utf-8-sig"))
+    stripped = patcher.strip_audio_inputs(workflow)
+    output = project_dir / "output" / "movie" / "startframes" / "workflows" / "ltx_i2v_empty_audio.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(stripped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return output
+
+
+def _startframe_debug_workflows_dir(project_dir: Path, config: dict[str, Any]) -> Path | None:
+    if not config.get("startframe_write_debug_workflows"):
+        return None
+    raw = str(config.get("startframe_debug_workflows_dir") or "").strip()
+    if not raw:
+        return project_dir / "output" / "movie" / "startframes" / "debug_workflows"
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    return project_dir / path
 
 
 def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]:
@@ -850,8 +956,9 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     planner_backend = _movie_backend(raw.get("planner_backend"), default="llm", supported={"llm", "deterministic", "local"})
     if planner_backend == "local":
         planner_backend = "deterministic"
-    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit"})
+    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"})
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json" if movie_video_workflow == "msr-i2v-startframe" else ""
+    i2v_default = "workflows/video_ltxv_i2v_native_audio_v1.json" if movie_video_workflow == "startframe-director" else "workflows/video_ltxv_i2v_v1.json"
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
     return {
         "planner_backend": planner_backend,
@@ -859,18 +966,32 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "render_backend": _movie_backend(raw.get("render_backend"), default="comfyui", supported={"comfyui", "local"}),
         "hero_workflow": _movie_workflow_path(raw.get("hero_workflow"), "workflows/image_t2i_startframe_krea_v1.json"),
         "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), edit_workflow_default),
+        "startframe_director_backend": _movie_backend(raw.get("startframe_director_backend"), default="krea2", supported={"krea2", "ideogram"}),
+        "director_workflow": _movie_workflow_path(
+            raw.get("director_workflow"),
+            _default_startframe_director_workflow(raw.get("startframe_director_backend")),
+        ),
+        "mask_workflow": _movie_workflow_path(raw.get("mask_workflow"), "workflows/image_mask_sam3_actor_regions_v1.json"),
+        "identity_repair_workflow": _movie_workflow_path(raw.get("identity_repair_workflow"), "workflows/image_repair_sdxl_ipadapter_identity_v1.json"),
+        "detail_workflow": _movie_workflow_path(raw.get("detail_workflow"), "workflows/image_detail_easyuse_startframe_v1.json"),
+        "startframe_comfyui_base_url": str(raw.get("startframe_comfyui_base_url") or "http://localhost:8188").rstrip("/"),
+        "startframe_write_debug_workflows": bool(raw.get("startframe_write_debug_workflows", False)),
+        "startframe_debug_workflows_dir": str(raw.get("startframe_debug_workflows_dir") or ""),
+        "startframe_validator_base_url": str(raw.get("startframe_validator_base_url") or "http://llm.elysium.lan/v1").rstrip("/"),
+        "startframe_validator_model": str(raw.get("startframe_validator_model") or "gemma4-26b-a4b:vision"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v1.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
-        "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), "workflows/video_ltxv_i2v_v1.json"),
+        "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), i2v_default),
         "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
         "continuity_keyframes": _movie_continuity_keyframes(raw.get("continuity_keyframes"), movie_video_workflow=raw.get("movie_video_workflow")),
+        "refine_location_prompts": bool(raw.get("refine_location_prompts", False)),
     }
 
 
 def _movie_continuity_keyframes(value: object, *, movie_video_workflow: object = None) -> str:
     mode = _movie_backend(value, default="none", supported={"none", "last-to-start"})
-    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit"})
+    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"})
     if mode == "last-to-start" and workflow != "msr-i2v-startframe":
         raise ValueError("continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
     return mode
@@ -898,6 +1019,12 @@ def _movie_workflow_path(value: object, default: str) -> str:
     if path.is_absolute() or ".." in path.parts:
         raise ValueError("movie workflow paths must be repository-relative")
     return path.as_posix()
+
+
+def _default_startframe_director_workflow(backend: object) -> str:
+    if _movie_backend(backend, default="krea2", supported={"krea2", "ideogram"}) == "ideogram":
+        return "workflows/image_t2i_startframe_ideogram_director_v1.json"
+    return "workflows/image_t2i_startframe_krea_v1.json"
 
 
 def backend_config_path(value: str) -> str:

@@ -5,6 +5,7 @@ import re
 from dataclasses import replace
 from math import ceil
 
+from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
 from feverslop.domain.screenplay import HEADING_RE, parse_screenplay, split_screenplay_dialogue
 
@@ -18,7 +19,7 @@ class LLMMoviePlanner:
             _story_arch_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length),
             system_prompt="You are a film writer. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
+        data = extract_json_object(raw)
         beats = data.get("beats") or []
         return StoryArch(
             title=str(data.get("title") or title),
@@ -31,8 +32,8 @@ class LLMMoviePlanner:
             _movie_bible_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, story_arch=story_arch, config=config),
             system_prompt="You are a film development producer. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
-        return _movie_bible_from_data(
+        data = extract_json_object(raw)
+        bible = _movie_bible_from_data(
             data,
             title=title,
             source_type=source_type,
@@ -41,20 +42,54 @@ class LLMMoviePlanner:
             config=config,
             desired_length=desired_length,
         )
+        if config.get("refine_location_prompts"):
+            refined = self.refine_locations(bible.locations, source_text=story_text)
+            bible = replace(bible, locations=tuple(refined))
+        return bible
+
+    def refine_locations(self, locations: tuple[MovieLocation, ...], *, source_text: str) -> list[MovieLocation]:
+        """Refine location visual_description and image_prompt via a single batch LLM call."""
+        try:
+            raw = self.llm.complete_prompt(
+                _refine_location_prompts_prompt(locations, source_text),
+                system_prompt="You are a production designer. Return ONLY valid JSON.",
+            )
+            data = extract_json_object(raw)
+        except Exception:
+            return list(locations)
+        refined_by_id: dict[str, dict] = {}
+        for item in data.get("locations") or []:
+            if isinstance(item, dict) and item.get("id"):
+                refined_by_id[str(item["id"])] = item
+        result: list[MovieLocation] = []
+        for loc in locations:
+            refined = refined_by_id.get(loc.id)
+            if refined:
+                result.append(
+                    MovieLocation(
+                        id=loc.id,
+                        name=loc.name,
+                        visual_description=str(refined.get("visual_description") or loc.visual_description).strip(),
+                        image_prompt=str(refined.get("image_prompt") or loc.visual_description).strip(),
+                    )
+                )
+            else:
+                result.append(loc)
+        return result
 
     def generate_movie_continuity_plan(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> dict:
         raw = self.llm.complete_prompt(
             _movie_continuity_plan_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, shots=shots, config=config),
             system_prompt="You are a film continuity supervisor. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def generate_movie_story_design(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> dict:
         raw = self.llm.complete_prompt(
             _movie_story_design_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, story_arch=story_arch, config=config),
             system_prompt="You are a dramaturg and story editor. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def generate_movie_screenplay(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, story_design, config: dict) -> dict:
         raw = self.llm.complete_prompt(
@@ -70,14 +105,14 @@ class LLMMoviePlanner:
             ),
             system_prompt="You are a film screenwriter. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def generate_movie_narrative_plan(self, *, title: str, source_type: str, desired_length: float, bible: MovieBible, screenplay, config: dict) -> dict:
         raw = self.llm.complete_prompt(
             _movie_narrative_plan_prompt(title=title, source_type=source_type, desired_length=desired_length, bible=bible, screenplay=screenplay, config=config),
             system_prompt="You are a film story editor. Return ONLY valid JSON.",
         )
-        return _json_object(raw)
+        return extract_json_object(raw)
 
     def plan_shots_from_bible(
         self,
@@ -100,7 +135,7 @@ class LLMMoviePlanner:
             ),
             system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
+        data = extract_json_object(raw)
         shots = data.get("shots") or []
         if not isinstance(shots, list) or not shots:
             return DeterministicMoviePlanner().plan_shots_from_bible(
@@ -139,7 +174,7 @@ class LLMMoviePlanner:
             ),
             system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
         )
-        data = _json_object(raw)
+        data = extract_json_object(raw)
         shots = data.get("shots") or []
         if not isinstance(shots, list) or not shots:
             return DeterministicMoviePlanner().plan_shots(
@@ -420,36 +455,65 @@ def _actors_from_story_arch(story_arch: StoryArch) -> list[MovieActor]:
 
 def _locations_from_story_arch(story_arch: StoryArch) -> list[MovieLocation]:
     locations: list[MovieLocation] = []
-    known_ids: set[str] = set()
+    known_bases: set[str] = set()
+    character_names: set[str] = set()
     for beat in story_arch.beats:
         parsed = _parse_screenplay_beat(beat)
         if parsed is None:
             continue
+        for cue in _dialogue_actor_names(parsed["dialogue"]):
+            character_names.add(cue)
         name = parsed["location"].strip()
         location_id = _safe_id(name)
-        if not location_id or location_id in known_ids:
+        base_id = _safe_id(_location_base_name(name))
+        if not location_id or not base_id:
             continue
-        locations.append(MovieLocation(id=location_id, name=name, visual_description=_location_visual_description(name, parsed["action"])))
-        known_ids.add(location_id)
+        # Deduplicate: same base, or one contains the other (e.g. HUT vs STONE HUT)
+        if _location_base_collides(base_id, known_bases):
+            continue
+        locations.append(MovieLocation(id=location_id, name=name, visual_description=_location_visual_description(name, parsed["action"], character_names=tuple(character_names))))
+        known_bases.add(base_id)
     return locations
+
+
+def _location_base_collides(base_id: str, known_bases: set[str]) -> bool:
+    """Check if a location base collides with any already-seen base."""
+    if base_id in known_bases:
+        return True
+    for known in known_bases:
+        if base_id in known or known in base_id:
+            return True
+    return False
 
 
 def _merge_screenplay_references(story_items: list, data_items: list) -> list:
     if not story_items:
         return []
     by_id = {item.id: item for item in story_items}
+    matched_data_ids: set[str] = set()
     merged = []
     for story_item in story_items:
         data_item = next((item for item in data_items if item.id == story_item.id), None)
         if data_item is None:
+            # Fuzzy match for locations: compare normalized base names
+            story_name = getattr(story_item, "name", "")
+            for candidate in data_items:
+                if candidate.id in matched_data_ids:
+                    continue
+                candidate_name = getattr(candidate, "name", "")
+                if _location_id_matches(story_item.id, candidate.id, name_a=story_name, name_b=candidate_name):
+                    data_item = candidate
+                    break
+        if data_item is None:
             merged.append(story_item)
             continue
+        matched_data_ids.add(data_item.id)
         description = getattr(data_item, "visual_description", "") or getattr(story_item, "visual_description", "")
         if description == getattr(data_item, "name", "") or description == getattr(story_item, "name", ""):
             description = getattr(story_item, "visual_description", "")
         merged.append(replace(data_item, visual_description=description))
     for data_item in data_items:
-        if data_item.id in by_id or data_item.id in {"main_character", "primary_location"}:
+        if data_item.id in by_id or data_item.id in matched_data_ids or data_item.id in {"main_character", "primary_location"}:
             continue
         merged.append(data_item)
     return merged
@@ -469,24 +533,92 @@ def _display_name(value: str) -> str:
     return text.title() if text.isupper() else text
 
 
-def _location_visual_description(name: str, action: str) -> str:
-    clean_name = " ".join(str(name or "").split()).strip()
-    visual_action = _visual_location_action(action)
+def _location_base_name(name: str) -> str:
+    """Strip screenplay time-of-day suffixes and metadata from a location heading."""
+    text = str(name or "").strip()
+    text = re.sub(
+        r"[-\u2013\u2014]\s*(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|LATER|"
+        r"CONTINUOUS|MOMENTS?\s*LATER|LATE\s*(?:AFTERNOON|EVENING|MORNING)|"
+        r"TIME\s*LATER|SOME\s*(?:TIME|DAYS?\b|YEARS?\b)\s*LATER)\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip(" .;,")
+    text = re.sub(r"\s*\([^)]*\)$", "", text).strip(" .;,")
+    text = re.sub(r"^(INT\.|EXT\.|INT/EXT\.)\s*", "", text, flags=re.IGNORECASE).strip(" .;,")
+    return " ".join(text.split())
+
+
+def _location_id_matches(id_a: str, id_b: str, *, name_a: str, name_b: str) -> bool:
+    """Check if two location IDs refer to the same canonical location."""
+    if id_a == id_b:
+        return True
+    base_a = _safe_id(_location_base_name(name_a))
+    base_b = _safe_id(_location_base_name(name_b))
+    return base_a == base_b
+
+
+def _location_visual_description(name: str, action: str, *, character_names: tuple[str, ...] = ()) -> str:
+    clean_name = _location_base_name(name)
+    visual_action = _visual_location_action(action, character_names=character_names)
     if visual_action:
-        return f"{clean_name}. {visual_action}"
+        combined = f"{clean_name}. {visual_action}"
+        return combined[:350]
     return clean_name
 
 
-def _visual_location_action(value: str) -> str:
+def _visual_location_action(value: str, *, character_names: tuple[str, ...] = ()) -> str:
     text = " ".join(str(value or "").split()).strip(" .;,")
     if not text:
         return ""
-    text = re.sub(r"\b[A-ZÄÖÜ][A-ZÄÖÜ0-9 _'’-]{1,40}:\s*[^.?!]+[.?!]?", "", text).strip(" .;,")
-    text = re.sub(r"(?i)\b(?:says?|speaks?|asks?|answers?|whispers?|shouts?)\b[^.?!]*[.?!]?", "", text).strip(" .;,")
+    # Strip dialogue cues (CHARACTER: line)
+    text = re.sub(r"\b[A-ZÄÖÜ][A-ZÄÖÜ0-9 _'\'-]{1,40}:\s*[^.?!]+[.?!]?", "", text).strip(" .;,")
+    # Strip dialogue verbs (says/speaks/asks/answers + rest of sentence)
+    text = re.sub(r"(?i)\b(?:says?|speaks?|asks?|answers?)\b[^.?!]*[.?!]?", "", text).strip(" .;,")
+    # Collapse whitespace left by removals
+    text = re.sub(r"\s{2,}", " ", text).strip(" .;,")
     if not text:
         return ""
-    sentences = [sentence.strip(" .;,") for sentence in re.split(r"(?<=[.!?])\s+", text) if sentence.strip(" .;,")]
-    return ". ".join(sentences[:2])[:320]
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    env_sentences = []
+    for sentence in sentences:
+        s = sentence.strip(" .;,")
+        if not s:
+            continue
+        if _is_character_action(s, character_names=character_names):
+            continue
+        env_sentences.append(s)
+    if not env_sentences:
+        return ""
+    return ". ".join(env_sentences[:3])[:320]
+
+
+def _is_character_action(sentence: str, *, character_names: tuple[str, ...]) -> bool:
+    """Return True if a sentence describes character action rather than environment."""
+    s = sentence.strip()
+    s_upper = s.upper()
+    # Character pronoun actions: He/She/They/It + verb
+    if re.match(r"^(?:HE|SHE|THEY|IT)\b\s+\w", s_upper):
+        return True
+    # Reflexive: His/Her/Their + body part/possession
+    if re.match(r"^(?:HIS|HER|THEIR)\b\s+\w", s_upper):
+        return True
+    # Camera/direction instructions
+    camera_re = r"^(?:THE\s+)?(?:CAMERA\s+|WE\s+(?:SEE|CUT|PAN|TILT|ZOOM|RACK|TRACK|DOLLY)\s+|CUT\s|FADE\s|DISSOLVE\s|IRIS\s|SMASH\s+TO\s|TITLE\s|SUPER\s|GRAPHIC\s)"
+    if re.match(camera_re, s_upper):
+        return True
+    # Character name + action verb
+    for name in character_names:
+        if not name:
+            continue
+        name_upper = name.upper()
+        pattern = re.compile(r"^" + re.escape(name_upper) + r"\b\s+\w", re.IGNORECASE)
+        if pattern.match(s):
+            return True
+    # V.O. / O.S. parenthetical actions
+    if re.search(r"\(V\.?O\.?\)|\(O\.?S\.?\)", s):
+        return True
+    return False
 
 
 def _clean_visual_description(value: object, fallback: str) -> str:
@@ -659,6 +791,40 @@ Rules:
 
 Source:
 {story_text}
+""".strip()
+
+
+def _refine_location_prompts_prompt(locations: tuple[MovieLocation, ...], source_text: str) -> str:
+    loc_data = [
+        {"id": loc.id, "name": loc.name, "visual_description": loc.visual_description}
+        for loc in locations
+    ]
+    return f"""
+Refine the visual_description and image_prompt for each location below.
+
+Current locations:
+{json.dumps(loc_data, ensure_ascii=False)}
+
+Source screenplay/story:
+{source_text}
+
+Return JSON with:
+{{"locations": [{{"id": string, "visual_description": string, "image_prompt": string}}]}}
+
+Rules for visual_description:
+- Describe only the physical environment, production design, and atmosphere of the location.
+- Remove all character names, character actions, dialogue, narrative prose, and camera directions.
+- Remove screenplay heading syntax (all-caps labels, "INT./EXT.", time-of-day suffixes).
+- If the current description is a bare word or heading (e.g. "GARDEN"), expand it into a descriptive, evocative environment prose sentence using the source text for context.
+- Keep location-defining objects, textures, materials, and lighting (e.g. hearth, jars, trees, bark faces, stone, roots, fog, light quality).
+- Write in English, one concise paragraph (up to 200 characters).
+
+Rules for image_prompt:
+- This prompt will be fed directly to an image generator to create a reference environment photograph.
+- It must describe a wide establishing view of the location's production design, lighting, and atmosphere.
+- It must end with: "Wide establishing view, production design, lighting, atmosphere, no people, no text."
+- No characters, no action, no narrative, no camera moves.
+- Write in English.
 """.strip()
 
 
@@ -871,7 +1037,7 @@ def asdict_like_actor(actor: MovieActor) -> dict:
 
 
 def asdict_like_location(location: MovieLocation) -> dict:
-    return {"id": location.id, "name": location.name, "visual_description": location.visual_description}
+    return {"id": location.id, "name": location.name, "visual_description": location.visual_description, "image_prompt": location.image_prompt}
 
 
 def movie_story_design_like(story_design) -> dict:
@@ -885,22 +1051,6 @@ def movie_story_design_like(story_design) -> dict:
         "character_arcs": [getattr(item, "__dict__", item) for item in getattr(story_design, "character_arcs", ())],
         "scene_blueprint": [getattr(item, "__dict__", item) for item in getattr(story_design, "scene_blueprint", ())],
     }
-
-
-def _json_object(raw: str) -> dict:
-    text = str(raw or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    if not text.startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            text = text[start : end + 1]
-    data = json.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError("Movie planner LLM response must be a JSON object")
-    return data
 
 
 def _beat_text(beat) -> str:

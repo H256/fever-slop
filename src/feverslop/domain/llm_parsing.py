@@ -9,12 +9,32 @@ def extract_json_object(text: str) -> dict:
 
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"```$", "", text).strip()
+        text = re.sub(r"```.*$", "", text, flags=re.DOTALL).strip()
 
-    start = text.find("{")
-    end = text.rfind("}")
+    pos = 0
+    last_error = None
+    while True:
+        start = text.find("{", pos)
+        if start == -1:
+            break
+        # Find matching brace via depth counting
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] in "{}":
+                depth += 1 if text[i] == "{" else -1
+                if depth == 0:
+                    end = i
+                    break
+        else:
+            break  # unmatched braces, give up
+        try:
+            data = json.loads(text[start : end + 1])
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            pos = start + 1
 
-    if start == -1 or end == -1:
-        raise ValueError(f"No JSON object found in LLM response:\n{text}")
-
-    return json.loads(text[start:end + 1])
+    raise ValueError(
+        f"No valid JSON object found in LLM response:\n{text}"
+    ) from last_error

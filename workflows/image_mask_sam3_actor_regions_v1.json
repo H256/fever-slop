@@ -1,0 +1,70 @@
+{
+  "1": {
+    "inputs": {
+      "image": "example.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#INPUT_IMAGE"
+    }
+  },
+  "2": {
+    "inputs": {
+      "model": "sam3.safetensors",
+      "segmentor": "image",
+      "device": "cuda",
+      "precision": "fp16"
+    },
+    "class_type": "easy sam3ModelLoader",
+    "_meta": {
+      "title": "#SAM3_MODEL"
+    }
+  },
+  "3": {
+    "inputs": {
+      "sam3_model": [
+        "2",
+        0
+      ],
+      "images": [
+        "1",
+        0
+      ],
+      "prompt": "person, actor, visible human character",
+      "threshold": 0.35,
+      "keep_model_loaded": false,
+      "add_background": "none",
+      "detection_limit": 4
+    },
+    "class_type": "easy sam3ImageSegmentation",
+    "_meta": {
+      "title": "#SEGMENT_PROMPT"
+    }
+  },
+  "4": {
+    "inputs": {
+      "mask": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "MaskToImage",
+    "_meta": {
+      "title": "#MASK_PREVIEW"
+    }
+  },
+  "5": {
+    "inputs": {
+      "filename_prefix": "startframe_mask",
+      "images": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "#SAVE_MASK"
+    }
+  }
+}

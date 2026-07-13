@@ -1,0 +1,175 @@
+{
+  "1": {
+    "inputs": {
+      "image": "WomanPortraitRed.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#INPUT_IMAGE"
+    }
+  },
+  "2": {
+    "inputs": {
+      "ckpt_name": "SDXL 1.0\\realistic\\realvisxlV50_v50Bakedvae.safetensors",
+      "config_name": "Default",
+      "vae_name": "Baked VAE",
+      "clip_skip": -2,
+      "lora_name": "None",
+      "lora_model_strength": 0.0,
+      "lora_clip_strength": 0.0,
+      "resolution": "width x height (custom)",
+      "empty_latent_width": 512,
+      "empty_latent_height": 512,
+      "positive": "cinematic startframe, consistent face, consistent wardrobe, clean detail",
+      "positive_token_normalization": "none",
+      "positive_weight_interpretation": "comfy",
+      "negative": "wrong identity, changed outfit, distorted face, artifacts, watermark",
+      "negative_token_normalization": "none",
+      "negative_weight_interpretation": "comfy",
+      "batch_size": 1
+    },
+    "class_type": "easy fullLoader",
+    "_meta": {
+      "title": "#SDXL_CHECKPOINT"
+    }
+  },
+  "3": {
+    "inputs": {
+      "pipe": [
+        "2",
+        0
+      ],
+      "steps": 6,
+      "cfg": 4.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.18,
+      "seed": 987654321
+    },
+    "class_type": "easy preSampling",
+    "_meta": {
+      "title": "#PRESAMPLING"
+    }
+  },
+  "4": {
+    "inputs": {
+      "pipe": [
+        "3",
+        0
+      ],
+      "steps": 6,
+      "cfg": 4.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.18,
+      "image_output": "Hide",
+      "link_id": 0,
+      "save_prefix": "startframe_detail_base",
+      "seed": 987654321,
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "easy fullkSampler",
+    "_meta": {
+      "title": "#PROMPT_POSITIVE"
+    }
+  },
+  "5": {
+    "inputs": {
+      "model_name": "bbox/face_yolov8n.pt",
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 12,
+      "bbox_crop_factor": 3.0
+    },
+    "class_type": "easy ultralyticsDetectorPipe",
+    "_meta": {
+      "title": "#FACE_DETECTOR"
+    }
+  },
+  "6": {
+    "inputs": {
+      "pipe": [
+        "4",
+        0
+      ],
+      "guide_size": 384,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 987654322,
+      "steps": 8,
+      "cfg": 4.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.28,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "drop_size": 10,
+      "wildcard": "restore facial detail without changing identity or wardrobe",
+      "cycle": 1,
+      "bbox_segm_pipe": [
+        "5",
+        0
+      ],
+      "sam_pipe": [
+        "9",
+        0
+      ],
+      "optional_image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "easy preDetailerFix",
+    "_meta": {
+      "title": "#DETAILER"
+    }
+  },
+  "7": {
+    "inputs": {
+      "pipe": [
+        "6",
+        0
+      ],
+      "image_output": "Hide",
+      "link_id": 0,
+      "save_prefix": "startframe_detail"
+    },
+    "class_type": "easy detailerFix",
+    "_meta": {
+      "title": "#PROMPT_NEGATIVE"
+    }
+  },
+  "8": {
+    "inputs": {
+      "filename_prefix": "startframe_detail",
+      "images": [
+        "7",
+        1
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "#SAVE_IMAGE"
+    }
+  },
+  "9": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "Prefer GPU",
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False"
+    },
+    "class_type": "easy samLoaderPipe",
+    "_meta": {
+      "title": "#SAM_PIPE"
+    }
+  }
+}

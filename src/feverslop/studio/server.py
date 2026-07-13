@@ -9,7 +9,9 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from rich.console import Console
 
+from feverslop.ports.reporting import ConsoleReporter
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.job_service import (
     StudioFullAutoConsole as _StudioFullAutoConsole,  # noqa: F401
@@ -58,11 +60,22 @@ class ProjectCreatePayload(BaseModel):
     movie_render_backend: str = "comfyui"
     movie_hero_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
     movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
+    movie_startframe_director_backend: str = "krea2"
+    movie_director_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
+    movie_mask_workflow: str = "workflows/image_mask_sam3_actor_regions_v1.json"
+    movie_identity_repair_workflow: str = "workflows/image_repair_sdxl_ipadapter_identity_v1.json"
+    movie_detail_workflow: str = "workflows/image_detail_easyuse_startframe_v1.json"
+    movie_startframe_comfyui_base_url: str = "http://localhost:8188"
+    movie_startframe_write_debug_workflows: bool = False
+    movie_startframe_debug_workflows_dir: str = ""
+    movie_startframe_validator_base_url: str = "http://llm.elysium.lan/v1"
+    movie_startframe_validator_model: str = "gemma4-26b-a4b:vision"
     movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
     movie_msr_i2v_workflow: str = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json"
     movie_i2v_workflow: str = "workflows/video_ltxv_i2v_v1.json"
     movie_video_workflow: str = "msr"
     movie_continuity_keyframes: str = "none"
+    movie_refine_location_prompts: bool = False
 
 
 class JobPayload(BaseModel):
@@ -97,7 +110,8 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    store = ProjectStore(projects_root)
+    console = Console()
+    store = ProjectStore(projects_root, reporter=ConsoleReporter(console))
     jobs = JobRegistry()
     job_service = StudioJobService(
         store=store,
@@ -135,11 +149,22 @@ def create_app(
                     movie_render_backend=payload.movie_render_backend,
                     movie_hero_workflow=payload.movie_hero_workflow,
                     movie_edit_workflow=payload.movie_edit_workflow,
+                    movie_startframe_director_backend=payload.movie_startframe_director_backend,
+                    movie_director_workflow=payload.movie_director_workflow,
+                    movie_mask_workflow=payload.movie_mask_workflow,
+                    movie_identity_repair_workflow=payload.movie_identity_repair_workflow,
+                    movie_detail_workflow=payload.movie_detail_workflow,
+                    movie_startframe_comfyui_base_url=payload.movie_startframe_comfyui_base_url,
+                    movie_startframe_write_debug_workflows=payload.movie_startframe_write_debug_workflows,
+                    movie_startframe_debug_workflows_dir=payload.movie_startframe_debug_workflows_dir,
+                    movie_startframe_validator_base_url=payload.movie_startframe_validator_base_url,
+                    movie_startframe_validator_model=payload.movie_startframe_validator_model,
                     movie_msr_workflow=payload.movie_msr_workflow,
                     movie_msr_i2v_workflow=payload.movie_msr_i2v_workflow,
                     movie_i2v_workflow=payload.movie_i2v_workflow,
                     movie_video_workflow=payload.movie_video_workflow,
                     movie_continuity_keyframes=payload.movie_continuity_keyframes,
+                    movie_refine_location_prompts=payload.movie_refine_location_prompts,
                 )
             )
         )

@@ -55,6 +55,16 @@ MOVIE_I2V_EDIT_STAGE_TITLES = {
     "Movie complete",
 }
 
+MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES = {
+    *MOVIE_BASE_STAGE_TITLES,
+    "Movie identity ledger",
+    "Movie startframe plan",
+    "Movie director prompts",
+    "Movie I2V render plan",
+    "Movie startframe-director render",
+    "Movie complete",
+}
+
 
 class MovieStageProgressReporter:
     def __init__(self, stage_titles: set[str], *, console: Console = console):
@@ -106,6 +116,10 @@ class MoviePipelineResult:
     render_plan_msr_path: Path | None = None
     visual_plan_path: Path | None = None
     render_plan_i2v_path: Path | None = None
+    identity_ledger_path: Path | None = None
+    startframe_plan_path: Path | None = None
+    startframe_director_prompts_path: Path | None = None
+    startframe_validation_path: Path | None = None
     reference_manifest_path: Path | None = None
     final_video_path: Path | None = None
     debug_workflows_dir: Path | None = None
@@ -118,6 +132,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--render-backend", choices=["comfyui", "local"], default=None)
     parser.add_argument("--hero-workflow", default=None)
     parser.add_argument("--edit-workflow", default=None)
+    parser.add_argument("--director-workflow", default=None)
+    parser.add_argument("--startframe-director-backend", choices=["krea2", "ideogram"], default=None)
+    parser.add_argument("--mask-workflow", default=None)
+    parser.add_argument("--identity-repair-workflow", default=None)
+    parser.add_argument("--detail-workflow", default=None)
+    parser.add_argument("--startframe-comfyui-base-url", default=None)
+    parser.add_argument("--startframe-validator-base-url", default=None)
+    parser.add_argument("--startframe-validator-model", default=None)
     parser.add_argument("--msr-workflow", default=None)
     parser.add_argument("--msr-i2v-workflow", default=None)
     parser.add_argument("--i2v-workflow", default=None)
@@ -138,7 +160,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-movie-render", action="store_true", help="Stop after syncing/rendering movie references.")
     parser.add_argument("--force-movie-references", action="store_true", help="Render movie references even when manifest paths already exist.")
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
-    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit"], default="msr")
+    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"], default="msr")
     parser.add_argument("--continuity-keyframes", choices=["none", "last-to-start"], default="none")
     parser.add_argument("--write-debug-workflows", action="store_true", help="Write patched movie MSR workflow JSONs without queueing ComfyUI.")
     parser.add_argument("--debug-workflows-dir", default=None, help="Directory for --write-debug-workflows output.")
@@ -147,7 +169,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
     config: dict[str, Any] = {}
-    for key in ("reference_backend", "render_backend", "hero_workflow", "edit_workflow", "msr_workflow", "msr_i2v_workflow", "i2v_workflow", "movie_video_workflow", "keyframe_mode", "continuity_keyframes"):
+    for key in (
+        "reference_backend",
+        "render_backend",
+        "hero_workflow",
+        "edit_workflow",
+        "director_workflow",
+        "startframe_director_backend",
+        "mask_workflow",
+        "identity_repair_workflow",
+        "detail_workflow",
+        "startframe_comfyui_base_url",
+        "startframe_validator_base_url",
+        "startframe_validator_model",
+        "msr_workflow",
+        "msr_i2v_workflow",
+        "i2v_workflow",
+        "movie_video_workflow",
+        "keyframe_mode",
+        "continuity_keyframes",
+    ):
         value = getattr(args, key, None)
         if value:
             config[key] = value
@@ -180,6 +221,8 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
 def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
     if config["movie_video_workflow"] == "i2v-edit":
         return MOVIE_I2V_EDIT_STAGE_TITLES
+    if config["movie_video_workflow"] == "startframe-director":
+        return MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES
     return MOVIE_BASE_STAGE_TITLES
 
 
@@ -294,6 +337,76 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             _log_stage("Movie references", "ready; reusing existing sheets")
     else:
         _log_stage("Movie references", "skipped; reusing manifest paths")
+
+    if config["movie_video_workflow"] == "startframe-director":
+        from feverslop.adapters.startframe_director_visual import LocalStartframeDirectorVisualAdapter
+        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
+        from feverslop.application.startframe_i2v_render_plan import write_startframe_i2v_render_plan
+        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_plan import build_startframe_plan
+        from feverslop.application.startframe_validation import write_local_startframe_validation
+
+        _log_stage("Movie identity ledger", "deriving face, body, wardrobe, and reference contracts")
+        identity_ledger_path = build_startframe_identity_ledger(project_dir=project_dir)
+        _log_stage("Movie startframe plan", "deriving shot contracts, bboxes, and continuity requirements")
+        startframe_plan_path = build_startframe_plan(project_dir=project_dir)
+        _log_stage("Movie director prompts", f"writing {config['startframe_director_backend']} director prompts")
+        startframe_director_prompts_path = build_startframe_director_prompts(
+            project_dir=project_dir,
+            director_backend=config["startframe_director_backend"],
+        )
+        _log_stage("Movie I2V render plan", "writing classic I2V handoff plan")
+        render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)
+        final_video_path: Path | None = None
+        startframe_validation_path = project_dir / "movie" / "startframe_validation.json"
+        startframe_debug_workflows_dir = _startframe_debug_workflows_dir(project_dir, args)
+        if startframe_debug_workflows_dir is not None:
+            config = {
+                **config,
+                "startframe_write_debug_workflows": True,
+                "startframe_debug_workflows_dir": startframe_debug_workflows_dir,
+            }
+        if not args.skip_movie_render:
+            _log_stage("Movie startframe-director render", f"rendering via {config['render_backend']}")
+            if config["render_backend"] != "local":
+                adapter = _build_startframe_director_visual_adapter(project_dir, config)
+            else:
+                adapter = LocalStartframeDirectorVisualAdapter()
+            final_video_path = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_i2v_path,
+                on_startframe_step=lambda event: _log_stage(
+                    "Movie startframe-director render",
+                    _format_startframe_step(event),
+                ),
+                on_clip_rendered=lambda completed, total, scene_number: _log_stage(
+                    "Movie I2V clip",
+                    f"rendered {completed}/{total}: scene {scene_number}",
+                ),
+            )
+            startframe_validation_path = write_local_startframe_validation(project_dir=project_dir)
+        else:
+            _log_stage("Movie startframe-director render", "skipped")
+        _log_stage("Movie complete", str(final_video_path or render_plan_i2v_path))
+        return MoviePipelineResult(
+            project_dir=project_dir,
+            bible_path=bible_path,
+            story_design_path=story_design_path,
+            screenplay_path=screenplay_path,
+            narrative_plan_path=narrative_plan_path,
+            scene_cards_path=scene_cards_path,
+            shot_cards_path=shot_cards_path,
+            render_plan_path=render_plan_path,
+            continuity_plan_path=continuity_plan_path,
+            render_plan_i2v_path=render_plan_i2v_path,
+            identity_ledger_path=identity_ledger_path,
+            startframe_plan_path=startframe_plan_path,
+            startframe_director_prompts_path=startframe_director_prompts_path,
+            startframe_validation_path=startframe_validation_path if startframe_validation_path.exists() else None,
+            reference_manifest_path=reference_manifest_path,
+            final_video_path=final_video_path,
+            debug_workflows_dir=startframe_debug_workflows_dir,
+        )
 
     if config["movie_video_workflow"] == "i2v-edit":
         from feverslop.adapters.movie_i2v_visual import LocalMovieI2VEditVisualAdapter
@@ -450,7 +563,7 @@ def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
 
     app_config = AppConfig.load("app_config.json")
     client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
+        base_url=str(config.get("startframe_comfyui_base_url") or app_config.comfyui.base_url),
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
     )
     model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
@@ -482,6 +595,72 @@ def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
         i2v_workflow_path=Path(config["i2v_workflow"]),
         postprocessor=VideoPostProcessor(),
     )
+
+
+def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[str, Any]):
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
+    from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
+    from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
+    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load("app_config.json")
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    ltx_dir = project_dir / "output" / "movie" / "ltx_startframe_director"
+    i2v_workflow_path = _write_startframe_i2v_empty_audio_workflow(
+        project_dir=project_dir,
+        workflow_path=Path(config["i2v_workflow"]),
+        patcher=MovieWorkflowPatcher(),
+    )
+    video_use_case = build_render_video_scenes_use_case(
+        RenderVideoCompositionOptions(
+            workflow_path=i2v_workflow_path,
+            single_prompt_workflow_path=i2v_workflow_path,
+            output_dir=ltx_dir,
+            video_pipeline="ltx_i2v",
+            debug_workflows_dir=config.get("startframe_debug_workflows_dir")
+            if config.get("startframe_write_debug_workflows")
+            else None,
+        )
+    )
+    return ComfyUIStartframeDirectorVisualAdapter(
+        client=client,
+        director_workflow_path=config["director_workflow"],
+        mask_workflow_path=config["mask_workflow"],
+        identity_repair_workflow_path=config["identity_repair_workflow"],
+        detail_workflow_path=config["detail_workflow"],
+        i2v_workflow_path=i2v_workflow_path,
+        video_use_case=video_use_case,
+        validator=Gemma4StartframeValidator(
+            base_url=config["startframe_validator_base_url"],
+            model=config["startframe_validator_model"],
+        ),
+        debug_workflows_dir=config.get("startframe_debug_workflows_dir")
+        if config.get("startframe_write_debug_workflows")
+        else None,
+    )
+
+
+def _startframe_debug_workflows_dir(project_dir: Path, args: argparse.Namespace) -> Path | None:
+    if not bool(getattr(args, "write_debug_workflows", False)):
+        return None
+    raw = getattr(args, "debug_workflows_dir", None)
+    if raw:
+        return coerce_local_path(raw).resolve()
+    return project_dir / "output" / "movie" / "startframes" / "debug_workflows"
+
+
+def _write_startframe_i2v_empty_audio_workflow(*, project_dir: Path, workflow_path: Path, patcher) -> Path:
+    workflow = json.loads(Path(workflow_path).read_text(encoding="utf-8-sig"))
+    stripped = patcher.strip_audio_inputs(workflow)
+    output = project_dir / "output" / "movie" / "startframes" / "workflows" / "ltx_i2v_empty_audio.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(stripped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return output
 
 
 def main() -> None:

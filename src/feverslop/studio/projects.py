@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from feverslop.ports.reporting import Reporter
+
 
 class StudioPathError(ValueError):
     pass
@@ -47,11 +49,22 @@ class ProjectCreateRequest:
     movie_render_backend: str = "comfyui"
     movie_hero_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
     movie_edit_workflow: str = "workflows/image_edit_flux2_klein_1ref_v1.json"
+    movie_startframe_director_backend: str = "krea2"
+    movie_director_workflow: str = "workflows/image_t2i_startframe_krea_v1.json"
+    movie_mask_workflow: str = "workflows/image_mask_sam3_actor_regions_v1.json"
+    movie_identity_repair_workflow: str = "workflows/image_repair_sdxl_ipadapter_identity_v1.json"
+    movie_detail_workflow: str = "workflows/image_detail_easyuse_startframe_v1.json"
+    movie_startframe_comfyui_base_url: str = "http://localhost:8188"
+    movie_startframe_write_debug_workflows: bool = False
+    movie_startframe_debug_workflows_dir: str = ""
+    movie_startframe_validator_base_url: str = "http://llm.elysium.lan/v1"
+    movie_startframe_validator_model: str = "gemma4-26b-a4b:vision"
     movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v1.json"
     movie_msr_i2v_workflow: str = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json"
     movie_i2v_workflow: str = "workflows/video_ltxv_i2v_v1.json"
     movie_video_workflow: str = "msr"
     movie_continuity_keyframes: str = "none"
+    movie_refine_location_prompts: bool = False
 
 
 def slugify_project_name(value: str) -> str:
@@ -82,7 +95,7 @@ def sanitize_audio_filename(value: str) -> str:
 
 
 class ProjectStore:
-    def __init__(self, projects_root: str | Path = "projects"):
+    def __init__(self, projects_root: str | Path = "projects", reporter: Reporter | None = None):
         self.projects_root = Path(projects_root).resolve()
         from feverslop.studio.artifact_catalog import ArtifactCatalog
         from feverslop.studio.media_store import MediaStore
@@ -93,6 +106,7 @@ class ProjectStore:
             projects_root=self.projects_root,
             project_root=self.project_root,
             read_json_file=lambda path: self._read_json_file(path, default={}),
+            reporter=reporter,
         )
         self.artifact_catalog = ArtifactCatalog(self.project_root)
         self.media_store = MediaStore(

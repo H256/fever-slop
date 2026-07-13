@@ -45,7 +45,7 @@
       "scheduler": "beta",
       "denoise": 1,
       "model": [
-        "59",
+        "55",
         0
       ],
       "positive": [
@@ -122,20 +122,6 @@
     "class_type": "ConditioningZeroOut",
     "_meta": {
       "title": "ConditioningZeroOut"
-    }
-  },
-  "59": {
-    "inputs": {
-      "lora_name": "zimage/own/klw251209-v1_000001250.safetensors",
-      "strength_model": 0,
-      "model": [
-        "55",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "#LORA_1"
     }
   },
   "77": {
