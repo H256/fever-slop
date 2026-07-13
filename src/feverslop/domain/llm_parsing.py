@@ -9,9 +9,26 @@ from feverslop.errors import FeverSlopLMLError
 def extract_json_object(text: str) -> dict:
     text = text.strip()
 
+    # Fast path: clean JSON response
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Strip markdown code fences
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
         text = re.sub(r"```.*$", "", text, flags=re.DOTALL).strip()
+
+    # Try again after stripping fences
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, ValueError):
+        pass
 
     pos = 0
     last_error = None

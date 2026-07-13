@@ -1,4 +1,5 @@
-﻿import unittest
+﻿import json
+import unittest
 
 from feverslop.application.llm_parsing import extract_json_object
 
@@ -65,6 +66,56 @@ class LLMParsingTests(unittest.TestCase):
         text = 'Some explanation {not json} follows: {"real": "json", "nested": {"a": 1}}. End.'
         result = extract_json_object(text)
         self.assertEqual(result, {"real": "json", "nested": {"a": 1}})
+
+    def test_extract_json_object_fast_path_clean_json(self):
+        """Clean JSON without wrapping is parsed directly."""
+        text = '{"key": "value", "count": 42}'
+        result = extract_json_object(text)
+        self.assertEqual(result, {"key": "value", "count": 42})
+
+    def test_extract_json_object_fast_path_json_array_rejected(self):
+        """A JSON array is not a dict and should not be returned."""
+        from feverslop.errors import FeverSlopLMLError
+        with self.assertRaises(FeverSlopLMLError):
+            extract_json_object('[1, 2, 3]')
+
+    def test_extract_json_object_deeply_nested(self):
+        """Deeply nested JSON objects are handled."""
+        nested = {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}}
+        text = f'Here is the data: {json.dumps(nested)}. Done.'
+        result = extract_json_object(text)
+        self.assertEqual(result, nested)
+
+    def test_extract_json_object_error_includes_raw_response(self):
+        """Parse error includes the raw response text for debugging."""
+        from feverslop.errors import FeverSlopLMLError
+        raw = "This is not JSON at all, really."
+        with self.assertRaises(FeverSlopLMLError) as ctx:
+            extract_json_object(raw)
+        self.assertIn(raw, str(ctx.exception))
+
+    def test_extract_json_object_escapes_in_strings(self):
+        """Escaped quotes and backslashes inside strings don't break parsing."""
+        text = r'{"message": "She said \"hello\\world\""}'
+        result = extract_json_object(text)
+        self.assertEqual(result, {"message": 'She said "hello\\world"'})
+
+    def test_extract_json_object_whitespace_only(self):
+        """Whitespace-only input raises an error."""
+        from feverslop.errors import FeverSlopLMLError
+        with self.assertRaises(FeverSlopLMLError):
+            extract_json_object("   \n\t  ")
+
+    def test_extract_json_object_fenced_with_surrounding_text(self):
+        """Fenced JSON with text before and after is parsed."""
+        text = """Sure! Here's the result:
+```json
+{"id": 1, "nested": {"a": {"b": "c"}}}
+```
+Let me know if you need more."""
+        result = extract_json_object(text)
+        self.assertEqual(result, {"id": 1, "nested": {"a": {"b": "c"}}})
+
 
 if __name__ == "__main__":
     unittest.main()
