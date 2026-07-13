@@ -35,9 +35,26 @@ class ComfyUIClient:
         self.base_url = base_url.rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
+        self._session: requests.Session | None = None
+
+    def _ensure_session(self) -> requests.Session:
+        if self._session is None:
+            self._session = requests.Session()
+        return self._session
+
+    def close(self) -> None:
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+
+    def __enter__(self) -> ComfyUIClient:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
 
     def queue_prompt(self, workflow: dict) -> str:
-        response = requests.post(
+        response = self._ensure_session().post(
             f"{self.base_url}/prompt",
             json={
                 "prompt": workflow,
@@ -49,7 +66,7 @@ class ComfyUIClient:
         return response.json()["prompt_id"]
 
     def get_history(self, prompt_id: str) -> dict:
-        response = requests.get(
+        response = self._ensure_session().get(
             f"{self.base_url}/history/{prompt_id}",
             timeout=60,
         )
@@ -57,7 +74,7 @@ class ComfyUIClient:
         return response.json()
 
     def get_object_info(self) -> dict:
-        response = requests.get(
+        response = self._ensure_session().get(
             f"{self.base_url}/object_info",
             timeout=60,
         )
@@ -106,7 +123,7 @@ class ComfyUIClient:
         file_path = Path(file_path)
 
         with file_path.open("rb") as f:
-            response = requests.post(
+            response = self._ensure_session().post(
                 f"{self.base_url}/upload/image",
                 files={"image": (upload_name or file_path.name, f)},
                 data={
@@ -150,7 +167,7 @@ class ComfyUIClient:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        response = requests.get(
+        response = self._ensure_session().get(
             f"{self.base_url}/view",
             params={
                 "filename": filename,
