@@ -65,6 +65,7 @@ class ProjectCreateRequest:
     movie_video_workflow: str = "msr"
     movie_continuity_keyframes: str = "none"
     movie_refine_location_prompts: bool = False
+    movie_refine_actor_prompts: bool = False
 
 
 def slugify_project_name(value: str) -> str:

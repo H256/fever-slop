@@ -102,3 +102,7 @@ def _project_reference_path(value: object) -> str:
     if not path or Path(path).is_absolute() or path.startswith("movie/"):
         return path
     return f"movie/references/{path}"
+
+
+def _resolve_reference_path(value: str) -> str:
+    return _project_reference_path(value)

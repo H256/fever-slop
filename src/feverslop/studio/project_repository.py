@@ -146,7 +146,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
     planner_backend = _movie_planner_backend(request.movie_planner_backend)
     reference_backend = _supported_backend(request.movie_reference_backend, "movie_reference_backend", {"comfyui", "local"}, default="comfyui")
     render_backend = _supported_backend(request.movie_render_backend, "movie_render_backend", {"comfyui", "local"}, default="comfyui")
-    movie_video_workflow = _supported_backend(request.movie_video_workflow, "movie_video_workflow", {"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"}, default="msr")
+    movie_video_workflow = _supported_backend(request.movie_video_workflow, "movie_video_workflow", {"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"}, default="msr")
     startframe_director_backend = _supported_backend(
         request.movie_startframe_director_backend,
         "movie_startframe_director_backend",
@@ -186,6 +186,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "msr_i2v_workflow": _project_workflow_path(request.movie_msr_i2v_workflow, "movie_msr_i2v_workflow"),
         "i2v_workflow": _project_workflow_path(request.movie_i2v_workflow, "movie_i2v_workflow"),
         "refine_location_prompts": bool(request.movie_refine_location_prompts),
+        "refine_actor_prompts": bool(request.movie_refine_actor_prompts),
     }
 
 

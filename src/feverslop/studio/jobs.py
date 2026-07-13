@@ -346,6 +346,9 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipe
         base["video_pipeline"] = "ltx_msr"
         base["stages"] = [PipelineStage.MSR_REFERENCE_SHEETS.value, PipelineStage.MSR_PROMPT_ENRICH.value]
         base["skip_msr_prompt_enrichment"] = False
+    elif action == "ingredients-sheets":
+        base["video_pipeline"] = "ltx_ingredients"
+        base["stages"] = [PipelineStage.INGREDIENTS_SHEETS.value]
     elif action == "ltx-render-scenes":
         base["video_pipeline"] = video_pipeline
         base["stages"] = [PipelineStage.LTX_RENDER_SCENES.value]
@@ -362,6 +365,7 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipe
             "video_pipeline": video_pipeline,
             "skip_msr_reference_render": video_pipeline != "ltx_msr",
             "skip_msr_prompt_enrichment": video_pipeline != "ltx_msr",
+            "skip_ingredients_sheets": video_pipeline != "ltx_ingredients",
         }
     else:
         raise ValueError(f"Unknown pipeline action: {action}")
@@ -425,7 +429,9 @@ def _video_pipeline_for_mode(pipeline_mode: str | None) -> str:
         return "ltx_i2v"
     if pipeline_mode in {"msr", "ltx_msr"}:
         return "ltx_msr"
-    raise ValueError("pipeline_mode must be classic or msr")
+    if pipeline_mode in {"ingredients", "ltx_ingredients"}:
+        return "ltx_ingredients"
+    raise ValueError("pipeline_mode must be classic, msr, or ingredients")
 
 
 def build_reference_rerender_handler(project_config_path: Path, *, reference_kind: str, reference_id: str) -> JobHandler:

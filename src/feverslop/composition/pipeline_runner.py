@@ -90,6 +90,7 @@ class PipelineRunContext:
     scene_prompts: Path
     render_plan: Path
     reference_plan: Path
+    ingredients_plan: Path
     references_dir: Path
     compact_plan: Path
     anchored_plan: Path
@@ -120,6 +121,7 @@ class PipelineStage(str, Enum):
     MSR_REFERENCES = "msr_references"
     MSR_REFERENCE_SHEETS = "msr_reference_sheets"
     MSR_PROMPT_ENRICH = "msr_prompt_enrich"
+    INGREDIENTS_SHEETS = "ingredients_sheets"
     LTX_RENDER_SCENES = "ltx_render_scenes"
     CONCAT_VIDEO_ONLY = "concat_video_only"
     MUX_ORIGINAL_AUDIO = "mux_original_audio"
@@ -135,6 +137,7 @@ class PipelineRunState:
     reference_hero_workflow: Path
     reference_edit_workflow: Path
     msr_workflow: Path
+    ingredients_workflow: Path
     relay_workflow: Path
     single_prompt_workflow: Path
     plan_for_next_step: Path
@@ -187,10 +190,18 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
     prompts_dir = project_output_dir / "prompts"
     render_dir = project_output_dir / "render"
     storyboard_dir = render_dir / "storyboard"
-    ltx_dir = render_dir / ("ltx_msr" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}")
+    vp = getattr(args, "video_pipeline", "ltx_i2v")
+    if vp == "ltx_msr":
+        ltx_dir = render_dir / "ltx_msr"
+        ltx_debug_dir = render_dir / "ltx_msr_debug"
+    elif vp == "ltx_ingredients":
+        ltx_dir = render_dir / "ltx_ingredients"
+        ltx_debug_dir = render_dir / "ltx_ingredients_debug"
+    else:
+        ltx_dir = render_dir / f"ltx_{args.render_mode}"
+        ltx_debug_dir = render_dir / f"ltx_{args.render_mode}_debug"
     if args.smoke_only:
-        ltx_dir = render_dir / ("ltx_msr_smoke" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}_smoke")
-    ltx_debug_dir = render_dir / ("ltx_msr_debug" if getattr(args, "video_pipeline", "ltx_i2v") == "ltx_msr" else f"ltx_{args.render_mode}_debug")
+        ltx_dir = ltx_dir.with_name(ltx_dir.name + "_smoke")
 
     return PipelineRunContext(
         project_config_path=project_config_path,
@@ -209,6 +220,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         scene_prompts=prompts_dir / f"scene_prompts_{song_id}.json",
         render_plan=render_dir / f"render_plan_{song_id}.json",
         reference_plan=render_dir / f"render_plan_{song_id}_refs.json",
+        ingredients_plan=render_dir / f"render_plan_{song_id}_ingredients.json",
         references_dir=project_output_dir / "references",
         compact_plan=render_dir / f"render_plan_{song_id}__compact.json",
         anchored_plan=render_dir / f"render_plan_{song_id}__compact_anchored.json",
@@ -317,6 +329,7 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         reference_hero_workflow=resolve_runner_path(args.reference_hero_workflow),
         reference_edit_workflow=resolve_runner_path(args.reference_edit_workflow),
         msr_workflow=resolve_runner_path(args.msr_workflow),
+        ingredients_workflow=resolve_runner_path(args.ingredients_workflow),
         relay_workflow=resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path(""),
         single_prompt_workflow=resolve_runner_path(args.single_prompt_workflow),
         plan_for_next_step=_initial_render_plan(context, args, stages),
@@ -360,6 +373,11 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
             stages.append(PipelineStage.STORYBOARD_FRAMES)
         if not args.skip_storyboard_page:
             stages.append(PipelineStage.STORYBOARD_PAGE)
+    if args.video_pipeline == "ltx_ingredients":
+        if not getattr(args, "skip_ingredients_sheets", False):
+            stages.insert(-1, PipelineStage.INGREDIENTS_SHEETS)
+        else:
+            console.print("Skipping Ingredients sheets; using existing sheets or references.")
     if not args.skip_ltx:
         stages.append(PipelineStage.LTX_RENDER_SCENES)
     if not args.skip_final_concat:
@@ -373,9 +391,11 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
 
 
 def _initial_render_plan(context: PipelineRunContext, args: argparse.Namespace, stages: list[PipelineStage]) -> Path:
-    upstream_stages = {PipelineStage.MAIN_PIPELINE, PipelineStage.RELAY_COMPACT, PipelineStage.ANCHOR_FIX, PipelineStage.MSR_REFERENCE_SHEETS}
+    upstream_stages = {PipelineStage.MAIN_PIPELINE, PipelineStage.RELAY_COMPACT, PipelineStage.ANCHOR_FIX, PipelineStage.MSR_REFERENCE_SHEETS, PipelineStage.INGREDIENTS_SHEETS}
     if args.video_pipeline == "ltx_msr" and context.reference_plan.exists() and not upstream_stages.intersection(stages):
         return context.reference_plan
+    if args.video_pipeline == "ltx_ingredients" and context.ingredients_plan.exists() and not upstream_stages.intersection(stages):
+        return context.ingredients_plan
     return context.render_plan
 
 
@@ -511,12 +531,29 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
         )
 
 
+def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
+    from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
+    if state.args.video_pipeline != "ltx_ingredients":
+        raise ValueError("ingredients_sheets requires --video-pipeline ltx_ingredients")
+    ingredients_total = count_render_plan_items(state.plan_for_next_step)
+    with RenderProgressReporter("Composing Ingredients scene sheets", ingredients_total) as progress:
+        state.plan_for_next_step = enrich_render_plan_with_ingredients_sheets(
+            state.plan_for_next_step,
+            state.context.references_dir,
+            state.context.ingredients_plan,
+            on_scene_complete=_scene_progress_callback(progress),
+        )
+
+
 def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline != "ltx_msr" and state.args.render_mode != "single_prompt" and not str(state.args.relay_workflow).strip():
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients") and state.args.render_mode != "single_prompt" and not str(state.args.relay_workflow).strip():
         raise ValueError(f"RenderMode '{state.args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
 
     if state.args.video_pipeline == "ltx_msr":
         ltx_workflow = state.msr_workflow
+        ltx_single_prompt_workflow = None
+    elif state.args.video_pipeline == "ltx_ingredients":
+        ltx_workflow = state.ingredients_workflow
         ltx_single_prompt_workflow = None
     else:
         ltx_workflow = state.single_prompt_workflow if state.args.render_mode == "single_prompt" else state.relay_workflow
@@ -607,6 +644,7 @@ STAGE_RUNNERS = {
     PipelineStage.MSR_REFERENCES: _run_msr_references_stage,
     PipelineStage.MSR_REFERENCE_SHEETS: _run_msr_reference_sheets_stage,
     PipelineStage.MSR_PROMPT_ENRICH: _run_msr_prompt_enrich_stage,
+    PipelineStage.INGREDIENTS_SHEETS: _run_ingredients_sheets_stage,
     PipelineStage.LTX_RENDER_SCENES: _run_ltx_render_scenes_stage,
     PipelineStage.CONCAT_VIDEO_ONLY: _run_concat_video_only_stage,
     PipelineStage.MUX_ORIGINAL_AUDIO: _run_mux_original_audio_stage,
@@ -623,6 +661,7 @@ STAGE_LABELS = {
     PipelineStage.MSR_REFERENCES: "MSR references",
     PipelineStage.MSR_REFERENCE_SHEETS: "MSR reference sheets",
     PipelineStage.MSR_PROMPT_ENRICH: "MSR prompt enrichment",
+    PipelineStage.INGREDIENTS_SHEETS: "Ingredients scene sheets",
     PipelineStage.LTX_RENDER_SCENES: "LTX render",
     PipelineStage.CONCAT_VIDEO_ONLY: "Final concat video-only",
     PipelineStage.MUX_ORIGINAL_AUDIO: "Mux original audio",

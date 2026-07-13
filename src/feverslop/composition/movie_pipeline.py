@@ -65,6 +65,13 @@ MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES = {
     "Movie complete",
 }
 
+MOVIE_INGREDIENTS_STAGE_TITLES = {
+    *MOVIE_BASE_STAGE_TITLES,
+    "Movie Ingredients scene sheets",
+    "Movie Ingredients render",
+    "Movie complete",
+}
+
 
 class MovieStageProgressReporter:
     def __init__(self, stage_titles: set[str], *, console: Console = console):
@@ -114,6 +121,7 @@ class MoviePipelineResult:
     render_plan_path: Path | None = None
     continuity_plan_path: Path | None = None
     render_plan_msr_path: Path | None = None
+    render_plan_ingredients_path: Path | None = None
     visual_plan_path: Path | None = None
     render_plan_i2v_path: Path | None = None
     identity_ledger_path: Path | None = None
@@ -143,6 +151,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--msr-workflow", default=None)
     parser.add_argument("--msr-i2v-workflow", default=None)
     parser.add_argument("--i2v-workflow", default=None)
+    parser.add_argument("--ingredients-workflow", default=None)
     parser.add_argument("--skip-movie-bible", action="store_true", help="Reuse existing movie/bible.json.")
     parser.add_argument("--force-movie-bible", action="store_true", help="Regenerate movie/bible.json from the configured movie planner.")
     parser.add_argument("--movie-planner-backend", choices=["llm", "deterministic", "local"], default=None)
@@ -157,10 +166,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-movie-plan", action="store_true", help="Reuse existing movie/render_plan.json.")
     parser.add_argument("--skip-movie-references", action="store_true", help="Reuse existing movie reference manifest paths.")
     parser.add_argument("--skip-movie-msr-enrich", action="store_true", help="Reuse existing movie/render_plan_msr.json or render the plain plan.")
+    parser.add_argument("--skip-movie-ingredients-sheets", action="store_true", help="Skip Ingredients scene sheet composition.")
     parser.add_argument("--skip-movie-render", action="store_true", help="Stop after syncing/rendering movie references.")
     parser.add_argument("--force-movie-references", action="store_true", help="Render movie references even when manifest paths already exist.")
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
-    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit", "startframe-director"], default="msr")
+    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"], default="msr")
     parser.add_argument("--continuity-keyframes", choices=["none", "last-to-start"], default="none")
     parser.add_argument("--write-debug-workflows", action="store_true", help="Write patched movie MSR workflow JSONs without queueing ComfyUI.")
     parser.add_argument("--debug-workflows-dir", default=None, help="Directory for --write-debug-workflows output.")
@@ -185,6 +195,7 @@ def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "msr_workflow",
         "msr_i2v_workflow",
         "i2v_workflow",
+        "ingredients_workflow",
         "movie_video_workflow",
         "keyframe_mode",
         "continuity_keyframes",
@@ -223,6 +234,8 @@ def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
         return MOVIE_I2V_EDIT_STAGE_TITLES
     if config["movie_video_workflow"] == "startframe-director":
         return MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES
+    if config["movie_video_workflow"] == "ingredients":
+        return MOVIE_INGREDIENTS_STAGE_TITLES
     return MOVIE_BASE_STAGE_TITLES
 
 
@@ -239,6 +252,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     shot_cards_path = project_dir / "movie" / "shot_cards.json"
     continuity_plan_path = project_dir / "movie" / "continuity_plan.json"
     render_plan_msr_path = project_dir / "movie" / "render_plan_msr.json"
+    render_plan_ingredients_path = project_dir / "movie" / "render_plan_ingredients.json"
 
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
@@ -458,10 +472,69 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             final_video_path=final_video_path,
         )
 
+    if config["movie_video_workflow"] == "ingredients":
+        if not args.skip_movie_ingredients_sheets:
+            from feverslop.application.movie_ingredients_sheets import enrich_movie_render_plan_with_ingredients_sheets
+            _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
+            render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
+                project_dir=project_dir,
+                sheet_scale=config.get("ingredients_sheet_scale", 3.0),
+            )
+        elif not render_plan_ingredients_path.exists():
+            render_plan_ingredients_path = None
+
+        if render_plan_ingredients_path is None:
+            raise FileNotFoundError(f"Movie ingredients render plan not found: {render_plan_ingredients_path}")
+
+        ingredients_debug_workflows_dir = _ingredients_debug_workflows_dir(project_dir, args)
+        final_video_path: Path | None = None
+        if not args.skip_movie_render:
+            _log_stage("Movie Ingredients render", f"rendering via {config['render_backend']}")
+            if config["render_backend"] != "local":
+                adapter = _build_ingredients_adapter(project_dir, config, debug_workflows_dir=ingredients_debug_workflows_dir)
+            else:
+                adapter = LocalMovieVisualAdapter()
+            final_video_path = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_ingredients_path,
+                on_clip_rendered=lambda completed, total, scene_number: _log_stage(
+                    "Movie Ingredients clip",
+                    f"rendered {completed}/{total}: scene {scene_number}",
+                ),
+            )
+        else:
+            _log_stage("Movie Ingredients render", "skipped")
+        _log_stage("Movie complete", str(final_video_path or render_plan_ingredients_path))
+        return MoviePipelineResult(
+            project_dir=project_dir,
+            bible_path=bible_path,
+            story_design_path=story_design_path,
+            screenplay_path=screenplay_path,
+            narrative_plan_path=narrative_plan_path,
+            scene_cards_path=scene_cards_path,
+            shot_cards_path=shot_cards_path,
+            render_plan_path=render_plan_path,
+            continuity_plan_path=continuity_plan_path,
+            render_plan_ingredients_path=render_plan_ingredients_path,
+            reference_manifest_path=reference_manifest_path,
+            final_video_path=final_video_path,
+            debug_workflows_dir=ingredients_debug_workflows_dir,
+        )
+
     if not args.skip_movie_msr_enrich:
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=args.keyframe_mode)
     elif not render_plan_msr_path.exists():
         render_plan_msr_path = None
+
+    if not args.skip_movie_ingredients_sheets:
+        from feverslop.application.movie_ingredients_sheets import enrich_movie_render_plan_with_ingredients_sheets
+        _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
+        render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
+            project_dir=project_dir,
+            sheet_scale=config.get("ingredients_sheet_scale", 3.0),
+        )
+    elif not render_plan_ingredients_path.exists():
+        render_plan_ingredients_path = None
 
     debug_workflows_dir: Path | None = None
     if args.write_debug_workflows:
@@ -548,6 +621,31 @@ def _build_visual_adapter(project_dir: Path, config: dict[str, Any], workflow: d
         workflow=workflow,
         i2v_workflow=i2v_workflow,
     )
+
+
+def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, debug_workflows_dir: Path | None = None):
+    from feverslop.adapters.comfyui_client import ComfyUIClient
+    from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+    from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+    from feverslop.adapters.movie_ingredients_visual import ComfyUIMovieIngredientsVisualAdapter
+    from feverslop.config.app_config import AppConfig
+
+    app_config = AppConfig.load("app_config.json")
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
+    ltx_dir = project_dir / "output" / "movie" / "ltx_ingredients"
+    backend = ComfyUIIngredientsVideoRenderBackend(
+        client=client,
+        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_v1.json"),
+        output_dir=ltx_dir,
+        project_dir=project_dir,
+        model_resolver=model_resolver,
+        debug_workflows_dir=debug_workflows_dir,
+    )
+    return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
 
 
 def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
@@ -652,6 +750,15 @@ def _startframe_debug_workflows_dir(project_dir: Path, args: argparse.Namespace)
     if raw:
         return coerce_local_path(raw).resolve()
     return project_dir / "output" / "movie" / "startframes" / "debug_workflows"
+
+
+def _ingredients_debug_workflows_dir(project_dir: Path, args: argparse.Namespace) -> Path | None:
+    if not bool(getattr(args, "write_debug_workflows", False)):
+        return None
+    raw = getattr(args, "debug_workflows_dir", None)
+    if raw:
+        return coerce_local_path(raw).resolve()
+    return project_dir / "output" / "movie" / "ltx_ingredients" / "debug_workflows"
 
 
 def _write_startframe_i2v_empty_audio_workflow(*, project_dir: Path, workflow_path: Path, patcher) -> Path:

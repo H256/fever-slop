@@ -16,8 +16,8 @@ def validate_project_config(data: Any, *, project_type: str = "standard_music_vi
     if subject_mode not in {"single", "multi"}:
         raise ValueError("subject_mode must be 'single' or 'multi'")
     video_pipeline = data.get("video_pipeline")
-    if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr"}:
-        raise ValueError("video_pipeline must be 'ltx_i2v' or 'ltx_msr'")
+    if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr", "ltx_ingredients"}:
+        raise ValueError("video_pipeline must be 'ltx_i2v', 'ltx_msr', or 'ltx_ingredients'")
     max_scene_actors = int(data.get("max_scene_actors", 1 if subject_mode == "single" else 4))
     if max_scene_actors < 1 or max_scene_actors > 4:
         raise ValueError("max_scene_actors must be between 1 and 4")
@@ -32,5 +32,5 @@ def validate_full_auto_inputs(request: Any) -> None:
         raise ValueError("height must be a positive integer")
     if int(request.fps) not in {16, 24, 50}:
         raise ValueError("fps must be one of 16, 24, or 50")
-    if str(request.pipeline_mode or "classic") not in {"classic", "msr"}:
-        raise ValueError("pipeline_mode must be classic or msr")
+    if str(request.pipeline_mode or "classic") not in {"classic", "msr", "ingredients"}:
+        raise ValueError("pipeline_mode must be classic, msr, or ingredients")
