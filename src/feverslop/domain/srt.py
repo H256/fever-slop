@@ -14,6 +14,19 @@ class SrtBlock:
     text: str = ""
 
 
+@dataclass(frozen=True)
+class SrtScene:
+    """Represents a scene from an SRT with scene number."""
+    scene: int
+    start: float
+    end: float
+    text: str = ""
+
+    @property
+    def duration(self) -> float:
+        return self.end - self.start
+
+
 def parse_srt_timestamp(value: str) -> float:
     """Parse SRT timestamp 'HH:MM:SS,mmm' to seconds.
 

@@ -1,21 +1,9 @@
 ﻿from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
-from feverslop.domain.srt import SrtBlock, format_srt_timestamp, parse_srt_blocks
+from feverslop.domain.srt import SrtBlock, SrtScene, format_srt_timestamp, parse_srt_blocks
 from feverslop.ports.artifacts import ArtifactStore
-
-@dataclass(frozen=True)
-class SrtScene:
-    scene: int
-    start: float
-    end: float
-    text: str = ""
-
-    @property
-    def duration(self) -> float:
-        return self.end - self.start
 
 
 def _to_srt_scene(block: SrtBlock) -> SrtScene:
