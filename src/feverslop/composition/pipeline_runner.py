@@ -418,7 +418,7 @@ def _run_main_pipeline_stage(state: PipelineRunState) -> None:
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
     if state.args.render_mode == "single_prompt":
         raise ValueError("relay_compact requires render_mode relay or auto")
-    app_config = AppConfig.load(state.app_config_path)
+    app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         model=app_config.llm.model,
@@ -449,7 +449,7 @@ def _run_anchor_fix_stage(state: PipelineRunState) -> None:
 def _run_storyboard_frames_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline == "ltx_msr":
         raise ValueError("storyboard_frames is not used by ltx_msr")
-    app_config = AppConfig.load(state.app_config_path)
+    app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     storyboard_use_case = build_render_storyboard_use_case(
         app_config=app_config,
         workflow_path=state.storyboard_workflow,
@@ -514,7 +514,7 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
 def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline != "ltx_msr":
         raise ValueError("msr_prompt_enrich requires --video-pipeline ltx_msr")
-    app_config = AppConfig.load(state.app_config_path)
+    app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         model=app_config.llm.model,

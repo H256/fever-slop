@@ -49,16 +49,30 @@ class AppConfig:
     storyboard_prompt_transforms: list[StoryboardPromptTransformConfig] = field(default_factory=list)
 
     @classmethod
-    def load(cls, path: str | Path) -> "AppConfig":
+    def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> "AppConfig":
         path = coerce_local_path(path)
 
         if not path.exists():
+            if required_keys:
+                missing = ", ".join(f"'{key}'" for key in required_keys)
+                raise ValueError(f"App config not found at {path}; required keys absent: {missing}")
             return cls(
                 llm=LLMConfig(),
                 comfyui=ComfyUIConfig(),
             )
 
         raw = json.loads(path.read_text(encoding="utf-8"))
+
+        if required_keys:
+            missing = [key for key in required_keys if key not in raw or raw[key] is None]
+            if missing:
+                details = "; ".join(f"'{key}'" for key in missing)
+                raise ValueError(f"Missing required config keys: {details}")
+
+        return cls._build_config(raw)
+
+    @classmethod
+    def _build_config(cls, raw: dict) -> "AppConfig":
         llm_raw = raw.get("llm", {})
         comfyui_raw = raw.get("comfyui", {})
 
@@ -74,7 +88,7 @@ class AppConfig:
                 prompt_timeout_seconds=float(comfyui_raw.get("prompt_timeout_seconds", 1800.0)),
                 model_overrides=[
                     ComfyUIModelOverride.from_dict(item)
-                    for item in comfyui_raw.get("model_overrides", [])
+                    for item in comfyui_raw.get("model_overrides") or []
                 ],
             ),
             storyboard_prompt_transforms=[
