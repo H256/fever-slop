@@ -74,8 +74,68 @@ class LLMClientRetryTests(unittest.TestCase):
             client.complete_prompt("test")
 
         sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
-        self.assertAlmostEqual(sleep_calls[0], 0.5, places=1)
-        self.assertAlmostEqual(sleep_calls[1], 1.0, places=1)
+        self.assertGreaterEqual(sleep_calls[0], 0.5)
+        self.assertLess(sleep_calls[0], 1.5)
+        self.assertGreaterEqual(sleep_calls[1], 1.0)
+        self.assertLess(sleep_calls[1], 3.0)
+
+    @patch("time.sleep", return_value=None)
+    def test_retry_delays_include_jitter(self, mock_sleep):
+        mock_client = MagicMock()
+
+        call_count = 0
+
+        def side_effect(*a, **kw):
+            nonlocal call_count
+            call_count += 1
+            raise APIConnectionError(
+                message="fail",
+                request=httpx.Request("GET", "http://localhost"),
+            )
+
+        mock_client.chat.completions.create.side_effect = side_effect
+
+        client = LocalOpenAIClient(max_retries=5, retry_base_delay=0.1)
+        client.client = mock_client
+        with self.assertRaises(FeverSlopLMLError):
+            client.complete_prompt("test")
+
+        sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
+        self.assertEqual(len(sleep_calls), 4)
+        self.assertNotAlmostEqual(sleep_calls[0], sleep_calls[1], places=2)
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_timeout_passed_to_create(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="result"))]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        client = LocalOpenAIClient()
+        client.client = mock_client
+        client.complete_prompt("test", timeout=60.0)
+
+        mock_client.chat.completions.create.assert_called_once()
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        self.assertEqual(call_kwargs["timeout"], 60.0)
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_timeout_none_by_default(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="result"))]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        client = LocalOpenAIClient()
+        client.client = mock_client
+        client.complete_prompt("test")
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        self.assertIsNone(call_kwargs["timeout"])
 
     @patch("feverslop.adapters.llm_client.OpenAI")
     def test_no_retry_on_success(self, mock_openai):
