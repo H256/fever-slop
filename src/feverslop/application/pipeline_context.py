@@ -10,15 +10,15 @@ from feverslop.ports.reporting import NullReporter, Reporter
 
 @dataclass
 class GenerateRenderPlanContext:
-    request: object = None
-    config: object = None
-    paths: object = None
+    request: Any = None
+    config: Any = None
+    paths: Any = None
     app_config: dict[str, Any] | None = None
-    video_settings: object = None
+    video_settings: Any = None
     song_id: str = ""
     artifact_store: ArtifactStore | None = None
     reporter: Reporter = NullReporter()
-    console: object = None
+    console: Any = None
     log_step: Callable[[str], None] | None = None
     log_file: Callable[[str, Path], None] | None = None
     run_spinner: Callable[[str, Callable[[], Any]], Any] | None = None
@@ -38,7 +38,7 @@ class GenerateRenderPlanContext:
     stem_files: dict[str, Path] | None = None
     timeline: list[dict] | None = None
     beat_data: dict[str, Any] | None = None
-    repaired_scenes: list[object] | None = None
+    repaired_scenes: list[Any] | None = None
     stage1_segments: list[dict] | None = None
     global_context: dict[str, Any] | None = None
     concept_prompts: dict[str, Any] | None = None

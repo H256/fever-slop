@@ -4,6 +4,7 @@ import json
 import re
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 
 
@@ -200,7 +201,7 @@ def _spoken_dialogue_text(dialogue: str) -> str:
     return " ".join(lines).strip()
 
 
-def _clean_movie_prompt_field(value: object) -> str:
+def _clean_movie_prompt_field(value: Any) -> str:
     text = " ".join(str(value or "").split()).strip()
     if not text:
         return ""
@@ -213,7 +214,7 @@ def _clean_movie_prompt_field(value: object) -> str:
     return text.strip(" .")
 
 
-def _safe_continuity_facts(value: object) -> tuple[str, ...]:
+def _safe_continuity_facts(value: Any) -> tuple[str, ...]:
     if isinstance(value, list | tuple):
         candidates = [part for item in value for part in _split_continuity_text(item)]
     else:
@@ -228,7 +229,7 @@ def _safe_continuity_facts(value: object) -> tuple[str, ...]:
     return tuple(facts)
 
 
-def _split_continuity_text(value: object) -> list[str]:
+def _split_continuity_text(value: Any) -> list[str]:
     text = str(value or "")
     return [part.strip() for part in re.split(r"[;\n]+", text) if part.strip()]
 

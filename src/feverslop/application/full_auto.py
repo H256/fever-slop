@@ -55,7 +55,7 @@ class FullAutoUseCase:
         song_generator: SongAudioGeneratorPort,
         project_scaffold: ProjectScaffoldPort,
         pipeline_runner: PipelineRunnerPort | None = None,
-        console: object | None = None,
+        console: Any | None = None,
         reporter: Reporter | None = None,
     ):
         self.brief_generator = brief_generator
