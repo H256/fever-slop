@@ -174,7 +174,7 @@
         0
       ],
       "latent_image": [
-        "4528",
+        "5118",
         0
       ]
     },
@@ -328,7 +328,7 @@
     "inputs": {
       "text_encoder": "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
       "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
-      "device": "default"
+      "device": "cpu"
     },
     "class_type": "LTXAVTextEncoderLoader",
     "_meta": {
@@ -515,7 +515,7 @@
   "5110": {
     "inputs": {
       "audio": "feverslop/audio/scholoraid-8b0340a73f2c.mp3",
-      "audioUI": "/api/view?filename=scholoraid-8b0340a73f2c.mp3&type=input&subfolder=feverslop/audio&rand=0.9250485413124243"
+      "audioUI": "/api/view?filename=scholoraid-8b0340a73f2c.mp3&type=input&subfolder=feverslop/audio&rand=0.2456896923109132"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -645,6 +645,20 @@
     "class_type": "ComfyMathExpression",
     "_meta": {
       "title": "Math Expression"
+    }
+  },
+  "5118": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "4528",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
     }
   }
 }

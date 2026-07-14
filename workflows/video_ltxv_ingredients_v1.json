@@ -195,7 +195,7 @@
         0
       ],
       "latent_image": [
-        "4528",
+        "5113",
         0
       ]
     },
@@ -349,7 +349,7 @@
     "inputs": {
       "text_encoder": "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
       "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
-      "device": "default"
+      "device": "cpu"
     },
     "class_type": "LTXAVTextEncoderLoader",
     "_meta": {
@@ -593,6 +593,20 @@
     "class_type": "ResizeImageMaskNode",
     "_meta": {
       "title": "Resize Image/Mask"
+    }
+  },
+  "5113": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "4528",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
     }
   }
 }
