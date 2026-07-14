@@ -10,6 +10,7 @@ from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings, ResolvedLoraConfig
+from feverslop.config.video_settings import VideoSettings
 from feverslop.errors import FeverSlopRenderError, FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.domain.ltx_rendering import (
@@ -154,6 +155,7 @@ class ComfyUIVideoRenderBackend:
         postprocessor: VideoPostProcessor | None = None,
         output_writer: RenderOutputWriter | None = None,
         config: ComfyUIVideoBackendConfig | None = None,
+        video_settings: VideoSettings | None = None,
     ):
         if config is not None:
             ltx_workflow_path = config.ltx_workflow_path
@@ -288,6 +290,7 @@ class ComfyUIVideoRenderBackend:
                 seed_offset=self.seed_offset,
                 segment_length_mode=self.segment_length_mode,
                 debug_workflows_dir=self.debug_workflows_dir,
+                video_settings=video_settings,
             )
         )
 

@@ -210,7 +210,6 @@ class TestConfigFlags(unittest.TestCase):
 class TestScaffoldCLIFlag(unittest.TestCase):
     def test_scaffold_movie_accepts_refine_actors_flag(self):
         import subprocess
-        import os
         repo_root = Path(__file__).resolve().parent.parent
         result = subprocess.run(
             [sys.executable, "scaffold_movie.py", "--help"],

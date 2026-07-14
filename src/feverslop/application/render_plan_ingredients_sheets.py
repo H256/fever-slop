@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 import json
 import math
 
@@ -17,6 +17,7 @@ def enrich_render_plan_with_ingredients_sheets(
     references_dir: str | Path,
     output_path: str | Path,
     *,
+    video_settings: Any = None,
     sheet_scale: float = 3.0,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
 ) -> Path:
@@ -39,8 +40,12 @@ def enrich_render_plan_with_ingredients_sheets(
     location_manifests = _load_manifests_by_id(references_dir / "locations")
 
     first_scene = render_plan[0] if render_plan else {}
-    base_w = int(first_scene.get("width", 1280))
-    base_h = int(first_scene.get("height", 704))
+    if video_settings:
+        base_w = video_settings.width
+        base_h = video_settings.height
+    else:
+        base_w = int(first_scene.get("width", 1280))
+        base_h = int(first_scene.get("height", 704))
     sheet_size = (int(base_w * sheet_scale), int(base_h * sheet_scale))
 
     project_base = _infer_reference_project_base(references_dir)

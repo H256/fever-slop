@@ -215,12 +215,16 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
     from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
     if state.args.video_pipeline != "ltx_ingredients":
         raise ValueError("ingredients_sheets requires --video-pipeline ltx_ingredients")
+    from feverslop.config.project_config import ProjectConfig
+    project_config = ProjectConfig.load(state.context.project_config_path)
+    video_settings = project_config.to_video_settings()
     ingredients_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Composing Ingredients scene sheets", ingredients_total) as progress:
         state.plan_for_next_step = enrich_render_plan_with_ingredients_sheets(
             state.plan_for_next_step,
             state.context.references_dir,
             state.context.ingredients_plan,
+            video_settings=video_settings,
             on_scene_complete=_scene_progress_callback(progress),
         )
 
