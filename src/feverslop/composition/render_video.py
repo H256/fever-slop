@@ -66,6 +66,8 @@ def build_render_video_scenes_use_case(
     app_config = AppConfig.load(options.app_config_path)
     resolved = resolve_project_config_defaults(options)
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(options)
+    project_config = resolved["project_config"]
+    video_settings = project_config.to_video_settings() if project_config else None
 
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
@@ -95,6 +97,7 @@ def build_render_video_scenes_use_case(
             postprocess_reencode=options.postprocess_reencode,
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
+            video_settings=video_settings,
         )
     elif options.video_pipeline == "ltx_ingredients":
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
@@ -115,6 +118,7 @@ def build_render_video_scenes_use_case(
             postprocess_reencode=options.postprocess_reencode,
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
+            video_settings=video_settings,
         )
     else:
         backend = ComfyUIVideoRenderBackend(
@@ -152,6 +156,7 @@ def build_render_video_scenes_use_case(
             postprocess_reencode=options.postprocess_reencode,
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
+            video_settings=video_settings,
         )
 
     return RenderVideoScenesUseCase(

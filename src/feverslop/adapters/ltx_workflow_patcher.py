@@ -7,6 +7,7 @@ import random
 
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.adapters.lora_workflow_patcher import LoraPatchSettings, LoraWorkflowPatcher
+from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder
 from feverslop.errors import FeverSlopWorkflowError
 
@@ -62,6 +63,7 @@ class LTXWorkflowSettings:
     debug_workflows_dir: Path | None
     loras: tuple[ResolvedLoraConfig, ...] = ()
     lora_split_enabled: bool = False
+    video_settings: VideoSettings | None = None
 
 
 class LTXWorkflowPatcher:
@@ -165,8 +167,8 @@ class LTXWorkflowPatcher:
 
         scene_number = int(scene["scene"])
         fps = int(scene["fps"])
-        width = int(scene["width"])
-        height = int(scene["height"])
+        width = self.settings.video_settings.width if self.settings.video_settings else int(scene["width"])
+        height = self.settings.video_settings.height if self.settings.video_settings else int(scene["height"])
         render_frame_count = int(rolling["render_frame_count"])
 
         patcher.set_input_by_title(self.settings.width_node_title, "value", width)

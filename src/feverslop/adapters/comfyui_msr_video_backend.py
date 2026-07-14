@@ -19,6 +19,7 @@ from feverslop.domain.ltx_rendering import (
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
 )
+from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -48,6 +49,7 @@ class ComfyUIMSRVideoRenderBackend:
         project_dir: str | Path | None = None,
         workflow: dict | None = None,
         workflow_label: str | Path | None = None,
+        video_settings: VideoSettings | None = None,
     ):
         if int(msr_frame_count) not in {17, 25, 33, 41}:
             raise FeverSlopValidationError("msr_frame_count must be one of 17, 25, 33, 41")
@@ -75,6 +77,7 @@ class ComfyUIMSRVideoRenderBackend:
             debug=ffmpeg_debug,
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
+        self.video_settings = video_settings
 
     def load_workflow(self) -> dict:
         if self.workflow is not None:
@@ -154,8 +157,14 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
         self._patch_msr_continuity_handoff_inputs(patcher, scene)
         self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
-        patcher.try_set_existing_input_by_title("#WIDTH", "value", int(scene.get("width", 0) or 0))
-        patcher.try_set_existing_input_by_title("#HEIGHT", "value", int(scene.get("height", 0) or 0))
+        if self.video_settings:
+            width = self.video_settings.width
+            height = self.video_settings.height
+        else:
+            width = int(scene.get("width", 0) or 0)
+            height = int(scene.get("height", 0) or 0)
+        patcher.try_set_existing_input_by_title("#WIDTH", "value", width)
+        patcher.try_set_existing_input_by_title("#HEIGHT", "value", height)
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
         patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
         self._patch_i2v_latent_lengths(patcher, render_frame_count)
