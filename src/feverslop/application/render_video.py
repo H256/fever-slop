@@ -53,11 +53,13 @@ class RenderVideoScenesUseCase:
         total = len(plan.scenes)
         for scene in plan.scenes:
             final_path = request.output_dir / "final" / f"scene_{scene.scene_number:04}.mp4"
-            if request.skip_existing and final_path.exists():
-                rendered.append(final_path)
-                self._log_scene_available(final_path, len(rendered), total, skipped=True)
+            direct_path = request.output_dir / f"scene_{scene.scene_number:04}.mp4"
+            existing_path = final_path if final_path.exists() else (direct_path if direct_path.exists() else None)
+            if request.skip_existing and existing_path:
+                rendered.append(existing_path)
+                self._log_scene_available(existing_path, len(rendered), total, skipped=True)
                 if request.on_scene_complete:
-                    request.on_scene_complete(final_path, len(rendered), total)
+                    request.on_scene_complete(existing_path, len(rendered), total)
                 continue
 
             output_path = self.backend.render_video(
