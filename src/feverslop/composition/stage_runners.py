@@ -392,16 +392,25 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
             stages.append(PipelineStage.MSR_PROMPT_ENRICH)
         else:
             console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
+    elif args.video_pipeline == "ltx_ingredients":
+        if not args.skip_msr_reference_render:
+            stages.append(PipelineStage.MSR_REFERENCES)
+        else:
+            console.print("Skipping MSR reference rendering; using existing reference manifests.")
+        stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
+        if not args.skip_msr_prompt_enrichment:
+            stages.append(PipelineStage.MSR_PROMPT_ENRICH)
+        else:
+            console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
+        if not getattr(args, "skip_ingredients_sheets", False):
+            stages.append(PipelineStage.INGREDIENTS_SHEETS)
+        else:
+            console.print("Skipping Ingredients sheets; using existing sheets or references.")
     else:
         if not args.skip_storyboard:
             stages.append(PipelineStage.STORYBOARD_FRAMES)
         if not args.skip_storyboard_page:
             stages.append(PipelineStage.STORYBOARD_PAGE)
-    if args.video_pipeline == "ltx_ingredients":
-        if not getattr(args, "skip_ingredients_sheets", False):
-            stages.insert(-1, PipelineStage.INGREDIENTS_SHEETS)
-        else:
-            console.print("Skipping Ingredients sheets; using existing sheets or references.")
     if not args.skip_ltx:
         stages.append(PipelineStage.LTX_RENDER_SCENES)
     if not args.skip_final_concat:
