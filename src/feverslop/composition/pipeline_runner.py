@@ -94,5 +94,3 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
 
 def main() -> None:
     run(build_arg_parser().parse_args())
-
-    main()
