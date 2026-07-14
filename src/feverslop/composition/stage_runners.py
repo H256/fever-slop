@@ -159,8 +159,8 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_references_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline != "ltx_msr":
-        raise ValueError("msr_references requires --video-pipeline ltx_msr")
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+        raise ValueError("msr_references requires --video-pipeline ltx_msr or ltx_ingredients")
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
@@ -179,8 +179,8 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline != "ltx_msr":
-        raise ValueError("msr_reference_sheets requires --video-pipeline ltx_msr")
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+        raise ValueError("msr_reference_sheets requires --video-pipeline ltx_msr or ltx_ingredients")
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
@@ -192,8 +192,8 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline != "ltx_msr":
-        raise ValueError("msr_prompt_enrich requires --video-pipeline ltx_msr")
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+        raise ValueError("msr_prompt_enrich requires --video-pipeline ltx_msr or ltx_ingredients")
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
