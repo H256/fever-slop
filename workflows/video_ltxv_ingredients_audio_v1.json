@@ -21,7 +21,7 @@
   },
   "2004": {
     "inputs": {
-      "image": "shot_0009_ingredients.png"
+      "image": "feverslop/references/scene_0001_ingredients-369f6534f9f8.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -30,7 +30,7 @@
   },
   "2483": {
     "inputs": {
-      "text": "\n### Reference Sheet Description\n**Left (Character, morwenna):** A woman with iron-gray braided hair, wearing patched wool, leather wraps, and centuries-old boots; her skin remains smooth while her eyes look ancient\n**Right (Setting, woods_day):** Massive, ancient tree trunks with bark knots that resemble human profiles. The ground is spongy and feels unsettlingly alive.\n\n### Target Description\nMorwenna watches Leo from the shadows of the trees. She stands perfectly still among the gnarled roots. Camera: Slow zoom into Morwenna's eyes. Acting: She looks neither cruel nor kind, merely eternal. Morwenna says in English: \"Accept it, Leo. The forest remembers everything.\"",
+      "text": "### Reference Sheet Description\n**Left (Character, warrior_leader):** a battle-hardened warrior with short silver hair, wearing heavy scratched steel plate armor with gold filigree and a tattered crimson cape\n**Right (Setting, cathedral_nave):** a vast gothic cathedral interior with crumbling stone pillars, shattered stained glass windows, and floating dust motes\n### Target Description\nThe silver-haired warrior in heavy ornate plate armor stands amidst the crumbling stone pillars of the Decaying Cathedral Nave during a misty night. The subject drifts slowly through shafts of moonlight with subtle, swaying steps and gentle, heavy arm movements, their gaze intense and focused. Their tattered dark cape and messy silver hair react to the swirling mist and low-level drafts. The lighting shifts as moonlight pierces through shattered stained glass, creating dancing shadows and illuminating floating green necromantic particles. The camera performs a slow forward dolly zoom while maintaining the subject's centered visibility and framing. The environment reacts dynamically as dust motes swirl and stone debris settles in the shifting light.",
       "clip": [
         "5023",
         0
@@ -194,7 +194,7 @@
   },
   "4832": {
     "inputs": {
-      "noise_seed": 575826487735220
+      "noise_seed": 1035726527666219
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -414,7 +414,7 @@
         0
       ],
       "image": [
-        "5107",
+        "5116",
         0
       ]
     },
@@ -427,7 +427,7 @@
     "inputs": {
       "img_compression": 18,
       "image": [
-        "5107",
+        "5116",
         0
       ]
     },
@@ -460,7 +460,7 @@
   "5100": {
     "inputs": {
       "image": [
-        "5107",
+        "5116",
         0
       ]
     },
@@ -471,7 +471,7 @@
   },
   "5102": {
     "inputs": {
-      "value": 720
+      "value": 544
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -480,42 +480,16 @@
   },
   "5103": {
     "inputs": {
-      "value": 1280
+      "value": 960
     },
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "#WIDTH"
     }
   },
-  "5107": {
-    "inputs": {
-      "width": [
-        "5103",
-        0
-      ],
-      "height": [
-        "5102",
-        0
-      ],
-      "upscale_method": "nearest-exact",
-      "keep_proportion": "total_pixels",
-      "pad_color": "0, 0, 0",
-      "crop_position": "center",
-      "divisible_by": 32,
-      "device": "cpu",
-      "image": [
-        "5068",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJv2",
-    "_meta": {
-      "title": "Resize Image v2"
-    }
-  },
   "5108": {
     "inputs": {
-      "value": 215
+      "value": 217
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -540,8 +514,8 @@
   },
   "5110": {
     "inputs": {
-      "audio": "ComfyUI_00056_.mp3",
-      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.023372755467136797"
+      "audio": "feverslop/audio/scholoraid-8b0340a73f2c.mp3",
+      "audioUI": "/api/view?filename=scholoraid-8b0340a73f2c.mp3&type=input&subfolder=feverslop/audio&rand=0.9250485413124243"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -550,8 +524,8 @@
   },
   "5111": {
     "inputs": {
-      "start_index": 214.78,
-      "duration": 224.06,
+      "start_index": 0,
+      "duration": 9,
       "audio": [
         "5110",
         0
@@ -602,7 +576,7 @@
         0
       ],
       "loop_count": 0,
-      "filename_prefix": "ingredients",
+      "filename_prefix": "ltx_ingredients_raw/scene_0001",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -636,6 +610,41 @@
     "class_type": "VRAMCleanup",
     "_meta": {
       "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "5116": {
+    "inputs": {
+      "resize_type": "scale shorter dimension",
+      "resize_type.shorter_size": [
+        "5117",
+        1
+      ],
+      "scale_method": "lanczos",
+      "input": [
+        "5068",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
+    }
+  },
+  "5117": {
+    "inputs": {
+      "expression": "a if a < b else b",
+      "values.a": [
+        "5103",
+        0
+      ],
+      "values.b": [
+        "5102",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
     }
   }
 }

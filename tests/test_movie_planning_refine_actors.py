@@ -1,5 +1,8 @@
 import json
+import sys
 import unittest
+from pathlib import Path
+
 from feverslop.domain.movie import MovieActor
 
 
@@ -207,11 +210,13 @@ class TestConfigFlags(unittest.TestCase):
 class TestScaffoldCLIFlag(unittest.TestCase):
     def test_scaffold_movie_accepts_refine_actors_flag(self):
         import subprocess
+        import os
+        repo_root = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            ["uv", "run", "python", "scaffold_movie.py", "--help"],
+            [sys.executable, "scaffold_movie.py", "--help"],
             capture_output=True,
             text=True,
-            cwd="E:\\workspace\\python\\autoprompter",
+            cwd=str(repo_root),
         )
         self.assertIn("--refine-actors", result.stdout)
 

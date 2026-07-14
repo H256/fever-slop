@@ -435,7 +435,7 @@
         0
       ],
       "image": [
-        "5107",
+        "5112",
         0
       ]
     },
@@ -448,7 +448,7 @@
     "inputs": {
       "img_compression": 18,
       "image": [
-        "5107",
+        "5112",
         0
       ]
     },
@@ -481,7 +481,7 @@
   "5100": {
     "inputs": {
       "image": [
-        "5107",
+        "5112",
         0
       ]
     },
@@ -506,32 +506,6 @@
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "#WIDTH"
-    }
-  },
-  "5107": {
-    "inputs": {
-      "width": [
-        "5103",
-        0
-      ],
-      "height": [
-        "5102",
-        0
-      ],
-      "upscale_method": "nearest-exact",
-      "keep_proportion": "total_pixels",
-      "pad_color": "0, 0, 0",
-      "crop_position": "center",
-      "divisible_by": 32,
-      "device": "cpu",
-      "image": [
-        "5068",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJv2",
-    "_meta": {
-      "title": "Resize Image v2"
     }
   },
   "5108": {
@@ -584,6 +558,41 @@
     "class_type": "VRAMCleanup",
     "_meta": {
       "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "5111": {
+    "inputs": {
+      "expression": "a if a < b else b",
+      "values.a": [
+        "5103",
+        0
+      ],
+      "values.b": [
+        "5102",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "5112": {
+    "inputs": {
+      "resize_type": "scale shorter dimension",
+      "resize_type.shorter_size": [
+        "5111",
+        1
+      ],
+      "scale_method": "lanczos",
+      "input": [
+        "5068",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Resize Image/Mask"
     }
   }
 }

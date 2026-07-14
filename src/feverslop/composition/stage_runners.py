@@ -159,8 +159,8 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_references_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline != "ltx_msr":
-        raise ValueError("msr_references requires --video-pipeline ltx_msr")
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+        raise ValueError("msr_references requires --video-pipeline ltx_msr or ltx_ingredients")
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
@@ -179,8 +179,8 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline != "ltx_msr":
-        raise ValueError("msr_reference_sheets requires --video-pipeline ltx_msr")
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+        raise ValueError("msr_reference_sheets requires --video-pipeline ltx_msr or ltx_ingredients")
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
@@ -192,8 +192,8 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline != "ltx_msr":
-        raise ValueError("msr_prompt_enrich requires --video-pipeline ltx_msr")
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+        raise ValueError("msr_prompt_enrich requires --video-pipeline ltx_msr or ltx_ingredients")
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
@@ -392,16 +392,25 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
             stages.append(PipelineStage.MSR_PROMPT_ENRICH)
         else:
             console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
+    elif args.video_pipeline == "ltx_ingredients":
+        if not args.skip_msr_reference_render:
+            stages.append(PipelineStage.MSR_REFERENCES)
+        else:
+            console.print("Skipping MSR reference rendering; using existing reference manifests.")
+        stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
+        if not args.skip_msr_prompt_enrichment:
+            stages.append(PipelineStage.MSR_PROMPT_ENRICH)
+        else:
+            console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
+        if not getattr(args, "skip_ingredients_sheets", False):
+            stages.append(PipelineStage.INGREDIENTS_SHEETS)
+        else:
+            console.print("Skipping Ingredients sheets; using existing sheets or references.")
     else:
         if not args.skip_storyboard:
             stages.append(PipelineStage.STORYBOARD_FRAMES)
         if not args.skip_storyboard_page:
             stages.append(PipelineStage.STORYBOARD_PAGE)
-    if args.video_pipeline == "ltx_ingredients":
-        if not getattr(args, "skip_ingredients_sheets", False):
-            stages.insert(-1, PipelineStage.INGREDIENTS_SHEETS)
-        else:
-            console.print("Skipping Ingredients sheets; using existing sheets or references.")
     if not args.skip_ltx:
         stages.append(PipelineStage.LTX_RENDER_SCENES)
     if not args.skip_final_concat:
