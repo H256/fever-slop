@@ -77,9 +77,17 @@ class ComfyUIIngredientsVideoRenderBackend:
     def render_video(self, request: VideoRenderRequest) -> Path:
         scene_number = int(request.scene_number)
         rolling = self._rolling_spec(request.scene)
+        comfy_audio_name = None
+        if request.upload_audio or request.uploaded_audio_name:
+            comfy_audio_name = self.asset_uploader.resolve_audio_name(
+                request.audio_file,
+                upload_audio=request.upload_audio,
+                uploaded_audio_name=request.uploaded_audio_name,
+            )
         workflow = self.build_workflow(
             request.scene,
             prompt=request.prompt,
+            comfy_audio_name=comfy_audio_name,
             rolling=rolling,
         )
         workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_label)
@@ -109,6 +117,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         scene: dict,
         *,
         prompt: str,
+        comfy_audio_name: str | None = None,
         rolling: AudioWindowSpec | None = None,
     ) -> dict:
         scene_number = int(scene["scene"])
@@ -129,6 +138,8 @@ class ComfyUIIngredientsVideoRenderBackend:
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", height)
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
         patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
+        if comfy_audio_name:
+            self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name, rolling=rolling)
         _patch_i2v_latent_lengths(patcher, render_frame_count)
 
         return patcher.get()
@@ -167,6 +178,32 @@ class ComfyUIIngredientsVideoRenderBackend:
             assembled = str(prompt).strip()
 
         patcher.set_input_by_title("#PROMPT_POSITIVE", "text", assembled)
+
+    @staticmethod
+    def _patch_audio_inputs(
+        patcher: WorkflowPatcher,
+        scene: dict,
+        *,
+        comfy_audio_name: str,
+        rolling: AudioWindowSpec | None = None,
+    ) -> None:
+        patcher.try_set_existing_input_by_title("#LOAD_AUDIO", "audio", comfy_audio_name)
+        patcher.try_set_existing_input_by_title(
+            "#LOAD_AUDIO",
+            "audioUI",
+            f"/api/view?filename={comfy_audio_name}&type=input",
+        )
+        fps = int(scene.get("fps", 0) or 0)
+        frame_count = int(scene.get("frame_count", 0) or 0)
+        duration = scene.get("duration_seconds")
+        if duration is None and fps > 0 and frame_count > 0:
+            duration = max(0.0, (frame_count - 1) / float(fps))
+        start_index = float(scene.get("abs_start_seconds", 0.0) or 0.0)
+        if rolling:
+            start_index = float(rolling["audio_start_seconds"])
+            duration = float(rolling["audio_duration_seconds"])
+        patcher.try_set_existing_input_by_title("#TRIM_AUDIO", "start_index", start_index)
+        patcher.try_set_existing_input_by_title("#TRIM_AUDIO", "duration", float(duration or 0.0))
 
     @staticmethod
     def _patch_seed_inputs(patcher: WorkflowPatcher, seed: int) -> None:

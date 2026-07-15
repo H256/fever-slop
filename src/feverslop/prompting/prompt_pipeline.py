@@ -14,6 +14,7 @@ from feverslop.prompting.music_video_prompt_style import (
 )
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
+from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 
 
 class MusicVideoPromptPipeline:
@@ -195,11 +196,20 @@ Rules for locations:
 
         for segment_id, concept in concept_prompts.items():
             segment_type = segment_types.get(str(segment_id), "")
+            references = {}
             if isinstance(concept, dict):
                 segment_type = str(concept.get("type", ""))
                 concept_text = str(concept.get("concept", ""))
+                references = dict(concept.get("references") or {})
             else:
                 concept_text = str(concept)
+            context = global_context or {}
+            scene_cast = scene_cast_to_prompt_payload(resolve_scene_cast(
+                selected_actor_ids=references.get("actor_ids") or [],
+                available_actors=context.get("actors") or [],
+                subject_mode=str(context.get("subject_mode") or "multi"),
+                max_scene_actors=int(context.get("max_scene_actors") or 4),
+            ))
 
             camera_motion = self.llm.complete_prompt(
                 system_prompt=build_detail_system_prompt(
@@ -210,6 +220,7 @@ Rules for locations:
                 prompt=json.dumps(
                     {
                         "scene_concept": concept_text,
+                        "scene_cast": scene_cast,
                         "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
                     },
                     ensure_ascii=False,
@@ -226,6 +237,7 @@ Rules for locations:
                 prompt=json.dumps(
                     {
                         "scene_concept": concept_text,
+                        "scene_cast": scene_cast,
                         "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
                     },
                     ensure_ascii=False,

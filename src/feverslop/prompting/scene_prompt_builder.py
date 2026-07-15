@@ -11,6 +11,7 @@ from feverslop.prompting.music_video_prompt_style import (
 )
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
+from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 
 
 def clean_llm_text(text: str) -> str:
@@ -76,6 +77,7 @@ class ScenePromptBuilder:
         segment: dict,
         concept: str,
         global_context: dict,
+        scene_cast: dict | None = None,
         custom_instructions: str = "",
         trigger_word: str = "",
     ) -> str:
@@ -84,6 +86,7 @@ class ScenePromptBuilder:
             "performance_mode": segment.get("type", ""),
             "scene_concept": concept,
             "current_visual_prompt": concept,
+            "scene_cast": scene_cast or {},
             "global_subject": global_context["subject"],
             "story_idea": global_context["story_idea"],
             "style": global_context["style"],
@@ -132,6 +135,7 @@ class ScenePromptBuilder:
         concept: str,
         scene_details: dict,
         global_context: dict,
+        scene_cast: dict | None = None,
         t2i_prompt: str = "",
         custom_instructions: str = "",
     ) -> str:
@@ -140,6 +144,7 @@ class ScenePromptBuilder:
             concept=concept,
             scene_details=scene_details,
             global_context=global_context,
+            scene_cast=scene_cast,
             t2i_prompt=t2i_prompt,
             custom_instructions=custom_instructions,
         )
@@ -179,12 +184,20 @@ class ScenePromptBuilder:
                     global_context,
                 )
                 concept = str(concept.get("concept", ""))
+            cast = resolve_scene_cast(
+                selected_actor_ids=references.get("actor_ids") or [],
+                available_actors=global_context.get("actors") or [],
+                subject_mode=str(global_context.get("subject_mode") or "multi"),
+                max_scene_actors=int(global_context.get("max_scene_actors") or 4),
+            )
+            scene_cast = scene_cast_to_prompt_payload(cast)
             details = scene_details.get(segment_id, {})
 
             t2i_prompt = self.build_zimage_prompt(
                 segment=segment,
                 concept=concept,
                 global_context=global_context,
+                scene_cast=scene_cast,
                 custom_instructions=zimage_instructions,
                 trigger_word=trigger_word,
             )
@@ -194,6 +207,7 @@ class ScenePromptBuilder:
                 concept=concept,
                 scene_details=details,
                 global_context=global_context,
+                scene_cast=scene_cast,
                 t2i_prompt=t2i_prompt,
                 custom_instructions=ltx_instructions,
             )

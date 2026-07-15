@@ -189,6 +189,49 @@ class ScenePromptBuilderTests(unittest.TestCase):
 
         self.assertEqual({"actor_ids": ["singer"], "location_id": "stage"}, data[0]["references"])
 
+    def test_build_scene_prompts_passes_selected_cast_to_t2i_and_i2v(self):
+        llm = FakeLLM()
+        builder = ScenePromptBuilder(llm)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_005", "type": "mixed"}],
+                concept_prompts={
+                    "segment_005": {
+                        "concept": "The party approaches the gate.",
+                        "references": {
+                            "actor_ids": ["warrior_lead", "mage_lead", "rogue_lead"],
+                            "location_id": "cathedral",
+                        },
+                    }
+                },
+                scene_details={"segment_005": {"camera_motion": "dolly", "character_motion": "advance"}},
+                global_context={
+                    "subject": "warrior_lead",
+                    "story_idea": "A party enters a ruined cathedral.",
+                    "style": "cinematic realism",
+                    "locations": ["Cathedral"],
+                    "actors": [
+                        {"id": "warrior_lead", "name": "The Warrior"},
+                        {"id": "mage_lead", "name": "The Mage"},
+                        {"id": "rogue_lead", "name": "The Rogue"},
+                    ],
+                    "structured_locations": [{"id": "cathedral", "name": "Cathedral"}],
+                    "subject_mode": "multi",
+                    "max_scene_actors": 4,
+                },
+                output_json_path=Path(temp_dir) / "scene_prompts.json",
+                artifact_store=JsonArtifactStore(),
+            )
+
+        t2i_payload = json.loads(llm.calls[0]["prompt"])
+        i2v_payload = json.loads(llm.calls[1]["prompt"])
+        expected_ids = ["warrior_lead", "mage_lead", "rogue_lead"]
+        self.assertEqual(expected_ids, t2i_payload["scene_cast"]["visible_actor_ids"])
+        self.assertEqual("warrior_lead", t2i_payload["scene_cast"]["primary_actor_id"])
+        self.assertTrue(t2i_payload["scene_cast"]["requires_group_staging"])
+        self.assertEqual(expected_ids, i2v_payload["scene_cast"]["visible_actor_ids"])
+
     def test_single_subject_mode_forces_first_actor_reference(self):
         llm = FakeLLM()
         builder = ScenePromptBuilder(llm)

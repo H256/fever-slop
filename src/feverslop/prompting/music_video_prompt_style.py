@@ -56,6 +56,11 @@ Priority:
 
 Rules:
 - Create one polished text-to-image prompt.
+- Treat scene_cast.visible_actor_ids as the complete visible cast when scene_cast is provided.
+- Name every selected actor by id and give each one a visible action or pose.
+- For multiple selected actors, describe their spatial relationship and one coherent shared action.
+- Keep scene_cast.primary_actor_id as the visual focus without omitting the supporting actors.
+- Do not add actors outside scene_cast.visible_actor_ids. A generic word such as party or group does not replace naming them.
 - If location_constraint is provided in the user input, follow it as a mandatory rule. Every Z-Image prompt must visibly take place in one allowed location.
 - Treat the current visual prompt as the base scene description.
 - Expand and improve that scene using the style/theme.
@@ -109,6 +114,11 @@ The [Subject and performance state] in [setting/environment] during [time/weathe
 
 Rules:
 - This is image-to-video.
+- Treat scene_cast.visible_actor_ids as the complete visible cast when scene_cast is provided.
+- Name every selected actor by id and give each one visible movement.
+- For multiple selected actors, preserve their spatial relationship and coherent shared action for the full shot duration.
+- Keep scene_cast.primary_actor_id as the performance focus without omitting the supporting actors.
+- Do not add actors outside scene_cast.visible_actor_ids. A generic word such as party or group does not replace naming them.
 - Keep it vivid, fast, cinematic, dynamic, and video-ready.
 - Keep the subject visible and clearly framed throughout.
 - Use one established location from the user's concept prompt or location list.
@@ -179,6 +189,9 @@ Prompt guidance:
 - If GLOBAL_CONTEXT.structured_locations is provided, choose location_id only from those location ids.
 - If GLOBAL_CONTEXT.subject_mode is "single", every scene references exactly one actor: the first available actor id.
 - Otherwise every scene references 1 to GLOBAL_CONTEXT.max_scene_actors actor ids, never more than 4.
+- Name every references.actor_ids entry in concept and describe a visible action for each selected actor.
+- When multiple actors are selected, describe their spatial relationship and one coherent shared action.
+- A collective noun such as party, group, or crowd does not replace naming every selected actor id.
 - If prompt_guidance is provided, treat its categories as user interface values for this run.
 - Shot types, character visibility, environments, lighting, camera motion, physical interaction, facial expression, outfit rules, prompt structure, list handling, and word count are guidance for visual continuity and variety.
 - Follow explicit prompt_guidance values unless they conflict with segment type, subject identity, allowed locations, or the performance policy.
@@ -227,6 +240,8 @@ Create exactly one matching detail line for the requested label.
 
 Rules:
 - Output only the detail line.
+- When scene_cast is provided, keep the detail compatible with every scene_cast.visible_actor_ids entry.
+- For Character Motion with multiple selected actors, name every selected actor and describe coordinated movement plus their spatial relationship.
 - Keep the line short and specific.
 - Follow the performance policy below.
 - Do not combine multiple categories in one line.
@@ -245,6 +260,7 @@ def build_video_payload(
     concept: str,
     scene_details: dict[str, Any],
     global_context: dict[str, Any],
+    scene_cast: dict[str, Any] | None = None,
     t2i_prompt: str = "",
     custom_instructions: str = "",
 ) -> dict[str, Any]:
@@ -262,6 +278,7 @@ def build_video_payload(
         "performance_policy": performance_policy(segment_type, silent_mode=silent_mode),
         "t2i_prompt": t2i_prompt,
         "scene_concept": concept,
+        "scene_cast": scene_cast or {},
         "camera_motion": scene_details.get("camera_motion", ""),
         "character_motion": scene_details.get("character_motion", ""),
         "custom_instructions": custom_instructions,

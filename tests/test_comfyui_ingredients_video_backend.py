@@ -76,6 +76,19 @@ def _build_minimal_ingredients_workflow():
     }
 
 
+def _build_audio_ingredients_workflow():
+    workflow = _build_minimal_ingredients_workflow()
+    workflow.update({
+        "12": {"inputs": {"audio": "", "audioUI": ""}, "_meta": {"title": "#LOAD_AUDIO"}, "class_type": "LoadAudio"},
+        "13": {
+            "inputs": {"start_index": 0, "duration": 0, "audio": ["12", 0]},
+            "_meta": {"title": "#TRIM_AUDIO"},
+            "class_type": "TrimAudioDuration",
+        },
+    })
+    return workflow
+
+
 class ComfyUIIngredientsBackendTests(unittest.TestCase):
     def test_backend_patches_ingredients_image(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -468,12 +481,68 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     audio_file=Path(""),
                     storyboard_dir=Path(""),
+                    upload_audio=False,
                 )
             )
 
             self.assertEqual(len(render_queue.calls), 1)
             self.assertEqual(render_queue.calls[0]["scene_number"], 1)
             self.assertEqual(output.name, "scene_0001_raw.mp4")
+
+    def test_render_video_patches_audio_trim_inputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            audio = temp / "song.mp3"
+            sheet.write_bytes(b"sheet")
+            audio.write_bytes(b"audio")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_audio_ingredients_workflow()), encoding="utf-8")
+            (temp / "out" / "raw").mkdir(parents=True, exist_ok=True)
+
+            render_queue = FakeRenderQueue()
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                preroll_frames=0,
+                tail_loss_frames=0,
+                round_render_frames_to_8n1=False,
+                postprocess=False,
+                render_queue=render_queue,
+                model_resolver=FakeModelResolver(),
+            )
+
+            backend.render_video(
+                VideoRenderRequest(
+                    scene={
+                        "scene": 2,
+                        "fps": 24,
+                        "frame_count": 49,
+                        "abs_start_seconds": 3.5,
+                        "duration_seconds": 2.0,
+                        "ingredients_scene_sheet": "sheet.png",
+                        "ltx": {
+                            "ingredients_scene_sheet_description": "desc",
+                            "ingredients_target_prompt": "target",
+                        },
+                    },
+                    scene_number=2,
+                    prompt="fallback",
+                    workflow_path=workflow_path,
+                    output_dir=temp / "out",
+                    audio_file=audio,
+                    storyboard_dir=Path(""),
+                )
+            )
+
+            workflow = render_queue.calls[0]["workflow"]
+            audio_input = workflow["12"]["inputs"]["audio"]
+            self.assertTrue(audio_input.startswith("feverslop/audio/song-"))
+            self.assertEqual(f"/api/view?filename={audio_input}&type=input", workflow["12"]["inputs"]["audioUI"])
+            self.assertEqual(3.5, workflow["13"]["inputs"]["start_index"])
+            self.assertEqual(2.0, workflow["13"]["inputs"]["duration"])
 
     def test_debug_workflow_written(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -516,6 +585,7 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     audio_file=Path(""),
                     storyboard_dir=Path(""),
+                    upload_audio=False,
                 )
             )
 

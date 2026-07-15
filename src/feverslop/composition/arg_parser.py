@@ -17,6 +17,7 @@ class PipelineStage(str, Enum):
     MSR_REFERENCE_SHEETS = "msr_reference_sheets"
     MSR_PROMPT_ENRICH = "msr_prompt_enrich"
     INGREDIENTS_SHEETS = "ingredients_sheets"
+    LTX_PREPARE_WORKFLOWS = "ltx_prepare_workflows"
     LTX_RENDER_SCENES = "ltx_render_scenes"
     CONCAT_VIDEO_ONLY = "concat_video_only"
     MUX_ORIGINAL_AUDIO = "mux_original_audio"

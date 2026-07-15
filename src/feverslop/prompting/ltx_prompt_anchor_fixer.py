@@ -29,6 +29,9 @@ def _sentence_limit(value: str, max_chars: int = 850) -> str:
     if len(value) <= max_chars:
         return value
     truncated = value[:max_chars].rsplit(" ", 1)[0].strip()
+    sentence_end = max(truncated.rfind(". "), truncated.rfind("! "), truncated.rfind("? "))
+    if sentence_end >= max_chars // 2:
+        return truncated[:sentence_end + 1]
     while truncated and truncated[-1] in ".,;:!?":
         truncated = truncated.rstrip(".,;:!? ")
     return truncated
@@ -103,6 +106,18 @@ class LTXPromptAnchorFixer:
 
         return scene
 
+    def _scene_subject_anchor(self, scene: dict) -> str:
+        actor_ids = [
+            _clean_text(actor_id)
+            for actor_id in scene.get("references", {}).get("actor_ids", [])
+            if _clean_text(actor_id)
+        ]
+        if not actor_ids:
+            return self.subject_anchor
+        if len(actor_ids) == 1:
+            return actor_ids[0]
+        return ", ".join(actor_ids[:-1]) + f" and {actor_ids[-1]}"
+
     def _fix_t2i_prompt(self, scene: dict) -> str:
         prompt = _clean_text(scene["ltx"].get("t2i_prompt", ""))
         if not prompt:
@@ -117,12 +132,13 @@ class LTXPromptAnchorFixer:
         camera = _clean_text(scene.get("metadata", {}).get("camera_motion", ""))
         motion = _clean_text(scene.get("metadata", {}).get("character_motion", ""))
         concept = _clean_text(scene.get("metadata", {}).get("base_concept", ""))
+        subject_anchor = self._scene_subject_anchor(scene)
 
         if has_vocals:
             prefix = (
                 f"Start frame: {z_prompt}. "
                 f"Lock the first frame to this exact composition and continue directly from it without fades, dissolves, crossfades, or shot changes. "
-                f"Medium cinematic shot of {self.subject_anchor}, clearly visible in the foreground, "
+                f"Medium cinematic shot of {subject_anchor}, clearly visible in the foreground, "
                 f"same identity, same wardrobe, same lighting, same location. "
                 f"The main subject remains visible for lip sync throughout the shot. "
                 f"Do not cut away to only the tree, bark, ropes, canopy, shadows, or macro details. "
@@ -156,19 +172,25 @@ class LTXPromptAnchorFixer:
         z_prompt = _clean_text(scene["ltx"].get("t2i_prompt", "")) or _clean_text(scene.get("z_image", {}).get("prompt", ""))
         if not z_prompt:
             z_prompt = _clean_text(scene["ltx"].get("base_prompt", ""))
+        # Reserve prompt space for performance and continuity instructions. Those
+        # are operational requirements, while the startframe text is context.
+        z_prompt = _sentence_limit(z_prompt, max(120, self.max_base_prompt_chars // 2))
 
         camera = _clean_text(scene.get("metadata", {}).get("camera_motion", ""))
         motion = _clean_text(scene.get("metadata", {}).get("character_motion", ""))
         concept = _clean_text(scene.get("metadata", {}).get("base_concept", ""))
+        subject_anchor = self._scene_subject_anchor(scene)
 
         if has_vocals:
+            verb = "remains" if len(scene.get("references", {}).get("actor_ids", [])) <= 1 else "remain"
+            sing_verb = "sings" if verb == "remains" else "sing"
             performance = (
-                f"{self.subject_anchor} remains clearly visible and sings with controlled lip sync; "
+                f"{subject_anchor} {verb} clearly visible and {sing_verb} with controlled lip sync; "
                 "the body stays in the same starting pose and framing."
             )
         else:
             performance = (
-                f"{self.subject_anchor} remains clearly visible with a relaxed still mouth; "
+                f"{subject_anchor} remains clearly visible with a relaxed still mouth; "
                 "only subtle breathing, fabric, hair, and atmospheric motion occur."
             )
 
@@ -198,10 +220,12 @@ class LTXPromptAnchorFixer:
 
         camera = _clean_text(scene.get("metadata", {}).get("camera_motion", ""))
         motion = _clean_text(scene.get("metadata", {}).get("character_motion", ""))
+        subject_anchor = self._scene_subject_anchor(scene)
+        subject_verb = "remains" if len(scene.get("references", {}).get("actor_ids", [])) <= 1 else "remain"
 
         if state == "singing":
             fixed = (
-                f"{self.subject_anchor} remains clearly visible in the foreground, "
+                f"{subject_anchor} {subject_verb} clearly visible in the foreground, "
                 f"singing with controlled lip sync and focused emotion; "
                 "do not fade, dissolve, crossfade, or cut away to a different shot"
             )
@@ -212,7 +236,7 @@ class LTXPromptAnchorFixer:
             fixed += "; tree, ropes, shadows, fog, and branches move only behind or around the subject"
         elif has_vocals:
             fixed = (
-                f"{self.subject_anchor} remains clearly visible in the foreground, silent with no lip movement; "
+                f"{subject_anchor} {subject_verb} clearly visible in the foreground, silent with no lip movement; "
                 "do not fade, dissolve, crossfade, or cut away to a different shot"
             )
             if camera:

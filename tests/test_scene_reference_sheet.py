@@ -451,6 +451,10 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
         movie = tmp / "movie"
         refs = movie / "references"
         refs.mkdir(parents=True, exist_ok=True)
+        actor_sheet = refs / "actor_1.png"
+        location_sheet = refs / "loc_1.png"
+        Image.new("RGB", (64, 64), "white").save(actor_sheet)
+        Image.new("RGB", (64, 64), "gray").save(location_sheet)
         if shot_fields is None:
             shot_fields = {}
         (movie / "render_plan.json").write_text(
@@ -471,8 +475,8 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
         )
         (refs / "manifest.json").write_text(
             json.dumps({
-                "actors": [{"id": "actor_1", "name": "Alice", "visual_description": "a woman with brown hair"}],
-                "locations": [{"id": "loc_1", "name": "Room", "visual_description": "a quiet room"}],
+                "actors": [{"id": "actor_1", "name": "Alice", "visual_description": "a woman with brown hair", "sheet_path": "movie/references/actor_1.png"}],
+                "locations": [{"id": "loc_1", "name": "Room", "visual_description": "a quiet room", "sheet_path": "movie/references/loc_1.png"}],
             }),
             encoding="utf-8",
         )
@@ -569,6 +573,9 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             self.assertEqual(shot["ingredients_target_prompt"], shot["ltx"]["ingredients_target_prompt"])
             prompt = shot["ingredients_target_prompt"]
             self.assertTrue(prompt.startswith("### Target Description\n"))
+            self.assertIn("Use Character `actor_1` from Left", prompt)
+            self.assertIn("Use Setting `loc_1` from Right", prompt)
+            self.assertIn("Do not add or omit visible characters", prompt)
             self.assertIn("slow dolly", prompt)
             self.assertIn("controlled fear", prompt)
             self.assertNotIn("Full-body cinematic character reference sheet", prompt)

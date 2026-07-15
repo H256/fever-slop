@@ -154,6 +154,88 @@ class FakeMoviePlanner:
 
 
 class MovieProjectTests(unittest.TestCase):
+    def test_prepared_movie_workflows_use_identical_strict_scene_filter(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import prepare_movie_workflows
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            plan = project / "plan.json"
+            plan.write_text("{}", encoding="utf-8")
+            materializer = Mock()
+            scenes = [
+                {"scene": 1, "description": "one"},
+                {"scene": 2, "description": "two"},
+                {"scene": 3, "description": "three"},
+            ]
+
+            prepared = prepare_movie_workflows(
+                project_dir=project,
+                render_plan_path=plan,
+                pipeline="ltx_msr",
+                scenes=scenes,
+                selected_scenes=[1, 3],
+                materializer=materializer,
+                prompt_for_scene=lambda scene: scene["description"],
+            )
+
+            self.assertEqual([1, 3], [call.args[0].scene["scene"] for call in materializer.prepare.call_args_list])
+            self.assertEqual(SceneArtifactLayout(project).scenes_dir, prepared)
+
+    def test_prepared_movie_render_requires_selected_manifest_and_names_prepare(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import render_prepared_movie_workflows
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+
+            with self.assertRaisesRegex(FileNotFoundError, "prepare|--write-debug-workflows"):
+                render_prepared_movie_workflows(
+                    project_dir=project,
+                    scenes=[{"scene": 1}, {"scene": 2}],
+                    selected_scenes=[2],
+                    renderer=Mock(),
+                    postprocessor=Mock(),
+                )
+
+    def test_prepared_movie_render_writes_canonical_final_and_reads_legacy_fallback(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import render_prepared_movie_workflows
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.scene_manifest(2).parent.mkdir(parents=True)
+            layout.scene_manifest(2).write_text("{}", encoding="utf-8")
+            layout.scene_workflow(2).write_text("{}", encoding="utf-8")
+            legacy = project / "output" / "movie" / "ltx_msr"
+            legacy.mkdir(parents=True)
+            (legacy / "scene_0001.mp4").write_bytes(b"legacy")
+            renderer = Mock()
+            renderer.render.return_value = layout.scene_final_video(2)
+            layout.scene_final_video(2).write_bytes(b"new")
+            postprocessor = FakeMoviePostprocessor()
+
+            result = render_prepared_movie_workflows(
+                project_dir=project,
+                scenes=[{"scene": 1}, {"scene": 2}],
+                selected_scenes=[2],
+                renderer=renderer,
+                postprocessor=postprocessor,
+                legacy_dirs=[legacy],
+            )
+
+            self.assertEqual(layout.movie, result)
+            self.assertEqual(
+                [legacy / "scene_0001.mp4", layout.scene_final_video(2)],
+                postprocessor.concat_lists[0][0],
+            )
+
     def test_movie_scaffold_persists_screenplay_memory_and_shot_cards(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
@@ -1535,6 +1617,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("Reference image 2 (Ivo): white suit and silver cane.", ltx["msr_global_prompt"])
             self.assertIn("white suit", ltx["msr_global_prompt"])
             self.assertIn("Reference image 3 (Scene): quiet archive room.", ltx["msr_global_prompt"])
+            self.assertIn("Visible cast: Mara (`mara`) and Ivo (`ivo`)", ltx["original_style_i2v_prompt"])
 
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
@@ -2020,6 +2103,7 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual("stone_clearing", data["scene_views"][0]["location_id"])
         self.assertIn(data["shots"][0]["view_id"], {view["view_id"] for view in data["scene_views"]})
         self.assertEqual(["leo", "morwenna"], data["shots"][0]["selected_actor_ids"])
+        self.assertIn("Visible cast: `leo`, `morwenna`", data["shots"][0]["video_prompt"])
         self.assertIn("Scene-only background plate", data["shots"][0]["base_plate_prompt"])
         self.assertEqual(["leo", "morwenna"], [item["actor_id"] for item in data["shots"][0]["edit_passes"]])
         self.assertIn("Add only leo", data["shots"][0]["edit_passes"][0]["prompt"])
@@ -2641,6 +2725,63 @@ class MovieProjectTests(unittest.TestCase):
             queued_workflow = queue.calls[0][0]
             self.assertFalse(any("audio" in key.lower() for node in queued_workflow.values() for key in node.get("inputs", {})))
 
+    def test_comfyui_movie_ingredients_adapter_disables_audio_upload(self):
+        from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+        from feverslop.adapters.movie_ingredients_visual import ComfyUIMovieIngredientsVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            render_plan_path = temp / "movie" / "render_plan_ingredients.json"
+            render_plan_path.parent.mkdir(parents=True, exist_ok=True)
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Ingredient Movie",
+                    "fps": 24,
+                    "scenes": [{
+                        "scene": 1,
+                        "duration_seconds": 2.0,
+                        "ingredients_scene_sheet": str(sheet),
+                        "ltx": {"ingredients_target_prompt": "target"},
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            workflow_path = temp / "ingredients.json"
+            workflow_path.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#INGREDIENTS"}, "class_type": "LoadImage"},
+                    "2": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}, "class_type": "CLIPTextEncode"},
+                    "3": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "4": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                    "5": {"inputs": {"value": 49}, "_meta": {"title": "#FRAMES"}},
+                    "6": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMERATE"}},
+                }),
+                encoding="utf-8",
+            )
+            queue = FakeMovieRenderQueue()
+            asset_uploader = NativeAudioAssetUploader()
+            postprocessor = FakeMoviePostprocessor()
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=object(),
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                asset_uploader=asset_uploader,
+                render_queue=queue,
+                postprocessor=postprocessor,
+                postprocess=False,
+            )
+
+            final = ComfyUIMovieIngredientsVisualAdapter(backend=backend).render_movie(
+                project_dir=temp,
+                render_plan_path=render_plan_path,
+            )
+
+            self.assertEqual(temp / "output" / "movie" / "ingredient-movie.mp4", final)
+            self.assertEqual([], asset_uploader.audio_calls)
+
     def test_comfyui_movie_adapter_renders_shots_with_ltx_native_audio(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
 
@@ -3255,6 +3396,11 @@ class MovieProjectTests(unittest.TestCase):
             config={"dialogue_language": "German"},
         )
         planner.plan_shots_from_bible(bible=bible, desired_length=30, width=640, height=480)
+
+        prompts = "\n".join(planner.llm.calls)
+        self.assertIn("Name every actor_ids entry in action", prompts)
+        self.assertIn("spatial relationship", prompts)
+        self.assertIn("collective noun", prompts)
 
         prompts = "\n\n".join(planner.llm.calls)
         self.assertIn("actor visual_description", prompts)

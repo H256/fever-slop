@@ -7,8 +7,10 @@ import json
 import math
 
 from feverslop.application.reference_bible import (
+    build_ingredients_target_binding,
     compose_scene_reference_sheet,
     generate_scene_sheet_description,
+    generate_scene_sheet_anchors,
     ingredients_sheet_size,
 )
 
@@ -128,15 +130,21 @@ def _enrich_scene(
             relative_sheet = output_path.as_posix()
 
         description = generate_scene_sheet_description(images, num_cols, sheet_size)
+        anchors = generate_scene_sheet_anchors(images, num_cols)
         enriched["ingredients_scene_sheet"] = relative_sheet
         enriched["ingredients_scene_sheet_description"] = description
+        enriched["ingredients_scene_sheet_anchors"] = anchors
     else:
         enriched["ingredients_scene_sheet"] = ""
         enriched["ingredients_scene_sheet_description"] = ""
+        enriched["ingredients_scene_sheet_anchors"] = []
 
     ltx = scene.get("ltx") or {}
     target_prompt = str(ltx.get("i2v_prompt_from_t2i") or "").strip()
-    enriched["ingredients_target_prompt"] = "### Target Description\n" + target_prompt if target_prompt else ""
+    binding = build_ingredients_target_binding(enriched.get("ingredients_scene_sheet_anchors") or [])
+    enriched["ingredients_target_prompt"] = (
+        "### Target Description\n" + binding + target_prompt if target_prompt else ""
+    )
 
     enriched_ltx = dict(enriched.get("ltx") or {})
     enriched_ltx["ingredients_scene_sheet_description"] = enriched.get("ingredients_scene_sheet_description", "")

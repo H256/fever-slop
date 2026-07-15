@@ -45,6 +45,19 @@ class PerformancePolicyTests(unittest.TestCase):
 
 
 class PromptInstructionTests(unittest.TestCase):
+    def test_image_and_video_prompts_require_explicit_group_staging(self):
+        for prompt in (build_t2i_system_prompt(), build_i2v_system_prompt("mixed")):
+            self.assertIn("scene_cast.visible_actor_ids", prompt)
+            self.assertIn("Name every selected actor", prompt)
+            self.assertIn("spatial relationship", prompt)
+
+    def test_concept_prompt_requires_selected_actor_ids_in_story_prose(self):
+        prompt = build_concept_mapper_system_prompt()
+
+        self.assertIn("Name every references.actor_ids entry in concept", prompt)
+        self.assertIn("collective noun", prompt)
+        self.assertIn("spatial relationship", prompt)
+
     def test_location_constraint_requires_allowed_locations_when_configured(self):
         constraint = build_location_constraint([
             "A lush, ancient forest with dappled sunlight",

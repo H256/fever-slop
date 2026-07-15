@@ -8,6 +8,7 @@ from typing import Callable, Any
 
 from PIL import Image, ImageDraw, ImageOps
 
+from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
 
 
@@ -529,6 +530,42 @@ def generate_scene_sheet_description(images: list[dict], num_cols: int, size: tu
     return "\n".join(lines)
 
 
+def generate_scene_sheet_anchors(images: list[dict], num_cols: int) -> list[dict[str, str]]:
+    if not images:
+        return []
+    num_rows = math.ceil(len(images) / num_cols)
+    return [
+        {
+            "id": str(image.get("id") or "").strip(),
+            "type": str(image.get("type") or "").strip(),
+            "position": _panel_position_label(
+                index // num_cols,
+                index % num_cols,
+                num_rows,
+                num_cols,
+                index,
+                len(images),
+            ),
+        }
+        for index, image in enumerate(images)
+    ]
+
+
+def build_ingredients_target_binding(anchors: list[dict]) -> str:
+    lines = []
+    for anchor in anchors:
+        item_id = str(anchor.get("id") or "").strip()
+        position = str(anchor.get("position") or "").strip()
+        item_type = str(anchor.get("type") or "").strip()
+        if item_type == "actor":
+            lines.append(f"Use Character `{item_id}` from {position} as a visible character.")
+        elif item_type == "location":
+            lines.append(f"Use Setting `{item_id}` from {position} as the environment.")
+    if any(str(anchor.get("type")) == "actor" for anchor in anchors):
+        lines.append("Do not add or omit visible characters.")
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
 def _infer_reference_artifact_base_dir(output_dir: Path) -> Path:
     if output_dir.name == "references" and output_dir.parent.name == "output":
         return output_dir.parent.parent
@@ -547,6 +584,30 @@ def enrich_render_plan_with_reference_sheets(
     render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
     actor_manifests = _load_manifests_by_id(references_dir / "actors")
     location_manifests = _load_manifests_by_id(references_dir / "locations")
+
+    required_actor_ids = {
+        str(actor_id)
+        for scene in render_plan
+        for actor_id in scene.get("references", {}).get("actor_ids", [])
+    }
+    required_location_ids = {
+        str(location_id)
+        for scene in render_plan
+        if (location_id := scene.get("references", {}).get("location_id"))
+    }
+    missing_actor_ids = sorted(required_actor_ids - actor_manifests.keys())
+    missing_location_ids = sorted(required_location_ids - location_manifests.keys())
+    if missing_actor_ids or missing_location_ids:
+        details = []
+        if missing_actor_ids:
+            details.append(f"actors: {', '.join(missing_actor_ids)}")
+        if missing_location_ids:
+            details.append(f"locations: {', '.join(missing_location_ids)}")
+        raise FeverSlopValidationError(
+            "Missing reference manifests for render plan ("
+            + "; ".join(details)
+            + "). Run --stage msr_references before --stage msr_reference_sheets."
+        )
 
     total = len(render_plan)
     for index, scene in enumerate(render_plan, start=1):

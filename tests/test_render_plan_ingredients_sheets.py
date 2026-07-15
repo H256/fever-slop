@@ -82,6 +82,9 @@ class TestIngredientsEnrichment(unittest.TestCase):
             self.assertIn("ingredients_scene_sheet_description", scene["ltx"])
             self.assertIn("ingredients_target_prompt", scene["ltx"])
             self.assertIn("cinematic shot of artist singing", scene["ingredients_target_prompt"])
+            self.assertIn("Use Character `artist_1` from Left", scene["ingredients_target_prompt"])
+            self.assertIn("Use Setting `stage` from Right", scene["ingredients_target_prompt"])
+            self.assertIn("Do not add or omit visible characters", scene["ingredients_target_prompt"])
 
     def test_calls_on_scene_complete_callback(self):
         with tempfile.TemporaryDirectory() as tmp:

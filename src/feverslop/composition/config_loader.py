@@ -8,10 +8,12 @@ import os
 import re
 
 from feverslop.path_utils import coerce_local_path
+from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 @dataclass(frozen=True)
 class PipelineRunContext:
+    artifact_layout: SceneArtifactLayout
     project_config_path: Path
     project_config_dir: Path
     input_audio: Path
@@ -83,20 +85,25 @@ def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> P
     return concat_file
 
 
-def collect_render_plan_scene_clips(render_plan_path: str | Path, output_dir: str | Path) -> list[Path]:
+def collect_render_plan_scene_clips(
+    render_plan_path: str | Path,
+    output_dir: str | Path,
+    *,
+    layout: SceneArtifactLayout | None = None,
+) -> list[Path]:
     output_dir = Path(output_dir)
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
     clips: list[Path] = []
     missing: list[Path] = []
     for scene in render_plan:
         scene_number = int(scene["scene"])
-        candidates = [
+        candidates = ([layout.scene_final_video(scene_number)] if layout else []) + [
             output_dir / f"scene_{scene_number:04}.mp4",
             output_dir / "final" / f"scene_{scene_number:04}.mp4",
         ]
         clip = next((candidate for candidate in candidates if candidate.exists()), None)
         if clip is None:
-            missing.append(candidates[0])
+            missing.append(layout.scene_final_video(scene_number) if layout else candidates[0])
             continue
         clips.append(clip)
 
@@ -153,7 +160,8 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
     timeline_dir = project_output_dir / "timeline"
     prompts_dir = project_output_dir / "prompts"
     render_dir = project_output_dir / "render"
-    storyboard_dir = render_dir / "storyboard"
+    artifact_layout = SceneArtifactLayout(project_config_dir)
+    storyboard_dir = artifact_layout.storyboard_dir
     vp = getattr(args, "video_pipeline", "ltx_i2v")
     if vp == "ltx_msr":
         ltx_dir = render_dir / "ltx_msr"
@@ -168,6 +176,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         ltx_dir = ltx_dir.with_name(ltx_dir.name + "_smoke")
 
     return PipelineRunContext(
+        artifact_layout=artifact_layout,
         project_config_path=project_config_path,
         project_config_dir=project_config_dir,
         input_audio=input_audio,
@@ -182,18 +191,18 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         concept_prompts=prompts_dir / f"concept_prompts_{song_id}.json",
         scene_details=prompts_dir / f"scene_details_{song_id}.json",
         scene_prompts=prompts_dir / f"scene_prompts_{song_id}.json",
-        render_plan=render_dir / f"render_plan_{song_id}.json",
-        reference_plan=render_dir / f"render_plan_{song_id}_refs.json",
-        ingredients_plan=render_dir / f"render_plan_{song_id}_ingredients.json",
-        references_dir=project_output_dir / "references",
-        compact_plan=render_dir / f"render_plan_{song_id}__compact.json",
-        anchored_plan=render_dir / f"render_plan_{song_id}__compact_anchored.json",
+        render_plan=artifact_layout.base_plan,
+        reference_plan=artifact_layout.references_plan,
+        ingredients_plan=artifact_layout.ingredients_plan,
+        references_dir=artifact_layout.references_dir,
+        compact_plan=artifact_layout.compact_plan,
+        anchored_plan=artifact_layout.anchored_plan,
         storyboard_dir=storyboard_dir,
         storyboard_page=storyboard_dir / "index.html",
         ltx_dir=ltx_dir,
         ltx_debug_dir=ltx_debug_dir,
-        final_concat_video=ltx_dir / f"{project_file_stem}_video_only.mp4",
-        final_concat=ltx_dir / f"{project_file_stem}.mp4",
-        final_concat_scene_audio_debug=ltx_dir / f"{project_file_stem}_scene_audio_debug.mp4",
-        concat_list=ltx_dir / "concat_list.txt",
+        final_concat_video=artifact_layout.video_only,
+        final_concat=artifact_layout.movie,
+        final_concat_scene_audio_debug=artifact_layout.final_dir / "scene_audio_debug.mp4",
+        concat_list=artifact_layout.final_dir / "concat_list.txt",
     )
