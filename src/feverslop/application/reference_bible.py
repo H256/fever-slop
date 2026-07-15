@@ -8,6 +8,7 @@ from typing import Callable, Any
 
 from PIL import Image, ImageDraw, ImageOps
 
+from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
 
 
@@ -583,6 +584,30 @@ def enrich_render_plan_with_reference_sheets(
     render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
     actor_manifests = _load_manifests_by_id(references_dir / "actors")
     location_manifests = _load_manifests_by_id(references_dir / "locations")
+
+    required_actor_ids = {
+        str(actor_id)
+        for scene in render_plan
+        for actor_id in scene.get("references", {}).get("actor_ids", [])
+    }
+    required_location_ids = {
+        str(location_id)
+        for scene in render_plan
+        if (location_id := scene.get("references", {}).get("location_id"))
+    }
+    missing_actor_ids = sorted(required_actor_ids - actor_manifests.keys())
+    missing_location_ids = sorted(required_location_ids - location_manifests.keys())
+    if missing_actor_ids or missing_location_ids:
+        details = []
+        if missing_actor_ids:
+            details.append(f"actors: {', '.join(missing_actor_ids)}")
+        if missing_location_ids:
+            details.append(f"locations: {', '.join(missing_location_ids)}")
+        raise FeverSlopValidationError(
+            "Missing reference manifests for render plan ("
+            + "; ".join(details)
+            + "). Run --stage msr_references before --stage msr_reference_sheets."
+        )
 
     total = len(render_plan)
     for index, scene in enumerate(render_plan, start=1):

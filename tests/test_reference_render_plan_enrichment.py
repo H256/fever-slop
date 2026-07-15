@@ -4,9 +4,29 @@ import unittest
 from pathlib import Path
 
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
+from feverslop.errors import FeverSlopValidationError
 
 
 class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
+    def test_reports_all_missing_reference_manifests_with_stage_hint(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan_path = temp / "render_plan.json"
+            render_plan_path.write_text(json.dumps([
+                {"scene": 1, "references": {"actor_ids": ["warrior_leader", "mage_companion"], "location_id": "crypt"}},
+                {"scene": 2, "references": {"actor_ids": ["warrior_leader"], "location_id": "nave"}},
+            ]), encoding="utf-8")
+
+            with self.assertRaises(FeverSlopValidationError) as raised:
+                enrich_render_plan_with_reference_sheets(render_plan_path, temp, temp / "enriched.json")
+
+            message = str(raised.exception)
+            self.assertIn("mage_companion", message)
+            self.assertIn("warrior_leader", message)
+            self.assertIn("crypt", message)
+            self.assertIn("nave", message)
+            self.assertIn("--stage msr_references", message)
+
     def test_enriches_reference_ids_with_sheet_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir) / "project"
