@@ -291,7 +291,10 @@ class ReferenceBibleGenerator:
     @staticmethod
     def _location_view_prompt(location: ReferenceLocation, view_name: str) -> str:
         base = location.visual_description or location.image_prompt or location.name
-        return f"{base}. Environment reference {view_name} view of {location.name}."
+        return (
+            f"{base}. Wide {view_name} view of {location.name}, single continuous image, "
+            "no collage, no split screen, no panels."
+        )
 
     def _artifact_path(self, path: str | Path | None) -> str:
         if path is None:

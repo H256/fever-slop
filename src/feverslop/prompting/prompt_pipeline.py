@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import re
 
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.prompting.music_video_prompt_style import (
@@ -110,7 +111,7 @@ Return ONLY valid JSON in this exact shape:
       "id": "short_snake_case_location_id",
       "name": "short physical location name",
       "visual_description": "detailed stable environment description",
-      "image_prompt": "image generator prompt for the location reference sheet"
+      "image_prompt": "image generator prompt for one wide location photograph"
     }
   ]
 }
@@ -133,6 +134,8 @@ Rules for locations:
 - Avoid aerial, drone, satellite, or far landscape shots.
 - No camera directions.
 - No emotional explanations.
+- image_prompt must describe one continuous wide image with no collage, split screen, or panels.
+- Never use "environment reference sheet" or "reference sheet" in a location image_prompt.
 """.strip()
 
         response = self.llm.complete_prompt(
@@ -140,7 +143,15 @@ Rules for locations:
             prompt=f"STORY_IDEA:\n{story_idea}\n\nNOTES:\n{notes}",
         )
 
-        return extract_json_object(response)
+        data = extract_json_object(response)
+        for location in data.get("locations") or []:
+            if not isinstance(location, dict):
+                continue
+            prompt = str(location.get("image_prompt") or "")
+            prompt = re.sub(r"(?i)\b(?:cinematic\s+)?environment reference sheet(?:\s+for)?\b", "", prompt)
+            prompt = re.sub(r"(?i)\breference sheet\b", "", prompt)
+            location["image_prompt"] = " ".join(prompt.split()).strip(" .,-")
+        return data
 
     def create_concept_prompts(
         self,

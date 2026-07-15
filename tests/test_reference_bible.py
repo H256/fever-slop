@@ -261,6 +261,16 @@ class ReferenceBibleTests(unittest.TestCase):
 
             self.assertEqual((1920, 1088), (hero_backend.requests[0].width, hero_backend.requests[0].height))
 
+    def test_location_prompt_does_not_request_a_reference_sheet_or_panels(self):
+        prompt = ReferenceBibleGenerator._location_view_prompt(
+            ReferenceLocation(id="stage", name="Mirror Stage", visual_description="black mirrored stage"),
+            "hero",
+        )
+
+        self.assertNotIn("reference sheet", prompt.lower())
+        self.assertIn("single continuous image", prompt.lower())
+        self.assertIn("no panels", prompt.lower())
+
     def test_generator_reports_progress_for_each_subject_view(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             events = []
