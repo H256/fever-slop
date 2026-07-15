@@ -154,6 +154,88 @@ class FakeMoviePlanner:
 
 
 class MovieProjectTests(unittest.TestCase):
+    def test_prepared_movie_workflows_use_identical_strict_scene_filter(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import prepare_movie_workflows
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            plan = project / "plan.json"
+            plan.write_text("{}", encoding="utf-8")
+            materializer = Mock()
+            scenes = [
+                {"scene": 1, "description": "one"},
+                {"scene": 2, "description": "two"},
+                {"scene": 3, "description": "three"},
+            ]
+
+            prepared = prepare_movie_workflows(
+                project_dir=project,
+                render_plan_path=plan,
+                pipeline="ltx_msr",
+                scenes=scenes,
+                selected_scenes=[1, 3],
+                materializer=materializer,
+                prompt_for_scene=lambda scene: scene["description"],
+            )
+
+            self.assertEqual([1, 3], [call.args[0].scene["scene"] for call in materializer.prepare.call_args_list])
+            self.assertEqual(SceneArtifactLayout(project).scenes_dir, prepared)
+
+    def test_prepared_movie_render_requires_selected_manifest_and_names_prepare(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import render_prepared_movie_workflows
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+
+            with self.assertRaisesRegex(FileNotFoundError, "prepare|--write-debug-workflows"):
+                render_prepared_movie_workflows(
+                    project_dir=project,
+                    scenes=[{"scene": 1}, {"scene": 2}],
+                    selected_scenes=[2],
+                    renderer=Mock(),
+                    postprocessor=Mock(),
+                )
+
+    def test_prepared_movie_render_writes_canonical_final_and_reads_legacy_fallback(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import render_prepared_movie_workflows
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.scene_manifest(2).parent.mkdir(parents=True)
+            layout.scene_manifest(2).write_text("{}", encoding="utf-8")
+            layout.scene_workflow(2).write_text("{}", encoding="utf-8")
+            legacy = project / "output" / "movie" / "ltx_msr"
+            legacy.mkdir(parents=True)
+            (legacy / "scene_0001.mp4").write_bytes(b"legacy")
+            renderer = Mock()
+            renderer.render.return_value = layout.scene_final_video(2)
+            layout.scene_final_video(2).write_bytes(b"new")
+            postprocessor = FakeMoviePostprocessor()
+
+            result = render_prepared_movie_workflows(
+                project_dir=project,
+                scenes=[{"scene": 1}, {"scene": 2}],
+                selected_scenes=[2],
+                renderer=renderer,
+                postprocessor=postprocessor,
+                legacy_dirs=[legacy],
+            )
+
+            self.assertEqual(layout.movie, result)
+            self.assertEqual(
+                [legacy / "scene_0001.mp4", layout.scene_final_video(2)],
+                postprocessor.concat_lists[0][0],
+            )
+
     def test_movie_scaffold_persists_screenplay_memory_and_shot_cards(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner

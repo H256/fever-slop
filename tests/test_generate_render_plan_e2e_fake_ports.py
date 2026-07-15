@@ -106,7 +106,7 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
             self.assertEqual(1, result.scene_count)
             self.assertEqual(24, result.total_frames)
             self.assertEqual(1.0, result.total_duration_seconds)
-            self.assertEqual(temp / "output" / "render" / "render_plan_song.json", result.render_plan_path)
+            self.assertEqual(temp / "output" / "render" / "plans" / "base.json", result.render_plan_path)
 
     def test_generate_render_plan_context_provides_safe_console_without_rich_console(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -45,14 +45,14 @@ class RunPipelinePathTests(unittest.TestCase):
         self.assertEqual(config_path.resolve(), context.project_config_path)
         self.assertEqual((input_dir / "song demo.mp3").resolve(), context.input_audio)
         self.assertEqual("song demo", context.song_id)
-        self.assertEqual(project_dir / "output" / "render" / "render_plan_song demo.json", context.render_plan)
-        self.assertEqual(project_dir / "output" / "render" / "render_plan_song demo__compact.json", context.compact_plan)
-        self.assertEqual(project_dir / "output" / "render" / "render_plan_song demo__compact_anchored.json", context.anchored_plan)
+        self.assertEqual(project_dir / "output" / "render" / "plans" / "base.json", context.render_plan)
+        self.assertEqual(project_dir / "output" / "render" / "plans" / "compact.json", context.compact_plan)
+        self.assertEqual(project_dir / "output" / "render" / "plans" / "anchored.json", context.anchored_plan)
         self.assertEqual(project_dir / "output" / "render" / "storyboard" / "index.html", context.storyboard_page)
         self.assertEqual(project_dir / "output" / "render" / "ltx_single_prompt_smoke", context.ltx_dir)
-        self.assertEqual(context.ltx_dir / "My_Song_Final_video_only.mp4", context.final_concat_video)
-        self.assertEqual(context.ltx_dir / "My_Song_Final.mp4", context.final_concat)
-        self.assertEqual(context.ltx_dir / "My_Song_Final_scene_audio_debug.mp4", context.final_concat_scene_audio_debug)
+        self.assertEqual(project_dir / "output" / "render" / "final" / "video_only.mp4", context.final_concat_video)
+        self.assertEqual(project_dir / "output" / "render" / "final" / "movie.mp4", context.final_concat)
+        self.assertEqual(project_dir / "output" / "render" / "final" / "scene_audio_debug.mp4", context.final_concat_scene_audio_debug)
 
 
 class RunPipelineOrchestrationTests(unittest.TestCase):
@@ -74,7 +74,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args([str(config_path), "--stage", "anchor_fix"])
 
             fixer = Mock()
-            anchored_plan = render_dir / "render_plan_song__compact_anchored.json"
+            anchored_plan = render_dir / "plans" / "anchored.json"
 
             def fix_file(*, input_render_plan, output_render_plan):
                 output_render_plan.write_text(Path(input_render_plan).read_text(encoding="utf-8"), encoding="utf-8")
@@ -145,7 +145,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 patch("feverslop.composition.stage_runners.VideoPostProcessor") as postprocessor:
                 result = run_pipeline.run(args)
 
-        self.assertEqual(context_path(config_path), result.render_plan_path)
+        self.assertEqual(config_path.parent / "output" / "render" / "plans" / "base.json", result.render_plan_path)
         tests.assert_not_called()
         main_builder.assert_not_called()
         llm.assert_not_called()
@@ -298,6 +298,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     str(config_path),
                     "--video-pipeline",
                     "ltx_msr",
+                    "--stage",
+                    "ltx_prepare_workflows",
                     "--render-mode",
                     "auto",
                     "--skip-tests",
@@ -313,12 +315,15 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
 
             use_case = Mock()
             use_case.execute.return_value = []
-            with patch("feverslop.composition.stage_runners.build_render_video_scenes_use_case", return_value=use_case) as builder:
+            with patch("feverslop.composition.stage_runners._missing_prepare_inputs", return_value=[]), \
+                patch("feverslop.composition.stage_runners.WorkflowMaterializer") as materializer, \
+                patch("feverslop.composition.stage_runners.build_render_video_scenes_use_case", return_value=use_case) as builder:
                 run_pipeline.run(args)
 
         options = builder.call_args.args[0]
         self.assertEqual("ltx_msr", options.video_pipeline)
         self.assertTrue(str(options.output_dir).endswith("ltx_msr"))
+        materializer.return_value.prepare.assert_called_once()
 
     def test_ltx_msr_runner_builds_references_enriches_msr_prompts_and_skips_storyboard(self):
         with TemporaryDirectory() as tmp:
@@ -332,8 +337,6 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             render_dir = project_dir / "output" / "render"
             render_dir.mkdir(parents=True)
             base_plan = render_dir / "render_plan_song.json"
-            refs_plan = render_dir / "render_plan_song_refs.json"
-            msr_plan = refs_plan
             base_plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
             args = run_pipeline.build_arg_parser().parse_args(
                 [
@@ -344,6 +347,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-main-pipeline",
                     "--skip-relay-compact",
                     "--skip-anchor-fix",
+                    "--skip-ltx",
                     "--skip-final-concat",
                 ]
             )
@@ -353,14 +357,14 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
 
             def enrich(input_plan, references_dir, output_plan, on_scene_complete=None):
                 self.assertIsNotNone(on_scene_complete)
-                refs_plan.write_text(json.dumps([{"scene": 1, "references": {}}]), encoding="utf-8")
+                Path(output_plan).write_text(json.dumps([{"scene": 1, "references": {}}]), encoding="utf-8")
                 on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
             def enrich_msr(input_plan, output_plan, *, llm, on_scene_complete=None):
                 self.assertIsNotNone(llm)
                 self.assertIsNotNone(on_scene_complete)
-                msr_plan.write_text(json.dumps([{"scene": 1, "ltx": {"msr_prompt_relay": []}}]), encoding="utf-8")
+                Path(output_plan).write_text(json.dumps([{"scene": 1, "ltx": {"msr_prompt_relay": []}}]), encoding="utf-8")
                 on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
@@ -377,18 +381,15 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         reference_bible.assert_called_once()
         self.assertEqual(base_plan, enrich_refs.call_args.args[0])
         self.assertEqual(project_dir / "output" / "references", enrich_refs.call_args.args[1])
-        self.assertEqual(refs_plan, enrich_refs.call_args.args[2])
+        canonical_refs = project_dir / "output" / "render" / "plans" / "references.json"
+        self.assertEqual(canonical_refs, enrich_refs.call_args.args[2])
         self.assertIn("on_scene_complete", enrich_refs.call_args.kwargs)
         enrich_msr_prompts.assert_called_once()
-        self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[0])
-        self.assertEqual(refs_plan, enrich_msr_prompts.call_args.args[1])
+        self.assertEqual(canonical_refs, enrich_msr_prompts.call_args.args[0])
+        self.assertEqual(canonical_refs, enrich_msr_prompts.call_args.args[1])
         self.assertIn("on_scene_complete", enrich_msr_prompts.call_args.kwargs)
-        self.assertEqual(refs_plan, result.render_plan_path)
-        options = video_builder.call_args.args[0]
-        request = use_case.execute.call_args.args[0]
-        self.assertEqual("ltx_msr", options.video_pipeline)
-        self.assertEqual(refs_plan, options.render_plan_path)
-        self.assertEqual(refs_plan, request.render_plan_path)
+        self.assertEqual(canonical_refs, result.render_plan_path)
+        video_builder.assert_not_called()
 
     def test_ltx_msr_runner_can_resume_selected_scenes_without_prompt_enrichment(self):
         with TemporaryDirectory() as tmp:
@@ -417,6 +418,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-anchor-fix",
                     "--skip-msr-reference-render",
                     "--skip-msr-prompt-enrichment",
+                    "--skip-ltx",
                     "--skip-final-concat",
                     "--scenes",
                     "15-16",
@@ -427,6 +429,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             use_case.execute.return_value = []
 
             def enrich_refs(input_plan, references_dir, output_plan, on_scene_complete=None):
+                Path(output_plan).write_text(Path(input_plan).read_text(encoding="utf-8"), encoding="utf-8")
                 return Path(output_plan)
 
             with patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets", side_effect=enrich_refs), \
@@ -435,8 +438,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 run_pipeline.run(args)
 
             enrich_msr_prompts.assert_not_called()
-            request = use_case.execute.call_args.args[0]
-            self.assertEqual({15, 16}, request.scene_numbers)
+            use_case.execute.assert_not_called()
 
     def test_ltx_resume_rewrites_concat_list_from_full_render_plan_before_final_concat(self):
         with TemporaryDirectory() as tmp:
@@ -482,7 +484,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 patch("feverslop.composition.stage_runners.VideoPostProcessor", return_value=postprocessor):
                 run_pipeline.run(args)
 
-            concat_list = render_dir / "ltx_single_prompt" / "concat_list.txt"
+            concat_list = render_dir / "final" / "concat_list.txt"
             self.assertEqual(
                 [
                     f"file '{clip_1.resolve().as_posix()}'",
@@ -534,6 +536,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             )
 
             def enrich(_input_plan, _references_dir, output_plan, on_scene_complete=None):
+                Path(output_plan).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_plan).write_text(plan_path.read_text(encoding="utf-8"), encoding="utf-8")
                 if on_scene_complete is not None:
                     on_scene_complete(1, 1, 3)
                     on_scene_complete(2, 2, 3)
@@ -547,7 +551,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 patch("feverslop.composition.stage_runners.VideoPostProcessor", return_value=postprocessor):
                 run_pipeline.run(args)
 
-            concat_list = render_dir / "ltx_msr" / "concat_list.txt"
+            concat_list = render_dir / "final" / "concat_list.txt"
             self.assertEqual(
                 [
                     f"file '{clip_1.resolve().as_posix()}'",

@@ -87,6 +87,26 @@ uv run python run_pipeline.py ./projects/my-song \
   --video-pipeline ltx_ingredients --skip-tests
 ```
 
+MSR and Ingredients runs materialize each selected scene before rendering. To
+inspect the exact ComfyUI workflows without queueing a render, run the prepare
+stage explicitly; use the same `--scenes` filter for the later render stage:
+
+```bash
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline ltx_ingredients \
+  --stage ltx_prepare_workflows \
+  --scenes 1,3,5
+
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline ltx_ingredients \
+  --stage ltx_render_scenes \
+  --scenes 1,3,5
+```
+
+Prepared assets live under `output/render/scenes/scene_####/`; rendering
+verifies their manifest hashes before sending the stored `workflow.json` to
+ComfyUI.
+
 ### Render Modes
 
 Each pipeline renders prompts using one of three modes:
@@ -129,6 +149,10 @@ uv run python movie_pipeline.py ./projects/my-movie \
 uv run python movie_pipeline.py ./projects/my-movie \
   --movie-video-workflow ingredients
 ```
+
+For Movie MSR and Ingredients projects, `--write-debug-workflows` is the
+deprecated compatibility alias for preparing the canonical scene workflows
+without queueing them. `--scenes 1,3,5` limits both preparation and rendering.
 
 ### Rendering Tweaks
 

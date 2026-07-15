@@ -16,12 +16,19 @@ from rich.progress import (
 )
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from feverslop.adapters.prepared_workflow import (
+    PreparedWorkflowRenderer,
+    WorkflowMaterializationRequest,
+    WorkflowMaterializer,
+)
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
+from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.render_plan import RenderPlan
 from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case  # noqa: F401
 from feverslop.composition.generate_render_plan import execute_generate_render_plan
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
@@ -112,6 +119,7 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
 
 
 def _run_anchor_fix_stage(state: PipelineRunState) -> None:
+    state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     resolved_context = json.loads(state.context.resolved_context.read_text(encoding="utf-8-sig"))
     subject_anchor = str(resolved_context.get("subject", "")).strip()
     if not subject_anchor:
@@ -181,6 +189,7 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
         raise ValueError("msr_reference_sheets requires --video-pipeline ltx_msr or ltx_ingredients")
+    state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
@@ -218,6 +227,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
     from feverslop.config.project_config import ProjectConfig
     project_config = ProjectConfig.load(state.context.project_config_path)
     video_settings = project_config.to_video_settings()
+    state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     ingredients_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Composing Ingredients scene sheets", ingredients_total) as progress:
         state.plan_for_next_step = enrich_render_plan_with_ingredients_sheets(
@@ -229,9 +239,177 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
         )
 
 
+def _specialized_video_use_case(state: PipelineRunState):
+    workflow = state.msr_workflow if state.args.video_pipeline == "ltx_msr" else state.ingredients_workflow
+    return build_render_video_scenes_use_case(
+        RenderVideoCompositionOptions(
+            app_config_path=state.app_config_path,
+            project_config_path=state.context.project_config_path,
+            render_plan_path=state.plan_for_next_step,
+            workflow_path=workflow,
+            output_dir=state.context.ltx_dir,
+            video_pipeline=state.args.video_pipeline,
+            randomize_seed=state.args.randomize_seed,
+            rolling_frame_profile=state.args.rolling_frame_profile,
+        ),
+        console=console,
+    )
+
+
+def _selected_render_scenes(state: PipelineRunState) -> list:
+    selected = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
+    payload = json.loads(state.plan_for_next_step.read_text(encoding="utf-8-sig"))
+    return RenderPlan.from_dicts(payload).select(scene_numbers=selected).scenes
+
+
+def _missing_prepare_inputs(state: PipelineRunState, scenes: list) -> list[str]:
+    missing: list[str] = []
+    for path, label in ((state.plan_for_next_step, "render plan"), (state.context.input_audio, "audio")):
+        if not path.is_file():
+            missing.append(f"{label}: {path}")
+    workflow = state.msr_workflow if state.args.video_pipeline == "ltx_msr" else state.ingredients_workflow
+    if not workflow.is_file():
+        missing.append(f"workflow template: {workflow}")
+    for render_scene in scenes:
+        scene = render_scene.to_dict()
+        number = render_scene.scene_number
+        for relay in (scene.get("ltx") or {}).get("prompt_relay") or []:
+            if str(relay.get("state") or "").strip().lower() != "singing":
+                continue
+            prompt = str(relay.get("prompt") or "").lower()
+            if "sing" not in prompt or ("lip sync" not in prompt and "lip-sync" not in prompt):
+                missing.append(f"scene {number}: singing relay requires singing and lip sync")
+        candidates: list[tuple[str, str]] = []
+        if state.args.video_pipeline == "ltx_ingredients":
+            sheet = scene.get("ingredients_scene_sheet")
+            if sheet:
+                candidates.append(("ingredients sheet", sheet))
+            else:
+                missing.append(f"scene {number}: ingredients_scene_sheet")
+            anchors = scene.get("ingredients_scene_sheet_anchors") or []
+            target = str(
+                scene.get("ingredients_target_prompt")
+                or (scene.get("ltx") or {}).get("ingredients_target_prompt")
+                or ""
+            )
+            references = scene.get("references") or {}
+            expected_ids = {
+                str(value) for value in references.get("actor_ids") or [] if str(value)
+            }
+            location_id = str(references.get("location_id") or "")
+            if location_id:
+                expected_ids.add(location_id)
+            anchor_ids = {str(anchor.get("id") or "") for anchor in anchors}
+            if expected_ids and expected_ids != anchor_ids:
+                missing.append(f"scene {number}: ingredients anchors do not match actor/location bindings")
+            unbound = sorted(item_id for item_id in anchor_ids if f"`{item_id}`" not in target)
+            if unbound:
+                missing.append(
+                    f"scene {number}: target description does not bind anchors {', '.join(unbound)}"
+                )
+        else:
+            references = scene.get("references") or {}
+            actors = references.get("actor_msr_paths") or references.get("actor_sheet_paths") or []
+            location = references.get("location_msr_path") or references.get("location_sheet_path")
+            if not actors:
+                missing.append(f"scene {number}: actor reference sheet")
+            if not location:
+                missing.append(f"scene {number}: location reference sheet")
+            candidates.extend(("actor reference sheet", path) for path in actors)
+            if location:
+                candidates.append(("location reference sheet", location))
+        for label, value in candidates:
+            path = Path(value)
+            path = path if path.is_absolute() else state.context.project_config_dir / path
+            if not path.is_file():
+                missing.append(f"scene {number} {label}: {path}")
+    return missing
+
+
+def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+        raise ValueError("ltx_prepare_workflows requires --video-pipeline ltx_msr or ltx_ingredients")
+    scenes = _selected_render_scenes(state) if state.plan_for_next_step.is_file() else []
+    missing = _missing_prepare_inputs(state, scenes)
+    if missing:
+        raise FileNotFoundError("Cannot prepare scene workflows; missing inputs:\n- " + "\n- ".join(missing))
+    backend = _specialized_video_use_case(state).backend
+    materializer = WorkflowMaterializer(backend, state.context.artifact_layout)
+    total = len(scenes)
+    paths = [
+        path
+        for scene in scenes
+        for path in (
+            state.context.artifact_layout.scene_workflow(scene.scene_number),
+            state.context.artifact_layout.scene_manifest(scene.scene_number),
+        )
+    ]
+    previous = {path: path.read_bytes() if path.is_file() else None for path in paths}
+    try:
+        for completed, render_scene in enumerate(scenes, start=1):
+            materializer.prepare(WorkflowMaterializationRequest(
+                scene=render_scene.to_dict(),
+                prompt=render_scene.video_prompt,
+                audio_file=state.context.input_audio,
+                render_plan_path=state.plan_for_next_step,
+                pipeline=state.args.video_pipeline,
+            ))
+            console.print(f"Prepared scene {completed}/{total}: {render_scene.scene_number}")
+    except Exception:
+        for path, content in previous.items():
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(content)
+        raise
+
+
 def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients") and state.args.render_mode != "single_prompt" and not str(state.args.relay_workflow).strip():
         raise ValueError(f"RenderMode '{state.args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
+
+    if state.args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
+        scenes = _selected_render_scenes(state)
+        missing: list[Path] = []
+        for scene in scenes:
+            workflow_path = state.context.artifact_layout.scene_workflow(scene.scene_number)
+            manifest_path = state.context.artifact_layout.scene_manifest(scene.scene_number)
+            if not workflow_path.is_file():
+                missing.append(workflow_path)
+            if not manifest_path.is_file():
+                missing.append(manifest_path)
+        if missing:
+            raise FileNotFoundError(
+                "Missing prepared scene workflows: " + ", ".join(str(path) for path in missing)
+                + ". Run --stage ltx_prepare_workflows first."
+            )
+        backend = _specialized_video_use_case(state).backend
+        renderer = PreparedWorkflowRenderer(
+            project_dir=state.context.project_config_dir,
+            render_queue=backend.render_queue,
+            postprocessor=backend.postprocessor,
+            expected_pipeline=state.args.video_pipeline,
+        )
+        total = len(scenes)
+        with RenderProgressReporter("Rendering prepared LTX scenes", total) as progress:
+            for completed, scene in enumerate(scenes, start=1):
+                workflow = state.context.artifact_layout.scene_workflow(scene.scene_number)
+                final_path = state.context.artifact_layout.scene_final_video(scene.scene_number)
+                skip_existing = False if state.args.smoke_only else not state.args.no_skip_existing
+                if not (skip_existing and final_path.is_file()):
+                    final_path = renderer.render(workflow)
+                else:
+                    manifest = SceneWorkflowManifest.read(state.context.artifact_layout.scene_manifest(scene.scene_number))
+                    if manifest.pipeline != state.args.video_pipeline:
+                        raise ValueError(
+                            f"Prepared workflow pipeline {manifest.pipeline!r} does not match "
+                            f"expected pipeline {state.args.video_pipeline!r}"
+                        )
+                    mismatches = manifest.verify(state.context.project_config_dir)
+                    if mismatches:
+                        raise ValueError("Prepared workflow verification failed: " + "; ".join(mismatches))
+                progress.update(final_path, completed, total)
+        return
 
     if state.args.video_pipeline == "ltx_msr":
         ltx_workflow = state.msr_workflow
@@ -289,7 +467,14 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
 
 def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     from .config_loader import rewrite_concat_list, collect_render_plan_scene_clips
-    rewrite_concat_list(collect_render_plan_scene_clips(state.plan_for_next_step, state.context.ltx_dir), state.context.ltx_dir)
+    rewrite_concat_list(
+        collect_render_plan_scene_clips(
+            state.plan_for_next_step,
+            state.context.ltx_dir,
+            layout=state.context.artifact_layout,
+        ),
+        state.context.artifact_layout.final_dir,
+    )
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
@@ -330,6 +515,7 @@ STAGE_RUNNERS = {
     PipelineStage.MSR_REFERENCE_SHEETS: _run_msr_reference_sheets_stage,
     PipelineStage.MSR_PROMPT_ENRICH: _run_msr_prompt_enrich_stage,
     PipelineStage.INGREDIENTS_SHEETS: _run_ingredients_sheets_stage,
+    PipelineStage.LTX_PREPARE_WORKFLOWS: _run_ltx_prepare_workflows_stage,
     PipelineStage.LTX_RENDER_SCENES: _run_ltx_render_scenes_stage,
     PipelineStage.CONCAT_VIDEO_ONLY: _run_concat_video_only_stage,
     PipelineStage.MUX_ORIGINAL_AUDIO: _run_mux_original_audio_stage,
@@ -347,6 +533,7 @@ STAGE_LABELS = {
     PipelineStage.MSR_REFERENCE_SHEETS: "MSR reference sheets",
     PipelineStage.MSR_PROMPT_ENRICH: "MSR prompt enrichment",
     PipelineStage.INGREDIENTS_SHEETS: "Ingredients scene sheets",
+    PipelineStage.LTX_PREPARE_WORKFLOWS: "Prepare LTX workflows",
     PipelineStage.LTX_RENDER_SCENES: "LTX render",
     PipelineStage.CONCAT_VIDEO_ONLY: "Final concat video-only",
     PipelineStage.MUX_ORIGINAL_AUDIO: "Mux original audio",
@@ -416,6 +603,8 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         if not args.skip_storyboard_page:
             stages.append(PipelineStage.STORYBOARD_PAGE)
     if not args.skip_ltx:
+        if args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
+            stages.append(PipelineStage.LTX_PREPARE_WORKFLOWS)
         stages.append(PipelineStage.LTX_RENDER_SCENES)
     if not args.skip_final_concat:
         stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
@@ -429,8 +618,16 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
 
 def _initial_render_plan(context: PipelineRunContext, args: argparse.Namespace, stages: list[PipelineStage]) -> Path:
     upstream_stages = {PipelineStage.MAIN_PIPELINE, PipelineStage.RELAY_COMPACT, PipelineStage.ANCHOR_FIX, PipelineStage.MSR_REFERENCE_SHEETS, PipelineStage.INGREDIENTS_SHEETS}
-    if args.video_pipeline == "ltx_msr" and context.reference_plan.exists() and not upstream_stages.intersection(stages):
-        return context.reference_plan
-    if args.video_pipeline == "ltx_ingredients" and context.ingredients_plan.exists() and not upstream_stages.intersection(stages):
-        return context.ingredients_plan
-    return context.render_plan
+    render_dir = context.render_dir
+    legacy_base = render_dir / f"render_plan_{context.song_id}.json"
+    legacy_references = render_dir / f"render_plan_{context.song_id}_refs.json"
+    legacy_ingredients = render_dir / f"render_plan_{context.song_id}_ingredients.json"
+    if args.video_pipeline == "ltx_msr" and not upstream_stages.intersection(stages):
+        existing = context.artifact_layout.find_plan(context.reference_plan, legacy_paths=[legacy_references])
+        if existing:
+            return existing
+    if args.video_pipeline == "ltx_ingredients" and not upstream_stages.intersection(stages):
+        existing = context.artifact_layout.find_plan(context.ingredients_plan, legacy_paths=[legacy_ingredients])
+        if existing:
+            return existing
+    return context.artifact_layout.find_plan(context.render_plan, legacy_paths=[legacy_base]) or context.render_plan

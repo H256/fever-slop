@@ -56,6 +56,31 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual(5, projects[0]["artifact_sizes"]["by_type"]["audio"])
             self.assertGreater(projects[0]["artifact_sizes"]["total_bytes"], 5)
 
+    def test_artifact_catalog_lists_canonical_render_plans_before_legacy_plans(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            project = Path(temp_dir) / "demo"
+            plans = project / "output" / "render" / "plans"
+            plans.mkdir()
+            (plans / "base.json").write_text("[]", encoding="utf-8")
+            (plans / "ingredients.json").write_text("[]", encoding="utf-8")
+
+            described = store.describe_project("demo")
+
+            self.assertEqual("present", described["status"]["render_plan"])
+            self.assertEqual(
+                [
+                    "output/render/plans/base.json",
+                    "output/render/plans/ingredients.json",
+                    "output/render/render_plan_song.json",
+                ],
+                described["artifacts"]["render_plans"],
+            )
+            self.assertEqual(
+                sum((project / path).stat().st_size for path in described["artifacts"]["render_plans"]),
+                described["artifact_sizes"]["by_type"]["render_plans"],
+            )
+
     def test_thumbnail_cache_is_not_reported_as_project_artifact(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = self._project_store(Path(temp_dir))

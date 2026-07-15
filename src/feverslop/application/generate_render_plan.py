@@ -113,7 +113,7 @@ class GenerateRenderPlanUseCase:
             concept_prompts_json=prompts_dir / f"concept_prompts_{song_id}.json",
             scene_details_json=prompts_dir / f"scene_details_{song_id}.json",
             scene_prompts_json=prompts_dir / f"scene_prompts_{song_id}.json",
-            render_plan_json=render_dir / f"render_plan_{song_id}.json",
+            render_plan_json=paths.artifact_layout.base_plan,
         )
 
         self.reporter.panel(

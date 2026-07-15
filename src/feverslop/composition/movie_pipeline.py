@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,8 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+from feverslop.adapters.prepared_workflow import PreparedWorkflowRenderer, WorkflowMaterializer
+from feverslop.application.movie_prepared_workflows import prepare_movie_workflows, render_prepared_movie_workflows
 from feverslop.application.movie_artifacts import (
     ensure_movie_bible as ensure_movie_bible_artifact,
     ensure_movie_continuity_plan as ensure_movie_continuity_plan_artifact,
@@ -26,8 +29,8 @@ from feverslop.application.movie_artifacts import (
 )
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.application.movie_references import MovieReferenceSheetGenerator
-from feverslop.composition.movie_debug_workflows import write_movie_debug_workflows
 from feverslop.path_utils import coerce_local_path
+from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.studio.job_service import (
     build_movie_reference_generator,
     build_movie_visual_adapter,
@@ -172,9 +175,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
     parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"], default="msr")
     parser.add_argument("--continuity-keyframes", choices=["none", "last-to-start"], default="none")
-    parser.add_argument("--write-debug-workflows", action="store_true", help="Write patched movie MSR workflow JSONs without queueing ComfyUI.")
-    parser.add_argument("--debug-workflows-dir", default=None, help="Directory for --write-debug-workflows output.")
+    parser.add_argument("--scenes", type=_parse_scene_numbers, default=[], help="Comma-separated scene numbers to prepare or render.")
+    parser.add_argument(
+        "--write-debug-workflows", action="store_true",
+        help="Deprecated alias: prepare canonical movie scene workflows without queueing ComfyUI.",
+    )
+    parser.add_argument("--debug-workflows-dir", default=None, help="Deprecated compatibility option; canonical scene paths are always used.")
     return parser
+
+
+def _parse_scene_numbers(value: str) -> list[int]:
+    try:
+        numbers = [int(part.strip()) for part in value.split(",") if part.strip()]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--scenes must be comma-separated integers") from exc
+    if any(number < 1 for number in numbers):
+        raise argparse.ArgumentTypeError("--scenes values must be positive")
+    return numbers
 
 
 def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
@@ -492,15 +509,31 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             _log_stage("Movie Ingredients render", f"rendering via {config['render_backend']}")
             if config["render_backend"] != "local":
                 adapter = _build_ingredients_adapter(project_dir, config, debug_workflows_dir=ingredients_debug_workflows_dir)
+                final_video_path, ingredients_debug_workflows_dir = _prepare_and_render_ingredients_movie(
+                    adapter=adapter,
+                    project_dir=project_dir,
+                    render_plan_path=render_plan_ingredients_path,
+                    selected_scenes=args.scenes,
+                    prepare=args.write_debug_workflows,
+                    render=not args.write_debug_workflows,
+                )
             else:
                 adapter = LocalMovieVisualAdapter()
-            final_video_path = adapter.render_movie(
-                project_dir=project_dir,
-                render_plan_path=render_plan_ingredients_path,
-                on_clip_rendered=lambda completed, total, scene_number: _log_stage(
-                    "Movie Ingredients clip",
-                    f"rendered {completed}/{total}: scene {scene_number}",
-                ),
+                final_video_path = adapter.render_movie(
+                    project_dir=project_dir,
+                    render_plan_path=render_plan_ingredients_path,
+                    selected_scenes=args.scenes,
+                    on_clip_rendered=lambda completed, total, scene_number: _log_stage(
+                        "Movie Ingredients clip", f"rendered {completed}/{total}: scene {scene_number}",
+                    ),
+                )
+        elif args.write_debug_workflows:
+            if config["render_backend"] == "local":
+                raise ValueError("Movie workflow preparation requires the ComfyUI render backend")
+            adapter = _build_ingredients_adapter(project_dir, config, debug_workflows_dir=None)
+            _, ingredients_debug_workflows_dir = _prepare_and_render_ingredients_movie(
+                adapter=adapter, project_dir=project_dir, render_plan_path=render_plan_ingredients_path,
+                selected_scenes=args.scenes, prepare=True, render=False,
             )
         else:
             _log_stage("Movie Ingredients render", "skipped")
@@ -537,34 +570,43 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         render_plan_ingredients_path = None
 
     debug_workflows_dir: Path | None = None
+    if args.write_debug_workflows and config["render_backend"] == "local":
+        raise ValueError("Movie workflow preparation requires the ComfyUI render backend")
     if args.write_debug_workflows:
         if render_plan_msr_path is None:
             raise FileNotFoundError("Movie debug workflow export requires movie/render_plan_msr.json; run without --skip-movie-msr-enrich first")
         if not movie_references_ready(manifest_path, backend=config["reference_backend"]):
             raise ValueError("Movie debug workflow export requires ready movie references; run without --skip-movie-references first")
-        workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
-        debug_workflows_dir = write_movie_debug_workflows(
-            project_dir=project_dir,
-            render_plan_path=render_plan_msr_path,
-            workflow_path=Path(config["msr_workflow"]),
-            workflow=workflow,
-            output_dir=coerce_local_path(args.debug_workflows_dir).resolve()
-            if args.debug_workflows_dir
-            else project_dir / "output" / "movie" / "ltx_msr_debug",
-        )
+        # Deprecated alias: preparation now writes canonical scene workflow assets.
 
     final_video_path: Path | None = None
     if not args.skip_movie_render:
         if not movie_references_ready(manifest_path, backend=config["reference_backend"]):
             raise ValueError("Movie references are not ready; run without --skip-movie-references first")
         workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
-        final_video_path = _build_visual_adapter(project_dir, config, workflow).render_movie(
-            project_dir=project_dir,
+        adapter = _build_visual_adapter(project_dir, config, workflow)
+        if config["render_backend"] == "local" or config["movie_video_workflow"] != "msr":
+            final_video_path = adapter.render_movie(
+                project_dir=project_dir, render_plan_path=render_plan_msr_path or render_plan_path,
+                selected_scenes=args.scenes, continuity_keyframes=config["continuity_keyframes"],
+                on_clip_rendered=lambda completed, total, scene_number: print(
+                    f"Rendered movie clip {completed}/{total}: scene {scene_number}"
+                ),
+            )
+        else:
+            final_video_path, debug_workflows_dir = _prepare_and_render_msr_movie(
+                adapter=adapter, project_dir=project_dir,
+                render_plan_path=render_plan_msr_path or render_plan_path,
+                selected_scenes=args.scenes, prepare=args.write_debug_workflows,
+                render=not args.write_debug_workflows,
+            )
+    elif args.write_debug_workflows:
+        workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
+        adapter = _build_visual_adapter(project_dir, config, workflow)
+        _, debug_workflows_dir = _prepare_and_render_msr_movie(
+            adapter=adapter, project_dir=project_dir,
             render_plan_path=render_plan_msr_path or render_plan_path,
-            continuity_keyframes=config["continuity_keyframes"],
-            on_clip_rendered=lambda completed, total, scene_number: print(
-                f"Rendered movie clip {completed}/{total}: scene {scene_number}"
-            ),
+            selected_scenes=args.scenes, prepare=True, render=False,
         )
 
     return MoviePipelineResult(
@@ -646,6 +688,92 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
         debug_workflows_dir=debug_workflows_dir,
     )
     return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
+
+
+def _canonical_movie_plan(project_dir: Path, source: Path, *, pipeline: str) -> Path:
+    layout = SceneArtifactLayout(project_dir)
+    destination = layout.ingredients_plan if pipeline == "ltx_ingredients" else layout.references_plan
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    return destination
+
+
+def _prepare_and_render_msr_movie(
+    *, adapter, project_dir: Path, render_plan_path: Path, selected_scenes: list[int],
+    prepare: bool, render: bool,
+) -> tuple[Path | None, Path]:
+    canonical_plan = _canonical_movie_plan(project_dir, render_plan_path, pipeline="ltx_msr")
+    plan = json.loads(canonical_plan.read_text(encoding="utf-8"))
+    scenes = adapter._movie_scenes(plan, project_dir=project_dir)
+    layout = SceneArtifactLayout(project_dir)
+    backend = adapter._build_backend(
+        workflow_path=adapter.workflow_path,
+        workflow=adapter.workflow,
+        output_dir=layout.render_dir,
+        project_dir=project_dir,
+    )
+    if prepare:
+        prepare_movie_workflows(
+            project_dir=project_dir, render_plan_path=canonical_plan, pipeline="ltx_msr",
+            scenes=scenes, selected_scenes=selected_scenes,
+            materializer=WorkflowMaterializer(backend, layout),
+            prompt_for_scene=lambda scene: str(
+                (scene.get("ltx") or {}).get("original_style_i2v_prompt")
+                or scene.get("description") or ""
+            ),
+        )
+    if not render:
+        return None, layout.scenes_dir
+    final = render_prepared_movie_workflows(
+        project_dir=project_dir, scenes=scenes, selected_scenes=selected_scenes,
+        renderer=PreparedWorkflowRenderer(
+            project_dir=project_dir, render_queue=backend.render_queue,
+            postprocessor=adapter.postprocessor, expected_pipeline="ltx_msr",
+        ),
+        postprocessor=adapter.postprocessor,
+        legacy_dirs=[project_dir / "output" / "movie" / "ltx_msr"],
+        on_clip_rendered=lambda completed, total, scene: print(
+            f"Rendered movie clip {completed}/{total}: scene {scene}"
+        ),
+    )
+    return final, layout.scenes_dir
+
+
+def _prepare_and_render_ingredients_movie(
+    *, adapter, project_dir: Path, render_plan_path: Path, selected_scenes: list[int],
+    prepare: bool, render: bool,
+) -> tuple[Path | None, Path]:
+    canonical_plan = _canonical_movie_plan(project_dir, render_plan_path, pipeline="ltx_ingredients")
+    plan = json.loads(canonical_plan.read_text(encoding="utf-8"))
+    scenes = adapter._movie_scenes(plan, project_dir=project_dir)
+    layout = SceneArtifactLayout(project_dir)
+    backend = adapter.backend
+    if prepare:
+        prepare_movie_workflows(
+            project_dir=project_dir, render_plan_path=canonical_plan, pipeline="ltx_ingredients",
+            scenes=scenes, selected_scenes=selected_scenes,
+            materializer=WorkflowMaterializer(backend, layout),
+            prompt_for_scene=lambda scene: str(
+                (scene.get("ltx") or {}).get("ingredients_scene_sheet_description")
+                or (scene.get("ltx") or {}).get("ingredients_target_prompt")
+                or scene.get("description") or ""
+            ),
+        )
+    if not render:
+        return None, layout.scenes_dir
+    final = render_prepared_movie_workflows(
+        project_dir=project_dir, scenes=scenes, selected_scenes=selected_scenes,
+        renderer=PreparedWorkflowRenderer(
+            project_dir=project_dir, render_queue=backend.render_queue,
+            postprocessor=backend.postprocessor, expected_pipeline="ltx_ingredients",
+        ),
+        postprocessor=backend.postprocessor,
+        legacy_dirs=[project_dir / "output" / "movie" / "ltx_ingredients"],
+        on_clip_rendered=lambda completed, total, scene: _log_stage(
+            "Movie Ingredients clip", f"rendered {completed}/{total}: scene {scene}",
+        ),
+    )
+    return final, layout.scenes_dir
 
 
 def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):

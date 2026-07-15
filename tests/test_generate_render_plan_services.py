@@ -8,6 +8,7 @@ from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
+from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RecordingService:
@@ -135,6 +136,7 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
                 timeline_dir=temp / "timeline",
                 prompts_dir=temp / "prompts",
                 render_dir=temp / "render",
+                artifact_layout=SceneArtifactLayout(temp),
             )
             request = GenerateRenderPlanExecutionRequest(
                 source_request=SimpleNamespace(render_storyboard=False, zimage_workflow_path=None),
@@ -154,7 +156,7 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
 
             self.assertEqual(1, result.scene_count)
             self.assertEqual("song", services[0].calls[0]["song_id"])
-            self.assertEqual(temp / "render" / "render_plan_song.json", result.render_plan_path)
+            self.assertEqual(temp / "output" / "render" / "plans" / "base.json", result.render_plan_path)
 
 
 if __name__ == "__main__":

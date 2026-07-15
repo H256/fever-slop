@@ -98,6 +98,37 @@ class ProjectAssetArchiveTests(unittest.TestCase):
                 members,
             )
 
+    def test_collect_archive_members_includes_canonical_render_artifacts_in_mixed_layout(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir) / "demo"
+            canonical = project / "output" / "render"
+            legacy = canonical / "ltx"
+            (canonical / "plans").mkdir(parents=True)
+            (canonical / "scenes" / "scene_0001").mkdir(parents=True)
+            (canonical / "final").mkdir(parents=True)
+            legacy.mkdir()
+            (canonical / "plans" / "base.json").write_text("[]", encoding="utf-8")
+            (canonical / "scenes" / "scene_0001" / "manifest.json").write_text("{}", encoding="utf-8")
+            (canonical / "scenes" / "scene_0001" / "final.mp4").write_bytes(b"scene")
+            (canonical / "final" / "video_only.mp4").write_bytes(b"video")
+            (canonical / "final" / "movie.mp4").write_bytes(b"movie")
+            (legacy / "scene_0001.mp4").write_bytes(b"legacy")
+            (legacy / "final_concat.mp4").write_bytes(b"protected")
+
+            arcnames = [member.arcname for member in collect_archive_members(project)]
+
+            self.assertEqual(
+                [
+                    "output/render/final/movie.mp4",
+                    "output/render/final/video_only.mp4",
+                    "output/render/ltx/scene_0001.mp4",
+                    "output/render/plans/base.json",
+                    "output/render/scenes/scene_0001/final.mp4",
+                    "output/render/scenes/scene_0001/manifest.json",
+                ],
+                arcnames,
+            )
+
     def test_build_archive_manifest_records_relative_files_and_total_size(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir) / "demo"

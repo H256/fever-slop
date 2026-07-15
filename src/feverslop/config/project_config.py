@@ -383,6 +383,12 @@ class ProjectPaths:
     prompts_dir: Path
     render_dir: Path
 
+    @property
+    def artifact_layout(self):
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        return SceneArtifactLayout(self.project_dir)
+
     @classmethod
     def from_config(cls, config: ProjectConfig) -> "ProjectPaths":
         output_dir = config.project_dir / "output"
@@ -402,5 +408,6 @@ class ProjectPaths:
             self.timeline_dir,
             self.prompts_dir,
             self.render_dir,
+            self.artifact_layout.plans_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
