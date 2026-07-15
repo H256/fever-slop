@@ -4081,6 +4081,22 @@ class TestRefineLocationPrompts(unittest.TestCase):
         self.assertIn("herb garden", result[0].visual_description.lower())
         self.assertIn("no people", result[0].image_prompt.lower())
 
+    def test_refine_locations_removes_reference_sheet_wording_from_image_prompt(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import MovieLocation
+
+        class FakeLLM:
+            def complete_prompt(self, prompt, *, system_prompt):
+                return '{"locations": [{"id": "garden", "visual_description": "Overgrown garden", "image_prompt": "Cinematic environment reference sheet for Garden. Wide establishing view."}]}'
+
+        result = LLMMoviePlanner(FakeLLM()).refine_locations(
+            (MovieLocation(id="garden", name="Garden", visual_description="Garden"),),
+            source_text="EXT. GARDEN - DAY",
+        )
+
+        self.assertNotIn("reference sheet", result[0].image_prompt.lower())
+        self.assertIn("wide establishing view", result[0].image_prompt.lower())
+
     def test_refine_locations_fallback_on_parse_error(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieLocation

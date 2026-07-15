@@ -52,6 +52,19 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
         self.assertIn('"actors"', llm.calls[0]["system_prompt"])
         self.assertEqual("singer", result["actors"][0]["id"])
 
+    def test_location_image_prompt_avoids_and_removes_reference_sheet_wording(self):
+        class ReferenceSheetLLM:
+            def complete_prompt(self, system_prompt: str, prompt: str) -> str:
+                self.system_prompt = system_prompt
+                return '{"subject": "a singer", "actors": [], "locations": [{"id": "stage", "image_prompt": "Cinematic environment reference sheet for a dark stage"}]}'
+
+        llm = ReferenceSheetLLM()
+        result = MusicVideoPromptPipeline(llm).create_subject_and_locations("stage story")
+
+        self.assertNotIn("location reference sheet", llm.system_prompt.lower())
+        self.assertIn("never use \"environment reference sheet\"", llm.system_prompt.lower())
+        self.assertNotIn("reference sheet", result["locations"][0]["image_prompt"].lower())
+
     def test_create_final_scene_prompts_raises_for_missing_segments(self):
         """Missing segment IDs should produce a clear error, not a raw KeyError."""
         llm = FakeConceptLLM()

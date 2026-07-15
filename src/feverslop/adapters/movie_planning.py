@@ -73,7 +73,9 @@ class LLMMoviePlanner:
                         id=loc.id,
                         name=loc.name,
                         visual_description=str(refined.get("visual_description") or loc.visual_description).strip(),
-                        image_prompt=str(refined.get("image_prompt") or loc.visual_description).strip(),
+                        image_prompt=_sanitize_location_image_prompt(
+                            str(refined.get("image_prompt") or loc.visual_description)
+                        ),
                     )
                 )
             else:
@@ -853,12 +855,19 @@ Rules for visual_description:
 - Write in English, one concise paragraph (up to 200 characters).
 
 Rules for image_prompt:
-- This prompt will be fed directly to an image generator to create a reference environment photograph.
+- This prompt will be fed directly to an image generator to create one environment photograph.
 - It must describe a wide establishing view of the location's production design, lighting, and atmosphere.
-- It must end with: "Wide establishing view, production design, lighting, atmosphere, no people, no text."
+- It must end with: "Wide establishing view, production design, lighting, atmosphere, single continuous image, no collage, no split screen, no panels, no people, no text."
+- Never use the phrases "environment reference sheet" or "reference sheet".
 - No characters, no action, no narrative, no camera moves.
 - Write in English.
 """.strip()
+
+
+def _sanitize_location_image_prompt(value: str) -> str:
+    text = re.sub(r"(?i)\b(?:cinematic\s+)?environment reference sheet(?:\s+for)?\b", "", value)
+    text = re.sub(r"(?i)\breference sheet\b", "", text)
+    return " ".join(text.split()).strip(" .,-")
 
 
 def _refine_actor_prompts_prompt(actors: tuple[MovieActor, ...], source_text: str, premise: str) -> str:

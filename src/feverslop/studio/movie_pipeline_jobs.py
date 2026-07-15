@@ -318,6 +318,7 @@ def _needs_movie_prompt_repair(ref: dict[str, Any]) -> bool:
         or (prompt.startswith("consistent cinematic") and "drawn from the story premise" in prompt)
         or "visual identity" in combined
         or "full-body cinematic character reference sheet" in visual_description
+        or "environment reference sheet" in combined
         or "four vertical panels" in visual_description
         or any(
             token in combined
@@ -353,10 +354,13 @@ def _movie_reference_fields(
         visual_description = build_movie_actor_visual_description(_movie_actor_shot_cues(actor_shots))
         return visual_description, build_movie_actor_reference_prompt(display_name, visual_description)
     cues = _movie_shot_cues(shot or {})
-    prompt = f"Cinematic environment reference sheet for {display_name}"
+    prompt = f"Cinematic wide establishing photograph of {display_name}"
     if cues:
         prompt += f". Environment and mood from scenes: {cues}"
-    prompt = f"{prompt}. Wide establishing view, production design, lighting, atmosphere, no people, no text."
+    prompt = (
+        f"{prompt}. Wide establishing view, production design, lighting, atmosphere, "
+        "single continuous image, no collage, no split screen, no panels, no people, no text."
+    )
     return prompt, prompt
 
 
