@@ -52,6 +52,7 @@ class ComfyUIMovieIngredientsVisualAdapter:
                     output_dir=output_dir,
                     audio_file=Path(""),
                     storyboard_dir=Path(""),
+                    upload_audio=False,
                 )
             )
             rendered.append(clip_path)

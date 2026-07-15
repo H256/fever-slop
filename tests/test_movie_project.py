@@ -2641,6 +2641,63 @@ class MovieProjectTests(unittest.TestCase):
             queued_workflow = queue.calls[0][0]
             self.assertFalse(any("audio" in key.lower() for node in queued_workflow.values() for key in node.get("inputs", {})))
 
+    def test_comfyui_movie_ingredients_adapter_disables_audio_upload(self):
+        from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+        from feverslop.adapters.movie_ingredients_visual import ComfyUIMovieIngredientsVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            render_plan_path = temp / "movie" / "render_plan_ingredients.json"
+            render_plan_path.parent.mkdir(parents=True, exist_ok=True)
+            render_plan_path.write_text(
+                json.dumps({
+                    "title": "Ingredient Movie",
+                    "fps": 24,
+                    "scenes": [{
+                        "scene": 1,
+                        "duration_seconds": 2.0,
+                        "ingredients_scene_sheet": str(sheet),
+                        "ltx": {"ingredients_target_prompt": "target"},
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            workflow_path = temp / "ingredients.json"
+            workflow_path.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#INGREDIENTS"}, "class_type": "LoadImage"},
+                    "2": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}, "class_type": "CLIPTextEncode"},
+                    "3": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "4": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                    "5": {"inputs": {"value": 49}, "_meta": {"title": "#FRAMES"}},
+                    "6": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMERATE"}},
+                }),
+                encoding="utf-8",
+            )
+            queue = FakeMovieRenderQueue()
+            asset_uploader = NativeAudioAssetUploader()
+            postprocessor = FakeMoviePostprocessor()
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=object(),
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                asset_uploader=asset_uploader,
+                render_queue=queue,
+                postprocessor=postprocessor,
+                postprocess=False,
+            )
+
+            final = ComfyUIMovieIngredientsVisualAdapter(backend=backend).render_movie(
+                project_dir=temp,
+                render_plan_path=render_plan_path,
+            )
+
+            self.assertEqual(temp / "output" / "movie" / "ingredient-movie.mp4", final)
+            self.assertEqual([], asset_uploader.audio_calls)
+
     def test_comfyui_movie_adapter_renders_shots_with_ltx_native_audio(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
 
