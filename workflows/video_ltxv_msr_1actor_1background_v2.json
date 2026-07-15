@@ -96,9 +96,33 @@
       "title": "#HEIGHT"
     }
   },
+  "12": {
+    "inputs": {
+      "audio": "ComfyUI_00056_.mp3",
+      "audioUI": "/api/view?filename=ComfyUI_00056_.mp3&type=input&subfolder=&rand=0.44524088109661175"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "#LOAD_AUDIO"
+    }
+  },
+  "13": {
+    "inputs": {
+      "start_index": 214.78,
+      "duration": 224.06,
+      "audio": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "TrimAudioDuration",
+    "_meta": {
+      "title": "#TRIM_AUDIO"
+    }
+  },
   "14": {
     "inputs": {
-      "image": "Jette_Nietzard_Feb_2025.jpg"
+      "image": "actor_hero.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -107,7 +131,7 @@
   },
   "15": {
     "inputs": {
-      "image": "scene_001_legacy_1 (3).png"
+      "image": "background.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -117,12 +141,12 @@
   "17": {
     "inputs": {
       "width": [
-        "10",
-        0
+        "80",
+        1
       ],
       "height": [
-        "11",
-        0
+        "81",
+        1
       ],
       "batch_size": 1,
       "color": 0
@@ -160,13 +184,6 @@
   },
   "20": {
     "inputs": {
-      "frame_idx": 0,
-      "strength": 1,
-      "latent_downscale_factor": 1,
-      "crop": "center",
-      "use_tiled_encode": false,
-      "tile_size": 256,
-      "tile_overlap": 64,
       "positive": [
         "39",
         0
@@ -186,7 +203,14 @@
       "image": [
         "23",
         0
-      ]
+      ],
+      "frame_idx": 0,
+      "strength": 1,
+      "latent_downscale_factor": 1,
+      "crop": "center",
+      "use_tiled_encode": false,
+      "tile_size": 256,
+      "tile_overlap": 64
     },
     "class_type": "LTXAddVideoICLoRAGuide",
     "_meta": {
@@ -259,10 +283,6 @@
   },
   "27": {
     "inputs": {
-      "global_prompt": "Reference image 1: the actor. a woman end 20 blond hair, glasses, bitchy attitude\nReference image 2 (scene): the environment. a derelict battlefield",
-      "local_prompts": "The woman searches the battlefield, yelling in german \"WO IST DIE GRÜNE ENERGIE?\"",
-      "segment_lengths": "141",
-      "epsilon": 0.0022,
       "model": [
         "59",
         0
@@ -274,7 +294,11 @@
       "latent": [
         "21",
         0
-      ]
+      ],
+      "global_prompt": "Reference image 1: the actor. Background reference: the environment. Preserve actor identity and background identity from the references.",
+      "local_prompts": "stable cinematic motion, preserve the referenced actor and background",
+      "segment_lengths": "224",
+      "epsilon": 0.0022
     },
     "class_type": "PromptRelayEncode",
     "_meta": {
@@ -297,7 +321,7 @@
         2
       ],
       "audio_latent": [
-        "61",
+        "36",
         0
       ]
     },
@@ -364,9 +388,58 @@
       "title": "SamplerCustomAdvanced"
     }
   },
+  "34": {
+    "inputs": {
+      "audio": [
+        "13",
+        0
+      ],
+      "audio_vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "LTXVAudioVAEEncode",
+    "_meta": {
+      "title": "LTXV Audio VAE Encode"
+    }
+  },
+  "35": {
+    "inputs": {
+      "value": 0,
+      "width": [
+        "10",
+        0
+      ],
+      "height": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "SolidMask",
+    "_meta": {
+      "title": "SolidMask"
+    }
+  },
+  "36": {
+    "inputs": {
+      "samples": [
+        "34",
+        0
+      ],
+      "mask": [
+        "35",
+        0
+      ]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {
+      "title": "Set Latent Noise Mask"
+    }
+  },
   "37": {
     "inputs": {
-      "noise_seed": 956702826111267
+      "noise_seed": 725783354113468
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -517,7 +590,7 @@
   },
   "48": {
     "inputs": {
-      "noise_seed": 1009299162816414
+      "noise_seed": 0
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -668,14 +741,13 @@
   },
   "60": {
     "inputs": {
-      "nag_scale": 11,
-      "nag_alpha": 0.25,
-      "nag_tau": 2.5,
-      "inplace": true,
       "model": [
         "27",
         0
       ],
+      "nag_scale": 11,
+      "nag_alpha": 0.25,
+      "nag_tau": 2.5,
       "nag_cond_video": [
         "39",
         1
@@ -683,32 +755,38 @@
       "nag_cond_audio": [
         "39",
         1
-      ]
+      ],
+      "inplace": true
     },
     "class_type": "LTX2_NAG",
     "_meta": {
       "title": "#MSR_NAG"
     }
   },
-  "61": {
+  "80": {
     "inputs": {
-      "frames_number": [
-        "22",
-        0
-      ],
-      "frame_rate": [
-        "25",
-        0
-      ],
-      "batch_size": 1,
-      "audio_vae": [
-        "5",
+      "expression": "max(64, floor(a / 64) * 64)",
+      "values.a": [
+        "10",
         0
       ]
     },
-    "class_type": "LTXVEmptyLatentAudio",
+    "class_type": "ComfyMathExpression",
     "_meta": {
-      "title": "LTXV Empty Latent Audio"
+      "title": "Normalize Target Width to 64"
+    }
+  },
+  "81": {
+    "inputs": {
+      "expression": "max(64, floor(a / 64) * 64)",
+      "values.a": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Normalize Target Height to 64"
     }
   }
 }

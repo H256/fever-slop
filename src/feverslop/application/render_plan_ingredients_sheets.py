@@ -9,6 +9,7 @@ import math
 from feverslop.application.reference_bible import (
     compose_scene_reference_sheet,
     generate_scene_sheet_description,
+    ingredients_sheet_size,
 )
 
 
@@ -18,7 +19,7 @@ def enrich_render_plan_with_ingredients_sheets(
     output_path: str | Path,
     *,
     video_settings: Any = None,
-    sheet_scale: float = 3.0,
+    sheet_scale: float = 2.0,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
 ) -> Path:
     """Compose per-scene Ingredients reference sheets for song-based render plans.
@@ -46,7 +47,7 @@ def enrich_render_plan_with_ingredients_sheets(
     else:
         base_w = int(first_scene.get("width", 1280))
         base_h = int(first_scene.get("height", 704))
-    sheet_size = (int(base_w * sheet_scale), int(base_h * sheet_scale))
+    sheet_size = ingredients_sheet_size(base_w, base_h, sheet_scale)
 
     project_base = _infer_reference_project_base(references_dir)
 

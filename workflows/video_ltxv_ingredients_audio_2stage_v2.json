@@ -57,11 +57,11 @@
   "3059": {
     "inputs": {
       "width": [
-        "5100",
-        0
+        "5302",
+        1
       ],
       "height": [
-        "5100",
+        "5303",
         1
       ],
       "length": [
@@ -138,7 +138,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "5011",
+        "5210",
         0
       ],
       "positive": [
@@ -174,7 +174,7 @@
         0
       ],
       "latent_image": [
-        "5118",
+        "4528",
         0
       ]
     },
@@ -204,7 +204,7 @@
   "4845": {
     "inputs": {
       "av_latent": [
-        "5115",
+        "4829",
         0
       ]
     },
@@ -216,7 +216,7 @@
   "4848": {
     "inputs": {
       "samples": [
-        "4845",
+        "5209",
         1
       ],
       "audio_vae": [
@@ -357,8 +357,8 @@
         2
       ],
       "latents": [
-        "5013",
-        2
+        "5209",
+        0
       ]
     },
     "class_type": "LTXVTiledVAEDecode",
@@ -471,7 +471,7 @@
   },
   "5102": {
     "inputs": {
-      "value": 544
+      "value": 896
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -480,7 +480,7 @@
   },
   "5103": {
     "inputs": {
-      "value": 960
+      "value": 1536
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -489,7 +489,7 @@
   },
   "5108": {
     "inputs": {
-      "value": 217
+      "value": 121
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -515,7 +515,7 @@
   "5110": {
     "inputs": {
       "audio": "feverslop/audio/scholoraid-8b0340a73f2c.mp3",
-      "audioUI": "/api/view?filename=scholoraid-8b0340a73f2c.mp3&type=input&subfolder=feverslop/audio&rand=0.2456896923109132"
+      "audioUI": "/api/view?filename=scholoraid-8b0340a73f2c.mp3&type=input&subfolder=feverslop/audio&rand=0.9250485413124243"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -603,7 +603,7 @@
       "offload_model": true,
       "offload_cache": true,
       "anything": [
-        "4829",
+        "5207",
         0
       ]
     },
@@ -616,7 +616,7 @@
     "inputs": {
       "resize_type": "scale shorter dimension",
       "resize_type.shorter_size": [
-        "5117",
+        "5304",
         1
       ],
       "scale_method": "lanczos",
@@ -647,18 +647,221 @@
       "title": "Math Expression"
     }
   },
-  "5118": {
+  "5200": {
     "inputs": {
-      "offload_model": true,
-      "offload_cache": true,
-      "anything": [
-        "4528",
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "Load Latent Upscale Model (Stage 2)"
+    }
+  },
+  "5201": {
+    "inputs": {
+      "samples": [
+        "5013",
+        2
+      ],
+      "upscale_model": [
+        "5200",
+        0
+      ],
+      "vae": [
+        "3940",
+        2
+      ]
+    },
+    "class_type": "LTXVLatentUpsampler",
+    "_meta": {
+      "title": "LTXV Latent Upsampler x2 (Stage 2)"
+    }
+  },
+  "5202": {
+    "inputs": {
+      "video_latent": [
+        "5201",
+        0
+      ],
+      "audio_latent": [
+        "4845",
+        1
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent (Stage 2)"
+    }
+  },
+  "5203": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "5011",
+        0
+      ],
+      "positive": [
+        "5013",
+        0
+      ],
+      "negative": [
+        "5013",
+        1
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG Guider (Stage 2)"
+    }
+  },
+  "5204": {
+    "inputs": {
+      "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "Manual Sigmas (Stage 2)"
+    }
+  },
+  "5206": {
+    "inputs": {
+      "sampler_name": "euler_cfg_pp"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect (Stage 2)"
+    }
+  },
+  "5207": {
+    "inputs": {
+      "noise": [
+        "4832",
+        0
+      ],
+      "guider": [
+        "5203",
+        0
+      ],
+      "sampler": [
+        "5206",
+        0
+      ],
+      "sigmas": [
+        "5204",
+        0
+      ],
+      "latent_image": [
+        "5202",
         0
       ]
     },
-    "class_type": "VRAMCleanup",
+    "class_type": "SamplerCustomAdvanced",
     "_meta": {
-      "title": "🎈VRAM-Cleanup"
+      "title": "SamplerCustomAdvanced (Stage 2)"
+    }
+  },
+  "5209": {
+    "inputs": {
+      "av_latent": [
+        "5115",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXVSeparateAVLatent (Stage 2)"
+    }
+  },
+  "5210": {
+    "inputs": {
+      "model": [
+        "5011",
+        0
+      ],
+      "nag_scale": 11,
+      "nag_alpha": 0.25,
+      "nag_tau": 2.5,
+      "nag_cond_video": [
+        "1241",
+        1
+      ],
+      "nag_cond_audio": [
+        "1241",
+        1
+      ],
+      "inplace": true
+    },
+    "class_type": "LTX2_NAG",
+    "_meta": {
+      "title": "LTX2 NAG"
+    }
+  },
+  "5300": {
+    "inputs": {
+      "expression": "max(64, floor(a / 64) * 64)",
+      "values.a": [
+        "5103",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Normalize Target Width to 64"
+    }
+  },
+  "5301": {
+    "inputs": {
+      "expression": "max(64, floor(a / 64) * 64)",
+      "values.a": [
+        "5102",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Normalize Target Height to 64"
+    }
+  },
+  "5302": {
+    "inputs": {
+      "expression": "a / 2",
+      "values.a": [
+        "5300",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Stage 1 Width"
+    }
+  },
+  "5303": {
+    "inputs": {
+      "expression": "a / 2",
+      "values.a": [
+        "5301",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Stage 1 Height"
+    }
+  },
+  "5304": {
+    "inputs": {
+      "expression": "min(a, b) / 2",
+      "values.a": [
+        "5300",
+        1
+      ],
+      "values.b": [
+        "5301",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Stage 1 Shorter Dimension"
     }
   }
 }

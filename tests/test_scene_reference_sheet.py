@@ -15,6 +15,7 @@ from feverslop.application.reference_bible import (
     _type_label,
     compose_scene_reference_sheet,
     generate_scene_sheet_description,
+    ingredients_sheet_size,
 )
 
 
@@ -33,6 +34,18 @@ class FitContainImageTests(unittest.TestCase):
         self.assertEqual((200, 100), result.size)
         self.assertEqual((0, 0, 0), result.getpixel((0, 0)))
         self.assertEqual((0, 0, 255), result.getpixel((90, 50)))
+
+
+class IngredientsSheetSizeTests(unittest.TestCase):
+
+    def test_uses_two_times_project_size_and_expands_to_twelve_by_seven(self):
+        self.assertEqual((3840, 2240), ingredients_sheet_size(1920, 1088))
+
+    def test_never_shrinks_below_scaled_project_dimensions(self):
+        width, height = ingredients_sheet_size(1280, 720, 2.0)
+        self.assertGreaterEqual(width, 2560)
+        self.assertGreaterEqual(height, 1440)
+        self.assertEqual(width * 7, height * 12)
 
     def test_fit_contain_same_size_returns_copy(self):
         src = Image.new("RGB", (100, 100), color=(0, 255, 0))

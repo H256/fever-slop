@@ -9,6 +9,7 @@ from typing import Any
 from feverslop.application.reference_bible import (
     compose_scene_reference_sheet,
     generate_scene_sheet_description,
+    ingredients_sheet_size,
 )
 from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 
@@ -16,7 +17,7 @@ from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 def enrich_movie_render_plan_with_ingredients_sheets(
     *,
     project_dir: Path,
-    sheet_scale: float = 3.0,
+    sheet_scale: float = 2.0,
 ) -> Path:
     """Compose per-shot Ingredients scene reference sheets and write
     movie/render_plan_ingredients.json.
@@ -28,8 +29,8 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     Parameters
     ----------
     project_dir: Project root.
-    sheet_scale: Multiplier over the project resolution.  Default 3 so the
-                 sheet has enough resolution for the model to downscale.
+    sheet_scale: Minimum multiplier over the project resolution. The resulting
+                 canvas is expanded to the Ingredients model's 12:7 aspect.
     """
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
@@ -46,7 +47,7 @@ def enrich_movie_render_plan_with_ingredients_sheets(
 
     base_w, base_h = _read_json(render_plan_path).get("resolution", {}).get("width", 1280), \
         _read_json(render_plan_path).get("resolution", {}).get("height", 704)
-    sheet_size = (int(base_w * sheet_scale), int(base_h * sheet_scale))
+    sheet_size = ingredients_sheet_size(base_w, base_h, sheet_scale)
 
     enriched = deepcopy(render_plan)
     enriched["movie_bible_path"] = "movie/bible.json"

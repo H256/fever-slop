@@ -25,8 +25,8 @@ const form = reactive({
   renderBackend: "comfyui" as "comfyui" | "local",
   heroWorkflow: "workflows/image_t2i_startframe_krea_v1.json",
   editWorkflow: "workflows/image_edit_flux2_klein_1ref_v1.json",
-  msrWorkflow: "workflows/video_default_ltxv_msr_1actor_1background_v1.json",
-  msrI2vWorkflow: "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json",
+  msrWorkflow: "workflows/video_default_ltxv_msr_1actor_1background_v2.json",
+  msrI2vWorkflow: "workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json",
   movieVideoWorkflow: "msr" as "msr" | "msr-i2v-startframe",
   continuityKeyframes: "none" as "none" | "last-to-start"
 });

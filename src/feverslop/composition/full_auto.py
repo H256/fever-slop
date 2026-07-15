@@ -19,7 +19,7 @@ from feverslop.config.app_config import AppConfig
 def build_full_auto_use_case(
     *,
     app_config_path: str | Path = "app_config.json",
-    workflow_path: str | Path = Path("workflows") / "audio_song.json",
+    workflow_path: str | Path = Path("workflows") / "audio_song_v2.json",
     console: Console | None = None,
 ) -> FullAutoUseCase:
     app_config = AppConfig.load(app_config_path)

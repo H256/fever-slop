@@ -364,6 +364,18 @@ def _fit_contain_image(image: Image.Image, size: tuple[int, int], bg: tuple[int,
     return canvas
 
 
+def ingredients_sheet_size(
+    width: int,
+    height: int,
+    scale: float = 2.0,
+) -> tuple[int, int]:
+    """Return a 12:7 canvas that is at least ``scale`` times the source size."""
+    minimum_width = max(1, math.ceil(width * scale))
+    minimum_height = max(1, math.ceil(height * scale))
+    units = math.ceil(max(minimum_width / 12, minimum_height / 7))
+    return units * 12, units * 7
+
+
 def compose_reference_sheet(image_paths: list[Path], output_path: Path, *, labels: bool = True) -> Path:
     images = [Image.open(path).convert("RGB") for path in image_paths]
     if not images:

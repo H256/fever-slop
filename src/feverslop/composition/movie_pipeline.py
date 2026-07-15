@@ -478,7 +478,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
             render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
                 project_dir=project_dir,
-                sheet_scale=config.get("ingredients_sheet_scale", 3.0),
+                sheet_scale=config.get("ingredients_sheet_scale", 2.0),
             )
         elif not render_plan_ingredients_path.exists():
             render_plan_ingredients_path = None
@@ -531,7 +531,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
         render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
             project_dir=project_dir,
-            sheet_scale=config.get("ingredients_sheet_scale", 3.0),
+            sheet_scale=config.get("ingredients_sheet_scale", 2.0),
         )
     elif not render_plan_ingredients_path.exists():
         render_plan_ingredients_path = None
@@ -639,7 +639,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
     ltx_dir = project_dir / "output" / "movie" / "ltx_ingredients"
     backend = ComfyUIIngredientsVideoRenderBackend(
         client=client,
-        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_v1.json"),
+        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_2stage_v2.json"),
         output_dir=ltx_dir,
         project_dir=project_dir,
         model_resolver=model_resolver,

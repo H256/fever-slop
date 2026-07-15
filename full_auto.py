@@ -31,7 +31,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--style", required=True)
     parser.add_argument("--project-name", default=None)
     parser.add_argument("--projects-dir", default="projects")
-    parser.add_argument("--workflow", default=str(Path("workflows") / "audio_song.json"))
+    parser.add_argument("--workflow", default=str(Path("workflows") / "audio_song_v2.json"))
     parser.add_argument("--duration-seconds", type=float, default=120.0)
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=704)

@@ -29,7 +29,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_v1.json"), args.storyboard_workflow)
         self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_krea_v1.json"), args.reference_hero_workflow)
         self.assertEqual(os.fspath(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json"), args.reference_edit_workflow)
-        self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_msr_1actor_1background_v1.json"), args.msr_workflow)
+        self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_msr_1actor_1background_v2.json"), args.msr_workflow)
         self.assertEqual("", args.relay_workflow)
         self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_i2v_v1.json"), args.single_prompt_workflow)
         self.assertEqual("ltx_i2v", args.video_pipeline)
@@ -213,14 +213,14 @@ class RunnerScriptTests(unittest.TestCase):
                 "--continuity-keyframes",
                 "last-to-start",
                 "--msr-workflow",
-                "workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json",
+                "workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json",
             ]
         )
 
         config = movie_pipeline.config_from_args(args)
 
-        self.assertEqual("workflows/video_default_ltxv_msr_1actor_1background_v1.json", config["msr_workflow"])
-        self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json", config["msr_i2v_workflow"])
+        self.assertEqual("workflows/video_default_ltxv_msr_1actor_1background_v2.json", config["msr_workflow"])
+        self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json", config["msr_i2v_workflow"])
 
     def test_movie_pipeline_accepts_i2v_edit_workflow_mode(self):
         args = movie_pipeline.build_arg_parser().parse_args(

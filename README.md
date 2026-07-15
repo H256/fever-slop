@@ -196,6 +196,18 @@ uv run python full_auto.py \
   --skip-tests
 ```
 
+### LTX 2.3 Ingredients geometry
+
+The Ingredients workflows use two-stage sampling. For the model's recommended
+bucket, FeverSlop passes the final target size `1536 x 896`; the workflow
+samples stage 1 at `768 x 448` and reaches the target through the LTX 2.3 x2
+spatial latent upscaler. Ingredients clips should use at least `121` frames at
+`24` FPS. Reference sheets are composed at a high-resolution `12:7` canvas and
+then downscaled to the stage-1 conditioning size.
+
+See the official [Lightricks LTX-2.3 Ingredients model card](https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients)
+and the [reference Space implementation](https://huggingface.co/spaces/ltx-community/ltx-2.3-ingredients-distilled/tree/main).
+
 ## Requirements
 
 Most useful runs require:
@@ -203,7 +215,7 @@ Most useful runs require:
 - FFmpeg in `PATH`.
 - ComfyUI running and reachable from `app_config.json`.
 - Required ComfyUI custom nodes/models for the selected workflows.
-- `workflows/audio_song.json` with ACE-Step nodes for Full-Auto audio generation.
+- `workflows/audio_song_v2.json` with ACE-Step nodes for Full-Auto audio generation.
 - An OpenAI-compatible LLM endpoint configured in `app_config.json`.
 
 ## Documentation

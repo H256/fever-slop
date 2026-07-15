@@ -5,7 +5,7 @@ from pathlib import Path
 
 class LTXMSRWorkflowFileTests(unittest.TestCase):
     def test_api_workflow_matches_original_loaders_and_msr_anchors(self):
-        workflow_path = Path("workflows/video_ltxv_msr_1actor_1background_v1.json")
+        workflow_path = Path("workflows/video_ltxv_msr_1actor_1background_v2.json")
         workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
 
         self.assertNotIn("nodes", workflow)
@@ -52,7 +52,7 @@ class LTXMSRWorkflowFileTests(unittest.TestCase):
         self.assertIn("segment_lengths", relay_node["inputs"])
 
     def test_i2v_msr_workflow_reinjects_startframe_after_latent_upscale(self):
-        workflow_path = Path("workflows/video_default_i2v_ltxv_msr_1actor_1background_v1.json")
+        workflow_path = Path("workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json")
         workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
 
         titles = {
