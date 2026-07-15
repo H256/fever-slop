@@ -935,6 +935,9 @@ Return JSON with:
 Rules:
 - Write every non-dialogue prose field in English: description, camera, action, acting, location, and continuity_notes. Only dialogue may use {dialogue_language or "the requested spoken dialogue language"}.
 - actor_ids must only use bible actor ids.
+- Name every actor_ids entry in action and give each selected actor a visible contribution to the shot.
+- For multiple actors, describe their spatial relationship and one coherent shared action.
+- A collective noun such as party, group, or crowd does not replace naming each selected actor.
 - location_id must only use bible location ids.
 - Never put more than 4 actors in one shot.
 - Preserve dialogue, camera, acting, action, and continuity as separate fields.
@@ -1061,6 +1064,9 @@ Rules:
 - For idea/short_story input, write scenes with playable action, dramatic conflict, emotional turn, and dialogue where useful.
 - For screenplay input, preserve source dialogue and order exactly, but fill dramaturgical annotation fields from STORY DESIGN.
 - actor_ids must only use these ids: {[actor.id for actor in bible.actors]}
+- Name every actor_ids entry in action and describe how each selected actor participates in the scene.
+- For multiple actors, describe their spatial relationship and coherent shared action without rewriting supplied dialogue.
+- A collective noun such as party, group, or crowd does not replace naming each selected actor.
 - location_id must only use these ids: {[location.id for location in bible.locations]}
 - Dialogue language is {dialogue_language or "unspecified"}.
 - Keep screenplay text and dialogue out of actor/location visual descriptions.

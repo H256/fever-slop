@@ -158,11 +158,14 @@ def _placement_zone(index: int) -> str:
 
 
 def _video_prompt(shot: dict[str, Any]) -> str:
+    actor_ids = [str(item).strip() for item in shot.get("actor_ids") or [] if str(item).strip()]
+    cast_binding = f"Visible cast: {', '.join(f'`{actor_id}`' for actor_id in actor_ids)}." if actor_ids else ""
     action = str(shot.get("action") or shot.get("description") or "").strip()
     camera = str(shot.get("camera") or "").strip()
     dialogue = str(shot.get("dialogue") or "").strip()
     parts = [
         "Use the supplied startframe as the authoritative composition, identity, wardrobe, props, and environment.",
+        cast_binding,
         action,
         camera,
         f"Spoken dialogue: {dialogue}" if dialogue else "",

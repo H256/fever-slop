@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.reference_bible import (
+    build_ingredients_target_binding,
     compose_scene_reference_sheet,
     generate_scene_sheet_description,
+    generate_scene_sheet_anchors,
     ingredients_sheet_size,
 )
 from feverslop.application.movie_msr_enrichment import _movie_video_prompt
@@ -78,8 +80,12 @@ def _enrich_shot(shot: dict, *, builder: "IngredientsSceneSheetBuilder", manifes
     sheet_result = builder.build(shot)
     enriched["ingredients_scene_sheet"] = sheet_result["sheet_path"]
     enriched["ingredients_scene_sheet_description"] = sheet_result.get("scene_reference_sheet_description", "")
+    anchors = list(sheet_result.get("scene_reference_sheet_anchors") or [])
+    enriched["ingredients_scene_sheet_anchors"] = anchors
     target_prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
-    enriched["ingredients_target_prompt"] = "### Target Description\n" + target_prompt
+    enriched["ingredients_target_prompt"] = (
+        "### Target Description\n" + build_ingredients_target_binding(anchors) + target_prompt
+    )
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "native_audio": True,
@@ -131,7 +137,13 @@ class IngredientsSceneSheetBuilder:
                     })
 
         if not images:
-            return {"sheet_path": "", "image_count": 0, "images": [], "scene_reference_sheet_description": ""}
+            return {
+                "sheet_path": "",
+                "image_count": 0,
+                "images": [],
+                "scene_reference_sheet_description": "",
+                "scene_reference_sheet_anchors": [],
+            }
 
         image_paths = [self.project_dir / img["path"] for img in images]
         shot_id = shot.get("shot_id") or f"scene_{shot.get('scene')}"
@@ -141,11 +153,13 @@ class IngredientsSceneSheetBuilder:
 
         relative_sheet = output_path.relative_to(self.project_dir).as_posix()
         description = generate_scene_sheet_description(images, num_cols, self.size)
+        anchors = generate_scene_sheet_anchors(images, num_cols)
         return {
             "sheet_path": relative_sheet,
             "image_count": len(images),
             "images": images,
             "scene_reference_sheet_description": description,
+            "scene_reference_sheet_anchors": anchors,
         }
 
 

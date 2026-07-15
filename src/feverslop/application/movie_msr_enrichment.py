@@ -104,6 +104,11 @@ def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
     references = shot.get("reference_ids") or {}
     actor_ids = references.get("actors") or shot.get("actor_ids") or []
     actor_names = _names_for_ids(manifest.get("actors") or bible.get("actors") or [], actor_ids)
+    cast_members = [
+        f"{name} (`{actor_id}`)"
+        for actor_id, name in zip(actor_ids, actor_names)
+    ]
+    cast_binding = f"Visible cast: {_natural_join(cast_members)}" if cast_members else ""
     description = _clean_movie_prompt_field(shot.get("description"))
     action = _clean_movie_prompt_field(shot.get("action"))
     camera = _clean_movie_prompt_field(shot.get("camera"))
@@ -112,6 +117,7 @@ def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
     dialogue_direction = _local_dialogue_direction(shot, actor_names, dialogue_language=dialogue_language)
     action_part = "" if action and dialogue_direction.casefold().startswith(action.casefold()) else action
     parts = [
+        cast_binding,
         description,
         action_part if action_part and action_part != description else "",
         f"Camera: {camera}" if camera else "",
@@ -120,6 +126,14 @@ def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
     ]
     prompt = ". ".join(part.strip() for part in parts if str(part).strip())
     return _strip_reference_sheet_language(prompt)
+
+
+def _natural_join(items: list[str]) -> str:
+    if len(items) < 2:
+        return items[0] if items else ""
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
 def _local_dialogue_direction(shot: dict, actor_names: list[str], *, dialogue_language: str) -> str:

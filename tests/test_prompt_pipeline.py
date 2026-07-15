@@ -91,6 +91,30 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
         self.assertIn("major story phases", system_prompt)
         self.assertIn("avoid collapsing", system_prompt.lower())
 
+    def test_scene_details_receive_selected_scene_cast(self):
+        llm = FakeConceptLLM()
+        pipeline = MusicVideoPromptPipeline(llm)
+
+        pipeline.create_scene_details(
+            concept_prompts={
+                "segment_001": {
+                    "concept": "warrior leads mage through the gate",
+                    "references": {"actor_ids": ["warrior", "mage"], "location_id": "gate"},
+                }
+            },
+            stage1_segments=[{"segment_id": "segment_001", "type": "instrumental"}],
+            global_context={
+                "actors": [{"id": "warrior", "name": "Warrior"}, {"id": "mage", "name": "Mage"}],
+                "subject_mode": "multi",
+                "max_scene_actors": 4,
+            },
+        )
+
+        for call in llm.calls:
+            payload = json.loads(call["prompt"])
+            self.assertEqual(["warrior", "mage"], payload["scene_cast"]["visible_actor_ids"])
+            self.assertTrue(payload["scene_cast"]["requires_group_staging"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1535,6 +1535,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("Reference image 2 (Ivo): white suit and silver cane.", ltx["msr_global_prompt"])
             self.assertIn("white suit", ltx["msr_global_prompt"])
             self.assertIn("Reference image 3 (Scene): quiet archive room.", ltx["msr_global_prompt"])
+            self.assertIn("Visible cast: Mara (`mara`) and Ivo (`ivo`)", ltx["original_style_i2v_prompt"])
 
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
@@ -2020,6 +2021,7 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual("stone_clearing", data["scene_views"][0]["location_id"])
         self.assertIn(data["shots"][0]["view_id"], {view["view_id"] for view in data["scene_views"]})
         self.assertEqual(["leo", "morwenna"], data["shots"][0]["selected_actor_ids"])
+        self.assertIn("Visible cast: `leo`, `morwenna`", data["shots"][0]["video_prompt"])
         self.assertIn("Scene-only background plate", data["shots"][0]["base_plate_prompt"])
         self.assertEqual(["leo", "morwenna"], [item["actor_id"] for item in data["shots"][0]["edit_passes"]])
         self.assertIn("Add only leo", data["shots"][0]["edit_passes"][0]["prompt"])
@@ -3312,6 +3314,11 @@ class MovieProjectTests(unittest.TestCase):
             config={"dialogue_language": "German"},
         )
         planner.plan_shots_from_bible(bible=bible, desired_length=30, width=640, height=480)
+
+        prompts = "\n".join(planner.llm.calls)
+        self.assertIn("Name every actor_ids entry in action", prompts)
+        self.assertIn("spatial relationship", prompts)
+        self.assertIn("collective noun", prompts)
 
         prompts = "\n\n".join(planner.llm.calls)
         self.assertIn("actor visual_description", prompts)

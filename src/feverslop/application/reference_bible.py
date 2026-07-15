@@ -529,6 +529,42 @@ def generate_scene_sheet_description(images: list[dict], num_cols: int, size: tu
     return "\n".join(lines)
 
 
+def generate_scene_sheet_anchors(images: list[dict], num_cols: int) -> list[dict[str, str]]:
+    if not images:
+        return []
+    num_rows = math.ceil(len(images) / num_cols)
+    return [
+        {
+            "id": str(image.get("id") or "").strip(),
+            "type": str(image.get("type") or "").strip(),
+            "position": _panel_position_label(
+                index // num_cols,
+                index % num_cols,
+                num_rows,
+                num_cols,
+                index,
+                len(images),
+            ),
+        }
+        for index, image in enumerate(images)
+    ]
+
+
+def build_ingredients_target_binding(anchors: list[dict]) -> str:
+    lines = []
+    for anchor in anchors:
+        item_id = str(anchor.get("id") or "").strip()
+        position = str(anchor.get("position") or "").strip()
+        item_type = str(anchor.get("type") or "").strip()
+        if item_type == "actor":
+            lines.append(f"Use Character `{item_id}` from {position} as a visible character.")
+        elif item_type == "location":
+            lines.append(f"Use Setting `{item_id}` from {position} as the environment.")
+    if any(str(anchor.get("type")) == "actor" for anchor in anchors):
+        lines.append("Do not add or omit visible characters.")
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
 def _infer_reference_artifact_base_dir(output_dir: Path) -> Path:
     if output_dir.name == "references" and output_dir.parent.name == "output":
         return output_dir.parent.parent
