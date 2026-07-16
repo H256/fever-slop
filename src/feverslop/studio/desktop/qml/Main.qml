@@ -1,0 +1,223 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+ApplicationWindow {
+    id: root
+    width: 1440
+    height: 900
+    minimumWidth: 1000
+    minimumHeight: 680
+    visible: true
+    title: "FeverSlop Studio"
+    color: "#1C1C1E"
+
+    readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
+    property int currentPage: 0
+    property string pageTitle: "Projects"
+
+    component NavButton: Button {
+        required property int page
+        flat: true
+        Layout.fillWidth: true
+        Layout.preferredHeight: 44
+        leftPadding: 14
+        rightPadding: 12
+        display: AbstractButton.TextBesideIcon
+        font.pixelSize: 14
+        palette.buttonText: checked ? "#FFFFFF" : "#C7C7CC"
+        background: Rectangle {
+            color: checked ? "#3A3A40" : parent.hovered ? "#303034" : "transparent"
+            radius: 6
+            Rectangle {
+                visible: parent.parent.checked
+                width: 3
+                height: 24
+                radius: 2
+                color: "#7B83EB"
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        onClicked: {
+            root.currentPage = page
+            root.pageTitle = text
+        }
+    }
+
+    component ChromeLabel: Label {
+        color: "#E5E5EA"
+        font.pixelSize: 13
+    }
+
+    component WorkspaceButton: Button {
+        implicitHeight: 44
+        leftPadding: 16
+        rightPadding: 16
+        palette.buttonText: "#FFFFFF"
+        background: Rectangle {
+            color: parent.down ? "#4A4EB3" : parent.hovered ? "#666AD1" : "#5B5FC7"
+            radius: 6
+        }
+    }
+
+    header: ToolBar {
+        height: 56
+        background: Rectangle { color: "#252528" }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            spacing: 12
+            Label {
+                text: "FS"
+                color: "white"
+                font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                background: Rectangle { color: "#5B5FC7"; radius: 5 }
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+            }
+            Label { text: "FeverSlop Studio"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 16 }
+            Rectangle { width: 1; Layout.fillHeight: true; color: "#3A3A3C" }
+            ChromeLabel {
+                text: vm && vm.current_project_id ? vm.current_project.name : "Project workspace"
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+            ToolButton {
+                icon.name: "view-refresh"
+                display: AbstractButton.IconOnly
+                ToolTip.visible: hovered
+                ToolTip.text: "Refresh projects"
+                onClicked: if (vm) vm.refresh_projects()
+            }
+        }
+    }
+
+    RowLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        Rectangle {
+            objectName: "projectSidebar"
+            color: "#252528"
+            Layout.preferredWidth: 240
+            Layout.fillHeight: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 4
+
+                ChromeLabel { text: "WORKSPACE"; color: "#8E8E93"; font.bold: true; font.pixelSize: 11; leftPadding: 10 }
+                NavButton { text: "Projects"; icon.name: "folder"; page: 0; checked: root.currentPage === page }
+                NavButton { text: "Studio Settings"; icon.name: "settings-configure"; page: 10; checked: root.currentPage === page }
+
+                Rectangle { Layout.fillWidth: true; height: 1; color: "#3A3A3C"; Layout.topMargin: 6; Layout.bottomMargin: 6 }
+                ChromeLabel {
+                    text: vm && vm.current_project_id ? vm.current_project_id.toUpperCase() : "NO PROJECT SELECTED"
+                    color: "#8E8E93"
+                    font.bold: true
+                    font.pixelSize: 11
+                    leftPadding: 10
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+                NavButton { text: "Dashboard"; icon.name: "view-dashboard"; page: 1; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Pipeline"; icon.name: "media-playback-start"; page: 2; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Render Plan"; icon.name: "view-list-details"; page: 3; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "References"; icon.name: "image-x-generic"; page: 4; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Project Settings"; icon.name: "document-properties"; page: 5; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Artifacts"; icon.name: "folder-documents"; page: 6; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Queue"; icon.name: "view-list-tree"; page: 7; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Review"; icon.name: "video-x-generic"; page: 8; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Final Video"; icon.name: "media-playback-start"; page: 9; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                Item { Layout.fillHeight: true }
+                ChromeLabel { text: "Native Qt Studio"; color: "#6E6E73"; leftPadding: 10 }
+            }
+        }
+
+        ColumnLayout {
+            objectName: "workspace"
+            spacing: 0
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            Rectangle {
+                color: "#F5F5F7"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 0
+
+                    Rectangle {
+                        color: "#FFFFFF"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 72
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 28
+                            anchors.rightMargin: 28
+                            Label { text: root.pageTitle; color: "#1C1C1E"; font.pixelSize: 24; font.bold: true; Layout.fillWidth: true }
+                            Label { visible: vm && vm.error; text: vm ? vm.error : ""; color: "#C62828"; font.pixelSize: 13; elide: Text.ElideRight; Layout.maximumWidth: 520 }
+                        }
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#D8D8DC" }
+                    }
+
+                    StackLayout {
+                        currentIndex: root.currentPage
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+
+                        ProjectsPage {}
+                        PlaceholderPage { heading: "Project Dashboard"; detail: "Project health, outputs, and pipeline readiness." }
+                        PlaceholderPage { heading: "Pipeline"; detail: "Run pipeline stages and inspect live logs." }
+                        JsonWorkspace { heading: "Render Plan"; defaultPath: "render_plan.json" }
+                        PlaceholderPage { heading: "References"; detail: "Actor and location references for visual continuity." }
+                        JsonWorkspace { heading: "Project Configuration"; defaultPath: "config.json" }
+                        PlaceholderPage { heading: "Artifacts"; detail: "Browse generated JSON, images, audio, and video." }
+                        PlaceholderPage { heading: "Render Queue"; detail: "Current and completed Studio jobs." }
+                        PlaceholderPage { heading: "Review"; detail: "Inspect rendered scenes and prepare precise recuts." }
+                        PlaceholderPage { heading: "Final Video"; detail: "Play the final muxed project output." }
+                        PlaceholderPage { heading: "Studio Settings"; detail: "The projects root is selected at application startup." }
+                    }
+                }
+            }
+
+            Rectangle {
+                objectName: "jobPanel"
+                color: "#1C1C1E"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 120
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 16
+                    ColumnLayout {
+                        Layout.preferredWidth: 210
+                        Label { text: "JOB ACTIVITY"; color: "#8E8E93"; font.bold: true; font.pixelSize: 11 }
+                        ChromeLabel { text: "No active job"; font.pixelSize: 15 }
+                        ChromeLabel { text: "Pipeline output appears here"; color: "#8E8E93" }
+                    }
+                    Rectangle { width: 1; Layout.fillHeight: true; color: "#3A3A3C" }
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        TextArea {
+                            readOnly: true
+                            text: "Ready."
+                            color: "#C7C7CC"
+                            font.family: "monospace"
+                            font.pixelSize: 12
+                            background: null
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
