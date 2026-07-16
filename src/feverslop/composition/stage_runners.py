@@ -222,6 +222,7 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
             state.plan_for_next_step,
             state.context.reference_plan,
             llm=llm,
+            on_analysis_status=msr_prompt_progress.analysis_attempt,
             on_scene_complete=_scene_progress_callback(msr_prompt_progress),
         )
 

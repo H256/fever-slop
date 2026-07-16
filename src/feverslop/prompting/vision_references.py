@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageOps
+from feverslop.domain.vision_references import ReferenceImage
 
-
-@dataclass(frozen=True)
-class ReferenceImage:
-    id: str
-    type: str
-    path: Path
+__all__ = ["ReferenceImage", "prepare_vision_image"]
 
 
 def prepare_vision_image(path: Path, *, max_side: int = 1024) -> tuple[str, bytes]:

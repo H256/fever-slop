@@ -16,7 +16,93 @@ class FakeLLM:
         return self.response
 
 
+class FakeVisionLLM(FakeLLM):
+    def complete_prompt_with_images(self, system_prompt: str, prompt: str, image_paths: list[Path]) -> str:
+        self.calls.append({"system_prompt": system_prompt, "prompt": prompt, "image_paths": image_paths})
+        return self.response
+
+
 class MSRPromptEnrichmentTests(unittest.TestCase):
+    def test_vision_response_supplies_global_descriptions_and_indexed_local_relays(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "mara.png").write_bytes(b"actor")
+            (temp / "stage.png").write_bytes(b"location")
+            plan = temp / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 4,
+                "references": {
+                    "actor_msr_paths": ["mara.png"],
+                    "location_msr_path": "stage.png",
+                    "actor_reference_descriptions": [{"id": "mara", "name": "Mara", "visual_description": "fallback actor"}],
+                    "location_reference_description": {"id": "stage", "name": "Stage", "visual_description": "fallback stage"},
+                },
+                "ltx": {"prompt_relay": [
+                    {"frame_start": 0, "frame_end": 19, "state": "instrumental", "prompt": "old zero"},
+                    {"frame_start": 20, "frame_end": 47, "state": "instrumental", "prompt": "old one"},
+                ]},
+            }]), encoding="utf-8")
+            response = json.dumps({
+                "references": [
+                    {"id": "mara", "type": "actor", "description": "Mara has a sharp black bob, an angular silver jacket, and watchful grey eyes"},
+                    {"id": "stage", "type": "location", "description": "A circular rain-dark stage sits beneath cyan rigging and drifting theatrical haze"},
+                ],
+                "relays": [
+                    {"index": 1, "prompt": "Mara crosses into the cyan haze in silence, mouth closed, as the camera arcs behind her and rain trembles across the stage floor."},
+                    {"index": 0, "prompt": "Mara waits beneath the rigging in silence, mouth closed, while a slow push-in catches her jacket moving against the wind and haze."},
+                ],
+            })
+            llm = FakeVisionLLM(response)
+            statuses = []
+
+            output = enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm, on_analysis_status=lambda scene, refs: statuses.append((scene, refs)))
+
+            ltx = json.loads(output.read_text(encoding="utf-8"))[0]["ltx"]
+            self.assertIn("sharp black bob", ltx["msr_global_prompt"])
+            self.assertIn("rain-dark stage", ltx["msr_global_prompt"])
+            self.assertEqual([(0, 19), (20, 47)], [(r["frame_start"], r["frame_end"]) for r in ltx["msr_prompt_relay"]])
+            self.assertIn("waits beneath", ltx["msr_prompt_relay"][0]["prompt"])
+            self.assertIn("crosses into", ltx["msr_prompt_relay"][1]["prompt"])
+            for relay in ltx["msr_prompt_relay"]:
+                for forbidden in ("Reference Sheet Description", "Target Description", "left panel", "sharp black bob"):
+                    self.assertNotIn(forbidden, relay["prompt"])
+            self.assertEqual([temp / "mara.png", temp / "stage.png"], llm.calls[0]["image_paths"])
+            self.assertEqual([(4, [{"id": "mara", "type": "actor"}, {"id": "stage", "type": "location"}])], statuses)
+
+    def test_invalid_vision_response_falls_back_to_text_completion(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "mara.png").write_bytes(b"actor")
+            plan = temp / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 1,
+                "references": {"actor_msr_paths": ["mara.png"], "actor_reference_descriptions": [{"id": "mara", "name": "Mara"}]},
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "instrumental"}]},
+            }]), encoding="utf-8")
+            llm = FakeVisionLLM('{"references": [{"id": "wrong", "type": "actor", "description": "wrong"}], "relays": []}')
+
+            output = enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm)
+
+            relay = json.loads(output.read_text(encoding="utf-8"))[0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+            self.assertIn("mouth closed", relay)
+            self.assertEqual(2, len(llm.calls))
+            self.assertNotIn("image_paths", llm.calls[1])
+
+    def test_missing_images_do_not_attempt_multimodal_completion(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan = temp / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 1,
+                "references": {"actor_msr_paths": ["missing.png"], "actor_reference_descriptions": [{"id": "mara", "name": "Mara"}]},
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "instrumental"}]},
+            }]), encoding="utf-8")
+            llm = FakeVisionLLM("not json")
+
+            enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm)
+
+            self.assertEqual(1, len(llm.calls))
+            self.assertNotIn("image_paths", llm.calls[0])
     def test_enriches_global_prompt_and_segment_directions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

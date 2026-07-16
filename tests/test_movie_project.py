@@ -565,6 +565,66 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("start_frame", relay)
             self.assertNotIn("end_frame", relay)
 
+    def test_movie_msr_enrichment_uses_individual_manifest_images_for_vision(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class VisionLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
+                self.calls.append((system_prompt, prompt, image_paths))
+                return json.dumps({
+                    "references": [
+                        {"id": "mara", "type": "actor", "description": "Mara wears a graphite coat over a narrow red scarf, with a precise black bob"},
+                        {"id": "ivo", "type": "actor", "description": "Ivo has swept silver hair, a white dinner jacket, and a dark carved cane"},
+                        {"id": "archive", "type": "location", "description": "The archive has towering brass shelves, green lamps, and a wet black marble floor"},
+                    ],
+                    "relays": [{"index": 0, "prompt": "Mara steps between Ivo and the ledger, tightening one hand around its cover as Ivo raises his cane. The camera tracks sideways at waist height while green lamps flicker across the wet floor and both actors hold wary eye contact."}],
+                })
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            paths = [refs / "mara.png", refs / "ivo.png", refs / "archive.png"]
+            for path in paths:
+                path.write_bytes(b"image")
+            (movie / "bible.json").write_text(json.dumps({
+                "actors": [{"id": "mara"}, {"id": "ivo"}], "locations": [{"id": "archive"}],
+                "runtime_constraints": {"fps": 24},
+            }), encoding="utf-8")
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_7", "duration_seconds": 2, "description": "A confrontation",
+                "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
+            }]}), encoding="utf-8")
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [
+                    {"id": "mara", "name": "Mara", "visual_description": "fallback Mara", "msr_sheet_path": "movie/references/mara.png"},
+                    {"id": "ivo", "name": "Ivo", "visual_description": "fallback Ivo", "msr_sheet_path": "movie/references/ivo.png"},
+                ],
+                "locations": [{"id": "archive", "name": "Archive", "visual_description": "fallback Archive", "msr_sheet_path": "movie/references/archive.png"}],
+            }), encoding="utf-8")
+            llm = VisionLLM()
+            statuses = []
+
+            output = enrich_movie_render_plan_with_msr_prompts(
+                project_dir=project, llm=llm, on_analysis_status=lambda shot, references: statuses.append((shot, references))
+            )
+
+            shot = json.loads(output.read_text(encoding="utf-8"))["shots"][0]
+            self.assertEqual(paths, llm.calls[0][2])
+            self.assertIn("graphite coat", shot["ltx"]["msr_global_prompt"])
+            self.assertIn("swept silver hair", shot["ltx"]["msr_global_prompt"])
+            self.assertIn("towering brass shelves", shot["ltx"]["msr_global_prompt"])
+            relay = shot["ltx"]["msr_prompt_relay"][0]
+            self.assertIn("steps between Ivo", relay["prompt"])
+            self.assertNotIn("Target Description", relay["prompt"])
+            self.assertNotIn("graphite coat", relay["prompt"])
+            self.assertEqual((0, 47), (relay["frame_start"], relay["frame_end"]))
+            self.assertEqual("shot_7", statuses[0][0])
+
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 

@@ -286,6 +286,10 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
         console.print(f"Ingredients image analysis: shot {shot_id}; {len(references)} references [{summary}]")
 
+    def report_msr_analysis(shot_id: str, references: list[dict[str, str]]) -> None:
+        summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
+        console.print(f"MSR image analysis: shot {shot_id}; {len(references)} references [{summary}]")
+
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
     if any(
@@ -572,7 +576,12 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         )
 
     if not args.skip_movie_msr_enrich:
-        render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=args.keyframe_mode)
+        render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(
+            project_dir=project_dir,
+            keyframe_mode=args.keyframe_mode,
+            llm=ingredients_llm(),
+            on_analysis_status=report_msr_analysis,
+        )
     elif not render_plan_msr_path.exists():
         render_plan_msr_path = None
 
