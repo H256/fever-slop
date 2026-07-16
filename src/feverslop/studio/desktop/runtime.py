@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtQml import QQmlApplicationEngine
 
 from feverslop.studio.desktop.composition import create_studio_context
@@ -15,11 +15,33 @@ def qml_entrypoint() -> QUrl:
     return QUrl.fromLocalFile(str(Path(__file__).with_name("qml") / "Main.qml"))
 
 
+def studio_palette() -> QPalette:
+    palette = QPalette()
+    colors = {
+        QPalette.ColorRole.Window: "#F5F5F7",
+        QPalette.ColorRole.WindowText: "#1C1C1E",
+        QPalette.ColorRole.Base: "#FFFFFF",
+        QPalette.ColorRole.AlternateBase: "#EBEBED",
+        QPalette.ColorRole.Text: "#1C1C1E",
+        QPalette.ColorRole.Button: "#F5F5F7",
+        QPalette.ColorRole.ButtonText: "#1C1C1E",
+        QPalette.ColorRole.Highlight: "#5B5FC7",
+        QPalette.ColorRole.HighlightedText: "#FFFFFF",
+        QPalette.ColorRole.PlaceholderText: "#6E6E73",
+    }
+    for role, color in colors.items():
+        palette.setColor(role, QColor(color))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#6E6E73"))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor("#8E8E93"))
+    return palette
+
+
 def run_studio(projects_root: str | Path) -> int:
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
     app = QGuiApplication.instance() or QGuiApplication([])
     app.setApplicationName("FeverSlop Studio")
     app.setOrganizationName("FeverSlop")
+    app.setPalette(studio_palette())
 
     context = create_studio_context(projects_root)
     view_model = StudioViewModel(

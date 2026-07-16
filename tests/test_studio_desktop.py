@@ -281,6 +281,41 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(requests[0].raw_out_seconds, 4.75)
         self.assertTrue(requests[0].exact)
 
+    def test_review_timeline_load_move_undo_and_save(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        writes = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "name": project_id,
+                    "status": {},
+                    "artifacts": {
+                        "render_plans": ["output/render/plan.json"],
+                        "videos": ["output/final/scene_0001.mp4", "output/final/scene_0002.mp4"],
+                    },
+                }
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": [{"scene": 1, "duration_seconds": 2}, {"scene": 2, "duration_seconds": 3}]}
+
+            def write_artifact(self, project_id, request):
+                writes.append((project_id, request.path, request.data))
+                return {"path": request.path, "data": request.data}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("scholoraid")
+
+        self.assertTrue(view_model.load_review_timeline())
+        self.assertEqual([item["scene"] for item in view_model.review_items], [1, 2])
+        self.assertTrue(view_model.move_review_scene(1, 0))
+        self.assertEqual([item["scene"] for item in view_model.review_items], [2, 1])
+        self.assertTrue(view_model.undo_review_timeline())
+        self.assertTrue(view_model.save_review_timeline())
+        self.assertEqual([scene["scene"] for scene in writes[0][2]], [1, 2])
+
     def test_import_image_encodes_file_for_existing_media_port(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 
@@ -374,6 +409,19 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIsNotNone(root.findChild(object, "projectSidebar"))
         self.assertIsNotNone(root.findChild(object, "workspace"))
         self.assertIsNotNone(root.findChild(object, "jobPanel"))
+        self.assertIsNotNone(root.findChild(object, "reviewTimeline"))
+
+    def test_studio_palette_does_not_inherit_desktop_dark_mode(self):
+        from PySide6.QtGui import QPalette
+
+        from feverslop.studio.desktop.runtime import studio_palette
+
+        palette = studio_palette()
+
+        self.assertEqual(palette.color(QPalette.ColorRole.Window).name(), "#f5f5f7")
+        self.assertEqual(palette.color(QPalette.ColorRole.WindowText).name(), "#1c1c1e")
+        self.assertEqual(palette.color(QPalette.ColorRole.ButtonText).name(), "#1c1c1e")
+        self.assertEqual(palette.color(QPalette.ColorRole.Highlight).name(), "#5b5fc7")
 
 
 if __name__ == "__main__":

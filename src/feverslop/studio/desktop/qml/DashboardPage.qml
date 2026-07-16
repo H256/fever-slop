@@ -8,9 +8,9 @@ ScrollView {
     readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
 
     ColumnLayout {
-        width: page.availableWidth
+        x: 28
+        width: Math.max(0, page.availableWidth - 56)
         spacing: 18
-        anchors.margins: 28
         Label {
             text: vm && vm.current_project_id ? vm.current_project.name : "No project selected"
             color: "#1C1C1E"
