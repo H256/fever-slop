@@ -534,13 +534,14 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             _log_stage("Movie Ingredients render", f"rendering via {config['render_backend']}")
             if config["render_backend"] != "local":
                 adapter = _build_ingredients_adapter(project_dir, config, debug_workflows_dir=ingredients_debug_workflows_dir)
+                prepare, render = _movie_workflow_actions(args.write_debug_workflows)
                 final_video_path, ingredients_debug_workflows_dir = _prepare_and_render_ingredients_movie(
                     adapter=adapter,
                     project_dir=project_dir,
                     render_plan_path=render_plan_ingredients_path,
                     selected_scenes=args.scenes,
-                    prepare=args.write_debug_workflows,
-                    render=not args.write_debug_workflows,
+                    prepare=prepare,
+                    render=render,
                 )
             else:
                 adapter = LocalMovieVisualAdapter()
@@ -626,11 +627,12 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
                 ),
             )
         else:
+            prepare, render = _movie_workflow_actions(args.write_debug_workflows)
             final_video_path, debug_workflows_dir = _prepare_and_render_msr_movie(
                 adapter=adapter, project_dir=project_dir,
                 render_plan_path=render_plan_msr_path or render_plan_path,
-                selected_scenes=args.scenes, prepare=args.write_debug_workflows,
-                render=not args.write_debug_workflows,
+                selected_scenes=args.scenes, prepare=prepare,
+                render=render,
             )
     elif args.write_debug_workflows:
         workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
@@ -656,6 +658,10 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         final_video_path=final_video_path,
         debug_workflows_dir=debug_workflows_dir,
     )
+
+
+def _movie_workflow_actions(write_debug_workflows: bool) -> tuple[bool, bool]:
+    return True, not write_debug_workflows
 
 
 def _log_stage(title: str, detail: str = "") -> None:
