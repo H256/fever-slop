@@ -135,6 +135,10 @@ def _movie_vision_prompts(
             json.dumps({"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}, ensure_ascii=True),
             [reference.path for reference in references],
         )
+    except Exception:
+        logger.warning("MSR image analysis fallback: shot=%s reason=vision unavailable", shot_id)
+        return None
+    try:
         data = extract_json_object(response)
         items = data.get("references")
         relays = data.get("relays")
@@ -174,14 +178,26 @@ def _movie_reference_metadata(shot: dict, *, bible: dict, manifest: dict) -> lis
 
 
 def _movie_reference_images(shot: dict, *, bible: dict, manifest: dict, project_dir: Path | None) -> list[ReferenceImage]:
+    requested = shot.get("reference_ids") or {}
+    expected_pairs = [
+        (str(actor_id), "actor")
+        for actor_id in (requested.get("actors") or shot.get("actor_ids") or [])
+    ]
+    location_id = str(requested.get("location") or shot.get("location_id") or "")
+    if location_id:
+        expected_pairs.append((location_id, "location"))
+    metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
+    if [(str(item.get("id") or ""), str(item.get("type") or "")) for item in metadata] != expected_pairs:
+        return []
     result = []
-    for item in _movie_reference_metadata(shot, bible=bible, manifest=manifest):
+    for item in metadata:
         raw_path = str(item.get("msr_sheet_path") or item.get("sheet_path") or "").strip()
         path = Path(raw_path)
         if raw_path and not path.is_absolute() and project_dir is not None:
             path = project_dir / path
-        if item.get("id") and path.is_file():
-            result.append(ReferenceImage(str(item["id"]), str(item["type"]), path))
+        if not item.get("id") or not path.is_file():
+            return []
+        result.append(ReferenceImage(str(item["id"]), str(item["type"]), path))
     return result
 
 

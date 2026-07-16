@@ -121,6 +121,10 @@ def _build_vision_msr_prompts(
             json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=True),
             [reference.path for reference in references],
         )
+    except Exception:
+        logger.warning("MSR image analysis fallback: scene=%s reason=vision unavailable", scene_number)
+        return None
+    try:
         data = extract_json_object(response)
         parsed_references = data.get("references")
         parsed_relays = data.get("relays")
@@ -162,18 +166,23 @@ def _scene_reference_images(scene: dict, *, project_base: Path | None) -> list[R
     references = scene.get("references") or {}
     actors = references.get("actor_reference_descriptions") or []
     paths = list(references.get("actor_msr_paths") or references.get("actor_sheet_paths") or [])
+    if len(paths) != len(actors):
+        return []
     candidates = [(str(item.get("id") or ""), "actor", path) for item, path in zip(actors, paths)]
     location = references.get("location_reference_description") or {}
     location_path = references.get("location_msr_path") or references.get("location_sheet_path")
-    if location and location_path:
+    if location and not location_path:
+        return []
+    if location:
         candidates.append((str(location.get("id") or ""), "location", location_path))
     result = []
     for reference_id, reference_type, raw_path in candidates:
         path = Path(str(raw_path))
         if not path.is_absolute() and project_base is not None:
             path = project_base / path
-        if reference_id and path.is_file():
-            result.append(ReferenceImage(reference_id, reference_type, path))
+        if not reference_id or not path.is_file():
+            return []
+        result.append(ReferenceImage(reference_id, reference_type, path))
     return result
 
 

@@ -22,6 +22,11 @@ class FakeVisionLLM(FakeLLM):
         return self.response
 
 
+class FailingVisionLLM(FakeLLM):
+    def complete_prompt_with_images(self, system_prompt: str, prompt: str, image_paths: list[Path]) -> str:
+        raise RuntimeError("transport failed")
+
+
 class MSRPromptEnrichmentTests(unittest.TestCase):
     def test_vision_response_supplies_global_descriptions_and_indexed_local_relays(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -103,6 +108,52 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
 
             self.assertEqual(1, len(llm.calls))
             self.assertNotIn("image_paths", llm.calls[0])
+
+    def test_partial_missing_images_keep_full_deterministic_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "ivo.png").write_bytes(b"actor")
+            (temp / "archive.png").write_bytes(b"location")
+            plan = temp / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 8,
+                "references": {
+                    "actor_msr_paths": ["missing-mara.png", "ivo.png"],
+                    "location_msr_path": "archive.png",
+                    "actor_reference_descriptions": [
+                        {"id": "mara", "name": "Mara", "visual_description": "Mara fallback detail"},
+                        {"id": "ivo", "name": "Ivo", "visual_description": "Ivo fallback detail"},
+                    ],
+                    "location_reference_description": {"id": "archive", "name": "Archive", "visual_description": "Archive fallback detail"},
+                },
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "instrumental"}]},
+            }]), encoding="utf-8")
+            llm = FakeVisionLLM("not json")
+
+            output = enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm)
+
+            global_prompt = json.loads(output.read_text(encoding="utf-8"))[0]["ltx"]["msr_global_prompt"]
+            self.assertIn("Reference image 1: Mara", global_prompt)
+            self.assertIn("Reference image 2: Ivo", global_prompt)
+            self.assertIn("Reference image 3 (scene): Archive", global_prompt)
+            self.assertTrue(all("image_paths" not in call for call in llm.calls))
+
+    def test_transport_exception_is_logged_as_vision_unavailable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "mara.png").write_bytes(b"actor")
+            plan = temp / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 3,
+                "references": {"actor_msr_paths": ["mara.png"], "actor_reference_descriptions": [{"id": "mara", "name": "Mara"}]},
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "instrumental"}]},
+            }]), encoding="utf-8")
+
+            with self.assertLogs("feverslop.application.msr_prompt_enrichment", level="WARNING") as logs:
+                enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=FailingVisionLLM("not json"))
+
+            self.assertTrue(any("reason=vision unavailable" in message for message in logs.output))
+            self.assertFalse(any("reason=invalid response" in message for message in logs.output))
     def test_enriches_global_prompt_and_segment_directions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

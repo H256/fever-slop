@@ -625,6 +625,74 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual((0, 47), (relay["frame_start"], relay["frame_end"]))
             self.assertEqual("shot_7", statuses[0][0])
 
+    def test_movie_msr_partial_missing_images_keep_full_labeled_fallback(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class VisionLLM:
+            calls = []
+
+            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
+                self.calls.append(image_paths)
+                return "{}"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            (refs / "ivo.png").write_bytes(b"actor")
+            (refs / "archive.png").write_bytes(b"location")
+            (movie / "bible.json").write_text(json.dumps({"runtime_constraints": {"fps": 24}}), encoding="utf-8")
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_partial", "duration_seconds": 1,
+                "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
+            }]}), encoding="utf-8")
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [
+                    {"id": "mara", "name": "Mara", "visual_description": "Mara fallback", "msr_sheet_path": "movie/references/missing.png"},
+                    {"id": "ivo", "name": "Ivo", "visual_description": "Ivo fallback", "msr_sheet_path": "movie/references/ivo.png"},
+                ],
+                "locations": [{"id": "archive", "name": "Archive", "visual_description": "Archive fallback", "msr_sheet_path": "movie/references/archive.png"}],
+            }), encoding="utf-8")
+            llm = VisionLLM()
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=llm)
+
+            global_prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_global_prompt"]
+            self.assertIn("Reference image 1 (Mara): Mara fallback", global_prompt)
+            self.assertIn("Reference image 2 (Ivo): Ivo fallback", global_prompt)
+            self.assertIn("Reference image 3 (Scene): Archive fallback", global_prompt)
+            self.assertEqual([], llm.calls)
+
+    def test_movie_msr_transport_exception_is_logged_as_vision_unavailable(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class FailingVisionLLM:
+            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
+                raise RuntimeError("transport failed")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            (refs / "mara.png").write_bytes(b"actor")
+            (movie / "bible.json").write_text(json.dumps({"runtime_constraints": {"fps": 24}}), encoding="utf-8")
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_transport", "duration_seconds": 1,
+                "reference_ids": {"actors": ["mara"], "location": ""},
+            }]}), encoding="utf-8")
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [{"id": "mara", "name": "Mara", "visual_description": "Mara", "msr_sheet_path": "movie/references/mara.png"}],
+                "locations": [],
+            }), encoding="utf-8")
+
+            with self.assertLogs("feverslop.application.movie_msr_enrichment", level="WARNING") as logs:
+                enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=FailingVisionLLM())
+
+            self.assertTrue(any("reason=vision unavailable" in message for message in logs.output))
+            self.assertFalse(any("reason=invalid response" in message for message in logs.output))
+
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 
