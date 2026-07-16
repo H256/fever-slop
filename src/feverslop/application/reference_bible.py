@@ -98,7 +98,7 @@ class ReferenceBibleGenerator:
             )
             target = view_dir / f"{view_name}.png"
             if Path(rendered) != target:
-                target.write_bytes(Path(rendered).read_bytes())
+                Path(rendered).replace(target)
             if is_first_reference:
                 hero_path = target
             views.append({"name": view_name, "path": self._artifact_path(target)})
@@ -111,15 +111,18 @@ class ReferenceBibleGenerator:
                 path=target,
             )
 
-        sheet_path = subject_dir / "sheet.png"
         view_paths = [subject_dir / "views" / f"{view_name}.png" for view_name in self.actor_view_names]
-        compose_reference_sheet(view_paths, sheet_path, labels=False)
-        msr_sheet_path = subject_dir / "msr_sheet.png"
-        compose_msr_reference_sheet(
-            view_paths,
-            msr_sheet_path,
-            size=self.msr_sheet_size,
-        )
+        if len(view_paths) == 1:
+            sheet_path = msr_sheet_path = view_paths[0]
+        else:
+            sheet_path = subject_dir / "sheet.png"
+            compose_reference_sheet(view_paths, sheet_path, labels=False)
+            msr_sheet_path = subject_dir / "msr_sheet.png"
+            compose_msr_reference_sheet(
+                view_paths,
+                msr_sheet_path,
+                size=self.msr_sheet_size,
+            )
         manifest = {
             **asdict(subject),
             "kind": "actor",
@@ -153,12 +156,7 @@ class ReferenceBibleGenerator:
         )
         target = view_dir / f"{view_name}.png"
         if Path(rendered) != target:
-            target.write_bytes(Path(rendered).read_bytes())
-
-        sheet_path = subject_dir / "sheet.png"
-        msr_sheet_path = subject_dir / "msr_sheet.png"
-        sheet_path.write_bytes(target.read_bytes())
-        msr_sheet_path.write_bytes(target.read_bytes())
+            Path(rendered).replace(target)
         self._report_view_complete(
             kind="actor",
             item_id=subject.id,
@@ -171,8 +169,8 @@ class ReferenceBibleGenerator:
             **asdict(subject),
             "kind": "actor",
             "views": [{"name": view_name, "path": self._artifact_path(target)}],
-            "msr_input_path": self._artifact_path(msr_sheet_path),
-            "sheet_path": self._artifact_path(sheet_path),
+            "msr_input_path": self._artifact_path(target),
+            "sheet_path": self._artifact_path(target),
         }
         manifest_path = subject_dir / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -203,7 +201,7 @@ class ReferenceBibleGenerator:
             )
             target = view_dir / f"{view_name}.png"
             if Path(rendered) != target:
-                target.write_bytes(Path(rendered).read_bytes())
+                Path(rendered).replace(target)
             if view_name == "hero":
                 hero_path = target
             views.append({"name": view_name, "path": self._artifact_path(target)})
@@ -216,9 +214,12 @@ class ReferenceBibleGenerator:
                 path=target,
             )
 
-        sheet_path = location_dir / "sheet.png"
         view_paths = [location_dir / "views" / f"{view_name}.png" for view_name in self.location_view_names]
-        compose_reference_sheet(view_paths, sheet_path)
+        if len(view_paths) == 1:
+            sheet_path = view_paths[0]
+        else:
+            sheet_path = location_dir / "sheet.png"
+            compose_reference_sheet(view_paths, sheet_path, labels=False)
         manifest = {
             **asdict(location),
             "kind": "location",

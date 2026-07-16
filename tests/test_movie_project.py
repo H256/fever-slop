@@ -3632,7 +3632,7 @@ class MovieProjectTests(unittest.TestCase):
             ).generate(project_dir=temp)
 
             manifest = json.loads(updated.read_text())
-            self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertEqual("movie/references/actors/main_character/views/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
             self.assertGreaterEqual(len(backend.requests), 2)
             self.assertTrue(
@@ -3856,7 +3856,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("succeeded", status["status"])
             self.assertTrue((Path(temp_dir) / "door-below" / "output" / "movie" / "door-below.mp4").exists())
             manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
-            self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertEqual("movie/references/actors/main_character/views/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
             self.assertEqual("local", manifest["generator_backend"])
             self.assertFalse((Path(temp_dir) / "door-below" / "movie" / "workflows").exists())
@@ -4016,7 +4016,7 @@ class MovieProjectTests(unittest.TestCase):
                 time.sleep(0.01)
             self.assertEqual("succeeded", status["status"])
             manifest = json.loads((Path(temp_dir) / "door-below" / "movie" / "references" / "manifest.json").read_text())
-            self.assertEqual("movie/references/actors/main_character/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertEqual("movie/references/actors/main_character/views/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
 
     def test_api_starts_movie_render_job_from_existing_msr_plan(self):

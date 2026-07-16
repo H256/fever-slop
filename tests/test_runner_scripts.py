@@ -377,7 +377,7 @@ class RunnerScriptTests(unittest.TestCase):
             self.assertEqual(project / "movie" / "references" / "manifest.json", result.reference_manifest_path)
             self.assertIsNone(result.final_video_path)
             self.assertEqual("local", manifest["generator_backend"])
-            self.assertEqual("movie/references/actors/mara/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
+            self.assertEqual("movie/references/actors/mara/views/msr_sheet.png", manifest["actors"][0]["msr_sheet_path"])
             self.assertTrue((project / "movie" / "render_plan_msr.json").exists())
 
     def test_movie_pipeline_cli_can_skip_references_and_render_with_local_backend(self):

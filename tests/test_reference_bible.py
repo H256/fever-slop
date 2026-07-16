@@ -149,7 +149,10 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual(["hero"], [view["name"] for view in manifest["views"]])
             self.assertEqual(1, len(hero_backend.requests))
             self.assertEqual(0, len(edit_backend.requests))
-            self.assertTrue((manifest_path.parent / "sheet.png").exists())
+            self.assertEqual("actors/singer/views/hero.png", manifest["sheet_path"])
+            self.assertEqual("actors/singer/views/hero.png", manifest["msr_input_path"])
+            self.assertFalse((manifest_path.parent / "sheet.png").exists())
+            self.assertEqual(["hero.png"], sorted(path.name for path in (manifest_path.parent / "views").iterdir()))
 
     def test_generator_writes_msr_actor_sheet_as_reference_input(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -215,12 +218,13 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertIn("4th panel is back view", request.prompt)
             self.assertIn("the panel background is white", request.prompt)
             self.assertEqual(["msr_sheet"], [view["name"] for view in manifest["views"]])
-            self.assertEqual("output/references/actors/warrior/msr_sheet.png", manifest["msr_input_path"])
-            self.assertEqual("output/references/actors/warrior/sheet.png", manifest["sheet_path"])
+            self.assertEqual("output/references/actors/warrior/views/msr_sheet.png", manifest["msr_input_path"])
+            self.assertEqual("output/references/actors/warrior/views/msr_sheet.png", manifest["sheet_path"])
             self.assertEqual("output/references/actors/warrior/views/msr_sheet.png", manifest["views"][0]["path"])
             self.assertTrue((manifest_path.parent / "views" / "msr_sheet.png").exists())
-            self.assertTrue((manifest_path.parent / "sheet.png").exists())
-            self.assertTrue((manifest_path.parent / "msr_sheet.png").exists())
+            self.assertFalse((manifest_path.parent / "sheet.png").exists())
+            self.assertFalse((manifest_path.parent / "msr_sheet.png").exists())
+            self.assertEqual(["msr_sheet.png"], sorted(path.name for path in (manifest_path.parent / "views").iterdir()))
 
     def test_generator_writes_location_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -240,7 +244,8 @@ class ReferenceBibleTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual("location", manifest["kind"])
             self.assertEqual("stage", manifest["id"])
-            self.assertTrue((manifest_path.parent / "sheet.png").exists())
+            with Image.open(manifest_path.parent / "sheet.png") as sheet:
+                self.assertEqual((96, 48), sheet.size)
             self.assertEqual("output/references/locations/stage/views/hero.png", manifest["msr_background_path"])
 
     def test_generator_requests_wide_full_hd_location_hero(self):
@@ -255,11 +260,15 @@ class ReferenceBibleTests(unittest.TestCase):
                 view_names=("hero",),
             )
 
-            generator.generate_location_bible(
+            manifest_path = generator.generate_location_bible(
                 ReferenceLocation(id="stage", name="Stage", image_prompt="wide stage")
             )
 
             self.assertEqual((1920, 1088), (hero_backend.requests[0].width, hero_backend.requests[0].height))
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual("locations/stage/views/hero.png", manifest["sheet_path"])
+            self.assertFalse((manifest_path.parent / "sheet.png").exists())
+            self.assertEqual(["hero.png"], sorted(path.name for path in (manifest_path.parent / "views").iterdir()))
 
     def test_location_prompt_does_not_request_a_reference_sheet_or_panels(self):
         prompt = ReferenceBibleGenerator._location_view_prompt(
