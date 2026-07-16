@@ -153,6 +153,84 @@ class FakeMoviePlanner:
 
 
 class MovieProjectTests(unittest.TestCase):
+    def test_movie_ingredients_prompt_prefers_compact_static_prompt(self):
+        from feverslop.adapters.movie_ingredients_visual import _ingredients_prompt
+
+        scene = {
+            "description": "fallback",
+            "ingredients": {"global_prompt": "global"},
+            "ltx": {"static_prompt": "static relay summary"},
+        }
+
+        self.assertEqual("static relay summary", _ingredients_prompt(scene))
+
+    def test_prepared_ingredients_movie_accepts_compact_prompt_contract(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import prepare_movie_workflows
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            plan = project / "ingredients.json"
+            plan.write_text("{}", encoding="utf-8")
+            materializer = Mock()
+            scene = {
+                "scene": 1,
+                "ingredients": {
+                    "sheet_path": "sheet.png",
+                    "anchors": [{"id": "mara"}],
+                    "global_prompt": "Character `mara`: stable silver coat and black bob.",
+                },
+                "ltx": {
+                    "static_prompt": "Mara remains stable and begins speaking immediately.",
+                    "prompt_relay": [
+                        {"frame_start": 0, "frame_end": 48, "state": "dialogue", "prompt": "Mara speaks."},
+                    ],
+                },
+            }
+
+            prepare_movie_workflows(
+                project_dir=project,
+                render_plan_path=plan,
+                pipeline="ltx_ingredients",
+                scenes=[scene],
+                selected_scenes=[1],
+                materializer=materializer,
+                prompt_for_scene=lambda item: item["ltx"]["static_prompt"],
+            )
+
+            self.assertEqual(scene, materializer.prepare.call_args.args[0].scene)
+
+    def test_prepared_ingredients_movie_validates_compact_anchor_bindings(self):
+        from unittest.mock import Mock
+
+        from feverslop.application.movie_prepared_workflows import prepare_movie_workflows
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            plan = project / "ingredients.json"
+            plan.write_text("{}", encoding="utf-8")
+            scene = {
+                "scene": 1,
+                "ingredients": {
+                    "sheet_path": "sheet.png",
+                    "anchors": [{"id": "mara"}],
+                    "global_prompt": "A generic room without a bound actor identifier.",
+                },
+                "ltx": {"prompt_relay": []},
+            }
+
+            with self.assertRaisesRegex(ValueError, "global prompt does not bind anchors mara"):
+                prepare_movie_workflows(
+                    project_dir=project,
+                    render_plan_path=plan,
+                    pipeline="ltx_ingredients",
+                    scenes=[scene],
+                    selected_scenes=[1],
+                    materializer=Mock(),
+                    prompt_for_scene=lambda _scene: "prompt",
+                )
+
     def test_prepared_movie_workflows_use_identical_strict_scene_filter(self):
         from unittest.mock import Mock
 
@@ -3396,13 +3474,13 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertEqual("last-to-start", config["continuity_keyframes"])
 
-    def test_movie_runtime_config_uses_v3_ingredients_workflow_by_default(self):
+    def test_movie_runtime_config_uses_v4_ingredients_workflow_by_default(self):
         from feverslop.studio.job_service import movie_runtime_config
 
         config = movie_runtime_config({"movie_video_workflow": "ingredients"})
 
         self.assertEqual(
-            "workflows/video_ltxv_ingredients_2stage_v3.json",
+            "workflows/video_ltxv_ingredients_2stage_v4.json",
             config["ingredients_workflow"],
         )
 

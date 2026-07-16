@@ -719,7 +719,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
     ltx_dir = project_dir / "output" / "movie" / "ltx_ingredients"
     backend = ComfyUIIngredientsVideoRenderBackend(
         client=client,
-        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_2stage_v3.json"),
+        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_2stage_v4.json"),
         output_dir=ltx_dir,
         project_dir=project_dir,
         model_resolver=model_resolver,
@@ -792,7 +792,10 @@ def _prepare_and_render_ingredients_movie(
             scenes=scenes, selected_scenes=selected_scenes,
             materializer=WorkflowMaterializer(backend, layout),
             prompt_for_scene=lambda scene: str(
-                (scene.get("ltx") or {}).get("ingredients_scene_sheet_description")
+                (scene.get("ltx") or {}).get("static_prompt")
+                or (scene.get("ingredients") or {}).get("global_prompt")
+                or scene.get("ingredients_global_prompt")
+                or (scene.get("ltx") or {}).get("ingredients_scene_sheet_description")
                 or (scene.get("ltx") or {}).get("ingredients_target_prompt")
                 or scene.get("description") or ""
             ),

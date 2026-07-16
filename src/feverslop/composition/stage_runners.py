@@ -297,14 +297,17 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: list) -> list[str]:
                 missing.append(f"scene {number}: singing relay requires singing and lip sync")
         candidates: list[tuple[str, str]] = []
         if state.args.video_pipeline == "ltx_ingredients":
-            sheet = scene.get("ingredients_scene_sheet")
+            ingredients = scene.get("ingredients") or {}
+            sheet = ingredients.get("sheet_path") or scene.get("ingredients_scene_sheet")
             if sheet:
                 candidates.append(("ingredients sheet", sheet))
             else:
                 missing.append(f"scene {number}: ingredients_scene_sheet")
-            anchors = scene.get("ingredients_scene_sheet_anchors") or []
+            anchors = ingredients.get("anchors") or scene.get("ingredients_scene_sheet_anchors") or []
             target = str(
-                scene.get("ingredients_target_prompt")
+                ingredients.get("global_prompt")
+                or scene.get("ingredients_global_prompt")
+                or scene.get("ingredients_target_prompt")
                 or (scene.get("ltx") or {}).get("ingredients_target_prompt")
                 or ""
             )

@@ -5,6 +5,8 @@ from pathlib import Path
 
 from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.ltx_rendering import build_audio_window_spec
+from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -90,7 +92,123 @@ def _build_audio_ingredients_workflow():
     return workflow
 
 
+def _build_relay_ingredients_workflow():
+    workflow = _build_minimal_ingredients_workflow()
+    workflow["2"] = {
+        "inputs": {
+            "model": ["20", 0],
+            "clip": ["21", 0],
+            "latent": ["10", 0],
+            "global_prompt": "",
+            "local_prompts": "",
+            "segment_lengths": "",
+            "epsilon": 0.0022,
+        },
+        "_meta": {"title": "#PROMPT_RELAY"},
+        "class_type": "PromptRelayEncode",
+    }
+    return workflow
+
+
 class ComfyUIIngredientsBackendTests(unittest.TestCase):
+    def test_relay_workflow_uses_compact_global_prompt_and_temporal_segments(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_relay_ingredients_workflow()), encoding="utf-8")
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                postprocess=False,
+            )
+            rolling = build_audio_window_spec(
+                scene_number=6,
+                fps=24,
+                scene_frame_count=257,
+                scene_start_seconds=42.0,
+                preroll_frames=50,
+                tail_loss_frames=30,
+            )
+            scene = {
+                "scene": 6,
+                "fps": 24,
+                "frame_count": 257,
+                "ingredients": {
+                    "sheet_path": "sheet.png",
+                    "global_prompt": "Silk and Bobby remain stable in the mountain tunnel.",
+                },
+                "ltx": {
+                    "base_prompt": "Silk and Bobby remain stable in the mountain tunnel.",
+                    "prompt_relay": [
+                        {"frame_start": 0, "frame_end": 33, "state": "singing", "prompt": "Silk sings immediately."},
+                        {"frame_start": 33, "frame_end": 57, "state": "instrumental", "prompt": "Silk remains silent."},
+                        {"frame_start": 57, "frame_end": 168, "state": "singing", "prompt": "Silk resumes singing."},
+                        {"frame_start": 168, "frame_end": 189, "state": "instrumental", "prompt": "Both remain silent."},
+                        {"frame_start": 189, "frame_end": 257, "state": "singing", "prompt": "Silk sings the final phrase."},
+                    ],
+                },
+            }
+
+            workflow = backend.build_workflow(scene, prompt="unused", rolling=rolling)
+
+            relay = workflow["2"]["inputs"]
+            self.assertEqual(scene["ingredients"]["global_prompt"], relay["global_prompt"])
+            self.assertEqual(
+                [50, 33, 24, 111, 21, 67, 30],
+                [int(value) for value in relay["segment_lengths"].split(",")],
+            )
+            self.assertEqual(rolling.render_frame_count - 1, sum(int(value) for value in relay["segment_lengths"].split(",")))
+            self.assertLess(relay["local_prompts"].index("Silk sings immediately"), relay["local_prompts"].index("Silk remains silent"))
+
+    def test_v3_workflow_prefers_compact_static_prompt(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_minimal_ingredients_workflow()), encoding="utf-8")
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(), workflow_path=workflow_path, output_dir=temp / "out",
+                project_dir=temp, postprocess=False,
+            )
+            scene = {
+                "scene": 6,
+                "fps": 24,
+                "frame_count": 257,
+                "ingredients": {"sheet_path": "sheet.png", "global_prompt": "global"},
+                "ltx": {"static_prompt": "Silk sings immediately, then pauses and resumes."},
+            }
+
+            workflow = backend.build_workflow(scene, prompt="fallback")
+
+            self.assertEqual(scene["ltx"]["static_prompt"], workflow["2"]["inputs"]["text"])
+
+    def test_relay_workflow_rejects_missing_relay(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_relay_ingredients_workflow()), encoding="utf-8")
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(), workflow_path=workflow_path, output_dir=temp / "out",
+                project_dir=temp, postprocess=False,
+            )
+            scene = {
+                "scene": 6,
+                "fps": 24,
+                "frame_count": 257,
+                "ingredients": {"sheet_path": "sheet.png", "global_prompt": "global"},
+                "ltx": {},
+            }
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "Scene 6.*prompt relay"):
+                backend.build_workflow(scene, prompt="fallback")
+
     def test_backend_patches_ingredients_image(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

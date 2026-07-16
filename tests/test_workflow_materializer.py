@@ -89,18 +89,13 @@ class WorkflowMaterializerTests(unittest.TestCase):
     def test_vision_enriched_ingredients_prompt_reaches_materialized_workflow_unchanged(self):
         class VisionLLM:
             def complete_prompt_with_images(self, _system, _prompt, _paths):
-                target = (
-                    "The full-frame continuous shot opens on Mara beside the archive desk. "
-                    "Mara turns toward the lens as the camera slowly pushes forward; her silver coat and black hair react to the moving air, while amber light travels across the shelves. "
-                    + "She crosses the room with deliberate steps while dust drifts and the camera arcs around her, preserving a single uninterrupted composition. " * 14
-                    + "The shot ends with Mara stopping at the desk, her hand resting on the ledger as the camera settles and the warm light fades."
-                )
+                invariants = " ".join(["stable full-frame composition and amber lighting"] * 12)
                 return json.dumps({
                     "references": [
                         {"id": "mara", "type": "actor", "description": "Mara has a sharp black bob, grey eyes, and a silver coat."},
                         {"id": "archive", "type": "location", "description": "The archive has amber lamps, dark oak shelves, and a brass desk."},
                     ],
-                    "target_description": target,
+                    "shot_invariants": invariants,
                 })
 
         with TemporaryDirectory() as tmp:
@@ -118,7 +113,13 @@ class WorkflowMaterializerTests(unittest.TestCase):
             plan.write_text(json.dumps([{
                 "scene": 1, "fps": 24, "frame_count": 49, "width": 1280, "height": 704,
                 "references": {"actor_ids": ["mara"], "location_id": "archive"},
-                "ltx": {"i2v_prompt_from_t2i": "Mara approaches the ledger."},
+                "ltx": {
+                    "i2v_prompt_from_t2i": "Mara approaches the ledger.",
+                    "msr_prompt_relay": [{
+                        "frame_start": 0, "frame_end": 48, "state": "instrumental",
+                        "prompt": "Mara approaches the ledger with her mouth closed.",
+                    }],
+                },
             }]))
             enriched_path = enrich_render_plan_with_ingredients_sheets(
                 plan, refs, project / "ingredients.json", llm=VisionLLM(),
@@ -145,8 +146,8 @@ class WorkflowMaterializerTests(unittest.TestCase):
             workflow = json.loads(prepared.workflow_path.read_text())
             positive = workflow["2"]["inputs"]["text"]
             self.assertEqual(1, positive.count("### Reference Sheet Description"))
-            self.assertEqual(1, positive.count("### Target Description"))
-            for expected in ("`mara`", "`archive`", "full-frame continuous shot", "camera slowly pushes forward", "do not reproduce their framing, composition, borders, panels, or layout"):
+            self.assertEqual(1, positive.count("### Shot Invariants"))
+            for expected in ("`mara`", "`archive`", "stable full-frame composition", "do not reproduce their framing, composition, borders, panels, or layout", "mouths remain closed"):
                 self.assertIn(expected, positive)
             self.assertEqual(original_negative, workflow["3"]["inputs"]["text"])
 
