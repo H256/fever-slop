@@ -194,13 +194,22 @@ class WorkflowMaterializerTests(unittest.TestCase):
             plan = project / "output" / "render" / "plans" / "ingredients.json"
             audio = project / "song.wav"
             sheet = project / "output" / "references" / "ingredients_sheets" / "scene_0005.png"
-            for path, data in ((template, b"{}"), (plan, b"{}"), (audio, b"audio"), (sheet, b"sheet")):
+            actor = project / "output" / "references" / "actors" / "singer" / "msr_sheet.png"
+            location = project / "output" / "references" / "locations" / "stage" / "sheet.png"
+            for path, data in (
+                (template, b"{}"), (plan, b"{}"), (audio, b"audio"), (sheet, b"sheet"),
+                (actor, b"actor"), (location, b"location"),
+            ):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
             backend = FakeBackend(template)
             request = WorkflowMaterializationRequest(
                 scene={"scene": 5, "fps": 24, "frame_count": 241, "width": 1536,
-                       "height": 896, "ingredients_scene_sheet": str(sheet)},
+                       "height": 896, "ingredients_scene_sheet": str(sheet),
+                       "references": {
+                           "actor_msr_paths": [str(actor)],
+                           "location_sheet_path": str(location),
+                       }},
                 prompt="move", audio_file=audio, render_plan_path=plan,
                 pipeline="ltx_ingredients", seed=7005,
             )

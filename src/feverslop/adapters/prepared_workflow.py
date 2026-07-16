@@ -131,7 +131,8 @@ class WorkflowMaterializer:
             candidates.append(("startframe", startframe))
         for role, value in candidates:
             path = self._project_path(value).resolve()
-            assets.append((role, path, uploaded_names[path]))
+            if path in uploaded_names:
+                assets.append((role, path, uploaded_names[path]))
         return assets
 
     def _project_path(self, value: str | Path) -> Path:
