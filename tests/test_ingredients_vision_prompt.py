@@ -153,17 +153,19 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                 result = self.build(FakeVisionLLM(response))
                 self.assertEqual(self.fallback_reference, result.reference_description)
                 self.assertEqual(self.fallback_target, result.target_description)
+                self.assertEqual("invalid response", result.fallback_reason)
                 self.assertEqual(
                     "### Reference Sheet Description\nfallback refs\n\n### Target Description\nfallback target",
                     result.positive_prompt,
                 )
 
-    def test_model_exception_and_missing_model_use_fallback(self):
+    def test_model_exception_preserves_vision_unavailable_reason(self):
         for llm in (FakeVisionLLM(error=RuntimeError("offline")), None):
             with self.subTest(llm=llm):
                 result = self.build(llm)
                 self.assertEqual(self.fallback_reference, result.reference_description)
                 self.assertEqual(self.fallback_target, result.target_description)
+                self.assertEqual("vision unavailable", result.fallback_reason)
 
 
 if __name__ == "__main__":

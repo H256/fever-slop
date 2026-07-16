@@ -112,7 +112,7 @@ def _enrich_shot(
     if llm is not None and references and on_analysis_status is not None:
         on_analysis_status(shot_id, status_references)
     result = build_ingredients_vision_prompt(
-        llm=llm,
+        llm=llm if references else None,
         references=references,
         reference_metadata=[
             {key: str(img.get(key) or "") for key in ("id", "type", "name", "visual_description", "image_prompt")}
@@ -126,13 +126,12 @@ def _enrich_shot(
     enriched["ingredients_target_prompt"] = "### Target Description\n" + result.target_description
     if not references:
         logger.warning("Ingredients image analysis fallback: shot=%s reason=no images", shot_id)
-    elif llm is None:
-        logger.warning("Ingredients image analysis fallback: shot=%s reason=vision unavailable", shot_id)
-    elif (
-        result.reference_description == sheet_result.get("scene_reference_sheet_description", "")
-        and result.target_description == fallback_target
-    ):
-        logger.warning("Ingredients image analysis fallback: shot=%s reason=invalid response", shot_id)
+    elif result.fallback_reason:
+        logger.warning(
+            "Ingredients image analysis fallback: shot=%s reason=%s",
+            shot_id,
+            result.fallback_reason,
+        )
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "native_audio": True,

@@ -199,3 +199,15 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
             self.assertIn("defiant chorus", llm.user_prompt)
             self.assertIn("slow orbit", llm.user_prompt)
             self.assertEqual([(7, [{"id": "singer", "type": "actor"}, {"id": "stage", "type": "location"}])], events)
+
+            plan.write_text(json.dumps([{
+                "scene": 7,
+                "references": {"actor_ids": ["singer"], "location_id": "stage"},
+                "ltx": {"i2v_prompt_from_t2i": ""},
+            }]), encoding="utf-8")
+            fallback_output = enrich_render_plan_with_ingredients_sheets(
+                plan, references, project / "fallback.json", llm=None,
+            )
+            fallback_scene = json.loads(fallback_output.read_text(encoding="utf-8"))[0]
+            self.assertEqual("", fallback_scene["ingredients_target_prompt"])
+            self.assertEqual("", fallback_scene["ltx"]["ingredients_target_prompt"])

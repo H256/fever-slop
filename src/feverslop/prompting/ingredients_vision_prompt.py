@@ -37,6 +37,7 @@ unchanged id and type.
 class IngredientsPromptResult:
     reference_description: str
     target_description: str
+    fallback_reason: str | None = None
 
     @property
     def positive_prompt(self) -> str:
@@ -57,9 +58,14 @@ def build_ingredients_vision_prompt(
     fallback_reference_description: str,
     fallback_target_prompt: str,
 ) -> IngredientsPromptResult:
-    fallback = IngredientsPromptResult(fallback_reference_description, fallback_target_prompt)
+    unavailable_fallback = IngredientsPromptResult(
+        fallback_reference_description, fallback_target_prompt, "vision unavailable"
+    )
+    invalid_fallback = IngredientsPromptResult(
+        fallback_reference_description, fallback_target_prompt, "invalid response"
+    )
     if llm is None:
-        return fallback
+        return unavailable_fallback
 
     payload = json.dumps(
         {"references": reference_metadata, "target_context": target_context},
@@ -71,29 +77,33 @@ def build_ingredients_vision_prompt(
             payload,
             [reference.path for reference in references],
         )
+    except Exception:
+        return unavailable_fallback
+
+    try:
         data = extract_json_object(response)
         parsed_references = data.get("references")
         target = data.get("target_description")
         expected_pairs = {(reference.id, reference.type) for reference in references}
         if not isinstance(parsed_references, list) or len(parsed_references) != len(references):
-            return fallback
+            return invalid_fallback
         if not isinstance(target, str) or len(target.split()) < 180:
-            return fallback
+            return invalid_fallback
 
         descriptions: dict[tuple[str, str], str] = {}
         for item in parsed_references:
             if not isinstance(item, dict):
-                return fallback
+                return invalid_fallback
             reference_id = item.get("id")
             reference_type = item.get("type")
             description = item.get("description")
             if not all(isinstance(value, str) and value.strip() for value in (reference_id, reference_type, description)):
-                return fallback
+                return invalid_fallback
             descriptions[(reference_id, reference_type)] = description.strip()
         if set(descriptions) != expected_pairs or len(descriptions) != len(references):
-            return fallback
+            return invalid_fallback
     except Exception:
-        return fallback
+        return invalid_fallback
 
     reference_lines = [
         f"{_reference_label(reference.type)} `{reference.id}`: {descriptions[(reference.id, reference.type)]}"

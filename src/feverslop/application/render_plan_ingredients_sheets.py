@@ -175,11 +175,15 @@ def _enrich_scene(
             fallback_target_prompt=fallback_target,
         )
         enriched["ingredients_scene_sheet_description"] = result.reference_description
-        enriched["ingredients_target_prompt"] = "### Target Description\n" + result.target_description
-        if llm is None:
-            logger.warning("Ingredients image analysis fallback: scene=%s reason=vision unavailable", scene_number)
-        elif result.reference_description == description and result.target_description == fallback_target:
-            logger.warning("Ingredients image analysis fallback: scene=%s reason=invalid response", scene_number)
+        enriched["ingredients_target_prompt"] = (
+            "### Target Description\n" + result.target_description if result.target_description else ""
+        )
+        if result.fallback_reason:
+            logger.warning(
+                "Ingredients image analysis fallback: scene=%s reason=%s",
+                scene_number,
+                result.fallback_reason,
+            )
     else:
         logger.warning("Ingredients image analysis fallback: scene=%s reason=no images", scene_number)
         enriched["ingredients_target_prompt"] = "### Target Description\n" + fallback_target if fallback_target else ""
