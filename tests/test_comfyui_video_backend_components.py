@@ -971,6 +971,7 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
 
     def test_render_scene_video_builds_real_workflow_and_delegates_to_queue(self):
         from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from feverslop.config.video_settings import VideoSettings
         from feverslop.domain.ltx_rendering import AudioWindowSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1009,6 +1010,7 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
                 output_dir=temp / "ltx",
                 render_mode="single_prompt",
                 render_queue=queue,
+                video_settings=VideoSettings(width=1024, height=576),
             )
 
             output = backend.render_scene_video(
@@ -1039,6 +1041,8 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
             self.assertEqual("prompt", workflow["9"]["inputs"]["text"])
             self.assertEqual("audio.mp3", workflow["3"]["inputs"]["audio"])
             self.assertEqual("scene_0001.png", workflow["5"]["inputs"]["image"])
+            self.assertEqual(1024, workflow["1"]["inputs"]["value"])
+            self.assertEqual(576, workflow["2"]["inputs"]["value"])
 
 
 if __name__ == "__main__":

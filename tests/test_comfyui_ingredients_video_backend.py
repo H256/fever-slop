@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+from feverslop.config.video_settings import VideoSettings
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -105,6 +106,7 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                 output_dir=temp / "out",
                 project_dir=temp,
                 postprocess=False,
+                video_settings=VideoSettings(width=1024, height=576),
             )
 
             scene = {
@@ -123,6 +125,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             patched_node = workflow["1"]
             self.assertIn("feverslop/references/", patched_node["inputs"]["image"])
+            self.assertEqual(1024, workflow["6"]["inputs"]["value"])
+            self.assertEqual(576, workflow["7"]["inputs"]["value"])
 
     def test_prompt_concatenation_from_ltx_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:

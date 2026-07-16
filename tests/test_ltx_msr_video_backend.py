@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+from feverslop.config.video_settings import VideoSettings
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -80,6 +81,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     "4": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
                     "5": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
                     "6": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                    "9": {"inputs": {"value": 0}, "_meta": {"title": "#WIDTH"}},
+                    "10": {"inputs": {"value": 0}, "_meta": {"title": "#HEIGHT"}},
                 }),
                 encoding="utf-8",
             )
@@ -89,6 +92,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 workflow_path=workflow,
                 output_dir=temp / "out",
                 postprocess=False,
+                video_settings=VideoSettings(width=1024, height=576),
             )
 
             output = backend.render_video(
@@ -119,6 +123,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(17, client.queued_workflow["3"]["inputs"]["frame_count"])
             self.assertEqual("video prompt", client.queued_workflow["4"]["inputs"]["text"])
             self.assertEqual(100007, client.queued_workflow["5"]["inputs"]["noise_seed"])
+            self.assertEqual(1024, client.queued_workflow["9"]["inputs"]["value"])
+            self.assertEqual(576, client.queued_workflow["10"]["inputs"]["value"])
 
     def test_backend_resolves_project_relative_msr_reference_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:

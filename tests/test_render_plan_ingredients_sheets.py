@@ -2,10 +2,12 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
 from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
+from feverslop.config.video_settings import VideoSettings
 
 
 def _create_minimal_png(path: Path) -> Path:
@@ -16,6 +18,29 @@ def _create_minimal_png(path: Path) -> Path:
 
 
 class TestIngredientsEnrichment(unittest.TestCase):
+    def test_video_settings_override_render_plan_sheet_resolution(self):
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "feverslop.application.render_plan_ingredients_sheets.ingredients_sheet_size",
+            return_value=(2048, 1152),
+        ) as sheet_size:
+            tmp = Path(tmp)
+            render_plan = tmp / "render_plan.json"
+            render_plan.write_text(
+                json.dumps([{"scene": 1, "width": 1280, "height": 704, "references": {}}]),
+                encoding="utf-8",
+            )
+            references = tmp / "references"
+            references.mkdir()
+
+            enrich_render_plan_with_ingredients_sheets(
+                render_plan,
+                references,
+                tmp / "enriched.json",
+                video_settings=VideoSettings(width=1024, height=576),
+            )
+
+            sheet_size.assert_called_once_with(1024, 576, 2.0)
+
     def test_enriches_song_scenes_with_ingredients_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
