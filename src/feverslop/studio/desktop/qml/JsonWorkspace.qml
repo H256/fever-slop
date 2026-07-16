@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 Item {
     id: page
@@ -15,6 +16,13 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             TextField { id: pathField; text: page.defaultPath; placeholderText: "Relative JSON path"; Layout.fillWidth: true; implicitHeight: 44 }
+            Button {
+                visible: page.defaultPath === "config.json"
+                text: "Import Audio"
+                icon.name: "audio-x-generic"
+                implicitHeight: 44
+                onClicked: audioDialog.open()
+            }
             Button { text: "Open"; icon.name: "document-open"; implicitHeight: 44; onClicked: if (vm) vm.load_json_artifact(pathField.text) }
             Button {
                 text: "Save"
@@ -51,5 +59,12 @@ Item {
                 }
             }
         }
+    }
+
+    FileDialog {
+        id: audioDialog
+        title: "Select project audio"
+        nameFilters: ["Audio files (*.mp3 *.wav *.flac *.m4a *.ogg)"]
+        onAccepted: if (vm) vm.import_audio(selectedFile)
     }
 }

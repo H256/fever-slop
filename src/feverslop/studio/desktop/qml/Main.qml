@@ -174,15 +174,15 @@ ApplicationWindow {
                         Layout.fillHeight: true
 
                         ProjectsPage {}
-                        PlaceholderPage { heading: "Project Dashboard"; detail: "Project health, outputs, and pipeline readiness." }
-                        PlaceholderPage { heading: "Pipeline"; detail: "Run pipeline stages and inspect live logs." }
+                        DashboardPage {}
+                        PipelinePage {}
                         JsonWorkspace { heading: "Render Plan"; defaultPath: "render_plan.json" }
-                        PlaceholderPage { heading: "References"; detail: "Actor and location references for visual continuity." }
+                        ArtifactPage { categoryFilter: "references"; titleText: "Reference assets" }
                         JsonWorkspace { heading: "Project Configuration"; defaultPath: "config.json" }
-                        PlaceholderPage { heading: "Artifacts"; detail: "Browse generated JSON, images, audio, and video." }
-                        PlaceholderPage { heading: "Render Queue"; detail: "Current and completed Studio jobs." }
-                        PlaceholderPage { heading: "Review"; detail: "Inspect rendered scenes and prepare precise recuts." }
-                        PlaceholderPage { heading: "Final Video"; detail: "Play the final muxed project output." }
+                        ArtifactPage { categoryFilter: ""; titleText: "Project artifacts" }
+                        QueuePage {}
+                        MediaPage { reviewMode: true }
+                        MediaPage { reviewMode: false }
                         PlaceholderPage { heading: "Studio Settings"; detail: "The projects root is selected at application startup." }
                     }
                 }
@@ -200,8 +200,13 @@ ApplicationWindow {
                     ColumnLayout {
                         Layout.preferredWidth: 210
                         Label { text: "JOB ACTIVITY"; color: "#8E8E93"; font.bold: true; font.pixelSize: 11 }
-                        ChromeLabel { text: "No active job"; font.pixelSize: 15 }
-                        ChromeLabel { text: "Pipeline output appears here"; color: "#8E8E93" }
+                        ChromeLabel { text: vm && vm.active_job.id ? vm.active_job.action : "No active job"; font.pixelSize: 15 }
+                        ChromeLabel {
+                            text: vm && vm.active_job.id
+                                ? (vm.active_job.status + "  " + (vm.active_job.overall_progress || 0) + "%")
+                                : "Pipeline output appears here"
+                            color: "#8E8E93"
+                        }
                     }
                     Rectangle { width: 1; Layout.fillHeight: true; color: "#3A3A3C" }
                     ScrollView {
@@ -209,7 +214,7 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         TextArea {
                             readOnly: true
-                            text: "Ready."
+                            text: vm ? vm.job_logs : "Ready."
                             color: "#C7C7CC"
                             font.family: "monospace"
                             font.pixelSize: 12

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 from dataclasses import fields
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
@@ -47,6 +50,25 @@ class StudioViewModel(QObject):
     @Property("QVariantMap", notify=currentProjectChanged)
     def artifacts(self) -> dict[str, list[str]]:
         return dict(self._current_project.get("artifacts") or {})
+
+    @Property("QVariantList", notify=currentProjectChanged)
+    def artifact_entries(self) -> list[dict[str, str]]:
+        entries: list[dict[str, str]] = []
+        for category, paths in self.artifacts.items():
+            for path in paths:
+                suffix = str(path).lower().rsplit(".", 1)[-1] if "." in str(path) else ""
+                if suffix in {"png", "jpg", "jpeg", "webp", "gif"}:
+                    kind = "image"
+                elif suffix in {"mp4", "mov", "webm"}:
+                    kind = "video"
+                elif suffix in {"mp3", "wav", "m4a", "flac", "ogg"}:
+                    kind = "audio"
+                elif suffix == "json":
+                    kind = "json"
+                else:
+                    kind = "file"
+                entries.append({"category": str(category), "path": str(path), "kind": kind})
+        return entries
 
     @Property(str, notify=editorChanged)
     def editor_path(self) -> str:
@@ -138,6 +160,58 @@ class StudioViewModel(QObject):
             self._set_error(str(exc))
             return False
 
+    @Slot(str, str, float, float, bool, result=bool)
+    def start_recut(
+        self,
+        raw_clip: str,
+        output_clip: str,
+        raw_in_seconds: float,
+        raw_out_seconds: float,
+        exact: bool,
+    ) -> bool:
+        if not self.current_project_id:
+            self._set_error("Select a project first")
+            return False
+        try:
+            self.job_service.start_job(
+                self.current_project_id,
+                StudioJobRequest(
+                    action="recut-scene",
+                    raw_clip=raw_clip,
+                    output_clip=output_clip,
+                    raw_in_seconds=raw_in_seconds,
+                    raw_out_seconds=raw_out_seconds,
+                    exact=exact,
+                ),
+            )
+            self.refresh_jobs()
+            self._set_error("")
+            return True
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
+
+    @Slot(str, str, result=bool)
+    def start_reference_rerender(self, reference_kind: str, reference_id: str) -> bool:
+        if not self.current_project_id:
+            self._set_error("Select a project first")
+            return False
+        try:
+            self.job_service.start_job(
+                self.current_project_id,
+                StudioJobRequest(
+                    action="reference-rerender",
+                    reference_kind=reference_kind,
+                    reference_id=reference_id,
+                ),
+            )
+            self.refresh_jobs()
+            self._set_error("")
+            return True
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
+
     @property
     def jobs_service(self) -> Any:
         return self._job_registry
@@ -207,6 +281,51 @@ class StudioViewModel(QObject):
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
             return ""
+
+    @Slot(str, str, result=bool)
+    def import_image(self, source_url: str, target_path: str) -> bool:
+        if not self.current_project_id:
+            self._set_error("Select a project first")
+            return False
+        try:
+            source_path = QUrl(source_url).toLocalFile()
+            mime_type = mimetypes.guess_type(source_path)[0] or "image/png"
+            if not mime_type.startswith("image/"):
+                raise ValueError("Select a PNG, JPEG, or WebP image")
+            encoded = base64.b64encode(Path(source_path).read_bytes()).decode("ascii")
+            self.store.write_media_data_url(
+                self.current_project_id,
+                target_path,
+                f"data:{mime_type};base64,{encoded}",
+            )
+            self.select_project(self.current_project_id)
+            self._set_error("")
+            return True
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
+
+    @Slot(str, result=bool)
+    def import_audio(self, source_url: str) -> bool:
+        if not self.current_project_id:
+            self._set_error("Select a project first")
+            return False
+        try:
+            source_path = Path(QUrl(source_url).toLocalFile())
+            mime_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
+            with source_path.open("rb") as source:
+                self.store.store_audio_upload(
+                    self.current_project_id,
+                    source_path.name,
+                    mime_type,
+                    source,
+                )
+            self.select_project(self.current_project_id)
+            self._set_error("")
+            return True
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
 
     def _set_error(self, message: str) -> None:
         if message == self._error:

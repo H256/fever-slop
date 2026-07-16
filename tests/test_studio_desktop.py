@@ -199,6 +199,134 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(store.seen, ("scholoraid", "output/final.mp4"))
         self.assertTrue(url.startswith("file:"))
 
+    def test_artifact_entries_flatten_catalog_with_media_kind(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "name": project_id,
+                    "status": {},
+                    "artifacts": {
+                        "generated_json": ["movie/render_plan.json"],
+                        "images": ["references/hero.png"],
+                        "videos": ["output/final.mp4"],
+                    },
+                }
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("scholoraid")
+
+        entries = view_model.artifact_entries
+
+        self.assertEqual([entry["path"] for entry in entries], [
+            "movie/render_plan.json",
+            "references/hero.png",
+            "output/final.mp4",
+        ])
+        self.assertEqual(entries[1]["kind"], "image")
+        self.assertEqual(entries[2]["kind"], "video")
+
+    def test_start_recut_builds_specific_job_request(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        requests = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        class Jobs:
+            def list(self, project_id):
+                return []
+
+        class Service:
+            def start_job(self, project_id, request):
+                requests.append(request)
+                return {}
+
+        view_model = StudioViewModel(store=Store(), jobs=Jobs(), job_service=Service())
+        view_model.select_project("scholoraid")
+
+        self.assertTrue(view_model.start_recut("raw/scene_0005.mp4", "scenes/scene_0005.mp4", 1.25, 4.75, True))
+        self.assertEqual(requests[0].action, "recut-scene")
+        self.assertEqual(requests[0].raw_in_seconds, 1.25)
+        self.assertEqual(requests[0].raw_out_seconds, 4.75)
+        self.assertTrue(requests[0].exact)
+
+    def test_import_image_encodes_file_for_existing_media_port(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        writes = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+            def write_media_data_url(self, project_id, path, data_url):
+                writes.append((project_id, path, data_url))
+                return {"path": path}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "reference.png"
+            image_path.write_bytes(b"png-data")
+            view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+            view_model.select_project("scholoraid")
+
+            self.assertTrue(view_model.import_image(image_path.as_uri(), "output/references/actor/hero/sheet.png"))
+
+        self.assertEqual(writes[0][0:2], ("scholoraid", "output/references/actor/hero/sheet.png"))
+        self.assertTrue(writes[0][2].startswith("data:image/png;base64,"))
+
+    def test_start_reference_rerender_uses_actor_identity(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        requests = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        class Jobs:
+            def list(self, project_id):
+                return []
+
+        class Service:
+            def start_job(self, project_id, request):
+                requests.append(request)
+                return {}
+
+        view_model = StudioViewModel(store=Store(), jobs=Jobs(), job_service=Service())
+        view_model.select_project("scholoraid")
+
+        self.assertTrue(view_model.start_reference_rerender("actor", "warrior_lead"))
+        self.assertEqual(requests[0].reference_kind, "actor")
+        self.assertEqual(requests[0].reference_id, "warrior_lead")
+
+    def test_import_audio_uses_native_file_stream(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        uploads = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+            def store_audio_upload(self, project_id, filename, content_type, source):
+                uploads.append((project_id, filename, content_type, source.read()))
+                return {"path": f"input/{filename}"}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "song.wav"
+            audio_path.write_bytes(b"wave-data")
+            view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+            view_model.select_project("scholoraid")
+
+            self.assertTrue(view_model.import_audio(audio_path.as_uri()))
+
+        self.assertEqual(uploads, [("scholoraid", "song.wav", "audio/x-wav", b"wave-data")])
+
 
 class StudioQmlTests(unittest.TestCase):
     @classmethod

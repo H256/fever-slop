@@ -48,7 +48,7 @@ ScrollView {
                         Label { text: modelData.name; color: "#1C1C1E"; font.bold: true; font.pixelSize: 17; elide: Text.ElideRight; Layout.fillWidth: true }
                         Label { text: modelData.id; color: "#6E6E73"; font.pixelSize: 13; elide: Text.ElideMiddle; Layout.fillWidth: true }
                         Item { Layout.fillHeight: true }
-                        Label { text: (modelData.project_type || "standard_music_video").replaceAll("_", " "); color: "#5B5FC7"; font.pixelSize: 12 }
+                        Label { text: String(modelData.project_type || "standard_music_video").replace(/_/g, " "); color: "#5B5FC7"; font.pixelSize: 12 }
                     }
                     MouseArea {
                         id: mouse
@@ -76,7 +76,71 @@ ScrollView {
         ColumnLayout {
             width: parent.width
             spacing: 12
-            Label { text: "Project creation is available after the project workflow is loaded."; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            ComboBox {
+                id: projectType
+                Layout.fillWidth: true
+                model: ["Music video", "Full auto music video", "Movie"]
+            }
+            TextField { id: projectName; Layout.fillWidth: true; placeholderText: "Project name"; implicitHeight: 44 }
+            TextArea {
+                id: projectIdea
+                visible: projectType.currentIndex > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: 130
+                placeholderText: projectType.currentIndex === 2 ? "Short story or screenplay" : "Music video idea"
+                wrapMode: TextEdit.Wrap
+                background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
+            }
+            TextField {
+                id: songStyle
+                visible: projectType.currentIndex === 1
+                Layout.fillWidth: true
+                placeholderText: "Song style"
+                implicitHeight: 44
+            }
+            RowLayout {
+                visible: projectType.currentIndex > 0
+                Layout.fillWidth: true
+                Label { text: "Duration"; color: "#6E6E73" }
+                SpinBox { id: duration; from: 1; to: 3600; value: projectType.currentIndex === 2 ? 60 : 120; editable: true }
+                Item { Layout.fillWidth: true }
+                CheckBox { id: silentMode; visible: projectType.currentIndex < 2; text: "Silent mode" }
+            }
+            Button {
+                text: projectType.currentIndex === 1 ? "Create and start" : "Create Project"
+                icon.name: "list-add"
+                enabled: projectName.text.trim().length > 0 && (projectType.currentIndex === 0 || projectIdea.text.trim().length > 0)
+                implicitHeight: 44
+                Layout.alignment: Qt.AlignRight
+                palette.buttonText: "#FFFFFF"
+                background: Rectangle { color: parent.enabled ? (parent.hovered ? "#666AD1" : "#5B5FC7") : "#AEAEB2"; radius: 6 }
+                onClicked: {
+                    var types = ["standard_music_video", "full_auto", "movie"]
+                    var payload = {
+                        project_type: types[projectType.currentIndex],
+                        name: projectName.text.trim(),
+                        silent_mode: silentMode.checked
+                    }
+                    if (projectType.currentIndex === 1) {
+                        payload.idea = projectIdea.text.trim()
+                        payload.song_style = songStyle.text.trim()
+                        payload.duration_seconds = duration.value
+                        payload.pipeline_mode = "msr"
+                    } else if (projectType.currentIndex === 2) {
+                        payload.story_text = projectIdea.text.trim()
+                        payload.desired_length = duration.value
+                        payload.source_type = "short_story"
+                        payload.movie_mode = "scaffold"
+                    }
+                    var projectId = vm ? vm.create_project(payload) : ""
+                    if (projectId) {
+                        if (projectType.currentIndex === 1) vm.start_job("full-auto", [])
+                        createDialog.close()
+                        root.currentPage = projectType.currentIndex === 1 ? 2 : 1
+                        root.pageTitle = projectType.currentIndex === 1 ? "Pipeline" : "Dashboard"
+                    }
+                }
+            }
         }
     }
 }
