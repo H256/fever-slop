@@ -4,16 +4,23 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 import json
+import logging
 import re
 
-from feverslop.ports.llm import LLMPort
+from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.domain.vision_references import ReferenceImage
+from feverslop.ports.llm import LLMPort, VisionLLMPort
+
+
+logger = logging.getLogger(__name__)
 
 
 def enrich_render_plan_with_msr_prompts(
     render_plan_path: str | Path,
     output_path: str | Path,
     *,
-    llm: LLMPort | None = None,
+    llm: VisionLLMPort | None = None,
+    on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None = None,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
 ) -> Path:
     render_plan_path = Path(render_plan_path)
@@ -23,7 +30,12 @@ def enrich_render_plan_with_msr_prompts(
     enriched = []
     total = len(render_plan)
     for index, scene in enumerate(render_plan, start=1):
-        enriched_scene = enrich_scene_with_msr_prompts(scene, llm=llm)
+        enriched_scene = enrich_scene_with_msr_prompts(
+            scene,
+            llm=llm,
+            project_base=_reference_base(render_plan_path, scene),
+            on_analysis_status=on_analysis_status,
+        )
         enriched.append(enriched_scene)
         if on_scene_complete is not None:
             on_scene_complete(int(scene.get("scene", index)), index, total)
@@ -33,7 +45,13 @@ def enrich_render_plan_with_msr_prompts(
     return output_path
 
 
-def enrich_scene_with_msr_prompts(scene: dict, *, llm: LLMPort | None = None) -> dict:
+def enrich_scene_with_msr_prompts(
+    scene: dict,
+    *,
+    llm: VisionLLMPort | None = None,
+    project_base: Path | None = None,
+    on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None = None,
+) -> dict:
     result = deepcopy(scene)
     ltx = result.setdefault("ltx", {})
     references = result.get("references") or {}
@@ -41,13 +59,25 @@ def enrich_scene_with_msr_prompts(scene: dict, *, llm: LLMPort | None = None) ->
     if _scene_silent_mode(result):
         ltx["prompt_relay"] = relays
 
-    ltx["msr_global_prompt"] = build_msr_global_prompt(references)
+    global_prompt = build_msr_global_prompt(references)
+    ltx["msr_global_prompt"] = global_prompt
     ltx["msr_preroll_prompt"] = _build_preroll_prompt(result)
     ltx["msr_tail_prompt"] = _build_tail_prompt(result)
     if not relays:
         return result
 
-    llm_prompts = _build_llm_segment_prompts(result, relays, llm=llm)
+    vision = _build_vision_msr_prompts(
+        result,
+        relays,
+        llm=llm,
+        project_base=project_base,
+        on_analysis_status=on_analysis_status,
+    )
+    if vision is not None:
+        global_prompt, llm_prompts = vision
+    else:
+        llm_prompts = _build_llm_segment_prompts(result, relays, llm=llm)
+    ltx["msr_global_prompt"] = global_prompt
     msr_relays = []
     for index, relay in enumerate(relays):
         msr_relay = dict(relay)
@@ -56,6 +86,126 @@ def enrich_scene_with_msr_prompts(scene: dict, *, llm: LLMPort | None = None) ->
         msr_relays.append(msr_relay)
     ltx["msr_prompt_relay"] = msr_relays
     return result
+
+
+def _build_vision_msr_prompts(
+    scene: dict,
+    relays: list[dict],
+    *,
+    llm: VisionLLMPort | None,
+    project_base: Path | None,
+    on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None,
+) -> tuple[str, dict[int, str]] | None:
+    references = _scene_reference_images(scene, project_base=project_base)
+    scene_number = int(scene.get("scene", 0))
+    if not references:
+        logger.warning("MSR image analysis fallback: scene=%s reason=no images", scene_number)
+        return None
+    complete_with_images = getattr(llm, "complete_prompt_with_images", None)
+    if not callable(complete_with_images):
+        logger.warning("MSR image analysis fallback: scene=%s reason=vision unavailable", scene_number)
+        return None
+
+    status_references = [{"id": ref.id, "type": ref.type} for ref in references]
+    logger.info(
+        "MSR image analysis attempt: scene=%s reference_count=%s references=%s",
+        scene_number,
+        len(references),
+        status_references,
+    )
+    if on_analysis_status is not None:
+        on_analysis_status(scene_number, status_references)
+    try:
+        response = complete_with_images(
+            _msr_vision_system_prompt(),
+            json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=True),
+            [reference.path for reference in references],
+        )
+    except Exception:
+        logger.warning("MSR image analysis fallback: scene=%s reason=vision unavailable", scene_number)
+        return None
+    try:
+        data = extract_json_object(response)
+        parsed_references = data.get("references")
+        parsed_relays = data.get("relays")
+        expected_pairs = {(reference.id, reference.type) for reference in references}
+        if not isinstance(parsed_references, list) or not isinstance(parsed_relays, list):
+            raise ValueError("missing lists")
+        descriptions: dict[tuple[str, str], str] = {}
+        for item in parsed_references:
+            pair = (str(item.get("id") or ""), str(item.get("type") or ""))
+            description = str(item.get("description") or "").strip()
+            if not all(pair) or not description or pair in descriptions:
+                raise ValueError("invalid reference")
+            descriptions[pair] = description
+        if set(descriptions) != expected_pairs:
+            raise ValueError("reference mismatch")
+        prompts: dict[int, str] = {}
+        for item in parsed_relays:
+            index = int(item["index"])
+            if index in prompts or not 0 <= index < len(relays):
+                raise ValueError("invalid relay index")
+            prompt = _clean_segment_prompt(str(item.get("prompt") or ""))
+            if not _is_valid_segment_prompt(prompt, relays[index]):
+                raise ValueError("invalid relay prompt")
+            prompts[index] = prompt
+        if set(prompts) != set(range(len(relays))):
+            raise ValueError("missing relay index")
+    except Exception:
+        logger.warning("MSR image analysis fallback: scene=%s reason=invalid response", scene_number)
+        return None
+
+    parts = []
+    for index, reference in enumerate(references, start=1):
+        suffix = " (scene)" if reference.type == "location" else ""
+        parts.append(f"Reference image {index}{suffix}: {descriptions[(reference.id, reference.type)]}.")
+    return "\n\n".join(parts), prompts
+
+
+def _scene_reference_images(scene: dict, *, project_base: Path | None) -> list[ReferenceImage]:
+    references = scene.get("references") or {}
+    actors = references.get("actor_reference_descriptions") or []
+    paths = list(references.get("actor_msr_paths") or references.get("actor_sheet_paths") or [])
+    if len(paths) != len(actors):
+        return []
+    candidates = [(str(item.get("id") or ""), "actor", path) for item, path in zip(actors, paths)]
+    location = references.get("location_reference_description") or {}
+    location_path = references.get("location_msr_path") or references.get("location_sheet_path")
+    if location and not location_path:
+        return []
+    if location:
+        candidates.append((str(location.get("id") or ""), "location", location_path))
+    result = []
+    for reference_id, reference_type, raw_path in candidates:
+        path = Path(str(raw_path))
+        if not path.is_absolute() and project_base is not None:
+            path = project_base / path
+        if not reference_id or not path.is_file():
+            return []
+        result.append(ReferenceImage(reference_id, reference_type, path))
+    return result
+
+
+def _reference_base(render_plan_path: Path, scene: dict) -> Path:
+    raw_paths = list((scene.get("references") or {}).get("actor_msr_paths") or [])
+    raw_paths.append((scene.get("references") or {}).get("location_msr_path") or "")
+    for parent in (render_plan_path.parent, *render_plan_path.parents):
+        if any(raw and (parent / str(raw)).is_file() for raw in raw_paths):
+            return parent
+    return render_plan_path.parent
+
+
+def _msr_vision_system_prompt() -> str:
+    return """
+You write vision-grounded LTX MSR global reference descriptions and local PromptRelay directions.
+Treat supplied images as ground truth for stable appearance and scene geography. Return only JSON:
+{"references":[{"id":"unchanged id","type":"actor or location","description":"detailed stable visible description"}],"relays":[{"index":0,"prompt":"50-90 word local direction"}]}
+Include every reference and relay index exactly once. Each relay describes only chronological local action,
+acting, camera behavior, and environment response. Do not use Ingredients headings, Reference Sheet Description,
+Target Description, source-layout or panel language, edit commands, frame numbers, or repeat the full global identity block.
+Singing relays require clear lip sync. For state "dialogue", the actor speaks the provided dialogue with precise lip sync.
+Instrumental and other non-vocal states keep mouths closed and omit lip sync.
+""".strip()
 
 
 def build_msr_global_prompt(references: dict) -> str:
@@ -74,14 +224,15 @@ def build_msr_global_prompt(references: dict) -> str:
 
 
 def _build_llm_segment_prompts(scene: dict, relays: list[dict], *, llm: LLMPort | None) -> dict[int, str]:
-    if llm is None:
+    complete_prompt = getattr(llm, "complete_prompt", None)
+    if not callable(complete_prompt):
         return {}
 
-    response = llm.complete_prompt(
-        system_prompt=_msr_segment_system_prompt(),
-        prompt=json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=False, indent=2),
-    )
     try:
+        response = complete_prompt(
+            system_prompt=_msr_segment_system_prompt(),
+            prompt=json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=False, indent=2),
+        )
         items = _extract_json_array(response)
     except Exception:
         return {}
@@ -115,7 +266,8 @@ Rules:
 - Do not repeat the full reference image descriptions.
 - Use the named reference actor as the subject anchor.
 - For state "singing": the actor sings the provided lyrics with clear lip sync and expressive acting.
-- For non-singing states: the actor is silent, mouth closed, and physically performs the scene action.
+- For state "dialogue": the actor speaks the provided dialogue with precise lip sync and expressive acting.
+- For instrumental and other non-vocal states: the actor is silent, mouth closed, and physically performs the scene action.
 - If silent_mode is true in the payload, every segment is non-singing even if source lyrics exist.
 - Include camera motion and concrete character/environment motion when provided.
 - Write rich cinematic direction, usually 25 to 45 words per segment, with action, acting, camera behavior, and visible environment effects.
@@ -249,6 +401,10 @@ def _is_valid_segment_prompt(prompt: str, relay: dict) -> bool:
     state = str(relay.get("state") or "").strip().lower()
     if state == "singing":
         return "sing" in lower and ("lip sync" in lower or "lip-sync" in lower)
+    if state == "dialogue":
+        return ("speak" in lower or "talk" in lower or "say" in lower) and (
+            "lip sync" in lower or "lip-sync" in lower
+        )
     return "lip sync" not in lower and "lip-sync" not in lower
 
 

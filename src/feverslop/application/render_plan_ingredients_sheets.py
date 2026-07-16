@@ -4,6 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 import json
+import logging
 import math
 
 from feverslop.application.reference_bible import (
@@ -13,6 +14,12 @@ from feverslop.application.reference_bible import (
     generate_scene_sheet_anchors,
     ingredients_sheet_size,
 )
+from feverslop.ports.llm import VisionLLMPort
+from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
+from feverslop.domain.vision_references import ReferenceImage
+
+
+logger = logging.getLogger(__name__)
 
 
 def enrich_render_plan_with_ingredients_sheets(
@@ -22,6 +29,8 @@ def enrich_render_plan_with_ingredients_sheets(
     *,
     video_settings: Any = None,
     sheet_scale: float = 2.0,
+    llm: VisionLLMPort | None = None,
+    on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None = None,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
 ) -> Path:
     """Compose per-scene Ingredients reference sheets for song-based render plans.
@@ -63,6 +72,8 @@ def enrich_render_plan_with_ingredients_sheets(
             location_manifests=location_manifests,
             sheet_size=sheet_size,
             references_dir=references_dir,
+            llm=llm,
+            on_analysis_status=on_analysis_status,
         )
         enriched_scenes.append(enriched)
         if on_scene_complete is not None:
@@ -81,6 +92,8 @@ def _enrich_scene(
     location_manifests: dict[str, dict],
     sheet_size: tuple[int, int],
     references_dir: Path,
+    llm: VisionLLMPort | None,
+    on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None,
 ) -> dict:
     enriched = deepcopy(scene)
     references = enriched.get("references") or {}
@@ -98,6 +111,8 @@ def _enrich_scene(
                     "type": "actor",
                     "id": str(actor_id),
                     "visual_description": desc,
+                    "name": str(manifest.get("name") or "").strip(),
+                    "image_prompt": str(manifest.get("image_prompt") or "").strip(),
                 })
 
     location_id = str(references.get("location_id") or "").strip()
@@ -112,6 +127,8 @@ def _enrich_scene(
                     "type": "location",
                     "id": location_id,
                     "visual_description": desc,
+                    "name": str(manifest.get("name") or "").strip(),
+                    "image_prompt": str(manifest.get("image_prompt") or "").strip(),
                 })
 
     scene_number = int(scene.get("scene", 0))
@@ -142,9 +159,36 @@ def _enrich_scene(
     ltx = scene.get("ltx") or {}
     target_prompt = str(ltx.get("i2v_prompt_from_t2i") or "").strip()
     binding = build_ingredients_target_binding(enriched.get("ingredients_scene_sheet_anchors") or [])
-    enriched["ingredients_target_prompt"] = (
-        "### Target Description\n" + binding + target_prompt if target_prompt else ""
-    )
+    fallback_target = binding + target_prompt if target_prompt else ""
+    if images:
+        references = [ReferenceImage(id=img["id"], type=img["type"], path=project_base / img["path"]) for img in images]
+        status_references = [{"id": ref.id, "type": ref.type} for ref in references]
+        logger.info("Ingredients image analysis attempt: scene=%s reference_count=%s references=%s", scene_number, len(references), status_references)
+        if llm is not None and on_analysis_status is not None:
+            on_analysis_status(scene_number, status_references)
+        result = build_ingredients_vision_prompt(
+            llm=llm,
+            references=references,
+            reference_metadata=[{key: str(img.get(key) or "") for key in ("id", "type", "name", "visual_description", "image_prompt")} for img in images],
+            target_context=_song_target_context(scene),
+            fallback_reference_description=enriched.get("ingredients_scene_sheet_description", ""),
+            fallback_target_prompt=fallback_target,
+        )
+        enriched["ingredients_scene_sheet_description"] = (
+            "### Reference Sheet Description\n" + result.reference_description
+        )
+        enriched["ingredients_target_prompt"] = (
+            "### Target Description\n" + result.target_description if result.target_description else ""
+        )
+        if result.fallback_reason:
+            logger.warning(
+                "Ingredients image analysis fallback: scene=%s reason=%s",
+                scene_number,
+                result.fallback_reason,
+            )
+    else:
+        logger.warning("Ingredients image analysis fallback: scene=%s reason=no images", scene_number)
+        enriched["ingredients_target_prompt"] = "### Target Description\n" + fallback_target if fallback_target else ""
 
     enriched_ltx = dict(enriched.get("ltx") or {})
     enriched_ltx["ingredients_scene_sheet_description"] = enriched.get("ingredients_scene_sheet_description", "")
@@ -153,6 +197,20 @@ def _enrich_scene(
     enriched["ltx"] = enriched_ltx
 
     return enriched
+
+
+def _song_target_context(scene: dict) -> dict[str, Any]:
+    ltx = scene.get("ltx") or {}
+    return {
+        "source_video_prompt": ltx.get("i2v_prompt_from_t2i") or "",
+        "concept": scene.get("concept") or scene.get("description") or "",
+        "metadata": scene.get("metadata") or {},
+        "camera_motion": scene.get("camera_motion") or scene.get("camera") or "",
+        "character_motion": scene.get("character_motion") or scene.get("action") or "",
+        "lyrics": scene.get("lyrics") or scene.get("dialogue") or "",
+        "dialogue_policy": scene.get("dialogue_policy") or "",
+        "duration_seconds": scene.get("duration_seconds") or scene.get("duration") or "",
+    }
 
 
 def _load_manifests_by_id(root: Path) -> dict[str, dict]:

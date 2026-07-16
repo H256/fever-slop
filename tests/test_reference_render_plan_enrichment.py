@@ -2,8 +2,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from PIL import Image
 
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
+from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
 from feverslop.errors import FeverSlopValidationError
 
 
@@ -137,3 +139,75 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             )
 
             self.assertEqual([(1, 1, 2), (2, 2, 2)], events)
+
+
+class IngredientsVisionEnrichmentTests(unittest.TestCase):
+    def test_analyzes_individual_references_and_stores_detailed_prompts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            references = project / "output" / "references"
+            actor_dir = references / "actors" / "singer"
+            location_dir = references / "locations" / "stage"
+            actor_dir.mkdir(parents=True)
+            location_dir.mkdir(parents=True)
+            actor_sheet = actor_dir / "sheet.png"
+            location_sheet = location_dir / "sheet.png"
+            Image.new("RGB", (8, 8), "red").save(actor_sheet)
+            Image.new("RGB", (8, 8), "blue").save(location_sheet)
+            for root, data in (
+                (actor_dir, {"id": "singer", "name": "Mara", "kind": "actor", "visual_description": "red coat", "image_prompt": "silver-haired singer", "sheet_path": "output/references/actors/singer/sheet.png"}),
+                (location_dir, {"id": "stage", "name": "Mirror Stage", "kind": "location", "visual_description": "neon rain", "image_prompt": "black mirror stage", "sheet_path": "output/references/locations/stage/sheet.png"}),
+            ):
+                (root / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+            plan = project / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 7,
+                "concept": "defiant chorus",
+                "duration_seconds": 5,
+                "camera_motion": "slow orbit",
+                "character_motion": "Mara raises one hand",
+                "references": {"actor_ids": ["singer"], "location_id": "stage"},
+                "ltx": {"i2v_prompt_from_t2i": "Mara sings through the rain"},
+            }]), encoding="utf-8")
+
+            class FakeVisionLLM:
+                image_paths = []
+                user_prompt = ""
+
+                def complete_prompt_with_images(self, _system, user, paths):
+                    self.image_paths = paths
+                    self.user_prompt = user
+                    target = " ".join(["cinematic continuous action"] * 190)
+                    return json.dumps({"references": [
+                        {"id": "singer", "type": "actor", "description": "silver hair and a vivid red coat"},
+                        {"id": "stage", "type": "location", "description": "black mirrors crossed by blue neon rain"},
+                    ], "target_description": target})
+
+            llm = FakeVisionLLM()
+            events = []
+            output = enrich_render_plan_with_ingredients_sheets(
+                plan, references, project / "enriched.json", llm=llm,
+                on_analysis_status=lambda scene_id, refs: events.append((scene_id, refs)),
+            )
+            scene = json.loads(output.read_text(encoding="utf-8"))[0]
+
+            self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
+            self.assertNotIn("ingredients_sheets", str(llm.image_paths[0]))
+            self.assertIn("Character `singer`", scene["ingredients_scene_sheet_description"])
+            self.assertIn("silver hair", scene["ingredients_scene_sheet_description"])
+            self.assertIn("### Target Description", scene["ingredients_target_prompt"])
+            self.assertIn("defiant chorus", llm.user_prompt)
+            self.assertIn("slow orbit", llm.user_prompt)
+            self.assertEqual([(7, [{"id": "singer", "type": "actor"}, {"id": "stage", "type": "location"}])], events)
+
+            plan.write_text(json.dumps([{
+                "scene": 7,
+                "references": {"actor_ids": ["singer"], "location_id": "stage"},
+                "ltx": {"i2v_prompt_from_t2i": ""},
+            }]), encoding="utf-8")
+            fallback_output = enrich_render_plan_with_ingredients_sheets(
+                plan, references, project / "fallback.json", llm=None,
+            )
+            fallback_scene = json.loads(fallback_output.read_text(encoding="utf-8"))[0]
+            self.assertEqual("", fallback_scene["ingredients_target_prompt"])
+            self.assertEqual("", fallback_scene["ltx"]["ingredients_target_prompt"])

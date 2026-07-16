@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import base64
+from pathlib import Path
+
 from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 import random
 import time
 
 from feverslop.errors import FeverSlopLMLError
+from feverslop.prompting.vision_references import prepare_vision_image
 
 
 RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
@@ -50,6 +54,31 @@ class LocalOpenAIClient:
             "content": prompt,
         })
 
+        return self._complete(messages, timeout)
+
+    def complete_prompt_with_images(
+        self,
+        system_prompt: str,
+        prompt: str,
+        image_paths: list[Path],
+        timeout: float | None = None,
+    ) -> str:
+        content = [{"type": "text", "text": prompt}]
+        for path in image_paths:
+            mime_type, image_bytes = prepare_vision_image(path)
+            encoded = base64.b64encode(image_bytes).decode("ascii")
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
+            })
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": content},
+        ]
+        return self._complete(messages, timeout)
+
+    def _complete(self, messages, timeout: float | None) -> str:
         last_error = None
         for attempt in range(self.max_retries):
             try:

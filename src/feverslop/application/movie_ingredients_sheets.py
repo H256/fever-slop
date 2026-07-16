@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.application.reference_bible import (
     build_ingredients_target_binding,
@@ -14,12 +15,20 @@ from feverslop.application.reference_bible import (
     ingredients_sheet_size,
 )
 from feverslop.application.movie_msr_enrichment import _movie_video_prompt
+from feverslop.ports.llm import VisionLLMPort
+from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
+from feverslop.domain.vision_references import ReferenceImage
+
+
+logger = logging.getLogger(__name__)
 
 
 def enrich_movie_render_plan_with_ingredients_sheets(
     *,
     project_dir: Path,
     sheet_scale: float = 2.0,
+    llm: VisionLLMPort | None = None,
+    on_analysis_status: Callable[[str, list[dict[str, str]]], None] | None = None,
 ) -> Path:
     """Compose per-shot Ingredients scene reference sheets and write
     movie/render_plan_ingredients.json.
@@ -66,7 +75,7 @@ def enrich_movie_render_plan_with_ingredients_sheets(
         size=sheet_size,
     )
     enriched["shots"] = [
-        _enrich_shot(shot, builder=builder, manifest=manifest, bible=bible)
+        _enrich_shot(shot, builder=builder, manifest=manifest, bible=bible, llm=llm, on_analysis_status=on_analysis_status)
         for shot in render_plan.get("shots") or []
     ]
 
@@ -75,17 +84,58 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     return output_path
 
 
-def _enrich_shot(shot: dict, *, builder: "IngredientsSceneSheetBuilder", manifest: dict, bible: dict) -> dict:
+def _enrich_shot(
+    shot: dict,
+    *,
+    builder: "IngredientsSceneSheetBuilder",
+    manifest: dict,
+    bible: dict,
+    llm: VisionLLMPort | None,
+    on_analysis_status: Callable[[str, list[dict[str, str]]], None] | None,
+) -> dict:
     enriched = deepcopy(shot)
     sheet_result = builder.build(shot)
     enriched["ingredients_scene_sheet"] = sheet_result["sheet_path"]
     enriched["ingredients_scene_sheet_description"] = sheet_result.get("scene_reference_sheet_description", "")
     anchors = list(sheet_result.get("scene_reference_sheet_anchors") or [])
     enriched["ingredients_scene_sheet_anchors"] = anchors
-    target_prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
-    enriched["ingredients_target_prompt"] = (
-        "### Target Description\n" + build_ingredients_target_binding(anchors) + target_prompt
+    fallback_target = build_ingredients_target_binding(anchors) + _movie_video_prompt(shot, bible=bible, manifest=manifest)
+    images = list(sheet_result.get("images") or [])
+    references = [
+        ReferenceImage(id=str(img["id"]), type=img["type"], path=builder.project_dir / img["path"])
+        for img in images
+    ]
+    shot_id = str(shot.get("shot_id") or shot.get("scene") or "")
+    status_references = [{"id": ref.id, "type": ref.type} for ref in references]
+    if references:
+        logger.info("Ingredients image analysis attempt: shot=%s reference_count=%s references=%s", shot_id, len(references), status_references)
+    if llm is not None and references and on_analysis_status is not None:
+        on_analysis_status(shot_id, status_references)
+    result = build_ingredients_vision_prompt(
+        llm=llm if references else None,
+        references=references,
+        reference_metadata=[
+            {key: str(img.get(key) or "") for key in ("id", "type", "name", "visual_description", "image_prompt")}
+            for img in images
+        ],
+        target_context=_movie_target_context(shot, bible),
+        fallback_reference_description=enriched["ingredients_scene_sheet_description"],
+        fallback_target_prompt=fallback_target,
     )
+    enriched["ingredients_scene_sheet_description"] = (
+        "### Reference Sheet Description\n" + result.reference_description
+        if result.reference_description
+        else ""
+    )
+    enriched["ingredients_target_prompt"] = "### Target Description\n" + result.target_description
+    if not references:
+        logger.warning("Ingredients image analysis fallback: shot=%s reason=no images", shot_id)
+    elif result.fallback_reason:
+        logger.warning(
+            "Ingredients image analysis fallback: shot=%s reason=%s",
+            shot_id,
+            result.fallback_reason,
+        )
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "native_audio": True,
@@ -122,6 +172,8 @@ class IngredientsSceneSheetBuilder:
                         "type": "actor",
                         "id": actor_id,
                         "visual_description": str(actor_item.get("visual_description") or "").strip(),
+                        "name": str(actor_item.get("name") or "").strip(),
+                        "image_prompt": str(actor_item.get("image_prompt") or "").strip(),
                     })
 
         if location_id:
@@ -134,6 +186,8 @@ class IngredientsSceneSheetBuilder:
                         "type": "location",
                         "id": location_id,
                         "visual_description": str(location_item.get("visual_description") or "").strip(),
+                        "name": str(location_item.get("name") or "").strip(),
+                        "image_prompt": str(location_item.get("image_prompt") or "").strip(),
                     })
 
         if not images:
@@ -161,6 +215,19 @@ class IngredientsSceneSheetBuilder:
             "scene_reference_sheet_description": description,
             "scene_reference_sheet_anchors": anchors,
         }
+
+
+def _movie_target_context(shot: dict, bible: dict) -> dict[str, Any]:
+    return {
+        "description": shot.get("description") or "",
+        "action": shot.get("action") or "",
+        "camera": shot.get("camera") or shot.get("camera_motion") or "",
+        "acting": shot.get("acting") or "",
+        "dialogue": shot.get("dialogue") or "",
+        "continuity_notes": shot.get("continuity_notes") or "",
+        "duration_seconds": shot.get("duration_seconds") or shot.get("duration") or "",
+        "dialogue_policy": (bible.get("runtime_constraints") or {}).get("dialogue_language") or "",
+    }
 
 
 def _pick_existing_path(value: Any | None, project_dir: Path) -> str:

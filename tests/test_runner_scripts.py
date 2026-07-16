@@ -9,12 +9,68 @@ from unittest.mock import patch
 
 from rich.console import Console
 
+from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
+
 from tools.repair_scene_srt import main as repair_scene_srt_main
 import movie_pipeline
 import run_pipeline
 
 
 class RunnerScriptTests(unittest.TestCase):
+    def test_vision_enriched_msr_prompts_reach_relay_inputs_with_separate_formats(self):
+        class VisionLLM:
+            def complete_prompt_with_images(self, _system, _prompt, _paths):
+                return json.dumps({
+                    "references": [
+                        {"id": "mara", "type": "actor", "description": "Mara has a sharp black bob and silver coat."},
+                        {"id": "archive", "type": "location", "description": "The archive has amber lamps and oak shelves."},
+                    ],
+                    "relays": [{"index": 0, "prompt": "Mara crosses toward the desk as the camera tracks beside her and dust lifts in the warm light."}],
+                })
+
+        class Uploader:
+            def resolve_reference_image_name(self, path, **_kwargs):
+                return Path(path).name
+
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            (temp / "mara.png").write_bytes(b"actor")
+            (temp / "archive.png").write_bytes(b"location")
+            plan = temp / "plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 1, "fps": 24, "frame_count": 49,
+                "references": {
+                    "actor_msr_paths": ["mara.png"], "location_msr_path": "archive.png",
+                    "actor_reference_descriptions": [{"id": "mara", "name": "Mara"}],
+                    "location_reference_description": {"id": "archive", "name": "Archive"},
+                },
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 48, "state": "instrumental"}]},
+            }]))
+            enriched = json.loads(enrich_render_plan_with_msr_prompts(
+                plan, temp / "enriched.json", llm=VisionLLM(),
+            ).read_text())[0]
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps({
+                "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                "3": {"inputs": {"global_prompt": "", "local_prompts": "", "segment_lengths": ""}, "_meta": {"title": "#PROMPT_RELAY"}},
+                "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+            }))
+            patched = ComfyUIMSRVideoRenderBackend(
+                client=object(), workflow_path=workflow_path, output_dir=temp / "out",
+                project_dir=temp, asset_uploader=Uploader(), postprocess=False,
+            ).build_workflow(enriched, prompt="fallback")
+            relay = patched["3"]["inputs"]
+            self.assertIn("sharp black bob", relay["global_prompt"])
+            self.assertIn("amber lamps", relay["global_prompt"])
+            self.assertIn("camera tracks beside her", relay["local_prompts"])
+            self.assertNotIn("camera tracks beside her", relay["global_prompt"])
+            self.assertNotIn("sharp black bob", relay["local_prompts"])
+            for heading in ("Reference Sheet Description", "Target Description"):
+                self.assertNotIn(heading, relay["global_prompt"])
+                self.assertNotIn(heading, relay["local_prompts"])
+
     def test_os_specific_runner_scripts_are_removed(self):
         self.assertFalse(Path("test.ps1").exists())
         self.assertFalse(Path("test.bat").exists())
@@ -347,6 +403,22 @@ class RunnerScriptTests(unittest.TestCase):
             self.assertTrue(
                 any("Rendered movie clip 1/" in str(call.args[0]) for call in print_mock.call_args_list)
             )
+
+    def test_movie_pipeline_uses_deterministic_enrichment_without_llm_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = _write_movie_project(root, ready=True)
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args([
+                    str(project), "--app-config", str(root / "missing-app-config.json"),
+                    "--reference-backend", "local", "--render-backend", "local",
+                    "--skip-movie-references",
+                ])
+            )
+
+            self.assertTrue(result.render_plan_msr_path.is_file())
+            self.assertTrue((project / "movie" / "render_plan_ingredients.json").is_file())
 
     def test_movie_pipeline_i2v_edit_local_backend_writes_i2v_plan_and_final(self):
         with tempfile.TemporaryDirectory() as temp_dir:

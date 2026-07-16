@@ -85,6 +85,12 @@ class RenderProgressReporter:
         if self.task_id is not None:
             self.progress.update(self.task_id, completed=completed)
 
+    def analysis_attempt(self, scene_id: int, references: list[dict[str, str]]) -> None:
+        summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
+        console.print(f"Ingredients image analysis: scene {scene_id}; {len(references)} references [{summary}]")
+        if self.task_id is not None:
+            self.progress.update(self.task_id, description=f"Analyzing scene {scene_id}: {summary}")
+
 
 def _run_tests_stage(_state: PipelineRunState) -> None:
     run_unittest_suite()
@@ -216,6 +222,7 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
             state.plan_for_next_step,
             state.context.reference_plan,
             llm=llm,
+            on_analysis_status=msr_prompt_progress.analysis_attempt,
             on_scene_complete=_scene_progress_callback(msr_prompt_progress),
         )
 
@@ -227,6 +234,13 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
     from feverslop.config.project_config import ProjectConfig
     project_config = ProjectConfig.load(state.context.project_config_path)
     video_settings = project_config.to_video_settings()
+    app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
+    llm = OpenAICompatibleLLMClient(
+        base_url=app_config.llm.base_url,
+        model=app_config.llm.model,
+        temperature=app_config.llm.temperature,
+        max_tokens=app_config.llm.max_tokens,
+    )
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     ingredients_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Composing Ingredients scene sheets", ingredients_total) as progress:
@@ -235,6 +249,8 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
             state.context.references_dir,
             state.context.ingredients_plan,
             video_settings=video_settings,
+            llm=llm,
+            on_analysis_status=progress.analysis_attempt,
             on_scene_complete=_scene_progress_callback(progress),
         )
 

@@ -1,19 +1,31 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from feverslop.application.msr_prompt_enrichment import _clean_segment_prompt, _is_valid_segment_prompt, _msr_vision_system_prompt
+from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.domain.vision_references import ReferenceImage
+from feverslop.ports.llm import VisionLLMPort
 
+logger = logging.getLogger(__name__)
 
 
 _SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
 _DIALOGUE_CUE_RE = re.compile(r"\b[A-Z][A-Z0-9 _'-]{1,30}:\s+\S")
 
 
-def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mode: str = "none") -> Path:
+def enrich_movie_render_plan_with_msr_prompts(
+    *,
+    project_dir: Path,
+    keyframe_mode: str = "none",
+    llm: VisionLLMPort | None = None,
+    on_analysis_status=None,
+) -> Path:
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
     bible = _read_json(movie_dir / "bible.json")
@@ -36,7 +48,10 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mod
     enriched["keyframe_mode"] = keyframe_mode
     enriched["msr_enriched"] = True
     enriched["shots"] = [
-        _enrich_shot(shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode, shot_cards=shot_cards)
+        _enrich_shot(
+            shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode,
+            shot_cards=shot_cards, project_dir=project_dir, llm=llm, on_analysis_status=on_analysis_status,
+        )
         for shot in render_plan.get("shots") or []
     ]
 
@@ -45,7 +60,11 @@ def enrich_movie_render_plan_with_msr_prompts(*, project_dir: Path, keyframe_mod
     return output_path
 
 
-def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none", shot_cards: dict | None = None) -> dict:
+def _enrich_shot(
+    shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none",
+    shot_cards: dict | None = None, project_dir: Path | None = None, llm: VisionLLMPort | None = None,
+    on_analysis_status=None,
+) -> dict:
     enriched = deepcopy(shot)
     shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
     prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
@@ -55,17 +74,23 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_
     elif "continuity_notes" in enriched:
         enriched["continuity_notes"] = ""
     frame_count = max(1, int(round(float(shot.get("duration_seconds") or 1) * max(1, fps))))
+    fallback_global = _movie_reference_global_prompt(shot, bible=bible, manifest=manifest)
+    vision = _movie_vision_prompts(
+        shot, bible=bible, manifest=manifest, project_dir=project_dir, llm=llm,
+        frame_count=frame_count, on_analysis_status=on_analysis_status,
+    )
+    global_prompt, relay_prompt = vision or (fallback_global, prompt)
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "original_style_i2v_prompt": prompt,
-        "msr_global_prompt": _movie_reference_global_prompt(shot, bible=bible, manifest=manifest),
+        "msr_global_prompt": global_prompt,
         "native_audio": True,
         "msr_prompt_relay_mode": "single",
         "msr_prompt_relay": [
             {
                 "frame_start": 0,
                 "frame_end": frame_count - 1,
-                "prompt": prompt,
+                "prompt": relay_prompt,
                 "camera": str(shot.get("camera") or "").strip(),
                 "acting": str(shot.get("acting") or shot.get("expression") or "").strip(),
                 "dialogue": str(shot.get("dialogue") or "").strip(),
@@ -80,6 +105,111 @@ def _enrich_shot(shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_
             keyframes["end_frame_prompt"] = shot_card["end_frame_brief"]
         enriched["keyframes"] = keyframes
     return enriched
+
+
+def _movie_vision_prompts(
+    shot: dict, *, bible: dict, manifest: dict, project_dir: Path | None, llm: VisionLLMPort | None,
+    frame_count: int, on_analysis_status,
+) -> tuple[str, str] | None:
+    shot_id = str(shot.get("shot_id") or "")
+    references = _movie_reference_images(shot, bible=bible, manifest=manifest, project_dir=project_dir)
+    if not references:
+        logger.warning("MSR image analysis fallback: shot=%s reason=no images", shot_id)
+        return None
+    complete_with_images = getattr(llm, "complete_prompt_with_images", None)
+    if not callable(complete_with_images):
+        logger.warning("MSR image analysis fallback: shot=%s reason=vision unavailable", shot_id)
+        return None
+    status_references = [{"id": ref.id, "type": ref.type} for ref in references]
+    logger.info(
+        "MSR image analysis attempt: shot=%s reference_count=%s references=%s",
+        shot_id, len(references), status_references,
+    )
+    if on_analysis_status is not None:
+        on_analysis_status(shot_id, status_references)
+    relay = {"frame_start": 0, "frame_end": frame_count - 1, "state": _movie_relay_state(shot)}
+    metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
+    try:
+        response = complete_with_images(
+            _msr_vision_system_prompt(),
+            json.dumps({"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}, ensure_ascii=True),
+            [reference.path for reference in references],
+        )
+    except Exception:
+        logger.warning("MSR image analysis fallback: shot=%s reason=vision unavailable", shot_id)
+        return None
+    try:
+        data = extract_json_object(response)
+        items = data.get("references")
+        relays = data.get("relays")
+        if not isinstance(items, list) or not isinstance(relays, list) or len(relays) != 1:
+            raise ValueError("missing lists")
+        descriptions = {}
+        for item in items:
+            pair = (str(item.get("id") or ""), str(item.get("type") or ""))
+            description = str(item.get("description") or "").strip()
+            if not all(pair) or not description or pair in descriptions:
+                raise ValueError("invalid reference")
+            descriptions[pair] = description
+        if set(descriptions) != {(ref.id, ref.type) for ref in references}:
+            raise ValueError("reference mismatch")
+        if int(relays[0].get("index", -1)) != 0:
+            raise ValueError("relay mismatch")
+        relay_prompt = _clean_segment_prompt(str(relays[0].get("prompt") or ""))
+        if not _is_valid_segment_prompt(relay_prompt, relay):
+            raise ValueError("invalid relay")
+    except Exception:
+        logger.warning("MSR image analysis fallback: shot=%s reason=invalid response", shot_id)
+        return None
+
+    parts = []
+    for index, reference in enumerate(references, start=1):
+        item = metadata[index - 1]
+        label = "Scene" if reference.type == "location" else str(item.get("name") or reference.id)
+        parts.append(f"Reference image {index} ({label}): {descriptions[(reference.id, reference.type)]}.")
+    return " ".join(parts), relay_prompt
+
+
+def _movie_relay_state(shot: dict) -> str:
+    if str(shot.get("dialogue") or "").strip():
+        return "dialogue"
+    mode = str(
+        shot.get("performance_mode") or shot.get("state") or shot.get("type") or ""
+    ).strip().lower()
+    if mode in {"singing", "vocals", "vocal"} or str(shot.get("lyrics") or "").strip():
+        return "singing"
+    return "instrumental"
+
+
+def _movie_reference_metadata(shot: dict, *, bible: dict, manifest: dict) -> list[dict]:
+    ids = shot.get("reference_ids") or {}
+    actors = _items_for_ids(manifest.get("actors") or bible.get("actors") or [], ids.get("actors") or shot.get("actor_ids") or [])
+    location = _item_for_id(manifest.get("locations") or bible.get("locations") or [], ids.get("location") or shot.get("location_id") or "")
+    return [dict(item, type="actor") for item in actors] + ([dict(location, type="location")] if location else [])
+
+
+def _movie_reference_images(shot: dict, *, bible: dict, manifest: dict, project_dir: Path | None) -> list[ReferenceImage]:
+    requested = shot.get("reference_ids") or {}
+    expected_pairs = [
+        (str(actor_id), "actor")
+        for actor_id in (requested.get("actors") or shot.get("actor_ids") or [])
+    ]
+    location_id = str(requested.get("location") or shot.get("location_id") or "")
+    if location_id:
+        expected_pairs.append((location_id, "location"))
+    metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
+    if [(str(item.get("id") or ""), str(item.get("type") or "")) for item in metadata] != expected_pairs:
+        return []
+    result = []
+    for item in metadata:
+        raw_path = str(item.get("msr_sheet_path") or item.get("sheet_path") or "").strip()
+        path = Path(raw_path)
+        if raw_path and not path.is_absolute() and project_dir is not None:
+            path = project_dir / path
+        if not item.get("id") or not path.is_file():
+            return []
+        result.append(ReferenceImage(str(item["id"]), str(item["type"]), path))
+    return result
 
 
 def _movie_reference_global_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:

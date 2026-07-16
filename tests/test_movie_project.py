@@ -565,6 +565,180 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("start_frame", relay)
             self.assertNotIn("end_frame", relay)
 
+    def test_movie_msr_enrichment_uses_individual_manifest_images_for_vision(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class VisionLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
+                self.calls.append((system_prompt, prompt, image_paths))
+                return json.dumps({
+                    "references": [
+                        {"id": "mara", "type": "actor", "description": "Mara wears a graphite coat over a narrow red scarf, with a precise black bob"},
+                        {"id": "ivo", "type": "actor", "description": "Ivo has swept silver hair, a white dinner jacket, and a dark carved cane"},
+                        {"id": "archive", "type": "location", "description": "The archive has towering brass shelves, green lamps, and a wet black marble floor"},
+                    ],
+                    "relays": [{"index": 0, "prompt": "Mara steps between Ivo and the ledger, tightening one hand around its cover as Ivo raises his cane. The camera tracks sideways at waist height while green lamps flicker across the wet floor and both actors hold wary eye contact."}],
+                })
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            paths = [refs / "mara.png", refs / "ivo.png", refs / "archive.png"]
+            for path in paths:
+                path.write_bytes(b"image")
+            (movie / "bible.json").write_text(json.dumps({
+                "actors": [{"id": "mara"}, {"id": "ivo"}], "locations": [{"id": "archive"}],
+                "runtime_constraints": {"fps": 24},
+            }), encoding="utf-8")
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_7", "duration_seconds": 2, "description": "A confrontation",
+                "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
+            }]}), encoding="utf-8")
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [
+                    {"id": "mara", "name": "Mara", "visual_description": "fallback Mara", "msr_sheet_path": "movie/references/mara.png"},
+                    {"id": "ivo", "name": "Ivo", "visual_description": "fallback Ivo", "msr_sheet_path": "movie/references/ivo.png"},
+                ],
+                "locations": [{"id": "archive", "name": "Archive", "visual_description": "fallback Archive", "msr_sheet_path": "movie/references/archive.png"}],
+            }), encoding="utf-8")
+            llm = VisionLLM()
+            statuses = []
+
+            output = enrich_movie_render_plan_with_msr_prompts(
+                project_dir=project, llm=llm, on_analysis_status=lambda shot, references: statuses.append((shot, references))
+            )
+
+            shot = json.loads(output.read_text(encoding="utf-8"))["shots"][0]
+            self.assertEqual(paths, llm.calls[0][2])
+            self.assertIn("graphite coat", shot["ltx"]["msr_global_prompt"])
+            self.assertIn("swept silver hair", shot["ltx"]["msr_global_prompt"])
+            self.assertIn("towering brass shelves", shot["ltx"]["msr_global_prompt"])
+            relay = shot["ltx"]["msr_prompt_relay"][0]
+            self.assertIn("steps between Ivo", relay["prompt"])
+            self.assertNotIn("Target Description", relay["prompt"])
+            self.assertNotIn("graphite coat", relay["prompt"])
+            self.assertEqual((0, 47), (relay["frame_start"], relay["frame_end"]))
+            self.assertEqual("shot_7", statuses[0][0])
+
+    def test_movie_msr_partial_missing_images_keep_full_labeled_fallback(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class VisionLLM:
+            calls = []
+
+            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
+                self.calls.append(image_paths)
+                return "{}"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            (refs / "ivo.png").write_bytes(b"actor")
+            (refs / "archive.png").write_bytes(b"location")
+            (movie / "bible.json").write_text(json.dumps({"runtime_constraints": {"fps": 24}}), encoding="utf-8")
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_partial", "duration_seconds": 1,
+                "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
+            }]}), encoding="utf-8")
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [
+                    {"id": "mara", "name": "Mara", "visual_description": "Mara fallback", "msr_sheet_path": "movie/references/missing.png"},
+                    {"id": "ivo", "name": "Ivo", "visual_description": "Ivo fallback", "msr_sheet_path": "movie/references/ivo.png"},
+                ],
+                "locations": [{"id": "archive", "name": "Archive", "visual_description": "Archive fallback", "msr_sheet_path": "movie/references/archive.png"}],
+            }), encoding="utf-8")
+            llm = VisionLLM()
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=llm)
+
+            global_prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_global_prompt"]
+            self.assertIn("Reference image 1 (Mara): Mara fallback", global_prompt)
+            self.assertIn("Reference image 2 (Ivo): Ivo fallback", global_prompt)
+            self.assertIn("Reference image 3 (Scene): Archive fallback", global_prompt)
+            self.assertEqual([], llm.calls)
+
+    def test_movie_msr_transport_exception_is_logged_as_vision_unavailable(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class FailingVisionLLM:
+            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
+                raise RuntimeError("transport failed")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            (refs / "mara.png").write_bytes(b"actor")
+            (movie / "bible.json").write_text(json.dumps({"runtime_constraints": {"fps": 24}}), encoding="utf-8")
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_transport", "duration_seconds": 1,
+                "reference_ids": {"actors": ["mara"], "location": ""},
+            }]}), encoding="utf-8")
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [{"id": "mara", "name": "Mara", "visual_description": "Mara", "msr_sheet_path": "movie/references/mara.png"}],
+                "locations": [],
+            }), encoding="utf-8")
+
+            with self.assertLogs("feverslop.application.movie_msr_enrichment", level="WARNING") as logs:
+                enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=FailingVisionLLM())
+
+            self.assertTrue(any("reason=vision unavailable" in message for message in logs.output))
+            self.assertFalse(any("reason=invalid response" in message for message in logs.output))
+
+    def test_movie_msr_vision_dialogue_relay_requests_spoken_lip_sync(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class DialogueVisionLLM:
+            prompt = ""
+            system_prompt = ""
+
+            def complete_prompt_with_images(self, system, prompt, _paths):
+                self.system_prompt = system
+                self.prompt = prompt
+                return json.dumps({
+                    "references": [{"id": "mara", "type": "actor", "description": "Mara has dark hair and a silver coat"}],
+                    "relays": [{"index": 0, "prompt": "Mara speaks the line with precise lip sync and wary expression as the camera moves closer."}],
+                })
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            (refs / "mara.png").write_bytes(b"actor")
+            (movie / "bible.json").write_text(json.dumps({"runtime_constraints": {"fps": 24}}))
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_dialogue", "duration_seconds": 1,
+                "dialogue": "Mara: It remembers me.",
+                "reference_ids": {"actors": ["mara"], "location": ""},
+            }]}))
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [{"id": "mara", "name": "Mara", "msr_sheet_path": "movie/references/mara.png"}],
+                "locations": [],
+            }))
+            llm = DialogueVisionLLM()
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=llm)
+            relay = json.loads(output.read_text())["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+
+            self.assertEqual("dialogue", json.loads(llm.prompt)["relay_segments"][0]["state"])
+            self.assertIn("speaks", relay)
+            self.assertIn("lip sync", relay)
+            self.assertNotIn("mouth closed", relay)
+            self.assertIn('state "dialogue"', llm.system_prompt)
+            self.assertIn("speaks the provided dialogue with precise lip sync", llm.system_prompt)
+            self.assertIn("instrumental and other non-vocal states keep mouths closed", llm.system_prompt.lower())
+            self.assertNotIn("non-singing relays keep mouths closed", llm.system_prompt)
+
+
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 

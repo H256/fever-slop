@@ -361,8 +361,9 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
-            def enrich_msr(input_plan, output_plan, *, llm, on_scene_complete=None):
+            def enrich_msr(input_plan, output_plan, *, llm, on_analysis_status=None, on_scene_complete=None):
                 self.assertIsNotNone(llm)
+                self.assertIsNotNone(on_analysis_status)
                 self.assertIsNotNone(on_scene_complete)
                 Path(output_plan).write_text(json.dumps([{"scene": 1, "ltx": {"msr_prompt_relay": []}}]), encoding="utf-8")
                 on_scene_complete(1, 1, 1)

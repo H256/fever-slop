@@ -12,6 +12,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.prepared_workflow import PreparedWorkflowRenderer, WorkflowMaterializer
 from feverslop.application.movie_prepared_workflows import prepare_movie_workflows, render_prepared_movie_workflows
 from feverslop.application.movie_artifacts import (
@@ -30,6 +31,7 @@ from feverslop.application.movie_artifacts import (
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.application.movie_references import MovieReferenceSheetGenerator
 from feverslop.path_utils import coerce_local_path
+from feverslop.config.app_config import AppConfig
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.studio.job_service import (
     build_movie_reference_generator,
@@ -139,6 +141,7 @@ class MoviePipelineResult:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run movie pipeline stages for an existing FeverSlop movie project.")
     parser.add_argument("project_dir", help="Movie project directory, for example projects/tm3")
+    parser.add_argument("--app-config", default="app_config.json")
     parser.add_argument("--reference-backend", choices=["comfyui", "local"], default=None)
     parser.add_argument("--render-backend", choices=["comfyui", "local"], default=None)
     parser.add_argument("--hero-workflow", default=None)
@@ -270,6 +273,26 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     continuity_plan_path = project_dir / "movie" / "continuity_plan.json"
     render_plan_msr_path = project_dir / "movie" / "render_plan_msr.json"
     render_plan_ingredients_path = project_dir / "movie" / "render_plan_ingredients.json"
+
+    def ingredients_llm():
+        try:
+            app_config = AppConfig.load(args.app_config, required_keys=["llm"])
+            return OpenAICompatibleLLMClient(
+                base_url=app_config.llm.base_url,
+                model=app_config.llm.model,
+                temperature=app_config.llm.temperature,
+                max_tokens=app_config.llm.max_tokens,
+            )
+        except (OSError, ValueError):
+            return None
+
+    def report_ingredients_analysis(shot_id: str, references: list[dict[str, str]]) -> None:
+        summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
+        console.print(f"Ingredients image analysis: shot {shot_id}; {len(references)} references [{summary}]")
+
+    def report_msr_analysis(shot_id: str, references: list[dict[str, str]]) -> None:
+        summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
+        console.print(f"MSR image analysis: shot {shot_id}; {len(references)} references [{summary}]")
 
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
@@ -496,6 +519,8 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
                 project_dir=project_dir,
                 sheet_scale=config.get("ingredients_sheet_scale", 2.0),
+                llm=ingredients_llm(),
+                on_analysis_status=report_ingredients_analysis,
             )
         elif not render_plan_ingredients_path.exists():
             render_plan_ingredients_path = None
@@ -555,7 +580,12 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         )
 
     if not args.skip_movie_msr_enrich:
-        render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir, keyframe_mode=args.keyframe_mode)
+        render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(
+            project_dir=project_dir,
+            keyframe_mode=args.keyframe_mode,
+            llm=ingredients_llm(),
+            on_analysis_status=report_msr_analysis,
+        )
     elif not render_plan_msr_path.exists():
         render_plan_msr_path = None
 
@@ -565,6 +595,8 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
             project_dir=project_dir,
             sheet_scale=config.get("ingredients_sheet_scale", 2.0),
+            llm=ingredients_llm(),
+            on_analysis_status=report_ingredients_analysis,
         )
     elif not render_plan_ingredients_path.exists():
         render_plan_ingredients_path = None
