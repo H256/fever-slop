@@ -203,7 +203,8 @@ Treat supplied images as ground truth for stable appearance and scene geography.
 Include every reference and relay index exactly once. Each relay describes only chronological local action,
 acting, camera behavior, and environment response. Do not use Ingredients headings, Reference Sheet Description,
 Target Description, source-layout or panel language, edit commands, frame numbers, or repeat the full global identity block.
-Singing relays require clear lip sync; non-singing relays keep mouths closed and omit lip sync.
+Singing relays require clear lip sync. For state "dialogue", the actor speaks the provided dialogue with precise lip sync.
+Instrumental and other non-vocal states keep mouths closed and omit lip sync.
 """.strip()
 
 

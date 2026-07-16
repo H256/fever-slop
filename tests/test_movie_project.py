@@ -698,8 +698,10 @@ class MovieProjectTests(unittest.TestCase):
 
         class DialogueVisionLLM:
             prompt = ""
+            system_prompt = ""
 
-            def complete_prompt_with_images(self, _system, prompt, _paths):
+            def complete_prompt_with_images(self, system, prompt, _paths):
+                self.system_prompt = system
                 self.prompt = prompt
                 return json.dumps({
                     "references": [{"id": "mara", "type": "actor", "description": "Mara has dark hair and a silver coat"}],
@@ -731,6 +733,10 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("speaks", relay)
             self.assertIn("lip sync", relay)
             self.assertNotIn("mouth closed", relay)
+            self.assertIn('state "dialogue"', llm.system_prompt)
+            self.assertIn("speaks the provided dialogue with precise lip sync", llm.system_prompt)
+            self.assertIn("instrumental and other non-vocal states keep mouths closed", llm.system_prompt.lower())
+            self.assertNotIn("non-singing relays keep mouths closed", llm.system_prompt)
 
 
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
