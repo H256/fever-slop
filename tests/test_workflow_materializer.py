@@ -5,12 +5,16 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
+from PIL import Image
+
+from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
 from feverslop.adapters.prepared_workflow import (
     PreparedWorkflowRenderer,
     WorkflowMaterializationRequest,
     WorkflowMaterializer,
 )
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -82,6 +86,70 @@ class FakePostprocessor:
 
 
 class WorkflowMaterializerTests(unittest.TestCase):
+    def test_vision_enriched_ingredients_prompt_reaches_materialized_workflow_unchanged(self):
+        class VisionLLM:
+            def complete_prompt_with_images(self, _system, _prompt, _paths):
+                target = (
+                    "The full-frame continuous shot opens on Mara beside the archive desk. "
+                    "Mara turns toward the lens as the camera slowly pushes forward; her silver coat and black hair react to the moving air, while amber light travels across the shelves. "
+                    + "She crosses the room with deliberate steps while dust drifts and the camera arcs around her, preserving a single uninterrupted composition. " * 14
+                    + "The shot ends with Mara stopping at the desk, her hand resting on the ledger as the camera settles and the warm light fades."
+                )
+                return json.dumps({
+                    "references": [
+                        {"id": "mara", "type": "actor", "description": "Mara has a sharp black bob, grey eyes, and a silver coat."},
+                        {"id": "archive", "type": "location", "description": "The archive has amber lamps, dark oak shelves, and a brass desk."},
+                    ],
+                    "target_description": target,
+                })
+
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            refs = project / "output" / "references"
+            for kind, reference_id in (("actors", "mara"), ("locations", "archive")):
+                root = refs / kind / reference_id
+                root.mkdir(parents=True)
+                image = root / "sheet.png"
+                Image.new("RGB", (32, 32), "white").save(image)
+                (root / "manifest.json").write_text(json.dumps({
+                    "id": reference_id, "name": reference_id.title(), "sheet_path": image.relative_to(project).as_posix(),
+                }))
+            plan = project / "plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 1, "fps": 24, "frame_count": 49, "width": 1280, "height": 704,
+                "references": {"actor_ids": ["mara"], "location_id": "archive"},
+                "ltx": {"i2v_prompt_from_t2i": "Mara approaches the ledger."},
+            }]))
+            enriched_path = enrich_render_plan_with_ingredients_sheets(
+                plan, refs, project / "ingredients.json", llm=VisionLLM(),
+            )
+            scene = json.loads(enriched_path.read_text())[0]
+            template = project / "workflow.json"
+            original_negative = "bad anatomy, text, panels"
+            template.write_text(json.dumps({
+                "1": {"inputs": {"image": ""}, "_meta": {"title": "#INGREDIENTS"}},
+                "2": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}},
+                "3": {"inputs": {"text": original_negative}, "_meta": {"title": "#PROMPT_NEGATIVE"}},
+                "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+            }))
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=object(), workflow_path=template, output_dir=project / "out", project_dir=project,
+                asset_uploader=FakeUploader(), model_resolver=FakeResolver(), postprocess=False,
+            )
+            prepared = WorkflowMaterializer(backend, SceneArtifactLayout(project)).prepare(
+                WorkflowMaterializationRequest(
+                    scene=scene, prompt="fallback", audio_file=None, render_plan_path=enriched_path,
+                    pipeline="ltx_ingredients", seed=1,
+                )
+            )
+            workflow = json.loads(prepared.workflow_path.read_text())
+            positive = workflow["2"]["inputs"]["text"]
+            self.assertEqual(1, positive.count("### Reference Sheet Description"))
+            self.assertEqual(1, positive.count("### Target Description"))
+            for expected in ("`mara`", "`archive`", "full-frame continuous shot", "camera slowly pushes forward", "do not reproduce their framing, composition, borders, panels, or layout"):
+                self.assertIn(expected, positive)
+            self.assertEqual(original_negative, workflow["3"]["inputs"]["text"])
+
     def test_manifest_reader_requires_assets_and_pipeline_roles(self):
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "manifest.json"

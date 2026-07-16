@@ -4,8 +4,8 @@ import json
 import unittest
 from pathlib import Path
 
-from feverslop.prompting.ingredients_vision_prompt import build_ingredients_vision_prompt
-from feverslop.prompting.vision_references import ReferenceImage
+from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
+from feverslop.domain.vision_references import ReferenceImage
 
 
 class FakeVisionLLM:

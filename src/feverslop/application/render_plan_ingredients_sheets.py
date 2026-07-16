@@ -15,8 +15,8 @@ from feverslop.application.reference_bible import (
     ingredients_sheet_size,
 )
 from feverslop.ports.llm import VisionLLMPort
-from feverslop.prompting.ingredients_vision_prompt import build_ingredients_vision_prompt
-from feverslop.prompting.vision_references import ReferenceImage
+from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
+from feverslop.domain.vision_references import ReferenceImage
 
 
 logger = logging.getLogger(__name__)
@@ -174,7 +174,9 @@ def _enrich_scene(
             fallback_reference_description=enriched.get("ingredients_scene_sheet_description", ""),
             fallback_target_prompt=fallback_target,
         )
-        enriched["ingredients_scene_sheet_description"] = result.reference_description
+        enriched["ingredients_scene_sheet_description"] = (
+            "### Reference Sheet Description\n" + result.reference_description
+        )
         enriched["ingredients_target_prompt"] = (
             "### Target Description\n" + result.target_description if result.target_description else ""
         )

@@ -6,7 +6,7 @@ from typing import Any
 
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.ports.llm import VisionLLMPort
-from feverslop.prompting.vision_references import ReferenceImage
+from feverslop.domain.vision_references import ReferenceImage
 
 
 _SYSTEM_PROMPT = """You create a vision-grounded Ingredients prompt for video generation.

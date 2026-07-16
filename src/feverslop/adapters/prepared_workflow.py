@@ -79,10 +79,10 @@ class WorkflowMaterializer:
                 render_plan_path=request.render_plan_path,
                 assets=assets,
                 seed=seed,
-                fps=int(scene.get("fps") or rolling.get("fps") or 0),
-                frame_count=int(scene.get("frame_count") or rolling.get("render_frame_count") or 0),
-                render_frame_count=int(rolling.get("render_frame_count") or scene.get("frame_count") or 0),
-                trim_front_frames=int(rolling.get("trim_front_frames") or 0),
+                fps=int(scene.get("fps") or _rolling_value(rolling, "fps") or 0),
+                frame_count=int(scene.get("frame_count") or _rolling_value(rolling, "render_frame_count") or 0),
+                render_frame_count=int(_rolling_value(rolling, "render_frame_count") or scene.get("frame_count") or 0),
+                trim_front_frames=int(_rolling_value(rolling, "trim_front_frames") or 0),
                 width=int(scene.get("width") or 0),
                 height=int(scene.get("height") or 0),
             )
@@ -196,6 +196,12 @@ class PreparedWorkflowRenderer:
         finally:
             temporary_final.unlink(missing_ok=True)
         return final_path
+
+
+def _rolling_value(rolling: Any, key: str) -> Any:
+    if isinstance(rolling, dict):
+        return rolling.get(key)
+    return getattr(rolling, key, None)
 
 
 class _RecordingUploader:
