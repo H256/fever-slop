@@ -167,7 +167,13 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
                 "camera_motion": "slow orbit",
                 "character_motion": "Mara raises one hand",
                 "references": {"actor_ids": ["singer"], "location_id": "stage"},
-                "ltx": {"i2v_prompt_from_t2i": "Mara sings through the rain"},
+                "ltx": {
+                    "i2v_prompt_from_t2i": "Mara sings through the rain",
+                    "msr_prompt_relay": [{
+                        "frame_start": 0, "frame_end": 119, "state": "singing",
+                        "prompt": "Mara sings immediately with precise lip sync.",
+                    }],
+                },
             }]), encoding="utf-8")
 
             class FakeVisionLLM:
@@ -177,11 +183,11 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
                 def complete_prompt_with_images(self, _system, user, paths):
                     self.image_paths = paths
                     self.user_prompt = user
-                    target = " ".join(["cinematic continuous action"] * 190)
+                    invariants = " ".join(["stable cinematic composition"] * 30)
                     return json.dumps({"references": [
                         {"id": "singer", "type": "actor", "description": "silver hair and a vivid red coat"},
                         {"id": "stage", "type": "location", "description": "black mirrors crossed by blue neon rain"},
-                    ], "target_description": target})
+                    ], "shot_invariants": invariants})
 
             llm = FakeVisionLLM()
             events = []
@@ -193,9 +199,9 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
 
             self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
             self.assertNotIn("ingredients_sheets", str(llm.image_paths[0]))
-            self.assertIn("Character `singer`", scene["ingredients_scene_sheet_description"])
-            self.assertIn("silver hair", scene["ingredients_scene_sheet_description"])
-            self.assertIn("### Target Description", scene["ingredients_target_prompt"])
+            self.assertIn("Character `singer`", scene["ingredients"]["global_prompt"])
+            self.assertIn("silver hair", scene["ingredients"]["global_prompt"])
+            self.assertIn("### Shot Invariants", scene["ingredients"]["global_prompt"])
             self.assertIn("defiant chorus", llm.user_prompt)
             self.assertIn("slow orbit", llm.user_prompt)
             self.assertEqual([(7, [{"id": "singer", "type": "actor"}, {"id": "stage", "type": "location"}])], events)
@@ -203,11 +209,17 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
             plan.write_text(json.dumps([{
                 "scene": 7,
                 "references": {"actor_ids": ["singer"], "location_id": "stage"},
-                "ltx": {"i2v_prompt_from_t2i": ""},
+                "ltx": {
+                    "i2v_prompt_from_t2i": "",
+                    "prompt_relay": [{
+                        "frame_start": 0, "frame_end": 119, "state": "instrumental",
+                        "prompt": "Mara remains silent with her mouth closed.",
+                    }],
+                },
             }]), encoding="utf-8")
             fallback_output = enrich_render_plan_with_ingredients_sheets(
                 plan, references, project / "fallback.json", llm=None,
             )
             fallback_scene = json.loads(fallback_output.read_text(encoding="utf-8"))[0]
-            self.assertEqual("", fallback_scene["ingredients_target_prompt"])
-            self.assertEqual("", fallback_scene["ltx"]["ingredients_target_prompt"])
+            self.assertIn("### Shot Invariants", fallback_scene["ingredients"]["global_prompt"])
+            self.assertIn("no vocal performance throughout", fallback_scene["ltx"]["static_prompt"].lower())

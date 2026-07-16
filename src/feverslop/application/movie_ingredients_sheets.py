@@ -14,7 +14,6 @@ from feverslop.application.reference_bible import (
     generate_scene_sheet_anchors,
     ingredients_sheet_size,
 )
-from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
 from feverslop.domain.vision_references import ReferenceImage
@@ -99,7 +98,7 @@ def _enrich_shot(
     enriched["ingredients_scene_sheet_description"] = sheet_result.get("scene_reference_sheet_description", "")
     anchors = list(sheet_result.get("scene_reference_sheet_anchors") or [])
     enriched["ingredients_scene_sheet_anchors"] = anchors
-    fallback_target = build_ingredients_target_binding(anchors) + _movie_video_prompt(shot, bible=bible, manifest=manifest)
+    fallback_invariants = _fallback_movie_shot_invariants(shot, anchors=anchors)
     images = list(sheet_result.get("images") or [])
     references = [
         ReferenceImage(id=str(img["id"]), type=img["type"], path=builder.project_dir / img["path"])
@@ -120,14 +119,9 @@ def _enrich_shot(
         ],
         target_context=_movie_target_context(shot, bible),
         fallback_reference_description=enriched["ingredients_scene_sheet_description"],
-        fallback_target_prompt=fallback_target,
+        fallback_shot_invariants=fallback_invariants,
     )
-    enriched["ingredients_scene_sheet_description"] = (
-        "### Reference Sheet Description\n" + result.reference_description
-        if result.reference_description
-        else ""
-    )
-    enriched["ingredients_target_prompt"] = "### Target Description\n" + result.target_description
+    enriched["ingredients_global_prompt"] = result.positive_prompt
     if not references:
         logger.warning("Ingredients image analysis fallback: shot=%s reason=no images", shot_id)
     elif result.fallback_reason:
@@ -139,8 +133,6 @@ def _enrich_shot(
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "native_audio": True,
-        "ingredients_scene_sheet_description": enriched.get("ingredients_scene_sheet_description", ""),
-        "ingredients_target_prompt": enriched["ingredients_target_prompt"],
     }
     return enriched
 
@@ -228,6 +220,17 @@ def _movie_target_context(shot: dict, bible: dict) -> dict[str, Any]:
         "duration_seconds": shot.get("duration_seconds") or shot.get("duration") or "",
         "dialogue_policy": (bible.get("runtime_constraints") or {}).get("dialogue_language") or "",
     }
+
+
+def _fallback_movie_shot_invariants(shot: dict, *, anchors: list[dict]) -> str:
+    parts = [
+        build_ingredients_target_binding(anchors).strip(),
+        "Maintain one continuous full-frame shot with stable identities, wardrobe, spatial staging, environment, and lighting.",
+    ]
+    camera = shot.get("camera") or shot.get("camera_motion") or ""
+    if camera:
+        parts.append(f"Camera policy: {str(camera).strip()}")
+    return " ".join(part for part in parts if part).strip()
 
 
 def _pick_existing_path(value: Any | None, project_dir: Path) -> str:

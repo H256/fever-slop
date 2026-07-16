@@ -67,11 +67,11 @@ class IngredientsVisionPromptTests(unittest.TestCase):
             "duration": "8 seconds",
         }
         self.fallback_reference = "fallback refs"
-        self.fallback_target = "fallback target"
+        self.fallback_invariants = "fallback shot invariants"
 
     @staticmethod
-    def long_target() -> str:
-        return " ".join(f"word{i}" for i in range(250))
+    def shot_invariants() -> str:
+        return " ".join(f"invariant{i}" for i in range(80))
 
     def build(self, llm: FakeVisionLLM | None):
         return build_ingredients_vision_prompt(
@@ -80,7 +80,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
             reference_metadata=self.reference_metadata,
             target_context=self.target_context,
             fallback_reference_description=self.fallback_reference,
-            fallback_target_prompt=self.fallback_target,
+            fallback_shot_invariants=self.fallback_invariants,
         )
 
     def test_builds_grounded_prompt_and_attaches_references_in_source_order(self):
@@ -90,7 +90,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                     {"id": "mara", "type": "actor", "description": "Cropped black hair, silver ear cuff, charcoal coat."},
                     {"id": "archive", "type": "location", "description": "Narrow stone archive with dusty shelves."},
                 ],
-                "target_description": self.long_target(),
+                "shot_invariants": self.shot_invariants(),
             }
         )
 
@@ -103,59 +103,60 @@ class IngredientsVisionPromptTests(unittest.TestCase):
         for key, value in self.target_context.items():
             self.assertEqual(value, payload["target_context"][key])
         system_prompt = str(call["system_prompt"])
-        self.assertIn("250-400 words", system_prompt)
-        self.assertIn("opening", system_prompt)
-        self.assertIn("progression", system_prompt)
-        self.assertIn("final state", system_prompt)
+        self.assertIn("60-160 words", system_prompt)
+        self.assertIn("non-temporal", system_prompt)
+        self.assertIn("Do not schedule", system_prompt)
+        self.assertIn("singing", system_prompt)
+        self.assertIn("lip-sync", system_prompt)
         self.assertIn("single continuous full-frame shot", system_prompt)
         self.assertIn("do not reproduce", system_prompt.lower())
         self.assertIn("framing", system_prompt.lower())
         self.assertIn("layout", system_prompt.lower())
         self.assertEqual(
-            ["### Reference Sheet Description", "### Target Description"],
+            ["### Reference Sheet Description", "### Shot Invariants"],
             [line for line in result.positive_prompt.splitlines() if line.startswith("###")],
         )
         for reference_id in ("mara", "archive"):
             self.assertIn(reference_id, result.reference_description)
-            self.assertIn(reference_id, result.target_description)
+        self.assertEqual(self.shot_invariants(), result.shot_invariants)
 
     def test_invalid_responses_use_deterministic_fallback_with_headings(self):
         invalid_responses = {
             "invalid json": "not JSON",
             "missing reference": {
                 "references": [{"id": "mara", "type": "actor", "description": "Mara"}],
-                "target_description": self.long_target(),
+                "shot_invariants": self.shot_invariants(),
             },
             "wrong type": {
                 "references": [
                     {"id": "mara", "type": "location", "description": "Mara"},
                     {"id": "archive", "type": "location", "description": "Archive"},
                 ],
-                "target_description": self.long_target(),
+                "shot_invariants": self.shot_invariants(),
             },
             "empty target": {
                 "references": [
                     {"id": "mara", "type": "actor", "description": "Mara"},
                     {"id": "archive", "type": "location", "description": "Archive"},
                 ],
-                "target_description": "",
+                "shot_invariants": "",
             },
             "short target": {
                 "references": [
                     {"id": "mara", "type": "actor", "description": "Mara"},
                     {"id": "archive", "type": "location", "description": "Archive"},
                 ],
-                "target_description": "too short",
+                "shot_invariants": "too short",
             },
         }
         for label, response in invalid_responses.items():
             with self.subTest(label):
                 result = self.build(FakeVisionLLM(response))
                 self.assertEqual(self.fallback_reference, result.reference_description)
-                self.assertEqual(self.fallback_target, result.target_description)
+                self.assertEqual(self.fallback_invariants, result.shot_invariants)
                 self.assertEqual("invalid response", result.fallback_reason)
                 self.assertEqual(
-                    "### Reference Sheet Description\nfallback refs\n\n### Target Description\nfallback target",
+                    "### Reference Sheet Description\nfallback refs\n\n### Shot Invariants\nfallback shot invariants",
                     result.positive_prompt,
                 )
 
@@ -164,7 +165,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
             with self.subTest(llm=llm):
                 result = self.build(llm)
                 self.assertEqual(self.fallback_reference, result.reference_description)
-                self.assertEqual(self.fallback_target, result.target_description)
+                self.assertEqual(self.fallback_invariants, result.shot_invariants)
                 self.assertEqual("vision unavailable", result.fallback_reason)
 
 

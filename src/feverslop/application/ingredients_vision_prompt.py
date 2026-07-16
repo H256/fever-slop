@@ -15,7 +15,7 @@ Return only JSON with this exact shape:
   "references": [
     {"id": "reference id", "type": "actor or location", "description": "stable visible identity details"}
   ],
-  "target_description": "250-400 word continuous-shot direction"
+  "shot_invariants": "60-160 word non-temporal continuous-shot contract"
 }
 
 Treat the supplied images as ground truth. Text metadata is supplementary intent only.
@@ -23,10 +23,11 @@ Describe stable visible identity and environment details, but omit source pose, 
 borders, panels, labels, typography, and sheet layout. Do not reproduce the source framing,
 composition, borders, panels, or layout.
 
-Write target_description in 250-400 words. It must describe one single continuous full-frame shot
-with a concrete opening, chronological progression, and final state. Repeat identity-critical
-details and specify spatial staging, chronological action, facial acting, body motion,
-clothing and hair response, camera start/motion/end, environment motion, and lighting behavior.
+Write shot_invariants in 60-160 words. It must describe one single continuous full-frame shot.
+Specify stable spatial staging, camera framing and motion policy, identity-critical details,
+clothing and hair behavior, environment motion, and lighting behavior. Keep it non-temporal.
+Do not schedule an opening, progression, final state, dialogue timing, singing, lip-sync,
+mouth state, or any other performance transition; those are supplied by a frame-level relay.
 Do not include captions, titles, signs, logos, screens, UI/HUD, or written characters unless the
 shot context explicitly requires them. Include every supplied reference exactly once with its
 unchanged id and type.
@@ -36,7 +37,7 @@ unchanged id and type.
 @dataclass(frozen=True)
 class IngredientsPromptResult:
     reference_description: str
-    target_description: str
+    shot_invariants: str
     fallback_reason: str | None = None
 
     @property
@@ -44,8 +45,8 @@ class IngredientsPromptResult:
         return (
             "### Reference Sheet Description\n"
             f"{self.reference_description}\n\n"
-            "### Target Description\n"
-            f"{self.target_description}"
+            "### Shot Invariants\n"
+            f"{self.shot_invariants}"
         )
 
 
@@ -56,13 +57,13 @@ def build_ingredients_vision_prompt(
     reference_metadata: list[dict[str, str]],
     target_context: dict[str, Any],
     fallback_reference_description: str,
-    fallback_target_prompt: str,
+    fallback_shot_invariants: str,
 ) -> IngredientsPromptResult:
     unavailable_fallback = IngredientsPromptResult(
-        fallback_reference_description, fallback_target_prompt, "vision unavailable"
+        fallback_reference_description, fallback_shot_invariants, "vision unavailable"
     )
     invalid_fallback = IngredientsPromptResult(
-        fallback_reference_description, fallback_target_prompt, "invalid response"
+        fallback_reference_description, fallback_shot_invariants, "invalid response"
     )
     if llm is None:
         return unavailable_fallback
@@ -83,11 +84,11 @@ def build_ingredients_vision_prompt(
     try:
         data = extract_json_object(response)
         parsed_references = data.get("references")
-        target = data.get("target_description")
+        shot_invariants = data.get("shot_invariants")
         expected_pairs = {(reference.id, reference.type) for reference in references}
         if not isinstance(parsed_references, list) or len(parsed_references) != len(references):
             return invalid_fallback
-        if not isinstance(target, str) or len(target.split()) < 180:
+        if not isinstance(shot_invariants, str) or not 60 <= len(shot_invariants.split()) <= 160:
             return invalid_fallback
 
         descriptions: dict[tuple[str, str], str] = {}
@@ -113,12 +114,7 @@ def build_ingredients_vision_prompt(
         "The source images provide appearance only; do not reproduce their framing, composition, "
         "borders, panels, or layout."
     )
-    bindings = " ".join(
-        f"Use {_reference_label(reference.type)} `{reference.id}` as "
-        f"{'a visible character.' if reference.type == 'actor' else 'the environment.'}"
-        for reference in references
-    )
-    return IngredientsPromptResult("\n".join(reference_lines), f"{bindings}\n{target.strip()}")
+    return IngredientsPromptResult("\n".join(reference_lines), shot_invariants.strip())
 
 
 def _reference_label(reference_type: str) -> str:
