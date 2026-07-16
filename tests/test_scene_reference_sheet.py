@@ -510,6 +510,44 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             self.assertIn("ingredients_scene_sheet_description", data["shots"][0])
             self.assertIn("ltx", data["shots"][0])
 
+    def test_vision_enrichment_uses_source_images_and_complete_shot_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            actor_sheet = tmp / "movie" / "references" / "actor_1.png"
+            location_sheet = tmp / "movie" / "references" / "loc_1.png"
+            self._make_project(tmp, shot_fields={
+                "action": "opens the ledger", "camera": "slow dolly", "acting": "controlled fear",
+                "dialogue": "Alice: It remembers me.", "continuity_notes": "wet coat from prior shot",
+            })
+
+            class FakeVisionLLM:
+                image_paths = []
+                user_prompt = ""
+
+                def complete_prompt_with_images(self, _system, user, paths):
+                    self.image_paths = paths
+                    self.user_prompt = user
+                    target = " ".join(["continuous cinematic movement"] * 190)
+                    return json.dumps({"references": [
+                        {"id": "actor_1", "type": "actor", "description": "brown hair and a rain-dark coat"},
+                        {"id": "loc_1", "type": "location", "description": "a silent archive room"},
+                    ], "target_description": target})
+
+            llm = FakeVisionLLM()
+            events = []
+            out = enrich_movie_render_plan_with_ingredients_sheets(
+                project_dir=tmp, llm=llm,
+                on_analysis_status=lambda shot_id, refs: events.append((shot_id, refs)),
+            )
+            shot = json.loads(out.read_text(encoding="utf-8"))["shots"][0]
+
+            self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
+            self.assertIn("brown hair", shot["ingredients_scene_sheet_description"])
+            self.assertIn("### Target Description", shot["ingredients_target_prompt"])
+            for detail in ("A test scene", "opens the ledger", "slow dolly", "controlled fear", "It remembers me", "wet coat", "duration_seconds"):
+                self.assertIn(detail, llm.user_prompt)
+            self.assertEqual([("shot_001", [{"id": "actor_1", "type": "actor"}, {"id": "loc_1", "type": "location"}])], events)
+
     def test_enrichment_shot_has_ltx_with_ingredients_fields(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

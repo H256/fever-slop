@@ -12,6 +12,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.prepared_workflow import PreparedWorkflowRenderer, WorkflowMaterializer
 from feverslop.application.movie_prepared_workflows import prepare_movie_workflows, render_prepared_movie_workflows
 from feverslop.application.movie_artifacts import (
@@ -30,6 +31,7 @@ from feverslop.application.movie_artifacts import (
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.application.movie_references import MovieReferenceSheetGenerator
 from feverslop.path_utils import coerce_local_path
+from feverslop.config.app_config import AppConfig
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.studio.job_service import (
     build_movie_reference_generator,
@@ -271,6 +273,19 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     render_plan_msr_path = project_dir / "movie" / "render_plan_msr.json"
     render_plan_ingredients_path = project_dir / "movie" / "render_plan_ingredients.json"
 
+    def ingredients_llm():
+        app_config = AppConfig.load("app_config.json", required_keys=["llm"])
+        return OpenAICompatibleLLMClient(
+            base_url=app_config.llm.base_url,
+            model=app_config.llm.model,
+            temperature=app_config.llm.temperature,
+            max_tokens=app_config.llm.max_tokens,
+        )
+
+    def report_ingredients_analysis(shot_id: str, references: list[dict[str, str]]) -> None:
+        summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
+        console.print(f"Ingredients image analysis: shot {shot_id}; {len(references)} references [{summary}]")
+
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
     if any(
@@ -496,6 +511,8 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
                 project_dir=project_dir,
                 sheet_scale=config.get("ingredients_sheet_scale", 2.0),
+                llm=ingredients_llm(),
+                on_analysis_status=report_ingredients_analysis,
             )
         elif not render_plan_ingredients_path.exists():
             render_plan_ingredients_path = None
@@ -565,6 +582,8 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
             project_dir=project_dir,
             sheet_scale=config.get("ingredients_sheet_scale", 2.0),
+            llm=ingredients_llm(),
+            on_analysis_status=report_ingredients_analysis,
         )
     elif not render_plan_ingredients_path.exists():
         render_plan_ingredients_path = None
