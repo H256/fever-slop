@@ -4,7 +4,6 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from fastapi.testclient import TestClient
 from rich.panel import Panel
 
 from feverslop.studio.jobs import JobRegistry, build_ffmpeg_recut_command, build_pipeline_options, run_with_stream_logging
@@ -17,7 +16,8 @@ from feverslop.studio.projects import (
     sanitize_audio_filename,
     slugify_project_name,
 )
-from feverslop.studio.server import _StudioFullAutoConsole, build_full_auto_handler, create_app
+from feverslop.studio.job_service import StudioFullAutoConsole as _StudioFullAutoConsole, build_full_auto_handler
+from tests.studio_harness import NativeStudioHarness
 
 
 class StudioBackendTests(unittest.TestCase):
@@ -377,7 +377,7 @@ class StudioBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
             store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="Demo"))
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
 
             response = client.post(
                 "/api/projects/demo/upload-audio",
@@ -394,7 +394,7 @@ class StudioBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
             store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="Demo"))
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
 
             response = client.post(
                 "/api/projects/demo/upload-audio",
@@ -550,7 +550,7 @@ class StudioBackendTests(unittest.TestCase):
             return run
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir, full_auto_handler=fake_full_auto_handler))
+            client = NativeStudioHarness(temp_dir, full_auto_handler=fake_full_auto_handler)
             created = client.post(
                 "/api/projects",
                 json={
@@ -585,7 +585,7 @@ class StudioBackendTests(unittest.TestCase):
 
     def test_api_create_accepts_and_validates_silent_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
 
             created = client.post(
                 "/api/projects",
@@ -776,7 +776,7 @@ class StudioBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
             store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
-            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+            client = NativeStudioHarness(temp_dir, pipeline_handler=fake_pipeline_handler)
 
             job_response = client.post("/api/projects/my-cool-video/jobs", json={"action": "full-pipeline"})
 
@@ -796,7 +796,7 @@ class StudioBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
             store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
-            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+            client = NativeStudioHarness(temp_dir, pipeline_handler=fake_pipeline_handler)
 
             job_response = client.post("/api/projects/my-cool-video/jobs", json={"action": "anchor-fix"})
 
@@ -820,7 +820,7 @@ class StudioBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
             store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
-            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+            client = NativeStudioHarness(temp_dir, pipeline_handler=fake_pipeline_handler)
 
             first = client.post("/api/projects/my-cool-video/jobs", json={"action": "full-pipeline"})
             self.assertEqual(200, first.status_code, first.text)
@@ -843,7 +843,7 @@ class StudioBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
             store.create_project(ProjectCreateRequest(project_type="standard_music_video", name="My Cool Video"))
-            client = TestClient(create_app(temp_dir, pipeline_handler=fake_pipeline_handler))
+            client = NativeStudioHarness(temp_dir, pipeline_handler=fake_pipeline_handler)
 
             first = client.post("/api/projects/my-cool-video/jobs", json={"action": "rebuild-plan"})
             self.assertEqual(200, first.status_code, first.text)

@@ -1,0 +1,84 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+ScrollView {
+    id: page
+    clip: true
+    readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
+
+    ColumnLayout {
+        width: page.availableWidth
+        spacing: 18
+        anchors.margins: 28
+        Label {
+            text: vm && vm.current_project_id ? vm.current_project.name : "No project selected"
+            color: "#1C1C1E"
+            font.bold: true
+            font.pixelSize: 22
+        }
+        Label {
+            text: vm && vm.current_project_id ? vm.current_project.path : ""
+            color: "#6E6E73"
+            font.pixelSize: 13
+            elide: Text.ElideMiddle
+            Layout.fillWidth: true
+        }
+        Flow {
+            Layout.fillWidth: true
+            spacing: 12
+            Repeater {
+                model: [
+                    { key: "config", label: "Configuration" },
+                    { key: "render_plan", label: "Render plan" },
+                    { key: "references", label: "References" },
+                    { key: "videos", label: "Video output" }
+                ]
+                delegate: Rectangle {
+                    required property var modelData
+                    width: 210
+                    height: 92
+                    color: "#FFFFFF"
+                    border.color: "#D8D8DC"
+                    radius: 6
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 8
+                        Label { text: modelData.label; color: "#1C1C1E"; font.bold: true }
+                        Label {
+                            property string state: vm && vm.current_project.status ? (vm.current_project.status[modelData.key] || "missing") : "missing"
+                            text: state === "present" ? "Ready" : "Missing"
+                            color: state === "present" ? "#2E7D32" : "#B26A00"
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 110
+            color: "#FFFFFF"
+            border.color: "#D8D8DC"
+            radius: 6
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 18
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Project type"; color: "#6E6E73" }
+                    Label { text: vm ? String(vm.current_project.project_type || "standard_music_video").replace(/_/g, " ") : ""; color: "#1C1C1E"; font.bold: true }
+                }
+                ColumnLayout {
+                    Label { text: "Artifact size"; color: "#6E6E73" }
+                    Label {
+                        text: vm && vm.current_project.artifact_sizes ? Math.round(vm.current_project.artifact_sizes.total_bytes / 1048576) + " MB" : "0 MB"
+                        color: "#1C1C1E"
+                        font.bold: true
+                    }
+                }
+            }
+        }
+        Item { Layout.fillHeight: true }
+    }
+}

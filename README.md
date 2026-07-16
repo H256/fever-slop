@@ -5,7 +5,7 @@ FeverSlop is a local music-video generation pipeline and Studio UI. It turns an 
 The repository contains two operator surfaces:
 
 - **CLI pipeline**: `run_pipeline.py` and `full_auto.py`.
-- **FeverSlop Studio**: FastAPI backend plus Vue frontend for project creation, config editing, pipeline jobs, logs, references, review, and final video preview/download.
+- **FeverSlop Studio**: native PySide6/QML application for project creation, config editing, pipeline jobs, logs, references, review, and final video playback.
 
 Core Python packages live under `src/feverslop`. Composition code such as
 `feverslop.composition.generate_render_plan` is kept separate from adapters
@@ -19,33 +19,11 @@ Install Python dependencies from the repository root:
 uv sync
 ```
 
-Install frontend dependencies:
+Start the native Studio:
 
 ```bash
-cd studio/frontend
-bun install
+uv run python -m feverslop.studio.desktop --projects-root ./projects
 ```
-
-Start Studio backend:
-
-```bash
-uv run python -m feverslop.studio.server
-```
-
-Start Studio frontend in another terminal:
-
-```bash
-cd studio/frontend
-bun run dev
-```
-
-Open:
-
-```text
-http://127.0.0.1:5173
-```
-
-The Vite dev server proxies `/api` to the FastAPI backend on `http://127.0.0.1:8765`.
 
 ## Basic Workflows
 
@@ -245,27 +223,18 @@ Most useful runs require:
 ## Documentation
 
 - [Setup](docs/setup.md): prerequisites, dependencies, ComfyUI/ACE-Step, local config.
-- [Running](docs/running.md): backend/frontend startup, ports, production build notes.
+- [Running](docs/running.md): CLI and native Studio startup.
 - [Pipelines](docs/pipelines.md): standard, Full-Auto, MSR/classic, progress and logs.
 - [Projects](docs/projects.md): folder structure, `config.json`, Project Settings, artifacts.
-- [Examples](docs/examples.md): standard and Full-Auto workflows, API calls, troubleshooting.
+- [Examples](docs/examples.md): standard and Full-Auto workflows and troubleshooting.
 - [Project workflow deep reference](docs/project_workflow.md): detailed legacy CLI reference.
 - [ComfyUI model resolution](docs/comfyui_model_resolution.md): portable workflow model matching.
 
 ## Verification Commands
 
-Backend/tests:
+Python and native Studio tests:
 
 ```bash
 uv run ruff check .
 uv run python -m unittest discover -s tests
-```
-
-Frontend:
-
-```bash
-cd studio/frontend
-bun test src
-bun run build
-bun run test:e2e
 ```
