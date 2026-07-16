@@ -64,6 +64,8 @@ class IngredientsWorkflowFileTests(unittest.TestCase):
         self.assertEqual([relay_id, 0], nag["inputs"]["model"])
         for input_name in ("model", "clip", "latent"):
             self.assertTrue(self._is_link(relay["inputs"][input_name]))
+        latent_id, _ = relay["inputs"]["latent"]
+        self.assertEqual("EmptyLTXVLatentVideo", workflow[latent_id]["class_type"])
 
     @staticmethod
     def _load(name):

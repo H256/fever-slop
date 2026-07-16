@@ -544,6 +544,12 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
             self.assertIn("brown hair", shot["ingredients_global_prompt"])
             self.assertIn("### Shot Invariants", shot["ingredients_global_prompt"])
+            self.assertNotIn("It remembers me", shot["ingredients_global_prompt"])
+            self.assertIn("It remembers me", shot["ltx"]["prompt_relay"][0]["prompt"])
+            self.assertEqual((0, 48), (
+                shot["ltx"]["prompt_relay"][0]["frame_start"],
+                shot["ltx"]["prompt_relay"][0]["frame_end"],
+            ))
             for detail in ("A test scene", "opens the ledger", "slow dolly", "controlled fear", "It remembers me", "wet coat", "duration_seconds"):
                 self.assertIn(detail, llm.user_prompt)
             self.assertEqual([("shot_001", [{"id": "actor_1", "type": "actor"}, {"id": "loc_1", "type": "location"}])], events)
@@ -558,6 +564,8 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             shot = data["shots"][0]
             ltx = shot["ltx"]
             self.assertTrue(ltx["native_audio"])
+            self.assertEqual(1, len(ltx["prompt_relay"]))
+            self.assertIn("static_prompt", ltx)
             self.assertNotIn("ingredients_scene_sheet_description", ltx)
             self.assertNotIn("ingredients_target_prompt", ltx)
 

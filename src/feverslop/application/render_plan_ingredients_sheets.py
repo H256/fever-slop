@@ -38,11 +38,10 @@ def enrich_render_plan_with_ingredients_sheets(
 
     Reads render plan (list of scenes with references), composes letterboxed
     scene sheets from actor + location reference images, and generates
-    structured descriptions. Writes the enriched plan to output_path.
+    structured descriptions. Writes a compact Ingredients runtime plan to output_path.
 
     Mirrors enrich_render_plan_with_reference_sheets for MSR but produces
-    ingredients-specific fields: ingredients_scene_sheet, ingredients_scene_sheet_description,
-    ingredients_target_prompt, and ltx.ingredients_* fields.
+    ingredients-specific sheet/global prompt data and a canonical temporal relay.
     """
     render_plan_path = Path(render_plan_path)
     references_dir = Path(references_dir)
@@ -157,7 +156,6 @@ def _enrich_scene(
         enriched["ingredients_scene_sheet_description"] = ""
         enriched["ingredients_scene_sheet_anchors"] = []
 
-    ltx = scene.get("ltx") or {}
     binding = build_ingredients_target_binding(enriched.get("ingredients_scene_sheet_anchors") or [])
     fallback_invariants = _fallback_shot_invariants(scene, binding=binding)
     if images:

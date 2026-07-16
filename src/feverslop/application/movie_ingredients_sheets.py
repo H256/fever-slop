@@ -14,6 +14,8 @@ from feverslop.application.reference_bible import (
     generate_scene_sheet_anchors,
     ingredients_sheet_size,
 )
+from feverslop.application.ingredients_render_plan import build_ingredients_static_prompt
+from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
 from feverslop.domain.vision_references import ReferenceImage
@@ -73,8 +75,9 @@ def enrich_movie_render_plan_with_ingredients_sheets(
         manifest=manifest,
         size=sheet_size,
     )
+    fps = int(render_plan.get("fps") or (bible.get("runtime_constraints") or {}).get("fps") or 24)
     enriched["shots"] = [
-        _enrich_shot(shot, builder=builder, manifest=manifest, bible=bible, llm=llm, on_analysis_status=on_analysis_status)
+        _enrich_shot(shot, builder=builder, manifest=manifest, bible=bible, fps=fps, llm=llm, on_analysis_status=on_analysis_status)
         for shot in render_plan.get("shots") or []
     ]
 
@@ -89,6 +92,7 @@ def _enrich_shot(
     builder: "IngredientsSceneSheetBuilder",
     manifest: dict,
     bible: dict,
+    fps: int,
     llm: VisionLLMPort | None,
     on_analysis_status: Callable[[str, list[dict[str, str]]], None] | None,
 ) -> dict:
@@ -122,6 +126,22 @@ def _enrich_shot(
         fallback_shot_invariants=fallback_invariants,
     )
     enriched["ingredients_global_prompt"] = result.positive_prompt
+    ltx = dict(enriched.get("ltx") or {})
+    relay = list(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
+    if not relay:
+        duration = float(shot.get("duration_seconds") or shot.get("duration") or 1.0)
+        frame_count = int(shot.get("frame_count") or max(1, round(duration * fps)))
+        relay = [{
+            "frame_start": 0,
+            "frame_end": frame_count,
+            "state": "dialogue" if str(shot.get("dialogue") or "").strip() else "motion",
+            "prompt": _movie_video_prompt(shot, bible=bible, manifest=manifest),
+        }]
+    enriched["ingredients"] = {
+        "sheet_path": enriched["ingredients_scene_sheet"],
+        "anchors": anchors,
+        "global_prompt": result.positive_prompt,
+    }
     if not references:
         logger.warning("Ingredients image analysis fallback: shot=%s reason=no images", shot_id)
     elif result.fallback_reason:
@@ -131,7 +151,10 @@ def _enrich_shot(
             result.fallback_reason,
         )
     enriched["ltx"] = {
-        **dict(enriched.get("ltx") or {}),
+        **ltx,
+        "base_prompt": result.positive_prompt,
+        "static_prompt": build_ingredients_static_prompt(result.positive_prompt, relay),
+        "prompt_relay": relay,
         "native_audio": True,
     }
     return enriched

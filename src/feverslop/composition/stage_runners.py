@@ -324,7 +324,7 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: list) -> list[str]:
             unbound = sorted(item_id for item_id in anchor_ids if f"`{item_id}`" not in target)
             if unbound:
                 missing.append(
-                    f"scene {number}: target description does not bind anchors {', '.join(unbound)}"
+                    f"scene {number}: global prompt does not bind anchors {', '.join(unbound)}"
                 )
         else:
             references = scene.get("references") or {}
