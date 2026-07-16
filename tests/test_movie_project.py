@@ -693,6 +693,46 @@ class MovieProjectTests(unittest.TestCase):
             self.assertTrue(any("reason=vision unavailable" in message for message in logs.output))
             self.assertFalse(any("reason=invalid response" in message for message in logs.output))
 
+    def test_movie_msr_vision_dialogue_relay_requests_spoken_lip_sync(self):
+        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+
+        class DialogueVisionLLM:
+            prompt = ""
+
+            def complete_prompt_with_images(self, _system, prompt, _paths):
+                self.prompt = prompt
+                return json.dumps({
+                    "references": [{"id": "mara", "type": "actor", "description": "Mara has dark hair and a silver coat"}],
+                    "relays": [{"index": 0, "prompt": "Mara speaks the line with precise lip sync and wary expression as the camera moves closer."}],
+                })
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            movie = project / "movie"
+            refs = movie / "references"
+            refs.mkdir(parents=True)
+            (refs / "mara.png").write_bytes(b"actor")
+            (movie / "bible.json").write_text(json.dumps({"runtime_constraints": {"fps": 24}}))
+            (movie / "render_plan.json").write_text(json.dumps({"shots": [{
+                "shot_id": "shot_dialogue", "duration_seconds": 1,
+                "dialogue": "Mara: It remembers me.",
+                "reference_ids": {"actors": ["mara"], "location": ""},
+            }]}))
+            (refs / "manifest.json").write_text(json.dumps({
+                "actors": [{"id": "mara", "name": "Mara", "msr_sheet_path": "movie/references/mara.png"}],
+                "locations": [],
+            }))
+            llm = DialogueVisionLLM()
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=llm)
+            relay = json.loads(output.read_text())["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+
+            self.assertEqual("dialogue", json.loads(llm.prompt)["relay_segments"][0]["state"])
+            self.assertIn("speaks", relay)
+            self.assertIn("lip sync", relay)
+            self.assertNotIn("mouth closed", relay)
+
+
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 

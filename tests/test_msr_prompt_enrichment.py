@@ -27,7 +27,39 @@ class FailingVisionLLM(FakeLLM):
         raise RuntimeError("transport failed")
 
 
+class FailingVisionAndTextLLM(FailingVisionLLM):
+    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
+        raise RuntimeError("text transport failed")
+
+
+class VisionOnlyLLM:
+    def complete_prompt_with_images(self, system_prompt: str, prompt: str, image_paths: list[Path]) -> str:
+        raise RuntimeError("vision transport failed")
+
+
 class MSRPromptEnrichmentTests(unittest.TestCase):
+    def test_vision_failure_uses_deterministic_fallback_when_text_completion_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "mara.png").write_bytes(b"actor")
+            plan = temp / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 1,
+                "references": {
+                    "actor_msr_paths": ["mara.png"],
+                    "actor_reference_descriptions": [{"id": "mara", "name": "Mara"}],
+                },
+                "metadata": {"character_motion": "Mara crosses the room."},
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "instrumental"}]},
+            }]))
+
+            for llm in (FailingVisionAndTextLLM("unused"), VisionOnlyLLM()):
+                with self.subTest(llm=type(llm).__name__):
+                    output = enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm)
+                    prompt = json.loads(output.read_text())[0]["ltx"]["msr_prompt_relay"][0]["prompt"]
+                    self.assertIn("Mara stays silent with mouth closed", prompt)
+                    self.assertIn("Mara crosses the room", prompt)
+
     def test_vision_response_supplies_global_descriptions_and_indexed_local_relays(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

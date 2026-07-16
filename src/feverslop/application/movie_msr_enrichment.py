@@ -127,7 +127,7 @@ def _movie_vision_prompts(
     )
     if on_analysis_status is not None:
         on_analysis_status(shot_id, status_references)
-    relay = {"frame_start": 0, "frame_end": frame_count - 1, "state": "instrumental"}
+    relay = {"frame_start": 0, "frame_end": frame_count - 1, "state": _movie_relay_state(shot)}
     metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
     try:
         response = complete_with_images(
@@ -168,6 +168,17 @@ def _movie_vision_prompts(
         label = "Scene" if reference.type == "location" else str(item.get("name") or reference.id)
         parts.append(f"Reference image {index} ({label}): {descriptions[(reference.id, reference.type)]}.")
     return " ".join(parts), relay_prompt
+
+
+def _movie_relay_state(shot: dict) -> str:
+    if str(shot.get("dialogue") or "").strip():
+        return "dialogue"
+    mode = str(
+        shot.get("performance_mode") or shot.get("state") or shot.get("type") or ""
+    ).strip().lower()
+    if mode in {"singing", "vocals", "vocal"} or str(shot.get("lyrics") or "").strip():
+        return "singing"
+    return "instrumental"
 
 
 def _movie_reference_metadata(shot: dict, *, bible: dict, manifest: dict) -> list[dict]:

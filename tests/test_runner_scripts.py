@@ -404,6 +404,22 @@ class RunnerScriptTests(unittest.TestCase):
                 any("Rendered movie clip 1/" in str(call.args[0]) for call in print_mock.call_args_list)
             )
 
+    def test_movie_pipeline_uses_deterministic_enrichment_without_llm_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = _write_movie_project(root, ready=True)
+
+            result = movie_pipeline.run(
+                movie_pipeline.build_arg_parser().parse_args([
+                    str(project), "--app-config", str(root / "missing-app-config.json"),
+                    "--reference-backend", "local", "--render-backend", "local",
+                    "--skip-movie-references",
+                ])
+            )
+
+            self.assertTrue(result.render_plan_msr_path.is_file())
+            self.assertTrue((project / "movie" / "render_plan_ingredients.json").is_file())
+
     def test_movie_pipeline_i2v_edit_local_backend_writes_i2v_plan_and_final(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_movie_project(Path(temp_dir), ready=True)

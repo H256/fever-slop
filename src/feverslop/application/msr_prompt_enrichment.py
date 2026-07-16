@@ -223,14 +223,15 @@ def build_msr_global_prompt(references: dict) -> str:
 
 
 def _build_llm_segment_prompts(scene: dict, relays: list[dict], *, llm: LLMPort | None) -> dict[int, str]:
-    if llm is None:
+    complete_prompt = getattr(llm, "complete_prompt", None)
+    if not callable(complete_prompt):
         return {}
 
-    response = llm.complete_prompt(
-        system_prompt=_msr_segment_system_prompt(),
-        prompt=json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=False, indent=2),
-    )
     try:
+        response = complete_prompt(
+            system_prompt=_msr_segment_system_prompt(),
+            prompt=json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=False, indent=2),
+        )
         items = _extract_json_array(response)
     except Exception:
         return {}
@@ -264,7 +265,8 @@ Rules:
 - Do not repeat the full reference image descriptions.
 - Use the named reference actor as the subject anchor.
 - For state "singing": the actor sings the provided lyrics with clear lip sync and expressive acting.
-- For non-singing states: the actor is silent, mouth closed, and physically performs the scene action.
+- For state "dialogue": the actor speaks the provided dialogue with precise lip sync and expressive acting.
+- For instrumental and other non-vocal states: the actor is silent, mouth closed, and physically performs the scene action.
 - If silent_mode is true in the payload, every segment is non-singing even if source lyrics exist.
 - Include camera motion and concrete character/environment motion when provided.
 - Write rich cinematic direction, usually 25 to 45 words per segment, with action, acting, camera behavior, and visible environment effects.
@@ -398,6 +400,10 @@ def _is_valid_segment_prompt(prompt: str, relay: dict) -> bool:
     state = str(relay.get("state") or "").strip().lower()
     if state == "singing":
         return "sing" in lower and ("lip sync" in lower or "lip-sync" in lower)
+    if state == "dialogue":
+        return ("speak" in lower or "talk" in lower or "say" in lower) and (
+            "lip sync" in lower or "lip-sync" in lower
+        )
     return "lip sync" not in lower and "lip-sync" not in lower
 
 
