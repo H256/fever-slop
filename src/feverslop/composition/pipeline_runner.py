@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient  # noqa: F401
 from feverslop.adapters.video_postprocessor import VideoPostProcessor  # noqa: F401
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts  # noqa: F401
@@ -41,6 +42,13 @@ from .stage_runners import (
 )
 
 
+COMFYUI_RENDERING_STAGES = frozenset({
+    PipelineStage.STORYBOARD_FRAMES,
+    PipelineStage.MSR_REFERENCES,
+    PipelineStage.LTX_RENDER_SCENES,
+})
+
+
 def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> PipelineRunState:
     context = build_run_context(args)
     app_config_path = resolve_runner_path(args.app_config)
@@ -57,6 +65,11 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         single_prompt_workflow=resolve_runner_path(args.single_prompt_workflow),
         plan_for_next_step=_initial_render_plan(context, args, stages),
     )
+    app_config = AppConfig.load(app_config_path)
+    state.comfyui_client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
     console.print(f"Project: {context.project_config_path}")
     console.print(f"Input audio: {context.input_audio}")
     console.print(f"Song ID: {context.song_id}")
@@ -69,6 +82,9 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
     stages = resolve_pipeline_stages(args)
     state = build_run_state(args, stages)
     for stage in stages:
+        if stage in COMFYUI_RENDERING_STAGES and state.comfyui_client is not None:
+            console.print(f"[dim]Clearing ComfyUI cache and VRAM before {STAGE_LABELS[stage]}...[/dim]")
+            state.comfyui_client.free_cache_and_vram()
         write_step(f"Stage {STAGE_LABELS[stage]}")
         try:
             STAGE_RUNNERS[stage](state)

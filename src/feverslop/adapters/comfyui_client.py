@@ -183,6 +183,18 @@ class ComfyUIClient:
         output_path.write_bytes(response.content)
         return output_path
 
+    def free_cache_and_vram(self) -> None:
+        """Best-effort unload of ComfyUI models and cached CUDA memory."""
+        try:
+            response = self._ensure_session().post(
+                f"{self.base_url}/free",
+                json={"unload_models": True, "free_memory": True},
+                timeout=30,
+            )
+            self._raise_for_status(response, "free cache and vram")
+        except Exception:
+            pass
+
     def _raise_for_status(self, response: requests.Response, operation: str) -> None:
         if response.ok:
             return

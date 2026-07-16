@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+from typing import Any
 
 from feverslop.path_utils import coerce_local_path
 from feverslop.scene_artifacts import SceneArtifactLayout
@@ -66,6 +67,7 @@ class PipelineRunState:
     plan_for_next_step: Path
     video_only_path: Path | None = None
     final_video_path: Path | None = None
+    comfyui_client: Any | None = None
 
 
 def convert_to_safe_file_stem(value, fallback: str) -> str:
