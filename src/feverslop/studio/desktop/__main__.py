@@ -1,5 +1,4 @@
-from feverslop.studio.desktop.app import main
+from feverslop.studio.desktop import app
 
 
-raise SystemExit(main())
-
+raise SystemExit(app.main())

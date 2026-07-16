@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -10,6 +11,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 class StudioDesktopCompositionTests(unittest.TestCase):
+    def test_web_server_adapter_is_removed(self):
+        self.assertIsNone(importlib.util.find_spec("feverslop.studio.server"))
+
     def test_parse_args_uses_requested_projects_root(self):
         from feverslop.studio.desktop.app import parse_args
 
@@ -106,6 +110,28 @@ class StudioViewModelTests(unittest.TestCase):
 
         self.assertEqual(json.loads(view_model.editor_text), {"scene": 5, "prompt": "gate"})
         self.assertEqual(view_model.editor_path, "render_plan.json")
+
+    def test_loaded_render_plan_exposes_scene_records(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": [{"scene": 1, "prompt": "Gate"}, {"scene": 3, "prompt": "Hall"}]}
+
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "name": project_id,
+                    "status": {},
+                    "artifacts": {"render_plans": ["output/render/plans/msr.json"]},
+                }
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("scholoraid")
+        view_model.load_json_artifact("output/render/plans/msr.json")
+
+        self.assertEqual([scene["scene"] for scene in view_model.editor_scenes], [1, 3])
+        self.assertEqual(view_model.preferred_artifact("render_plans"), "output/render/plans/msr.json")
 
     def test_create_project_maps_qml_payload_to_domain_request(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel

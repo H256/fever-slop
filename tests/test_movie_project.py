@@ -4,10 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fastapi.testclient import TestClient
 from PIL import Image
 
-from feverslop.studio.server import create_app
+from tests.studio_harness import NativeStudioHarness
 
 
 class FakeMovieRenderQueue:
@@ -3596,7 +3595,7 @@ class MovieProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_planner = FakeMoviePlanner()
             with patch("feverslop.studio.project_repository.build_movie_planner", return_value=fake_planner):
-                client = TestClient(create_app(temp_dir))
+                client = NativeStudioHarness(temp_dir)
 
                 response = client.post(
                     "/api/projects",
@@ -3636,7 +3635,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_api_rejects_invalid_screenplay(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
 
             response = client.post(
                 "/api/projects",
@@ -3654,7 +3653,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_api_starts_movie_full_auto_job_and_writes_video(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
             created = client.post(
                 "/api/projects",
                 json={
@@ -3690,7 +3689,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_api_movie_full_auto_i2v_edit_writes_storyboard_and_job_logs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
             created = client.post(
                 "/api/projects",
                 json={
@@ -3734,7 +3733,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_api_movie_full_auto_startframe_director_writes_contracts_and_job_logs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
             created = client.post(
                 "/api/projects",
                 json={
@@ -3777,7 +3776,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_full_auto_regenerates_missing_planning_artifacts_for_legacy_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
             created = client.post(
                 "/api/projects",
                 json={
@@ -3816,7 +3815,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_api_starts_movie_reference_job_and_updates_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
             created = client.post(
                 "/api/projects",
                 json={
@@ -3848,7 +3847,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_api_starts_movie_render_job_from_existing_msr_plan(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
             created = client.post(
                 "/api/projects",
                 json={
@@ -3892,7 +3891,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_full_auto_rejects_non_movie_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            client = TestClient(create_app(temp_dir))
+            client = NativeStudioHarness(temp_dir)
             created = client.post(
                 "/api/projects",
                 json={"project_type": "standard_music_video", "name": "Song"},

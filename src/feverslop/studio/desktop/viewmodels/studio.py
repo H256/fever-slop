@@ -3,14 +3,14 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
-from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 
 from feverslop.studio.job_service import StudioJobRequest
-from feverslop.studio.projects import ArtifactRequest, ProjectCreateRequest, RenderPlanPatch
+from feverslop.studio.desktop.requests import project_create_request
+from feverslop.studio.projects import ArtifactRequest, RenderPlanPatch
 
 
 class StudioViewModel(QObject):
@@ -29,6 +29,7 @@ class StudioViewModel(QObject):
         self._current_project: dict[str, Any] = {}
         self._editor_path = ""
         self._editor_text = ""
+        self._editor_data: Any = None
         self._jobs: list[dict[str, Any]] = []
         self._error = ""
         self._poll_timer = QTimer(self)
@@ -78,6 +79,12 @@ class StudioViewModel(QObject):
     def editor_text(self) -> str:
         return self._editor_text
 
+    @Property("QVariantList", notify=editorChanged)
+    def editor_scenes(self) -> list[dict[str, Any]]:
+        if not isinstance(self._editor_data, list):
+            return []
+        return [dict(scene) for scene in self._editor_data if isinstance(scene, dict) and "scene" in scene]
+
     @Property("QVariantList", notify=jobsChanged)
     def jobs(self) -> list[dict[str, Any]]:
         return self._jobs
@@ -118,8 +125,7 @@ class StudioViewModel(QObject):
     @Slot("QVariantMap", result=str)
     def create_project(self, payload: dict[str, Any]) -> str:
         try:
-            allowed = {field.name for field in fields(ProjectCreateRequest)}
-            request = ProjectCreateRequest(**{key: value for key, value in dict(payload).items() if key in allowed})
+            request = project_create_request(payload)
             project = self.store.create_project(request)
             self.refresh_projects()
             self.select_project(str(project["id"]))
@@ -224,7 +230,8 @@ class StudioViewModel(QObject):
         try:
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._editor_path = path
-            self._editor_text = json.dumps(artifact["data"], indent=2, ensure_ascii=False)
+            self._editor_data = artifact["data"]
+            self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._set_error("")
             self.editorChanged.emit()
         except Exception as exc:  # noqa: BLE001 - UI boundary
@@ -242,7 +249,8 @@ class StudioViewModel(QObject):
                 ArtifactRequest(path=path, data=data),
             )
             self._editor_path = path
-            self._editor_text = json.dumps(artifact["data"], indent=2, ensure_ascii=False)
+            self._editor_data = artifact["data"]
+            self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._current_project = self.store.describe_project(self.current_project_id)
             self._set_error("")
             self.editorChanged.emit()
@@ -253,6 +261,11 @@ class StudioViewModel(QObject):
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
         return False
+
+    @Slot(str, result=str)
+    def preferred_artifact(self, category: str) -> str:
+        paths = self.artifacts.get(category) or []
+        return str(paths[0]) if paths else ""
 
     @Slot(str, int, "QVariantMap", result=bool)
     def patch_render_scene(self, path: str, scene: int, updates: dict[str, Any]) -> bool:

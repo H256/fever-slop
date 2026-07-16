@@ -8,6 +8,24 @@ Item {
     required property string heading
     required property string defaultPath
     readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
+    property bool renderPlanMode: defaultPath !== "config.json"
+    property bool rawMode: !renderPlanMode
+    property var selectedScene: null
+
+    function choosePreferredPath() {
+        if (!vm || !renderPlanMode) return
+        var preferred = vm.preferred_artifact("render_plans")
+        if (preferred) {
+            pathField.text = preferred
+            vm.load_json_artifact(preferred)
+        }
+    }
+
+    Component.onCompleted: choosePreferredPath()
+    Connections {
+        target: vm
+        function onCurrentProjectChanged() { page.choosePreferredPath() }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -16,6 +34,27 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             TextField { id: pathField; text: page.defaultPath; placeholderText: "Relative JSON path"; Layout.fillWidth: true; implicitHeight: 44 }
+            ButtonGroup { id: editorMode }
+            ToolButton {
+                visible: page.renderPlanMode
+                text: "Inspector"
+                checkable: true
+                checked: !page.rawMode
+                ButtonGroup.group: editorMode
+                onClicked: page.rawMode = false
+                ToolTip.visible: hovered
+                ToolTip.text: "Structured scene inspector"
+            }
+            ToolButton {
+                visible: page.renderPlanMode
+                text: "JSON"
+                checkable: true
+                checked: page.rawMode
+                ButtonGroup.group: editorMode
+                onClicked: page.rawMode = true
+                ToolTip.visible: hovered
+                ToolTip.text: "Raw JSON editor"
+            }
             Button {
                 visible: page.defaultPath === "config.json"
                 text: "Import Audio"
@@ -27,35 +66,122 @@ Item {
             Button {
                 text: "Save"
                 icon.name: "document-save"
+                visible: !page.renderPlanMode || page.rawMode
                 implicitHeight: 44
                 palette.buttonText: "#FFFFFF"
                 background: Rectangle { color: parent.hovered ? "#666AD1" : "#5B5FC7"; radius: 6 }
                 onClicked: if (vm) vm.save_json_artifact(pathField.text, editor.text)
             }
         }
-        Rectangle {
-            color: "#FFFFFF"
-            border.color: "#D8D8DC"
-            radius: 6
+        StackLayout {
+            currentIndex: page.rawMode ? 1 : 0
             Layout.fillWidth: true
             Layout.fillHeight: true
-            ScrollView {
-                anchors.fill: parent
-                anchors.margins: 1
-                TextArea {
-                    id: editor
-                    text: vm ? vm.editor_text : ""
-                    color: "#1C1C1E"
-                    selectionColor: "#7B83EB"
-                    selectedTextColor: "#FFFFFF"
-                    font.family: "monospace"
-                    font.pixelSize: 13
-                    wrapMode: TextEdit.NoWrap
-                    leftPadding: 18
-                    rightPadding: 18
-                    topPadding: 16
-                    bottomPadding: 16
-                    background: null
+
+            RowLayout {
+                spacing: 12
+                Rectangle {
+                    Layout.preferredWidth: 250
+                    Layout.fillHeight: true
+                    color: "#FFFFFF"
+                    border.color: "#D8D8DC"
+                    radius: 6
+                    ListView {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        clip: true
+                        spacing: 4
+                        model: vm ? vm.editor_scenes : []
+                        delegate: ItemDelegate {
+                            required property var modelData
+                            width: ListView.view.width
+                            height: 52
+                            text: "Scene " + modelData.scene
+                            highlighted: page.selectedScene && page.selectedScene.scene === modelData.scene
+                            onClicked: {
+                                page.selectedScene = modelData
+                                promptField.text = modelData.prompt || modelData.target_prompt || ""
+                                shotField.text = modelData.shot_description || modelData.description || ""
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: "#FFFFFF"
+                    border.color: "#D8D8DC"
+                    radius: 6
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 10
+                        Label {
+                            text: page.selectedScene ? "Scene " + page.selectedScene.scene : "Select a scene"
+                            color: "#1C1C1E"
+                            font.bold: true
+                            font.pixelSize: 18
+                        }
+                        Label { text: "Target prompt"; color: "#6E6E73" }
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            TextArea {
+                                id: promptField
+                                wrapMode: TextEdit.Wrap
+                                color: "#1C1C1E"
+                                background: Rectangle { color: "#F5F5F7"; border.color: "#D8D8DC"; radius: 4 }
+                            }
+                        }
+                        Label { text: "Shot description"; color: "#6E6E73" }
+                        TextArea {
+                            id: shotField
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 100
+                            wrapMode: TextEdit.Wrap
+                            color: "#1C1C1E"
+                            background: Rectangle { color: "#F5F5F7"; border.color: "#D8D8DC"; radius: 4 }
+                        }
+                        Button {
+                            text: "Save scene"
+                            icon.name: "document-save"
+                            enabled: page.selectedScene !== null
+                            implicitHeight: 44
+                            Layout.alignment: Qt.AlignRight
+                            palette.buttonText: "#FFFFFF"
+                            background: Rectangle { color: parent.enabled ? (parent.hovered ? "#666AD1" : "#5B5FC7") : "#AEAEB2"; radius: 6 }
+                            onClicked: {
+                                if (!vm || !page.selectedScene) return
+                                var updates = { prompt: promptField.text, shot_description: shotField.text }
+                                if (vm.patch_render_scene(pathField.text, page.selectedScene.scene, updates)) page.selectedScene = null
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                color: "#FFFFFF"
+                border.color: "#D8D8DC"
+                radius: 6
+                ScrollView {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    TextArea {
+                        id: editor
+                        text: vm ? vm.editor_text : ""
+                        color: "#1C1C1E"
+                        selectionColor: "#7B83EB"
+                        selectedTextColor: "#FFFFFF"
+                        font.family: "monospace"
+                        font.pixelSize: 13
+                        wrapMode: TextEdit.NoWrap
+                        leftPadding: 18
+                        rightPadding: 18
+                        topPadding: 16
+                        bottomPadding: 16
+                        background: null
+                    }
                 }
             }
         }
