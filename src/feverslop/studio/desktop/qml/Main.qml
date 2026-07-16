@@ -18,6 +18,14 @@ ApplicationWindow {
 
     component NavButton: Button {
         required property int page
+        readonly property string fallbackIcon: {
+            if (page === 0 || page === 6) return "\u25a0"
+            if (page === 1) return "\u25a6"
+            if (page === 2 || page === 9) return "\u25b6"
+            if (page === 3 || page === 7) return "\u2261"
+            if (page === 4 || page === 8) return "\u25a3"
+            return "\u25cf"
+        }
         flat: true
         Layout.fillWidth: true
         Layout.preferredHeight: 44
@@ -26,6 +34,30 @@ ApplicationWindow {
         display: AbstractButton.TextBesideIcon
         font.pixelSize: 14
         palette.buttonText: checked ? "#FFFFFF" : "#C7C7CC"
+        palette.disabled.buttonText: "#8E8E93"
+        icon.color: enabled ? (checked ? "#FFFFFF" : "#C7C7CC") : "#8E8E93"
+        contentItem: RowLayout {
+            spacing: 10
+            Label {
+                text: parent.parent.fallbackIcon
+                color: parent.parent.enabled
+                    ? (parent.parent.checked ? "#FFFFFF" : "#C7C7CC")
+                    : "#8E8E93"
+                font.pixelSize: 18
+                horizontalAlignment: Text.AlignHCenter
+                Layout.preferredWidth: 24
+            }
+            Label {
+                text: parent.parent.text
+                color: parent.parent.enabled
+                    ? (parent.parent.checked ? "#FFFFFF" : "#C7C7CC")
+                    : "#8E8E93"
+                font: parent.parent.font
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+                Layout.fillWidth: true
+            }
+        }
         background: Rectangle {
             color: checked ? "#3A3A40" : parent.hovered ? "#303034" : "transparent"
             radius: 6
@@ -88,6 +120,7 @@ ApplicationWindow {
             }
             ToolButton {
                 icon.name: "view-refresh"
+                icon.color: "#E5E5EA"
                 display: AbstractButton.IconOnly
                 ToolTip.visible: hovered
                 ToolTip.text: "Refresh projects"
@@ -181,7 +214,7 @@ ApplicationWindow {
                         JsonWorkspace { heading: "Project Configuration"; defaultPath: "config.json" }
                         ArtifactPage { categoryFilter: ""; titleText: "Project artifacts" }
                         QueuePage {}
-                        MediaPage { reviewMode: true }
+                        ReviewPage {}
                         MediaPage { reviewMode: false }
                         PlaceholderPage { heading: "Studio Settings"; detail: "The projects root is selected at application startup." }
                     }

@@ -10,6 +10,7 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 
 from feverslop.studio.job_service import StudioJobRequest
 from feverslop.studio.desktop.requests import project_create_request
+from feverslop.studio.desktop.review_timeline import ReviewTimelineState
 from feverslop.studio.projects import ArtifactRequest, RenderPlanPatch
 
 
@@ -18,6 +19,7 @@ class StudioViewModel(QObject):
     currentProjectChanged = Signal()
     editorChanged = Signal()
     jobsChanged = Signal()
+    reviewChanged = Signal()
     errorChanged = Signal()
 
     def __init__(self, *, store: Any, jobs: Any, job_service: Any, parent: QObject | None = None):
@@ -31,6 +33,8 @@ class StudioViewModel(QObject):
         self._editor_text = ""
         self._editor_data: Any = None
         self._jobs: list[dict[str, Any]] = []
+        self._review_path = ""
+        self._review_state: ReviewTimelineState | None = None
         self._error = ""
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(500)
@@ -99,6 +103,29 @@ class StudioViewModel(QObject):
     @Property("QVariantMap", notify=jobsChanged)
     def active_job(self) -> dict[str, Any]:
         return next((job for job in self._jobs if job.get("status") in {"queued", "running"}), {})
+
+    @Property("QVariantList", notify=reviewChanged)
+    def review_items(self) -> list[dict[str, Any]]:
+        if self._review_state is None:
+            return []
+        return self._review_state.items(list(self.artifacts.get("videos") or []))
+
+    @Property(float, notify=reviewChanged)
+    def review_duration(self) -> float:
+        items = self.review_items
+        return float(items[-1]["end"]) if items else 0.0
+
+    @Property(bool, notify=reviewChanged)
+    def review_dirty(self) -> bool:
+        return bool(self._review_state and self._review_state.dirty)
+
+    @Property(bool, notify=reviewChanged)
+    def review_can_undo(self) -> bool:
+        return bool(self._review_state and self._review_state.can_undo)
+
+    @Property(bool, notify=reviewChanged)
+    def review_can_redo(self) -> bool:
+        return bool(self._review_state and self._review_state.can_redo)
 
     @Property(str, notify=errorChanged)
     def error(self) -> str:
@@ -266,6 +293,72 @@ class StudioViewModel(QObject):
     def preferred_artifact(self, category: str) -> str:
         paths = self.artifacts.get(category) or []
         return str(paths[0]) if paths else ""
+
+    @Slot(result=bool)
+    def load_review_timeline(self) -> bool:
+        if not self.current_project_id:
+            self._set_error("Select a project first")
+            return False
+        path = self.preferred_artifact("render_plans")
+        if not path:
+            self._set_error("No render plan found")
+            return False
+        try:
+            artifact = self.store.read_artifact(self.current_project_id, path)
+            self._review_path = path
+            self._review_state = ReviewTimelineState.from_document(artifact["data"])
+            self._set_error("")
+            self.reviewChanged.emit()
+            return True
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
+
+    @Slot(int, int, result=bool)
+    def move_review_scene(self, source_index: int, target_index: int) -> bool:
+        changed = bool(self._review_state and self._review_state.move(source_index, target_index))
+        if changed:
+            self.reviewChanged.emit()
+        return changed
+
+    @Slot(int, float, float, result=bool)
+    def trim_review_scene(self, scene: int, raw_in_seconds: float, raw_out_seconds: float) -> bool:
+        changed = bool(self._review_state and self._review_state.trim(scene, raw_in_seconds, raw_out_seconds))
+        if changed:
+            self.reviewChanged.emit()
+        return changed
+
+    @Slot(result=bool)
+    def undo_review_timeline(self) -> bool:
+        changed = bool(self._review_state and self._review_state.undo())
+        if changed:
+            self.reviewChanged.emit()
+        return changed
+
+    @Slot(result=bool)
+    def redo_review_timeline(self) -> bool:
+        changed = bool(self._review_state and self._review_state.redo())
+        if changed:
+            self.reviewChanged.emit()
+        return changed
+
+    @Slot(result=bool)
+    def save_review_timeline(self) -> bool:
+        if self._review_state is None or not self._review_path:
+            self._set_error("Load a review timeline first")
+            return False
+        try:
+            self.store.write_artifact(
+                self.current_project_id,
+                ArtifactRequest(path=self._review_path, data=self._review_state.document()),
+            )
+            self._review_state.mark_saved()
+            self._set_error("")
+            self.reviewChanged.emit()
+            return True
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
 
     @Slot(str, int, "QVariantMap", result=bool)
     def patch_render_scene(self, path: str, scene: int, updates: dict[str, Any]) -> bool:

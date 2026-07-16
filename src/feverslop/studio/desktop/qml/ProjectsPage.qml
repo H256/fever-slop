@@ -8,9 +8,9 @@ ScrollView {
     readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
 
     ColumnLayout {
-        width: page.availableWidth
+        x: 28
+        width: Math.max(0, page.availableWidth - 56)
         spacing: 18
-        anchors.margins: 28
 
         RowLayout {
             Layout.fillWidth: true
@@ -18,6 +18,7 @@ ScrollView {
             Button {
                 text: "Create Project"
                 icon.name: "list-add"
+                icon.color: "#FFFFFF"
                 implicitHeight: 44
                 palette.buttonText: "#FFFFFF"
                 background: Rectangle { color: parent.hovered ? "#666AD1" : "#5B5FC7"; radius: 6 }
@@ -109,6 +110,7 @@ ScrollView {
             Button {
                 text: projectType.currentIndex === 1 ? "Create and start" : "Create Project"
                 icon.name: "list-add"
+                icon.color: "#FFFFFF"
                 enabled: projectName.text.trim().length > 0 && (projectType.currentIndex === 0 || projectIdea.text.trim().length > 0)
                 implicitHeight: 44
                 Layout.alignment: Qt.AlignRight
