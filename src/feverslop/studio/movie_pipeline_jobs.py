@@ -599,7 +599,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json" if movie_video_workflow == "msr-i2v-startframe" else ""
     i2v_default = "workflows/video_ltxv_i2v_native_audio_v1.json" if movie_video_workflow == "startframe-director" else "workflows/video_ltxv_i2v_v1.json"
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
-    ingredients_default = "workflows/video_ltxv_ingredients_2stage_v2.json" if movie_video_workflow == "ingredients" else ""
+    ingredients_default = "workflows/video_ltxv_ingredients_2stage_v3.json" if movie_video_workflow == "ingredients" else ""
     return {
         "planner_backend": planner_backend,
         "reference_backend": _movie_backend(raw.get("reference_backend"), default="comfyui", supported={"comfyui", "local"}),

@@ -3396,6 +3396,16 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertEqual("last-to-start", config["continuity_keyframes"])
 
+    def test_movie_runtime_config_uses_v3_ingredients_workflow_by_default(self):
+        from feverslop.studio.job_service import movie_runtime_config
+
+        config = movie_runtime_config({"movie_video_workflow": "ingredients"})
+
+        self.assertEqual(
+            "workflows/video_ltxv_ingredients_2stage_v3.json",
+            config["ingredients_workflow"],
+        )
+
     def test_movie_visual_adapter_defaults_to_comfyui_not_placeholder(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
         from feverslop.studio.job_service import build_movie_visual_adapter
