@@ -18,6 +18,12 @@ import run_pipeline
 
 
 class RunnerScriptTests(unittest.TestCase):
+    def test_materialized_movie_workflow_actions_prepare_normal_and_debug_runs(self):
+        from feverslop.composition import movie_pipeline as composition
+
+        self.assertEqual((True, True), composition._movie_workflow_actions(False))
+        self.assertEqual((True, False), composition._movie_workflow_actions(True))
+
     def test_vision_enriched_msr_prompts_reach_relay_inputs_with_separate_formats(self):
         class VisionLLM:
             def complete_prompt_with_images(self, _system, _prompt, _paths):
