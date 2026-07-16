@@ -28,9 +28,12 @@ def prepare_movie_workflows(
                 if "sing" not in prompt or ("lip sync" not in prompt and "lip-sync" not in prompt):
                     errors.append(f"scene {number}: singing relay requires singing and lip sync")
         if pipeline == "ltx_ingredients":
-            anchors = scene.get("ingredients_scene_sheet_anchors") or []
+            ingredients = scene.get("ingredients") or {}
+            anchors = ingredients.get("anchors") or scene.get("ingredients_scene_sheet_anchors") or []
             target = str(
-                scene.get("ingredients_target_prompt")
+                ingredients.get("global_prompt")
+                or scene.get("ingredients_global_prompt")
+                or scene.get("ingredients_target_prompt")
                 or (scene.get("ltx") or {}).get("ingredients_target_prompt")
                 or ""
             )
@@ -40,7 +43,7 @@ def prepare_movie_workflows(
             )
             if unbound:
                 errors.append(
-                    f"scene {number}: target description does not bind anchors {', '.join(unbound)}"
+                    f"scene {number}: global prompt does not bind anchors {', '.join(unbound)}"
                 )
     if errors:
         raise ValueError("Cannot prepare scene workflows:\n- " + "\n- ".join(errors))

@@ -16,6 +16,7 @@ from feverslop.application.reference_bible import (
 )
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
+from feverslop.application.ingredients_render_plan import project_ingredients_runtime_scene
 from feverslop.domain.vision_references import ReferenceImage
 
 
@@ -37,11 +38,10 @@ def enrich_render_plan_with_ingredients_sheets(
 
     Reads render plan (list of scenes with references), composes letterboxed
     scene sheets from actor + location reference images, and generates
-    structured descriptions. Writes the enriched plan to output_path.
+    structured descriptions. Writes a compact Ingredients runtime plan to output_path.
 
     Mirrors enrich_render_plan_with_reference_sheets for MSR but produces
-    ingredients-specific fields: ingredients_scene_sheet, ingredients_scene_sheet_description,
-    ingredients_target_prompt, and ltx.ingredients_* fields.
+    ingredients-specific sheet/global prompt data and a canonical temporal relay.
     """
     render_plan_path = Path(render_plan_path)
     references_dir = Path(references_dir)
@@ -75,7 +75,7 @@ def enrich_render_plan_with_ingredients_sheets(
             llm=llm,
             on_analysis_status=on_analysis_status,
         )
-        enriched_scenes.append(enriched)
+        enriched_scenes.append(project_ingredients_runtime_scene(enriched))
         if on_scene_complete is not None:
             on_scene_complete(int(scene.get("scene", index)), index, total)
 
@@ -156,10 +156,8 @@ def _enrich_scene(
         enriched["ingredients_scene_sheet_description"] = ""
         enriched["ingredients_scene_sheet_anchors"] = []
 
-    ltx = scene.get("ltx") or {}
-    target_prompt = str(ltx.get("i2v_prompt_from_t2i") or "").strip()
     binding = build_ingredients_target_binding(enriched.get("ingredients_scene_sheet_anchors") or [])
-    fallback_target = binding + target_prompt if target_prompt else ""
+    fallback_invariants = _fallback_shot_invariants(scene, binding=binding)
     if images:
         references = [ReferenceImage(id=img["id"], type=img["type"], path=project_base / img["path"]) for img in images]
         status_references = [{"id": ref.id, "type": ref.type} for ref in references]
@@ -172,14 +170,9 @@ def _enrich_scene(
             reference_metadata=[{key: str(img.get(key) or "") for key in ("id", "type", "name", "visual_description", "image_prompt")} for img in images],
             target_context=_song_target_context(scene),
             fallback_reference_description=enriched.get("ingredients_scene_sheet_description", ""),
-            fallback_target_prompt=fallback_target,
+            fallback_shot_invariants=fallback_invariants,
         )
-        enriched["ingredients_scene_sheet_description"] = (
-            "### Reference Sheet Description\n" + result.reference_description
-        )
-        enriched["ingredients_target_prompt"] = (
-            "### Target Description\n" + result.target_description if result.target_description else ""
-        )
+        enriched["ingredients_global_prompt"] = result.positive_prompt
         if result.fallback_reason:
             logger.warning(
                 "Ingredients image analysis fallback: scene=%s reason=%s",
@@ -188,29 +181,38 @@ def _enrich_scene(
             )
     else:
         logger.warning("Ingredients image analysis fallback: scene=%s reason=no images", scene_number)
-        enriched["ingredients_target_prompt"] = "### Target Description\n" + fallback_target if fallback_target else ""
-
-    enriched_ltx = dict(enriched.get("ltx") or {})
-    enriched_ltx["ingredients_scene_sheet_description"] = enriched.get("ingredients_scene_sheet_description", "")
-    enriched_ltx["ingredients_target_prompt"] = enriched.get("ingredients_target_prompt", "")
-    enriched_ltx["native_audio"] = True
-    enriched["ltx"] = enriched_ltx
+        enriched["ingredients_global_prompt"] = ""
 
     return enriched
 
 
 def _song_target_context(scene: dict) -> dict[str, Any]:
     ltx = scene.get("ltx") or {}
+    metadata = scene.get("metadata") or {}
     return {
         "source_video_prompt": ltx.get("i2v_prompt_from_t2i") or "",
         "concept": scene.get("concept") or scene.get("description") or "",
-        "metadata": scene.get("metadata") or {},
-        "camera_motion": scene.get("camera_motion") or scene.get("camera") or "",
-        "character_motion": scene.get("character_motion") or scene.get("action") or "",
-        "lyrics": scene.get("lyrics") or scene.get("dialogue") or "",
+        "metadata": metadata,
+        "type": metadata.get("type") or scene.get("type") or "",
+        "silent_mode": bool(metadata.get("silent_mode") or scene.get("silent_mode")),
+        "camera_motion": metadata.get("camera_motion") or scene.get("camera_motion") or scene.get("camera") or "",
+        "character_motion": metadata.get("character_motion") or scene.get("character_motion") or scene.get("action") or "",
+        "lyrics": metadata.get("lyrics") or scene.get("lyrics") or scene.get("dialogue") or "",
         "dialogue_policy": scene.get("dialogue_policy") or "",
         "duration_seconds": scene.get("duration_seconds") or scene.get("duration") or "",
     }
+
+
+def _fallback_shot_invariants(scene: dict, *, binding: str) -> str:
+    metadata = scene.get("metadata") or {}
+    camera = metadata.get("camera_motion") or scene.get("camera_motion") or scene.get("camera") or ""
+    parts = [
+        binding.strip(),
+        "Maintain one continuous full-frame shot with stable identities, wardrobe, spatial staging, environment, and lighting.",
+    ]
+    if camera:
+        parts.append(f"Camera policy: {str(camera).strip()}")
+    return " ".join(part for part in parts if part).strip()
 
 
 def _load_manifests_by_id(root: Path) -> dict[str, dict]:

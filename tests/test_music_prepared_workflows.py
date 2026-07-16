@@ -60,9 +60,12 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             state.ingredients_workflow.write_text("{}", encoding="utf-8")
             state.plan_for_next_step.parent.mkdir(parents=True)
             state.plan_for_next_step.write_text(json.dumps([
-                {"scene": 1, "ltx": {"base_prompt": "one"}, "ingredients_scene_sheet": "sheet1.png"},
-                {"scene": 2, "ltx": {"base_prompt": "two"}, "ingredients_scene_sheet": "sheet2.png"},
-                {"scene": 3, "ltx": {"base_prompt": "three"}, "ingredients_scene_sheet": "sheet3.png"},
+                {"scene": number, "ingredients": {
+                    "sheet_path": f"sheet{number}.png", "anchors": [], "global_prompt": f"scene {number}",
+                }, "ltx": {"base_prompt": f"scene {number}", "static_prompt": f"scene {number}", "prompt_relay": [
+                    {"frame_start": 0, "frame_end": 48, "state": "instrumental", "prompt": "mouth closed"},
+                ]}}
+                for number in (1, 2, 3)
             ]), encoding="utf-8")
             for number in (1, 2, 3):
                 (project / f"sheet{number}.png").write_bytes(b"sheet")

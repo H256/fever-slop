@@ -11,7 +11,7 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.domain.ltx_rendering import AudioWindowSpec, build_audio_window_spec
+from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder, build_audio_window_spec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
@@ -125,7 +125,7 @@ class ComfyUIIngredientsVideoRenderBackend:
 
         patcher = WorkflowPatcher(self.load_workflow())
         self._patch_ingredients_input(patcher, scene)
-        self._patch_prompt_inputs(patcher, scene, prompt=prompt)
+        self._patch_prompt_inputs(patcher, scene, prompt=prompt, rolling=rolling)
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_ingredients_raw/scene_{scene_number:04}")
         self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
         if self.video_settings:
@@ -148,7 +148,8 @@ class ComfyUIIngredientsVideoRenderBackend:
         if not self._has_anchor(patcher, "#INGREDIENTS"):
             raise FeverSlopValidationError("Ingredients workflow is missing #INGREDIENTS anchor")
 
-        sheet_path = scene.get("ingredients_scene_sheet") or ""
+        ingredients = scene.get("ingredients") or {}
+        sheet_path = ingredients.get("sheet_path") or scene.get("ingredients_scene_sheet") or ""
         if not sheet_path:
             raise FeverSlopValidationError(f"Scene {scene.get('scene')} is missing ingredients_scene_sheet path")
 
@@ -163,12 +164,20 @@ class ComfyUIIngredientsVideoRenderBackend:
         scene: dict,
         *,
         prompt: str,
+        rolling: AudioWindowSpec | None = None,
     ) -> None:
+        if self._has_anchor(patcher, "#PROMPT_RELAY"):
+            self._patch_prompt_relay(patcher, scene, rolling=rolling)
+            return
+
         ltx = scene.get("ltx") or {}
+        static_prompt = str(ltx.get("static_prompt") or "").strip()
         scene_desc = str(ltx.get("ingredients_scene_sheet_description") or "").strip()
         target_prompt = str(ltx.get("ingredients_target_prompt") or "").strip()
 
-        if scene_desc and target_prompt:
+        if static_prompt:
+            assembled = static_prompt
+        elif scene_desc and target_prompt:
             assembled = scene_desc + "\n" + target_prompt
         elif scene_desc:
             assembled = scene_desc
@@ -178,6 +187,47 @@ class ComfyUIIngredientsVideoRenderBackend:
             assembled = str(prompt).strip()
 
         patcher.set_input_by_title("#PROMPT_POSITIVE", "text", assembled)
+
+    @staticmethod
+    def _patch_prompt_relay(
+        patcher: WorkflowPatcher,
+        scene: dict,
+        *,
+        rolling: AudioWindowSpec | None,
+    ) -> None:
+        ltx = scene.get("ltx") or {}
+        ingredients = scene.get("ingredients") or {}
+        global_prompt = str(
+            ingredients.get("global_prompt")
+            or ltx.get("base_prompt")
+            or scene.get("ingredients_global_prompt")
+            or scene.get("ingredients_scene_sheet_description")
+            or ltx.get("ingredients_scene_sheet_description")
+            or ""
+        ).strip()
+        relay = ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or []
+        scene_number = scene.get("scene", "?")
+        if not global_prompt:
+            raise FeverSlopValidationError(f"Scene {scene_number} is missing the Ingredients global prompt")
+        if not relay:
+            raise FeverSlopValidationError(f"Scene {scene_number} is missing the Ingredients prompt relay")
+
+        render_frame_count = int(rolling["render_frame_count"]) if rolling else int(scene.get("frame_count", 1) or 1)
+        trim_front_frames = int(rolling["trim_front_frames"]) if rolling else 0
+        tail_loss_frames = int(rolling["tail_loss_frames"]) if rolling else 0
+        relay_scene = {
+            **scene,
+            "ltx": {"base_prompt": global_prompt, "prompt_relay": deepcopy(list(relay))},
+        }
+        payload = PromptRelayPayloadBuilder().build(
+            scene=relay_scene,
+            render_frame_count=render_frame_count,
+            trim_front_frames=trim_front_frames,
+            tail_loss_frames=tail_loss_frames,
+        )
+        patcher.set_input_by_title("#PROMPT_RELAY", "global_prompt", payload.global_prompt)
+        patcher.set_input_by_title("#PROMPT_RELAY", "local_prompts", payload.local_prompts)
+        patcher.set_input_by_title("#PROMPT_RELAY", "segment_lengths", payload.segment_lengths)
 
     @staticmethod
     def _patch_audio_inputs(

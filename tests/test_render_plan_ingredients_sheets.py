@@ -8,6 +8,7 @@ from PIL import Image
 
 from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
 from feverslop.config.video_settings import VideoSettings
+from feverslop.errors import FeverSlopValidationError
 
 
 def _create_minimal_png(path: Path) -> Path:
@@ -22,7 +23,10 @@ class TestIngredientsEnrichment(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch(
             "feverslop.application.render_plan_ingredients_sheets.ingredients_sheet_size",
             return_value=(2048, 1152),
-        ) as sheet_size:
+        ) as sheet_size, patch(
+            "feverslop.application.render_plan_ingredients_sheets.project_ingredients_runtime_scene",
+            side_effect=lambda scene: scene,
+        ):
             tmp = Path(tmp)
             render_plan = tmp / "render_plan.json"
             render_plan.write_text(
@@ -55,6 +59,14 @@ class TestIngredientsEnrichment(unittest.TestCase):
                     "height": 704,
                     "ltx": {
                         "i2v_prompt_from_t2i": "cinematic shot of artist singing",
+                        "msr_prompt_relay": [
+                            {
+                                "frame_start": 0,
+                                "frame_end": 95,
+                                "state": "singing",
+                                "prompt": "Artist sings immediately with precise lip sync.",
+                            }
+                        ],
                     },
                     "references": {
                         "actor_ids": ["artist_1"],
@@ -100,16 +112,17 @@ class TestIngredientsEnrichment(unittest.TestCase):
             data = json.loads(result.read_text(encoding="utf-8"))
             self.assertEqual(len(data), 1)
             scene = data[0]
-            self.assertIn("ingredients_scene_sheet", scene)
-            self.assertIn("ingredients_scene_sheet_description", scene)
-            self.assertIn("ingredients_target_prompt", scene)
-            self.assertIn("ltx", scene)
-            self.assertIn("ingredients_scene_sheet_description", scene["ltx"])
-            self.assertIn("ingredients_target_prompt", scene["ltx"])
-            self.assertIn("cinematic shot of artist singing", scene["ingredients_target_prompt"])
-            self.assertIn("Use Character `artist_1` from Left", scene["ingredients_target_prompt"])
-            self.assertIn("Use Setting `stage` from Right", scene["ingredients_target_prompt"])
-            self.assertIn("Do not add or omit visible characters", scene["ingredients_target_prompt"])
+            self.assertEqual(
+                "output/references/ingredients_sheets/scene_0001_ingredients.png",
+                scene["ingredients"]["sheet_path"],
+            )
+            self.assertIn("artist_1", scene["ingredients"]["global_prompt"])
+            self.assertEqual("singing", scene["ltx"]["prompt_relay"][0]["state"])
+            self.assertIn("sings immediately", scene["ltx"]["static_prompt"])
+            self.assertNotIn("ingredients_scene_sheet_description", scene)
+            self.assertNotIn("ingredients_target_prompt", scene)
+            self.assertNotIn("msr_prompt_relay", scene["ltx"])
+            self.assertNotIn("actor_reference_descriptions", scene["references"])
 
     def test_calls_on_scene_complete_callback(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -138,19 +151,23 @@ class TestIngredientsEnrichment(unittest.TestCase):
 
             callbacks = []
             out_path = tmp / "render_plan_ingredients.json"
-            result = enrich_render_plan_with_ingredients_sheets(
-                render_plan_path=rp_path,
-                references_dir=ref_dir,
-                output_path=out_path,
-                on_scene_complete=lambda scene_num, idx, total: callbacks.append((scene_num, idx, total)),
-            )
+            with patch(
+                "feverslop.application.render_plan_ingredients_sheets.project_ingredients_runtime_scene",
+                side_effect=lambda scene: scene,
+            ):
+                result = enrich_render_plan_with_ingredients_sheets(
+                    render_plan_path=rp_path,
+                    references_dir=ref_dir,
+                    output_path=out_path,
+                    on_scene_complete=lambda scene_num, idx, total: callbacks.append((scene_num, idx, total)),
+                )
 
             self.assertTrue(result.exists())
             self.assertEqual(len(callbacks), 2)
             self.assertEqual(callbacks[0], (1, 1, 2))
             self.assertEqual(callbacks[1], (2, 2, 2))
 
-    def test_empty_references_produces_empty_fields(self):
+    def test_empty_references_reject_unrenderable_runtime_scene(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             render_plan = [
@@ -169,16 +186,9 @@ class TestIngredientsEnrichment(unittest.TestCase):
             ref_dir.mkdir(parents=True, exist_ok=True)
 
             out_path = tmp / "render_plan_ingredients.json"
-            result = enrich_render_plan_with_ingredients_sheets(
-                render_plan_path=rp_path,
-                references_dir=ref_dir,
-                output_path=out_path,
-            )
-
-            self.assertTrue(result.exists())
-            data = json.loads(result.read_text(encoding="utf-8"))
-            scene = data[0]
-            self.assertEqual(scene["ingredients_scene_sheet"], "")
-            self.assertEqual(scene["ingredients_scene_sheet_description"], "")
-            self.assertEqual(scene["ingredients_target_prompt"], "")
-            self.assertTrue(scene["ltx"].get("native_audio"))
+            with self.assertRaisesRegex(FeverSlopValidationError, "Scene 1.*global prompt"):
+                enrich_render_plan_with_ingredients_sheets(
+                    render_plan_path=rp_path,
+                    references_dir=ref_dir,
+                    output_path=out_path,
+                )

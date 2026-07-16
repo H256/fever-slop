@@ -87,8 +87,15 @@ class ComfyUIMovieIngredientsVisualAdapter:
 
 def _ingredients_prompt(scene: dict) -> str:
     ltx = scene.get("ltx") or {}
+    ingredients = scene.get("ingredients") or {}
+    static_prompt = str(ltx.get("static_prompt") or "").strip()
+    global_prompt = str(ingredients.get("global_prompt") or scene.get("ingredients_global_prompt") or "").strip()
     scene_desc = str(ltx.get("ingredients_scene_sheet_description") or "").strip()
     target_prompt = str(ltx.get("ingredients_target_prompt") or "").strip()
+    if static_prompt:
+        return static_prompt
+    if global_prompt:
+        return global_prompt
     if scene_desc and target_prompt:
         return scene_desc + "\n" + target_prompt
     if scene_desc:

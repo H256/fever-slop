@@ -527,11 +527,11 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
                 def complete_prompt_with_images(self, _system, user, paths):
                     self.image_paths = paths
                     self.user_prompt = user
-                    target = " ".join(["continuous cinematic movement"] * 190)
+                    invariants = " ".join(["stable cinematic composition"] * 30)
                     return json.dumps({"references": [
                         {"id": "actor_1", "type": "actor", "description": "brown hair and a rain-dark coat"},
                         {"id": "loc_1", "type": "location", "description": "a silent archive room"},
-                    ], "target_description": target})
+                    ], "shot_invariants": invariants})
 
             llm = FakeVisionLLM()
             events = []
@@ -542,13 +542,19 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             shot = json.loads(out.read_text(encoding="utf-8"))["shots"][0]
 
             self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
-            self.assertIn("brown hair", shot["ingredients_scene_sheet_description"])
-            self.assertIn("### Target Description", shot["ingredients_target_prompt"])
+            self.assertIn("brown hair", shot["ingredients_global_prompt"])
+            self.assertIn("### Shot Invariants", shot["ingredients_global_prompt"])
+            self.assertNotIn("It remembers me", shot["ingredients_global_prompt"])
+            self.assertIn("It remembers me", shot["ltx"]["prompt_relay"][0]["prompt"])
+            self.assertEqual((0, 48), (
+                shot["ltx"]["prompt_relay"][0]["frame_start"],
+                shot["ltx"]["prompt_relay"][0]["frame_end"],
+            ))
             for detail in ("A test scene", "opens the ledger", "slow dolly", "controlled fear", "It remembers me", "wet coat", "duration_seconds"):
                 self.assertIn(detail, llm.user_prompt)
             self.assertEqual([("shot_001", [{"id": "actor_1", "type": "actor"}, {"id": "loc_1", "type": "location"}])], events)
 
-    def test_enrichment_shot_has_ltx_with_ingredients_fields(self):
+    def test_enrichment_shot_has_native_audio_without_mirrored_ingredients_fields(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             self._make_project(tmp)
@@ -557,8 +563,11 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             data = json.loads(out.read_text(encoding="utf-8"))
             shot = data["shots"][0]
             ltx = shot["ltx"]
-            self.assertIn("ingredients_scene_sheet_description", ltx)
             self.assertTrue(ltx["native_audio"])
+            self.assertEqual(1, len(ltx["prompt_relay"]))
+            self.assertIn("static_prompt", ltx)
+            self.assertNotIn("ingredients_scene_sheet_description", ltx)
+            self.assertNotIn("ingredients_target_prompt", ltx)
 
     def test_enrichment_no_references_still_works(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -593,7 +602,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             self.assertEqual("", shot["ingredients_scene_sheet"])
             self.assertEqual("", shot["ingredients_scene_sheet_description"])
 
-    def test_enrichment_shot_has_ingredients_target_prompt_at_both_levels(self):
+    def test_enrichment_shot_has_one_non_temporal_global_prompt(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             self._make_project(tmp, shot_fields={
@@ -606,20 +615,21 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             data = json.loads(out.read_text(encoding="utf-8"))
             shot = data["shots"][0]
 
-            self.assertIn("ingredients_target_prompt", shot)
-            self.assertIn("ingredients_target_prompt", shot["ltx"])
-            self.assertEqual(shot["ingredients_target_prompt"], shot["ltx"]["ingredients_target_prompt"])
-            prompt = shot["ingredients_target_prompt"]
-            self.assertTrue(prompt.startswith("### Target Description\n"))
+            self.assertIn("ingredients_global_prompt", shot)
+            self.assertNotIn("ingredients_target_prompt", shot)
+            self.assertNotIn("ingredients_global_prompt", shot["ltx"])
+            prompt = shot["ingredients_global_prompt"]
+            self.assertTrue(prompt.startswith("### Reference Sheet Description\n"))
+            self.assertIn("### Shot Invariants\n", prompt)
             self.assertIn("Use Character `actor_1` from Left", prompt)
             self.assertIn("Use Setting `loc_1` from Right", prompt)
             self.assertIn("Do not add or omit visible characters", prompt)
             self.assertIn("slow dolly", prompt)
-            self.assertIn("controlled fear", prompt)
+            self.assertNotIn("It remembers me", prompt)
             self.assertNotIn("Full-body cinematic character reference sheet", prompt)
             self.assertNotIn("Four vertical panels", prompt)
 
-    def test_enrichment_target_prompt_includes_actor_names_and_dialogue_language(self):
+    def test_enrichment_global_prompt_excludes_dialogue_timing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             movie = tmp / "movie"
@@ -660,22 +670,22 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
 
             out = enrich_movie_render_plan_with_ingredients_sheets(project_dir=tmp)
             data = json.loads(out.read_text(encoding="utf-8"))
-            prompt = data["shots"][0]["ingredients_target_prompt"]
+            prompt = data["shots"][0]["ingredients_global_prompt"]
 
-            self.assertIn("Mara", prompt)
-            self.assertIn("Spanish", prompt)
-            self.assertIn("Hola mundo", prompt)
+            self.assertNotIn("Spanish", prompt)
+            self.assertNotIn("Hola mundo", prompt)
+            self.assertIn("### Shot Invariants", prompt)
 
-    def test_enrichment_target_prompt_graceful_without_bible(self):
+    def test_enrichment_global_prompt_graceful_without_bible(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             self._make_project(tmp, with_bible=False)
             out = enrich_movie_render_plan_with_ingredients_sheets(project_dir=tmp)
             data = json.loads(out.read_text(encoding="utf-8"))
-            prompt = data["shots"][0]["ingredients_target_prompt"]
+            prompt = data["shots"][0]["ingredients_global_prompt"]
 
             self.assertIsInstance(prompt, str)
-            self.assertIn("A test scene", prompt)
+            self.assertIn("### Shot Invariants", prompt)
 
 
 class PanelPositionLabelTests(unittest.TestCase):
