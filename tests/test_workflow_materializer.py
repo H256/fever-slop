@@ -55,8 +55,9 @@ class FakeBackend:
 
     def build_workflow(self, scene, *, prompt, comfy_audio_name, rolling):
         self.build_calls += 1
-        if scene.get("ingredients_scene_sheet"):
-            reference_name = self.asset_uploader.resolve_reference_image_name(scene["ingredients_scene_sheet"])
+        ingredients_sheet = scene.get("ingredients_scene_sheet") or (scene.get("ingredients") or {}).get("sheet_path")
+        if ingredients_sheet:
+            reference_name = self.asset_uploader.resolve_reference_image_name(ingredients_sheet)
         else:
             reference_name = None
         seed = self.seed_offset + scene["scene"]
@@ -167,6 +168,30 @@ class WorkflowMaterializerTests(unittest.TestCase):
             path.write_text(json.dumps(base))
             with self.assertRaisesRegex(ValueError, "ingredients_sheet"):
                 SceneWorkflowManifest.read(path)
+
+    def test_prepare_records_nested_v4_ingredients_sheet_in_manifest(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "workflows" / "ingredients-v4.json"
+            plan = project / "output" / "render" / "plans" / "ingredients.json"
+            sheet = project / "output" / "references" / "ingredients_sheets" / "scene_0001.png"
+            for path, data in ((template, b"{}"), (plan, b"{}"), (sheet, b"sheet")):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+
+            prepared = WorkflowMaterializer(FakeBackend(template), SceneArtifactLayout(project)).prepare(
+                WorkflowMaterializationRequest(
+                    scene={
+                        "scene": 1, "fps": 24, "frame_count": 49, "width": 1536, "height": 896,
+                        "ingredients": {"sheet_path": sheet.relative_to(project).as_posix()},
+                    },
+                    prompt="move", audio_file=None, render_plan_path=plan,
+                    pipeline="ltx_ingredients", seed=1,
+                )
+            )
+
+            manifest = SceneWorkflowManifest.read(prepared.manifest_path)
+            self.assertEqual({"ingredients_sheet"}, {asset.role for asset in manifest.assets})
 
     def test_prepare_selects_random_seed_once_when_request_does_not_supply_one(self):
         with TemporaryDirectory() as tmp:

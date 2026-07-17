@@ -117,7 +117,7 @@ class WorkflowMaterializer:
 
         references = scene.get("references") or {}
         candidates: list[tuple[str, str | Path]] = []
-        ingredients = scene.get("ingredients_scene_sheet")
+        ingredients = (scene.get("ingredients") or {}).get("sheet_path") or scene.get("ingredients_scene_sheet")
         if ingredients:
             candidates.append(("ingredients_sheet", ingredients))
         actor_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths") or []
