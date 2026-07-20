@@ -4,6 +4,141 @@ from pathlib import Path
 
 
 class AppConfigValidationTests(unittest.TestCase):
+    def test_rejects_nonfinite_default_max_render_duration(self):
+        from feverslop.config.app_config import AppConfig
+
+        for value in ("NaN", "Infinity"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp_dir:
+                config_path = Path(temp_dir) / "app_config.json"
+                config_path.write_text(
+                    f'{{"comfyui": {{"default_max_render_duration_seconds": {value}}}}}',
+                    encoding="utf-8",
+                )
+
+                with self.assertRaisesRegex(ValueError, "default_max_render_duration_seconds"):
+                    AppConfig.load(config_path)
+
+    def test_rejects_nonfinite_video_workflow_limit_duration(self):
+        from feverslop.config.app_config import AppConfig
+
+        for value in ("NaN", "Infinity"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp_dir:
+                config_path = Path(temp_dir) / "app_config.json"
+                config_path.write_text(
+                    f"""
+                    {{
+                      "comfyui": {{
+                        "video_workflow_limits": [
+                          {{"workflow": "video.json", "max_render_duration_seconds": {value}}}
+                        ]
+                      }}
+                    }}
+                    """,
+                    encoding="utf-8",
+                )
+
+                with self.assertRaisesRegex(ValueError, "max_render_duration_seconds"):
+                    AppConfig.load(config_path)
+
+    def test_rejects_nonstring_video_workflow_limit_name(self):
+        from feverslop.config.app_config import AppConfig
+
+        for value in ("null", "123", "{}"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp_dir:
+                config_path = Path(temp_dir) / "app_config.json"
+                config_path.write_text(
+                    f"""
+                    {{
+                      "comfyui": {{
+                        "video_workflow_limits": [
+                          {{"workflow": {value}, "max_render_duration_seconds": 18}}
+                        ]
+                      }}
+                    }}
+                    """,
+                    encoding="utf-8",
+                )
+
+                with self.assertRaisesRegex(ValueError, "workflow must be a string"):
+                    AppConfig.load(config_path)
+
+    def test_rejects_nonpositive_default_max_render_duration(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"comfyui": {"default_max_render_duration_seconds": 0}}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "default_max_render_duration_seconds"):
+                AppConfig.load(config_path)
+
+    def test_rejects_blank_video_workflow_limit_name(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "comfyui": {
+                    "video_workflow_limits": [
+                      {"workflow": "   ", "max_render_duration_seconds": 18}
+                    ]
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "workflow"):
+                AppConfig.load(config_path)
+
+    def test_rejects_nonpositive_video_workflow_limit_duration(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "comfyui": {
+                    "video_workflow_limits": [
+                      {"workflow": "workflows/video.json", "max_render_duration_seconds": -1}
+                    ]
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "max_render_duration_seconds"):
+                AppConfig.load(config_path)
+
+    def test_rejects_duplicate_video_workflow_basenames_case_insensitively(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "comfyui": {
+                    "video_workflow_limits": [
+                      {"workflow": "workflows/Ingredients_v4.json", "max_render_duration_seconds": 18},
+                      {"workflow": "alternate/ingredients_V4.JSON", "max_render_duration_seconds": 12}
+                    ]
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "Duplicate video workflow limit"):
+                AppConfig.load(config_path)
+
     def test_all_required_keys_present_loads_without_error(self):
         from feverslop.config.app_config import AppConfig
 

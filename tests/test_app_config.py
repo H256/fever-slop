@@ -1,11 +1,64 @@
 import tempfile
 import unittest
 from contextlib import contextmanager
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 import os
 
 
 class AppConfigTests(unittest.TestCase):
+    def test_loads_video_workflow_duration_limits(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "comfyui": {
+                    "default_max_render_duration_seconds": 18,
+                    "video_workflow_limits": [
+                      {
+                        "workflow": "workflows/video_Ingredients_v4.json",
+                        "max_render_duration_seconds": 12.5
+                      },
+                      {
+                        "workflow": "workflows/video_other.json",
+                        "max_render_duration_seconds": 24
+                      }
+                    ]
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(18.0, config.comfyui.default_max_render_duration_seconds)
+        self.assertIsInstance(config.comfyui.video_workflow_limits, tuple)
+        self.assertEqual(
+            [
+                ("workflows/video_Ingredients_v4.json", 12.5),
+                ("workflows/video_other.json", 24.0),
+            ],
+            [
+                (limit.workflow, limit.max_render_duration_seconds)
+                for limit in config.comfyui.video_workflow_limits
+            ],
+        )
+        limit = config.comfyui.video_workflow_limits[0]
+        with self.assertRaises(FrozenInstanceError):
+            limit.max_render_duration_seconds = 20
+
+    def test_missing_video_workflow_duration_limits_preserves_existing_defaults(self):
+        from feverslop.config.app_config import AppConfig
+
+        config = AppConfig.load(Path("does-not-exist.json"))
+
+        self.assertIsNone(config.comfyui.default_max_render_duration_seconds)
+        self.assertEqual((), config.comfyui.video_workflow_limits)
+
     def test_loads_comfyui_prompt_timeout_seconds(self):
         from feverslop.config.app_config import AppConfig
 
