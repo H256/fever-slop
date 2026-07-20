@@ -5,6 +5,13 @@ from feverslop.errors import FeverSlopValidationError
 from dataclasses import dataclass
 
 
+ROLLING_FRAME_PROFILES = {
+    "original": (50, 25, True),
+    "safe": (6, 0, False),
+    "off": (0, 0, False),
+}
+
+
 @dataclass(frozen=True)
 class AudioWindowSpec:
     scene_frame_count: int
@@ -48,6 +55,11 @@ def round_up_8n1(frame_count: int) -> int:
     if remainder == 0:
         return frame_count
     return frame_count + (8 - remainder)
+
+
+def round_down_8n1(frame_count: int) -> int:
+    frame_count = max(1, int(frame_count))
+    return max(1, ((frame_count - 1) // 8) * 8 + 1)
 
 
 def build_audio_window_spec(
