@@ -43,6 +43,13 @@ class DocumentationCurrentTests(unittest.TestCase):
         self.assertIn("application layer does not import concrete adapters", text)
         self.assertIn("ports do not import adapters", text)
 
+    def test_examples_explain_workflow_scene_duration_limits(self):
+        text = Path("docs/examples.md").read_text(encoding="utf-8")
+
+        self.assertIn("default_max_render_duration_seconds", text)
+        self.assertIn("video_workflow_limits", text)
+        self.assertIn("Requested scene duration", text)
+
 
 if __name__ == "__main__":
     unittest.main()
