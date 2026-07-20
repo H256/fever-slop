@@ -3,6 +3,7 @@ import inspect
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import compact_relay_prompts
@@ -15,6 +16,7 @@ import render_ltx
 import render_storyboard
 import storyboard_renderer
 import workflow_patcher
+from feverslop.composition.generate_render_plan import build_generate_render_plan_execution_request
 
 
 class PublicCompatibilityTests(unittest.TestCase):
@@ -72,6 +74,8 @@ class PublicCompatibilityTests(unittest.TestCase):
         self.assertEqual("config.json", args.project)
         self.assertEqual("app_config.json", args.app_config)
         self.assertEqual(0, args.concept_batch_size)
+        self.assertEqual([], args.video_workflow)
+        self.assertEqual("original", args.rolling_frame_profile)
 
         ltx_args = render_ltx.build_arg_parser().parse_args(
             [
@@ -101,6 +105,89 @@ class PublicCompatibilityTests(unittest.TestCase):
             ]
         )
         self.assertEqual("#PROMPT_POSITIVE", storyboard_args.positive_title)
+
+    def test_main_cli_forwards_repeatable_video_workflows_and_rolling_profile(self):
+        argv = [
+            "main.py",
+            "--project",
+            "config.json",
+            "--video-workflow",
+            "relay.json",
+            "--video-workflow",
+            "single.json",
+            "--rolling-frame-profile",
+            "safe",
+        ]
+
+        with patch("sys.argv", argv), patch.object(main, "execute_generate_render_plan") as execute:
+            main.main()
+
+        request = execute.call_args.args[0]
+        self.assertEqual((Path("relay.json"), Path("single.json")), request.video_workflow_paths)
+        self.assertEqual("safe", request.rolling_frame_profile)
+
+    def test_main_cli_empty_workflows_do_not_override_valid_workflow_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            project = temp / "config.json"
+            project.write_text(
+                json.dumps(
+                    {
+                        "project_name": "demo",
+                        "input_audio": "song.wav",
+                        "video": {"fps": 24},
+                        "scene_generation": {"min_duration": 2.0, "max_duration": 30.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            app_config = temp / "app.json"
+            app_config.write_text(
+                json.dumps(
+                    {
+                        "comfyui": {
+                            "default_max_render_duration_seconds": 12.0,
+                            "video_workflow_limits": [
+                                {
+                                    "workflow": "optimized.json",
+                                    "max_render_duration_seconds": 24.0,
+                                }
+                            ],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            argv = [
+                "main.py",
+                "--project",
+                str(project),
+                "--app-config",
+                str(app_config),
+                "--video-workflow",
+                "",
+                "--video-workflow",
+                ".",
+                "--video-workflow",
+                "   ",
+                "--video-workflow",
+                "optimized.json",
+            ]
+            execution_requests = []
+
+            def resolve(request, **_kwargs):
+                execution_requests.append(build_generate_render_plan_execution_request(request))
+
+            with patch("sys.argv", argv), patch.object(
+                main,
+                "execute_generate_render_plan",
+                side_effect=resolve,
+            ):
+                main.main()
+
+        policy = execution_requests[0].scene_duration_policy
+        self.assertEqual(24.0, policy.max_render_duration_seconds)
+        self.assertEqual("optimized.json", policy.limiting_workflow)
 
     def test_storyboard_render_plan_subset_matches_scene_filter_and_limit(self):
         with tempfile.TemporaryDirectory() as temp_dir:

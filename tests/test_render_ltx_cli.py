@@ -12,6 +12,7 @@ from render_ltx import (
     sanitize_file_stem,
 )
 from feverslop.composition.render_video import namespace_to_options
+from feverslop.errors import FeverSlopValidationError
 
 
 class RenderLTXCliTests(unittest.TestCase):
@@ -39,8 +40,20 @@ class RenderLTXCliTests(unittest.TestCase):
     def test_rolling_frame_profiles_delegate_to_render_video_composition(self):
         import render_ltx
         import feverslop.composition.render_video as render_video_composition
+        import feverslop.domain.ltx_rendering as ltx_rendering
 
         self.assertIs(render_ltx.ROLLING_FRAME_PROFILES, render_video_composition.ROLLING_FRAME_PROFILES)
+        self.assertIs(render_video_composition.ROLLING_FRAME_PROFILES, ltx_rendering.ROLLING_FRAME_PROFILES)
+
+    def test_invalid_direct_rolling_frame_profile_raises_contextual_validation_error(self):
+        args = self._parse()
+        args.rolling_frame_profile = "unknown"
+
+        with self.assertRaisesRegex(
+            FeverSlopValidationError,
+            "rolling_frame_profile.*unknown.*off.*original.*safe",
+        ):
+            resolve_rolling_frames(args)
 
     def test_single_prompt_render_mode_is_default(self):
         args = self._parse()

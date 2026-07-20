@@ -12,6 +12,16 @@ ROLLING_FRAME_PROFILES = {
 }
 
 
+def resolve_rolling_frame_profile(profile: str) -> tuple[int, int, bool]:
+    try:
+        return ROLLING_FRAME_PROFILES[profile]
+    except KeyError as exc:
+        supported = ", ".join(sorted(ROLLING_FRAME_PROFILES))
+        raise FeverSlopValidationError(
+            f"rolling_frame_profile {profile!r} is invalid; expected one of: {supported}"
+        ) from exc
+
+
 @dataclass(frozen=True)
 class AudioWindowSpec:
     scene_frame_count: int

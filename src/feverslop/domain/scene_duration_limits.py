@@ -95,13 +95,18 @@ def resolve_scene_duration_policy(
         )
     )
 
-    candidates: list[tuple[float, str | None]] = []
+    workflow_basenames: list[str] = []
     for workflow_path in workflow_paths:
-        basename = Path(workflow_path).name.casefold()
+        basename = Path(str(workflow_path).strip()).name.casefold()
+        if basename:
+            workflow_basenames.append(basename)
+
+    candidates: list[tuple[float, str | None]] = []
+    for basename in workflow_basenames:
         duration = normalized_limits.get(basename, default_duration)
         if duration is not None:
             candidates.append((duration, basename))
-    if not workflow_paths and default_duration is not None:
+    if not workflow_basenames and default_duration is not None:
         candidates.append((default_duration, None))
 
     if not candidates:

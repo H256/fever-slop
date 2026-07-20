@@ -14,14 +14,9 @@ from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.application.render_video import RenderVideoScenesUseCase
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
+from feverslop.domain.ltx_rendering import ROLLING_FRAME_PROFILES  # noqa: F401
+from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
 from feverslop.path_utils import coerce_local_path
-
-
-ROLLING_FRAME_PROFILES = {
-    "original": (50, 25, True),
-    "safe": (6, 0, False),
-    "off": (0, 0, False),
-}
 
 
 @dataclass(frozen=True)
@@ -236,7 +231,9 @@ def resolve_project_config_defaults(options: RenderVideoCompositionOptions) -> d
 
 
 def resolve_rolling_frames(options: RenderVideoCompositionOptions) -> tuple[int, int, bool]:
-    profile_preroll, profile_tail, profile_rounding = ROLLING_FRAME_PROFILES[options.rolling_frame_profile]
+    profile_preroll, profile_tail, profile_rounding = resolve_rolling_frame_profile(
+        options.rolling_frame_profile
+    )
     preroll = profile_preroll if options.preroll_frames is None else options.preroll_frames
     tail = profile_tail if options.tail_loss_frames is None else options.tail_loss_frames
     return max(0, int(preroll)), max(0, int(tail)), bool(profile_rounding)

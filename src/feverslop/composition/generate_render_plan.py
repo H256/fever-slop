@@ -26,7 +26,7 @@ from feverslop.adapters.audio.beat_analysis import BeatSceneDurationGenerator
 from feverslop.adapters.audio.demucs_separator import DemucsSeparator
 from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
 from feverslop.domain.timeline_transform import merge_same_kind_segments, normalize_empty_vocals
-from feverslop.domain.ltx_rendering import ROLLING_FRAME_PROFILES
+from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
 from feverslop.domain.scene_duration_limits import resolve_scene_duration_policy
 from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
 from feverslop.pipeline.render_plan_builder import build_render_plan
@@ -83,9 +83,9 @@ def build_generate_render_plan_execution_request(request: GenerateRenderPlanRequ
     paths = ProjectPaths.from_config(config)
     app_config = AppConfig.load(request.app_config_path)
     video_settings = config.to_video_settings()
-    preroll_frames, tail_frames, round_render_frames_to_8n1 = ROLLING_FRAME_PROFILES[
+    preroll_frames, tail_frames, round_render_frames_to_8n1 = resolve_rolling_frame_profile(
         request.rolling_frame_profile
-    ]
+    )
     workflow_limits = {
         limit.workflow: limit.max_render_duration_seconds
         for limit in app_config.comfyui.video_workflow_limits
