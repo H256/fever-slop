@@ -203,17 +203,20 @@ def validate_scene_durations(
     allow_single_short_tail: bool = True,
 ) -> list[str]:
     errors = []
+    min_duration_millis = round(float(min_duration) * 1000)
+    max_duration_millis = round(float(max_duration) * 1000)
 
     for index, scene in enumerate(scenes):
         is_last = index == len(scenes) - 1
+        scene_duration_millis = round(scene.end * 1000) - round(scene.start * 1000)
 
-        if scene.duration < min_duration:
+        if scene_duration_millis < min_duration_millis:
             if not (allow_single_short_tail and is_last and len(scenes) == 1):
                 errors.append(
                     f"Scene {index + 1} too short: {scene.duration:.3f}s < {min_duration:.3f}s"
                 )
 
-        if scene.duration > max_duration:
+        if scene_duration_millis > max_duration_millis:
             errors.append(
                 f"Scene {index + 1} too long: {scene.duration:.3f}s > {max_duration:.3f}s"
             )

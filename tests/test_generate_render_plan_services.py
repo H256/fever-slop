@@ -60,7 +60,7 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
             requested_min_seconds=2.0,
             requested_max_seconds=30.0,
             effective_min_seconds=2.0,
-            effective_max_seconds=14.9166666667,
+            effective_max_seconds=14.916,
             max_render_duration_seconds=18.0,
             max_render_frames=433,
             max_scene_frames=358,
@@ -102,7 +102,7 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
             requested_min_seconds=2.0,
             requested_max_seconds=30.0,
             effective_min_seconds=2.0,
-            effective_max_seconds=14.9166666667,
+            effective_max_seconds=14.916,
             max_render_duration_seconds=18.0,
             max_render_frames=433,
             max_scene_frames=358,
@@ -137,9 +137,9 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
 
         pipeline.execute(context)
 
-        self.assertEqual((2.0, 14.9166666667), received["generator"])
-        self.assertEqual((2.0, 14.9166666667), received["enforce"])
-        self.assertEqual((2.0, 14.9166666667), received["validate"])
+        self.assertEqual((2.0, 14.916), received["generator"])
+        self.assertEqual((2.0, 14.916), received["enforce"])
+        self.assertEqual((2.0, 14.916), received["validate"])
         self.assertEqual(30.0, requested_scene_cfg.max_duration)
 
     def test_audio_timeline_pipeline_declares_required_context_keys(self):

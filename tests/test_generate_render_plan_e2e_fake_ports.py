@@ -107,7 +107,7 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
             clamp_event = next(event for event in events if event[:2] == ("panel", "Scene duration limit"))
             self.assertLess(events.index(clamp_event), events.index("service"))
             self.assertIn("Requested scene duration: 2.000s..30.000s", clamp_event[2])
-            self.assertIn("Effective scene duration: 2.000s..14.917s", clamp_event[2])
+            self.assertIn("Effective scene duration: 2.000s..14.916s", clamp_event[2])
             self.assertIn(
                 "Render limit: 18.000s including 50 pre-roll and 25 tail frames",
                 clamp_event[2],

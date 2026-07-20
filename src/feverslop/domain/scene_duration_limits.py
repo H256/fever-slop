@@ -140,11 +140,16 @@ def resolve_scene_duration_policy(
 
     capped_max_decimal = Decimal(max_scene_frames) / Decimal(resolved_fps)
     requested_max_decimal = Decimal(str(requested_max))
-    effective_max = (
-        requested_max
-        if capped_max_decimal >= requested_max_decimal
-        else float(capped_max_decimal)
+    # SRT endpoints are serialized to whole milliseconds.
+    effective_max_decimal = min(capped_max_decimal, requested_max_decimal).quantize(
+        Decimal("0.001"),
+        rounding=ROUND_FLOOR,
     )
+    if effective_max_decimal <= 0:
+        raise FeverSlopValidationError(
+            "Render budget cannot represent a positive scene duration at SRT millisecond precision"
+        )
+    effective_max = float(effective_max_decimal)
     effective_min = min(requested_min, effective_max)
     return ResolvedSceneDurationPolicy(
         requested_min_seconds=requested_min,

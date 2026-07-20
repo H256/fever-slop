@@ -89,7 +89,7 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
             policy = execution_request.scene_duration_policy
             self.assertIsNotNone(policy)
             self.assertEqual(2.0, policy.effective_min_seconds)
-            self.assertAlmostEqual(14.9166666667, policy.effective_max_seconds)
+            self.assertEqual(14.916, policy.effective_max_seconds)
             self.assertEqual("video.json", policy.limiting_workflow)
             self.assertEqual(30.0, execution_request.config.scene_generation.max_duration)
             self.assertEqual(

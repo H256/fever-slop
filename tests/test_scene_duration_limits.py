@@ -1,12 +1,21 @@
 import math
+import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.domain.srt import SrtScene
 from feverslop.domain.scene_duration_limits import (
     resolve_scene_duration_policy,
     validate_render_frame_budget,
 )
 from feverslop.errors import FeverSlopValidationError
+from feverslop.pipeline.scene_duration_enforcer import (
+    enforce_scene_srt_file,
+    parse_scene_srt,
+    validate_scene_durations,
+    write_scene_srt,
+)
 
 
 class SceneDurationLimitTests(unittest.TestCase):
@@ -30,10 +39,75 @@ class SceneDurationLimitTests(unittest.TestCase):
 
         self.assertEqual(433, result.max_render_frames)
         self.assertEqual(358, result.max_scene_frames)
-        self.assertAlmostEqual(14.9166666667, result.effective_max_seconds)
+        self.assertEqual(14.916, result.effective_max_seconds)
         self.assertEqual(2.0, result.effective_min_seconds)
         self.assertTrue(result.clamped)
         self.assertEqual("video.json", result.limiting_workflow)
+
+    def test_effective_cap_survives_split_srt_write_and_read_without_an_extra_frame(self):
+        policy = self.resolve()
+        store = JsonArtifactStore()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            input_srt = temp / "input.srt"
+            output_srt = temp / "output.srt"
+            write_scene_srt(
+                input_srt,
+                [SrtScene(scene=1, start=0.0, end=29.833, text="Scene 1")],
+                artifact_store=store,
+            )
+
+            enforce_scene_srt_file(
+                input_srt=input_srt,
+                output_srt=output_srt,
+                min_duration=policy.effective_min_seconds,
+                max_duration=policy.effective_max_seconds,
+                artifact_store=store,
+            )
+            repaired = parse_scene_srt(output_srt)
+
+        self.assertEqual(
+            [],
+            validate_scene_durations(
+                repaired,
+                min_duration=policy.effective_min_seconds,
+                max_duration=policy.effective_max_seconds,
+            ),
+        )
+        self.assertTrue(
+            all(round(scene.duration * policy.fps) <= policy.max_scene_frames for scene in repaired)
+        )
+
+    def test_millisecond_cap_validation_is_stable_at_nonzero_srt_timestamps(self):
+        policy = self.resolve()
+        store = JsonArtifactStore()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "scene.srt"
+            write_scene_srt(
+                path,
+                [
+                    SrtScene(
+                        scene=1,
+                        start=3600.0,
+                        end=3600.0 + policy.effective_max_seconds,
+                        text="Scene 1",
+                    )
+                ],
+                artifact_store=store,
+            )
+            repaired = parse_scene_srt(path)
+
+        self.assertEqual(
+            [],
+            validate_scene_durations(
+                repaired,
+                min_duration=policy.effective_min_seconds,
+                max_duration=policy.effective_max_seconds,
+            ),
+        )
+        self.assertLessEqual(round(repaired[0].duration * policy.fps), policy.max_scene_frames)
 
     def test_resolves_frame_exact_limits_at_16_and_50_fps(self):
         at_16 = self.resolve(fps=16)
@@ -98,7 +172,7 @@ class SceneDurationLimitTests(unittest.TestCase):
         )
 
         self.assertEqual("single.json", result.limiting_workflow)
-        self.assertAlmostEqual(433 / 24, result.effective_max_seconds)
+        self.assertEqual(18.041, result.effective_max_seconds)
 
     def test_uses_default_for_workflow_without_explicit_override(self):
         result = self.resolve(
