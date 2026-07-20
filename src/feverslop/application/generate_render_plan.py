@@ -6,6 +6,7 @@ import time
 from typing import Any, Callable
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
@@ -18,6 +19,8 @@ class GenerateRenderPlanRequest:
     concept_batch_size: int = 0
     render_storyboard: bool = False
     zimage_workflow_path: Path | None = None
+    video_workflow_paths: tuple[Path, ...] = ()
+    rolling_frame_profile: str = "original"
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,7 @@ class GenerateRenderPlanExecutionRequest:
     app_config: Any
     video_settings: Any
     song_id: str
+    scene_duration_policy: ResolvedSceneDurationPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,7 @@ class GenerateRenderPlanUseCase:
             app_config=app_config,
             video_settings=video_settings,
             song_id=song_id,
+            scene_duration_policy=request.scene_duration_policy,
             artifact_store=self.artifact_store,
             reporter=self.reporter,
             console=_ReporterConsole(self.reporter),
@@ -130,6 +135,7 @@ class GenerateRenderPlanUseCase:
         if not config.input_audio.exists():
             raise FileNotFoundError(config.input_audio)
 
+        self.report_scene_duration_clamp(request.scene_duration_policy)
         context = self.execute_services(context)
         render_plan = context["render_plan"]
         total_frames = sum(scene["frame_count"] for scene in render_plan)
@@ -156,6 +162,24 @@ class GenerateRenderPlanUseCase:
             scene_count=len(render_plan),
             total_frames=total_frames,
             total_duration_seconds=total_duration,
+        )
+
+    def report_scene_duration_clamp(
+        self,
+        policy: ResolvedSceneDurationPolicy | None,
+    ) -> None:
+        if policy is None or not policy.clamped:
+            return
+        limiting_workflow = policy.limiting_workflow or "Default ComfyUI video limit"
+        self.reporter.panel(
+            f"Requested scene duration: {policy.requested_min_seconds:.3f}s.."
+            f"{policy.requested_max_seconds:.3f}s\n"
+            f"Effective scene duration: {policy.effective_min_seconds:.3f}s.."
+            f"{policy.effective_max_seconds:.3f}s\n"
+            f"Render limit: {policy.max_render_duration_seconds:.3f}s including "
+            f"{policy.preroll_frames} pre-roll and {policy.tail_frames} tail frames\n"
+            f"Limiting workflow: {limiting_workflow}",
+            title="Scene duration limit",
         )
 
     def print_summary(

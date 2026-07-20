@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
@@ -56,7 +57,17 @@ class SceneTimelinePipeline:
 
         log_step("4. Beat-Aligned Scene SRT")
         scene_cfg = config.scene_generation
-        scene_generator = self.scene_generator_factory(scene_cfg)
+        policy = context["scene_duration_policy"]
+        effective_scene_cfg = (
+            replace(
+                scene_cfg,
+                min_duration=policy.effective_min_seconds,
+                max_duration=policy.effective_max_seconds,
+            )
+            if policy is not None
+            else scene_cfg
+        )
+        scene_generator = self.scene_generator_factory(effective_scene_cfg)
         scene_generator.generate_from_json_file(
             beat_json_path=beat_json,
             output_srt_path=scene_srt_raw,
@@ -65,16 +76,16 @@ class SceneTimelinePipeline:
         self.enforce_scene_srt_file(
             input_srt=scene_srt_raw,
             output_srt=scene_srt,
-            min_duration=scene_cfg.min_duration,
-            max_duration=scene_cfg.max_duration,
+            min_duration=effective_scene_cfg.min_duration,
+            max_duration=effective_scene_cfg.max_duration,
             artifact_store=artifact_store,
         )
         log_file("Repaired Scene SRT", scene_srt)
         repaired_scenes = self.parse_scene_srt(scene_srt)
         duration_errors = self.validate_scene_durations(
             repaired_scenes,
-            min_duration=scene_cfg.min_duration,
-            max_duration=scene_cfg.max_duration,
+            min_duration=effective_scene_cfg.min_duration,
+            max_duration=effective_scene_cfg.max_duration,
         )
         if duration_errors:
             raise ValueError(

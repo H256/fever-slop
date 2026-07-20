@@ -36,6 +36,115 @@ class ConsolePrintingFakeService(FakeService):
 
 
 class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
+    def test_clamped_scene_duration_is_reported_in_english_before_services(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.wav"
+            audio.write_bytes(b"dummy audio")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "demo",
+                        "input_audio": "song.wav",
+                        "video": {"fps": 24},
+                        "scene_generation": {"min_duration": 2.0, "max_duration": 30.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            app_config_path = temp / "app_config.json"
+            app_config_path.write_text(
+                json.dumps(
+                    {"comfyui": {"default_max_render_duration_seconds": 18.0}}
+                ),
+                encoding="utf-8",
+            )
+            events = []
+
+            class Reporter:
+                def panel(self, text, *, title=None):
+                    events.append(("panel", title, text))
+
+                def step(self, _title):
+                    pass
+
+                def file(self, _label, _path):
+                    pass
+
+                def message(self, _text):
+                    pass
+
+                def table(self, _title, _columns, _rows):
+                    pass
+
+                def run_progress(self, _description, func):
+                    return func()
+
+            service = FakeService(
+                "service",
+                events,
+                lambda context: setattr(
+                    context,
+                    "render_plan",
+                    [{"scene": 1, "frame_count": 24, "duration_seconds": 1.0}],
+                ),
+            )
+            request = build_generate_render_plan_execution_request(
+                GenerateRenderPlanRequest(
+                    project_config_path=config_path,
+                    app_config_path=app_config_path,
+                    video_workflow_paths=(Path("workflows/video.json"),),
+                )
+            )
+
+            GenerateRenderPlanUseCase(
+                reporter=Reporter(),
+                pipeline_services=[service],
+                artifact_store=FakeArtifactStore(),
+            ).execute(request)
+
+            clamp_event = next(event for event in events if event[:2] == ("panel", "Scene duration limit"))
+            self.assertLess(events.index(clamp_event), events.index("service"))
+            self.assertIn("Requested scene duration: 2.000s..30.000s", clamp_event[2])
+            self.assertIn("Effective scene duration: 2.000s..14.917s", clamp_event[2])
+            self.assertIn(
+                "Render limit: 18.000s including 50 pre-roll and 25 tail frames",
+                clamp_event[2],
+            )
+            self.assertIn("Limiting workflow: video.json", clamp_event[2])
+
+    def test_unclamped_scene_duration_does_not_report_limit_panel(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.wav"
+            audio.write_bytes(b"dummy audio")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"project_name": "demo", "input_audio": "song.wav"}),
+                encoding="utf-8",
+            )
+            app_config_path = temp / "app_config.json"
+            app_config_path.write_text("{}", encoding="utf-8")
+            output = io.StringIO()
+            service = FakeService(
+                "service",
+                [],
+                lambda context: setattr(context, "render_plan", []),
+            )
+
+            GenerateRenderPlanUseCase(
+                console=Console(file=output),
+                pipeline_services=[service],
+                artifact_store=FakeArtifactStore(),
+            ).execute(
+                build_generate_render_plan_execution_request(
+                    GenerateRenderPlanRequest(config_path, app_config_path)
+                )
+            )
+
+            self.assertNotIn("Scene duration limit", output.getvalue())
+
     def test_generate_render_plan_execute_can_run_with_fake_pipeline_services(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
