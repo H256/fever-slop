@@ -117,6 +117,10 @@ class SceneWorkflowManifest:
     trim_front_frames: int
     width: int
     height: int
+    max_render_frames: int | None = None
+    max_render_duration_seconds: float | None = None
+    render_budget_workflow_path: str | None = None
+    round_render_frames_to_8n1: bool = False
 
     @classmethod
     def create(
@@ -126,6 +130,10 @@ class SceneWorkflowManifest:
         assets: list[tuple[str, str | Path, str]], seed: int, fps: int,
         frame_count: int, width: int, height: int,
         render_frame_count: int | None = None, trim_front_frames: int = 0,
+        max_render_frames: int | None = None,
+        max_render_duration_seconds: float | None = None,
+        render_budget_workflow_path: str | Path | None = None,
+        round_render_frames_to_8n1: bool = False,
     ) -> SceneWorkflowManifest:
         return cls(
             schema=SCHEMA,
@@ -142,6 +150,18 @@ class SceneWorkflowManifest:
             render_frame_count=int(render_frame_count if render_frame_count is not None else frame_count),
             trim_front_frames=int(trim_front_frames),
             width=int(width), height=int(height),
+            max_render_frames=(None if max_render_frames is None else int(max_render_frames)),
+            max_render_duration_seconds=(
+                None
+                if max_render_duration_seconds is None
+                else float(max_render_duration_seconds)
+            ),
+            render_budget_workflow_path=(
+                None
+                if render_budget_workflow_path is None
+                else str(render_budget_workflow_path)
+            ),
+            round_render_frames_to_8n1=bool(round_render_frames_to_8n1),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -154,6 +174,10 @@ class SceneWorkflowManifest:
             "render_frame_count": self.render_frame_count,
             "trim_front_frames": self.trim_front_frames,
             "width": self.width, "height": self.height,
+            "max_render_frames": self.max_render_frames,
+            "max_render_duration_seconds": self.max_render_duration_seconds,
+            "render_budget_workflow_path": self.render_budget_workflow_path,
+            "round_render_frames_to_8n1": self.round_render_frames_to_8n1,
         }
 
     def write(self, path: str | Path) -> Path:
@@ -193,6 +217,18 @@ class SceneWorkflowManifest:
             trim_front_frames=int(payload.get("trim_front_frames", 0)),
             width=int(payload["width"]),
             height=int(payload["height"]),
+            max_render_frames=(
+                None
+                if payload.get("max_render_frames") is None
+                else int(payload["max_render_frames"])
+            ),
+            max_render_duration_seconds=(
+                None
+                if payload.get("max_render_duration_seconds") is None
+                else float(payload["max_render_duration_seconds"])
+            ),
+            render_budget_workflow_path=payload.get("render_budget_workflow_path"),
+            round_render_frames_to_8n1=bool(payload.get("round_render_frames_to_8n1", False)),
         )
 
     def verify(self, project_dir: str | Path) -> list[str]:

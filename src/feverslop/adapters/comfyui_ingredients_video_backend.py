@@ -91,6 +91,7 @@ class ComfyUIIngredientsVideoRenderBackend:
             workflow_path=self.render_budget_workflow_path or self.workflow_label,
             max_render_frames=self.max_render_frames,
             max_render_duration_seconds=self.max_render_duration_seconds,
+            round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
         comfy_audio_name = None
         if request.upload_audio or request.uploaded_audio_name:

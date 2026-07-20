@@ -13,6 +13,7 @@ from feverslop.domain.prepared_workflow import (
     StoredArtifact,
 )
 from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.ports.workflow import WorkflowMaterializationRequest
 from feverslop.scene_artifacts import SceneArtifactLayout
 
@@ -48,6 +49,22 @@ class WorkflowMaterializer:
                     request.audio_file, upload_audio=True, uploaded_audio_name=None,
                 )
             rolling = self.backend._rolling_spec(scene)
+            validate_render_frame_budget(
+                scene_number=scene_number,
+                render_frame_count=int(_rolling_value(rolling, "render_frame_count")),
+                fps=int(_rolling_value(rolling, "fps") or scene.get("fps") or 0),
+                workflow_path=(
+                    getattr(self.backend, "render_budget_workflow_path", None)
+                    or self.backend.workflow_label
+                ),
+                max_render_frames=getattr(self.backend, "max_render_frames", None),
+                max_render_duration_seconds=getattr(
+                    self.backend, "max_render_duration_seconds", None
+                ),
+                round_render_frames_to_8n1=bool(
+                    getattr(self.backend, "round_render_frames_to_8n1", False)
+                ),
+            )
             old_offset = self.backend.seed_offset
             old_randomize = self.backend.randomize_seed
             try:
@@ -85,6 +102,16 @@ class WorkflowMaterializer:
                 trim_front_frames=int(_rolling_value(rolling, "trim_front_frames") or 0),
                 width=int(scene.get("width") or 0),
                 height=int(scene.get("height") or 0),
+                max_render_frames=getattr(self.backend, "max_render_frames", None),
+                max_render_duration_seconds=getattr(
+                    self.backend, "max_render_duration_seconds", None
+                ),
+                render_budget_workflow_path=getattr(
+                    self.backend, "render_budget_workflow_path", None
+                ),
+                round_render_frames_to_8n1=bool(
+                    getattr(self.backend, "round_render_frames_to_8n1", False)
+                ),
             )
             workflow_artifact = StoredArtifact.from_path(
                 workflow_path, project_dir=self.layout.project_dir,
@@ -146,11 +173,19 @@ class PreparedWorkflowRenderer:
     def __init__(
         self, *, project_dir: str | Path, render_queue: Any, postprocessor: Any,
         expected_pipeline: str,
+        max_render_frames: int | None = None,
+        max_render_duration_seconds: float | None = None,
+        render_budget_workflow_path: str | Path | None = None,
+        round_render_frames_to_8n1: bool = False,
     ):
         self.project_dir = Path(project_dir)
         self.render_queue = render_queue
         self.postprocessor = postprocessor
         self.expected_pipeline = expected_pipeline
+        self.max_render_frames = max_render_frames
+        self.max_render_duration_seconds = max_render_duration_seconds
+        self.render_budget_workflow_path = render_budget_workflow_path
+        self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
 
     def render(self, prepared_workflow_path: str | Path) -> Path:
         workflow_path = Path(prepared_workflow_path)
@@ -168,6 +203,30 @@ class PreparedWorkflowRenderer:
         mismatches = manifest.verify(self.project_dir)
         if mismatches:
             raise ValueError("Prepared workflow verification failed: " + "; ".join(mismatches))
+        validate_render_frame_budget(
+            scene_number=manifest.scene,
+            render_frame_count=manifest.render_frame_count,
+            fps=manifest.fps,
+            workflow_path=(
+                manifest.render_budget_workflow_path or manifest.template.path
+            ),
+            max_render_frames=manifest.max_render_frames,
+            max_render_duration_seconds=manifest.max_render_duration_seconds,
+            round_render_frames_to_8n1=manifest.round_render_frames_to_8n1,
+        )
+        validate_render_frame_budget(
+            scene_number=manifest.scene,
+            render_frame_count=manifest.render_frame_count,
+            fps=manifest.fps,
+            workflow_path=(
+                self.render_budget_workflow_path
+                or manifest.render_budget_workflow_path
+                or manifest.template.path
+            ),
+            max_render_frames=self.max_render_frames,
+            max_render_duration_seconds=self.max_render_duration_seconds,
+            round_render_frames_to_8n1=self.round_render_frames_to_8n1,
+        )
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
         layout = SceneArtifactLayout(self.project_dir)
         raw_path = layout.scene_raw_video(manifest.scene)

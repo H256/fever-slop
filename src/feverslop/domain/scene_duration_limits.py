@@ -169,24 +169,37 @@ def validate_render_frame_budget(
     workflow_path: str | Path,
     max_render_frames: int | None,
     max_render_duration_seconds: float | None,
+    round_render_frames_to_8n1: bool = False,
 ) -> None:
-    if max_render_frames is None:
+    if max_render_frames is None and max_render_duration_seconds is None:
         return
 
     resolved_fps = _nonnegative_integer(fps, "fps")
     if resolved_fps == 0:
         raise FeverSlopValidationError("fps must be greater than zero")
-    resolved_max_render_frames = _nonnegative_integer(
-        max_render_frames,
-        "max_render_frames",
-    )
-    if resolved_max_render_frames == 0:
-        raise FeverSlopValidationError("max_render_frames must be greater than zero")
-    if max_render_duration_seconds is not None:
-        configured_duration = _positive_finite(
+    configured_duration = (
+        None
+        if max_render_duration_seconds is None
+        else _positive_finite(
             max_render_duration_seconds,
             "max_render_duration_seconds",
         )
+    )
+    if max_render_frames is None:
+        render_intervals = (
+            Decimal(str(configured_duration)) * Decimal(resolved_fps)
+        ).to_integral_value(rounding=ROUND_FLOOR)
+        resolved_max_render_frames = int(render_intervals) + 1
+        if round_render_frames_to_8n1:
+            resolved_max_render_frames = round_down_8n1(resolved_max_render_frames)
+    else:
+        resolved_max_render_frames = _nonnegative_integer(
+            max_render_frames,
+            "max_render_frames",
+        )
+    if resolved_max_render_frames == 0:
+        raise FeverSlopValidationError("max_render_frames must be greater than zero")
+    if configured_duration is not None:
         allowed_interval = Decimal(resolved_max_render_frames - 1) / Decimal(resolved_fps)
         if allowed_interval > Decimal(str(configured_duration)):
             raise FeverSlopValidationError(

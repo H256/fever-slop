@@ -416,6 +416,7 @@ class ComfyUIVideoRenderBackend:
             workflow_path=self.render_budget_workflow_path or workflow_path,
             max_render_frames=self.max_render_frames,
             max_render_duration_seconds=self.max_render_duration_seconds,
+            round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
         workflow = self.workflow_patcher.build_workflow(
             scene=scene,

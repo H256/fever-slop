@@ -10,6 +10,72 @@ from feverslop.errors import FeverSlopValidationError
 
 
 class RenderVideoCompositionMSRTests(unittest.TestCase):
+    def test_standalone_single_prompt_uses_separate_single_workflow_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            app_config = temp / "app_config.json"
+            app_config.write_text(json.dumps({"comfyui": {
+                "video_workflow_limits": [
+                    {"workflow": "relay.json", "max_render_duration_seconds": 24},
+                    {"workflow": "single.json", "max_render_duration_seconds": 18},
+                ],
+            }}), encoding="utf-8")
+            relay_workflow = temp / "relay.json"
+            single_workflow = temp / "single.json"
+            relay_workflow.write_text("{}", encoding="utf-8")
+            single_workflow.write_text("{}", encoding="utf-8")
+
+            with patch("feverslop.composition.render_video.ComfyUIClient"):
+                use_case = build_render_video_scenes_use_case(
+                    RenderVideoCompositionOptions(
+                        app_config_path=app_config,
+                        workflow_path=relay_workflow,
+                        single_prompt_workflow_path=single_workflow,
+                        output_dir=temp / "out",
+                        render_mode="single_prompt",
+                        rolling_frame_profile="off",
+                    )
+                )
+
+            self.assertEqual(18.0, use_case.backend.max_render_duration_seconds)
+            self.assertEqual("single.json", use_case.backend.render_budget_workflow_path)
+
+    def test_standalone_render_uses_scene_fps_to_enforce_default_duration_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            app_config = temp / "app_config.json"
+            app_config.write_text(json.dumps({"comfyui": {
+                "default_max_render_duration_seconds": 2,
+            }}), encoding="utf-8")
+            workflow = temp / "workflow.json"
+            workflow.write_text("{}", encoding="utf-8")
+
+            with patch("feverslop.composition.render_video.ComfyUIClient") as client_type:
+                use_case = build_render_video_scenes_use_case(
+                    RenderVideoCompositionOptions(
+                        app_config_path=app_config,
+                        workflow_path=workflow,
+                        output_dir=temp / "out",
+                        render_mode="single_prompt",
+                        rolling_frame_profile="off",
+                    )
+                )
+
+            backend = use_case.backend
+            scene = {
+                "scene": 1, "fps": 24, "frame_count": 50,
+                "abs_start_seconds": 0,
+                "ltx": {"original_style_i2v_prompt": "prompt"},
+            }
+            with self.assertRaisesRegex(FeverSlopValidationError, "limited to 49 frames"):
+                backend.render_scene_video(
+                    scene, "audio.mp3", "start.png", backend._rolling_spec(scene)
+                )
+
+            self.assertIsNone(backend.max_render_frames)
+            self.assertEqual(2.0, backend.max_render_duration_seconds)
+            client_type.return_value.queue_prompt.assert_not_called()
+
     def test_auto_mode_uses_strictest_workflow_limit_and_reports_limiting_workflow(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

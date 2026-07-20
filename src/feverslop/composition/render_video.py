@@ -270,12 +270,17 @@ def _resolve_render_frame_budget(
     tail_loss_frames: int,
     round_render_frames_to_8n1: bool,
 ) -> tuple[int | None, float | None, str | None]:
-    if project_config is None:
-        return None, None, None
-
-    workflow_paths = [workflow_path]
+    if render_mode == "single_prompt" and single_prompt_workflow_path:
+        workflow_paths = [single_prompt_workflow_path]
+    else:
+        workflow_paths = [workflow_path]
     if render_mode == "auto" and single_prompt_workflow_path:
         workflow_paths.append(single_prompt_workflow_path)
+    if project_config is None:
+        duration, limiting_workflow = _resolve_configured_workflow_duration(
+            app_config, workflow_paths
+        )
+        return None, duration, limiting_workflow
 
     policy = resolve_scene_duration_policy(
         requested_min_seconds=project_config.scene_generation.min_duration,
@@ -298,6 +303,29 @@ def _resolve_render_frame_budget(
         policy.max_render_duration_seconds,
         policy.limiting_workflow,
     )
+
+
+def _resolve_configured_workflow_duration(
+    app_config: AppConfig,
+    workflow_paths: list[str | Path],
+) -> tuple[float | None, str | None]:
+    limits = {
+        Path(limit.workflow).name.casefold(): limit.max_render_duration_seconds
+        for limit in app_config.comfyui.video_workflow_limits
+    }
+    candidates: list[tuple[float, str]] = []
+    for workflow_path in workflow_paths:
+        basename = Path(str(workflow_path).strip()).name
+        duration = limits.get(
+            basename.casefold(),
+            app_config.comfyui.default_max_render_duration_seconds,
+        )
+        if duration is not None:
+            candidates.append((duration, basename))
+    if not candidates:
+        return None, None
+    duration, workflow = min(candidates, key=lambda item: item[0])
+    return float(duration), workflow
 
 
 def namespace_to_options(args) -> RenderVideoCompositionOptions:
