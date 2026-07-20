@@ -4,10 +4,16 @@ from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
+    round_down_8n1,
 )
 
 
 class LTXRenderingDomainTests(unittest.TestCase):
+    def test_round_down_8n1_never_exceeds_frame_budget(self):
+        self.assertEqual(433, round_down_8n1(433))
+        self.assertEqual(433, round_down_8n1(436))
+        self.assertEqual(1, round_down_8n1(7))
+
     def test_build_audio_window_spec_handles_original_rolling_profile(self):
         spec = build_audio_window_spec(
             scene_number=2,

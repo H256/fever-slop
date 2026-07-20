@@ -26,6 +26,8 @@ from feverslop.adapters.audio.beat_analysis import BeatSceneDurationGenerator
 from feverslop.adapters.audio.demucs_separator import DemucsSeparator
 from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
 from feverslop.domain.timeline_transform import merge_same_kind_segments, normalize_empty_vocals
+from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
+from feverslop.domain.scene_duration_limits import resolve_scene_duration_policy
 from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.pipeline.scene_duration_enforcer import (
@@ -81,6 +83,26 @@ def build_generate_render_plan_execution_request(request: GenerateRenderPlanRequ
     paths = ProjectPaths.from_config(config)
     app_config = AppConfig.load(request.app_config_path)
     video_settings = config.to_video_settings()
+    preroll_frames, tail_frames, round_render_frames_to_8n1 = resolve_rolling_frame_profile(
+        request.rolling_frame_profile
+    )
+    workflow_limits = {
+        limit.workflow: limit.max_render_duration_seconds
+        for limit in app_config.comfyui.video_workflow_limits
+    }
+    scene_duration_policy = resolve_scene_duration_policy(
+        requested_min_seconds=config.scene_generation.min_duration,
+        requested_max_seconds=config.scene_generation.max_duration,
+        fps=video_settings.fps,
+        preroll_frames=preroll_frames,
+        tail_frames=tail_frames,
+        round_render_frames_to_8n1=round_render_frames_to_8n1,
+        workflow_limits=workflow_limits,
+        workflow_paths=request.video_workflow_paths,
+        default_max_render_duration_seconds=(
+            app_config.comfyui.default_max_render_duration_seconds
+        ),
+    )
     song_id = getattr(config, "song_id", None) or getattr(config, "project_name", "") or config.input_audio.stem
     return GenerateRenderPlanExecutionRequest(
         source_request=request,
@@ -89,6 +111,7 @@ def build_generate_render_plan_execution_request(request: GenerateRenderPlanRequ
         app_config=app_config,
         video_settings=video_settings,
         song_id=song_id,
+        scene_duration_policy=scene_duration_policy,
     )
 
 

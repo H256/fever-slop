@@ -111,6 +111,38 @@ def _build_relay_ingredients_workflow():
 
 
 class ComfyUIIngredientsBackendTests(unittest.TestCase):
+    def test_render_frame_budget_rejects_above_limit_and_allows_exact_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_minimal_ingredients_workflow()), encoding="utf-8")
+            queue = FakeRenderQueue()
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(), workflow_path=workflow_path, output_dir=temp / "out",
+                project_dir=temp, preroll_frames=50, tail_loss_frames=0,
+                round_render_frames_to_8n1=False, postprocess=False, render_queue=queue,
+                max_render_frames=49, max_render_duration_seconds=2,
+            )
+
+            def request(frame_count):
+                return VideoRenderRequest(
+                    scene={"scene": 1, "fps": 24, "frame_count": frame_count,
+                           "ingredients_scene_sheet": "sheet.png",
+                           "ltx": {"ingredients_target_prompt": "target"}},
+                    scene_number=1, prompt="fallback", workflow_path=workflow_path,
+                    output_dir=temp / "out", audio_file=Path(""), storyboard_dir=Path(""),
+                    upload_audio=False,
+                )
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "Scene 1 requires 50 render frames"):
+                backend.render_video(request(50))
+            self.assertEqual([], queue.calls)
+
+            backend.render_video(request(49))
+            self.assertEqual(1, len(queue.calls))
+
     def test_relay_workflow_uses_compact_global_prompt_and_temporal_segments(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

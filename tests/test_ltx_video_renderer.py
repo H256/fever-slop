@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.errors import FeverSlopValidationError
 
 
 class PromptRelayPayloadTests(unittest.TestCase):
@@ -678,6 +679,43 @@ class LTXLoraTests(unittest.TestCase):
 
 
 class RollingFrameSpecTests(unittest.TestCase):
+    def test_render_frame_budget_rejects_above_limit_and_allows_exact_limit(self):
+        class FakeQueue:
+            def __init__(self):
+                self.calls = []
+
+            def queue_workflow_and_download_first_video(self, workflow, scene_number, output_path):
+                self.calls.append(workflow)
+                return Path(output_path)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            workflow = temp / "workflow.json"
+            titles = ["#WIDTH", "#HEIGHT", "#LOAD_AUDIO", "#TRIM_AUDIO", "#STARTFRAME",
+                      "#FRAMES", "#FRAMERATE", "#SEED", "#PROMPT", "#SAVE_VIDEO"]
+            workflow.write_text(json.dumps({
+                str(index): {"inputs": {"text": "", "value": 0, "filename_prefix": ""},
+                             "_meta": {"title": title}}
+                for index, title in enumerate(titles, start=1)
+            }), encoding="utf-8")
+            queue = FakeQueue()
+            renderer = LTXVideoRenderer(
+                client=None, ltx_workflow_path=workflow, output_dir=temp / "out",
+                render_mode="single_prompt", render_queue=queue,
+                max_render_frames=49, max_render_duration_seconds=2,
+            )
+            scene = {"scene": 1, "fps": 24, "frame_count": 50, "abs_start_seconds": 0,
+                     "width": 1280, "height": 704,
+                     "ltx": {"original_style_i2v_prompt": "prompt"}}
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "Scene 1 requires 50 render frames"):
+                renderer.render_scene_video(scene, "audio.mp3", "start.png", renderer._rolling_spec(scene))
+            self.assertEqual([], queue.calls)
+
+            scene["frame_count"] = 49
+            renderer.render_scene_video(scene, "audio.mp3", "start.png", renderer._rolling_spec(scene))
+            self.assertEqual(1, len(queue.calls))
+
     def test_rolling_spec_is_typed_audio_window_with_mapping_compatibility(self):
         renderer = LTXVideoRenderer(
             client=None,

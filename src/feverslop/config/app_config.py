@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 import json
+import math
 
 from feverslop.config.comfyui import ComfyUIModelOverride
 from feverslop.path_utils import coerce_local_path
@@ -16,11 +17,32 @@ class LLMConfig:
     max_tokens: int = 4096
 
 
+@dataclass(frozen=True)
+class VideoWorkflowLimitConfig:
+    workflow: str
+    max_render_duration_seconds: float
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> "VideoWorkflowLimitConfig":
+        raw_workflow = raw.get("workflow")
+        if not isinstance(raw_workflow, str):
+            raise ValueError("Video workflow limit workflow must be a string")
+        workflow = raw_workflow.strip()
+        duration = float(raw["max_render_duration_seconds"])
+        if not workflow:
+            raise ValueError("Video workflow limit requires a non-empty workflow")
+        if not math.isfinite(duration) or duration <= 0:
+            raise ValueError("max_render_duration_seconds must be greater than zero")
+        return cls(workflow=workflow, max_render_duration_seconds=duration)
+
+
 @dataclass
 class ComfyUIConfig:
     base_url: str = "http://127.0.0.1:8188"
     prompt_timeout_seconds: float = 1800.0
     model_overrides: list[ComfyUIModelOverride] = field(default_factory=list)
+    default_max_render_duration_seconds: float | None = None
+    video_workflow_limits: tuple[VideoWorkflowLimitConfig, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -75,6 +97,27 @@ class AppConfig:
     def _build_config(cls, raw: dict) -> "AppConfig":
         llm_raw = raw.get("llm", {})
         comfyui_raw = raw.get("comfyui", {})
+        default_max_render_duration_raw = comfyui_raw.get("default_max_render_duration_seconds")
+        default_max_render_duration = (
+            None
+            if default_max_render_duration_raw is None
+            else float(default_max_render_duration_raw)
+        )
+        if default_max_render_duration is not None and (
+            not math.isfinite(default_max_render_duration) or default_max_render_duration <= 0
+        ):
+            raise ValueError("default_max_render_duration_seconds must be greater than zero")
+
+        video_workflow_limits = tuple(
+            VideoWorkflowLimitConfig.from_dict(item)
+            for item in comfyui_raw.get("video_workflow_limits") or []
+        )
+        workflow_basenames: set[str] = set()
+        for item in video_workflow_limits:
+            workflow_basename = Path(item.workflow).name.casefold()
+            if workflow_basename in workflow_basenames:
+                raise ValueError(f"Duplicate video workflow limit: {Path(item.workflow).name}")
+            workflow_basenames.add(workflow_basename)
 
         return cls(
             llm=LLMConfig(
@@ -90,6 +133,8 @@ class AppConfig:
                     ComfyUIModelOverride.from_dict(item)
                     for item in comfyui_raw.get("model_overrides") or []
                 ],
+                default_max_render_duration_seconds=default_max_render_duration,
+                video_workflow_limits=video_workflow_limits,
             ),
             storyboard_prompt_transforms=[
                 StoryboardPromptTransformConfig.from_dict(item)

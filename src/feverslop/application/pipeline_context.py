@@ -6,6 +6,7 @@ from typing import Any, Callable, Iterator
 
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import NullReporter, Reporter
+from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 
 
 @dataclass
@@ -16,6 +17,7 @@ class GenerateRenderPlanContext:
     app_config: dict[str, Any] | None = None
     video_settings: Any = None
     song_id: str = ""
+    scene_duration_policy: ResolvedSceneDurationPolicy | None = None
     artifact_store: ArtifactStore | None = None
     reporter: Reporter = NullReporter()
     console: Any = None

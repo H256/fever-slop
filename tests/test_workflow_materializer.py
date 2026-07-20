@@ -14,6 +14,7 @@ from feverslop.adapters.prepared_workflow import (
     WorkflowMaterializer,
 )
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.errors import FeverSlopValidationError
 from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
 from feverslop.scene_artifacts import SceneArtifactLayout
 
@@ -45,6 +46,10 @@ class FakeBackend:
         self.randomize_seed = True
         self.build_calls = 0
         self.seed_calls = 0
+        self.max_render_frames = None
+        self.max_render_duration_seconds = None
+        self.render_budget_workflow_path = None
+        self.round_render_frames_to_8n1 = False
 
     def _seed_for_scene(self, scene_number):
         self.seed_calls += 1
@@ -87,6 +92,98 @@ class FakePostprocessor:
 
 
 class WorkflowMaterializerTests(unittest.TestCase):
+    def test_renderer_enforces_current_budget_for_legacy_manifest(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            template.write_text("{}")
+            plan = project / "plan.json"
+            plan.write_text("{}")
+            prepared = WorkflowMaterializer(
+                FakeBackend(template), SceneArtifactLayout(project)
+            ).prepare(
+                WorkflowMaterializationRequest(
+                    scene={"scene": 1, "fps": 24, "frame_count": 50,
+                           "width": 64, "height": 64},
+                    prompt="x", audio_file=None, render_plan_path=plan,
+                    pipeline="test", seed=1,
+                )
+            )
+            payload = json.loads(prepared.manifest_path.read_text())
+            for key in (
+                "max_render_frames", "max_render_duration_seconds",
+                "render_budget_workflow_path", "round_render_frames_to_8n1",
+            ):
+                payload.pop(key, None)
+            prepared.manifest_path.write_text(json.dumps(payload))
+            queue = FakeQueue()
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "current.json"):
+                PreparedWorkflowRenderer(
+                    project_dir=project, render_queue=queue,
+                    postprocessor=FakePostprocessor(), expected_pipeline="test",
+                    max_render_frames=49, max_render_duration_seconds=2,
+                    render_budget_workflow_path="current.json",
+                ).render(prepared.workflow_path)
+
+            self.assertEqual([], queue.workflows)
+
+    def test_prepare_rejects_render_above_budget_before_workflow_build(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            template.write_text("{}")
+            plan = project / "plan.json"
+            plan.write_text("{}")
+            backend = FakeBackend(template)
+            backend.max_render_frames = 49
+            backend.max_render_duration_seconds = 2
+            backend.render_budget_workflow_path = "limited.json"
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "Scene 1 requires 50 render frames"):
+                WorkflowMaterializer(backend, SceneArtifactLayout(project)).prepare(
+                    WorkflowMaterializationRequest(
+                        scene={"scene": 1, "fps": 24, "frame_count": 50,
+                               "width": 64, "height": 64},
+                        prompt="x", audio_file=None, render_plan_path=plan,
+                        pipeline="test", seed=1,
+                    )
+                )
+
+            self.assertEqual(0, backend.build_calls)
+
+    def test_renderer_rejects_prepared_workflow_above_persisted_budget(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            template.write_text("{}")
+            plan = project / "plan.json"
+            plan.write_text("{}")
+            backend = FakeBackend(template)
+            backend.max_render_frames = 49
+            backend.max_render_duration_seconds = 2
+            backend.render_budget_workflow_path = "limited.json"
+            prepared = WorkflowMaterializer(backend, SceneArtifactLayout(project)).prepare(
+                WorkflowMaterializationRequest(
+                    scene={"scene": 1, "fps": 24, "frame_count": 49,
+                           "width": 64, "height": 64},
+                    prompt="x", audio_file=None, render_plan_path=plan,
+                    pipeline="test", seed=1,
+                )
+            )
+            payload = json.loads(prepared.manifest_path.read_text())
+            payload["render_frame_count"] = 50
+            prepared.manifest_path.write_text(json.dumps(payload))
+            queue = FakeQueue()
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "limited.json"):
+                PreparedWorkflowRenderer(
+                    project_dir=project, render_queue=queue,
+                    postprocessor=FakePostprocessor(), expected_pipeline="test",
+                ).render(prepared.workflow_path)
+
+            self.assertEqual([], queue.workflows)
+
     def test_vision_enriched_ingredients_prompt_reaches_materialized_workflow_unchanged(self):
         class VisionLLM:
             def complete_prompt_with_images(self, _system, _prompt, _paths):

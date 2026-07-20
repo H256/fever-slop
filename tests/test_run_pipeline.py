@@ -1,5 +1,6 @@
 import json
 import unittest
+from argparse import Namespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
@@ -7,6 +8,10 @@ from unittest.mock import Mock, patch
 from rich.progress import TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
 
 import run_pipeline
+from feverslop.composition.stage_runners import (
+    _run_main_pipeline_stage,
+    _selected_video_workflows,
+)
 
 
 class RunPipelinePathTests(unittest.TestCase):
@@ -56,6 +61,70 @@ class RunPipelinePathTests(unittest.TestCase):
 
 
 class RunPipelineOrchestrationTests(unittest.TestCase):
+    def test_selected_video_workflows_match_specialized_pipelines_and_render_modes(self):
+        paths = {
+            "msr_workflow": Path("msr.json"),
+            "ingredients_workflow": Path("ingredients.json"),
+            "relay_workflow": Path("relay.json"),
+            "single_prompt_workflow": Path("single.json"),
+        }
+        cases = [
+            ("ltx_msr", "auto", (paths["msr_workflow"],)),
+            ("ltx_ingredients", "auto", (paths["ingredients_workflow"],)),
+            ("ltx_i2v", "single_prompt", (paths["single_prompt_workflow"],)),
+            ("ltx_i2v", "relay", (paths["relay_workflow"],)),
+            (
+                "ltx_i2v",
+                "auto",
+                (paths["relay_workflow"], paths["single_prompt_workflow"]),
+            ),
+        ]
+
+        for video_pipeline, render_mode, expected in cases:
+            with self.subTest(video_pipeline=video_pipeline, render_mode=render_mode):
+                state = Namespace(
+                    args=Namespace(video_pipeline=video_pipeline, render_mode=render_mode),
+                    **paths,
+                )
+                self.assertEqual(expected, _selected_video_workflows(state))
+
+    def test_selected_video_workflows_omits_empty_relay_path_in_auto_mode(self):
+        state = Namespace(
+            args=Namespace(video_pipeline="ltx_i2v", render_mode="auto"),
+            msr_workflow=Path("msr.json"),
+            ingredients_workflow=Path("ingredients.json"),
+            relay_workflow=Path(""),
+            single_prompt_workflow=Path("single.json"),
+        )
+
+        self.assertEqual((Path("single.json"),), _selected_video_workflows(state))
+
+    def test_main_pipeline_stage_forwards_selected_workflows_and_rolling_profile(self):
+        state = Namespace(
+            args=Namespace(
+                video_pipeline="ltx_i2v",
+                render_mode="auto",
+                concept_batch_size=3,
+                rolling_frame_profile="safe",
+            ),
+            context=Namespace(
+                project_config_path=Path("project.json"),
+                render_plan=Path("render-plan.json"),
+            ),
+            app_config_path=Path("app.json"),
+            msr_workflow=Path("msr.json"),
+            ingredients_workflow=Path("ingredients.json"),
+            relay_workflow=Path("relay.json"),
+            single_prompt_workflow=Path("single.json"),
+        )
+
+        with patch("feverslop.composition.stage_runners.execute_generate_render_plan") as execute:
+            _run_main_pipeline_stage(state)
+
+        request = execute.call_args.args[0]
+        self.assertEqual((Path("relay.json"), Path("single.json")), request.video_workflow_paths)
+        self.assertEqual("safe", request.rolling_frame_profile)
+
     def test_pipeline_stage_arg_executes_only_anchor_fix(self):
         with TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "project"

@@ -8,6 +8,8 @@ from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
+from feverslop.config.project_config import SceneGenerationConfig
+from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -52,6 +54,94 @@ class RecordingReporter:
 
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
+    def test_clamp_report_uses_default_limit_label_without_selected_workflow(self):
+        reporter = RecordingReporter()
+        policy = ResolvedSceneDurationPolicy(
+            requested_min_seconds=2.0,
+            requested_max_seconds=30.0,
+            effective_min_seconds=2.0,
+            effective_max_seconds=14.916,
+            max_render_duration_seconds=18.0,
+            max_render_frames=433,
+            max_scene_frames=358,
+            fps=24,
+            preroll_frames=50,
+            tail_frames=25,
+            limiting_workflow=None,
+        )
+
+        GenerateRenderPlanUseCase(reporter=reporter).report_scene_duration_clamp(policy)
+
+        self.assertEqual("Scene duration limit", reporter.messages[0][0])
+        self.assertIn("Limiting workflow: Default ComfyUI video limit", reporter.messages[0][1])
+
+    def test_scene_timeline_pipeline_uses_effective_duration_policy_everywhere(self):
+        received = {}
+
+        class Generator:
+            def generate_from_json_file(self, **_kwargs):
+                return None
+
+        def scene_generator_factory(scene_cfg):
+            received["generator"] = (scene_cfg.min_duration, scene_cfg.max_duration)
+            return Generator()
+
+        def enforce_scene_srt_file(**kwargs):
+            received["enforce"] = (kwargs["min_duration"], kwargs["max_duration"])
+
+        def validate_scene_durations(_scenes, *, min_duration, max_duration):
+            received["validate"] = (min_duration, max_duration)
+            return []
+
+        class Store:
+            def read_json(self, _path):
+                return []
+
+        requested_scene_cfg = SceneGenerationConfig(min_duration=2.0, max_duration=30.0)
+        policy = ResolvedSceneDurationPolicy(
+            requested_min_seconds=2.0,
+            requested_max_seconds=30.0,
+            effective_min_seconds=2.0,
+            effective_max_seconds=14.916,
+            max_render_duration_seconds=18.0,
+            max_render_frames=433,
+            max_scene_frames=358,
+            fps=24,
+            preroll_frames=50,
+            tail_frames=25,
+            limiting_workflow="video.json",
+        )
+        context = GenerateRenderPlanContext(
+            config=SimpleNamespace(scene_generation=requested_scene_cfg),
+            video_settings=SimpleNamespace(fps=24),
+            timeline_json=Path("timeline.json"),
+            beat_json=Path("beat.json"),
+            scene_srt_raw=Path("raw.srt"),
+            scene_srt=Path("scenes.srt"),
+            stage1_segments_json=Path("stage1.json"),
+            ltx_prompt_relay_json=Path("relay.json"),
+            scene_duration_policy=policy,
+            artifact_store=Store(),
+            log_step=lambda _title: None,
+            log_file=lambda _label, _path: None,
+            console=SimpleNamespace(print=lambda *_args, **_kwargs: None),
+        )
+        pipeline = SceneTimelinePipeline(
+            scene_generator_factory=scene_generator_factory,
+            enforce_scene_srt_file=enforce_scene_srt_file,
+            parse_scene_srt=lambda _path: [],
+            validate_scene_durations=validate_scene_durations,
+            build_stage1_segment_json=lambda **_kwargs: None,
+            build_scene_prompt_relay=lambda **_kwargs: None,
+        )
+
+        pipeline.execute(context)
+
+        self.assertEqual((2.0, 14.916), received["generator"])
+        self.assertEqual((2.0, 14.916), received["enforce"])
+        self.assertEqual((2.0, 14.916), received["validate"])
+        self.assertEqual(30.0, requested_scene_cfg.max_duration)
+
     def test_audio_timeline_pipeline_declares_required_context_keys(self):
         self.assertEqual(
             {"config", "paths", "song_id", "video_settings"},

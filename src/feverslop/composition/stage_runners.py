@@ -96,12 +96,28 @@ def _run_tests_stage(_state: PipelineRunState) -> None:
     run_unittest_suite()
 
 
+def _selected_video_workflows(state: PipelineRunState) -> tuple[Path, ...]:
+    if state.args.video_pipeline == "ltx_msr":
+        candidates = (state.msr_workflow,)
+    elif state.args.video_pipeline == "ltx_ingredients":
+        candidates = (state.ingredients_workflow,)
+    elif state.args.render_mode == "single_prompt":
+        candidates = (state.single_prompt_workflow,)
+    elif state.args.render_mode == "relay":
+        candidates = (state.relay_workflow,)
+    else:
+        candidates = (state.relay_workflow, state.single_prompt_workflow)
+    return tuple(path for path in candidates if str(path).strip() not in {"", "."})
+
+
 def _run_main_pipeline_stage(state: PipelineRunState) -> None:
     execute_generate_render_plan(
         GenerateRenderPlanRequest(
             project_config_path=state.context.project_config_path,
             app_config_path=state.app_config_path,
             concept_batch_size=int(state.args.concept_batch_size),
+            video_workflow_paths=_selected_video_workflows(state),
+            rolling_frame_profile=state.args.rolling_frame_profile,
         ),
         console=console,
     )
@@ -256,7 +272,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
 
 
 def _specialized_video_use_case(state: PipelineRunState):
-    workflow = state.msr_workflow if state.args.video_pipeline == "ltx_msr" else state.ingredients_workflow
+    workflow = _selected_video_workflows(state)[0]
     return build_render_video_scenes_use_case(
         RenderVideoCompositionOptions(
             app_config_path=state.app_config_path,
@@ -408,6 +424,10 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             render_queue=backend.render_queue,
             postprocessor=backend.postprocessor,
             expected_pipeline=state.args.video_pipeline,
+            max_render_frames=backend.max_render_frames,
+            max_render_duration_seconds=backend.max_render_duration_seconds,
+            render_budget_workflow_path=backend.render_budget_workflow_path,
+            round_render_frames_to_8n1=backend.round_render_frames_to_8n1,
         )
         total = len(scenes)
         with RenderProgressReporter("Rendering prepared LTX scenes", total) as progress:
@@ -430,15 +450,13 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                 progress.update(final_path, completed, total)
         return
 
-    if state.args.video_pipeline == "ltx_msr":
-        ltx_workflow = state.msr_workflow
-        ltx_single_prompt_workflow = None
-    elif state.args.video_pipeline == "ltx_ingredients":
-        ltx_workflow = state.ingredients_workflow
+    selected_workflows = _selected_video_workflows(state)
+    if state.args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
+        ltx_workflow = selected_workflows[0]
         ltx_single_prompt_workflow = None
     else:
-        ltx_workflow = state.single_prompt_workflow if state.args.render_mode == "single_prompt" else state.relay_workflow
-        ltx_single_prompt_workflow = state.single_prompt_workflow if state.args.render_mode == "auto" else None
+        ltx_workflow = selected_workflows[0]
+        ltx_single_prompt_workflow = selected_workflows[1] if state.args.render_mode == "auto" else None
     video_use_case = build_render_video_scenes_use_case(
         RenderVideoCompositionOptions(
             app_config_path=state.app_config_path,
