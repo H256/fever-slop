@@ -16,6 +16,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.ltx_rendering import ROLLING_FRAME_PROFILES  # noqa: F401
 from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
+from feverslop.domain.scene_duration_limits import resolve_scene_duration_policy
 from feverslop.path_utils import coerce_local_path
 
 
@@ -63,6 +64,16 @@ def build_render_video_scenes_use_case(
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(options)
     project_config = resolved["project_config"]
     video_settings = project_config.to_video_settings() if project_config else None
+    max_render_frames, max_render_duration_seconds, render_budget_workflow_path = _resolve_render_frame_budget(
+        app_config=app_config,
+        project_config=project_config,
+        workflow_path=options.workflow_path,
+        single_prompt_workflow_path=options.single_prompt_workflow_path,
+        render_mode=options.render_mode,
+        preroll_frames=preroll_frames,
+        tail_loss_frames=tail_loss_frames,
+        round_render_frames_to_8n1=round_render_frames_to_8n1,
+    )
 
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
@@ -93,6 +104,9 @@ def build_render_video_scenes_use_case(
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
             video_settings=video_settings,
+            max_render_frames=max_render_frames,
+            max_render_duration_seconds=max_render_duration_seconds,
+            render_budget_workflow_path=render_budget_workflow_path,
         )
     elif options.video_pipeline == "ltx_ingredients":
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
@@ -114,6 +128,9 @@ def build_render_video_scenes_use_case(
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
             video_settings=video_settings,
+            max_render_frames=max_render_frames,
+            max_render_duration_seconds=max_render_duration_seconds,
+            render_budget_workflow_path=render_budget_workflow_path,
         )
     else:
         backend = ComfyUIVideoRenderBackend(
@@ -152,6 +169,9 @@ def build_render_video_scenes_use_case(
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
             video_settings=video_settings,
+            max_render_frames=max_render_frames,
+            max_render_duration_seconds=max_render_duration_seconds,
+            render_budget_workflow_path=render_budget_workflow_path,
         )
 
     return RenderVideoScenesUseCase(
@@ -237,6 +257,47 @@ def resolve_rolling_frames(options: RenderVideoCompositionOptions) -> tuple[int,
     preroll = profile_preroll if options.preroll_frames is None else options.preroll_frames
     tail = profile_tail if options.tail_loss_frames is None else options.tail_loss_frames
     return max(0, int(preroll)), max(0, int(tail)), bool(profile_rounding)
+
+
+def _resolve_render_frame_budget(
+    *,
+    app_config: AppConfig,
+    project_config: ProjectConfig | None,
+    workflow_path: str | Path,
+    single_prompt_workflow_path: str | Path | None,
+    render_mode: str,
+    preroll_frames: int,
+    tail_loss_frames: int,
+    round_render_frames_to_8n1: bool,
+) -> tuple[int | None, float | None, str | None]:
+    if project_config is None:
+        return None, None, None
+
+    workflow_paths = [workflow_path]
+    if render_mode == "auto" and single_prompt_workflow_path:
+        workflow_paths.append(single_prompt_workflow_path)
+
+    policy = resolve_scene_duration_policy(
+        requested_min_seconds=project_config.scene_generation.min_duration,
+        requested_max_seconds=project_config.scene_generation.max_duration,
+        fps=project_config.to_video_settings().fps,
+        preroll_frames=preroll_frames,
+        tail_frames=tail_loss_frames,
+        round_render_frames_to_8n1=round_render_frames_to_8n1,
+        workflow_limits={
+            limit.workflow: limit.max_render_duration_seconds
+            for limit in app_config.comfyui.video_workflow_limits
+        },
+        workflow_paths=workflow_paths,
+        default_max_render_duration_seconds=(
+            app_config.comfyui.default_max_render_duration_seconds
+        ),
+    )
+    return (
+        policy.max_render_frames,
+        policy.max_render_duration_seconds,
+        policy.limiting_workflow,
+    )
 
 
 def namespace_to_options(args) -> RenderVideoCompositionOptions:

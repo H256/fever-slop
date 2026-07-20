@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.config.video_settings import VideoSettings
+from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -65,6 +66,46 @@ class FakeModelResolver:
 
 
 class LTXMSRVideoBackendTests(unittest.TestCase):
+    def test_render_frame_budget_rejects_above_limit_and_allows_exact_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(json.dumps({
+                "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                "5": {"inputs": {"value": 0}, "_meta": {"title": "#FRAMES"}},
+            }), encoding="utf-8")
+            queue = FakeRenderQueue()
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=FakeClient(), workflow_path=workflow, output_dir=temp / "out",
+                project_dir=temp, preroll_frames=50, tail_loss_frames=0,
+                round_render_frames_to_8n1=False, postprocess=False, render_queue=queue,
+                max_render_frames=49, max_render_duration_seconds=2,
+            )
+
+            def request(frame_count):
+                return VideoRenderRequest(
+                    scene={"scene": 1, "fps": 24, "frame_count": frame_count,
+                           "references": {"actor_msr_paths": [str(actor)],
+                                          "location_msr_path": str(location)}},
+                    scene_number=1, prompt="prompt", workflow_path=workflow,
+                    output_dir=temp / "out", audio_file=temp / "song.mp3",
+                    storyboard_dir=temp, upload_audio=False,
+                )
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "Scene 1 requires 50 render frames"):
+                backend.render_video(request(50))
+            self.assertEqual([], queue.calls)
+
+            backend.render_video(request(49))
+            self.assertEqual(1, len(queue.calls))
+
     def test_backend_patches_msr_references_and_prompt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

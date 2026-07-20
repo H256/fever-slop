@@ -12,6 +12,7 @@ from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder, build_audio_window_spec
+from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.errors import FeverSlopValidationError
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
@@ -43,6 +44,9 @@ class ComfyUIIngredientsVideoRenderBackend:
         workflow: dict | None = None,
         workflow_label: str | Path | None = None,
         video_settings: VideoSettings | None = None,
+        max_render_frames: int | None = None,
+        max_render_duration_seconds: float | None = None,
+        render_budget_workflow_path: str | Path | None = None,
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -57,6 +61,9 @@ class ComfyUIIngredientsVideoRenderBackend:
         self.preroll_frames = max(0, int(preroll_frames))
         self.tail_loss_frames = max(0, int(tail_loss_frames))
         self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
+        self.max_render_frames = max_render_frames
+        self.max_render_duration_seconds = max_render_duration_seconds
+        self.render_budget_workflow_path = render_budget_workflow_path
         self.postprocess = bool(postprocess)
         self.postprocess_reencode = bool(postprocess_reencode)
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
@@ -77,6 +84,14 @@ class ComfyUIIngredientsVideoRenderBackend:
     def render_video(self, request: VideoRenderRequest) -> Path:
         scene_number = int(request.scene_number)
         rolling = self._rolling_spec(request.scene)
+        validate_render_frame_budget(
+            scene_number=scene_number,
+            render_frame_count=rolling.render_frame_count,
+            fps=rolling.fps,
+            workflow_path=self.render_budget_workflow_path or self.workflow_label,
+            max_render_frames=self.max_render_frames,
+            max_render_duration_seconds=self.max_render_duration_seconds,
+        )
         comfy_audio_name = None
         if request.upload_audio or request.uploaded_audio_name:
             comfy_audio_name = self.asset_uploader.resolve_audio_name(
