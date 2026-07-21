@@ -19,13 +19,15 @@ class ImportBoundaryTests(unittest.TestCase):
                     offenders.append(f"{path}:{node.lineno}")
         return offenders
 
-    def test_scene_workspace_non_qt_modules_do_not_import_pyside6(self):
+    def test_non_qt_layers_and_studio_services_do_not_import_pyside6(self):
+        studio_root = Path("src/feverslop/studio")
+        desktop_root = studio_root / "desktop"
         protected_paths = [
             *Path("src/feverslop/domain").rglob("*.py"),
             *Path("src/feverslop/ports").rglob("*.py"),
             *Path("src/feverslop/application").rglob("*.py"),
-            Path("src/feverslop/adapters/project_scene_documents.py"),
-            Path("src/feverslop/studio/scene_workspace_service.py"),
+            *Path("src/feverslop/adapters").rglob("*.py"),
+            *(path for path in studio_root.rglob("*.py") if desktop_root not in path.parents),
         ]
 
         offenders = self._pyside6_imports(protected_paths)
