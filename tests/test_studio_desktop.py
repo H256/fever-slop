@@ -102,6 +102,7 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
                 "shotDescription",
                 "imagePrompt",
                 "videoPrompt",
+                "videoPromptField",
                 "referenceIds",
                 "selected",
             },
@@ -270,6 +271,246 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
             }],
             calls,
         )
+
+    def test_invalid_prompt_patch_does_not_mutate_model_or_dirty_state(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 1, "shot_description": "Original", "video_prompt": "Old"}
+                )
+
+            def patch_scene(self, **_kwargs):
+                raise AssertionError("invalid patch must not reach service")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(1)
+
+        invalid_requests = (
+            ({}, ""),
+            ({"unknown": "value"}, ""),
+            ({"videoPrompt": "New"}, "not-a-prompt-field"),
+        )
+        for fields, prompt_field in invalid_requests:
+            with self.subTest(fields=fields, prompt_field=prompt_field):
+                self.assertFalse(view_model.savePromptFields(1, fields, prompt_field))
+                self.assertFalse(view_model.dirty)
+                self.assertFalse(view_model.conflict)
+                self.assertEqual("Original", view_model.inspectedScene["shotDescription"])
+                self.assertEqual(
+                    "Old",
+                    view_model.scenes.data(
+                        view_model.scenes.index(0, 0),
+                        view_model.scenes.VideoPromptRole,
+                    ),
+                )
+
+    def test_pending_and_conflicts_are_granular_across_scene_saves(self):
+        from feverslop.ports.scene_documents import SceneDocumentConflict
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        attempts = []
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 1, "shot_description": "One"},
+                    {"scene_number": 2, "shot_description": "Two"},
+                )
+
+            def patch_scene(self, **kwargs):
+                attempts.append(kwargs)
+                if len(attempts) in {1, 3}:
+                    raise SceneDocumentConflict("demo", kwargs["expected_revision"], "external")
+                return SimpleNamespace(revision=f"revision-{len(attempts) + 1}")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+
+        self.assertFalse(view_model.savePromptFields(1, {"shotDescription": "One local"}, ""))
+        self.assertTrue(view_model.dirty)
+        self.assertTrue(view_model.conflict)
+
+        self.assertTrue(view_model.savePromptFields(2, {"shotDescription": "Two saved"}, ""))
+        self.assertTrue(view_model.dirty)
+        self.assertTrue(view_model.conflict)
+
+        self.assertFalse(view_model.savePromptFields(1, {"shotDescription": "One local"}, ""))
+        self.assertTrue(view_model.conflict)
+        self.assertTrue(view_model.savePromptFields(1, {"shotDescription": "One local"}, ""))
+        self.assertFalse(view_model.dirty)
+        self.assertFalse(view_model.conflict)
+
+    def test_same_project_reload_failure_preserves_workspace_and_transient_state(self):
+        from feverslop.ports.scene_documents import SceneDocumentConflict
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Service:
+            fail_reload = False
+
+            def load(self, _project_id):
+                if self.fail_reload:
+                    raise OSError("temporarily unavailable")
+                return SceneWorkspaceViewModelTests._snapshot({"scene_number": 4})
+
+            def patch_scene(self, **kwargs):
+                raise SceneDocumentConflict("demo", kwargs["expected_revision"], "external")
+
+        service = Service()
+        view_model = SceneWorkspaceViewModel(
+            service=service,
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(4)
+        view_model.savePromptFields(4, {"shotDescription": "Local"}, "")
+        service.fail_reload = True
+
+        self.assertFalse(view_model.reload())
+        self.assertEqual(1, view_model.scenes.rowCount())
+        self.assertEqual([4], view_model.selected_scene_numbers)
+        self.assertEqual("revision-1", view_model.revision)
+        self.assertTrue(view_model.dirty)
+        self.assertTrue(view_model.conflict)
+
+    def test_project_switch_load_failure_clears_old_project_state(self):
+        from PySide6.QtCore import QObject, Signal
+
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Studio(QObject):
+            currentProjectChanged = Signal()
+
+            def __init__(self):
+                super().__init__()
+                self.current_project_id = "alpha"
+
+        class Service:
+            def load(self, project_id):
+                if project_id == "beta":
+                    raise FileNotFoundError("no render plan")
+                return SceneWorkspaceViewModelTests._snapshot({"scene_number": 1})
+
+        studio = Studio()
+        view_model = SceneWorkspaceViewModel(service=Service(), studio_view_model=studio)
+        view_model.reload()
+        view_model.toggleSelection(1)
+        studio.current_project_id = "beta"
+
+        studio.currentProjectChanged.emit()
+
+        self.assertEqual("beta", view_model.current_project_id)
+        self.assertEqual(0, view_model.scenes.rowCount())
+        self.assertEqual([], view_model.selected_scene_numbers)
+        self.assertEqual("", view_model.revision)
+        self.assertFalse(view_model.dirty)
+        self.assertFalse(view_model.conflict)
+        self.assertIn("render plan", view_model.error)
+
+    def test_inspected_scene_tracks_last_toggle_and_notifies_for_edits(self):
+        from PySide6.QtTest import QSignalSpy
+
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {
+                        "scene_number": 5,
+                        "shot_description": "Five",
+                        "thumbnail_path": "output/render/storyboard/scene_0005.png",
+                    },
+                    {"scene_number": 2, "shot_description": "Two"},
+                )
+
+            def patch_scene(self, **_kwargs):
+                return SimpleNamespace(revision="revision-2")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+            thumbnail_url=lambda project_id, path: f"file:///{project_id}/{path}",
+        )
+        spy = QSignalSpy(view_model.inspectedSceneChanged)
+        view_model.reload()
+        self.assertEqual({}, view_model.inspectedScene)
+
+        view_model.toggleSelection(5)
+        self.assertEqual(5, view_model.inspectedScene["sceneNumber"])
+        self.assertEqual("file:///demo/output/render/storyboard/scene_0005.png", view_model.inspectedScene["thumbnailUrl"])
+        self.assertTrue(view_model.inspectedScene["selected"])
+
+        view_model.toggleSelection(2)
+        self.assertEqual(2, view_model.currentScene["sceneNumber"])
+        view_model.toggleSelection(2)
+        self.assertEqual(5, view_model.inspectedScene["sceneNumber"])
+
+        before_edit = spy.count()
+        view_model.savePromptFields(5, {"shotDescription": "Edited"}, "")
+        self.assertGreater(spy.count(), before_edit)
+        self.assertEqual("Edited", view_model.inspectedScene["shotDescription"])
+        view_model.toggleSelection(5)
+        self.assertEqual({}, view_model.inspectedScene)
+
+    def test_video_prompt_field_reports_priority_provenance(self):
+        from feverslop.application.scene_workspace import SceneWorkspaceSnapshot
+        from feverslop.domain.scene_workspace import SceneWorkspace
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        raw_scenes = (
+            {"scene": 1, "ltx": {"base_prompt": "Base"}},
+            {"scene": 2, "ltx": {"base_prompt": "Base", "i2v_prompt_from_t2i": "I2V"}},
+            {
+                "scene": 3,
+                "ltx": {
+                    "base_prompt": "Base",
+                    "i2v_prompt_from_t2i": "I2V",
+                    "original_style_i2v_prompt": "Original",
+                },
+            },
+            {"scene": 4},
+        )
+        snapshot = SceneWorkspaceSnapshot(
+            workspace=SceneWorkspace.from_scenes(raw_scenes),
+            revision="revision-1",
+        )
+        view_model = SceneWorkspaceViewModel(
+            service=SimpleNamespace(
+                load=lambda _project_id: snapshot,
+                patch_scene=lambda **_kwargs: SimpleNamespace(revision="revision-2"),
+            ),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+
+        fields = [
+            view_model.scenes.data(view_model.scenes.index(row, 0), view_model.scenes.VideoPromptFieldRole)
+            for row in range(4)
+        ]
+        self.assertEqual(
+            ["base_prompt", "i2v_prompt_from_t2i", "original_style_i2v_prompt", ""],
+            fields,
+        )
+        view_model.toggleSelection(3)
+        self.assertEqual("original_style_i2v_prompt", view_model.inspectedScene["videoPromptField"])
+
+        view_model.toggleSelection(1)
+        self.assertTrue(
+            view_model.savePromptFields(
+                1,
+                {"videoPrompt": "New I2V"},
+                "i2v_prompt_from_t2i",
+            )
+        )
+        self.assertEqual("i2v_prompt_from_t2i", view_model.inspectedScene["videoPromptField"])
 
 
 class StudioViewModelTests(unittest.TestCase):

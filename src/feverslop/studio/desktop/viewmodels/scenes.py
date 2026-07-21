@@ -30,8 +30,9 @@ class SceneListModel(QAbstractListModel):
     ShotDescriptionRole = SceneNumberRole + 6
     ImagePromptRole = SceneNumberRole + 7
     VideoPromptRole = SceneNumberRole + 8
-    ReferenceIdsRole = SceneNumberRole + 9
-    SelectedRole = SceneNumberRole + 10
+    VideoPromptFieldRole = SceneNumberRole + 9
+    ReferenceIdsRole = SceneNumberRole + 10
+    SelectedRole = SceneNumberRole + 11
 
     _ROLE_NAMES = {
         SceneNumberRole: b"sceneNumber",
@@ -43,6 +44,7 @@ class SceneListModel(QAbstractListModel):
         ShotDescriptionRole: b"shotDescription",
         ImagePromptRole: b"imagePrompt",
         VideoPromptRole: b"videoPrompt",
+        VideoPromptFieldRole: b"videoPromptField",
         ReferenceIdsRole: b"referenceIds",
         SelectedRole: b"selected",
     }
@@ -78,6 +80,7 @@ class SceneListModel(QAbstractListModel):
             self.ShotDescriptionRole: item.shot_description,
             self.ImagePromptRole: item.image_prompt,
             self.VideoPromptRole: item.video_prompt,
+            self.VideoPromptFieldRole: _video_prompt_field(item),
             self.ReferenceIdsRole: list(item.reference_ids),
             self.SelectedRole: item.scene_number in self._selected,
         }
@@ -113,6 +116,12 @@ class SceneListModel(QAbstractListModel):
         self.dataChanged.emit(index, index, [self.SelectedRole])
         return True
 
+    def is_selected(self, scene_number: int) -> bool:
+        return scene_number in self._selected
+
+    def contains(self, scene_number: int) -> bool:
+        return self._row_for_scene(scene_number) is not None
+
     @property
     def selected_scene_numbers(self) -> tuple[int, ...]:
         return tuple(sorted(self._selected))
@@ -122,11 +131,18 @@ class SceneListModel(QAbstractListModel):
         if row is None:
             return False
         item = self._items[row]
+        raw_scene = item.raw_scene
+        if "video_prompt" in fields and "video_prompt_field" in fields:
+            raw_ltx = raw_scene.get("ltx")
+            ltx = dict(raw_ltx) if isinstance(raw_ltx, Mapping) else {}
+            ltx[fields["video_prompt_field"]] = fields["video_prompt"]
+            raw_scene["ltx"] = ltx
         self._items[row] = replace(
             item,
             shot_description=fields.get("shot_description", item.shot_description),
             image_prompt=fields.get("image_prompt", item.image_prompt),
             video_prompt=fields.get("video_prompt", item.video_prompt),
+            _raw_scene=raw_scene,
         )
         index = self.index(row, 0)
         self.dataChanged.emit(
@@ -135,6 +151,30 @@ class SceneListModel(QAbstractListModel):
             [self.ShotDescriptionRole, self.ImagePromptRole, self.VideoPromptRole],
         )
         return True
+
+    def scene_map(self, scene_number: int) -> dict[str, Any]:
+        row = self._row_for_scene(scene_number)
+        if row is None:
+            return {}
+        item = self._items[row]
+        return {
+            "sceneNumber": item.scene_number,
+            "startSeconds": item.start_seconds,
+            "endSeconds": item.end_seconds,
+            "performanceState": item.performance_state,
+            "status": item.status,
+            "thumbnailUrl": self._thumbnail(item),
+            "thumbnailPath": item.media.thumbnail_path or "",
+            "workflowPath": item.media.workflow_path or "",
+            "videoPath": item.media.video_path or "",
+            "failureMessage": item.media.failure_message or "",
+            "shotDescription": item.shot_description,
+            "imagePrompt": item.image_prompt,
+            "videoPrompt": item.video_prompt,
+            "videoPromptField": _video_prompt_field(item),
+            "referenceIds": list(item.reference_ids),
+            "selected": item.scene_number in self._selected,
+        }
 
     def _row_for_scene(self, scene_number: int) -> int | None:
         return next(
@@ -156,6 +196,7 @@ class SceneWorkspaceViewModel(QObject):
     projectChanged = Signal()
     selectionChanged = Signal()
     stateChanged = Signal()
+    inspectedSceneChanged = Signal()
 
     def __init__(
         self,
@@ -170,9 +211,10 @@ class SceneWorkspaceViewModel(QObject):
         self._studio_view_model = studio_view_model
         self._current_project_id = ""
         self._revision = ""
-        self._dirty = False
-        self._conflict = False
         self._error = ""
+        self._pending: dict[tuple[int, str], str] = {}
+        self._conflicts: set[tuple[int, str]] = set()
+        self._primary_scene_number: int | None = None
         resolver = thumbnail_url or (lambda _project_id, path: _local_file_url(path))
         self._scenes = SceneListModel(
             thumbnail_url=lambda path: resolver(self._current_project_id, path),
@@ -200,45 +242,67 @@ class SceneWorkspaceViewModel(QObject):
 
     @Property(bool, notify=stateChanged)
     def dirty(self) -> bool:
-        return self._dirty
+        return bool(self._pending)
 
     @Property(bool, notify=stateChanged)
     def conflict(self) -> bool:
-        return self._conflict
+        return bool(self._conflicts)
 
     @Property(str, notify=stateChanged)
     def error(self) -> str:
         return self._error
 
+    @Property("QVariantMap", notify=inspectedSceneChanged)
+    def inspectedScene(self) -> dict[str, Any]:  # noqa: N802 - QML API
+        if self._primary_scene_number is None:
+            return {}
+        return self._scenes.scene_map(self._primary_scene_number)
+
+    @Property("QVariantMap", notify=inspectedSceneChanged)
+    def currentScene(self) -> dict[str, Any]:  # noqa: N802 - QML API
+        return self.inspectedScene
+
     @Slot(result=bool)
     def reload(self) -> bool:
         project_id = str(getattr(self._studio_view_model, "current_project_id", "") or "")
         project_changed = project_id != self._current_project_id
-        self._current_project_id = project_id
-        self._scenes.clear_selection()
-        self.selectionChanged.emit()
-        self._scenes.replace(())
-        self.scenesChanged.emit()
-        self._set_state(revision="", dirty=False, conflict=False, error="")
         if project_changed:
+            self._current_project_id = project_id
+            self._clear_workspace()
             self.projectChanged.emit()
         if not project_id:
             return True
         try:
             snapshot = self._service.load(project_id)
-            self._scenes.replace(snapshot.workspace.items)
-            self.scenesChanged.emit()
-            self._set_state(revision=snapshot.revision)
-            return True
         except Exception as exc:  # noqa: BLE001 - Qt boundary
             self._set_state(error=str(exc))
             return False
+        self._scenes.replace(snapshot.workspace.items)
+        self._pending.clear()
+        self._conflicts.clear()
+        self._revision = snapshot.revision
+        self._error = ""
+        if (
+            self._primary_scene_number is not None
+            and not self._scenes.is_selected(self._primary_scene_number)
+        ):
+            self._primary_scene_number = _first_selected(self._scenes)
+        self.scenesChanged.emit()
+        self.selectionChanged.emit()
+        self.inspectedSceneChanged.emit()
+        self.stateChanged.emit()
+        return True
 
     @Slot(int, result=bool)
     def toggleSelection(self, scene_number: int) -> bool:  # noqa: N802 - QML API
         changed = self._scenes.toggle_selection(scene_number)
         if changed:
+            if self._scenes.is_selected(scene_number):
+                self._primary_scene_number = scene_number
+            elif self._primary_scene_number == scene_number:
+                self._primary_scene_number = _first_selected(self._scenes)
             self.selectionChanged.emit()
+            self.inspectedSceneChanged.emit()
         return changed
 
     @Slot(int, "QVariantMap", str, result=bool)
@@ -248,13 +312,31 @@ class SceneWorkspaceViewModel(QObject):
         fields: Mapping[str, Any],
         ltx_prompt_field: str,
     ) -> bool:
-        local_fields = _local_prompt_fields(fields)
-        if not self._scenes.apply_prompt_fields(scene_number, local_fields):
-            self._set_state(dirty=True, conflict=False, error=f"Scene {scene_number} not found")
+        if not self._current_project_id:
+            self._set_state(error="Select a project first")
             return False
-        self._set_state(dirty=True, conflict=False, error="")
         try:
-            changes, selected_field = _prompt_changes(local_fields, ltx_prompt_field)
+            changes, local_fields, selected_field = _validated_prompt_patch(
+                fields,
+                ltx_prompt_field,
+            )
+        except (TypeError, ValueError) as exc:
+            self._set_state(error=str(exc))
+            return False
+        if not self._scenes.contains(scene_number):
+            self._set_state(error=f"Scene {scene_number} not found")
+            return False
+
+        patch_values = {
+            (scene_number, field_name): value
+            for field_name, value in changes.items()
+        }
+        self._scenes.apply_prompt_fields(scene_number, local_fields)
+        self._pending.update(patch_values)
+        self._set_state(error="", force=True)
+        if self._primary_scene_number == scene_number:
+            self.inspectedSceneChanged.emit()
+        try:
             snapshot = self._service.patch_scene(
                 project_id=self._current_project_id,
                 scene_number=scene_number,
@@ -262,18 +344,19 @@ class SceneWorkspaceViewModel(QObject):
                 expected_revision=self._revision,
                 selected_ltx_prompt_field=selected_field,
             )
-            self._set_state(
-                revision=str(snapshot.revision),
-                dirty=False,
-                conflict=False,
-                error="",
-            )
+            for key, value in patch_values.items():
+                if self._pending.get(key) == value:
+                    self._pending.pop(key, None)
+                    self._conflicts.discard(key)
+            self._revision = str(snapshot.revision)
+            self._set_state(error="", force=True)
             return True
         except SceneDocumentConflict as exc:
-            self._set_state(dirty=True, conflict=True, error=str(exc))
+            self._conflicts.update(patch_values)
+            self._set_state(error=str(exc), force=True)
             return False
         except Exception as exc:  # noqa: BLE001 - Qt boundary
-            self._set_state(dirty=True, conflict=False, error=str(exc))
+            self._set_state(error=str(exc), force=True)
             return False
 
     @Slot(str, result=bool)
@@ -304,15 +387,12 @@ class SceneWorkspaceViewModel(QObject):
         self,
         *,
         revision: str | None = None,
-        dirty: bool | None = None,
-        conflict: bool | None = None,
         error: str | None = None,
+        force: bool = False,
     ) -> None:
-        changed = False
+        changed = force
         for attribute, value in (
             ("_revision", revision),
-            ("_dirty", dirty),
-            ("_conflict", conflict),
             ("_error", error),
         ):
             if value is not None and getattr(self, attribute) != value:
@@ -321,8 +401,24 @@ class SceneWorkspaceViewModel(QObject):
         if changed:
             self.stateChanged.emit()
 
+    def _clear_workspace(self) -> None:
+        self._scenes.clear_selection()
+        self._scenes.replace(())
+        self._primary_scene_number = None
+        self._pending.clear()
+        self._conflicts.clear()
+        self._revision = ""
+        self._error = ""
+        self.selectionChanged.emit()
+        self.scenesChanged.emit()
+        self.inspectedSceneChanged.emit()
+        self.stateChanged.emit()
 
-def _local_prompt_fields(fields: Mapping[str, Any]) -> dict[str, str]:
+
+def _validated_prompt_patch(
+    fields: Mapping[str, Any],
+    ltx_prompt_field: str,
+) -> tuple[dict[str, str], dict[str, str], SceneLtxPromptField | None]:
     aliases = {
         "shotDescription": "shot_description",
         "imagePrompt": "image_prompt",
@@ -331,27 +427,46 @@ def _local_prompt_fields(fields: Mapping[str, Any]) -> dict[str, str]:
         "image_prompt": "image_prompt",
         "video_prompt": "video_prompt",
     }
-    return {
-        aliases[name]: str(value)
-        for name, value in fields.items()
-        if name in aliases
-    }
-
-
-def _prompt_changes(
-    fields: Mapping[str, str],
-    ltx_prompt_field: str,
-) -> tuple[dict[str, str], SceneLtxPromptField | None]:
+    if not fields:
+        raise ValueError("Scene patch requires at least one editable field")
+    unknown = set(fields) - set(aliases)
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise ValueError(f"Scene field is not editable: {names}")
+    if any(not isinstance(value, str) for value in fields.values()):
+        raise TypeError("Scene prompt fields must be text")
+    local_fields: dict[str, str] = {}
+    for name, value in fields.items():
+        local_name = aliases[name]
+        if local_name in local_fields:
+            raise ValueError(f"Duplicate scene field: {local_name}")
+        local_fields[local_name] = value
     changes: dict[str, str] = {}
-    if "shot_description" in fields:
-        changes["shot_description"] = fields["shot_description"]
-    if "image_prompt" in fields:
-        changes["z_image.prompt"] = fields["image_prompt"]
+    if "shot_description" in local_fields:
+        changes["shot_description"] = local_fields["shot_description"]
+    if "image_prompt" in local_fields:
+        changes["z_image.prompt"] = local_fields["image_prompt"]
     selected_field = None
-    if "video_prompt" in fields:
+    if "video_prompt" in local_fields:
         selected_field = SceneLtxPromptField(ltx_prompt_field)
-        changes[f"ltx.{selected_field.value}"] = fields["video_prompt"]
-    return changes, selected_field
+        changes[f"ltx.{selected_field.value}"] = local_fields["video_prompt"]
+        local_fields["video_prompt_field"] = selected_field.value
+    return changes, local_fields, selected_field
+
+
+def _video_prompt_field(item: SceneWorkspaceItem) -> str:
+    ltx = item.raw_scene.get("ltx")
+    if not isinstance(ltx, Mapping):
+        return ""
+    for field in SceneLtxPromptField:
+        if ltx.get(field.value):
+            return field.value
+    return ""
+
+
+def _first_selected(model: SceneListModel) -> int | None:
+    selected = model.selected_scene_numbers
+    return selected[0] if selected else None
 
 
 def _local_file_url(path: str) -> str:
