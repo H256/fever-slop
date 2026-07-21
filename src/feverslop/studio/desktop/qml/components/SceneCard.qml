@@ -15,13 +15,11 @@ Control {
     signal activated(int sceneNumber)
 
     objectName: "sceneCard_" + sceneNumber
-    focusPolicy: Qt.StrongFocus
     Accessible.role: Accessible.ListItem
     Accessible.name: "Scene " + sceneNumber + ", " + status
     Accessible.description: (endSeconds - startSeconds).toFixed(1) + " seconds, " + performanceState
-    Keys.onSpacePressed: activated(sceneNumber)
-    Keys.onReturnPressed: activated(sceneNumber)
-    Keys.onEnterPressed: activated(sceneNumber)
+    Accessible.checkable: true
+    Accessible.checked: selected
     padding: 8
 
     background: Rectangle {
@@ -87,9 +85,6 @@ Control {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: {
-            card.forceActiveFocus()
-            card.activated(card.sceneNumber)
-        }
+        onClicked: card.activated(card.sceneNumber)
     }
 }

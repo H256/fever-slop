@@ -16,6 +16,7 @@ Item {
         return status === "active" || status === "queued" || status === "running"
     }
     readonly property bool actionsEnabled: selectedCount > 0 && !jobActive
+        && sceneVm && !sceneVm.submitting
 
     objectName: "sceneWorkspacePage"
 
@@ -25,6 +26,22 @@ Item {
         anchors.fill: parent
         anchors.margins: 18
         spacing: 10
+
+        Label {
+            objectName: "sceneWorkspaceErrorBanner"
+            visible: page.sceneVm && !!page.sceneVm.error
+            text: page.sceneVm ? page.sceneVm.error : ""
+            color: "#8B1A1A"
+            font.bold: true
+            wrapMode: Text.Wrap
+            padding: 10
+            Layout.fillWidth: true
+            background: Rectangle {
+                color: "#FDECEC"
+                border.color: "#C62828"
+                radius: 6
+            }
+        }
 
         Rectangle {
             visible: page.sceneVm && page.sceneVm.conflict
@@ -85,6 +102,13 @@ Item {
                     Layout.fillWidth: true
                 }
                 Button {
+                    objectName: "discardDirtySceneButton"
+                    text: "Discard local edits"
+                    Accessible.name: "Discard local scene edits"
+                    visible: page.sceneVm && page.sceneVm.dirty && !page.sceneVm.conflict
+                    onClicked: page.sceneVm.discardLocalEdits()
+                }
+                Button {
                     objectName: "renderSelectedScenesButton"
                     text: "Render"
                     Accessible.name: "Render selected scenes"
@@ -127,7 +151,7 @@ Item {
                     keyNavigationEnabled: true
                     activeFocusOnTab: true
                     function activateCurrentScene() {
-                        if (currentItem)
+                        if (currentItem && currentItem.visible)
                             page.sceneVm.toggleSelection(currentItem.sceneNumber)
                     }
                     Keys.onSpacePressed: activateCurrentScene()
@@ -135,6 +159,7 @@ Item {
                     Keys.onEnterPressed: activateCurrentScene()
 
                     delegate: Item {
+                        required property int index
                         required property int sceneNumber
                         required property real startSeconds
                         required property real endSeconds
@@ -163,7 +188,11 @@ Item {
                             thumbnailUrl: parent.thumbnailUrl
                             selected: parent.selected
                             keyboardCurrent: parent.keyboardCurrent
-                            onActivated: number => page.sceneVm.toggleSelection(number)
+                            onActivated: number => {
+                                sceneList.currentIndex = parent.index
+                                sceneList.forceActiveFocus()
+                                page.sceneVm.toggleSelection(number)
+                            }
                         }
                     }
 

@@ -13,10 +13,15 @@ ScrollView {
     function loadScene() {
         shotDescription.text = scene.shotDescription || ""
         imagePrompt.text = scene.imagePrompt || ""
-        videoPrompt.text = scene.videoPrompt || ""
         const source = scene.videoPromptField || "base_prompt"
         const index = promptSource.indexOfValue(source)
         promptSource.currentIndex = index >= 0 ? index : 2
+        loadPromptSource()
+    }
+
+    function loadPromptSource() {
+        const prompts = scene.ltxPrompts || ({})
+        videoPrompt.text = prompts[promptSource.currentValue] || ""
     }
 
     Component.onCompleted: loadScene()
@@ -71,6 +76,7 @@ ScrollView {
                     { label: "I2V from T2I", value: "i2v_prompt_from_t2i" },
                     { label: "Base prompt", value: "base_prompt" }
                 ]
+                onCurrentValueChanged: inspector.loadPromptSource()
             }
         }
         TextArea {

@@ -615,6 +615,114 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
         )
         self.assertEqual("i2v_prompt_from_t2i", view_model.inspectedScene["videoPromptField"])
 
+    def test_inspected_scene_exposes_every_ltx_prompt_source(self):
+        from feverslop.application.scene_workspace import SceneWorkspaceSnapshot
+        from feverslop.domain.scene_workspace import SceneWorkspace
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceSnapshot(
+                    workspace=SceneWorkspace.from_scenes([{
+                        "scene": 1,
+                        "ltx": {
+                            "original_style_i2v_prompt": "A",
+                            "i2v_prompt_from_t2i": "B",
+                            "base_prompt": "C",
+                        },
+                    }]),
+                    revision="revision-1",
+                )
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(1)
+
+        self.assertIn("ltxPrompts", view_model.inspectedScene)
+        self.assertEqual(
+            {
+                "original_style_i2v_prompt": "A",
+                "i2v_prompt_from_t2i": "B",
+                "base_prompt": "C",
+            },
+            view_model.inspectedScene["ltxPrompts"],
+        )
+
+    def test_selected_action_blocks_reentry_and_refreshes_jobs_immediately(self):
+        from PySide6.QtTest import QSignalSpy
+
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Studio:
+            current_project_id = "demo"
+
+            def __init__(self):
+                self.refresh_count = 0
+
+            def refresh_jobs(self):
+                self.refresh_count += 1
+
+        class Service:
+            def __init__(self):
+                self.calls = []
+                self.view_model = None
+
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot({"scene_number": 1})
+
+            def start_action(self, **kwargs):
+                self.calls.append(kwargs)
+                self.test_case.assertTrue(self.view_model.submitting)
+                self.test_case.assertFalse(self.view_model.startSelectedAction("render"))
+
+        studio = Studio()
+        service = Service()
+        service.test_case = self
+        view_model = SceneWorkspaceViewModel(service=service, studio_view_model=studio)
+        service.view_model = view_model
+        view_model.reload()
+        view_model.toggleSelection(1)
+
+        self.assertTrue(hasattr(view_model, "submittingChanged"))
+        changed = QSignalSpy(view_model.submittingChanged)
+        self.assertTrue(view_model.startSelectedAction("render"))
+
+        self.assertEqual(1, len(service.calls))
+        self.assertEqual(1, studio.refresh_count)
+        self.assertFalse(view_model.submitting)
+        self.assertEqual(2, changed.count())
+
+    def test_failed_selected_action_clears_submitting_without_refresh(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Studio:
+            current_project_id = "demo"
+            refresh_count = 0
+
+            def refresh_jobs(self):
+                self.refresh_count += 1
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot({"scene_number": 1})
+
+            def start_action(self, **_kwargs):
+                raise RuntimeError("dispatch failed")
+
+        studio = Studio()
+        view_model = SceneWorkspaceViewModel(service=Service(), studio_view_model=studio)
+        view_model.reload()
+        view_model.toggleSelection(1)
+
+        self.assertTrue(hasattr(view_model, "submitting"))
+        self.assertFalse(view_model.startSelectedAction("render"))
+        self.assertFalse(view_model.submitting)
+        self.assertEqual(0, studio.refresh_count)
+        self.assertIn("dispatch failed", view_model.error)
+
     def test_selected_video_prompt_field_stays_coherent_across_save_and_reload(self):
         from PySide6.QtTest import QSignalSpy
 
@@ -1088,9 +1196,10 @@ class StudioQmlTests(unittest.TestCase):
         self.assertEqual("Discard local edits", discard_button.property("text"))
 
     def test_scene_list_arrow_navigation_and_space_toggle_current_scene(self):
-        from PySide6.QtCore import QMetaObject, Qt
+        from PySide6.QtCore import QPointF, Qt
         from PySide6.QtGui import QGuiApplication
         from PySide6.QtQml import QQmlApplicationEngine
+        from PySide6.QtQuick import QQuickItem
         from PySide6.QtTest import QTest
 
         from feverslop.studio.desktop.runtime import qml_entrypoint
@@ -1106,6 +1215,7 @@ class StudioQmlTests(unittest.TestCase):
                 return SceneWorkspaceViewModelTests._snapshot(
                     {"scene_number": 1},
                     {"scene_number": 2},
+                    {"scene_number": 3},
                 )
 
         self.qml_app = QGuiApplication.instance() or QGuiApplication([])
@@ -1122,16 +1232,123 @@ class StudioQmlTests(unittest.TestCase):
         root = engine.rootObjects()[0]
         root.setProperty("currentPage", 11)
         self.qml_app.processEvents()
-        scene_list = root.findChild(object, "sceneCardList")
+        scene_list = root.findChild(QQuickItem, "sceneCardList")
         scene_list.setProperty("currentIndex", 0)
-        QMetaObject.invokeMethod(scene_list, "forceActiveFocus")
+        click_point = scene_list.mapToScene(QPointF(40, 121)).toPoint()
 
-        QTest.keyClick(root, Qt.Key.Key_Down)
+        QTest.mouseClick(root, Qt.MouseButton.LeftButton, pos=click_point)
+        self.qml_app.processEvents()
         self.assertEqual(1, scene_list.property("currentIndex"))
+        QTest.keyClick(root, Qt.Key.Key_Down)
+        self.assertEqual(2, scene_list.property("currentIndex"))
         QTest.keyClick(root, Qt.Key.Key_Space)
         self.qml_app.processEvents()
 
-        self.assertEqual([2], scene_vm.selected_scene_numbers)
+        self.assertEqual([2, 3], scene_vm.selected_scene_numbers)
+
+    def test_scene_inspector_switches_ltx_source_before_saving(self):
+        from PySide6.QtCore import QMetaObject
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+
+        from feverslop.application.scene_workspace import SceneWorkspaceSnapshot
+        from feverslop.domain.scene_workspace import SceneWorkspace
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        patches = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        class SceneService:
+            def load(self, _project_id):
+                return SceneWorkspaceSnapshot(
+                    SceneWorkspace.from_scenes([{
+                        "scene": 1,
+                        "ltx": {
+                            "original_style_i2v_prompt": "A",
+                            "i2v_prompt_from_t2i": "B",
+                            "base_prompt": "C",
+                        },
+                    }]),
+                    "revision-1",
+                )
+
+            def patch_scene(self, **kwargs):
+                patches.append(kwargs)
+                return SimpleNamespace(revision="revision-2")
+
+        self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+        studio_vm = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        studio_vm.select_project("demo")
+        scene_vm = SceneWorkspaceViewModel(service=SceneService(), studio_view_model=studio_vm)
+        scene_vm.reload()
+        scene_vm.toggleSelection(1)
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("studioViewModel", studio_vm)
+        engine.rootContext().setContextProperty("sceneWorkspaceViewModel", scene_vm)
+        engine.load(qml_entrypoint())
+        root = engine.rootObjects()[0]
+        root.setProperty("currentPage", 11)
+        self.qml_app.processEvents()
+        source = root.findChild(object, "sceneLtxPromptSource")
+        editor = root.findChild(object, "sceneLtxPrompt")
+        save = root.findChild(object, "saveScenePromptsButton")
+
+        self.assertEqual("A", editor.property("text"))
+        source.setProperty("currentIndex", 1)
+        self.qml_app.processEvents()
+        self.assertEqual("B", editor.property("text"))
+        editor.setProperty("text", "B edited")
+        QMetaObject.invokeMethod(save, "click")
+
+        self.assertEqual("B edited", patches[0]["changes"]["ltx.i2v_prompt_from_t2i"])
+
+    def test_dirty_save_error_is_visible_and_can_be_discarded_without_conflict(self):
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        class SceneService:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot({"scene_number": 1})
+
+            def patch_scene(self, **_kwargs):
+                raise OSError("cannot save prompts")
+
+        self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+        studio_vm = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        studio_vm.select_project("demo")
+        scene_vm = SceneWorkspaceViewModel(service=SceneService(), studio_view_model=studio_vm)
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("studioViewModel", studio_vm)
+        engine.rootContext().setContextProperty("sceneWorkspaceViewModel", scene_vm)
+        engine.load(qml_entrypoint())
+        root = engine.rootObjects()[0]
+        root.setProperty("currentPage", 11)
+        scene_vm.toggleSelection(1)
+        scene_vm.savePromptFields(1, {"shotDescription": "Local"}, "")
+        self.qml_app.processEvents()
+        error_banner = root.findChild(object, "sceneWorkspaceErrorBanner")
+        discard = root.findChild(object, "discardDirtySceneButton")
+
+        self.assertIsNotNone(error_banner)
+        self.assertIsNotNone(discard)
+        self.assertTrue(scene_vm.dirty)
+        self.assertFalse(scene_vm.conflict)
+        self.assertTrue(error_banner.property("visible"))
+        self.assertIn("cannot save prompts", error_banner.property("text"))
+        self.assertTrue(discard.property("visible"))
 
     def test_studio_palette_does_not_inherit_desktop_dark_mode(self):
         from PySide6.QtGui import QPalette

@@ -162,6 +162,8 @@ class SceneListModel(QAbstractListModel):
             return {}
         item = self._items[row]
         video_prompt_field, video_prompt = self._selected_video_prompt(item)
+        raw_ltx = item.raw_scene.get("ltx")
+        ltx = raw_ltx if isinstance(raw_ltx, Mapping) else {}
         return {
             "sceneNumber": item.scene_number,
             "startSeconds": item.start_seconds,
@@ -177,6 +179,10 @@ class SceneListModel(QAbstractListModel):
             "imagePrompt": item.image_prompt,
             "videoPrompt": video_prompt,
             "videoPromptField": video_prompt_field,
+            "ltxPrompts": {
+                field.value: str(ltx.get(field.value) or "")
+                for field in SceneLtxPromptField
+            },
             "referenceIds": list(item.reference_ids),
             "selected": item.scene_number in self._selected,
         }
@@ -211,6 +217,7 @@ class SceneWorkspaceViewModel(QObject):
     selectionChanged = Signal()
     stateChanged = Signal()
     inspectedSceneChanged = Signal()
+    submittingChanged = Signal()
 
     def __init__(
         self,
@@ -230,6 +237,7 @@ class SceneWorkspaceViewModel(QObject):
         self._conflicts: set[tuple[int, str]] = set()
         self._primary_scene_number: int | None = None
         self._baseline_items: tuple[SceneWorkspaceItem, ...] = ()
+        self._submitting = False
         resolver = thumbnail_url or (lambda _project_id, path: _local_file_url(path))
         self._scenes = SceneListModel(
             thumbnail_url=lambda path: resolver(self._current_project_id, path),
@@ -266,6 +274,10 @@ class SceneWorkspaceViewModel(QObject):
     @Property(str, notify=stateChanged)
     def error(self) -> str:
         return self._error
+
+    @Property(bool, notify=submittingChanged)
+    def submitting(self) -> bool:
+        return self._submitting
 
     @Property("QVariantMap", notify=inspectedSceneChanged)
     def inspectedScene(self) -> dict[str, Any]:  # noqa: N802 - QML API
@@ -404,6 +416,10 @@ class SceneWorkspaceViewModel(QObject):
         action: str,
         preview_stage: int = 0,
     ) -> bool:
+        if self._submitting:
+            return False
+        self._submitting = True
+        self.submittingChanged.emit()
         try:
             self._service.start_action(
                 project_id=self._current_project_id,
@@ -411,11 +427,17 @@ class SceneWorkspaceViewModel(QObject):
                 scene_numbers=self._scenes.selected_scene_numbers,
                 preview_stage=preview_stage or None,
             )
+            refresh_jobs = getattr(self._studio_view_model, "refresh_jobs", None)
+            if callable(refresh_jobs):
+                refresh_jobs()
             self._set_state(error="")
             return True
         except Exception as exc:  # noqa: BLE001 - Qt boundary
             self._set_state(error=str(exc))
             return False
+        finally:
+            self._submitting = False
+            self.submittingChanged.emit()
 
     @Slot()
     def _project_selected(self) -> None:
