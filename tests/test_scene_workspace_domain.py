@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from feverslop.domain.scene_workspace import SceneMedia, SceneWorkspace
+from feverslop.domain.scene_workspace import SceneMedia, SceneWorkspace, SceneWorkspaceItem
 
 
 class SceneWorkspaceDomainTests(unittest.TestCase):
@@ -50,6 +50,47 @@ class SceneWorkspaceDomainTests(unittest.TestCase):
             {"scene": 1, "workflow_extension": {"weights": [1, 2]}},
             item.to_scene(),
         )
+
+    def test_raw_payload_round_trips_json_scalars(self):
+        scene = {
+            "scene": 1,
+            "extension": {
+                "text": "value",
+                "integer": 4,
+                "floating": 2.5,
+                "enabled": True,
+                "missing": None,
+                "items": ["x", 1, 1.5, False, None],
+            },
+        }
+
+        item = SceneWorkspace.from_scenes([scene]).items[0]
+
+        self.assertEqual(scene, item.to_scene())
+
+    def test_raw_payload_rejects_non_json_values(self):
+        with self.assertRaisesRegex(TypeError, "non-JSON value: tuple"):
+            SceneWorkspace.from_scenes([{"scene": 1, "extension": (1, 2)}])
+
+    def test_raw_payload_rejects_non_string_keys(self):
+        with self.assertRaisesRegex(TypeError, "JSON object keys must be strings"):
+            SceneWorkspace.from_scenes([{"scene": 1, "extension": {2: "invalid"}}])
+
+    def test_direct_item_construction_copies_reference_ids(self):
+        reference_ids = ["mara", "archive"]
+
+        item = SceneWorkspaceItem(scene_number=1, reference_ids=reference_ids)
+        reference_ids.append("later")
+
+        self.assertEqual(("mara", "archive"), item.reference_ids)
+
+    def test_direct_workspace_construction_copies_items(self):
+        items = [SceneWorkspaceItem(scene_number=1)]
+
+        workspace = SceneWorkspace(items=items)
+        items.append(SceneWorkspaceItem(scene_number=2))
+
+        self.assertEqual((1,), tuple(item.scene_number for item in workspace.items))
 
     def test_reference_ids_support_standard_scene_references(self):
         workspace = SceneWorkspace.from_scenes(

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal
@@ -42,6 +41,7 @@ class SceneWorkspaceItem:
     _raw_scene: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "reference_ids", tuple(self.reference_ids))
         object.__setattr__(self, "_raw_scene", _freeze_json(self._raw_scene))
 
     @classmethod
@@ -51,7 +51,7 @@ class SceneWorkspaceItem:
         *,
         media: SceneMedia | None = None,
     ) -> SceneWorkspaceItem:
-        raw_scene = deepcopy(dict(scene))
+        raw_scene = dict(scene)
         ltx = raw_scene.get("ltx")
         ltx = ltx if isinstance(ltx, Mapping) else {}
         z_image = raw_scene.get("z_image")
@@ -89,6 +89,9 @@ class SceneWorkspaceItem:
 @dataclass(frozen=True)
 class SceneWorkspace:
     items: tuple[SceneWorkspaceItem, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "items", tuple(self.items))
 
     @classmethod
     def from_scenes(
@@ -150,10 +153,17 @@ def _append_reference_values(target: list[str], value: Any) -> None:
 
 def _freeze_json(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
+        frozen: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("JSON object keys must be strings")
+            frozen[key] = _freeze_json(item)
+        return MappingProxyType(frozen)
+    if isinstance(value, list):
         return tuple(_freeze_json(item) for item in value)
-    return deepcopy(value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(f"Raw scene payload contains non-JSON value: {type(value).__name__}")
 
 
 def _thaw_json(value: Any) -> Any:
@@ -161,4 +171,4 @@ def _thaw_json(value: Any) -> Any:
         return {key: _thaw_json(item) for key, item in value.items()}
     if isinstance(value, tuple):
         return [_thaw_json(item) for item in value]
-    return deepcopy(value)
+    return value
