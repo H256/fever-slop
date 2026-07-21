@@ -1,8 +1,39 @@
 ﻿import unittest
+import ast
 from pathlib import Path
 
 
 class ImportBoundaryTests(unittest.TestCase):
+    def _pyside6_imports(self, paths):
+        offenders = []
+        for path in paths:
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    modules = [node.module or ""]
+                else:
+                    continue
+                if any(module == "PySide6" or module.startswith("PySide6.") for module in modules):
+                    offenders.append(f"{path}:{node.lineno}")
+        return offenders
+
+    def test_non_qt_layers_and_studio_services_do_not_import_pyside6(self):
+        studio_root = Path("src/feverslop/studio")
+        desktop_root = studio_root / "desktop"
+        protected_paths = [
+            *Path("src/feverslop/domain").rglob("*.py"),
+            *Path("src/feverslop/ports").rglob("*.py"),
+            *Path("src/feverslop/application").rglob("*.py"),
+            *Path("src/feverslop/adapters").rglob("*.py"),
+            *(path for path in studio_root.rglob("*.py") if desktop_root not in path.parents),
+        ]
+
+        offenders = self._pyside6_imports(protected_paths)
+
+        self.assertEqual([], offenders)
+
     def test_package_code_does_not_import_root_architecture_packages(self):
         package_root = Path("src/feverslop")
         forbidden = [

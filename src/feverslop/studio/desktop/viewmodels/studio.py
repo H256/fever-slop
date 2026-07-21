@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import mimetypes
 from pathlib import Path
@@ -18,6 +19,7 @@ class StudioViewModel(QObject):
     projectsChanged = Signal()
     currentProjectChanged = Signal()
     editorChanged = Signal()
+    editorDirtyChanged = Signal()
     jobsChanged = Signal()
     reviewChanged = Signal()
     errorChanged = Signal()
@@ -32,9 +34,15 @@ class StudioViewModel(QObject):
         self._editor_path = ""
         self._editor_text = ""
         self._editor_data: Any = None
+        self._editor_baseline: Any = None
+        self._editor_revision: str | None = None
+        self._editor_exists = False
+        self._editor_dirty = False
         self._jobs: list[dict[str, Any]] = []
         self._review_path = ""
         self._review_state: ReviewTimelineState | None = None
+        self._review_revision: str | None = None
+        self._review_project_id = ""
         self._error = ""
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(500)
@@ -83,11 +91,19 @@ class StudioViewModel(QObject):
     def editor_text(self) -> str:
         return self._editor_text
 
+    @Property(bool, notify=editorDirtyChanged)
+    def editor_dirty(self) -> bool:
+        return self._editor_dirty
+
     @Property("QVariantList", notify=editorChanged)
     def editor_scenes(self) -> list[dict[str, Any]]:
         if not isinstance(self._editor_data, list):
             return []
-        return [dict(scene) for scene in self._editor_data if isinstance(scene, dict) and "scene" in scene]
+        return [
+            copy.deepcopy(scene)
+            for scene in self._editor_data
+            if isinstance(scene, dict) and "scene" in scene
+        ]
 
     @Property("QVariantList", notify=jobsChanged)
     def jobs(self) -> list[dict[str, Any]]:
@@ -143,7 +159,12 @@ class StudioViewModel(QObject):
     @Slot(str)
     def select_project(self, project_id: str) -> None:
         try:
-            self._current_project = self.store.describe_project(project_id)
+            project = self.store.describe_project(project_id)
+            changed = str(project.get("id") or "") != self.current_project_id
+            self._current_project = project
+            if changed:
+                self._clear_editor_state()
+                self._clear_review_state()
             self._set_error("")
             self.currentProjectChanged.emit()
         except Exception as exc:  # noqa: BLE001 - UI boundary
@@ -257,8 +278,14 @@ class StudioViewModel(QObject):
         try:
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._editor_path = path
-            self._editor_data = artifact["data"]
+            self._editor_data = copy.deepcopy(artifact["data"])
+            self._editor_baseline = copy.deepcopy(artifact["data"])
+            self._editor_revision = artifact.get("revision")
+            self._editor_exists = bool(
+                artifact.get("exists", artifact["data"] is not None)
+            )
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
+            self._set_editor_dirty(False)
             self._set_error("")
             self.editorChanged.emit()
         except Exception as exc:  # noqa: BLE001 - UI boundary
@@ -271,13 +298,34 @@ class StudioViewModel(QObject):
             return False
         try:
             data = json.loads(text)
+            if path == self._editor_path:
+                if not self._editor_exists:
+                    request = ArtifactRequest(path=path, data=data, create_only=True)
+                else:
+                    if self._editor_revision is None:
+                        current = self.store.read_artifact(self.current_project_id, path)
+                        if current["data"] != self._editor_baseline:
+                            raise ValueError(
+                                "Artifact changed externally; reload it before saving"
+                            )
+                    request = ArtifactRequest(
+                        path=path,
+                        data=data,
+                        expected_revision=self._editor_revision,
+                    )
+            else:
+                request = ArtifactRequest(path=path, data=data, create_only=True)
             artifact = self.store.write_artifact(
                 self.current_project_id,
-                ArtifactRequest(path=path, data=data),
+                request,
             )
             self._editor_path = path
-            self._editor_data = artifact["data"]
+            self._editor_data = copy.deepcopy(artifact["data"])
+            self._editor_baseline = copy.deepcopy(artifact["data"])
+            self._editor_revision = artifact.get("revision")
+            self._editor_exists = True
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
+            self._set_editor_dirty(False)
             self._current_project = self.store.describe_project(self.current_project_id)
             self._set_error("")
             self.editorChanged.emit()
@@ -288,6 +336,60 @@ class StudioViewModel(QObject):
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
         return False
+
+    @Slot(str)
+    def set_json_editor_draft(self, text: str) -> None:
+        self._editor_text = text
+        clean_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
+        self._set_editor_dirty(text != clean_text)
+
+    @Slot(result=bool)
+    @Slot(str, result=bool)
+    def refresh_render_plan_editor(self, path: str = "") -> bool:
+        render_plans = self.artifacts.get("render_plans") or []
+        if not render_plans:
+            return False
+        target_path = path or str(render_plans[0])
+        if target_path not in render_plans:
+            return False
+        raw_matches = self._editor_path == target_path
+        review_matches = self._review_state is not None and self._review_path == target_path
+        if not raw_matches and not review_matches:
+            return False
+        blocked: list[str] = []
+        if raw_matches and self._editor_dirty:
+            blocked.append("Disk changed; save/reload raw draft")
+        if review_matches and self._review_state is not None and self._review_state.dirty:
+            blocked.append("Disk changed; save/reload review")
+        refresh_raw = raw_matches and not self._editor_dirty
+        refresh_review = review_matches and self._review_state is not None and not self._review_state.dirty
+        artifact = None
+        try:
+            if refresh_raw or refresh_review:
+                artifact = self.store.read_artifact(self.current_project_id, target_path)
+            if refresh_raw and artifact is not None:
+                self._editor_data = copy.deepcopy(artifact["data"])
+                self._editor_baseline = copy.deepcopy(artifact["data"])
+                self._editor_revision = artifact.get("revision")
+                self._editor_exists = bool(
+                    artifact.get("exists", artifact["data"] is not None)
+                )
+                self._editor_text = json.dumps(
+                    self._editor_data,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                self._set_editor_dirty(False)
+                self.editorChanged.emit()
+            if refresh_review and artifact is not None:
+                self._review_state = ReviewTimelineState.from_document(artifact["data"])
+                self._review_revision = artifact.get("revision")
+                self.reviewChanged.emit()
+            self._set_error("; ".join(blocked))
+            return not blocked and (refresh_raw or refresh_review)
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
 
     @Slot(str, result=str)
     def preferred_artifact(self, category: str) -> str:
@@ -303,10 +405,20 @@ class StudioViewModel(QObject):
         if not path:
             self._set_error("No render plan found")
             return False
+        if (
+            self._review_state is not None
+            and self._review_state.dirty
+            and self._review_project_id == self.current_project_id
+            and self._review_path == path
+        ):
+            self._set_error("Dirty review exists; save/reload review before loading")
+            return False
         try:
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._review_path = path
             self._review_state = ReviewTimelineState.from_document(artifact["data"])
+            self._review_revision = artifact.get("revision")
+            self._review_project_id = self.current_project_id
             self._set_error("")
             self.reviewChanged.emit()
             return True
@@ -348,10 +460,15 @@ class StudioViewModel(QObject):
             self._set_error("Load a review timeline first")
             return False
         try:
-            self.store.write_artifact(
+            artifact = self.store.write_artifact(
                 self.current_project_id,
-                ArtifactRequest(path=self._review_path, data=self._review_state.document()),
+                ArtifactRequest(
+                    path=self._review_path,
+                    data=self._review_state.document(),
+                    expected_revision=self._review_revision,
+                ),
             )
+            self._review_revision = artifact.get("revision")
             self._review_state.mark_saved()
             self._set_error("")
             self.reviewChanged.emit()
@@ -365,12 +482,23 @@ class StudioViewModel(QObject):
         if not self.current_project_id:
             self._set_error("Select a project first")
             return False
+        if path != self._editor_path:
+            self._set_error("Load target before patching")
+            return False
+        if self._editor_dirty:
+            self._set_error("Save or reload raw draft first")
+            return False
         try:
             self.store.patch_render_plan(
                 self.current_project_id,
-                RenderPlanPatch(path=path, scene=scene, updates=dict(updates)),
+                RenderPlanPatch(
+                    path=path,
+                    scene=scene,
+                    updates=dict(updates),
+                    expected_revision=self._editor_revision,
+                ),
             )
-            self.load_json_artifact(path)
+            self.refresh_render_plan_editor(path)
             return True
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
@@ -438,3 +566,26 @@ class StudioViewModel(QObject):
             return
         self._error = message
         self.errorChanged.emit()
+
+    def _set_editor_dirty(self, dirty: bool) -> None:
+        if dirty == self._editor_dirty:
+            return
+        self._editor_dirty = dirty
+        self.editorDirtyChanged.emit()
+
+    def _clear_editor_state(self) -> None:
+        self._editor_path = ""
+        self._editor_text = ""
+        self._editor_data = None
+        self._editor_baseline = None
+        self._editor_revision = None
+        self._editor_exists = False
+        self._set_editor_dirty(False)
+        self.editorChanged.emit()
+
+    def _clear_review_state(self) -> None:
+        self._review_path = ""
+        self._review_state = None
+        self._review_revision = None
+        self._review_project_id = ""
+        self.reviewChanged.emit()

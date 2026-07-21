@@ -1,24 +1,42 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from feverslop.domain.slug_utils import slugify_project_name  # noqa: F401 -- re-exported for backward compatibility
 from feverslop.ports.reporting import Reporter
+from feverslop.studio.artifact_locking import artifact_write_lock
 
 
 class StudioPathError(ValueError):
     pass
 
 
+class ArtifactConflict(ValueError):
+    def __init__(self, path: str, expected_revision: str | None, actual_revision: str | None):
+        if expected_revision is None and actual_revision is not None:
+            message = f"Artifact already exists; load target before saving: {path}"
+        else:
+            message = f"Artifact changed: {path}"
+        super().__init__(message)
+        self.path = path
+        self.expected_revision = expected_revision
+        self.actual_revision = actual_revision
+
+
 @dataclass(frozen=True)
 class ArtifactRequest:
     path: str
     data: Any
+    expected_revision: str | None = None
+    create_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -26,6 +44,7 @@ class RenderPlanPatch:
     path: str
     scene: int
     updates: dict[str, Any]
+    expected_revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -163,7 +182,15 @@ class ProjectStore:
 
     def read_artifact(self, project_id: str, path: str) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, path)
-        return {"path": path, "data": self._read_json_file(artifact_path, default=None)}
+        if not artifact_path.exists():
+            return {"path": path, "data": None, "exists": False, "revision": None}
+        payload = artifact_path.read_bytes()
+        return {
+            "path": path,
+            "data": json.loads(payload.decode("utf-8-sig")),
+            "exists": True,
+            "revision": _artifact_revision(payload),
+        }
 
     def write_artifact(self, project_id: str, request: ArtifactRequest) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, request.path)
@@ -175,9 +202,61 @@ class ProjectStore:
             validate_project_config(data, project_type=str(metadata.get("project_type") or "standard_music_video"))
             if isinstance(data, dict) and data.get("silent_mode") is None:
                 data = {**data, "silent_mode": False}
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        return {"path": request.path, "data": data}
+        payload = (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+        with artifact_write_lock(artifact_path):
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            if request.create_only:
+                descriptor, temporary_name = tempfile.mkstemp(
+                    prefix=f".{artifact_path.name}.",
+                    suffix=".tmp",
+                    dir=artifact_path.parent,
+                )
+                temporary_path = Path(temporary_name)
+                try:
+                    with os.fdopen(descriptor, "wb") as temporary:
+                        temporary.write(payload)
+                        temporary.flush()
+                        os.fsync(temporary.fileno())
+                    try:
+                        os.link(temporary_path, artifact_path)
+                    except FileExistsError:
+                        actual = _path_revision(artifact_path)
+                        raise ArtifactConflict(request.path, None, actual) from None
+                    except OSError as exc:
+                        raise OSError(
+                            f"Could not atomically create artifact: {request.path}"
+                        ) from exc
+                finally:
+                    temporary_path.unlink(missing_ok=True)
+            else:
+                descriptor, temporary_name = tempfile.mkstemp(
+                    prefix=f".{artifact_path.name}.",
+                    suffix=".tmp",
+                    dir=artifact_path.parent,
+                )
+                temporary_path = Path(temporary_name)
+                try:
+                    with os.fdopen(descriptor, "wb") as temporary:
+                        temporary.write(payload)
+                        temporary.flush()
+                        os.fsync(temporary.fileno())
+                    if request.expected_revision is not None:
+                        actual = _path_revision(artifact_path)
+                        if actual != request.expected_revision:
+                            raise ArtifactConflict(
+                                request.path,
+                                request.expected_revision,
+                                actual,
+                            )
+                    temporary_path.replace(artifact_path)
+                finally:
+                    temporary_path.unlink(missing_ok=True)
+        return {
+            "path": request.path,
+            "data": data,
+            "exists": True,
+            "revision": _artifact_revision(payload),
+        }
 
     def write_media_data_url(self, project_id: str, path: str, data_url: str) -> dict[str, str]:
         return self.media_store.write_media_data_url(project_id, path, data_url)
@@ -187,14 +266,26 @@ class ProjectStore:
 
     def patch_render_plan(self, project_id: str, patch: RenderPlanPatch) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, patch.path)
-        render_plan = self._read_json_file(artifact_path, default=[])
-        if not isinstance(render_plan, list):
-            raise ValueError("Render plan must be a JSON array")
-        for scene in render_plan:
-            if int(scene.get("scene", -1)) == patch.scene:
-                scene.update(patch.updates)
-                artifact_path.write_text(json.dumps(render_plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-                return {"path": patch.path, "scene": scene}
+        with artifact_write_lock(artifact_path):
+            render_plan = self._read_json_file(artifact_path, default=[])
+            if not isinstance(render_plan, list):
+                raise ValueError("Render plan must be a JSON array")
+            for scene in render_plan:
+                if int(scene.get("scene", -1)) == patch.scene:
+                    scene.update(patch.updates)
+                    written = self.write_artifact(
+                        project_id,
+                        ArtifactRequest(
+                            path=patch.path,
+                            data=render_plan,
+                            expected_revision=patch.expected_revision,
+                        ),
+                    )
+                    return {
+                        "path": patch.path,
+                        "scene": scene,
+                        "revision": written["revision"],
+                    }
         raise KeyError(f"Scene {patch.scene} not found in {patch.path}")
 
     def project_root(self, project_id: str) -> Path:
@@ -278,3 +369,14 @@ class ProjectStore:
         if not path.exists():
             return default
         return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _artifact_revision(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _path_revision(path: Path) -> str | None:
+    try:
+        return _artifact_revision(path.read_bytes())
+    except FileNotFoundError:
+        return None
