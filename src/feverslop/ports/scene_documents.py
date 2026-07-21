@@ -21,10 +21,15 @@ class SceneDocumentSnapshot:
     revision: str
 
     def __post_init__(self) -> None:
+        frozen_scenes: list[Mapping[str, Any]] = []
+        for scene in self.scenes:
+            if not isinstance(scene, Mapping):
+                raise TypeError("Scene document scene must be a JSON object")
+            frozen_scenes.append(_freeze_json(scene))
         object.__setattr__(
             self,
             "scenes",
-            tuple(_freeze_json(scene) for scene in self.scenes),
+            tuple(frozen_scenes),
         )
 
     def to_scenes(self) -> list[dict[str, Any]]:

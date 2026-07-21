@@ -42,7 +42,7 @@ class FakeSceneDocuments:
                 "expected_revision": expected_revision,
             }
         )
-        return SceneDocumentSnapshot(scenes=self.snapshot.scenes, revision="revision-2")
+        return SceneDocumentSnapshot(scenes=self.snapshot.to_scenes(), revision="revision-2")
 
 
 class FakeSceneMedia:
@@ -65,6 +65,7 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
                         "shot_description": "Wide shot",
                         "z_image": {"prompt": "Amber stage"},
                         "ltx": {"original_style_i2v_prompt": "Slow dolly"},
+                        "reference_ids": ["performer", "stage"],
                     },
                     {"scene": 2, "shot_description": "Close-up"},
                 ),
@@ -113,6 +114,30 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
                 scenes=({"scene": 1, "extension": {2: "invalid"}},),
                 revision="revision-1",
             )
+
+    def test_document_snapshot_rejects_non_object_scene_entries(self):
+        for scene in (7, ["not", "an", "object"]):
+            with self.subTest(scene=scene):
+                with self.assertRaisesRegex(TypeError, "scene must be a JSON object"):
+                    SceneDocumentSnapshot(
+                        scenes=(scene,),  # type: ignore[arg-type]
+                        revision="revision-1",
+                    )
+
+    def test_to_scenes_returns_independent_json_copies(self):
+        snapshot = SceneDocumentSnapshot(
+            scenes=({"scene": 1, "extension": {"weights": [1, 2]}},),
+            revision="revision-1",
+        )
+
+        first = snapshot.to_scenes()
+        first[0]["extension"]["weights"].append(3)
+        first[0]["scene"] = 9
+
+        self.assertEqual(
+            [{"scene": 1, "extension": {"weights": [1, 2]}}],
+            snapshot.to_scenes(),
+        )
 
     def test_load_combines_document_snapshot_with_media_facts(self):
         media = FakeSceneMedia(
@@ -262,7 +287,6 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             project_id="demo",
             scene_number=1,
             changes={"shot_description": "Tracking shot"},
-            selected_ltx_prompt_field="invalid",  # type: ignore[arg-type]
             expected_revision="revision-1",
         )
 
@@ -270,6 +294,17 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             {"shot_description": "Tracking shot"},
             self.documents.patch_calls[0]["changes"],
         )
+
+    def test_patch_requires_selected_ltx_field_for_ltx_change(self):
+        with self.assertRaisesRegex(ScenePatchRejected, "not editable"):
+            PatchSceneUseCase(documents=self.documents).execute(
+                project_id="demo",
+                scene_number=1,
+                changes={"ltx.base_prompt": "Replacement"},
+                expected_revision="revision-1",
+            )
+
+        self.assertEqual([], self.documents.patch_calls)
 
     def test_patch_propagates_optimistic_concurrency_conflict(self):
         self.documents.conflict = True

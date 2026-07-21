@@ -51,8 +51,8 @@ class PatchSceneUseCase:
         project_id: str,
         scene_number: int,
         changes: Mapping[str, object],
-        selected_ltx_prompt_field: SceneLtxPromptField,
         expected_revision: str,
+        selected_ltx_prompt_field: SceneLtxPromptField | None = None,
     ) -> SceneDocumentSnapshot:
         canonical_changes = self._canonical_changes(
             changes,
@@ -70,7 +70,7 @@ class PatchSceneUseCase:
         cls,
         changes: Mapping[str, object],
         *,
-        selected_ltx_prompt_field: SceneLtxPromptField,
+        selected_ltx_prompt_field: SceneLtxPromptField | None,
     ) -> dict[str, object]:
         if not changes:
             raise ScenePatchRejected("Scene patch requires at least one editable field")
