@@ -26,6 +26,63 @@ class SceneWorkspaceDomainTests(unittest.TestCase):
         )
         self.assertEqual([3, 1], [scene["scene"] for scene in workspace.to_scenes()])
 
+    def test_internal_raw_payload_cannot_be_mutated(self):
+        workspace = SceneWorkspace.from_scenes(
+            [
+                {
+                    "scene": 1,
+                    "workflow_extension": {"weights": [1, 2]},
+                }
+            ]
+        )
+        item = workspace.items[0]
+
+        with self.assertRaises(TypeError):
+            item._raw_scene["workflow_extension"] = {"weights": [3]}
+        with self.assertRaises((AttributeError, TypeError)):
+            item._raw_scene["workflow_extension"]["weights"].append(3)
+
+        raw_scene = item.raw_scene
+        raw_scene["workflow_extension"]["weights"].append(3)
+        self.assertIsInstance(raw_scene, dict)
+        self.assertIsInstance(raw_scene["workflow_extension"]["weights"], list)
+        self.assertEqual(
+            {"scene": 1, "workflow_extension": {"weights": [1, 2]}},
+            item.to_scene(),
+        )
+
+    def test_reference_ids_support_standard_scene_references(self):
+        workspace = SceneWorkspace.from_scenes(
+            [
+                {
+                    "scene": 1,
+                    "references": {
+                        "actor_ids": ["mara", "ivo"],
+                        "location_id": "archive",
+                        "metadata": {"confidence": 0.8},
+                    },
+                }
+            ]
+        )
+
+        self.assertEqual(("mara", "ivo", "archive"), workspace.items[0].reference_ids)
+
+    def test_reference_ids_support_movie_schema_without_stringifying_metadata(self):
+        workspace = SceneWorkspace.from_scenes(
+            [
+                {
+                    "scene": 1,
+                    "reference_ids": {
+                        "actors": ["mara"],
+                        "location": "archive",
+                        "metadata": {"confidence": 0.8},
+                    },
+                }
+            ]
+        )
+
+        self.assertEqual(("mara", "archive"), workspace.items[0].reference_ids)
+
     def test_missing_optional_fields_use_empty_display_values(self):
         workspace = SceneWorkspace.from_scenes([{"scene": 7}])
 

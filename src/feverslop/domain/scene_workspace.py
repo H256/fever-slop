@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Literal
 
 
@@ -38,7 +39,10 @@ class SceneWorkspaceItem:
     video_prompt: str = ""
     reference_ids: tuple[str, ...] = ()
     media: SceneMedia = field(default_factory=SceneMedia)
-    _raw_scene: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    _raw_scene: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_raw_scene", _freeze_json(self._raw_scene))
 
     @classmethod
     def from_scene(
@@ -76,10 +80,10 @@ class SceneWorkspaceItem:
 
     @property
     def raw_scene(self) -> dict[str, Any]:
-        return deepcopy(self._raw_scene)
+        return _thaw_json(self._raw_scene)
 
     def to_scene(self) -> dict[str, Any]:
-        return deepcopy(self._raw_scene)
+        return _thaw_json(self._raw_scene)
 
 
 @dataclass(frozen=True)
@@ -121,19 +125,40 @@ def _float_value(scene: Mapping[str, Any], preferred: str, fallback: str) -> flo
 
 
 def _reference_ids(scene: Mapping[str, Any]) -> tuple[str, ...]:
-    values: list[Any] = []
-    actor_ids = scene.get("actor_ids")
-    if isinstance(actor_ids, (list, tuple)):
-        values.extend(actor_ids)
+    values: list[str] = []
+    _append_reference_values(values, scene.get("actor_ids"))
 
-    reference_ids = scene.get("reference_ids")
-    if isinstance(reference_ids, Mapping):
-        for value in reference_ids.values():
-            if isinstance(value, (list, tuple)):
-                values.extend(value)
-            else:
-                values.append(value)
-    elif isinstance(reference_ids, (list, tuple)):
-        values.extend(reference_ids)
+    references = scene.get("references")
+    if isinstance(references, Mapping):
+        for field_name in ("actor_ids", "location_id", "prop_ids"):
+            _append_reference_values(values, references.get(field_name))
 
-    return tuple(dict.fromkeys(str(value) for value in values if value not in (None, "")))
+    movie_references = scene.get("reference_ids")
+    if isinstance(movie_references, Mapping):
+        for field_name in ("actors", "location", "props"):
+            _append_reference_values(values, movie_references.get(field_name))
+    else:
+        _append_reference_values(values, movie_references)
+
+    return tuple(dict.fromkeys(values))
+
+
+def _append_reference_values(target: list[str], value: Any) -> None:
+    candidates = value if isinstance(value, (list, tuple)) else (value,)
+    target.extend(candidate for candidate in candidates if isinstance(candidate, str) and candidate)
+
+
+def _freeze_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json(item) for item in value)
+    return deepcopy(value)
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return deepcopy(value)
