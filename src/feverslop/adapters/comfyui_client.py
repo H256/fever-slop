@@ -13,6 +13,10 @@ class ComfyUIHTTPError(FeverSlopWorkflowError):
     pass
 
 
+class ComfyUIExecutionError(FeverSlopWorkflowError):
+    pass
+
+
 def json_dumps_compact(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -96,12 +100,47 @@ class ComfyUIClient:
             history = self.get_history(prompt_id)
 
             if prompt_id in history:
-                return history[prompt_id]
+                entry = history[prompt_id]
+                self._raise_for_execution_error(prompt_id, entry)
+                return entry
 
             if time.time() - started_at > timeout_seconds:
                 raise TimeoutError(f"ComfyUI prompt timed out: {prompt_id}")
 
             time.sleep(poll_interval)
+
+    @staticmethod
+    def _raise_for_execution_error(prompt_id: str, history_entry: dict) -> None:
+        status = history_entry.get("status") or {}
+        if status.get("status_str") != "error":
+            return
+        messages = status.get("messages") or []
+        details = next(
+            (
+                payload
+                for message_type, payload in reversed(messages)
+                if message_type == "execution_error" and isinstance(payload, dict)
+            ),
+            {},
+        )
+        node_id = details.get("node_id")
+        node_type = details.get("node_type")
+        exception_type = details.get("exception_type")
+        exception_message = details.get("exception_message")
+        node = (
+            f" at node {node_id} ({node_type})"
+            if node_id or node_type
+            else ""
+        )
+        exception = ": ".join(
+            str(value)
+            for value in (exception_type, exception_message)
+            if value
+        )
+        suffix = f": {exception}" if exception else ""
+        raise ComfyUIExecutionError(
+            f"ComfyUI prompt {prompt_id} failed{node}{suffix}"
+        )
 
     def upload_image(
         self,
@@ -158,6 +197,28 @@ class ComfyUIClient:
             overwrite=overwrite,
             upload_name=upload_name,
         )
+
+    def input_file_exists(self, comfyui_name: str) -> bool:
+        normalized = str(comfyui_name).strip().replace("\\", "/").strip("/")
+        subfolder, separator, filename = normalized.rpartition("/")
+        if not separator:
+            filename = normalized
+            subfolder = ""
+        if not filename:
+            return False
+        response = self._ensure_session().get(
+            f"{self.base_url}/view",
+            params={"filename": filename, "subfolder": subfolder, "type": "input"},
+            timeout=60,
+            stream=True,
+        )
+        try:
+            if response.status_code == 404:
+                return False
+            self._raise_for_status(response, "check input file")
+            return True
+        finally:
+            response.close()
 
     def download_view_file(
         self,

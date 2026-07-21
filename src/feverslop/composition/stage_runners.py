@@ -428,6 +428,9 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             max_render_duration_seconds=backend.max_render_duration_seconds,
             render_budget_workflow_path=backend.render_budget_workflow_path,
             round_render_frames_to_8n1=backend.round_render_frames_to_8n1,
+            asset_uploader=backend.asset_uploader,
+            model_resolver=backend.model_resolver,
+            model_workflow_path=backend.workflow_label,
         )
         total = len(scenes)
         with RenderProgressReporter("Rendering prepared LTX scenes", total) as progress:

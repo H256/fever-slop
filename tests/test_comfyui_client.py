@@ -3,8 +3,40 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
+from feverslop.errors import FeverSlopWorkflowError
+
 
 class ComfyUIClientTests(unittest.TestCase):
+    def test_wait_for_completion_raises_comfyui_execution_error_details(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        prompt_id = "prompt-oom"
+        client = ComfyUIClient(base_url="http://comfy.example")
+        client.get_history = MagicMock(return_value={
+            prompt_id: {
+                "status": {
+                    "status_str": "error",
+                    "completed": False,
+                    "messages": [[
+                        "execution_error",
+                        {
+                            "prompt_id": prompt_id,
+                            "node_id": "5012",
+                            "node_type": "LTXAddVideoICLoRAGuide",
+                            "exception_type": "torch.OutOfMemoryError",
+                            "exception_message": "HIP out of memory. Tried to allocate 6.75 GiB.",
+                        },
+                    ]],
+                }
+            }
+        })
+
+        with self.assertRaisesRegex(
+            FeverSlopWorkflowError,
+            r"prompt-oom.*node 5012.*LTXAddVideoICLoRAGuide.*torch\.OutOfMemoryError.*6\.75 GiB",
+        ):
+            client.wait_for_completion(prompt_id, poll_interval=0)
+
     def test_wait_for_completion_uses_configured_default_timeout(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient
 
