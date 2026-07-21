@@ -45,7 +45,7 @@ _LEGACY_RENDER_VIDEO = re.compile(
     re.IGNORECASE,
 )
 _MOVIE_RENDER_VIDEO = re.compile(
-    rf"^output/movie/ltx_(?:msr|ingredients)(?:_smoke)?/scene_0*(\d+)\.{_VIDEO_EXTENSIONS}$",
+    rf"^output/movie/ltx_(?:msr|ingredients|i2v|startframe_director)/scene_0*(\d+)\.{_VIDEO_EXTENSIONS}$",
     re.IGNORECASE,
 )
 _CANONICAL_WORKFLOW = re.compile(

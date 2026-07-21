@@ -358,6 +358,30 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         self.assertEqual(video, media[5].video_path)
         self.assertEqual(workflow, media[5].workflow_path)
 
+    def test_load_media_supports_i2v_and_startframe_director_movie_clips(self):
+        for scene_number, pipeline in (
+            (6, "ltx_i2v"),
+            (7, "ltx_startframe_director"),
+        ):
+            with self.subTest(pipeline=pipeline):
+                video = f"output/movie/{pipeline}/scene_{scene_number:04}.mp4"
+                catalog = CatalogStub(
+                    {
+                        "render_plans": [],
+                        "images": [],
+                        "videos": [
+                            f"output/movie/{pipeline}/scene_{scene_number:04}_raw.mp4",
+                            f"output/movie/{pipeline}/movie.mp4",
+                            video,
+                        ],
+                        "generated_json": [],
+                    }
+                )
+
+                media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
+
+                self.assertEqual(video, media[scene_number].video_path)
+
 
 if __name__ == "__main__":
     unittest.main()
