@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
 from feverslop.ports.scene_documents import SceneDocumentConflict
@@ -176,6 +178,32 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(changed).hexdigest(), caught.exception.actual_revision)
         self.assertEqual(changed, path.read_bytes())
 
+    def test_patch_reports_deleted_plan_as_conflict_and_removes_sibling_temp_file(self):
+        path, payload = self._write_plan("plan.json", [{"scene": 1, "shot_description": "old"}])
+        catalog = CatalogStub(
+            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []}
+        )
+        real_fsync = os.fsync
+
+        def delete_plan_after_temp_write(descriptor: int) -> None:
+            real_fsync(descriptor)
+            path.unlink()
+
+        with patch(
+            "feverslop.adapters.project_scene_documents.os.fsync",
+            side_effect=delete_plan_after_temp_write,
+        ):
+            with self.assertRaises(SceneDocumentConflict) as caught:
+                ProjectSceneDocuments(self._project_root, catalog=catalog).patch_scene(
+                    "demo",
+                    1,
+                    {"shot_description": "ours"},
+                    hashlib.sha256(payload).hexdigest(),
+                )
+
+        self.assertIsNone(caught.exception.actual_revision)
+        self.assertFalse(any(path.parent.glob(f".{path.name}.*.tmp")))
+
     def test_catalog_paths_outside_project_root_are_refused(self):
         outside = self.projects_root / "outside.json"
         outside.write_text("[]", encoding="utf-8")
@@ -215,6 +243,65 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         self.assertEqual(paths[2], media[2].workflow_path)
         self.assertNotIn(3, media)
         self.assertEqual(["demo"], catalog.requests)
+
+    def test_load_media_filters_unrelated_candidates_and_ranks_canonical_scene_artifacts(self):
+        storyboard = "output/render/storyboard/scene_0001.png"
+        preview = "output/render/scenes/scene_0001/preview.webp"
+        canonical_video = "output/render/scenes/scene_0001/final.mp4"
+        legacy_video = "output/render/legacy/final/scene_0001.mp4"
+        canonical_workflow = "output/render/scenes/scene_0001/workflow.json"
+        legacy_workflow = "output/render/debug/scene_0001_workflow.json"
+        catalog = CatalogStub(
+            {
+                "render_plans": [],
+                "images": [
+                    "output/references/scene_0001_ingredients_sheet.png",
+                    "output/ingredients_sheets/scene_0003/preview.png",
+                    preview,
+                    storyboard,
+                ],
+                "videos": [
+                    "output/movie/scene_0001.mp4",
+                    "output/render/scenes/scene_0001/raw.mp4",
+                    legacy_video,
+                    canonical_video,
+                    "output/render/final/movie.mp4",
+                    "output/movie_pipeline/final/scene_0003.mp4",
+                ],
+                "generated_json": [
+                    "output/references/scene_0001_workflow.json",
+                    "output/reference_sheets/scene_0003_workflow.json",
+                    legacy_workflow,
+                    canonical_workflow,
+                ],
+            }
+        )
+
+        media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
+
+        self.assertEqual(storyboard, media[1].thumbnail_path)
+        self.assertEqual(canonical_video, media[1].video_path)
+        self.assertEqual(canonical_workflow, media[1].workflow_path)
+        self.assertNotIn(3, media)
+
+    def test_load_media_uses_preview_and_legacy_final_when_canonical_candidates_are_absent(self):
+        preview = "output/render/scenes/scene_0002/preview.jpg"
+        legacy_video = "output/render/ltx/final/scene_0002.webm"
+        legacy_workflow = "output/render/debug/scene_0002_workflow.json"
+        catalog = CatalogStub(
+            {
+                "render_plans": [],
+                "images": [preview],
+                "videos": [legacy_video],
+                "generated_json": [legacy_workflow],
+            }
+        )
+
+        media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
+
+        self.assertEqual(preview, media[2].thumbnail_path)
+        self.assertEqual(legacy_video, media[2].video_path)
+        self.assertEqual(legacy_workflow, media[2].workflow_path)
 
 
 if __name__ == "__main__":

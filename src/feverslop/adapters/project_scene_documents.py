@@ -18,7 +18,41 @@ class _ArtifactCatalog(Protocol):
     def list_artifacts(self, project_id: str) -> dict[str, list[str]]: ...
 
 
-_SCENE_PATH_PATTERN = re.compile(r"(?:^|/)scene[_-]?0*(\d+)(?:/|[_\-.])", re.IGNORECASE)
+_IMAGE_EXTENSIONS = r"(?:png|jpe?g|webp)"
+_VIDEO_EXTENSIONS = r"(?:mp4|mov|webm)"
+_CANONICAL_STORYBOARD = re.compile(
+    rf"^output/render/storyboard/scene_0*(\d+)\.{_IMAGE_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_STORYBOARD = re.compile(
+    rf"(?:^|/)storyboard/(?:final/)?scene_0*(\d+)\.{_IMAGE_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_CANONICAL_PREVIEW = re.compile(
+    rf"^output/render/scenes/scene_0*(\d+)/preview\.{_IMAGE_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_SCENE_PREVIEW = re.compile(
+    rf"(?:^|/)scene_0*(\d+)/preview\.{_IMAGE_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_CANONICAL_FINAL_VIDEO = re.compile(
+    rf"^output/render/scenes/scene_0*(\d+)/final\.{_VIDEO_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_LEGACY_FINAL_VIDEO = re.compile(
+    rf"(?:^|/)final/scene_0*(\d+)\.{_VIDEO_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_CANONICAL_WORKFLOW = re.compile(
+    r"^output/render/scenes/scene_0*(\d+)/workflow\.json$",
+    re.IGNORECASE,
+)
+_LEGACY_WORKFLOW = re.compile(
+    r"(?:^|/)scene_0*(\d+)_workflow\.json$",
+    re.IGNORECASE,
+)
+_REJECTED_MEDIA_PREFIXES = ("reference", "ingredient", "movie")
 
 
 class ProjectSceneDocuments:
@@ -84,18 +118,36 @@ class ProjectSceneDocuments:
     def load_media(self, project_id: str) -> Mapping[int, SceneMedia]:
         root = self._resolved_root(project_id)
         artifacts = self._catalog.list_artifacts(project_id)
-        media: dict[int, dict[str, str]] = {}
-        self._collect_media(root, artifacts.get("images", ()), media, "thumbnail_path")
-        self._collect_media(root, artifacts.get("videos", ()), media, "video_path")
-        workflows = (
-            path
-            for path in artifacts.get("generated_json", ())
-            if _is_workflow_path(path)
+        candidates: dict[int, dict[str, list[tuple[int, str]]]] = {}
+        self._collect_media_candidates(
+            root,
+            artifacts.get("images", ()),
+            candidates,
+            "thumbnail_path",
+            _thumbnail_candidate,
         )
-        self._collect_media(root, workflows, media, "workflow_path")
+        self._collect_media_candidates(
+            root,
+            artifacts.get("videos", ()),
+            candidates,
+            "video_path",
+            _video_candidate,
+        )
+        self._collect_media_candidates(
+            root,
+            artifacts.get("generated_json", ()),
+            candidates,
+            "workflow_path",
+            _workflow_candidate,
+        )
         return {
-            scene_number: SceneMedia(**paths)
-            for scene_number, paths in media.items()
+            scene_number: SceneMedia(
+                **{
+                    field: min(field_candidates, key=lambda item: (item[0], item[1]))[1]
+                    for field, field_candidates in scene_candidates.items()
+                }
+            )
+            for scene_number, scene_candidates in candidates.items()
         }
 
     def _render_plan_path(self, project_id: str) -> tuple[Path, Path]:
@@ -149,7 +201,10 @@ class ProjectSceneDocuments:
         project_id: str,
         expected_revision: str,
     ) -> None:
-        resolved_path = path.resolve(strict=True)
+        try:
+            resolved_path = path.resolve(strict=True)
+        except FileNotFoundError:
+            raise SceneDocumentConflict(project_id, expected_revision) from None
         if not resolved_path.is_relative_to(root):
             raise ValueError(f"Render plan is outside project root: {path}")
         descriptor, temporary_name = tempfile.mkstemp(
@@ -163,9 +218,16 @@ class ProjectSceneDocuments:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            if path.resolve(strict=True) != resolved_path:
+            try:
+                current_path = path.resolve(strict=True)
+            except FileNotFoundError:
+                raise SceneDocumentConflict(project_id, expected_revision) from None
+            if current_path != resolved_path:
                 raise ValueError(f"Render plan path changed before write: {path}")
-            actual_revision = _revision(resolved_path.read_bytes())
+            try:
+                actual_revision = _revision(resolved_path.read_bytes())
+            except FileNotFoundError:
+                raise SceneDocumentConflict(project_id, expected_revision) from None
             if actual_revision != expected_revision:
                 raise SceneDocumentConflict(
                     project_id,
@@ -177,18 +239,22 @@ class ProjectSceneDocuments:
             temporary_path.unlink(missing_ok=True)
 
     @classmethod
-    def _collect_media(
+    def _collect_media_candidates(
         cls,
         root: Path,
         paths: object,
-        media: dict[int, dict[str, str]],
+        candidates: dict[int, dict[str, list[tuple[int, str]]]],
         field: str,
+        candidate_for_path: Callable[[str], tuple[int, int] | None],
     ) -> None:
         for relative_path in paths:
             cls._catalogued_path(root, relative_path)
-            scene_number = _scene_number_from_path(relative_path)
-            if scene_number is not None:
-                media.setdefault(scene_number, {}).setdefault(field, relative_path)
+            candidate = candidate_for_path(relative_path)
+            if candidate is not None:
+                scene_number, rank = candidate
+                candidates.setdefault(scene_number, {}).setdefault(field, []).append(
+                    (rank, relative_path)
+                )
 
 
 def _revision(payload: bytes) -> str:
@@ -219,11 +285,42 @@ def _json_copy(value: object) -> Any:
     return value
 
 
-def _scene_number_from_path(path: str) -> int | None:
-    match = _SCENE_PATH_PATTERN.search(Path(path).as_posix())
-    return int(match.group(1)) if match else None
+def _thumbnail_candidate(path: str) -> tuple[int, int] | None:
+    return _ranked_scene_path(
+        path,
+        (
+            (_CANONICAL_STORYBOARD, 0),
+            (_CANONICAL_PREVIEW, 1),
+            (_STORYBOARD, 2),
+            (_SCENE_PREVIEW, 3),
+        ),
+    )
 
 
-def _is_workflow_path(path: str) -> bool:
-    stem = Path(path).stem.lower()
-    return stem == "workflow" or stem.endswith("_workflow")
+def _video_candidate(path: str) -> tuple[int, int] | None:
+    return _ranked_scene_path(
+        path,
+        ((_CANONICAL_FINAL_VIDEO, 0), (_LEGACY_FINAL_VIDEO, 1)),
+    )
+
+
+def _workflow_candidate(path: str) -> tuple[int, int] | None:
+    return _ranked_scene_path(
+        path,
+        ((_CANONICAL_WORKFLOW, 0), (_LEGACY_WORKFLOW, 1)),
+    )
+
+
+def _ranked_scene_path(
+    path: str,
+    patterns: tuple[tuple[re.Pattern[str], int], ...],
+) -> tuple[int, int] | None:
+    normalized = Path(path).as_posix()
+    parts = (part.lower() for part in Path(normalized).parts)
+    if any(part.startswith(_REJECTED_MEDIA_PREFIXES) for part in parts):
+        return None
+    for pattern, rank in patterns:
+        match = pattern.search(normalized)
+        if match:
+            return int(match.group(1)), rank
+    return None
