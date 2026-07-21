@@ -41,6 +41,7 @@ class StudioViewModel(QObject):
         self._jobs: list[dict[str, Any]] = []
         self._review_path = ""
         self._review_state: ReviewTimelineState | None = None
+        self._review_revision: str | None = None
         self._error = ""
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(500)
@@ -339,33 +340,44 @@ class StudioViewModel(QObject):
     @Slot(result=bool)
     def refresh_render_plan_editor(self) -> bool:
         render_plans = self.artifacts.get("render_plans") or []
-        if not self._editor_path or self._editor_path not in render_plans:
+        if not render_plans:
             return False
-        if self._editor_dirty:
-            self._set_error(
-                "Disk changed while the raw JSON draft has unsaved edits; reload or save to resolve"
-            )
+        path = str(render_plans[0])
+        raw_matches = self._editor_path == path
+        review_matches = self._review_state is not None and self._review_path == path
+        if not raw_matches and not review_matches:
             return False
+        blocked: list[str] = []
+        if raw_matches and self._editor_dirty:
+            blocked.append("Disk changed; save/reload raw draft")
+        if review_matches and self._review_state is not None and self._review_state.dirty:
+            blocked.append("Disk changed; save/reload review")
+        refresh_raw = raw_matches and not self._editor_dirty
+        refresh_review = review_matches and self._review_state is not None and not self._review_state.dirty
+        artifact = None
         try:
-            artifact = self.store.read_artifact(
-                self.current_project_id,
-                self._editor_path,
-            )
-            self._editor_data = copy.deepcopy(artifact["data"])
-            self._editor_baseline = copy.deepcopy(artifact["data"])
-            self._editor_revision = artifact.get("revision")
-            self._editor_exists = bool(
-                artifact.get("exists", artifact["data"] is not None)
-            )
-            self._editor_text = json.dumps(
-                self._editor_data,
-                indent=2,
-                ensure_ascii=False,
-            )
-            self._set_editor_dirty(False)
-            self._set_error("")
-            self.editorChanged.emit()
-            return True
+            if refresh_raw or refresh_review:
+                artifact = self.store.read_artifact(self.current_project_id, path)
+            if refresh_raw and artifact is not None:
+                self._editor_data = copy.deepcopy(artifact["data"])
+                self._editor_baseline = copy.deepcopy(artifact["data"])
+                self._editor_revision = artifact.get("revision")
+                self._editor_exists = bool(
+                    artifact.get("exists", artifact["data"] is not None)
+                )
+                self._editor_text = json.dumps(
+                    self._editor_data,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                self._set_editor_dirty(False)
+                self.editorChanged.emit()
+            if refresh_review and artifact is not None:
+                self._review_state = ReviewTimelineState.from_document(artifact["data"])
+                self._review_revision = artifact.get("revision")
+                self.reviewChanged.emit()
+            self._set_error("; ".join(blocked))
+            return not blocked and (refresh_raw or refresh_review)
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
             return False
@@ -388,6 +400,7 @@ class StudioViewModel(QObject):
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._review_path = path
             self._review_state = ReviewTimelineState.from_document(artifact["data"])
+            self._review_revision = artifact.get("revision")
             self._set_error("")
             self.reviewChanged.emit()
             return True
@@ -429,10 +442,15 @@ class StudioViewModel(QObject):
             self._set_error("Load a review timeline first")
             return False
         try:
-            self.store.write_artifact(
+            artifact = self.store.write_artifact(
                 self.current_project_id,
-                ArtifactRequest(path=self._review_path, data=self._review_state.document()),
+                ArtifactRequest(
+                    path=self._review_path,
+                    data=self._review_state.document(),
+                    expected_revision=self._review_revision,
+                ),
             )
+            self._review_revision = artifact.get("revision")
             self._review_state.mark_saved()
             self._set_error("")
             self.reviewChanged.emit()
@@ -455,7 +473,12 @@ class StudioViewModel(QObject):
         try:
             self.store.patch_render_plan(
                 self.current_project_id,
-                RenderPlanPatch(path=path, scene=scene, updates=dict(updates)),
+                RenderPlanPatch(
+                    path=path,
+                    scene=scene,
+                    updates=dict(updates),
+                    expected_revision=self._editor_revision,
+                ),
             )
             self.refresh_render_plan_editor()
             return True

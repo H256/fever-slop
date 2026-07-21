@@ -44,6 +44,7 @@ class RenderPlanPatch:
     path: str
     scene: int
     updates: dict[str, Any]
+    expected_revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -272,11 +273,19 @@ class ProjectStore:
             for scene in render_plan:
                 if int(scene.get("scene", -1)) == patch.scene:
                     scene.update(patch.updates)
-                    self.write_artifact(
+                    written = self.write_artifact(
                         project_id,
-                        ArtifactRequest(path=patch.path, data=render_plan),
+                        ArtifactRequest(
+                            path=patch.path,
+                            data=render_plan,
+                            expected_revision=patch.expected_revision,
+                        ),
                     )
-                    return {"path": patch.path, "scene": scene}
+                    return {
+                        "path": patch.path,
+                        "scene": scene,
+                        "revision": written["revision"],
+                    }
         raise KeyError(f"Scene {patch.scene} not found in {patch.path}")
 
     def project_root(self, project_id: str) -> Path:

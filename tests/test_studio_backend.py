@@ -507,6 +507,46 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("new prompt", updated["scene"]["prompt"])
             self.assertEqual(["hero"], updated["scene"]["actor_references"])
 
+    def test_patch_render_plan_rejects_stale_expected_revision(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            relative = "output/render/render_plan_song.json"
+            loaded = store.read_artifact("demo", relative)
+            path = Path(temp_dir) / "demo" / relative
+            external = b'[{"scene":1,"prompt":"external"}]'
+            path.write_bytes(external)
+
+            with self.assertRaisesRegex(Exception, "changed"):
+                store.patch_render_plan(
+                    "demo",
+                    RenderPlanPatch(
+                        path=relative,
+                        scene=1,
+                        updates={"prompt": "ours"},
+                        expected_revision=loaded["revision"],
+                    ),
+                )
+
+            self.assertEqual(external, path.read_bytes())
+
+    def test_patch_render_plan_with_current_revision_returns_new_revision(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            relative = "output/render/render_plan_song.json"
+            loaded = store.read_artifact("demo", relative)
+
+            updated = store.patch_render_plan(
+                "demo",
+                RenderPlanPatch(
+                    path=relative,
+                    scene=1,
+                    updates={"prompt": "ours"},
+                    expected_revision=loaded["revision"],
+                ),
+            )
+
+            self.assertEqual(store.read_artifact("demo", relative)["revision"], updated["revision"])
+
     def test_patch_render_plan_uses_shared_artifact_write_lock(self):
         from feverslop.studio.artifact_locking import artifact_write_lock
 
