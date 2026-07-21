@@ -89,6 +89,49 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "--stage ltx_prepare_workflows"):
                 _run_ltx_render_scenes_stage(state)
 
+    def test_render_wires_current_server_adapters_into_prepared_renderer(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients", scenes="1")
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            layout = state.context.artifact_layout
+            layout.scene_workflow(1).parent.mkdir(parents=True)
+            layout.scene_workflow(1).write_text("{}", encoding="utf-8")
+            layout.scene_manifest(1).write_text("{}", encoding="utf-8")
+            backend = Mock()
+            backend.max_render_frames = None
+            backend.max_render_duration_seconds = None
+            backend.render_budget_workflow_path = state.ingredients_workflow
+            backend.round_render_frames_to_8n1 = False
+            backend.workflow_label = state.ingredients_workflow
+            renderer = Mock()
+            renderer.render.return_value = layout.scene_final_video(1)
+            use_case = Mock(backend=backend)
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=use_case,
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=renderer,
+            ) as renderer_class:
+                _run_ltx_render_scenes_stage(state)
+
+            renderer_class.assert_called_once_with(
+                project_dir=state.context.project_config_dir,
+                render_queue=backend.render_queue,
+                postprocessor=backend.postprocessor,
+                expected_pipeline="ltx_ingredients",
+                max_render_frames=None,
+                max_render_duration_seconds=None,
+                render_budget_workflow_path=state.ingredients_workflow,
+                round_render_frames_to_8n1=False,
+                asset_uploader=backend.asset_uploader,
+                model_resolver=backend.model_resolver,
+                model_workflow_path=backend.workflow_label,
+            )
+
     def test_prepare_aggregates_missing_plan_audio_and_template(self):
         with TemporaryDirectory() as tmp:
             state = self._state(Path(tmp), pipeline="ltx_ingredients")

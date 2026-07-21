@@ -159,6 +159,28 @@ class ComfyUIClient:
             upload_name=upload_name,
         )
 
+    def input_file_exists(self, comfyui_name: str) -> bool:
+        normalized = str(comfyui_name).strip().replace("\\", "/").strip("/")
+        subfolder, separator, filename = normalized.rpartition("/")
+        if not separator:
+            filename = normalized
+            subfolder = ""
+        if not filename:
+            return False
+        response = self._ensure_session().get(
+            f"{self.base_url}/view",
+            params={"filename": filename, "subfolder": subfolder, "type": "input"},
+            timeout=60,
+            stream=True,
+        )
+        try:
+            if response.status_code == 404:
+                return False
+            self._raise_for_status(response, "check input file")
+            return True
+        finally:
+            response.close()
+
     def download_view_file(
         self,
         filename: str,

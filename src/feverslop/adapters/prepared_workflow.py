@@ -168,7 +168,7 @@ class WorkflowMaterializer:
 
 
 class PreparedWorkflowRenderer:
-    """Verify and queue the exact JSON produced by :class:`WorkflowMaterializer`."""
+    """Verify stored JSON and adapt an in-memory copy for the current ComfyUI server."""
 
     def __init__(
         self, *, project_dir: str | Path, render_queue: Any, postprocessor: Any,
@@ -177,6 +177,9 @@ class PreparedWorkflowRenderer:
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
         round_render_frames_to_8n1: bool = False,
+        asset_uploader: Any | None = None,
+        model_resolver: Any | None = None,
+        model_workflow_path: str | Path | None = None,
     ):
         self.project_dir = Path(project_dir)
         self.render_queue = render_queue
@@ -186,6 +189,9 @@ class PreparedWorkflowRenderer:
         self.max_render_duration_seconds = max_render_duration_seconds
         self.render_budget_workflow_path = render_budget_workflow_path
         self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
+        self.asset_uploader = asset_uploader
+        self.model_resolver = model_resolver
+        self.model_workflow_path = model_workflow_path
 
     def render(self, prepared_workflow_path: str | Path) -> Path:
         workflow_path = Path(prepared_workflow_path)
@@ -228,6 +234,7 @@ class PreparedWorkflowRenderer:
             round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+        workflow = self._prepare_for_current_server(workflow, manifest)
         layout = SceneArtifactLayout(self.project_dir)
         raw_path = layout.scene_raw_video(manifest.scene)
         final_path = layout.scene_final_video(manifest.scene)
@@ -257,11 +264,62 @@ class PreparedWorkflowRenderer:
             temporary_final.unlink(missing_ok=True)
         return final_path
 
+    def _prepare_for_current_server(
+        self, workflow: dict[str, Any], manifest: SceneWorkflowManifest
+    ) -> dict[str, Any]:
+        replacements: dict[str, str] = {}
+        if self.asset_uploader is not None:
+            for asset in manifest.assets:
+                stored_name = asset.comfyui_name
+                normalized_name = stored_name.replace("\\", "/")
+                if self.asset_uploader.client.input_file_exists(normalized_name):
+                    current_name = normalized_name
+                else:
+                    local_path = asset.resolve(self.project_dir)
+                    if asset.role == "audio":
+                        current_name = self.asset_uploader.resolve_audio_name(
+                            local_path,
+                            upload_audio=True,
+                            uploaded_audio_name=None,
+                        )
+                    elif asset.role == "startframe":
+                        current_name = self.asset_uploader.resolve_startframe_name(
+                            local_path,
+                            upload_startframes=True,
+                        )
+                    else:
+                        current_name = self.asset_uploader.resolve_reference_image_name(
+                            local_path,
+                            upload_references=True,
+                        )
+                replacements[stored_name] = current_name.replace("\\", "/")
+        if replacements:
+            workflow = _replace_workflow_strings(workflow, replacements)
+        if self.model_resolver is not None:
+            workflow = self.model_resolver.resolve_workflow_models(
+                workflow,
+                workflow_path=(self.model_workflow_path or manifest.template.path),
+            )
+        return workflow
+
 
 def _rolling_value(rolling: Any, key: str) -> Any:
     if isinstance(rolling, dict):
         return rolling.get(key)
     return getattr(rolling, key, None)
+
+
+def _replace_workflow_strings(value: Any, replacements: dict[str, str]) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _replace_workflow_strings(item, replacements)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_replace_workflow_strings(item, replacements) for item in value]
+    if isinstance(value, str):
+        return replacements.get(value, value)
+    return value
 
 
 class _RecordingUploader:

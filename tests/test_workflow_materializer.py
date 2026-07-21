@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from inspect import signature
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -91,7 +92,50 @@ class FakePostprocessor:
         return spec.output_file
 
 
+class FakeCurrentServerClient:
+    def __init__(self, existing=()):
+        self.existing = set(existing)
+        self.checked = []
+
+    def input_file_exists(self, comfyui_name):
+        self.checked.append(comfyui_name)
+        return comfyui_name in self.existing
+
+
+class FakeCurrentServerUploader:
+    def __init__(self, existing=()):
+        self.client = FakeCurrentServerClient(existing)
+        self.audio_uploads = []
+        self.reference_uploads = []
+
+    def resolve_audio_name(self, path, **_kwargs):
+        self.audio_uploads.append(Path(path))
+        return "linux/audio/song.wav"
+
+    def resolve_reference_image_name(self, path, **_kwargs):
+        self.reference_uploads.append(Path(path))
+        return "linux/references/sheet.png"
+
+
+class FakeCurrentServerResolver:
+    def __init__(self):
+        self.workflow_paths = []
+
+    def resolve_workflow_models(self, workflow, *, workflow_path):
+        self.workflow_paths.append(workflow_path)
+        resolved = json.loads(json.dumps(workflow))
+        resolved["lora"]["inputs"]["lora_name"] = "LTXV2/model.safetensors"
+        return resolved
+
+
 class WorkflowMaterializerTests(unittest.TestCase):
+    def test_renderer_accepts_current_server_asset_and_model_adapters(self):
+        parameters = signature(PreparedWorkflowRenderer).parameters
+
+        self.assertIn("asset_uploader", parameters)
+        self.assertIn("model_resolver", parameters)
+        self.assertIn("model_workflow_path", parameters)
+
     def test_renderer_enforces_current_budget_for_legacy_manifest(self):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
@@ -405,6 +449,80 @@ class WorkflowMaterializerTests(unittest.TestCase):
             self.assertEqual(b"trimmed", result.read_bytes())
             self.assertEqual(9, postprocessor.specs[0].keep_frames)
             self.assertEqual(0, postprocessor.specs[0].trim_front_frames)
+
+    def test_renderer_preflights_assets_and_resolves_models_for_current_server(self):
+        class PortableBackend(FakeBackend):
+            def build_workflow(self, scene, *, prompt, comfy_audio_name, rolling):
+                sheet_name = self.asset_uploader.resolve_reference_image_name(
+                    scene["ingredients"]["sheet_path"]
+                )
+                return {
+                    "image": {"inputs": {"image": sheet_name}},
+                    "audio": {"inputs": {"audio": comfy_audio_name}},
+                    "lora": {"inputs": {"lora_name": r"LTXV2\model.safetensors"}},
+                }
+
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            layout = SceneArtifactLayout(project)
+            template = project / "template.json"
+            plan = layout.ingredients_plan
+            audio = project / "song.wav"
+            sheet = project / "sheet.png"
+            for path, content in (
+                (template, b"{}"),
+                (plan, b"{}"),
+                (audio, b"audio"),
+                (sheet, b"sheet"),
+            ):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+            prepared = WorkflowMaterializer(
+                PortableBackend(template), layout
+            ).prepare(
+                WorkflowMaterializationRequest(
+                    scene={
+                        "scene": 2,
+                        "fps": 24,
+                        "frame_count": 9,
+                        "width": 64,
+                        "height": 64,
+                        "ingredients": {"sheet_path": str(sheet)},
+                    },
+                    prompt="x",
+                    audio_file=audio,
+                    render_plan_path=plan,
+                    pipeline="ltx_ingredients",
+                    seed=2,
+                )
+            )
+            stored = json.loads(prepared.workflow_path.read_text())
+            uploader = FakeCurrentServerUploader(
+                existing={"feverslop/audio/song-audiohash.wav"}
+            )
+            resolver = FakeCurrentServerResolver()
+            queue = FakeQueue()
+
+            PreparedWorkflowRenderer(
+                project_dir=project,
+                render_queue=queue,
+                postprocessor=FakePostprocessor(),
+                expected_pipeline="ltx_ingredients",
+                asset_uploader=uploader,
+                model_resolver=resolver,
+                model_workflow_path="current-linux.json",
+            ).render(prepared.workflow_path)
+
+            self.assertEqual(
+                {"feverslop/audio/song-audiohash.wav", "actual/sheet.png"},
+                set(uploader.client.checked),
+            )
+            self.assertEqual([], uploader.audio_uploads)
+            self.assertEqual([sheet], uploader.reference_uploads)
+            self.assertEqual("linux/references/sheet.png", queue.workflows[0]["image"]["inputs"]["image"])
+            self.assertEqual("LTXV2/model.safetensors", queue.workflows[0]["lora"]["inputs"]["lora_name"])
+            self.assertEqual(["current-linux.json"], resolver.workflow_paths)
+            self.assertEqual(stored, json.loads(prepared.workflow_path.read_text()))
 
     def test_manifest_persists_render_count_and_trim_metadata(self):
         with TemporaryDirectory() as tmp:

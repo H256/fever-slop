@@ -7,6 +7,37 @@ from feverslop.adapters.comfyui_client import ComfyUIClient
 
 
 class ComfyUIClientSessionTest(unittest.TestCase):
+    def test_client_exposes_input_file_preflight(self):
+        self.assertTrue(hasattr(ComfyUIClient, "input_file_exists"))
+
+    def test_input_file_preflight_normalizes_server_path(self):
+        client = ComfyUIClient(base_url="http://test:8188")
+        response = MagicMock(ok=True, status_code=200)
+        session = MagicMock()
+        session.get.return_value = response
+        client._session = session
+
+        exists = client.input_file_exists(r"feverslop\audio\song.wav")
+
+        self.assertTrue(exists)
+        session.get.assert_called_once_with(
+            "http://test:8188/view",
+            params={"filename": "song.wav", "subfolder": "feverslop/audio", "type": "input"},
+            timeout=60,
+            stream=True,
+        )
+        response.close.assert_called_once_with()
+
+    def test_input_file_preflight_returns_false_for_404(self):
+        client = ComfyUIClient(base_url="http://test:8188")
+        response = MagicMock(ok=False, status_code=404)
+        session = MagicMock()
+        session.get.return_value = response
+        client._session = session
+
+        self.assertFalse(client.input_file_exists("missing.png"))
+        response.close.assert_called_once_with()
+
     def test_session_is_reused_across_calls(self):
         """Verify that a single session is created and reused."""
         client = ComfyUIClient(base_url="http://test:8188")
