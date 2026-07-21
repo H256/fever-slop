@@ -32,7 +32,7 @@ class LoadSceneWorkspaceUseCase:
         media_by_scene = self._media.load_media(project_id)
         return SceneWorkspaceSnapshot(
             workspace=SceneWorkspace.from_scenes(
-                document.scenes,
+                document.to_scenes(),
                 media_by_scene=media_by_scene,
             ),
             revision=document.revision,
@@ -72,6 +72,9 @@ class PatchSceneUseCase:
         *,
         selected_ltx_prompt_field: SceneLtxPromptField,
     ) -> dict[str, object]:
+        if not changes:
+            raise ScenePatchRejected("Scene patch requires at least one editable field")
+
         editable_fields = set(cls._EDITABLE_FIELDS)
         selected_ltx_key: str | None = None
         if isinstance(selected_ltx_prompt_field, SceneLtxPromptField):
@@ -82,8 +85,6 @@ class PatchSceneUseCase:
         if rejected:
             fields = ", ".join(sorted(repr(field) for field in rejected))
             raise ScenePatchRejected(f"Scene field is not editable: {fields}")
-        if selected_ltx_key is None:
-            raise ScenePatchRejected("Unknown selected LTX prompt field")
 
         for field_name, value in changes.items():
             if not isinstance(value, str):

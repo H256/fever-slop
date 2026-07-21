@@ -72,6 +72,48 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             )
         )
 
+    def test_document_snapshot_is_isolated_from_source_mutation(self):
+        source = {
+            "scene": 1,
+            "extension": {"weights": [1, 2]},
+        }
+        snapshot = SceneDocumentSnapshot(scenes=(source,), revision="revision-1")
+
+        source["scene"] = 9
+        source["extension"]["weights"].append(3)
+
+        self.assertEqual(1, snapshot.scenes[0]["scene"])
+        self.assertEqual((1, 2), snapshot.scenes[0]["extension"]["weights"])
+        self.assertEqual(
+            [{"scene": 1, "extension": {"weights": [1, 2]}}],
+            snapshot.to_scenes(),
+        )
+
+    def test_document_snapshot_payload_cannot_be_mutated(self):
+        snapshot = SceneDocumentSnapshot(
+            scenes=({"scene": 1, "extension": {"weights": [1, 2]}},),
+            revision="revision-1",
+        )
+
+        with self.assertRaises(TypeError):
+            snapshot.scenes[0]["scene"] = 9
+        with self.assertRaises(TypeError):
+            snapshot.scenes[0]["extension"]["name"] = "changed"
+        with self.assertRaises((AttributeError, TypeError)):
+            snapshot.scenes[0]["extension"]["weights"].append(3)
+
+    def test_document_snapshot_rejects_non_json_payloads(self):
+        with self.assertRaisesRegex(TypeError, "non-JSON value: tuple"):
+            SceneDocumentSnapshot(
+                scenes=({"scene": 1, "extension": (1, 2)},),
+                revision="revision-1",
+            )
+        with self.assertRaisesRegex(TypeError, "JSON object keys must be strings"):
+            SceneDocumentSnapshot(
+                scenes=({"scene": 1, "extension": {2: "invalid"}},),
+                revision="revision-1",
+            )
+
     def test_load_combines_document_snapshot_with_media_facts(self):
         media = FakeSceneMedia(
             {
@@ -202,6 +244,32 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             )
 
         self.assertEqual([], self.documents.patch_calls)
+
+    def test_patch_rejects_empty_changes_without_calling_port(self):
+        with self.assertRaisesRegex(ScenePatchRejected, "at least one editable field"):
+            PatchSceneUseCase(documents=self.documents).execute(
+                project_id="demo",
+                scene_number=1,
+                changes={},
+                selected_ltx_prompt_field=SceneLtxPromptField.ORIGINAL_STYLE_I2V_PROMPT,
+                expected_revision="revision-1",
+            )
+
+        self.assertEqual([], self.documents.patch_calls)
+
+    def test_patch_does_not_validate_ltx_selector_without_ltx_change(self):
+        PatchSceneUseCase(documents=self.documents).execute(
+            project_id="demo",
+            scene_number=1,
+            changes={"shot_description": "Tracking shot"},
+            selected_ltx_prompt_field="invalid",  # type: ignore[arg-type]
+            expected_revision="revision-1",
+        )
+
+        self.assertEqual(
+            {"shot_description": "Tracking shot"},
+            self.documents.patch_calls[0]["changes"],
+        )
 
     def test_patch_propagates_optimistic_concurrency_conflict(self):
         self.documents.conflict = True

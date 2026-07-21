@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from feverslop.domain.scene_workspace import SceneMedia
@@ -20,7 +21,14 @@ class SceneDocumentSnapshot:
     revision: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "scenes", tuple(self.scenes))
+        object.__setattr__(
+            self,
+            "scenes",
+            tuple(_freeze_json(scene) for scene in self.scenes),
+        )
+
+    def to_scenes(self) -> list[dict[str, Any]]:
+        return [_thaw_json(scene) for scene in self.scenes]
 
 
 class SceneDocumentConflict(RuntimeError):
@@ -59,3 +67,26 @@ class SceneDocumentPort(Protocol):
 class SceneMediaPort(Protocol):
     def load_media(self, project_id: str) -> Mapping[int, SceneMedia]:
         """Return display-only media facts keyed by scene number."""
+
+
+def _freeze_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        frozen: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("JSON object keys must be strings")
+            frozen[key] = _freeze_json(item)
+        return MappingProxyType(frozen)
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(f"Scene document contains non-JSON value: {type(value).__name__}")
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
