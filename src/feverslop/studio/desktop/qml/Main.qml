@@ -16,6 +16,17 @@ ApplicationWindow {
     property int currentPage: 0
     property string pageTitle: "Projects"
 
+    Connections {
+        target: root.vm
+        function onCurrentProjectChanged() {
+            if (root.currentPage === 11
+                    && root.vm.current_project.project_type === "movie") {
+                root.currentPage = 1
+                root.pageTitle = "Dashboard"
+            }
+        }
+    }
+
     component NavButton: Button {
         required property int page
         readonly property string fallbackIcon: {
@@ -160,7 +171,15 @@ ApplicationWindow {
                 }
                 NavButton { text: "Dashboard"; icon.name: "view-dashboard"; page: 1; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Pipeline"; icon.name: "media-playback-start"; page: 2; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
-                NavButton { text: "Scene Workspace"; icon.name: "view-grid"; page: 11; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton {
+                    objectName: "sceneWorkspaceNavigation"
+                    text: "Scene Workspace"
+                    icon.name: "view-grid"
+                    page: 11
+                    checked: root.currentPage === page
+                    enabled: vm && vm.current_project_id
+                        && vm.current_project.project_type !== "movie"
+                }
                 NavButton { text: "Render Plan"; icon.name: "view-list-details"; page: 3; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "References"; icon.name: "image-x-generic"; page: 4; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Project Settings"; icon.name: "document-properties"; page: 5; checked: root.currentPage === page; enabled: vm && vm.current_project_id }

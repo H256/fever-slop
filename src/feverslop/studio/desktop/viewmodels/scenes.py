@@ -383,6 +383,13 @@ class SceneWorkspaceViewModel(QObject):
             )
             self._revision = str(snapshot.revision)
             self._set_state(error="", force=True)
+            refresh_editor = getattr(
+                self._studio_view_model,
+                "refresh_render_plan_editor",
+                None,
+            )
+            if callable(refresh_editor):
+                refresh_editor()
             return True
         except SceneDocumentConflict as exc:
             self._conflicts.update(patch_values)

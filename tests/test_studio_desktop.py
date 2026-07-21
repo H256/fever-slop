@@ -149,6 +149,39 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
         studio.currentProjectChanged.emit()
         self.assertEqual(0, view_model.scenes.rowCount())
 
+    def test_switch_to_movie_clears_standard_workspace_and_exposes_error(self):
+        from PySide6.QtCore import QObject, Signal
+
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Studio(QObject):
+            currentProjectChanged = Signal()
+
+            def __init__(self):
+                super().__init__()
+                self.current_project_id = "song"
+
+        class Service:
+            def load(self, project_id):
+                if project_id == "film":
+                    raise ValueError("Scene workspace is unavailable for movie projects")
+                return SceneWorkspaceViewModelTests._snapshot({"scene_number": 1})
+
+        studio = Studio()
+        view_model = SceneWorkspaceViewModel(service=Service(), studio_view_model=studio)
+        self.assertTrue(view_model.reload())
+        self.assertEqual(1, view_model.scenes.rowCount())
+
+        studio.current_project_id = "film"
+        studio.currentProjectChanged.emit()
+
+        self.assertEqual("film", view_model.current_project_id)
+        self.assertEqual(0, view_model.scenes.rowCount())
+        self.assertEqual(
+            "Scene workspace is unavailable for movie projects",
+            view_model.error,
+        )
+
     def test_selection_is_toggled_and_published_in_sorted_order(self):
         from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
 
@@ -863,6 +896,157 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(json.loads(view_model.editor_text), {"scene": 5, "prompt": "gate"})
         self.assertEqual(view_model.editor_path, "render_plan.json")
 
+    def test_save_loaded_json_rejects_external_change_without_writing(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        writes = []
+        current_data = [{"scene": 1, "shot_description": "Original"}]
+
+        class Store:
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "artifacts": {"render_plans": ["render_plan.json"]},
+                }
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": current_data}
+
+            def write_artifact(self, project_id, request):
+                writes.append(request.data)
+                return {"path": request.path, "data": request.data}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("render_plan.json")
+        current_data[0]["shot_description"] = "Workspace edit"
+
+        saved = view_model.save_json_artifact(
+            "render_plan.json",
+            '[{"scene": 1, "shot_description": "Raw edit"}]',
+        )
+
+        self.assertFalse(saved)
+        self.assertEqual([], writes)
+        self.assertIn("changed externally", view_model.error)
+        self.assertIn("reload", view_model.error.lower())
+
+    def test_save_loaded_json_succeeds_when_baseline_is_unchanged(self):
+        from PySide6.QtTest import QSignalSpy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        current_data = [{"scene": 1, "shot_description": "Original"}]
+        writes = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["render_plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": current_data}
+
+            def write_artifact(self, project_id, request):
+                writes.append(request.data)
+                current_data[:] = request.data
+                return {"path": request.path, "data": request.data}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("render_plan.json")
+        project_changed = QSignalSpy(view_model.currentProjectChanged)
+
+        self.assertTrue(view_model.save_json_artifact(
+            "render_plan.json",
+            '[{"scene": 1, "shot_description": "Raw edit"}]',
+        ))
+        self.assertEqual("Raw edit", writes[0][0]["shot_description"])
+        self.assertEqual(1, project_changed.count())
+
+    def test_refresh_render_plan_editor_reloads_open_catalogued_plan_only(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        current_data = [{"scene": 1, "shot_description": "Original"}]
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["render_plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": current_data}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("render_plan.json")
+        current_data[0]["shot_description"] = "Workspace edit"
+
+        self.assertTrue(view_model.refresh_render_plan_editor())
+        self.assertEqual("Workspace edit", json.loads(view_model.editor_text)[0]["shot_description"])
+
+    def test_workspace_save_refreshes_open_raw_editor_and_its_baseline(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        current_data = [{"scene": 1, "shot_description": "Original"}]
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["render_plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": current_data}
+
+            def write_artifact(self, project_id, request):
+                current_data[:] = request.data
+                return {"path": request.path, "data": request.data}
+
+        class SceneService:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 1, "shot_description": current_data[0]["shot_description"]}
+                )
+
+            def patch_scene(self, **kwargs):
+                current_data[0]["shot_description"] = kwargs["changes"]["shot_description"]
+                return SimpleNamespace(revision="revision-2")
+
+        studio = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        studio.select_project("song")
+        studio.load_json_artifact("render_plan.json")
+        scenes = SceneWorkspaceViewModel(service=SceneService(), studio_view_model=studio)
+        scenes.reload()
+
+        self.assertTrue(scenes.savePromptFields(1, {"shotDescription": "Workspace edit"}, ""))
+        self.assertEqual("Workspace edit", json.loads(studio.editor_text)[0]["shot_description"])
+        self.assertTrue(studio.save_json_artifact(
+            "render_plan.json",
+            '[{"scene": 1, "shot_description": "Raw after workspace"}]',
+        ))
+
+    def test_failed_workspace_save_does_not_refresh_raw_editor(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        refreshes = []
+
+        class Studio:
+            current_project_id = "song"
+
+            def refresh_render_plan_editor(self):
+                refreshes.append(True)
+
+        class SceneService:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot({"scene_number": 1})
+
+            def patch_scene(self, **_kwargs):
+                raise OSError("write failed")
+
+        scenes = SceneWorkspaceViewModel(service=SceneService(), studio_view_model=Studio())
+        scenes.reload()
+
+        self.assertFalse(scenes.savePromptFields(1, {"shotDescription": "Unsaved"}, ""))
+        self.assertEqual([], refreshes)
+
     def test_loaded_render_plan_exposes_scene_records(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 
@@ -1194,6 +1378,40 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIsNotNone(discard_button)
         self.assertEqual("Reload from disk", reload_button.property("text"))
         self.assertEqual("Discard local edits", discard_button.property("text"))
+
+    def test_movie_project_disables_scene_workspace_navigation_and_leaves_page(self):
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                project_type = "movie" if project_id == "film" else "standard_music_video"
+                return {
+                    "id": project_id,
+                    "name": project_id,
+                    "project_type": project_type,
+                    "artifacts": {},
+                }
+
+        self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+        studio_vm = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        studio_vm.select_project("song")
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("studioViewModel", studio_vm)
+        engine.load(qml_entrypoint())
+        root = engine.rootObjects()[0]
+        root.setProperty("currentPage", 11)
+
+        studio_vm.select_project("film")
+        self.qml_app.processEvents()
+
+        navigation = root.findChild(object, "sceneWorkspaceNavigation")
+        self.assertIsNotNone(navigation)
+        self.assertFalse(navigation.property("enabled"))
+        self.assertNotEqual(11, root.property("currentPage"))
 
     def test_scene_list_arrow_navigation_and_space_toggle_current_scene(self):
         from PySide6.QtCore import QPointF, Qt

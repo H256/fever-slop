@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import mimetypes
 from pathlib import Path
@@ -257,7 +258,7 @@ class StudioViewModel(QObject):
         try:
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._editor_path = path
-            self._editor_data = artifact["data"]
+            self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._set_error("")
             self.editorChanged.emit()
@@ -271,12 +272,18 @@ class StudioViewModel(QObject):
             return False
         try:
             data = json.loads(text)
+            if path == self._editor_path:
+                current = self.store.read_artifact(self.current_project_id, path)
+                if current["data"] != self._editor_data:
+                    raise ValueError(
+                        "Artifact changed externally; reload it before saving"
+                    )
             artifact = self.store.write_artifact(
                 self.current_project_id,
                 ArtifactRequest(path=path, data=data),
             )
             self._editor_path = path
-            self._editor_data = artifact["data"]
+            self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._current_project = self.store.describe_project(self.current_project_id)
             self._set_error("")
@@ -288,6 +295,29 @@ class StudioViewModel(QObject):
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
         return False
+
+    @Slot(result=bool)
+    def refresh_render_plan_editor(self) -> bool:
+        render_plans = self.artifacts.get("render_plans") or []
+        if not self._editor_path or self._editor_path not in render_plans:
+            return False
+        try:
+            artifact = self.store.read_artifact(
+                self.current_project_id,
+                self._editor_path,
+            )
+            self._editor_data = copy.deepcopy(artifact["data"])
+            self._editor_text = json.dumps(
+                self._editor_data,
+                indent=2,
+                ensure_ascii=False,
+            )
+            self._set_error("")
+            self.editorChanged.emit()
+            return True
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return False
 
     @Slot(str, result=str)
     def preferred_artifact(self, category: str) -> str:

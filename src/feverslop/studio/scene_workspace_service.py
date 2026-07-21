@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
@@ -49,12 +49,15 @@ class SceneWorkspaceService:
         load_workspace: LoadSceneWorkspaceUseCase,
         patch_scene: PatchSceneUseCase,
         jobs: StudioJobService,
+        project_type: Callable[[str], str] | None = None,
     ) -> None:
         self._load_workspace = load_workspace
         self._patch_scene = patch_scene
         self._jobs = jobs
+        self._project_type = project_type or (lambda _project_id: "standard_music_video")
 
     def load(self, project_id: str) -> SceneWorkspaceSnapshot:
+        self._ensure_available(project_id)
         return self._load_workspace.execute(project_id)
 
     def patch_scene(
@@ -66,6 +69,7 @@ class SceneWorkspaceService:
         expected_revision: str,
         selected_ltx_prompt_field: SceneLtxPromptField | None = None,
     ) -> SceneDocumentSnapshot:
+        self._ensure_available(project_id)
         return self._patch_scene.execute(
             project_id=project_id,
             scene_number=scene_number,
@@ -82,6 +86,7 @@ class SceneWorkspaceService:
         scene_numbers: Iterable[int],
         preview_stage: int | None = None,
     ) -> dict[str, Any]:
+        self._ensure_available(project_id)
         action_spec = _SCENE_ACTIONS.get(action)
         if action_spec is None:
             raise ValueError(f"Unknown scene action: {action}")
@@ -99,3 +104,7 @@ class SceneWorkspaceService:
             project_id,
             StudioJobRequest(action=action_spec.job_action, scenes=list(scenes)),
         )
+
+    def _ensure_available(self, project_id: str) -> None:
+        if self._project_type(project_id) == "movie":
+            raise ValueError("Scene workspace is unavailable for movie projects")

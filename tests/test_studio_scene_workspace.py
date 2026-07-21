@@ -65,6 +65,43 @@ class SceneWorkspaceServiceTests(unittest.TestCase):
         self.assertEqual({"project_id": "demo"}, result)
         self.assertEqual(["demo"], self.loader.project_ids)
 
+    def test_movie_load_is_rejected_before_application_use_case(self):
+        service = SceneWorkspaceService(
+            load_workspace=self.loader,
+            patch_scene=self.patcher,
+            jobs=self.jobs,
+            project_type=lambda _project_id: "movie",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Scene workspace is unavailable for movie projects",
+        ):
+            service.load("film")
+
+        self.assertEqual([], self.loader.project_ids)
+
+    def test_movie_patch_is_rejected_before_application_use_case(self):
+        service = SceneWorkspaceService(
+            load_workspace=self.loader,
+            patch_scene=self.patcher,
+            jobs=self.jobs,
+            project_type=lambda _project_id: "movie",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Scene workspace is unavailable for movie projects",
+        ):
+            service.patch_scene(
+                project_id="film",
+                scene_number=1,
+                changes={"shot_description": "Gate"},
+                expected_revision="revision-1",
+            )
+
+        self.assertEqual([], self.patcher.calls)
+
     def test_patch_forwards_canonical_fields_revision_and_selected_enum(self):
         changes = {
             "shot_description": "Tracking shot",
@@ -133,6 +170,26 @@ class SceneWorkspaceServiceTests(unittest.TestCase):
                 project_id="demo",
                 action="shell-command",
                 scene_numbers=(2,),
+            )
+
+        self.assertEqual([], self.jobs.calls)
+
+    def test_movie_action_is_rejected_before_job_service(self):
+        service = SceneWorkspaceService(
+            load_workspace=self.loader,
+            patch_scene=self.patcher,
+            jobs=self.jobs,
+            project_type=lambda _project_id: "movie",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Scene workspace is unavailable for movie projects",
+        ):
+            service.start_action(
+                project_id="film",
+                action="render",
+                scene_numbers=(1,),
             )
 
         self.assertEqual([], self.jobs.calls)

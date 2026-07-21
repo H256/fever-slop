@@ -36,6 +36,12 @@ def create_studio_context(projects_root: str | Path) -> StudioContext:
             ),
             patch_scene=PatchSceneUseCase(documents=scene_documents),
             jobs=job_service,
+            project_type=lambda project_id: str(
+                store.project_metadata(project_id).get(
+                    "project_type",
+                    "standard_music_video",
+                )
+            ),
         ),
     )
 
