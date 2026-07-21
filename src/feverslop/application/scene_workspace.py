@@ -40,7 +40,7 @@ class LoadSceneWorkspaceUseCase:
 
 
 class PatchSceneUseCase:
-    _EDITABLE_FIELDS = frozenset({"shot_description", "image_prompt", "ltx_prompt"})
+    _EDITABLE_FIELDS = frozenset({"shot_description", "z_image.prompt"})
 
     def __init__(self, *, documents: SceneDocumentPort) -> None:
         self._documents = documents
@@ -72,10 +72,18 @@ class PatchSceneUseCase:
         *,
         selected_ltx_prompt_field: SceneLtxPromptField,
     ) -> dict[str, object]:
-        rejected = set(changes) - cls._EDITABLE_FIELDS
+        editable_fields = set(cls._EDITABLE_FIELDS)
+        selected_ltx_key: str | None = None
+        if isinstance(selected_ltx_prompt_field, SceneLtxPromptField):
+            selected_ltx_key = f"ltx.{selected_ltx_prompt_field.value}"
+            editable_fields.add(selected_ltx_key)
+
+        rejected = set(changes) - editable_fields
         if rejected:
             fields = ", ".join(sorted(repr(field) for field in rejected))
             raise ScenePatchRejected(f"Scene field is not editable: {fields}")
+        if selected_ltx_key is None:
+            raise ScenePatchRejected("Unknown selected LTX prompt field")
 
         for field_name, value in changes.items():
             if not isinstance(value, str):
@@ -84,12 +92,10 @@ class PatchSceneUseCase:
         canonical: dict[str, object] = {}
         if "shot_description" in changes:
             canonical["shot_description"] = changes["shot_description"]
-        if "image_prompt" in changes:
-            canonical["z_image"] = {"prompt": changes["image_prompt"]}
-        if "ltx_prompt" in changes:
-            if not isinstance(selected_ltx_prompt_field, SceneLtxPromptField):
-                raise ScenePatchRejected("Unknown selected LTX prompt field")
+        if "z_image.prompt" in changes:
+            canonical["z_image"] = {"prompt": changes["z_image.prompt"]}
+        if selected_ltx_key in changes:
             canonical["ltx"] = {
-                selected_ltx_prompt_field.value: changes["ltx_prompt"]
+                selected_ltx_prompt_field.value: changes[selected_ltx_key]
             }
         return canonical

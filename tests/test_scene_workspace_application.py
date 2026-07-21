@@ -101,8 +101,8 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             scene_number=1,
             changes={
                 "shot_description": "Tracking shot",
-                "image_prompt": "Blue stage",
-                "ltx_prompt": "Fast dolly",
+                "z_image.prompt": "Blue stage",
+                "ltx.original_style_i2v_prompt": "Fast dolly",
             },
             selected_ltx_prompt_field=SceneLtxPromptField.ORIGINAL_STYLE_I2V_PROMPT,
             expected_revision="revision-1",
@@ -129,7 +129,7 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
         PatchSceneUseCase(documents=self.documents).execute(
             project_id="demo",
             scene_number=1,
-            changes={"ltx_prompt": "Replacement"},
+            changes={"ltx.i2v_prompt_from_t2i": "Replacement"},
             selected_ltx_prompt_field=SceneLtxPromptField.I2V_PROMPT_FROM_T2I,
             expected_revision="revision-1",
         )
@@ -139,12 +139,24 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             self.documents.patch_calls[0]["changes"],
         )
 
-    def test_patch_rejects_unknown_ltx_prompt_field(self):
-        with self.assertRaisesRegex(ScenePatchRejected, "LTX prompt field"):
+    def test_patch_rejects_ltx_field_that_does_not_match_selection(self):
+        with self.assertRaisesRegex(ScenePatchRejected, "not editable"):
             PatchSceneUseCase(documents=self.documents).execute(
                 project_id="demo",
                 scene_number=1,
-                changes={"ltx_prompt": "Replacement"},
+                changes={"ltx.original_style_i2v_prompt": "Replacement"},
+                selected_ltx_prompt_field=SceneLtxPromptField.I2V_PROMPT_FROM_T2I,
+                expected_revision="revision-1",
+            )
+
+        self.assertEqual([], self.documents.patch_calls)
+
+    def test_patch_rejects_unknown_ltx_prompt_field(self):
+        with self.assertRaisesRegex(ScenePatchRejected, "not editable"):
+            PatchSceneUseCase(documents=self.documents).execute(
+                project_id="demo",
+                scene_number=1,
+                changes={"ltx.arbitrary": "Replacement"},
                 selected_ltx_prompt_field="ltx.arbitrary",  # type: ignore[arg-type]
                 expected_revision="revision-1",
             )
@@ -158,8 +170,9 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             {"output.video_path": "elsewhere.mp4"},
             {"width": 1920},
             {"height": 1080},
+            {"image_prompt": "Alias bypass"},
+            {"ltx_prompt": "Alias bypass"},
             {"z_image": {"prompt": "Nested bypass"}},
-            {"z_image.prompt": "Dotted bypass"},
             {"ltx": {"base_prompt": "Nested bypass"}},
             {"ltx.arbitrary.value": "Dotted bypass"},
         )
@@ -183,7 +196,7 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
             PatchSceneUseCase(documents=self.documents).execute(
                 project_id="demo",
                 scene_number=1,
-                changes={"shot_description": {"nested": "value"}},
+                changes={"z_image.prompt": {"nested": "value"}},
                 selected_ltx_prompt_field=SceneLtxPromptField.ORIGINAL_STYLE_I2V_PROMPT,
                 expected_revision="revision-1",
             )
