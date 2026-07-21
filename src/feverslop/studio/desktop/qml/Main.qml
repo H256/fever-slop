@@ -160,6 +160,7 @@ ApplicationWindow {
                 }
                 NavButton { text: "Dashboard"; icon.name: "view-dashboard"; page: 1; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Pipeline"; icon.name: "media-playback-start"; page: 2; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Scene Workspace"; icon.name: "view-grid"; page: 11; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Render Plan"; icon.name: "view-list-details"; page: 3; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "References"; icon.name: "image-x-generic"; page: 4; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Project Settings"; icon.name: "document-properties"; page: 5; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
@@ -217,6 +218,7 @@ ApplicationWindow {
                         ReviewPage {}
                         MediaPage { reviewMode: false }
                         PlaceholderPage { heading: "Studio Settings"; detail: "The projects root is selected at application startup." }
+                        SceneWorkspacePage {}
                     }
                 }
             }

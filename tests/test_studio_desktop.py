@@ -952,6 +952,32 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIsNotNone(root.findChild(object, "jobPanel"))
         self.assertIsNotNone(root.findChild(object, "reviewTimeline"))
 
+    def test_main_qml_loads_scene_workspace_with_both_view_models(self):
+        from PySide6.QtCore import QObject
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+
+        self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("studioViewModel", QObject())
+        engine.rootContext().setContextProperty("sceneWorkspaceViewModel", QObject())
+        engine.load(qml_entrypoint())
+
+        self.assertEqual(len(engine.rootObjects()), 1)
+        root = engine.rootObjects()[0]
+        self.assertIsNotNone(root.findChild(object, "sceneWorkspacePage"))
+        self.assertIsNotNone(root.findChild(object, "sceneInspector"))
+        for object_name in (
+            "renderSelectedScenesButton",
+            "rerenderSelectedScenesButton",
+            "retakeSelectedScenesButton",
+        ):
+            action = root.findChild(object, object_name)
+            self.assertIsNotNone(action)
+            self.assertFalse(action.property("enabled"))
+
     def test_studio_palette_does_not_inherit_desktop_dark_mode(self):
         from PySide6.QtGui import QPalette
 
