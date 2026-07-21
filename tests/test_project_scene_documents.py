@@ -303,6 +303,61 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         self.assertEqual(legacy_video, media[2].video_path)
         self.assertEqual(legacy_workflow, media[2].workflow_path)
 
+    def test_load_media_supports_repo_movie_scene_artifact_layouts(self):
+        storyboard = "output/movie/storyboard/final/scene_0004.png"
+        video = "output/movie/ltx_msr/scene_0004.mp4"
+        workflow = "output/movie/ltx_msr_debug/scene_0004_workflow.json"
+        catalog = CatalogStub(
+            {
+                "render_plans": [],
+                "images": [
+                    "output/movie/references/scene_0004.png",
+                    "output/movie/ingredients_sheets/scene_0004.png",
+                    storyboard,
+                ],
+                "videos": [
+                    "output/movie/ltx_msr/scene_0004_raw.mp4",
+                    "output/movie/ltx_msr/movie.mp4",
+                    video,
+                ],
+                "generated_json": [
+                    "output/movie/references/scene_0004_workflow.json",
+                    workflow,
+                ],
+            }
+        )
+
+        media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
+
+        self.assertEqual(storyboard, media[4].thumbnail_path)
+        self.assertEqual(video, media[4].video_path)
+        self.assertEqual(workflow, media[4].workflow_path)
+
+    def test_load_media_supports_direct_clips_only_in_semantic_legacy_render_directories(self):
+        video = "output/render/ltx_ingredients/scene_0005.webm"
+        workflow = "output/render/ltx_ingredients_debug/scene_0005_workflow.json"
+        catalog = CatalogStub(
+            {
+                "render_plans": [],
+                "images": [],
+                "videos": [
+                    "output/render/cache/scene_0005.webm",
+                    "output/render/ltx_ingredients_raw/scene_0005.webm",
+                    "output/render/ltx_ingredients/scene_0005_raw.webm",
+                    video,
+                ],
+                "generated_json": [
+                    "output/render/cache/scene_0005_workflow.json",
+                    workflow,
+                ],
+            }
+        )
+
+        media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
+
+        self.assertEqual(video, media[5].video_path)
+        self.assertEqual(workflow, media[5].workflow_path)
+
 
 if __name__ == "__main__":
     unittest.main()

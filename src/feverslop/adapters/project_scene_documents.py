@@ -24,16 +24,12 @@ _CANONICAL_STORYBOARD = re.compile(
     rf"^output/render/storyboard/scene_0*(\d+)\.{_IMAGE_EXTENSIONS}$",
     re.IGNORECASE,
 )
-_STORYBOARD = re.compile(
-    rf"(?:^|/)storyboard/(?:final/)?scene_0*(\d+)\.{_IMAGE_EXTENSIONS}$",
-    re.IGNORECASE,
-)
 _CANONICAL_PREVIEW = re.compile(
     rf"^output/render/scenes/scene_0*(\d+)/preview\.{_IMAGE_EXTENSIONS}$",
     re.IGNORECASE,
 )
-_SCENE_PREVIEW = re.compile(
-    rf"(?:^|/)scene_0*(\d+)/preview\.{_IMAGE_EXTENSIONS}$",
+_MOVIE_STORYBOARD = re.compile(
+    rf"^output/movie/storyboard/final/scene_0*(\d+)\.{_IMAGE_EXTENSIONS}$",
     re.IGNORECASE,
 )
 _CANONICAL_FINAL_VIDEO = re.compile(
@@ -41,7 +37,15 @@ _CANONICAL_FINAL_VIDEO = re.compile(
     re.IGNORECASE,
 )
 _LEGACY_FINAL_VIDEO = re.compile(
-    rf"(?:^|/)final/scene_0*(\d+)\.{_VIDEO_EXTENSIONS}$",
+    rf"^output/render/(?:[^/]+/)?final/scene_0*(\d+)\.{_VIDEO_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_LEGACY_RENDER_VIDEO = re.compile(
+    rf"^output/render/ltx_(?![^/]*(?:_raw|_debug)/)[^/]+/scene_0*(\d+)\.{_VIDEO_EXTENSIONS}$",
+    re.IGNORECASE,
+)
+_MOVIE_RENDER_VIDEO = re.compile(
+    rf"^output/movie/ltx_(?:msr|ingredients)(?:_smoke)?/scene_0*(\d+)\.{_VIDEO_EXTENSIONS}$",
     re.IGNORECASE,
 )
 _CANONICAL_WORKFLOW = re.compile(
@@ -49,10 +53,22 @@ _CANONICAL_WORKFLOW = re.compile(
     re.IGNORECASE,
 )
 _LEGACY_WORKFLOW = re.compile(
-    r"(?:^|/)scene_0*(\d+)_workflow\.json$",
+    r"^output/render/ltx_[^/]+_debug/scene_0*(\d+)_workflow\.json$",
     re.IGNORECASE,
 )
-_REJECTED_MEDIA_PREFIXES = ("reference", "ingredient", "movie")
+_MOVIE_WORKFLOW = re.compile(
+    r"^output/movie/ltx_(?:msr|ingredients)_debug/scene_0*(\d+)_workflow\.json$",
+    re.IGNORECASE,
+)
+_MOVIE_INGREDIENTS_WORKFLOW = re.compile(
+    r"^output/movie/ltx_ingredients/debug_workflows/scene_0*(\d+)_workflow\.json$",
+    re.IGNORECASE,
+)
+_LEGACY_DEBUG_WORKFLOW = re.compile(
+    r"^output/render/debug/scene_0*(\d+)_workflow\.json$",
+    re.IGNORECASE,
+)
+_REJECTED_MEDIA_PREFIXES = ("reference", "ingredient")
 
 
 class ProjectSceneDocuments:
@@ -291,8 +307,7 @@ def _thumbnail_candidate(path: str) -> tuple[int, int] | None:
         (
             (_CANONICAL_STORYBOARD, 0),
             (_CANONICAL_PREVIEW, 1),
-            (_STORYBOARD, 2),
-            (_SCENE_PREVIEW, 3),
+            (_MOVIE_STORYBOARD, 2),
         ),
     )
 
@@ -300,14 +315,25 @@ def _thumbnail_candidate(path: str) -> tuple[int, int] | None:
 def _video_candidate(path: str) -> tuple[int, int] | None:
     return _ranked_scene_path(
         path,
-        ((_CANONICAL_FINAL_VIDEO, 0), (_LEGACY_FINAL_VIDEO, 1)),
+        (
+            (_CANONICAL_FINAL_VIDEO, 0),
+            (_LEGACY_RENDER_VIDEO, 1),
+            (_LEGACY_FINAL_VIDEO, 2),
+            (_MOVIE_RENDER_VIDEO, 3),
+        ),
     )
 
 
 def _workflow_candidate(path: str) -> tuple[int, int] | None:
     return _ranked_scene_path(
         path,
-        ((_CANONICAL_WORKFLOW, 0), (_LEGACY_WORKFLOW, 1)),
+        (
+            (_CANONICAL_WORKFLOW, 0),
+            (_LEGACY_WORKFLOW, 1),
+            (_MOVIE_WORKFLOW, 2),
+            (_MOVIE_INGREDIENTS_WORKFLOW, 3),
+            (_LEGACY_DEBUG_WORKFLOW, 4),
+        ),
     )
 
 
