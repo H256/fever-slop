@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from feverslop.domain.scene_workspace import SceneMedia
 from feverslop.ports.scene_documents import SceneDocumentConflict, SceneDocumentSnapshot
 from feverslop.studio.artifact_catalog import ArtifactCatalog
+from feverslop.studio.artifact_locking import artifact_write_lock
 
 
 class _ArtifactCatalog(Protocol):
@@ -100,6 +101,25 @@ class ProjectSceneDocuments:
         expected_revision: str,
     ) -> SceneDocumentSnapshot:
         root, path = self._render_plan_path(project_id)
+        with artifact_write_lock(path):
+            return self._patch_scene_locked(
+                root,
+                path,
+                project_id,
+                scene_number,
+                changes,
+                expected_revision,
+            )
+
+    def _patch_scene_locked(
+        self,
+        root: Path,
+        path: Path,
+        project_id: str,
+        scene_number: int,
+        changes: Mapping[str, object],
+        expected_revision: str,
+    ) -> SceneDocumentSnapshot:
         try:
             payload = self._read_catalogued_file(root, path)
         except FileNotFoundError:

@@ -1,4 +1,6 @@
 import json
+import hashlib
+import importlib.util
 import tempfile
 import threading
 import time
@@ -277,6 +279,107 @@ class StudioBackendTests(unittest.TestCase):
             with self.assertRaises(StudioPathError):
                 store.read_artifact("demo", "../outside.json")
 
+    def test_artifact_read_reports_exact_byte_revision_and_existence(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            path = Path(temp_dir) / "demo" / "config.json"
+
+            artifact = store.read_artifact("demo", "config.json")
+            missing = store.read_artifact("demo", "missing.json")
+
+            self.assertTrue(artifact["exists"])
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), artifact["revision"])
+            self.assertFalse(missing["exists"])
+            self.assertIsNone(missing["revision"])
+            self.assertIsNone(missing["data"])
+
+    def test_artifact_write_rejects_stale_revision_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            artifact = store.read_artifact("demo", "output/render/render_plan_song.json")
+            path = Path(temp_dir) / "demo" / "output" / "render" / "render_plan_song.json"
+            external = b'[{"scene":1,"prompt":"external"}]'
+            path.write_bytes(external)
+
+            with self.assertRaisesRegex(Exception, "changed") as caught:
+                store.write_artifact(
+                    "demo",
+                    ArtifactRequest(
+                        path="output/render/render_plan_song.json",
+                        data=[{"scene": 1, "prompt": "ours"}],
+                        expected_revision=artifact["revision"],
+                    ),
+                )
+
+            self.assertEqual("ArtifactConflict", type(caught.exception).__name__)
+            self.assertEqual(external, path.read_bytes())
+            self.assertFalse(any(path.parent.glob(f".{path.name}.*.tmp")))
+
+    def test_artifact_write_with_current_revision_returns_new_revision(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            artifact = store.read_artifact("demo", "output/render/render_plan_song.json")
+
+            written = store.write_artifact(
+                "demo",
+                ArtifactRequest(
+                    path="output/render/render_plan_song.json",
+                    data=[{"scene": 1, "prompt": "ours"}],
+                    expected_revision=artifact["revision"],
+                ),
+            )
+
+            current = store.read_artifact("demo", "output/render/render_plan_song.json")
+            self.assertEqual(current["revision"], written["revision"])
+            self.assertNotEqual(artifact["revision"], written["revision"])
+
+    def test_artifact_create_only_allows_exactly_one_concurrent_creator(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            barrier = threading.Barrier(2)
+            results = []
+
+            def create(value):
+                barrier.wait()
+                try:
+                    results.append(store.write_artifact(
+                        "demo",
+                        ArtifactRequest(path="new.json", data={"value": value}, create_only=True),
+                    ))
+                except Exception as exc:  # noqa: BLE001 - assertion records race loser
+                    results.append(exc)
+
+            threads = [threading.Thread(target=create, args=(value,)) for value in (1, 2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+            successes = [result for result in results if isinstance(result, dict)]
+            conflicts = [result for result in results if isinstance(result, Exception)]
+            self.assertEqual(1, len(successes))
+            self.assertEqual(1, len(conflicts))
+            self.assertEqual("ArtifactConflict", type(conflicts[0]).__name__)
+
+    def test_artifact_create_only_removes_partial_file_when_fsync_fails(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            path = Path(temp_dir) / "demo" / "new.json"
+
+            with patch("feverslop.studio.projects.os.fsync", side_effect=OSError("fsync failed")):
+                with self.assertRaisesRegex(OSError, "fsync failed"):
+                    store.write_artifact(
+                        "demo",
+                        ArtifactRequest(path="new.json", data={"value": 1}, create_only=True),
+                    )
+
+            self.assertFalse(path.exists())
+
+    def test_artifact_locking_module_is_available(self):
+        self.assertIsNotNone(importlib.util.find_spec("feverslop.studio.artifact_locking"))
+
     def test_config_write_validates_required_fields_and_preserves_unknown_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = self._project_store(Path(temp_dir))
@@ -351,6 +454,84 @@ class StudioBackendTests(unittest.TestCase):
 
             self.assertEqual("new prompt", updated["scene"]["prompt"])
             self.assertEqual(["hero"], updated["scene"]["actor_references"])
+
+    def test_patch_render_plan_uses_shared_artifact_write_lock(self):
+        from feverslop.studio.artifact_locking import artifact_write_lock
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            path = Path(temp_dir) / "demo" / "output" / "render" / "render_plan_song.json"
+            started = threading.Event()
+            finished = threading.Event()
+
+            def patch_plan():
+                started.set()
+                store.patch_render_plan(
+                    "demo",
+                    RenderPlanPatch(path="output/render/render_plan_song.json", scene=1, updates={"prompt": "new"}),
+                )
+                finished.set()
+
+            with artifact_write_lock(path):
+                worker = threading.Thread(target=patch_plan)
+                worker.start()
+                self.assertTrue(started.wait(1))
+                self.assertFalse(finished.wait(0.05))
+            worker.join(1)
+
+            self.assertTrue(finished.is_set())
+
+    def test_scene_and_raw_revision_writers_cannot_lose_update(self):
+        from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
+        from feverslop.studio.artifact_catalog import ArtifactCatalog
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            store = self._project_store(root)
+            path = "output/render/render_plan_song.json"
+            loaded = store.read_artifact("demo", path)
+            documents = ProjectSceneDocuments(
+                store.project_root,
+                catalog=ArtifactCatalog(store.project_root),
+            )
+            barrier = threading.Barrier(2)
+            results = []
+
+            def raw_write():
+                barrier.wait()
+                try:
+                    results.append(store.write_artifact(
+                        "demo",
+                        ArtifactRequest(
+                            path=path,
+                            data=[{"scene": 1, "prompt": "raw"}],
+                            expected_revision=loaded["revision"],
+                        ),
+                    ))
+                except Exception as exc:  # noqa: BLE001 - records expected loser
+                    results.append(exc)
+
+            def scene_write():
+                barrier.wait()
+                try:
+                    results.append(documents.patch_scene(
+                        "demo",
+                        1,
+                        {"shot_description": "scene"},
+                        loaded["revision"],
+                    ))
+                except Exception as exc:  # noqa: BLE001 - records expected loser
+                    results.append(exc)
+
+            workers = [threading.Thread(target=raw_write), threading.Thread(target=scene_write)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
+
+            failures = [result for result in results if isinstance(result, Exception)]
+            self.assertEqual(1, len(failures))
+            self.assertIn(type(failures[0]).__name__, {"ArtifactConflict", "SceneDocumentConflict"})
 
     def test_media_path_must_stay_inside_project(self):
         with tempfile.TemporaryDirectory() as temp_dir:
