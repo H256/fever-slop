@@ -512,6 +512,69 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
         )
         self.assertEqual("i2v_prompt_from_t2i", view_model.inspectedScene["videoPromptField"])
 
+    def test_selected_video_prompt_field_stays_coherent_across_save_and_reload(self):
+        from PySide6.QtTest import QSignalSpy
+
+        from feverslop.application.scene_workspace import SceneWorkspaceSnapshot
+        from feverslop.domain.scene_workspace import SceneWorkspace
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        current_scene = {
+            "scene": 1,
+            "ltx": {
+                "original_style_i2v_prompt": "Original priority prompt",
+                "i2v_prompt_from_t2i": "Old lower prompt",
+            },
+        }
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceSnapshot(
+                    workspace=SceneWorkspace.from_scenes([current_scene]),
+                    revision="revision-2",
+                )
+
+            def patch_scene(self, **kwargs):
+                current_scene["ltx"]["i2v_prompt_from_t2i"] = kwargs["changes"][
+                    "ltx.i2v_prompt_from_t2i"
+                ]
+                return SimpleNamespace(revision="revision-2")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(1)
+        changed = QSignalSpy(view_model.scenes.dataChanged)
+
+        self.assertTrue(
+            view_model.savePromptFields(
+                1,
+                {"videoPrompt": "New lower prompt"},
+                "i2v_prompt_from_t2i",
+            )
+        )
+
+        index = view_model.scenes.index(0, 0)
+        self.assertEqual(
+            "New lower prompt",
+            view_model.scenes.data(index, view_model.scenes.VideoPromptRole),
+        )
+        self.assertEqual(
+            "i2v_prompt_from_t2i",
+            view_model.scenes.data(index, view_model.scenes.VideoPromptFieldRole),
+        )
+        self.assertEqual("New lower prompt", view_model.inspectedScene["videoPrompt"])
+        self.assertEqual("i2v_prompt_from_t2i", view_model.inspectedScene["videoPromptField"])
+        changed_roles = list(changed.at(changed.count() - 1)[2])
+        self.assertIn(view_model.scenes.VideoPromptRole, changed_roles)
+        self.assertIn(view_model.scenes.VideoPromptFieldRole, changed_roles)
+
+        self.assertTrue(view_model.reload())
+        self.assertEqual("New lower prompt", view_model.inspectedScene["videoPrompt"])
+        self.assertEqual("i2v_prompt_from_t2i", view_model.inspectedScene["videoPromptField"])
+
 
 class StudioViewModelTests(unittest.TestCase):
     def setUp(self):

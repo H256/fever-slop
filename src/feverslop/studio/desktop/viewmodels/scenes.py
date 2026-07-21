@@ -58,6 +58,7 @@ class SceneListModel(QAbstractListModel):
         super().__init__(parent)
         self._items: list[SceneWorkspaceItem] = []
         self._selected: set[int] = set()
+        self._video_prompt_fields: dict[int, str] = {}
         self._thumbnail_url = thumbnail_url or _local_file_url
 
     def roleNames(self) -> dict[int, bytes]:  # noqa: N802 - Qt API
@@ -70,6 +71,7 @@ class SceneListModel(QAbstractListModel):
         if not index.isValid() or not 0 <= index.row() < len(self._items):
             return None
         item = self._items[index.row()]
+        video_prompt_field, video_prompt = self._selected_video_prompt(item)
         values = {
             self.SceneNumberRole: item.scene_number,
             self.StartSecondsRole: item.start_seconds,
@@ -79,8 +81,8 @@ class SceneListModel(QAbstractListModel):
             self.ThumbnailUrlRole: self._thumbnail(item),
             self.ShotDescriptionRole: item.shot_description,
             self.ImagePromptRole: item.image_prompt,
-            self.VideoPromptRole: item.video_prompt,
-            self.VideoPromptFieldRole: _video_prompt_field(item),
+            self.VideoPromptRole: video_prompt,
+            self.VideoPromptFieldRole: video_prompt_field,
             self.ReferenceIdsRole: list(item.reference_ids),
             self.SelectedRole: item.scene_number in self._selected,
         }
@@ -91,6 +93,14 @@ class SceneListModel(QAbstractListModel):
         self._items = list(items)
         valid_numbers = {item.scene_number for item in self._items}
         self._selected.intersection_update(valid_numbers)
+        previous_fields = self._video_prompt_fields
+        self._video_prompt_fields = {
+            item.scene_number: _preserved_or_priority_video_prompt_field(
+                item,
+                previous_fields.get(item.scene_number, ""),
+            )
+            for item in self._items
+        }
         self.endResetModel()
 
     def clear_selection(self) -> None:
@@ -133,6 +143,7 @@ class SceneListModel(QAbstractListModel):
         item = self._items[row]
         raw_scene = item.raw_scene
         if "video_prompt" in fields and "video_prompt_field" in fields:
+            self._video_prompt_fields[scene_number] = fields["video_prompt_field"]
             raw_ltx = raw_scene.get("ltx")
             ltx = dict(raw_ltx) if isinstance(raw_ltx, Mapping) else {}
             ltx[fields["video_prompt_field"]] = fields["video_prompt"]
@@ -148,7 +159,12 @@ class SceneListModel(QAbstractListModel):
         self.dataChanged.emit(
             index,
             index,
-            [self.ShotDescriptionRole, self.ImagePromptRole, self.VideoPromptRole],
+            [
+                self.ShotDescriptionRole,
+                self.ImagePromptRole,
+                self.VideoPromptRole,
+                self.VideoPromptFieldRole,
+            ],
         )
         return True
 
@@ -157,6 +173,7 @@ class SceneListModel(QAbstractListModel):
         if row is None:
             return {}
         item = self._items[row]
+        video_prompt_field, video_prompt = self._selected_video_prompt(item)
         return {
             "sceneNumber": item.scene_number,
             "startSeconds": item.start_seconds,
@@ -170,8 +187,8 @@ class SceneListModel(QAbstractListModel):
             "failureMessage": item.media.failure_message or "",
             "shotDescription": item.shot_description,
             "imagePrompt": item.image_prompt,
-            "videoPrompt": item.video_prompt,
-            "videoPromptField": _video_prompt_field(item),
+            "videoPrompt": video_prompt,
+            "videoPromptField": video_prompt_field,
             "referenceIds": list(item.reference_ids),
             "selected": item.scene_number in self._selected,
         }
@@ -189,6 +206,15 @@ class SceneListModel(QAbstractListModel):
     def _thumbnail(self, item: SceneWorkspaceItem) -> str:
         path = item.media.thumbnail_path
         return self._thumbnail_url(path) if path else ""
+
+    def _selected_video_prompt(self, item: SceneWorkspaceItem) -> tuple[str, str]:
+        field = self._video_prompt_fields.get(item.scene_number, "")
+        if not field:
+            return "", item.video_prompt
+        ltx = item.raw_scene.get("ltx")
+        if not isinstance(ltx, Mapping):
+            return field, ""
+        return field, str(ltx.get(field) or "")
 
 
 class SceneWorkspaceViewModel(QObject):
@@ -454,7 +480,7 @@ def _validated_prompt_patch(
     return changes, local_fields, selected_field
 
 
-def _video_prompt_field(item: SceneWorkspaceItem) -> str:
+def _priority_video_prompt_field(item: SceneWorkspaceItem) -> str:
     ltx = item.raw_scene.get("ltx")
     if not isinstance(ltx, Mapping):
         return ""
@@ -462,6 +488,16 @@ def _video_prompt_field(item: SceneWorkspaceItem) -> str:
         if ltx.get(field.value):
             return field.value
     return ""
+
+
+def _preserved_or_priority_video_prompt_field(
+    item: SceneWorkspaceItem,
+    previous_field: str,
+) -> str:
+    ltx = item.raw_scene.get("ltx")
+    if isinstance(ltx, Mapping) and previous_field in ltx:
+        return previous_field
+    return _priority_video_prompt_field(item)
 
 
 def _first_selected(model: SceneListModel) -> int | None:
