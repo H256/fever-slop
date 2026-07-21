@@ -140,21 +140,9 @@ class SceneListModel(QAbstractListModel):
         row = self._row_for_scene(scene_number)
         if row is None:
             return False
-        item = self._items[row]
-        raw_scene = item.raw_scene
         if "video_prompt" in fields and "video_prompt_field" in fields:
             self._video_prompt_fields[scene_number] = fields["video_prompt_field"]
-            raw_ltx = raw_scene.get("ltx")
-            ltx = dict(raw_ltx) if isinstance(raw_ltx, Mapping) else {}
-            ltx[fields["video_prompt_field"]] = fields["video_prompt"]
-            raw_scene["ltx"] = ltx
-        self._items[row] = replace(
-            item,
-            shot_description=fields.get("shot_description", item.shot_description),
-            image_prompt=fields.get("image_prompt", item.image_prompt),
-            video_prompt=fields.get("video_prompt", item.video_prompt),
-            _raw_scene=raw_scene,
-        )
+        self._items[row] = _updated_prompt_item(self._items[row], fields)
         index = self.index(row, 0)
         self.dataChanged.emit(
             index,
@@ -241,6 +229,7 @@ class SceneWorkspaceViewModel(QObject):
         self._pending: dict[tuple[int, str], str] = {}
         self._conflicts: set[tuple[int, str]] = set()
         self._primary_scene_number: int | None = None
+        self._baseline_items: tuple[SceneWorkspaceItem, ...] = ()
         resolver = thumbnail_url or (lambda _project_id, path: _local_file_url(path))
         self._scenes = SceneListModel(
             thumbnail_url=lambda path: resolver(self._current_project_id, path),
@@ -304,6 +293,7 @@ class SceneWorkspaceViewModel(QObject):
             self._set_state(error=str(exc))
             return False
         self._scenes.replace(snapshot.workspace.items)
+        self._baseline_items = tuple(snapshot.workspace.items)
         self._pending.clear()
         self._conflicts.clear()
         self._revision = snapshot.revision
@@ -374,6 +364,11 @@ class SceneWorkspaceViewModel(QObject):
                 if self._pending.get(key) == value:
                     self._pending.pop(key, None)
                     self._conflicts.discard(key)
+            self._baseline_items = tuple(
+                _updated_prompt_item(item, local_fields)
+                if item.scene_number == scene_number else item
+                for item in self._baseline_items
+            )
             self._revision = str(snapshot.revision)
             self._set_state(error="", force=True)
             return True
@@ -384,6 +379,23 @@ class SceneWorkspaceViewModel(QObject):
         except Exception as exc:  # noqa: BLE001 - Qt boundary
             self._set_state(error=str(exc), force=True)
             return False
+
+    @Slot(result=bool)
+    def discardLocalEdits(self) -> bool:  # noqa: N802 - QML API
+        self._scenes.replace(self._baseline_items)
+        self._pending.clear()
+        self._conflicts.clear()
+        self._error = ""
+        if (
+            self._primary_scene_number is not None
+            and not self._scenes.is_selected(self._primary_scene_number)
+        ):
+            self._primary_scene_number = _first_selected(self._scenes)
+        self.scenesChanged.emit()
+        self.selectionChanged.emit()
+        self.inspectedSceneChanged.emit()
+        self.stateChanged.emit()
+        return True
 
     @Slot(str, result=bool)
     @Slot(str, int, result=bool)
@@ -431,6 +443,7 @@ class SceneWorkspaceViewModel(QObject):
         self._scenes.clear_selection()
         self._scenes.replace(())
         self._primary_scene_number = None
+        self._baseline_items = ()
         self._pending.clear()
         self._conflicts.clear()
         self._revision = ""
@@ -478,6 +491,25 @@ def _validated_prompt_patch(
         changes[f"ltx.{selected_field.value}"] = local_fields["video_prompt"]
         local_fields["video_prompt_field"] = selected_field.value
     return changes, local_fields, selected_field
+
+
+def _updated_prompt_item(
+    item: SceneWorkspaceItem,
+    fields: Mapping[str, str],
+) -> SceneWorkspaceItem:
+    raw_scene = item.raw_scene
+    if "video_prompt" in fields and "video_prompt_field" in fields:
+        raw_ltx = raw_scene.get("ltx")
+        ltx = dict(raw_ltx) if isinstance(raw_ltx, Mapping) else {}
+        ltx[fields["video_prompt_field"]] = fields["video_prompt"]
+        raw_scene["ltx"] = ltx
+    return replace(
+        item,
+        shot_description=fields.get("shot_description", item.shot_description),
+        image_prompt=fields.get("image_prompt", item.image_prompt),
+        video_prompt=fields.get("video_prompt", item.video_prompt),
+        _raw_scene=raw_scene,
+    )
 
 
 def _priority_video_prompt_field(item: SceneWorkspaceItem) -> str:

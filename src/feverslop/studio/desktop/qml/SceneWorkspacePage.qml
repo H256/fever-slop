@@ -39,20 +39,22 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 9
                 Label {
-                    text: "Save conflict: the project changed on disk. Both choices reload the server copy."
+                    text: "Save conflict: reload the disk version or restore the last confirmed local view."
                     color: "#7A3E00"
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                 }
                 Button {
-                    text: "Reload"
+                    objectName: "reloadSceneConflictButton"
+                    text: "Reload from disk"
                     Accessible.name: "Reload scene data from disk"
                     onClicked: page.sceneVm.reload()
                 }
                 Button {
+                    objectName: "discardSceneConflictButton"
                     text: "Discard local edits"
-                    Accessible.name: "Discard local scene edits and reload"
-                    onClicked: page.sceneVm.reload()
+                    Accessible.name: "Discard local scene edits"
+                    onClicked: page.sceneVm.discardLocalEdits()
                 }
             }
         }
@@ -124,6 +126,13 @@ Item {
                     boundsBehavior: Flickable.StopAtBounds
                     keyNavigationEnabled: true
                     activeFocusOnTab: true
+                    function activateCurrentScene() {
+                        if (currentItem)
+                            page.sceneVm.toggleSelection(currentItem.sceneNumber)
+                    }
+                    Keys.onSpacePressed: activateCurrentScene()
+                    Keys.onReturnPressed: activateCurrentScene()
+                    Keys.onEnterPressed: activateCurrentScene()
 
                     delegate: Item {
                         required property int sceneNumber
@@ -138,6 +147,7 @@ Item {
                             || String(sceneNumber).indexOf(filterText) >= 0
                             || status.toLowerCase().indexOf(filterText) >= 0
                             || performanceState.toLowerCase().indexOf(filterText) >= 0
+                        readonly property bool keyboardCurrent: ListView.isCurrentItem && sceneList.activeFocus
 
                         width: sceneList.width
                         height: matchesFilter ? 76 : 0
@@ -152,6 +162,7 @@ Item {
                             status: parent.status
                             thumbnailUrl: parent.thumbnailUrl
                             selected: parent.selected
+                            keyboardCurrent: parent.keyboardCurrent
                             onActivated: number => page.sceneVm.toggleSelection(number)
                         }
                     }

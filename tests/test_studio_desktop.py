@@ -238,6 +238,109 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
             view_model.scenes.data(view_model.scenes.index(0, 0), view_model.scenes.ShotDescriptionRole),
         )
 
+    def test_discard_local_edits_restores_baseline_without_loading(self):
+        from feverslop.ports.scene_documents import SceneDocumentConflict
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        load_calls = []
+
+        class Service:
+            def load(self, project_id):
+                load_calls.append(project_id)
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 3, "shot_description": "Confirmed"}
+                )
+
+            def patch_scene(self, **kwargs):
+                raise SceneDocumentConflict("demo", kwargs["expected_revision"], "external")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(3)
+        view_model.savePromptFields(3, {"shotDescription": "Local"}, "")
+
+        self.assertTrue(hasattr(view_model, "discardLocalEdits"))
+        view_model.discardLocalEdits()
+
+        self.assertEqual(["demo"], load_calls)
+        self.assertEqual("Confirmed", view_model.inspectedScene["shotDescription"])
+        self.assertEqual([3], view_model.selected_scene_numbers)
+        self.assertEqual("revision-1", view_model.revision)
+        self.assertFalse(view_model.dirty)
+        self.assertFalse(view_model.conflict)
+        self.assertEqual("", view_model.error)
+
+    def test_reload_after_conflict_reads_new_external_values(self):
+        from feverslop.ports.scene_documents import SceneDocumentConflict
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        load_calls = []
+
+        class Service:
+            def load(self, project_id):
+                load_calls.append(project_id)
+                description = "Original" if len(load_calls) == 1 else "External"
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 2, "shot_description": description},
+                    revision=f"revision-{len(load_calls)}",
+                )
+
+            def patch_scene(self, **kwargs):
+                raise SceneDocumentConflict("demo", kwargs["expected_revision"], "external")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(2)
+        view_model.savePromptFields(2, {"shotDescription": "Local"}, "")
+
+        self.assertTrue(view_model.reload())
+
+        self.assertEqual(["demo", "demo"], load_calls)
+        self.assertEqual("External", view_model.inspectedScene["shotDescription"])
+        self.assertEqual("revision-2", view_model.revision)
+        self.assertFalse(view_model.dirty)
+
+    def test_discard_preserves_an_earlier_successful_save(self):
+        from feverslop.ports.scene_documents import SceneDocumentConflict
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        attempts = []
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 5, "shot_description": "Original"}
+                )
+
+            def patch_scene(self, **kwargs):
+                attempts.append(kwargs)
+                if len(attempts) == 1:
+                    return SimpleNamespace(revision="revision-2")
+                raise SceneDocumentConflict("demo", kwargs["expected_revision"], "external")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(5)
+        self.assertTrue(view_model.savePromptFields(5, {"shotDescription": "Saved"}, ""))
+        self.assertFalse(view_model.savePromptFields(5, {"shotDescription": "Failed"}, ""))
+
+        self.assertTrue(hasattr(view_model, "discardLocalEdits"))
+        view_model.discardLocalEdits()
+
+        self.assertEqual("Saved", view_model.inspectedScene["shotDescription"])
+        self.assertEqual("revision-2", view_model.revision)
+        self.assertFalse(view_model.dirty)
+        self.assertFalse(view_model.conflict)
+
     def test_selected_action_forwards_sorted_scenes_and_preview_stage(self):
         from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
 
@@ -977,6 +1080,58 @@ class StudioQmlTests(unittest.TestCase):
             action = root.findChild(object, object_name)
             self.assertIsNotNone(action)
             self.assertFalse(action.property("enabled"))
+        reload_button = root.findChild(object, "reloadSceneConflictButton")
+        discard_button = root.findChild(object, "discardSceneConflictButton")
+        self.assertIsNotNone(reload_button)
+        self.assertIsNotNone(discard_button)
+        self.assertEqual("Reload from disk", reload_button.property("text"))
+        self.assertEqual("Discard local edits", discard_button.property("text"))
+
+    def test_scene_list_arrow_navigation_and_space_toggle_current_scene(self):
+        from PySide6.QtCore import QMetaObject, Qt
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+        from PySide6.QtTest import QTest
+
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        class SceneService:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 1},
+                    {"scene_number": 2},
+                )
+
+        self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+        studio_vm = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        studio_vm.select_project("demo")
+        scene_vm = SceneWorkspaceViewModel(
+            service=SceneService(),
+            studio_view_model=studio_vm,
+        )
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("studioViewModel", studio_vm)
+        engine.rootContext().setContextProperty("sceneWorkspaceViewModel", scene_vm)
+        engine.load(qml_entrypoint())
+        root = engine.rootObjects()[0]
+        root.setProperty("currentPage", 11)
+        self.qml_app.processEvents()
+        scene_list = root.findChild(object, "sceneCardList")
+        scene_list.setProperty("currentIndex", 0)
+        QMetaObject.invokeMethod(scene_list, "forceActiveFocus")
+
+        QTest.keyClick(root, Qt.Key.Key_Down)
+        self.assertEqual(1, scene_list.property("currentIndex"))
+        QTest.keyClick(root, Qt.Key.Key_Space)
+        self.qml_app.processEvents()
+
+        self.assertEqual([2], scene_vm.selected_scene_numbers)
 
     def test_studio_palette_does_not_inherit_desktop_dark_mode(self):
         from PySide6.QtGui import QPalette

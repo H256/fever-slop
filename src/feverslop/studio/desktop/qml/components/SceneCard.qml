@@ -11,6 +11,7 @@ Control {
     required property string status
     required property url thumbnailUrl
     required property bool selected
+    property bool keyboardCurrent: false
     signal activated(int sceneNumber)
 
     objectName: "sceneCard_" + sceneNumber
@@ -25,8 +26,8 @@ Control {
 
     background: Rectangle {
         color: card.selected ? "#ECECFF" : card.hovered ? "#F2F2F7" : "#FFFFFF"
-        border.color: card.activeFocus ? "#5B5FC7" : card.selected ? "#777BE0" : "#D8D8DC"
-        border.width: card.activeFocus || card.selected ? 2 : 1
+        border.color: card.activeFocus || card.keyboardCurrent ? "#5B5FC7" : card.selected ? "#777BE0" : "#D8D8DC"
+        border.width: card.activeFocus || card.keyboardCurrent || card.selected ? 2 : 1
         radius: 7
     }
 
