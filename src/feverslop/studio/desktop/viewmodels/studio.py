@@ -19,6 +19,7 @@ class StudioViewModel(QObject):
     projectsChanged = Signal()
     currentProjectChanged = Signal()
     editorChanged = Signal()
+    editorDirtyChanged = Signal()
     jobsChanged = Signal()
     reviewChanged = Signal()
     errorChanged = Signal()
@@ -34,6 +35,8 @@ class StudioViewModel(QObject):
         self._editor_text = ""
         self._editor_data: Any = None
         self._editor_baseline: Any = None
+        self._editor_revision: str | None = None
+        self._editor_dirty = False
         self._jobs: list[dict[str, Any]] = []
         self._review_path = ""
         self._review_state: ReviewTimelineState | None = None
@@ -84,6 +87,10 @@ class StudioViewModel(QObject):
     @Property(str, notify=editorChanged)
     def editor_text(self) -> str:
         return self._editor_text
+
+    @Property(bool, notify=editorDirtyChanged)
+    def editor_dirty(self) -> bool:
+        return self._editor_dirty
 
     @Property("QVariantList", notify=editorChanged)
     def editor_scenes(self) -> list[dict[str, Any]]:
@@ -265,7 +272,9 @@ class StudioViewModel(QObject):
             self._editor_path = path
             self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_baseline = copy.deepcopy(artifact["data"])
+            self._editor_revision = artifact.get("revision")
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
+            self._set_editor_dirty(False)
             self._set_error("")
             self.editorChanged.emit()
         except Exception as exc:  # noqa: BLE001 - UI boundary
@@ -279,37 +288,29 @@ class StudioViewModel(QObject):
         try:
             data = json.loads(text)
             if path == self._editor_path:
-                current = self.store.read_artifact(self.current_project_id, path)
-                if current["data"] != self._editor_baseline:
-                    raise ValueError(
-                        "Artifact changed externally; reload it before saving"
-                    )
-            else:
-                try:
-                    target = self.store.read_artifact(self.current_project_id, path)
-                except FileNotFoundError:
-                    target = None
-                described = self.store.describe_project(self.current_project_id)
-                catalog = described.get("artifacts") or {}
-                target_is_catalogued = any(
-                    path in paths
-                    for paths in catalog.values()
-                    if isinstance(paths, list)
+                if self._editor_revision is None:
+                    current = self.store.read_artifact(self.current_project_id, path)
+                    if current["data"] != self._editor_baseline:
+                        raise ValueError(
+                            "Artifact changed externally; reload it before saving"
+                        )
+                request = ArtifactRequest(
+                    path=path,
+                    data=data,
+                    expected_revision=self._editor_revision,
                 )
-                if target_is_catalogued or (
-                    target is not None and target["data"] is not None
-                ):
-                    raise ValueError(
-                        "Target artifact already exists; load target before saving"
-                    )
+            else:
+                request = ArtifactRequest(path=path, data=data, create_only=True)
             artifact = self.store.write_artifact(
                 self.current_project_id,
-                ArtifactRequest(path=path, data=data),
+                request,
             )
             self._editor_path = path
             self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_baseline = copy.deepcopy(artifact["data"])
+            self._editor_revision = artifact.get("revision")
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
+            self._set_editor_dirty(False)
             self._current_project = self.store.describe_project(self.current_project_id)
             self._set_error("")
             self.editorChanged.emit()
@@ -321,10 +322,21 @@ class StudioViewModel(QObject):
             self._set_error(str(exc))
         return False
 
+    @Slot(str)
+    def set_json_editor_draft(self, text: str) -> None:
+        self._editor_text = text
+        clean_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
+        self._set_editor_dirty(text != clean_text)
+
     @Slot(result=bool)
     def refresh_render_plan_editor(self) -> bool:
         render_plans = self.artifacts.get("render_plans") or []
         if not self._editor_path or self._editor_path not in render_plans:
+            return False
+        if self._editor_dirty:
+            self._set_error(
+                "Disk changed while the raw JSON draft has unsaved edits; reload or save to resolve"
+            )
             return False
         try:
             artifact = self.store.read_artifact(
@@ -333,11 +345,13 @@ class StudioViewModel(QObject):
             )
             self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_baseline = copy.deepcopy(artifact["data"])
+            self._editor_revision = artifact.get("revision")
             self._editor_text = json.dumps(
                 self._editor_data,
                 indent=2,
                 ensure_ascii=False,
             )
+            self._set_editor_dirty(False)
             self._set_error("")
             self.editorChanged.emit()
             return True
@@ -421,12 +435,15 @@ class StudioViewModel(QObject):
         if not self.current_project_id:
             self._set_error("Select a project first")
             return False
+        if path == self._editor_path and self._editor_dirty:
+            self._set_error("Save or reload raw draft first")
+            return False
         try:
             self.store.patch_render_plan(
                 self.current_project_id,
                 RenderPlanPatch(path=path, scene=scene, updates=dict(updates)),
             )
-            self.load_json_artifact(path)
+            self.refresh_render_plan_editor()
             return True
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
@@ -494,3 +511,9 @@ class StudioViewModel(QObject):
             return
         self._error = message
         self.errorChanged.emit()
+
+    def _set_editor_dirty(self, dirty: bool) -> None:
+        if dirty == self._editor_dirty:
+            return
+        self._editor_dirty = dirty
+        self.editorDirtyChanged.emit()

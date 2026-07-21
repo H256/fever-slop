@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 
 Item {
     id: page
+    objectName: renderPlanMode ? "renderPlanWorkspace" : "configWorkspace"
     required property string heading
     required property string defaultPath
     readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
@@ -25,6 +26,10 @@ Item {
     Connections {
         target: vm
         function onCurrentProjectChanged() { page.choosePreferredPath() }
+        function onEditorChanged() {
+            page.selectedScene = null
+            editor.applyModelText()
+        }
     }
 
     ColumnLayout {
@@ -169,7 +174,19 @@ Item {
                     anchors.margins: 1
                     TextArea {
                         id: editor
-                        text: vm ? vm.editor_text : ""
+                        objectName: page.renderPlanMode ? "renderPlanJsonEditor" : "configJsonEditor"
+                        property bool applyingModelText: false
+                        function applyModelText() {
+                            var modelText = vm ? vm.editor_text : ""
+                            if (text === modelText) return
+                            applyingModelText = true
+                            text = modelText
+                            applyingModelText = false
+                        }
+                        Component.onCompleted: applyModelText()
+                        onTextChanged: {
+                            if (!applyingModelText && vm) vm.set_json_editor_draft(text)
+                        }
                         color: "#1C1C1E"
                         selectionColor: "#7B83EB"
                         selectedTextColor: "#FFFFFF"

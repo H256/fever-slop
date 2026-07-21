@@ -899,6 +899,84 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(json.loads(view_model.editor_text), {"scene": 5, "prompt": "gate"})
         self.assertEqual(view_model.editor_path, "render_plan.json")
 
+    def test_json_editor_draft_marks_dirty_without_editor_changed_feedback(self):
+        from PySide6.QtTest import QSignalSpy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": {"scene": 1}, "revision": "r1", "exists": True}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("plan.json")
+        editor_changed = QSignalSpy(view_model.editorChanged)
+
+        view_model.set_json_editor_draft('{"scene": 1, "draft": true}')
+
+        self.assertTrue(view_model.editor_dirty)
+        self.assertEqual('{"scene": 1, "draft": true}', view_model.editor_text)
+        self.assertEqual(0, editor_changed.count())
+
+    def test_dirty_scene_refresh_preserves_raw_draft_and_forces_revision_conflict(self):
+        import copy
+
+        from feverslop.studio.projects import ArtifactConflict
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        disk = [{"scene": 1, "shot_description": "Original"}]
+        revision = ["r1"]
+        writes = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": copy.deepcopy(disk), "revision": revision[0], "exists": True}
+
+            def write_artifact(self, project_id, request):
+                if request.expected_revision != revision[0]:
+                    raise ArtifactConflict(request.path, request.expected_revision, revision[0])
+                writes.append(request.data)
+                disk[:] = copy.deepcopy(request.data)
+                revision[0] = "raw-r2"
+                return {"path": request.path, "data": request.data, "revision": revision[0]}
+
+        class SceneService:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 1, "shot_description": disk[0]["shot_description"]},
+                    revision=revision[0],
+                )
+
+            def patch_scene(self, **kwargs):
+                disk[0]["shot_description"] = kwargs["changes"]["shot_description"]
+                revision[0] = "scene-r2"
+                return SimpleNamespace(revision=revision[0])
+
+        studio = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        studio.select_project("song")
+        studio.load_json_artifact("plan.json")
+        draft = '[{"scene": 1, "shot_description": "Raw draft"}]'
+        studio.set_json_editor_draft(draft)
+        scenes = SceneWorkspaceViewModel(service=SceneService(), studio_view_model=studio)
+        scenes.reload()
+
+        self.assertTrue(scenes.savePromptFields(1, {"shotDescription": "Scene edit"}, ""))
+        self.assertEqual("Scene edit", disk[0]["shot_description"])
+        self.assertEqual(draft, studio.editor_text)
+        self.assertTrue(studio.editor_dirty)
+        self.assertIn("disk changed", studio.error.lower())
+        self.assertFalse(studio.save_json_artifact("plan.json", draft))
+        self.assertEqual([], writes)
+        self.assertEqual("Scene edit", disk[0]["shot_description"])
+
     def test_save_loaded_json_rejects_external_change_without_writing(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 
@@ -975,6 +1053,7 @@ class StudioViewModelTests(unittest.TestCase):
     def test_save_as_rejects_existing_target_that_was_not_loaded(self):
         import copy
 
+        from feverslop.studio.projects import ArtifactConflict
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 
         artifacts = {
@@ -996,6 +1075,8 @@ class StudioViewModelTests(unittest.TestCase):
                 return {"path": path, "data": copy.deepcopy(artifacts[path])}
 
             def write_artifact(self, project_id, request):
+                if request.create_only and request.path in artifacts:
+                    raise ArtifactConflict(request.path, None, "existing")
                 writes.append(request.path)
                 artifacts[request.path] = request.data
                 return {"path": request.path, "data": request.data}
@@ -1250,6 +1331,81 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertTrue(view_model.patch_render_scene("render_plan_msr.json", 5, {"prompt": "The party reaches the gate."}))
         self.assertEqual(patches[0][1].scene, 5)
         self.assertEqual(patches[0][1].updates["prompt"], "The party reaches the gate.")
+
+    def test_patch_render_scene_rejects_dirty_raw_draft_without_writing(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        patches = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {
+                    "path": path,
+                    "data": [{"scene": 1, "prompt": "Original"}],
+                    "revision": "r1",
+                    "exists": True,
+                }
+
+            def patch_render_plan(self, project_id, patch):
+                patches.append(patch)
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("plan.json")
+        draft = '[{"scene": 1, "prompt": "Raw draft"}]'
+        view_model.set_json_editor_draft(draft)
+
+        self.assertFalse(view_model.patch_render_scene("plan.json", 1, {"prompt": "Structured"}))
+        self.assertEqual([], patches)
+        self.assertEqual(draft, view_model.editor_text)
+        self.assertTrue(view_model.editor_dirty)
+        self.assertIn("save or reload raw draft first", view_model.error.lower())
+
+    def test_clean_structured_patch_refreshes_raw_revision_and_baseline(self):
+        import copy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        disk = [{"scene": 1, "prompt": "Original"}]
+        revision = ["r1"]
+        raw_requests = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {
+                    "path": path,
+                    "data": copy.deepcopy(disk),
+                    "revision": revision[0],
+                    "exists": True,
+                }
+
+            def patch_render_plan(self, project_id, patch):
+                disk[0].update(patch.updates)
+                revision[0] = "r2"
+
+            def write_artifact(self, project_id, request):
+                raw_requests.append(request)
+                disk[:] = copy.deepcopy(request.data)
+                revision[0] = "r3"
+                return {"path": request.path, "data": request.data, "revision": revision[0]}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("plan.json")
+
+        self.assertTrue(view_model.patch_render_scene("plan.json", 1, {"prompt": "Structured"}))
+        self.assertIn("Structured", view_model.editor_text)
+        self.assertTrue(view_model.save_json_artifact(
+            "plan.json",
+            '[{"scene": 1, "prompt": "Raw after structured"}]',
+        ))
+        self.assertEqual("r2", raw_requests[0].expected_revision)
 
     def test_media_url_only_resolves_project_media(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
@@ -1522,6 +1678,47 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIsNotNone(navigation)
         self.assertFalse(navigation.property("enabled"))
         self.assertNotEqual(11, root.property("currentPage"))
+
+    def test_render_plan_editor_reports_drafts_and_clears_stale_selected_scene(self):
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {
+                    "path": path,
+                    "data": [{"scene": 1, "prompt": "Original"}],
+                    "revision": "r1",
+                    "exists": True,
+                }
+
+        self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+        studio_vm = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        studio_vm.select_project("song")
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("studioViewModel", studio_vm)
+        engine.load(qml_entrypoint())
+        root = engine.rootObjects()[0]
+        workspace = root.findChild(object, "renderPlanWorkspace")
+        editor = root.findChild(object, "renderPlanJsonEditor")
+
+        self.assertIsNotNone(workspace)
+        self.assertIsNotNone(editor)
+        workspace.setProperty("selectedScene", {"scene": 1, "prompt": "Stale"})
+        studio_vm.load_json_artifact("plan.json")
+        self.qml_app.processEvents()
+        self.assertIsNone(workspace.property("selectedScene"))
+
+        editor.setProperty("text", '[{"scene": 1, "prompt": "Draft"}]')
+        self.qml_app.processEvents()
+        self.assertTrue(studio_vm.editor_dirty)
+        self.assertIn("Draft", studio_vm.editor_text)
 
     def test_scene_list_arrow_navigation_and_space_toggle_current_scene(self):
         from PySide6.QtCore import QPointF, Qt
