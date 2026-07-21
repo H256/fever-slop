@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -26,6 +27,7 @@ class StudioDesktopCompositionTests(unittest.TestCase):
         from feverslop.studio.job_service import StudioJobService
         from feverslop.studio.jobs import JobRegistry
         from feverslop.studio.projects import ProjectStore
+        from feverslop.studio.scene_workspace_service import SceneWorkspaceService
 
         with tempfile.TemporaryDirectory() as temp_dir:
             context = create_studio_context(Path(temp_dir))
@@ -33,6 +35,241 @@ class StudioDesktopCompositionTests(unittest.TestCase):
         self.assertIsInstance(context.store, ProjectStore)
         self.assertIsInstance(context.jobs, JobRegistry)
         self.assertIsInstance(context.job_service, StudioJobService)
+        self.assertIsInstance(context.scene_service, SceneWorkspaceService)
+
+
+class SceneWorkspaceViewModelTests(unittest.TestCase):
+    def setUp(self):
+        from PySide6.QtGui import QGuiApplication
+
+        self.app = QGuiApplication.instance() or QGuiApplication([])
+
+    @staticmethod
+    def _snapshot(*scenes, revision="revision-1"):
+        from feverslop.application.scene_workspace import SceneWorkspaceSnapshot
+        from feverslop.domain.scene_workspace import SceneMedia, SceneWorkspace, SceneWorkspaceItem
+
+        items = []
+        for scene in scenes:
+            values = dict(scene)
+            thumbnail_path = values.pop("thumbnail_path", None)
+            items.append(
+                SceneWorkspaceItem(
+                    media=SceneMedia(thumbnail_path=thumbnail_path),
+                    **values,
+                )
+            )
+        return SceneWorkspaceSnapshot(
+            workspace=SceneWorkspace(tuple(items)),
+            revision=revision,
+        )
+
+    def test_scene_list_model_exposes_explicit_card_and_inspector_roles(self):
+        from PySide6.QtCore import Qt
+
+        from feverslop.studio.desktop.viewmodels.scenes import SceneListModel
+
+        model = SceneListModel(
+            thumbnail_url=lambda path: f"file:///project/{path}",
+        )
+        model.replace(
+            self._snapshot(
+                {
+                    "scene_number": 7,
+                    "start_seconds": 1.25,
+                    "end_seconds": 4.75,
+                    "performance_state": "performance",
+                    "shot_description": "Tracking shot",
+                    "image_prompt": "Blue stage",
+                    "video_prompt": "Fast dolly",
+                    "reference_ids": ("hero",),
+                    "thumbnail_path": "output/render/storyboard/scene_0007.png",
+                }
+            ).workspace.items
+        )
+
+        roles = {bytes(name).decode(): role for role, name in model.roleNames().items()}
+        index = model.index(0, 0)
+
+        self.assertEqual(
+            {
+                "sceneNumber",
+                "startSeconds",
+                "endSeconds",
+                "performanceState",
+                "status",
+                "thumbnailUrl",
+                "shotDescription",
+                "imagePrompt",
+                "videoPrompt",
+                "referenceIds",
+                "selected",
+            },
+            set(roles),
+        )
+        self.assertEqual(7, model.data(index, roles["sceneNumber"]))
+        self.assertEqual("file:///project/output/render/storyboard/scene_0007.png", model.data(index, roles["thumbnailUrl"]))
+        self.assertIsNone(model.data(index, Qt.ItemDataRole.DisplayRole))
+
+    def test_project_signal_reloads_and_switch_resets_transient_state(self):
+        from PySide6.QtCore import QObject, Signal
+
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Studio(QObject):
+            currentProjectChanged = Signal()
+
+            def __init__(self):
+                super().__init__()
+                self.current_project_id = "alpha"
+
+        class Service:
+            def load(self, project_id):
+                number = 1 if project_id == "alpha" else 2
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": number, "shot_description": project_id}
+                )
+
+        studio = Studio()
+        view_model = SceneWorkspaceViewModel(service=Service(), studio_view_model=studio)
+        view_model.reload()
+        view_model.toggleSelection(1)
+
+        studio.current_project_id = "beta"
+        studio.currentProjectChanged.emit()
+
+        self.assertEqual("beta", view_model.current_project_id)
+        self.assertEqual(2, view_model.scenes.data(view_model.scenes.index(0, 0), view_model.scenes.SceneNumberRole))
+        self.assertEqual([], view_model.selected_scene_numbers)
+        self.assertFalse(view_model.dirty)
+        self.assertFalse(view_model.conflict)
+
+        studio.current_project_id = ""
+        studio.currentProjectChanged.emit()
+        self.assertEqual(0, view_model.scenes.rowCount())
+
+    def test_selection_is_toggled_and_published_in_sorted_order(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        service = SimpleNamespace(load=lambda _project_id: self._snapshot(
+            {"scene_number": 5}, {"scene_number": 2}
+        ))
+        studio = SimpleNamespace(current_project_id="demo")
+        view_model = SceneWorkspaceViewModel(service=service, studio_view_model=studio)
+        view_model.reload()
+
+        self.assertTrue(view_model.toggleSelection(5))
+        self.assertTrue(view_model.toggleSelection(2))
+        self.assertEqual([2, 5], view_model.selected_scene_numbers)
+        self.assertTrue(view_model.scenes.data(view_model.scenes.index(0, 0), view_model.scenes.SelectedRole))
+        self.assertTrue(view_model.toggleSelection(5))
+        self.assertEqual([2], view_model.selected_scene_numbers)
+        self.assertFalse(view_model.toggleSelection(99))
+
+    def test_successful_prompt_save_forwards_revision_and_clears_dirty_state(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        calls = []
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 3, "shot_description": "Old"}
+                )
+
+            def patch_scene(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(revision="revision-2")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+
+        saved = view_model.savePromptFields(
+            3,
+            {"shotDescription": "New", "imagePrompt": "Still", "videoPrompt": "Move"},
+            "i2v_prompt_from_t2i",
+        )
+
+        self.assertTrue(saved)
+        self.assertEqual("revision-1", calls[0]["expected_revision"])
+        self.assertEqual(
+            {
+                "shot_description": "New",
+                "z_image.prompt": "Still",
+                "ltx.i2v_prompt_from_t2i": "Move",
+            },
+            calls[0]["changes"],
+        )
+        self.assertEqual("revision-2", view_model.revision)
+        self.assertFalse(view_model.dirty)
+        self.assertFalse(view_model.conflict)
+        self.assertEqual("", view_model.error)
+
+    def test_save_conflict_preserves_local_edits_and_exposes_state(self):
+        from feverslop.ports.scene_documents import SceneDocumentConflict
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 3, "shot_description": "Old"}
+                )
+
+            def patch_scene(self, **_kwargs):
+                raise SceneDocumentConflict("demo", "revision-1", "revision-2")
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+
+        self.assertFalse(view_model.savePromptFields(3, {"shotDescription": "Unsaved"}, ""))
+
+        self.assertTrue(view_model.dirty)
+        self.assertTrue(view_model.conflict)
+        self.assertIn("changed", view_model.error)
+        self.assertEqual(
+            "Unsaved",
+            view_model.scenes.data(view_model.scenes.index(0, 0), view_model.scenes.ShotDescriptionRole),
+        )
+
+    def test_selected_action_forwards_sorted_scenes_and_preview_stage(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
+
+        calls = []
+
+        class Service:
+            def load(self, _project_id):
+                return SceneWorkspaceViewModelTests._snapshot(
+                    {"scene_number": 8}, {"scene_number": 3}
+                )
+
+            def start_action(self, **kwargs):
+                calls.append(kwargs)
+                return {}
+
+        view_model = SceneWorkspaceViewModel(
+            service=Service(),
+            studio_view_model=SimpleNamespace(current_project_id="demo"),
+        )
+        view_model.reload()
+        view_model.toggleSelection(8)
+        view_model.toggleSelection(3)
+
+        self.assertTrue(view_model.startSelectedAction("ltx-render", 1))
+        self.assertEqual(
+            [{
+                "project_id": "demo",
+                "action": "ltx-render",
+                "scene_numbers": (3, 8),
+                "preview_stage": 1,
+            }],
+            calls,
+        )
 
 
 class StudioViewModelTests(unittest.TestCase):

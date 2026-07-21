@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtQml import QQmlApplicationEngine
 
 from feverslop.studio.desktop.composition import create_studio_context
+from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
 from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 
 
@@ -49,8 +50,17 @@ def run_studio(projects_root: str | Path) -> int:
         jobs=context.jobs,
         job_service=context.job_service,
     )
+    scene_view_model = SceneWorkspaceViewModel(
+        service=context.scene_service,
+        studio_view_model=view_model,
+        thumbnail_url=lambda project_id, path: QUrl.fromLocalFile(
+            str(context.store.resolve_media_path(project_id, path))
+        ).toString(),
+    )
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("studioViewModel", view_model)
+    engine.rootContext().setContextProperty("sceneWorkspaceViewModel", scene_view_model)
+    engine._feverslop_view_models = (view_model, scene_view_model)  # type: ignore[attr-defined]
     engine.load(qml_entrypoint())
     if not engine.rootObjects():
         return 1
