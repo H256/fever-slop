@@ -1122,6 +1122,37 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertTrue(view_model.save_json_artifact("c.json", '{"name": "C2"}'))
         self.assertEqual({"name": "C2"}, artifacts["c.json"])
 
+    def test_loaded_missing_artifact_uses_create_only_against_concurrent_creator(self):
+        from feverslop.studio.projects import ArtifactConflict
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        target = {"exists": False, "data": None}
+        requests = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": target["data"], "revision": None, "exists": target["exists"]}
+
+            def write_artifact(self, project_id, request):
+                requests.append(request)
+                if request.create_only and target["exists"]:
+                    raise ArtifactConflict(request.path, None, "concurrent")
+                target.update(exists=True, data=request.data)
+                return {"path": request.path, "data": request.data, "revision": "ours"}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("new.json")
+        target.update(exists=True, data={"owner": "concurrent"})
+
+        self.assertFalse(view_model.save_json_artifact("new.json", '{"owner": "ours"}'))
+        self.assertEqual(1, len(requests))
+        self.assertTrue(requests[0].create_only)
+        self.assertEqual({"owner": "concurrent"}, target["data"])
+
     def test_save_loaded_json_succeeds_when_baseline_is_unchanged(self):
         from PySide6.QtTest import QSignalSpy
 
@@ -1319,7 +1350,20 @@ class StudioViewModelTests(unittest.TestCase):
 
         class Store:
             def describe_project(self, project_id):
-                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+                return {
+                    "id": project_id,
+                    "name": project_id,
+                    "status": {},
+                    "artifacts": {"render_plans": ["render_plan_msr.json"]},
+                }
+
+            def read_artifact(self, project_id, path):
+                return {
+                    "path": path,
+                    "data": [{"scene": 5, "prompt": "Old"}],
+                    "revision": "r1",
+                    "exists": True,
+                }
 
             def patch_render_plan(self, project_id, patch):
                 patches.append((project_id, patch))
@@ -1327,10 +1371,34 @@ class StudioViewModelTests(unittest.TestCase):
 
         view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
         view_model.select_project("scholoraid")
+        view_model.load_json_artifact("render_plan_msr.json")
 
         self.assertTrue(view_model.patch_render_scene("render_plan_msr.json", 5, {"prompt": "The party reaches the gate."}))
         self.assertEqual(patches[0][1].scene, 5)
         self.assertEqual(patches[0][1].updates["prompt"], "The party reaches the gate.")
+
+    def test_patch_render_scene_rejects_path_other_than_loaded_editor(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        patches = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["a.json", "b.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": [{"scene": 1}], "revision": "r1", "exists": True}
+
+            def patch_render_plan(self, project_id, patch):
+                patches.append(patch)
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("a.json")
+
+        self.assertFalse(view_model.patch_render_scene("b.json", 1, {"prompt": "Wrong"}))
+        self.assertEqual([], patches)
+        self.assertIn("load target before patching", view_model.error.lower())
 
     def test_patch_render_scene_rejects_dirty_raw_draft_without_writing(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel

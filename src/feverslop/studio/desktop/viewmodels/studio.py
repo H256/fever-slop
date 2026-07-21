@@ -36,6 +36,7 @@ class StudioViewModel(QObject):
         self._editor_data: Any = None
         self._editor_baseline: Any = None
         self._editor_revision: str | None = None
+        self._editor_exists = False
         self._editor_dirty = False
         self._jobs: list[dict[str, Any]] = []
         self._review_path = ""
@@ -273,6 +274,9 @@ class StudioViewModel(QObject):
             self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_baseline = copy.deepcopy(artifact["data"])
             self._editor_revision = artifact.get("revision")
+            self._editor_exists = bool(
+                artifact.get("exists", artifact["data"] is not None)
+            )
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._set_editor_dirty(False)
             self._set_error("")
@@ -288,17 +292,20 @@ class StudioViewModel(QObject):
         try:
             data = json.loads(text)
             if path == self._editor_path:
-                if self._editor_revision is None:
-                    current = self.store.read_artifact(self.current_project_id, path)
-                    if current["data"] != self._editor_baseline:
-                        raise ValueError(
-                            "Artifact changed externally; reload it before saving"
-                        )
-                request = ArtifactRequest(
-                    path=path,
-                    data=data,
-                    expected_revision=self._editor_revision,
-                )
+                if not self._editor_exists:
+                    request = ArtifactRequest(path=path, data=data, create_only=True)
+                else:
+                    if self._editor_revision is None:
+                        current = self.store.read_artifact(self.current_project_id, path)
+                        if current["data"] != self._editor_baseline:
+                            raise ValueError(
+                                "Artifact changed externally; reload it before saving"
+                            )
+                    request = ArtifactRequest(
+                        path=path,
+                        data=data,
+                        expected_revision=self._editor_revision,
+                    )
             else:
                 request = ArtifactRequest(path=path, data=data, create_only=True)
             artifact = self.store.write_artifact(
@@ -309,6 +316,7 @@ class StudioViewModel(QObject):
             self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_baseline = copy.deepcopy(artifact["data"])
             self._editor_revision = artifact.get("revision")
+            self._editor_exists = True
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._set_editor_dirty(False)
             self._current_project = self.store.describe_project(self.current_project_id)
@@ -346,6 +354,9 @@ class StudioViewModel(QObject):
             self._editor_data = copy.deepcopy(artifact["data"])
             self._editor_baseline = copy.deepcopy(artifact["data"])
             self._editor_revision = artifact.get("revision")
+            self._editor_exists = bool(
+                artifact.get("exists", artifact["data"] is not None)
+            )
             self._editor_text = json.dumps(
                 self._editor_data,
                 indent=2,
@@ -435,7 +446,10 @@ class StudioViewModel(QObject):
         if not self.current_project_id:
             self._set_error("Select a project first")
             return False
-        if path == self._editor_path and self._editor_dirty:
+        if path != self._editor_path:
+            self._set_error("Load target before patching")
+            return False
+        if self._editor_dirty:
             self._set_error("Save or reload raw draft first")
             return False
         try:

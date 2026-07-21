@@ -377,6 +377,58 @@ class StudioBackendTests(unittest.TestCase):
 
             self.assertFalse(path.exists())
 
+    def test_artifact_create_only_is_invisible_until_complete_temp_is_published(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            destination = Path(temp_dir) / "demo" / "new.json"
+            publish_started = threading.Event()
+            allow_publish = threading.Event()
+            captured = []
+            real_link = __import__("os").link
+
+            def observed_link(source, target):
+                captured.append(Path(source).read_bytes())
+                publish_started.set()
+                allow_publish.wait(1)
+                real_link(source, target)
+
+            result = []
+            with patch("feverslop.studio.projects.os.link", side_effect=observed_link):
+                worker = threading.Thread(
+                    target=lambda: result.append(store.write_artifact(
+                        "demo",
+                        ArtifactRequest(path="new.json", data={"complete": True}, create_only=True),
+                    ))
+                )
+                worker.start()
+                self.assertTrue(publish_started.wait(1))
+                self.assertFalse(destination.exists())
+                self.assertEqual({"complete": True}, json.loads(captured[0]))
+                allow_publish.set()
+                worker.join(1)
+
+            self.assertFalse(worker.is_alive())
+            self.assertEqual({"complete": True}, json.loads(destination.read_text()))
+            self.assertFalse(any(destination.parent.glob(f".{destination.name}.*.tmp")))
+
+    def test_artifact_create_only_preserves_existing_target_and_cleans_temp(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = self._project_store(Path(temp_dir))
+            destination = Path(temp_dir) / "demo" / "existing.json"
+            original = b'{"owner":"existing"}'
+            destination.write_bytes(original)
+
+            with self.assertRaisesRegex(Exception, "already exists"):
+                store.write_artifact(
+                    "demo",
+                    ArtifactRequest(path="existing.json", data={"owner": "ours"}, create_only=True),
+                )
+
+            self.assertEqual(original, destination.read_bytes())
+            self.assertFalse(any(destination.parent.glob(f".{destination.name}.*.tmp")))
+
     def test_artifact_locking_module_is_available(self):
         self.assertIsNotNone(importlib.util.find_spec("feverslop.studio.artifact_locking"))
 

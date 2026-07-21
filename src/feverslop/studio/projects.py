@@ -205,20 +205,28 @@ class ProjectStore:
         with artifact_write_lock(artifact_path):
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
             if request.create_only:
-                created = False
+                descriptor, temporary_name = tempfile.mkstemp(
+                    prefix=f".{artifact_path.name}.",
+                    suffix=".tmp",
+                    dir=artifact_path.parent,
+                )
+                temporary_path = Path(temporary_name)
                 try:
-                    with artifact_path.open("xb") as target:
-                        created = True
-                        target.write(payload)
-                        target.flush()
-                        os.fsync(target.fileno())
-                except FileExistsError:
-                    actual = _path_revision(artifact_path)
-                    raise ArtifactConflict(request.path, None, actual) from None
-                except BaseException:
-                    if created:
-                        artifact_path.unlink(missing_ok=True)
-                    raise
+                    with os.fdopen(descriptor, "wb") as temporary:
+                        temporary.write(payload)
+                        temporary.flush()
+                        os.fsync(temporary.fileno())
+                    try:
+                        os.link(temporary_path, artifact_path)
+                    except FileExistsError:
+                        actual = _path_revision(artifact_path)
+                        raise ArtifactConflict(request.path, None, actual) from None
+                    except OSError as exc:
+                        raise OSError(
+                            f"Could not atomically create artifact: {request.path}"
+                        ) from exc
+                finally:
+                    temporary_path.unlink(missing_ok=True)
             else:
                 descriptor, temporary_name = tempfile.mkstemp(
                     prefix=f".{artifact_path.name}.",
