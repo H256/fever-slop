@@ -9,15 +9,29 @@ CASES = (
     (
         "video_ltxv_ingredients_audio_2stage_v5.json",
         ["4922", 0],
+        True,
     ),
     (
         "video_ltxv_ingredients_audio_2stage_gguf_v5.json",
         ["5307", 0],
+        True,
+    ),
+    (
+        "video_ltxv_ingredients_2stage_v5.json",
+        ["4922", 0],
+        False,
+    ),
+    (
+        "video_ltxv_ingredients_2stage_gguf_v5.json",
+        ["5307", 0],
+        False,
     ),
 )
 V4_NAMES = (
     "video_ltxv_ingredients_audio_2stage_v4.json",
     "video_ltxv_ingredients_audio_2stage_gguf_v4.json",
+    "video_ltxv_ingredients_2stage_v4.json",
+    "video_ltxv_ingredients_2stage_gguf_v4.json",
 )
 REQUIRED_ANCHORS = {
     "#INGREDIENTS",
@@ -27,15 +41,14 @@ REQUIRED_ANCHORS = {
     "#HEIGHT",
     "#FRAMES",
     "#FRAMERATE",
-    "#LOAD_AUDIO",
-    "#TRIM_AUDIO",
     "#SAVE_VIDEO",
 }
+AUDIO_ANCHORS = {"#LOAD_AUDIO", "#TRIM_AUDIO"}
 
 
 class IngredientsWorkflowV5Tests(unittest.TestCase):
     def test_stage2_bypasses_ingredients_ic_lora(self):
-        for name, expected_stage2_model in CASES:
+        for name, expected_stage2_model, _ in CASES:
             with self.subTest(workflow=name):
                 workflow = self._load(ROOT / "workflows" / name)
                 self.assertEqual(
@@ -48,7 +61,7 @@ class IngredientsWorkflowV5Tests(unittest.TestCase):
                 )
 
     def test_stage1_retains_ingredients_ic_lora(self):
-        for name, _ in CASES:
+        for name, _, _ in CASES:
             with self.subTest(workflow=name):
                 workflow = self._load(ROOT / "workflows" / name)
                 self.assertEqual(
@@ -61,16 +74,17 @@ class IngredientsWorkflowV5Tests(unittest.TestCase):
                 )
 
     def test_v5_preserves_required_semantic_anchors(self):
-        for name, _ in CASES:
+        for name, _, has_audio in CASES:
             with self.subTest(workflow=name):
                 workflow = self._load(ROOT / "workflows" / name)
+                required_anchors = REQUIRED_ANCHORS | (AUDIO_ANCHORS if has_audio else set())
                 titles = Counter(
                     node.get("_meta", {}).get("title")
                     for node in workflow.values()
                     if str(node.get("_meta", {}).get("title", "")).startswith("#")
                 )
-                self.assertTrue(REQUIRED_ANCHORS.issubset(titles))
-                self.assertTrue(all(titles[title] == 1 for title in REQUIRED_ANCHORS))
+                self.assertTrue(required_anchors.issubset(titles))
+                self.assertTrue(all(titles[title] == 1 for title in required_anchors))
 
     def test_v4_workflows_are_archived_without_root_aliases(self):
         for name in V4_NAMES:
