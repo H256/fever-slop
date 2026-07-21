@@ -1205,6 +1205,48 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertTrue(view_model.refresh_render_plan_editor())
         self.assertEqual("Workspace edit", json.loads(view_model.editor_text)[0]["shot_description"])
 
+    def test_structured_patch_refreshes_loaded_nonpreferred_render_plan(self):
+        import copy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        plans = {
+            "preferred.json": [{"scene": 1, "prompt": "Preferred"}],
+            "alternate.json": [{"scene": 1, "prompt": "Alternate"}],
+        }
+        revisions = {"preferred.json": "p1", "alternate.json": "a1"}
+
+        class Store:
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "artifacts": {"render_plans": ["preferred.json", "alternate.json"]},
+                }
+
+            def read_artifact(self, project_id, path):
+                return {
+                    "path": path,
+                    "data": copy.deepcopy(plans[path]),
+                    "revision": revisions[path],
+                    "exists": True,
+                }
+
+            def patch_render_plan(self, project_id, patch):
+                self.seen_revision = patch.expected_revision
+                plans[patch.path][0].update(patch.updates)
+                revisions[patch.path] = "a2"
+                return {"revision": "a2", "scene": plans[patch.path][0]}
+
+        store = Store()
+        view_model = StudioViewModel(store=store, jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("alternate.json")
+
+        self.assertTrue(view_model.patch_render_scene("alternate.json", 1, {"prompt": "Patched"}))
+        self.assertEqual("a1", store.seen_revision)
+        self.assertIn("Patched", view_model.editor_text)
+        self.assertEqual("Preferred", plans["preferred.json"][0]["prompt"])
+
     def test_workspace_save_refreshes_open_raw_editor_and_its_baseline(self):
         from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
@@ -1710,6 +1752,87 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual([2, 1], [item["scene"] for item in view_model.review_items])
         self.assertIn("save/reload raw draft", view_model.error.lower())
         self.assertIn("save/reload review", view_model.error.lower())
+
+    def test_same_project_raw_save_signal_preserves_dirty_review_and_revision(self):
+        import copy
+
+        from feverslop.studio.projects import ArtifactConflict
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        disk = [
+            {"scene": 1, "description": "One", "duration_seconds": 1},
+            {"scene": 2, "description": "Two", "duration_seconds": 1},
+        ]
+        revision = ["r1"]
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": copy.deepcopy(disk), "revision": revision[0], "exists": True}
+
+            def write_artifact(self, project_id, request):
+                if request.expected_revision != revision[0]:
+                    raise ArtifactConflict(request.path, request.expected_revision, revision[0])
+                disk[:] = copy.deepcopy(request.data)
+                revision[0] = "r2"
+                return {"path": request.path, "data": request.data, "revision": revision[0]}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("plan.json")
+        self.assertTrue(view_model.load_review_timeline())
+        self.assertTrue(view_model.move_review_scene(1, 0))
+        view_model.currentProjectChanged.connect(view_model.load_review_timeline)
+
+        self.assertTrue(view_model.save_json_artifact(
+            "plan.json",
+            '[{"scene": 1, "description": "Raw saved", "duration_seconds": 1}, {"scene": 2, "description": "Two", "duration_seconds": 1}]',
+        ))
+        self.assertTrue(view_model.review_dirty)
+        self.assertEqual([2, 1], [item["scene"] for item in view_model.review_items])
+        self.assertIn("dirty review", view_model.error.lower())
+        self.assertFalse(view_model.save_review_timeline())
+        self.assertEqual("Raw saved", disk[0]["description"])
+
+    def test_actual_project_switch_clears_transients_before_loading_new_review(self):
+        import copy
+
+        from PySide6.QtTest import QSignalSpy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        documents = {
+            "alpha": [{"scene": 1, "description": "Alpha", "duration_seconds": 1}, {"scene": 2, "description": "A2", "duration_seconds": 1}],
+            "beta": [{"scene": 7, "description": "Beta", "duration_seconds": 1}],
+        }
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "artifacts": {"render_plans": ["plan.json"]}}
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": copy.deepcopy(documents[project_id]), "revision": project_id, "exists": True}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("alpha")
+        view_model.load_json_artifact("plan.json")
+        self.assertTrue(view_model.load_review_timeline())
+        self.assertTrue(view_model.move_review_scene(1, 0))
+        view_model.set_json_editor_draft("dirty raw")
+        editor_changed = QSignalSpy(view_model.editorChanged)
+        review_changed = QSignalSpy(view_model.reviewChanged)
+        view_model.currentProjectChanged.connect(view_model.load_review_timeline)
+
+        view_model.select_project("beta")
+
+        self.assertEqual("", view_model.editor_path)
+        self.assertFalse(view_model.editor_dirty)
+        self.assertFalse(view_model.review_dirty)
+        self.assertEqual([7], [item["scene"] for item in view_model.review_items])
+        self.assertGreaterEqual(editor_changed.count(), 1)
+        self.assertGreaterEqual(review_changed.count(), 2)
 
     def test_import_image_encodes_file_for_existing_media_port(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel

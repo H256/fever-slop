@@ -42,6 +42,7 @@ class StudioViewModel(QObject):
         self._review_path = ""
         self._review_state: ReviewTimelineState | None = None
         self._review_revision: str | None = None
+        self._review_project_id = ""
         self._error = ""
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(500)
@@ -158,7 +159,12 @@ class StudioViewModel(QObject):
     @Slot(str)
     def select_project(self, project_id: str) -> None:
         try:
-            self._current_project = self.store.describe_project(project_id)
+            project = self.store.describe_project(project_id)
+            changed = str(project.get("id") or "") != self.current_project_id
+            self._current_project = project
+            if changed:
+                self._clear_editor_state()
+                self._clear_review_state()
             self._set_error("")
             self.currentProjectChanged.emit()
         except Exception as exc:  # noqa: BLE001 - UI boundary
@@ -338,13 +344,16 @@ class StudioViewModel(QObject):
         self._set_editor_dirty(text != clean_text)
 
     @Slot(result=bool)
-    def refresh_render_plan_editor(self) -> bool:
+    @Slot(str, result=bool)
+    def refresh_render_plan_editor(self, path: str = "") -> bool:
         render_plans = self.artifacts.get("render_plans") or []
         if not render_plans:
             return False
-        path = str(render_plans[0])
-        raw_matches = self._editor_path == path
-        review_matches = self._review_state is not None and self._review_path == path
+        target_path = path or str(render_plans[0])
+        if target_path not in render_plans:
+            return False
+        raw_matches = self._editor_path == target_path
+        review_matches = self._review_state is not None and self._review_path == target_path
         if not raw_matches and not review_matches:
             return False
         blocked: list[str] = []
@@ -357,7 +366,7 @@ class StudioViewModel(QObject):
         artifact = None
         try:
             if refresh_raw or refresh_review:
-                artifact = self.store.read_artifact(self.current_project_id, path)
+                artifact = self.store.read_artifact(self.current_project_id, target_path)
             if refresh_raw and artifact is not None:
                 self._editor_data = copy.deepcopy(artifact["data"])
                 self._editor_baseline = copy.deepcopy(artifact["data"])
@@ -396,11 +405,20 @@ class StudioViewModel(QObject):
         if not path:
             self._set_error("No render plan found")
             return False
+        if (
+            self._review_state is not None
+            and self._review_state.dirty
+            and self._review_project_id == self.current_project_id
+            and self._review_path == path
+        ):
+            self._set_error("Dirty review exists; save/reload review before loading")
+            return False
         try:
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._review_path = path
             self._review_state = ReviewTimelineState.from_document(artifact["data"])
             self._review_revision = artifact.get("revision")
+            self._review_project_id = self.current_project_id
             self._set_error("")
             self.reviewChanged.emit()
             return True
@@ -480,7 +498,7 @@ class StudioViewModel(QObject):
                     expected_revision=self._editor_revision,
                 ),
             )
-            self.refresh_render_plan_editor()
+            self.refresh_render_plan_editor(path)
             return True
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
@@ -554,3 +572,20 @@ class StudioViewModel(QObject):
             return
         self._editor_dirty = dirty
         self.editorDirtyChanged.emit()
+
+    def _clear_editor_state(self) -> None:
+        self._editor_path = ""
+        self._editor_text = ""
+        self._editor_data = None
+        self._editor_baseline = None
+        self._editor_revision = None
+        self._editor_exists = False
+        self._set_editor_dirty(False)
+        self.editorChanged.emit()
+
+    def _clear_review_state(self) -> None:
+        self._review_path = ""
+        self._review_state = None
+        self._review_revision = None
+        self._review_project_id = ""
+        self.reviewChanged.emit()
