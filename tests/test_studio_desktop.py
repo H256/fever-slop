@@ -850,6 +850,9 @@ class StudioViewModelTests(unittest.TestCase):
         calls = []
 
         class Store:
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": None}
+
             def write_artifact(self, project_id, request):
                 calls.append((project_id, request.path, request.data))
                 return {"path": request.path, "data": request.data}
@@ -930,6 +933,113 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual([], writes)
         self.assertIn("changed externally", view_model.error)
         self.assertIn("reload", view_model.error.lower())
+
+    def test_nested_editor_scenes_mutation_cannot_hide_external_change(self):
+        import copy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        writes = []
+        current_data = [{"scene": 1, "ltx": {"base_prompt": "Original"}}]
+
+        class Store:
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "artifacts": {"render_plans": ["render_plan.json"]},
+                }
+
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": copy.deepcopy(current_data)}
+
+            def write_artifact(self, project_id, request):
+                writes.append(request.data)
+                return {"path": request.path, "data": request.data}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("render_plan.json")
+
+        exposed_scenes = view_model.editor_scenes
+        exposed_scenes[0]["ltx"]["base_prompt"] = "Workspace edit"
+        self.assertEqual("Original", view_model.editor_scenes[0]["ltx"]["base_prompt"])
+        current_data[0]["ltx"]["base_prompt"] = "Workspace edit"
+
+        self.assertFalse(view_model.save_json_artifact(
+            "render_plan.json",
+            '[{"scene": 1, "ltx": {"base_prompt": "Raw edit"}}]',
+        ))
+        self.assertEqual([], writes)
+        self.assertIn("changed externally", view_model.error)
+
+    def test_save_as_rejects_existing_target_that_was_not_loaded(self):
+        import copy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        artifacts = {
+            "a.json": {"name": "A"},
+            "b.json": {"name": "B"},
+        }
+        writes = []
+
+        class Store:
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "artifacts": {"generated_json": list(artifacts)},
+                }
+
+            def read_artifact(self, project_id, path):
+                if path not in artifacts:
+                    raise FileNotFoundError(path)
+                return {"path": path, "data": copy.deepcopy(artifacts[path])}
+
+            def write_artifact(self, project_id, request):
+                writes.append(request.path)
+                artifacts[request.path] = request.data
+                return {"path": request.path, "data": request.data}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("a.json")
+
+        self.assertFalse(view_model.save_json_artifact("b.json", '{"name": "overwrite"}'))
+        self.assertEqual([], writes)
+        self.assertEqual({"name": "B"}, artifacts["b.json"])
+        self.assertIn("load target before saving", view_model.error.lower())
+
+    def test_save_as_allows_new_target_and_establishes_its_baseline(self):
+        import copy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        artifacts = {"a.json": {"name": "A"}}
+
+        class Store:
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "artifacts": {"generated_json": list(artifacts)},
+                }
+
+            def read_artifact(self, project_id, path):
+                if path not in artifacts:
+                    raise FileNotFoundError(path)
+                return {"path": path, "data": copy.deepcopy(artifacts[path])}
+
+            def write_artifact(self, project_id, request):
+                artifacts[request.path] = copy.deepcopy(request.data)
+                return {"path": request.path, "data": request.data}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("song")
+        view_model.load_json_artifact("a.json")
+
+        self.assertTrue(view_model.save_json_artifact("c.json", '{"name": "C"}'))
+        self.assertEqual("c.json", view_model.editor_path)
+        self.assertTrue(view_model.save_json_artifact("c.json", '{"name": "C2"}'))
+        self.assertEqual({"name": "C2"}, artifacts["c.json"])
 
     def test_save_loaded_json_succeeds_when_baseline_is_unchanged(self):
         from PySide6.QtTest import QSignalSpy

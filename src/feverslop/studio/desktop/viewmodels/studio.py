@@ -33,6 +33,7 @@ class StudioViewModel(QObject):
         self._editor_path = ""
         self._editor_text = ""
         self._editor_data: Any = None
+        self._editor_baseline: Any = None
         self._jobs: list[dict[str, Any]] = []
         self._review_path = ""
         self._review_state: ReviewTimelineState | None = None
@@ -88,7 +89,11 @@ class StudioViewModel(QObject):
     def editor_scenes(self) -> list[dict[str, Any]]:
         if not isinstance(self._editor_data, list):
             return []
-        return [dict(scene) for scene in self._editor_data if isinstance(scene, dict) and "scene" in scene]
+        return [
+            copy.deepcopy(scene)
+            for scene in self._editor_data
+            if isinstance(scene, dict) and "scene" in scene
+        ]
 
     @Property("QVariantList", notify=jobsChanged)
     def jobs(self) -> list[dict[str, Any]]:
@@ -259,6 +264,7 @@ class StudioViewModel(QObject):
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._editor_path = path
             self._editor_data = copy.deepcopy(artifact["data"])
+            self._editor_baseline = copy.deepcopy(artifact["data"])
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._set_error("")
             self.editorChanged.emit()
@@ -274,9 +280,27 @@ class StudioViewModel(QObject):
             data = json.loads(text)
             if path == self._editor_path:
                 current = self.store.read_artifact(self.current_project_id, path)
-                if current["data"] != self._editor_data:
+                if current["data"] != self._editor_baseline:
                     raise ValueError(
                         "Artifact changed externally; reload it before saving"
+                    )
+            else:
+                try:
+                    target = self.store.read_artifact(self.current_project_id, path)
+                except FileNotFoundError:
+                    target = None
+                described = self.store.describe_project(self.current_project_id)
+                catalog = described.get("artifacts") or {}
+                target_is_catalogued = any(
+                    path in paths
+                    for paths in catalog.values()
+                    if isinstance(paths, list)
+                )
+                if target_is_catalogued or (
+                    target is not None and target["data"] is not None
+                ):
+                    raise ValueError(
+                        "Target artifact already exists; load target before saving"
                     )
             artifact = self.store.write_artifact(
                 self.current_project_id,
@@ -284,6 +308,7 @@ class StudioViewModel(QObject):
             )
             self._editor_path = path
             self._editor_data = copy.deepcopy(artifact["data"])
+            self._editor_baseline = copy.deepcopy(artifact["data"])
             self._editor_text = json.dumps(self._editor_data, indent=2, ensure_ascii=False)
             self._current_project = self.store.describe_project(self.current_project_id)
             self._set_error("")
@@ -307,6 +332,7 @@ class StudioViewModel(QObject):
                 self._editor_path,
             )
             self._editor_data = copy.deepcopy(artifact["data"])
+            self._editor_baseline = copy.deepcopy(artifact["data"])
             self._editor_text = json.dumps(
                 self._editor_data,
                 indent=2,
