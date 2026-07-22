@@ -150,6 +150,28 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
 
                     self.assertEqual(2, exit_code)
 
+    def test_main_returns_nonzero_for_overflowing_manifest_number(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = root / "prepared" / "workflow.json"
+            workflow.parent.mkdir()
+            workflow.write_text("{}", encoding="utf-8")
+            workflow.with_name("manifest.json").write_text(
+                f'{{"schema": "{SCHEMA}", "assets": [], "scene": 1e999}}',
+                encoding="utf-8",
+            )
+
+            exit_code = cli.main(
+                [
+                    "--case", f"candidate={workflow}",
+                    "--output", str(root / "run.json"),
+                    "--comfyui-url", "http://localhost:8188",
+                ],
+                compose=lambda **_kwargs: self.fail("must not compose"),
+            )
+
+            self.assertEqual(2, exit_code)
+
     def test_evidence_directory_uses_the_full_report_filename(self):
         json_evidence = cli.evidence_directory(Path("run.json"))
         text_evidence = cli.evidence_directory(Path("run.txt"))

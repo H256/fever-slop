@@ -151,7 +151,7 @@ def preflight_cases(
 def _read_manifest(path: Path, case_name: str) -> SceneWorkflowManifest:
     try:
         return SceneWorkflowManifest.read(path)
-    except (AttributeError, KeyError, TypeError, json.JSONDecodeError) as exc:
+    except (AttributeError, KeyError, OverflowError, TypeError, json.JSONDecodeError) as exc:
         raise ValueError(
             f"prepared workflow manifest is malformed for {case_name}: {exc}"
         ) from None
