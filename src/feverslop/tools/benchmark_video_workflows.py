@@ -21,7 +21,7 @@ from feverslop.adapters.json_benchmark_store import JsonBenchmarkResultStore
 from feverslop.adapters.prepared_workflow import PreparedWorkflowRenderer
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.benchmark_video_workflows import BenchmarkVideoWorkflowsUseCase
-from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.workflow_benchmark import WorkflowBenchmarkCase
 from feverslop.errors import FeverSlopValidationError
@@ -109,6 +109,7 @@ def preflight_cases(
             raise FileNotFoundError(f"prepared workflow manifest does not exist: {manifest_path}")
         manifest = _read_manifest(manifest_path, case.name)
         case_project_dir = _derive_project_dir(workflow_path, manifest)
+        _validate_manifest_artifacts(manifest, case_project_dir)
 
         if project_dir is None:
             project_dir = case_project_dir
@@ -163,19 +164,7 @@ def _read_manifest(path: Path, case_name: str) -> SceneWorkflowManifest:
 def _derive_project_dir(workflow_path: Path, manifest: SceneWorkflowManifest) -> Path:
     if manifest.workflow.external:
         raise ValueError("prepared workflow manifest cannot use an external workflow path")
-    raw_path = manifest.workflow.path
-    relative = PurePosixPath(raw_path)
-    windows_path = PureWindowsPath(raw_path)
-    if (
-        "\\" in raw_path
-        or relative.is_absolute()
-        or windows_path.is_absolute()
-        or bool(windows_path.drive)
-        or not relative.parts
-        or ".." in relative.parts
-        or ".." in windows_path.parts
-    ):
-        raise ValueError("prepared workflow manifest contains an invalid workflow path")
+    relative = _validated_relative_artifact_path(manifest.workflow.path, "workflow")
 
     project_dir = workflow_path
     for _part in relative.parts:
@@ -189,13 +178,51 @@ def _derive_project_dir(workflow_path: Path, manifest: SceneWorkflowManifest) ->
         ("workflow", workflow_path.resolve()),
         ("manifest", workflow_path.with_name("manifest.json").resolve()),
     ):
-        try:
-            path.relative_to(project_dir)
-        except ValueError:
-            raise ValueError(
-                f"prepared {label} is outside derived project root: {path}"
-            ) from None
+        _require_within_project(path, project_dir, label)
     return project_dir
+
+
+def _validated_relative_artifact_path(value: str, label: str) -> PurePosixPath:
+    relative = PurePosixPath(value)
+    windows_path = PureWindowsPath(value)
+    if (
+        "\\" in value
+        or relative.is_absolute()
+        or windows_path.is_absolute()
+        or bool(windows_path.drive)
+        or not relative.parts
+        or ".." in relative.parts
+        or ".." in windows_path.parts
+    ):
+        raise ValueError(f"prepared workflow manifest contains invalid {label} path")
+    return relative
+
+
+def _require_within_project(path: Path, project_dir: Path, label: str) -> None:
+    try:
+        path.relative_to(project_dir)
+    except ValueError:
+        raise ValueError(
+            f"prepared {label} is outside derived project root: {path}"
+        ) from None
+
+
+def _validate_manifest_artifacts(
+    manifest: SceneWorkflowManifest,
+    project_dir: Path,
+) -> None:
+    artifacts: list[tuple[str, StoredArtifact]] = [
+        ("workflow", manifest.workflow),
+        ("template", manifest.template),
+        ("render_plan", manifest.render_plan),
+    ]
+    artifacts.extend((f"asset[{asset.role}]", asset) for asset in manifest.assets)
+    for label, artifact in artifacts:
+        if artifact.external:
+            continue
+        relative = _validated_relative_artifact_path(artifact.path, label)
+        resolved = (project_dir / Path(*relative.parts)).resolve()
+        _require_within_project(resolved, project_dir, label)
 
 
 def evidence_directory(report_path: Path) -> Path:
@@ -281,7 +308,7 @@ def run(
         )
         try:
             written = use_case.execute(cases)
-        except Exception:
+        except BaseException:
             _remove_partial_evidence(evidence_path)
             raise
     print(written.resolve(), file=output)

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from feverslop.domain import prepared_workflow as prepared_workflow_domain
 from feverslop.domain.prepared_workflow import SCHEMA, SceneWorkflowManifest
 from feverslop.tools import benchmark_video_workflows as cli
 
@@ -89,6 +90,111 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
 
                     with self.assertRaisesRegex(ValueError, "invalid workflow path"):
                         cli.preflight_cases((cli.parse_case(f"candidate={workflow}"),))
+
+    def test_preflight_rejects_non_external_render_plan_escape_before_outside_read(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = root / "project"
+            workflow = _write_prepared_workflow(project, "candidate", scene=1)
+            outside = root / "outside" / "plan.json"
+            outside.parent.mkdir()
+            outside.write_text("[]", encoding="utf-8")
+            manifest_path = workflow.with_name("manifest.json")
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            payload["render_plan"] = {
+                "path": "../outside/plan.json",
+                "sha256": prepared_workflow_domain.sha256_file(outside),
+            }
+            manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+            original_sha256 = prepared_workflow_domain.sha256_file
+
+            def guarded_sha256(path):
+                if Path(path).resolve() == outside.resolve():
+                    self.fail("preflight must not read outside render plan")
+                return original_sha256(path)
+
+            args = cli.build_arg_parser().parse_args(
+                [
+                    "--case", f"candidate={workflow}",
+                    "--output", str(project / "run.json"),
+                    "--comfyui-url", "http://localhost:8188",
+                ]
+            )
+            with (
+                patch(
+                    "feverslop.domain.prepared_workflow.sha256_file",
+                    side_effect=guarded_sha256,
+                ),
+                self.assertRaisesRegex(ValueError, "invalid render_plan path"),
+            ):
+                cli.run(args, compose=lambda **_kwargs: self.fail("must not compose"))
+
+    def test_preflight_rejects_non_external_asset_escape_before_outside_read(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = root / "project"
+            workflow = _write_prepared_workflow(project, "candidate", scene=1)
+            outside = root / "outside" / "asset.png"
+            outside.parent.mkdir()
+            outside.write_bytes(b"image")
+            manifest_path = workflow.with_name("manifest.json")
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            payload["assets"] = [
+                {
+                    "role": "reference",
+                    "path": "..\\outside\\asset.png",
+                    "sha256": prepared_workflow_domain.sha256_file(outside),
+                    "comfyui_name": "asset.png",
+                }
+            ]
+            manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+            original_sha256 = prepared_workflow_domain.sha256_file
+
+            def guarded_sha256(path):
+                if Path(path).resolve() == outside.resolve():
+                    self.fail("preflight must not read outside asset")
+                return original_sha256(path)
+
+            args = cli.build_arg_parser().parse_args(
+                [
+                    "--case", f"candidate={workflow}",
+                    "--output", str(project / "run.json"),
+                    "--comfyui-url", "http://localhost:8188",
+                ]
+            )
+            with (
+                patch(
+                    "feverslop.domain.prepared_workflow.sha256_file",
+                    side_effect=guarded_sha256,
+                ),
+                self.assertRaisesRegex(ValueError, r"invalid asset\[reference\] path"),
+            ):
+                cli.run(args, compose=lambda **_kwargs: self.fail("must not compose"))
+
+    def test_preflight_preserves_explicitly_external_template_semantics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = root / "project"
+            workflow = _write_prepared_workflow(project, "candidate", scene=1)
+            external_template = root / "shared" / "template.json"
+            external_template.parent.mkdir()
+            external_template.write_text("{}", encoding="utf-8")
+            manifest_path = workflow.with_name("manifest.json")
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            payload["template"] = {
+                "path": str(external_template.resolve()),
+                "sha256": prepared_workflow_domain.sha256_file(external_template),
+                "external": True,
+            }
+            manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            cases, project_dir, pipeline = cli.preflight_cases(
+                (cli.parse_case(f"candidate={workflow}"),)
+            )
+
+            self.assertEqual((workflow.resolve(),), tuple(case.prepared_workflow for case in cases))
+            self.assertEqual(project.resolve(), project_dir)
+            self.assertEqual("test-pipeline", pipeline)
 
     def test_run_uses_injected_composition_and_prints_report_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -339,6 +445,33 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
 
             self.assertFalse(cli.reservation_path(report).exists())
             self.assertFalse(evidence.exists())
+
+    def test_run_interrupt_after_first_capture_cleans_partial_run_and_reraises(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = _write_prepared_workflow(root, "one", scene=1)
+            report = root / "run.json"
+            evidence = cli.evidence_directory(report)
+            args = cli.build_arg_parser().parse_args(
+                [
+                    "--case", f"candidate={workflow}",
+                    "--output", str(report),
+                    "--comfyui-url", "http://localhost:8188",
+                ]
+            )
+
+            class UseCase:
+                def execute(self, _cases):
+                    evidence.mkdir()
+                    (evidence / "candidate.mp4").write_bytes(b"captured")
+                    raise KeyboardInterrupt
+
+            with self.assertRaises(KeyboardInterrupt):
+                cli.run(args, compose=lambda **_kwargs: UseCase())
+
+            self.assertFalse(report.exists())
+            self.assertFalse(evidence.exists())
+            self.assertFalse(cli.reservation_path(report).exists())
 
 
 def _write_prepared_workflow(
