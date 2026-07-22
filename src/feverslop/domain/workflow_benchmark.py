@@ -3,26 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import isfinite
 from numbers import Real
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath
 
 
-def _portable_path(value: str | Path, *, label: str, repository_relative: bool) -> str:
+def _portable_path(value: str | Path, *, label: str) -> str:
     if not isinstance(value, (str, Path)):
         raise ValueError(f"{label} must be a path")
 
-    raw = str(value).strip()
-    if not raw or raw == ".":
+    raw = str(value)
+    if not raw.strip() or raw == ".":
         raise ValueError(f"{label} is required")
 
-    windows_path = PureWindowsPath(raw)
     posix_path = PurePosixPath(raw.replace("\\", "/"))
-    if repository_relative and (
-        windows_path.drive
-        or windows_path.root
-        or posix_path.is_absolute()
-        or ".." in posix_path.parts
-    ):
-        raise ValueError(f"{label} must be repository-relative")
     return posix_path.as_posix()
 
 
@@ -47,14 +39,9 @@ class WorkflowBenchmarkCase:
             raise ValueError("benchmark case name is required")
         if not isinstance(self.prepared_workflow, Path):
             raise ValueError("prepared workflow path must be a Path")
-
-        normalized_path = _portable_path(
-            self.prepared_workflow,
-            label="prepared workflow path",
-            repository_relative=True,
-        )
+        if self.prepared_workflow == Path():
+            raise ValueError("prepared workflow path is required")
         object.__setattr__(self, "name", self.name.strip())
-        object.__setattr__(self, "prepared_workflow", Path(normalized_path))
 
 
 @dataclass(frozen=True, init=False)
@@ -80,7 +67,6 @@ class WorkflowBenchmarkResult:
         prepared_workflow = _portable_path(
             self.prepared_workflow,
             label="prepared workflow path",
-            repository_relative=True,
         )
         elapsed = _elapsed_seconds(self.elapsed_seconds, successful=self.success)
 
@@ -88,7 +74,6 @@ class WorkflowBenchmarkResult:
             output_path = _portable_path(
                 self.output_path,
                 label="benchmark output path",
-                repository_relative=False,
             )
             if self.error:
                 raise ValueError("successful benchmark result cannot contain an error")
@@ -97,8 +82,6 @@ class WorkflowBenchmarkResult:
                 raise ValueError("failed benchmark output path must be a string")
             if self.output_path:
                 raise ValueError("failed benchmark result cannot contain an output path")
-            if not self.error.strip():
-                raise ValueError("failed benchmark result requires an error")
             output_path = ""
 
         object.__setattr__(self, "case_name", self.case_name.strip())
@@ -149,7 +132,6 @@ class WorkflowBenchmarkResult:
         normalized_output_path = _portable_path(
             output_path,
             label="benchmark output path",
-            repository_relative=False,
         )
         return cls._build(
             case=case,

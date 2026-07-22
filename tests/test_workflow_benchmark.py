@@ -9,18 +9,23 @@ from feverslop.domain.workflow_benchmark import (
     WorkflowBenchmarkCase,
     WorkflowBenchmarkResult,
 )
-from feverslop.ports.benchmarking import BenchmarkResultStorePort, MonotonicClockPort
+from feverslop.ports.benchmarking import (
+    BenchmarkArtifactStorePort,
+    BenchmarkResultStorePort,
+    MonotonicClockPort,
+)
 
 
 class WorkflowBenchmarkCaseTests(unittest.TestCase):
-    def test_creates_immutable_case_with_portable_path(self):
+    def test_creates_immutable_case_preserving_path(self):
+        prepared_workflow = Path("prepared\\candidate\\workflow.json")
         case = WorkflowBenchmarkCase(
             name=" candidate ",
-            prepared_workflow=Path("prepared\\candidate\\workflow.json"),
+            prepared_workflow=prepared_workflow,
         )
 
         self.assertEqual(case.name, "candidate")
-        self.assertEqual(case.prepared_workflow.as_posix(), "prepared/candidate/workflow.json")
+        self.assertEqual(case.prepared_workflow, prepared_workflow)
         with self.assertRaises(FrozenInstanceError):
             case.name = "changed"  # type: ignore[misc]
 
@@ -32,21 +37,25 @@ class WorkflowBenchmarkCaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "prepared workflow path"):
             WorkflowBenchmarkCase(name="candidate", prepared_workflow=Path())
 
-    def test_rejects_unsafe_prepared_workflow_paths_portably(self):
-        invalid_paths = (
-            Path("../workflow.json"),
-            Path("/tmp/workflow.json"),
-            Path("C:/work/workflow.json"),
-            Path("C:\\work\\workflow.json"),
+    def test_accepts_absolute_prepared_workflow_path(self):
+        prepared_workflow = Path.cwd() / "prepared" / "candidate" / "workflow.json"
+
+        case = WorkflowBenchmarkCase(
+            name="candidate",
+            prepared_workflow=prepared_workflow,
         )
 
-        for prepared_workflow in invalid_paths:
-            with self.subTest(prepared_workflow=prepared_workflow):
-                with self.assertRaisesRegex(ValueError, "repository-relative"):
-                    WorkflowBenchmarkCase(
-                        name="candidate",
-                        prepared_workflow=prepared_workflow,
-                    )
+        self.assertEqual(case.prepared_workflow, prepared_workflow)
+
+    def test_preserves_whitespace_and_parent_segments_in_prepared_workflow_path(self):
+        prepared_workflow = Path("..") / " prepared " / " workflow.json "
+
+        case = WorkflowBenchmarkCase(
+            name="candidate",
+            prepared_workflow=prepared_workflow,
+        )
+
+        self.assertEqual(case.prepared_workflow, prepared_workflow)
 
 
 class WorkflowBenchmarkResultTests(unittest.TestCase):
@@ -140,17 +149,31 @@ class WorkflowBenchmarkResultTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "elapsed seconds"):
                     WorkflowBenchmarkResult.failed(self.case, elapsed, "failed")
 
-    def test_failed_result_requires_nonempty_error(self):
-        for error in ("", "  "):
-            with self.subTest(error=error):
-                with self.assertRaisesRegex(ValueError, "error"):
-                    WorkflowBenchmarkResult.failed(self.case, 1.0, error)
+    def test_failed_result_accepts_blank_exception_message(self):
+        result = WorkflowBenchmarkResult.failed(self.case, 1.0, str(RuntimeError()))
+
+        self.assertEqual(result.error, "")
+
+    def test_failed_result_requires_string_error(self):
+        with self.assertRaisesRegex(ValueError, "error"):
+            WorkflowBenchmarkResult.failed(
+                self.case,
+                1.0,
+                None,  # type: ignore[arg-type]
+            )
 
 
 class BenchmarkPortTests(unittest.TestCase):
     def test_ports_expose_expected_methods(self):
         self.assertIn("now", MonotonicClockPort.__dict__)
         self.assertIn("write", BenchmarkResultStorePort.__dict__)
+
+    def test_artifact_store_captures_render_under_case_identity(self):
+        annotations = BenchmarkArtifactStorePort.capture.__annotations__
+
+        self.assertEqual(annotations["case_name"], str)
+        self.assertEqual(annotations["rendered_output"], Path)
+        self.assertEqual(annotations["return"], Path)
 
 
 if __name__ == "__main__":
