@@ -89,6 +89,24 @@ class VideoWorkflowProfileTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "output_scale must be greater than zero"):
                     self.create_profile(output_scale=output_scale)
 
+    def test_rejects_non_finite_and_non_real_output_scale(self):
+        for output_scale in (True, float("nan"), float("inf"), float("-inf"), "large", []):
+            with self.subTest(output_scale=output_scale):
+                with self.assertRaisesRegex(ValueError, "output_scale must be greater than zero"):
+                    self.create_profile(output_scale=output_scale)
+
+    def test_rejects_non_boolean_per_pass_lora_support(self):
+        for supports_per_pass_loras in ("false", 1, []):
+            with self.subTest(supports_per_pass_loras=supports_per_pass_loras):
+                with self.assertRaisesRegex(ValueError, "supports_per_pass_loras must be a boolean"):
+                    self.create_profile(supports_per_pass_loras=supports_per_pass_loras)
+
+    def test_rejects_non_boolean_explicit_final_output_flag(self):
+        for satisfies_final_output in ("false", 0, []):
+            with self.subTest(satisfies_final_output=satisfies_final_output):
+                with self.assertRaisesRegex(ValueError, "satisfies_final_output must be a boolean or None"):
+                    self.create_profile(satisfies_final_output=satisfies_final_output)
+
     def test_rejects_preview_profile_with_final_output_flag(self):
         with self.assertRaisesRegex(ValueError, "preview profile cannot satisfy final output"):
             self.create_profile(

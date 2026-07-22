@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
+from numbers import Real
 from pathlib import PurePosixPath, PureWindowsPath
 
 
@@ -46,11 +48,18 @@ class VideoWorkflowProfile:
         if type(stages) is not int or stages not in {1, 2}:
             raise ValueError("workflow profile stages must be 1 or 2")
 
+        if isinstance(output_scale, bool) or not isinstance(output_scale, Real):
+            raise ValueError("workflow profile output_scale must be greater than zero")
         resolved_output_scale = float(output_scale)
-        if not resolved_output_scale > 0:
+        if not isfinite(resolved_output_scale) or resolved_output_scale <= 0:
             raise ValueError("workflow profile output_scale must be greater than zero")
 
-        final = resolved_purpose == "final" if satisfies_final_output is None else bool(satisfies_final_output)
+        if type(supports_per_pass_loras) is not bool:
+            raise ValueError("workflow profile supports_per_pass_loras must be a boolean")
+        if satisfies_final_output is not None and type(satisfies_final_output) is not bool:
+            raise ValueError("workflow profile satisfies_final_output must be a boolean or None")
+
+        final = resolved_purpose == "final" if satisfies_final_output is None else satisfies_final_output
         if resolved_purpose == "preview" and final:
             raise ValueError("preview profile cannot satisfy final output")
 
@@ -61,6 +70,6 @@ class VideoWorkflowProfile:
             purpose=resolved_purpose,
             stages=stages,
             output_scale=resolved_output_scale,
-            supports_per_pass_loras=bool(supports_per_pass_loras),
+            supports_per_pass_loras=supports_per_pass_loras,
             satisfies_final_output=final,
         )
