@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.prepared_workflow import SCHEMA, SceneWorkflowManifest
 from feverslop.tools import benchmark_video_workflows as cli
 
 
@@ -103,6 +104,60 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
             self.assertEqual("http://comfy.test:8188", captured["comfyui_url"])
             self.assertEqual(report.resolve(), Path(output.getvalue().strip()))
 
+    def test_run_rejects_invalid_manifest_budget_before_composition(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = _write_prepared_workflow(
+                root,
+                "over-budget",
+                scene=1,
+                render_frame_count=25,
+                max_render_frames=17,
+            )
+            args = cli.build_arg_parser().parse_args(
+                [
+                    "--case", f"candidate={workflow}",
+                    "--output", str(root / "run.json"),
+                    "--comfyui-url", "http://localhost:8188",
+                ]
+            )
+
+            with self.assertRaisesRegex(ValueError, "limited to 17 frames"):
+                cli.run(args, compose=lambda **_kwargs: self.fail("must not compose"))
+
+    def test_main_returns_nonzero_for_structurally_malformed_manifests(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            malformed_payloads = ([], {"schema": SCHEMA, "assets": []})
+
+            for index, payload in enumerate(malformed_payloads):
+                with self.subTest(payload=payload):
+                    workflow = root / str(index) / "workflow.json"
+                    workflow.parent.mkdir()
+                    workflow.write_text("{}", encoding="utf-8")
+                    workflow.with_name("manifest.json").write_text(
+                        json.dumps(payload), encoding="utf-8"
+                    )
+
+                    exit_code = cli.main(
+                        [
+                            "--case", f"candidate={workflow}",
+                            "--output", str(root / f"run-{index}.json"),
+                            "--comfyui-url", "http://localhost:8188",
+                        ],
+                        compose=lambda **_kwargs: self.fail("must not compose"),
+                    )
+
+                    self.assertEqual(2, exit_code)
+
+    def test_evidence_directory_uses_the_full_report_filename(self):
+        json_evidence = cli.evidence_directory(Path("run.json"))
+        text_evidence = cli.evidence_directory(Path("run.txt"))
+
+        self.assertEqual(Path("run.json.evidence"), json_evidence)
+        self.assertEqual(Path("run.txt.evidence"), text_evidence)
+        self.assertNotEqual(json_evidence, text_evidence)
+
     def test_run_rejects_existing_report_or_evidence_before_composition(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -112,7 +167,7 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
                 ["--case", f"candidate={workflow}", "--output", str(report), "--comfyui-url", "http://localhost:8188"]
             )
 
-            for collision in (report, root / "run.evidence"):
+            for collision in (report, root / "run.json.evidence"):
                 with self.subTest(collision=collision):
                     if collision.suffix:
                         collision.parent.mkdir(parents=True, exist_ok=True)
@@ -133,6 +188,8 @@ def _write_prepared_workflow(
     *,
     scene: int,
     pipeline: str = "test-pipeline",
+    render_frame_count: int | None = None,
+    max_render_frames: int | None = None,
 ) -> Path:
     project.mkdir(parents=True, exist_ok=True)
     template = project / "templates" / f"{name}.json"
@@ -154,8 +211,10 @@ def _write_prepared_workflow(
         seed=1,
         fps=24,
         frame_count=25,
+        render_frame_count=render_frame_count,
         width=1280,
         height=704,
+        max_render_frames=max_render_frames,
     )
     manifest.write(workflow.with_name("manifest.json"))
     return workflow

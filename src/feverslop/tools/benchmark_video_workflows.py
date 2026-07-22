@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+import json
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -18,7 +19,9 @@ from feverslop.adapters.prepared_workflow import PreparedWorkflowRenderer
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.benchmark_video_workflows import BenchmarkVideoWorkflowsUseCase
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.workflow_benchmark import WorkflowBenchmarkCase
+from feverslop.errors import FeverSlopValidationError
 
 
 _SAFE_CASE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
@@ -101,7 +104,7 @@ def preflight_cases(
         manifest_path = workflow_path.with_name("manifest.json")
         if not manifest_path.is_file():
             raise FileNotFoundError(f"prepared workflow manifest does not exist: {manifest_path}")
-        manifest = SceneWorkflowManifest.read(manifest_path)
+        manifest = _read_manifest(manifest_path, case.name)
         case_project_dir = _derive_project_dir(workflow_path, manifest)
 
         if project_dir is None:
@@ -122,11 +125,36 @@ def preflight_cases(
                 f"prepared workflow verification failed for {case.name}: "
                 + "; ".join(mismatches)
             )
+        try:
+            validate_render_frame_budget(
+                scene_number=manifest.scene,
+                render_frame_count=manifest.render_frame_count,
+                fps=manifest.fps,
+                workflow_path=(
+                    manifest.render_budget_workflow_path or manifest.template.path
+                ),
+                max_render_frames=manifest.max_render_frames,
+                max_render_duration_seconds=manifest.max_render_duration_seconds,
+                round_render_frames_to_8n1=manifest.round_render_frames_to_8n1,
+            )
+        except FeverSlopValidationError as exc:
+            raise ValueError(
+                f"invalid prepared workflow render budget for {case.name}: {exc}"
+            ) from None
         normalized_cases.append(WorkflowBenchmarkCase(case.name, workflow_path))
 
     assert project_dir is not None
     assert expected_pipeline is not None
     return tuple(normalized_cases), project_dir, expected_pipeline
+
+
+def _read_manifest(path: Path, case_name: str) -> SceneWorkflowManifest:
+    try:
+        return SceneWorkflowManifest.read(path)
+    except (AttributeError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"prepared workflow manifest is malformed for {case_name}: {exc}"
+        ) from None
 
 
 def _derive_project_dir(workflow_path: Path, manifest: SceneWorkflowManifest) -> Path:
@@ -148,7 +176,7 @@ def _derive_project_dir(workflow_path: Path, manifest: SceneWorkflowManifest) ->
 
 
 def evidence_directory(report_path: Path) -> Path:
-    return report_path.with_name(f"{report_path.stem}.evidence")
+    return report_path.with_name(f"{report_path.name}.evidence")
 
 
 def compose_benchmark(
