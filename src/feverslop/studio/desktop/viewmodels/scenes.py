@@ -128,6 +128,20 @@ class SceneListModel(QAbstractListModel):
         self.dataChanged.emit(index, index, [self.SelectedRole])
         return True
 
+    def select_only(self, scene_number: int) -> bool:
+        row = self._row_for_scene(scene_number)
+        if row is None:
+            return False
+        if self._selected == {scene_number}:
+            return True
+        self._selected = {scene_number}
+        self.dataChanged.emit(
+            self.index(0, 0),
+            self.index(len(self._items) - 1, 0),
+            [self.SelectedRole],
+        )
+        return True
+
     def is_selected(self, scene_number: int) -> bool:
         return scene_number in self._selected
 
@@ -340,6 +354,17 @@ class SceneWorkspaceViewModel(QObject):
                 self._primary_scene_number = scene_number
             elif self._primary_scene_number == scene_number:
                 self._primary_scene_number = _first_selected(self._scenes)
+            self.selectionChanged.emit()
+            self.inspectedSceneChanged.emit()
+        return changed
+
+    @Slot(int, bool, result=bool)
+    def selectScene(self, scene_number: int, additive: bool) -> bool:  # noqa: N802 - QML API
+        if additive:
+            return self.toggleSelection(scene_number)
+        changed = self._scenes.select_only(scene_number)
+        if changed:
+            self._primary_scene_number = scene_number
             self.selectionChanged.emit()
             self.inspectedSceneChanged.emit()
         return changed

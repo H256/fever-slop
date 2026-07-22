@@ -113,7 +113,9 @@ Rectangle {
                 }
                 Label {
                     objectName: "selectedSceneCount"
-                    text: page.selectedCount + (page.selectedCount === 1 ? " scene selected" : " scenes selected")
+                    text: page.selectedCount
+                        + (page.selectedCount === 1 ? " scene selected" : " scenes selected")
+                        + " · Ctrl+click for multiple"
                     color: "#D4D4D8"
                     Layout.fillWidth: true
                 }
@@ -234,10 +236,13 @@ Rectangle {
                             thumbnailUrl: parent.thumbnailUrl
                             selected: parent.selected
                             keyboardCurrent: parent.keyboardCurrent
-                            onActivated: number => {
+                            onActivated: (number, modifiers) => {
                                 sceneList.currentIndex = parent.index
                                 sceneList.forceActiveFocus()
-                                page.sceneVm.toggleSelection(number)
+                                page.sceneVm.selectScene(
+                                    number,
+                                    !!(modifiers & Qt.ControlModifier)
+                                )
                             }
                         }
                     }

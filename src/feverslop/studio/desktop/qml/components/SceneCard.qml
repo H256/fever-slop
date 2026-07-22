@@ -12,7 +12,7 @@ Control {
     required property url thumbnailUrl
     required property bool selected
     property bool keyboardCurrent: false
-    signal activated(int sceneNumber)
+    signal activated(int sceneNumber, int modifiers)
 
     objectName: "sceneCard_" + sceneNumber
     Accessible.role: Accessible.ListItem
@@ -87,6 +87,6 @@ Control {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: card.activated(card.sceneNumber)
+        onClicked: mouse => card.activated(card.sceneNumber, mouse.modifiers)
     }
 }

@@ -2018,6 +2018,8 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIsNotNone(discard_button)
         self.assertEqual("Reload from disk", reload_button.property("text"))
         self.assertEqual("Discard local edits", discard_button.property("text"))
+        selection_hint = root.findChild(object, "selectedSceneCount")
+        self.assertIn("Ctrl+click", selection_hint.property("text"))
 
     def test_scene_workspace_uses_readable_dark_surfaces_and_roomy_controls(self):
         from PySide6.QtGui import QColor, QGuiApplication
@@ -2159,6 +2161,8 @@ class StudioQmlTests(unittest.TestCase):
         root = engine.rootObjects()[0]
         root.setProperty("currentPage", 11)
         self.qml_app.processEvents()
+        scene_vm.toggleSelection(1)
+        scene_vm.toggleSelection(3)
         scene_list = root.findChild(QQuickItem, "sceneCardList")
         page = root.findChild(object, "sceneWorkspacePage")
         scene_list.setProperty("currentIndex", 0)
@@ -2172,6 +2176,26 @@ class StudioQmlTests(unittest.TestCase):
         QTest.mouseClick(root, Qt.MouseButton.LeftButton, pos=click_point)
         self.qml_app.processEvents()
         self.assertEqual(1, scene_list.property("currentIndex"))
+        self.assertEqual([2], scene_vm.selected_scene_numbers)
+        first_card_center = page.property("sceneCardHeight") / 2
+        first_click_point = scene_list.mapToScene(QPointF(40, first_card_center)).toPoint()
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+            pos=first_click_point,
+        )
+        self.qml_app.processEvents()
+        self.assertEqual([1, 2], scene_vm.selected_scene_numbers)
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+            pos=first_click_point,
+        )
+        self.qml_app.processEvents()
+        self.assertEqual([2], scene_vm.selected_scene_numbers)
+        scene_list.setProperty("currentIndex", 1)
         QTest.keyClick(root, Qt.Key.Key_Down)
         self.assertEqual(2, scene_list.property("currentIndex"))
         QTest.keyClick(root, Qt.Key.Key_Space)
