@@ -208,17 +208,29 @@ ApplicationWindow {
                     spacing: 0
 
                     Rectangle {
-                        color: "#FFFFFF"
+                        objectName: "workspaceHeader"
+                        color: root.currentPage === 11 ? "#202024" : "#FFFFFF"
                         Layout.fillWidth: true
                         Layout.preferredHeight: 72
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 28
                             anchors.rightMargin: 28
-                            Label { text: root.pageTitle; color: "#1C1C1E"; font.pixelSize: 24; font.bold: true; Layout.fillWidth: true }
+                            Label {
+                                text: root.pageTitle
+                                color: root.currentPage === 11 ? "#F4F4F5" : "#1C1C1E"
+                                font.pixelSize: 24
+                                font.bold: true
+                                Layout.fillWidth: true
+                            }
                             Label { visible: vm && vm.error; text: vm ? vm.error : ""; color: "#C62828"; font.pixelSize: 13; elide: Text.ElideRight; Layout.maximumWidth: 520 }
                         }
-                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#D8D8DC" }
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: 1
+                            color: root.currentPage === 11 ? "#3F3F46" : "#D8D8DC"
+                        }
                     }
 
                     StackLayout {

@@ -10,6 +10,8 @@ from PySide6.QtQml import QQmlApplicationEngine
 from feverslop.studio.desktop.composition import create_studio_context
 from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
 from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+from feverslop.studio.job_service import thumbnail_path
+from feverslop.studio.projects import ProjectStore
 
 
 def qml_entrypoint() -> QUrl:
@@ -37,6 +39,18 @@ def studio_palette() -> QPalette:
     return palette
 
 
+def scene_video_thumbnail_url(
+    store: ProjectStore,
+    project_id: str,
+    video_path: str,
+) -> str:
+    try:
+        preview = thumbnail_path(store, project_id, video_path, 0.1)
+    except (OSError, ValueError):
+        return ""
+    return QUrl.fromLocalFile(str(preview)).toString()
+
+
 def run_studio(projects_root: str | Path) -> int:
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
     app = QGuiApplication.instance() or QGuiApplication([])
@@ -56,6 +70,11 @@ def run_studio(projects_root: str | Path) -> int:
         thumbnail_url=lambda project_id, path: QUrl.fromLocalFile(
             str(context.store.resolve_media_path(project_id, path))
         ).toString(),
+        video_thumbnail_url=lambda project_id, path: scene_video_thumbnail_url(
+            context.store,
+            project_id,
+            path,
+        ),
     )
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("studioViewModel", view_model)

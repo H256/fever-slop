@@ -53,6 +53,7 @@ class SceneListModel(QAbstractListModel):
         self,
         *,
         thumbnail_url: Callable[[str], str] | None = None,
+        video_thumbnail_url: Callable[[str], str] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -60,6 +61,7 @@ class SceneListModel(QAbstractListModel):
         self._selected: set[int] = set()
         self._video_prompt_fields: dict[int, str] = {}
         self._thumbnail_url = thumbnail_url or _local_file_url
+        self._video_thumbnail_url = video_thumbnail_url or (lambda _path: "")
 
     def roleNames(self) -> dict[int, bytes]:  # noqa: N802 - Qt API
         return dict(self._ROLE_NAMES)
@@ -199,7 +201,10 @@ class SceneListModel(QAbstractListModel):
 
     def _thumbnail(self, item: SceneWorkspaceItem) -> str:
         path = item.media.thumbnail_path
-        return self._thumbnail_url(path) if path else ""
+        if path:
+            return self._thumbnail_url(path)
+        video_path = item.media.video_path
+        return self._video_thumbnail_url(video_path) if video_path else ""
 
     def _selected_video_prompt(self, item: SceneWorkspaceItem) -> tuple[str, str]:
         field = self._video_prompt_fields.get(item.scene_number, "")
@@ -225,6 +230,7 @@ class SceneWorkspaceViewModel(QObject):
         service: Any,
         studio_view_model: Any,
         thumbnail_url: Callable[[str, str], str] | None = None,
+        video_thumbnail_url: Callable[[str, str], str] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -239,8 +245,13 @@ class SceneWorkspaceViewModel(QObject):
         self._baseline_items: tuple[SceneWorkspaceItem, ...] = ()
         self._submitting = False
         resolver = thumbnail_url or (lambda _project_id, path: _local_file_url(path))
+        video_resolver = video_thumbnail_url or (lambda _project_id, _path: "")
         self._scenes = SceneListModel(
             thumbnail_url=lambda path: resolver(self._current_project_id, path),
+            video_thumbnail_url=lambda path: video_resolver(
+                self._current_project_id,
+                path,
+            ),
             parent=self,
         )
         project_signal = getattr(studio_view_model, "currentProjectChanged", None)
