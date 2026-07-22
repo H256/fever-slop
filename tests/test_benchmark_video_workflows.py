@@ -10,11 +10,19 @@ from feverslop.domain.workflow_benchmark import WorkflowBenchmarkCase
 
 
 class FakeClock:
-    def __init__(self, timestamps: list[float]) -> None:
+    def __init__(
+        self,
+        timestamps: list[float],
+        events: list[tuple[str, object]] | None = None,
+    ) -> None:
         self.timestamps = iter(timestamps)
+        self.events = events
 
     def now(self) -> float:
-        return next(self.timestamps)
+        timestamp = next(self.timestamps)
+        if self.events is not None:
+            self.events.append(("clock", timestamp))
+        return timestamp
 
 
 class RecordingResultStore:
@@ -51,7 +59,7 @@ class BenchmarkVideoWorkflowsUseCaseTests(unittest.TestCase):
         result_store = RecordingResultStore()
         use_case = BenchmarkVideoWorkflowsUseCase(
             renderer=Renderer(),
-            clock=FakeClock([10, 15, 20, 29]),
+            clock=FakeClock([10, 15, 20, 29], events),
             artifact_store=ArtifactStore(),
             result_store=result_store,
         )
@@ -62,9 +70,13 @@ class BenchmarkVideoWorkflowsUseCaseTests(unittest.TestCase):
         self.assertEqual(
             events,
             [
+                ("clock", 10),
                 ("render", Path("prepared/baseline.json")),
+                ("clock", 15),
                 ("capture", "baseline"),
+                ("clock", 20),
                 ("render", Path("prepared/candidate.json")),
+                ("clock", 29),
                 ("capture", "candidate"),
             ],
         )

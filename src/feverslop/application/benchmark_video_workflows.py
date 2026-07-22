@@ -34,7 +34,6 @@ class BenchmarkVideoWorkflowsUseCase:
             started = self._clock.now()
             try:
                 rendered_output = self._renderer.render(case.prepared_workflow)
-                captured_output = self._artifact_store.capture(case.name, rendered_output)
             except Exception as exc:
                 ended = self._clock.now()
                 error = str(exc)
@@ -43,11 +42,19 @@ class BenchmarkVideoWorkflowsUseCase:
                 result = WorkflowBenchmarkResult.failed(case, ended - started, error)
             else:
                 ended = self._clock.now()
-                result = WorkflowBenchmarkResult.successful(
-                    case,
-                    captured_output,
-                    ended - started,
-                )
+                try:
+                    captured_output = self._artifact_store.capture(case.name, rendered_output)
+                except Exception as exc:
+                    error = str(exc)
+                    if not error.strip():
+                        error = type(exc).__name__
+                    result = WorkflowBenchmarkResult.failed(case, ended - started, error)
+                else:
+                    result = WorkflowBenchmarkResult.successful(
+                        case,
+                        captured_output,
+                        ended - started,
+                    )
             results.append(result)
 
         return self._result_store.write(tuple(results))
