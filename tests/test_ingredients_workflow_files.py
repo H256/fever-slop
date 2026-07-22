@@ -6,14 +6,16 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = (
-    ("video_ltxv_ingredients_2stage_v3.json", False, False, False),
-    ("video_ltxv_ingredients_audio_2stage_v3.json", True, False, False),
-    ("video_ltxv_ingredients_2stage_gguf_v3.json", False, True, False),
-    ("video_ltxv_ingredients_audio_2stage_gguf_v3.json", True, True, False),
-    ("video_ltxv_ingredients_2stage_v4.json", False, False, True),
-    ("video_ltxv_ingredients_audio_2stage_v4.json", True, False, True),
-    ("video_ltxv_ingredients_2stage_gguf_v4.json", False, True, True),
-    ("video_ltxv_ingredients_audio_2stage_gguf_v4.json", True, True, True),
+    ("video_ltxv_ingredients_2stage_v5.json", False, False),
+    ("video_ltxv_ingredients_audio_2stage_v5.json", True, False),
+    ("video_ltxv_ingredients_2stage_gguf_v5.json", False, True),
+    ("video_ltxv_ingredients_audio_2stage_gguf_v5.json", True, True),
+)
+ARCHIVED_V4_WORKFLOWS = (
+    "video_ltxv_ingredients_2stage_v4.json",
+    "video_ltxv_ingredients_audio_2stage_v4.json",
+    "video_ltxv_ingredients_2stage_gguf_v4.json",
+    "video_ltxv_ingredients_audio_2stage_gguf_v4.json",
 )
 COMMON_ANCHORS = {
     "#INGREDIENTS",
@@ -29,7 +31,7 @@ COMMON_ANCHORS = {
 
 class IngredientsWorkflowFileTests(unittest.TestCase):
     def test_workflows_preserve_anchor_and_two_stage_graph_contracts(self):
-        for name, has_input_audio, is_gguf, has_relay in WORKFLOWS:
+        for name, has_input_audio, is_gguf in WORKFLOWS:
             with self.subTest(workflow=name):
                 workflow = self._load(name)
                 titles = Counter(
@@ -37,7 +39,7 @@ class IngredientsWorkflowFileTests(unittest.TestCase):
                     for node in workflow.values()
                     if str(node.get("_meta", {}).get("title", "")).startswith("#")
                 )
-                required_anchors = COMMON_ANCHORS | {"#PROMPT_RELAY" if has_relay else "#PROMPT_POSITIVE"} | (
+                required_anchors = COMMON_ANCHORS | {"#PROMPT_RELAY"} | (
                     {"#LOAD_AUDIO", "#TRIM_AUDIO"} if has_input_audio else set()
                 )
                 self.assertTrue(required_anchors.issubset(titles))
@@ -46,10 +48,15 @@ class IngredientsWorkflowFileTests(unittest.TestCase):
                 self._assert_image_and_framerate_connections(workflow)
                 self._assert_cleanup_boundary(workflow, sampler_id="4829")
                 self._assert_cleanup_boundary(workflow, sampler_id="5207")
-                if has_relay:
-                    self._assert_prompt_relay_graph(workflow)
+                self._assert_prompt_relay_graph(workflow)
                 if is_gguf:
                     self._assert_gguf_loaders(workflow)
+
+    def test_v4_workflows_are_archived_without_root_aliases(self):
+        for name in ARCHIVED_V4_WORKFLOWS:
+            with self.subTest(workflow=name):
+                self.assertFalse((ROOT / "workflows" / name).exists())
+                self.assertTrue((ROOT / "workflows" / "old" / name).is_file())
 
     def _assert_prompt_relay_graph(self, workflow):
         relay_id, relay = self._only_item(workflow, title="#PROMPT_RELAY")

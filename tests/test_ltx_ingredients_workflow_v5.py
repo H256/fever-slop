@@ -51,6 +51,7 @@ class IngredientsWorkflowV5Tests(unittest.TestCase):
         for name, expected_stage2_model, _ in CASES:
             with self.subTest(workflow=name):
                 workflow = self._load(ROOT / "workflows" / name)
+                self.assertIn(expected_stage2_model[0], workflow)
                 self.assertEqual(
                     expected_stage2_model,
                     workflow["5203"]["inputs"]["model"],
