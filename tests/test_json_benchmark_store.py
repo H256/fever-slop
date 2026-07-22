@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -77,7 +78,7 @@ class JsonBenchmarkResultStoreTests(unittest.TestCase):
                 (outside / "candidate.mp4").as_posix(),
             )
 
-    def test_replaces_report_atomically_and_cleans_temporary_file_on_error(self):
+    def test_refuses_to_overwrite_an_existing_report(self):
         with TemporaryDirectory() as temporary_directory:
             base = Path(temporary_directory)
             report = base / "benchmark.json"
@@ -89,15 +90,71 @@ class JsonBenchmarkResultStoreTests(unittest.TestCase):
             )
             store = JsonBenchmarkResultStore(report, base_path=base)
 
-            with patch(
-                "feverslop.adapters.json_benchmark_store.os.replace",
-                side_effect=OSError("replace failed"),
-            ):
-                with self.assertRaisesRegex(OSError, "replace failed"):
-                    store.write((result,))
+            with self.assertRaises(FileExistsError):
+                store.write((result,))
 
             self.assertEqual(report.read_text(encoding="utf-8"), "old")
             self.assertEqual(list(base.glob("*.tmp")), [])
+
+    def test_create_only_publication_cleans_temporary_file_on_error(self):
+        with TemporaryDirectory() as temporary_directory:
+            base = Path(temporary_directory)
+            report = base / "benchmark.json"
+            result = WorkflowBenchmarkResult.failed(
+                WorkflowBenchmarkCase("candidate", Path("workflow.json")),
+                1,
+                "failure",
+            )
+            store = JsonBenchmarkResultStore(report, base_path=base)
+
+            with patch(
+                "feverslop.adapters.json_benchmark_store.os.link",
+                side_effect=OSError("publish failed"),
+            ):
+                with self.assertRaisesRegex(OSError, "publish failed"):
+                    store.write((result,))
+
+            self.assertFalse(report.exists())
+            self.assertEqual(list(base.glob("*.tmp")), [])
+
+    def test_concurrent_writers_publish_exactly_one_report(self):
+        with TemporaryDirectory() as temporary_directory:
+            base = Path(temporary_directory)
+            report = base / "benchmark.json"
+            result = WorkflowBenchmarkResult.failed(
+                WorkflowBenchmarkCase("candidate", Path("workflow.json")),
+                1,
+                "failure",
+            )
+            barrier = threading.Barrier(2)
+            successes: list[Path] = []
+            errors: list[Exception] = []
+
+            def utc_now():
+                barrier.wait(timeout=5)
+                return datetime(2026, 7, 22, 10, 30, tzinfo=timezone.utc)
+
+            def write_report():
+                try:
+                    successes.append(
+                        JsonBenchmarkResultStore(
+                            report, base_path=base, utc_now=utc_now
+                        ).write((result,))
+                    )
+                except Exception as exc:
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=write_report) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=5)
+
+            self.assertEqual(1, len(successes))
+            self.assertEqual(1, len(errors))
+            self.assertIsInstance(errors[0], FileExistsError)
+            self.assertEqual("feverslop.workflow-benchmark/v1", json.loads(report.read_text())["schema"])
+            self.assertEqual([], list(base.glob("*.tmp")))
 
 
 if __name__ == "__main__":

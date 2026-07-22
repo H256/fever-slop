@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from feverslop.domain.prepared_workflow import SCHEMA, SceneWorkflowManifest
 from feverslop.tools import benchmark_video_workflows as cli
@@ -71,6 +73,23 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
                     (cli.parse_case(f"one={first}"), cli.parse_case(f"three={other_pipeline}"))
                 )
 
+    def test_preflight_rejects_cross_platform_unsafe_manifest_workflow_paths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            for index, stored_path in enumerate(
+                ("C:/project/prepared/workflow.json", "..\\outside\\workflow.json")
+            ):
+                with self.subTest(stored_path=stored_path):
+                    workflow = _write_prepared_workflow(root, f"unsafe-{index}", scene=index + 1)
+                    manifest_path = workflow.with_name("manifest.json")
+                    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    payload["workflow"]["path"] = stored_path
+                    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+                    with self.assertRaisesRegex(ValueError, "invalid workflow path"):
+                        cli.preflight_cases((cli.parse_case(f"candidate={workflow}"),))
+
     def test_run_uses_injected_composition_and_prints_report_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -103,6 +122,51 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
             self.assertEqual("test-pipeline", captured["expected_pipeline"])
             self.assertEqual("http://comfy.test:8188", captured["comfyui_url"])
             self.assertEqual(report.resolve(), Path(output.getvalue().strip()))
+
+    def test_composition_serializes_real_report_paths_relative_to_project(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            workflow = _write_prepared_workflow(project, "candidate", scene=1)
+            rendered = project / "output" / "render" / "scene.mp4"
+            rendered.parent.mkdir(parents=True)
+            rendered.write_bytes(b"video")
+            report = project / "output" / "benchmarks" / "run.json"
+
+            class Renderer:
+                def render(self, _workflow_path):
+                    return rendered
+
+            class Clock:
+                def __init__(self):
+                    self.values = iter((1.0, 2.0))
+
+                def now(self):
+                    return next(self.values)
+
+            with (
+                patch(
+                    "feverslop.tools.benchmark_video_workflows.PreparedWorkflowRenderer",
+                    return_value=Renderer(),
+                ),
+                patch(
+                    "feverslop.tools.benchmark_video_workflows.MonotonicClock",
+                    return_value=Clock(),
+                ),
+            ):
+                use_case = cli.compose_benchmark(
+                    project_dir=project,
+                    expected_pipeline="test-pipeline",
+                    report_path=report,
+                    comfyui_url="http://localhost:8188",
+                )
+                use_case.execute((cli.parse_case(f"candidate={workflow}"),))
+
+            result = json.loads(report.read_text(encoding="utf-8"))["results"][0]
+            self.assertEqual("prepared/candidate/workflow.json", result["prepared_workflow"])
+            self.assertEqual(
+                "output/benchmarks/run.json.evidence/candidate.mp4",
+                result["output_path"],
+            )
 
     def test_run_rejects_invalid_manifest_budget_before_composition(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -172,6 +236,24 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
 
             self.assertEqual(2, exit_code)
 
+    def test_main_writes_failure_diagnostics_only_to_stderr(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = cli.main(
+                [
+                    "--case", "candidate=missing/workflow.json",
+                    "--output", "run.json",
+                    "--comfyui-url", "http://localhost:8188",
+                ],
+                compose=lambda **_kwargs: self.fail("must not compose"),
+            )
+
+        self.assertEqual(2, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("prepared workflow does not exist", stderr.getvalue())
+
     def test_evidence_directory_uses_the_full_report_filename(self):
         json_evidence = cli.evidence_directory(Path("run.json"))
         text_evidence = cli.evidence_directory(Path("run.txt"))
@@ -202,6 +284,61 @@ class BenchmarkVideoWorkflowsCliTests(unittest.TestCase):
                         collision.rmdir()
                     else:
                         collision.unlink()
+
+    def test_run_reservation_blocks_concurrent_run_and_cleans_up_on_success(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = _write_prepared_workflow(root, "one", scene=1)
+            report = root / "run.json"
+            args = cli.build_arg_parser().parse_args(
+                [
+                    "--case", f"candidate={workflow}",
+                    "--output", str(report),
+                    "--comfyui-url", "http://localhost:8188",
+                ]
+            )
+            test_case = self
+
+            class UseCase:
+                def execute(self, _cases):
+                    test_case.assertTrue(cli.reservation_path(report).exists())
+                    with test_case.assertRaises(FileExistsError):
+                        cli.run(
+                            args,
+                            compose=lambda **_kwargs: test_case.fail("must not compose"),
+                        )
+                    report.write_text("{}", encoding="utf-8")
+                    return report
+
+            cli.run(args, compose=lambda **_kwargs: UseCase(), output=io.StringIO())
+
+            self.assertFalse(cli.reservation_path(report).exists())
+
+    def test_run_failure_cleans_reservation_and_partial_evidence(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflow = _write_prepared_workflow(root, "one", scene=1)
+            report = root / "run.json"
+            evidence = cli.evidence_directory(report)
+            args = cli.build_arg_parser().parse_args(
+                [
+                    "--case", f"candidate={workflow}",
+                    "--output", str(report),
+                    "--comfyui-url", "http://localhost:8188",
+                ]
+            )
+
+            class UseCase:
+                def execute(self, _cases):
+                    evidence.mkdir()
+                    (evidence / "candidate.mp4").write_bytes(b"partial")
+                    raise RuntimeError("render interrupted")
+
+            with self.assertRaisesRegex(RuntimeError, "render interrupted"):
+                cli.run(args, compose=lambda **_kwargs: UseCase())
+
+            self.assertFalse(cli.reservation_path(report).exists())
+            self.assertFalse(evidence.exists())
 
 
 def _write_prepared_workflow(

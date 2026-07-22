@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+from contextlib import contextmanager
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
+import shutil
+import sys
 import time
-from typing import Protocol, TextIO
+from typing import Iterator, Protocol, TextIO
 
 from feverslop.adapters.benchmark_artifacts import LocalBenchmarkArtifactStore
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -160,8 +163,18 @@ def _read_manifest(path: Path, case_name: str) -> SceneWorkflowManifest:
 def _derive_project_dir(workflow_path: Path, manifest: SceneWorkflowManifest) -> Path:
     if manifest.workflow.external:
         raise ValueError("prepared workflow manifest cannot use an external workflow path")
-    relative = PurePosixPath(manifest.workflow.path)
-    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+    raw_path = manifest.workflow.path
+    relative = PurePosixPath(raw_path)
+    windows_path = PureWindowsPath(raw_path)
+    if (
+        "\\" in raw_path
+        or relative.is_absolute()
+        or windows_path.is_absolute()
+        or bool(windows_path.drive)
+        or not relative.parts
+        or ".." in relative.parts
+        or ".." in windows_path.parts
+    ):
         raise ValueError("prepared workflow manifest contains an invalid workflow path")
 
     project_dir = workflow_path
@@ -172,11 +185,50 @@ def _derive_project_dir(workflow_path: Path, manifest: SceneWorkflowManifest) ->
         raise ValueError(
             f"prepared path {workflow_path} does not match manifest workflow {manifest.workflow.path}"
         )
+    for label, path in (
+        ("workflow", workflow_path.resolve()),
+        ("manifest", workflow_path.with_name("manifest.json").resolve()),
+    ):
+        try:
+            path.relative_to(project_dir)
+        except ValueError:
+            raise ValueError(
+                f"prepared {label} is outside derived project root: {path}"
+            ) from None
     return project_dir
 
 
 def evidence_directory(report_path: Path) -> Path:
     return report_path.with_name(f"{report_path.name}.evidence")
+
+
+def reservation_path(report_path: Path) -> Path:
+    return report_path.with_name(f"{report_path.name}.lock")
+
+
+@contextmanager
+def reserve_benchmark_run(report_path: Path) -> Iterator[None]:
+    lock_path = reservation_path(report_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise FileExistsError(f"benchmark run is already reserved: {lock_path}") from None
+    try:
+        try:
+            os.write(descriptor, f"pid={os.getpid()}\n".encode("ascii"))
+        finally:
+            os.close(descriptor)
+        yield
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
+def _remove_partial_evidence(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
 
 
 def compose_benchmark(
@@ -199,7 +251,7 @@ def compose_benchmark(
         renderer=renderer,
         clock=MonotonicClock(),
         artifact_store=LocalBenchmarkArtifactStore(evidence_directory(report_path)),
-        result_store=JsonBenchmarkResultStore(report_path, base_path=report_path.parent),
+        result_store=JsonBenchmarkResultStore(report_path, base_path=project_dir),
     )
 
 
@@ -211,22 +263,27 @@ def run(
 ) -> Path:
     cases, project_dir, expected_pipeline = preflight_cases(tuple(args.case))
     report_path = Path(args.output).expanduser().resolve()
-    if report_path.exists():
-        raise FileExistsError(f"benchmark report already exists: {report_path}")
     evidence_path = evidence_directory(report_path)
-    if evidence_path.exists():
-        raise FileExistsError(f"benchmark evidence already exists: {evidence_path}")
     comfyui_url = str(args.comfyui_url).strip()
     if not comfyui_url:
         raise ValueError("ComfyUI URL cannot be blank")
 
-    use_case = compose(
-        project_dir=project_dir,
-        expected_pipeline=expected_pipeline,
-        report_path=report_path,
-        comfyui_url=comfyui_url,
-    )
-    written = use_case.execute(cases)
+    with reserve_benchmark_run(report_path):
+        if report_path.exists():
+            raise FileExistsError(f"benchmark report already exists: {report_path}")
+        if evidence_path.exists():
+            raise FileExistsError(f"benchmark evidence already exists: {evidence_path}")
+        use_case = compose(
+            project_dir=project_dir,
+            expected_pipeline=expected_pipeline,
+            report_path=report_path,
+            comfyui_url=comfyui_url,
+        )
+        try:
+            written = use_case.execute(cases)
+        except Exception:
+            _remove_partial_evidence(evidence_path)
+            raise
     print(written.resolve(), file=output)
     return written
 
@@ -239,7 +296,7 @@ def main(
     try:
         run(build_arg_parser().parse_args(argv), compose=compose)
     except (FileNotFoundError, FileExistsError, ValueError) as exc:
-        print(f"error: {exc}")
+        print(f"error: {exc}", file=sys.stderr)
         return 2
     return 0
 

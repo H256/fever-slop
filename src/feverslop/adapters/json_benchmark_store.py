@@ -47,7 +47,7 @@ class JsonBenchmarkResultStore:
                 temporary_path = Path(handle.name)
                 json.dump(payload, handle, ensure_ascii=False, indent=2)
                 handle.write("\n")
-            os.replace(temporary_path, self._output_path)
+            os.link(temporary_path, self._output_path)
         finally:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
