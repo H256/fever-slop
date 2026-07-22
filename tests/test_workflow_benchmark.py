@@ -65,6 +65,27 @@ class WorkflowBenchmarkResultTests(unittest.TestCase):
                 output_path=Path("candidate.mp4"),
             )
 
+    def test_direct_result_construction_is_rejected(self):
+        with self.assertRaisesRegex(TypeError, "factory methods"):
+            WorkflowBenchmarkResult(
+                case_name="candidate",
+                prepared_workflow="candidate/workflow.json",
+                output_path="candidate.mp4",
+                elapsed_seconds=1.0,
+                success=True,
+            )
+
+    def test_direct_failed_result_cannot_truthiness_coerce_boolean_output_path(self):
+        with self.assertRaisesRegex(TypeError, "factory methods"):
+            WorkflowBenchmarkResult(
+                case_name="candidate",
+                prepared_workflow="candidate/workflow.json",
+                output_path=False,  # type: ignore[arg-type]
+                elapsed_seconds=1.0,
+                success=False,
+                error="failed",
+            )
+
     def test_successful_result_normalizes_paths_and_values(self):
         result = WorkflowBenchmarkResult.successful(
             self.case,

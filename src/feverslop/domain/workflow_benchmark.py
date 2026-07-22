@@ -57,7 +57,7 @@ class WorkflowBenchmarkCase:
         object.__setattr__(self, "prepared_workflow", Path(normalized_path))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class WorkflowBenchmarkResult:
     case_name: str
     prepared_workflow: str
@@ -65,6 +65,9 @@ class WorkflowBenchmarkResult:
     elapsed_seconds: float
     success: bool
     error: str = ""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("use WorkflowBenchmarkResult factory methods")
 
     def __post_init__(self) -> None:
         if not isinstance(self.case_name, str) or not self.case_name.strip():
@@ -90,6 +93,8 @@ class WorkflowBenchmarkResult:
             if self.error:
                 raise ValueError("successful benchmark result cannot contain an error")
         else:
+            if not isinstance(self.output_path, str):
+                raise ValueError("failed benchmark output path must be a string")
             if self.output_path:
                 raise ValueError("failed benchmark result cannot contain an output path")
             if not self.error.strip():
@@ -100,6 +105,26 @@ class WorkflowBenchmarkResult:
         object.__setattr__(self, "prepared_workflow", prepared_workflow)
         object.__setattr__(self, "output_path", output_path)
         object.__setattr__(self, "elapsed_seconds", elapsed)
+
+    @classmethod
+    def _build(
+        cls,
+        *,
+        case: WorkflowBenchmarkCase,
+        output_path: str,
+        elapsed_seconds: float,
+        success: bool,
+        error: str = "",
+    ) -> WorkflowBenchmarkResult:
+        result = object.__new__(cls)
+        object.__setattr__(result, "case_name", case.name)
+        object.__setattr__(result, "prepared_workflow", case.prepared_workflow.as_posix())
+        object.__setattr__(result, "output_path", output_path)
+        object.__setattr__(result, "elapsed_seconds", elapsed_seconds)
+        object.__setattr__(result, "success", success)
+        object.__setattr__(result, "error", error)
+        result.__post_init__()
+        return result
 
     @classmethod
     def create(
@@ -126,9 +151,8 @@ class WorkflowBenchmarkResult:
             label="benchmark output path",
             repository_relative=False,
         )
-        return cls(
-            case_name=case.name,
-            prepared_workflow=case.prepared_workflow.as_posix(),
+        return cls._build(
+            case=case,
             output_path=normalized_output_path,
             elapsed_seconds=elapsed_seconds,
             success=True,
@@ -141,9 +165,8 @@ class WorkflowBenchmarkResult:
         elapsed_seconds: float,
         error: str,
     ) -> WorkflowBenchmarkResult:
-        return cls(
-            case_name=case.name,
-            prepared_workflow=case.prepared_workflow.as_posix(),
+        return cls._build(
+            case=case,
             output_path="",
             elapsed_seconds=elapsed_seconds,
             success=False,
