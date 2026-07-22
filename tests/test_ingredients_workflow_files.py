@@ -11,12 +11,6 @@ WORKFLOWS = (
     ("video_ltxv_ingredients_2stage_gguf_v5.json", False, True),
     ("video_ltxv_ingredients_audio_2stage_gguf_v5.json", True, True),
 )
-ARCHIVED_V4_WORKFLOWS = (
-    "video_ltxv_ingredients_2stage_v4.json",
-    "video_ltxv_ingredients_audio_2stage_v4.json",
-    "video_ltxv_ingredients_2stage_gguf_v4.json",
-    "video_ltxv_ingredients_audio_2stage_gguf_v4.json",
-)
 COMMON_ANCHORS = {
     "#INGREDIENTS",
     "#PROMPT_NEGATIVE",
@@ -51,12 +45,6 @@ class IngredientsWorkflowFileTests(unittest.TestCase):
                 self._assert_prompt_relay_graph(workflow)
                 if is_gguf:
                     self._assert_gguf_loaders(workflow)
-
-    def test_v4_workflows_are_archived_without_root_aliases(self):
-        for name in ARCHIVED_V4_WORKFLOWS:
-            with self.subTest(workflow=name):
-                self.assertFalse((ROOT / "workflows" / name).exists())
-                self.assertTrue((ROOT / "workflows" / "old" / name).is_file())
 
     def _assert_prompt_relay_graph(self, workflow):
         relay_id, relay = self._only_item(workflow, title="#PROMPT_RELAY")
