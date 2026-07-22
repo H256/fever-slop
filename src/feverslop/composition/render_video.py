@@ -28,6 +28,7 @@ class RenderVideoCompositionOptions:
     workflow_path: str | Path = ""
     output_dir: str | Path = ""
     video_pipeline: str = "ltx_i2v"
+    video_workflow_profile: str | None = None
     single_prompt_workflow_path: str | Path | None = None
     render_mode: str = "single_prompt"
     single_prompt_title: str = "#PROMPT"
@@ -60,6 +61,7 @@ def build_render_video_scenes_use_case(
     console: Console | None = None,
 ) -> RenderVideoScenesUseCase:
     app_config = AppConfig.load(options.app_config_path)
+    workflow_path = _resolve_video_workflow_path(app_config, options)
     resolved = resolve_project_config_defaults(options)
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(options)
     project_config = resolved["project_config"]
@@ -67,7 +69,7 @@ def build_render_video_scenes_use_case(
     max_render_frames, max_render_duration_seconds, render_budget_workflow_path = _resolve_render_frame_budget(
         app_config=app_config,
         project_config=project_config,
-        workflow_path=options.workflow_path,
+        workflow_path=workflow_path,
         single_prompt_workflow_path=options.single_prompt_workflow_path,
         render_mode=options.render_mode,
         preroll_frames=preroll_frames,
@@ -89,7 +91,7 @@ def build_render_video_scenes_use_case(
         project_dir = ProjectConfig.load(project_config_path).project_dir if project_config_path else None
         backend = ComfyUIMSRVideoRenderBackend(
             client=client,
-            workflow_path=coerce_local_path(options.workflow_path),
+            workflow_path=coerce_local_path(workflow_path),
             output_dir=coerce_local_path(options.output_dir),
             project_dir=project_dir,
             seed_offset=options.seed_offset,
@@ -113,7 +115,7 @@ def build_render_video_scenes_use_case(
         project_dir = ProjectConfig.load(project_config_path).project_dir if project_config_path else None
         backend = ComfyUIIngredientsVideoRenderBackend(
             client=client,
-            workflow_path=coerce_local_path(options.workflow_path),
+            workflow_path=coerce_local_path(workflow_path),
             output_dir=coerce_local_path(options.output_dir),
             project_dir=project_dir,
             seed_offset=options.seed_offset,
@@ -135,7 +137,7 @@ def build_render_video_scenes_use_case(
     else:
         backend = ComfyUIVideoRenderBackend(
             client=client,
-            ltx_workflow_path=coerce_local_path(options.workflow_path),
+            ltx_workflow_path=coerce_local_path(workflow_path),
             output_dir=coerce_local_path(options.output_dir),
             single_prompt_workflow_path=(
                 coerce_local_path(options.single_prompt_workflow_path)
@@ -188,6 +190,20 @@ def discover_project_config_path(render_plan_path: str | Path) -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def _resolve_video_workflow_path(
+    app_config: AppConfig,
+    options: RenderVideoCompositionOptions,
+) -> str | Path:
+    if options.workflow_path or options.video_pipeline != "ltx_ingredients":
+        return options.workflow_path
+    profile = app_config.resolve_video_workflow_profile(
+        pipeline=options.video_pipeline,
+        purpose="final",
+        name=options.video_workflow_profile,
+    )
+    return profile.workflow_path if profile else options.workflow_path
 
 
 def resolve_project_config_defaults(options: RenderVideoCompositionOptions) -> dict:
@@ -336,6 +352,7 @@ def namespace_to_options(args) -> RenderVideoCompositionOptions:
         workflow_path=args.workflow,
         output_dir=args.output_dir,
         video_pipeline=getattr(args, "video_pipeline", "ltx_i2v"),
+        video_workflow_profile=getattr(args, "video_workflow_profile", None),
         single_prompt_workflow_path=args.single_prompt_workflow,
         render_mode=args.render_mode,
         single_prompt_title=args.single_prompt_title,
