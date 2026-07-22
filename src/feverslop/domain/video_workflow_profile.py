@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 
 
 @dataclass(frozen=True)
@@ -36,14 +36,14 @@ class VideoWorkflowProfile:
         if not resolved_name or not resolved_pipeline or not resolved_workflow_path:
             raise ValueError("workflow profile name, pipeline, and path are required")
 
-        path = Path(resolved_workflow_path)
-        if path.anchor or ".." in path.parts:
+        windows_path = PureWindowsPath(resolved_workflow_path)
+        path = PurePosixPath(resolved_workflow_path.replace("\\", "/"))
+        if windows_path.drive or path.is_absolute() or ".." in path.parts:
             raise ValueError("workflow profile path must be repository-relative")
         if resolved_purpose not in {"preview", "final"}:
             raise ValueError("workflow profile purpose must be preview or final")
 
-        resolved_stages = int(stages)
-        if resolved_stages not in {1, 2}:
+        if type(stages) is not int or stages not in {1, 2}:
             raise ValueError("workflow profile stages must be 1 or 2")
 
         resolved_output_scale = float(output_scale)
@@ -59,7 +59,7 @@ class VideoWorkflowProfile:
             pipeline=resolved_pipeline,
             workflow_path=path.as_posix(),
             purpose=resolved_purpose,
-            stages=resolved_stages,
+            stages=stages,
             output_scale=resolved_output_scale,
             supports_per_pass_loras=bool(supports_per_pass_loras),
             satisfies_final_output=final,

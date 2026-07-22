@@ -61,13 +61,24 @@ class VideoWorkflowProfileTests(unittest.TestCase):
                     self.create_profile(**{field: "  "})
 
     def test_rejects_absolute_and_parent_traversal_paths(self):
-        for workflow_path in ("C:\\workflows\\video.json", "/workflows/video.json", "workflows/../video.json"):
+        for workflow_path in (
+            "/workflows/video.json",
+            "C:\\workflows\\video.json",
+            "\\\\server\\share\\video.json",
+            "workflows/../video.json",
+            "workflows\\..\\video.json",
+        ):
             with self.subTest(workflow_path=workflow_path):
                 with self.assertRaisesRegex(ValueError, "path must be repository-relative"):
                     self.create_profile(workflow_path=workflow_path)
 
+    def test_normalizes_mixed_path_separators_to_posix(self):
+        profile = self.create_profile(workflow_path="workflows\\nested/video.json")
+
+        self.assertEqual("workflows/nested/video.json", profile.workflow_path)
+
     def test_rejects_invalid_stage_count(self):
-        for stages in (0, 3):
+        for stages in (0, 3, 1.5, True):
             with self.subTest(stages=stages):
                 with self.assertRaisesRegex(ValueError, "stages must be 1 or 2"):
                     self.create_profile(stages=stages)
