@@ -21,7 +21,7 @@
   },
   "2004": {
     "inputs": {
-      "image": "shot_0009_ingredients.png"
+      "image": "feverslop/references/scene_0001_ingredients-369f6534f9f8.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -30,22 +30,22 @@
   },
   "2483": {
     "inputs": {
+      "global_prompt": "Stable Ingredients reference identities, setting, composition, and lighting.",
+      "local_prompts": "Continue the scene motion while preserving identity and composition.",
+      "segment_lengths": "48",
+      "epsilon": 0.0022,
       "model": [
         "5011",
         0
       ],
       "clip": [
-        "5310",
+        "5023",
         0
       ],
       "latent": [
         "3059",
         0
-      ],
-      "global_prompt": "Stable Ingredients reference identities, setting, composition, and lighting.",
-      "local_prompts": "Continue the scene motion while preserving identity and composition.",
-      "segment_lengths": "48",
-      "epsilon": 0.0022
+      ]
     },
     "class_type": "PromptRelayEncode",
     "_meta": {
@@ -56,7 +56,7 @@
     "inputs": {
       "text": "title, text-overlay, watermark, text, subtitle, collage, moodboard, grid layout, split screen, multiple panels, duplicated character, wrong face, changed identity, wrong outfit, missing accessories, incorrect props, extra limbs, warped hands, broken anatomy, floating objects, inconsistent scale, unstable character, flickering, blurry face, low detail, bad motion, jump cuts, chaotic camera movement, distorted background",
       "clip": [
-        "5310",
+        "5023",
         0
       ]
     },
@@ -94,8 +94,8 @@
         0
       ],
       "vae": [
-        "5308",
-        0
+        "3940",
+        2
       ],
       "image": [
         "5095",
@@ -111,25 +111,22 @@
       "title": "🅛🅣🅧 LTXV Img To Video Condition Only"
     }
   },
-  "3980": {
+  "3940": {
     "inputs": {
-      "frames_number": [
-        "5072",
-        0
-      ],
-      "frame_rate": [
-        "5099",
-        0
-      ],
-      "batch_size": 1,
-      "audio_vae": [
-        "5309",
-        0
-      ]
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
     },
-    "class_type": "LTXVEmptyLatentAudio",
+    "class_type": "CheckpointLoaderSimple",
     "_meta": {
-      "title": "LTXV Empty Latent Audio"
+      "title": "Load Checkpoint"
+    }
+  },
+  "4010": {
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "class_type": "LTXVAudioVAELoader",
+    "_meta": {
+      "title": "Load LTXV Audio VAE"
     }
   },
   "4528": {
@@ -139,7 +136,7 @@
         2
       ],
       "audio_latent": [
-        "3980",
+        "5112",
         0
       ]
     },
@@ -208,7 +205,7 @@
   },
   "4832": {
     "inputs": {
-      "noise_seed": 121400689618249
+      "noise_seed": 1035726527666219
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -234,7 +231,7 @@
         1
       ],
       "audio_vae": [
-        "5309",
+        "4010",
         0
       ]
     },
@@ -243,12 +240,26 @@
       "title": "LTXV Audio VAE Decode"
     }
   },
+  "4922": {
+    "inputs": {
+      "lora_name": "ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "5306",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
   "5011": {
     "inputs": {
       "lora_name": "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
       "strength_model": 1,
       "model": [
-        "5306",
+        "4922",
         0
       ]
     },
@@ -278,8 +289,8 @@
         1
       ],
       "vae": [
-        "5308",
-        0
+        "3940",
+        2
       ],
       "latent": [
         "3159",
@@ -324,6 +335,17 @@
       "title": "bypass_i2v"
     }
   },
+  "5023": {
+    "inputs": {
+      "text_encoder": "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
+      "device": "cpu"
+    },
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": {
+      "title": "LTXV Audio Text Encoder Loader"
+    }
+  },
   "5025": {
     "inputs": {
       "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
@@ -342,8 +364,8 @@
       "working_device": "auto",
       "working_dtype": "auto",
       "vae": [
-        "5308",
-        0
+        "3940",
+        2
       ],
       "latents": [
         "5209",
@@ -403,7 +425,7 @@
         0
       ],
       "image": [
-        "5112",
+        "5116",
         0
       ]
     },
@@ -416,7 +438,7 @@
     "inputs": {
       "img_compression": 18,
       "image": [
-        "5112",
+        "5116",
         0
       ]
     },
@@ -444,6 +466,18 @@
     "class_type": "LTXFloatToInt",
     "_meta": {
       "title": "🅛🅣🅧 Float To Int"
+    }
+  },
+  "5100": {
+    "inputs": {
+      "image": [
+        "5116",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
     }
   },
   "5102": {
@@ -475,12 +509,85 @@
   },
   "5109": {
     "inputs": {
+      "audio": [
+        "5111",
+        0
+      ],
+      "audio_vae": [
+        "4010",
+        0
+      ]
+    },
+    "class_type": "LTXVAudioVAEEncode",
+    "_meta": {
+      "title": "LTXV Audio VAE Encode"
+    }
+  },
+  "5110": {
+    "inputs": {
+      "audio": "feverslop/audio/scholoraid-8b0340a73f2c.mp3",
+      "audioUI": "/api/view?filename=scholoraid-8b0340a73f2c.mp3&type=input&subfolder=feverslop/audio&rand=0.34994514918703823"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "#LOAD_AUDIO"
+    }
+  },
+  "5111": {
+    "inputs": {
+      "start_index": 0,
+      "duration": 9,
+      "audio": [
+        "5110",
+        0
+      ]
+    },
+    "class_type": "TrimAudioDuration",
+    "_meta": {
+      "title": "#TRIM_AUDIO"
+    }
+  },
+  "5112": {
+    "inputs": {
+      "samples": [
+        "5109",
+        0
+      ],
+      "mask": [
+        "5113",
+        0
+      ]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {
+      "title": "Set Latent Noise Mask"
+    }
+  },
+  "5113": {
+    "inputs": {
+      "value": 0,
+      "width": [
+        "5100",
+        0
+      ],
+      "height": [
+        "5100",
+        1
+      ]
+    },
+    "class_type": "SolidMask",
+    "_meta": {
+      "title": "SolidMask"
+    }
+  },
+  "5114": {
+    "inputs": {
       "frame_rate": [
         "5098",
         0
       ],
       "loop_count": 0,
-      "filename_prefix": "ingredients",
+      "filename_prefix": "ltx_ingredients_raw/scene_0001",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -502,7 +609,7 @@
       "title": "#SAVE_VIDEO"
     }
   },
-  "5110": {
+  "5115": {
     "inputs": {
       "offload_model": true,
       "offload_cache": true,
@@ -516,24 +623,7 @@
       "title": "🎈VRAM-Cleanup"
     }
   },
-  "5111": {
-    "inputs": {
-      "expression": "a if a < b else b",
-      "values.a": [
-        "5103",
-        0
-      ],
-      "values.b": [
-        "5102",
-        0
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
-  "5112": {
+  "5116": {
     "inputs": {
       "resize_type": "scale shorter dimension",
       "resize_type.shorter_size": [
@@ -549,6 +639,23 @@
     "class_type": "ResizeImageMaskNode",
     "_meta": {
       "title": "Resize Image/Mask"
+    }
+  },
+  "5117": {
+    "inputs": {
+      "expression": "a if a < b else b",
+      "values.a": [
+        "5103",
+        0
+      ],
+      "values.b": [
+        "5102",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
     }
   },
   "5200": {
@@ -571,8 +678,8 @@
         0
       ],
       "vae": [
-        "5308",
-        0
+        "3940",
+        2
       ]
     },
     "class_type": "LTXVLatentUpsampler",
@@ -600,7 +707,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "5307",
+        "4922",
         0
       ],
       "positive": [
@@ -666,7 +773,7 @@
   "5209": {
     "inputs": {
       "av_latent": [
-        "5110",
+        "5115",
         0
       ]
     },
@@ -784,44 +891,16 @@
   },
   "5306": {
     "inputs": {
-      "unet_name": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf"
+      "lora_name": "LTXV 2.3\\LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors",
+      "strength_model": 2,
+      "model": [
+        "3940",
+        0
+      ]
     },
-    "class_type": "UnetLoaderGGUF",
+    "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "Unet Loader (GGUF)"
-    }
-  },
-  "5308": {
-    "inputs": {
-      "vae_name": "LTX23_video_vae_bf16.safetensors",
-      "device": "main_device",
-      "weight_dtype": "bf16"
-    },
-    "class_type": "VAELoaderKJ",
-    "_meta": {
-      "title": "VAELoader KJ"
-    }
-  },
-  "5309": {
-    "inputs": {
-      "vae_name": "LTX23_audio_vae_bf16.safetensors",
-      "device": "main_device",
-      "weight_dtype": "bf16"
-    },
-    "class_type": "VAELoaderKJ",
-    "_meta": {
-      "title": "VAELoader KJ"
-    }
-  },
-  "5310": {
-    "inputs": {
-      "clip_name1": "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
-      "clip_name2": "ltx-2.3_text_projection_bf16.safetensors",
-      "type": "ltxv"
-    },
-    "class_type": "DualCLIPLoaderGGUF",
-    "_meta": {
-      "title": "DualCLIPLoader (GGUF)"
+      "title": "Load LoRA"
     }
   }
 }
