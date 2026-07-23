@@ -1962,7 +1962,7 @@ class StudioViewModelTests(unittest.TestCase):
 
             self.assertTrue(view_model.import_audio(audio_path.as_uri()))
 
-        self.assertEqual(uploads, [("scholoraid", "song.wav", "audio/x-wav", b"wave-data")])
+        self.assertEqual(uploads, [("scholoraid", "song.wav", "audio/wav", b"wave-data")])
 
 
 class StudioQmlTests(unittest.TestCase):

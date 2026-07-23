@@ -20,7 +20,7 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
         values = {
             "name": "ingredients-final",
             "pipeline": "ltx_ingredients",
-            "workflow": "workflows/video_ltxv_ingredients_audio_2stage_v5.json",
+            "workflow": "workflows/video_ltxv_ingredients_audio_2stage_v6.json",
             "purpose": "final",
             "stages": 2,
             "output_scale": 1.0,
@@ -34,7 +34,7 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
 
         [profile] = config.video_workflow_profiles
         self.assertEqual("ingredients-final", profile.name)
-        self.assertEqual("workflows/video_ltxv_ingredients_audio_2stage_v5.json", profile.workflow_path)
+        self.assertEqual("workflows/video_ltxv_ingredients_audio_2stage_v6.json", profile.workflow_path)
         self.assertEqual(2, profile.stages)
         self.assertEqual(1.0, profile.output_scale)
         self.assertTrue(profile.supports_per_pass_loras)

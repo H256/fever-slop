@@ -321,7 +321,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                         title="#MSR_LORA",
                     ),
                 },
-                workflow_path=Path("workflows/video_ltxv_msr_1actor_1background_v2.json"),
+                workflow_path=Path("workflows/video_ltxv_msr_1actor_1background_v4.json"),
             )
 
     def test_strict_override_applies_when_expected_value_matches(self):

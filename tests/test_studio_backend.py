@@ -886,7 +886,7 @@ class StudioBackendTests(unittest.TestCase):
                     movie_planner_backend="deterministic",
                     movie_video_workflow="msr-i2v-startframe",
                     movie_continuity_keyframes="last-to-start",
-                    movie_msr_i2v_workflow="workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json",
+                    movie_msr_i2v_workflow="workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json",
                 )
             )
 
@@ -894,7 +894,7 @@ class StudioBackendTests(unittest.TestCase):
 
             self.assertEqual("msr-i2v-startframe", metadata["movie"]["movie_video_workflow"])
             self.assertEqual("last-to-start", metadata["movie"]["continuity_keyframes"])
-            self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json", metadata["movie"]["msr_i2v_workflow"])
+            self.assertEqual("workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json", metadata["movie"]["msr_i2v_workflow"])
 
     def test_create_movie_project_persists_i2v_edit_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
