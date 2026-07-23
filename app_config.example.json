@@ -17,5 +17,17 @@
       }
     ]
   },
+  "video_workflow_profiles": [
+    {
+      "name": "ingredients-final-v5-provisional",
+      "pipeline": "ltx_ingredients",
+      "workflow": "workflows/video_ltxv_ingredients_audio_2stage_v5.json",
+      "purpose": "final",
+      "stages": 2,
+      "output_scale": 1.0,
+      "supports_per_pass_loras": true,
+      "default": true
+    }
+  ],
   "storyboard_prompt_transforms": []
 }

@@ -719,7 +719,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
     ltx_dir = project_dir / "output" / "movie" / "ltx_ingredients"
     backend = ComfyUIIngredientsVideoRenderBackend(
         client=client,
-        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_2stage_v4.json"),
+        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_2stage_v6.json"),
         output_dir=ltx_dir,
         project_dir=project_dir,
         model_resolver=model_resolver,
