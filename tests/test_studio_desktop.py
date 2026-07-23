@@ -37,6 +37,37 @@ class StudioDesktopCompositionTests(unittest.TestCase):
         self.assertIsInstance(context.job_service, StudioJobService)
         self.assertIsInstance(context.scene_service, SceneWorkspaceService)
 
+    def test_scene_video_thumbnail_url_uses_cached_ffmpeg_frame(self):
+        from unittest.mock import patch
+
+        from feverslop.studio.desktop.runtime import scene_video_thumbnail_url
+
+        with patch(
+            "feverslop.studio.desktop.runtime.thumbnail_path",
+            return_value=Path("C:/cache/scene.jpg"),
+        ) as generate:
+            result = scene_video_thumbnail_url(
+                object(),
+                "demo",
+                "output/render/scenes/scene_0009/final.mp4",
+            )
+
+        self.assertEqual(Path("C:/cache/scene.jpg").as_uri(), result)
+        generate.assert_called_once()
+
+    def test_scene_video_thumbnail_url_ignores_disappearing_video(self):
+        from unittest.mock import patch
+
+        from feverslop.studio.desktop.runtime import scene_video_thumbnail_url
+
+        with patch(
+            "feverslop.studio.desktop.runtime.thumbnail_path",
+            side_effect=FileNotFoundError("final.mp4"),
+        ):
+            result = scene_video_thumbnail_url(object(), "demo", "final.mp4")
+
+        self.assertEqual("", result)
+
 
 class SceneWorkspaceViewModelTests(unittest.TestCase):
     def setUp(self):
@@ -53,9 +84,13 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
         for scene in scenes:
             values = dict(scene)
             thumbnail_path = values.pop("thumbnail_path", None)
+            video_path = values.pop("video_path", None)
             items.append(
                 SceneWorkspaceItem(
-                    media=SceneMedia(thumbnail_path=thumbnail_path),
+                    media=SceneMedia(
+                        thumbnail_path=thumbnail_path,
+                        video_path=video_path,
+                    ),
                     **values,
                 )
             )
@@ -111,6 +146,29 @@ class SceneWorkspaceViewModelTests(unittest.TestCase):
         self.assertEqual(7, model.data(index, roles["sceneNumber"]))
         self.assertEqual("file:///project/output/render/storyboard/scene_0007.png", model.data(index, roles["thumbnailUrl"]))
         self.assertIsNone(model.data(index, Qt.ItemDataRole.DisplayRole))
+
+    def test_scene_list_model_generates_preview_from_video_when_still_is_missing(self):
+        from feverslop.studio.desktop.viewmodels.scenes import SceneListModel
+
+        model = SceneListModel(
+            thumbnail_url=lambda path: f"file:///project/{path}",
+            video_thumbnail_url=lambda path: f"file:///cache/{Path(path).stem}.jpg",
+        )
+        model.replace(
+            self._snapshot(
+                {
+                    "scene_number": 9,
+                    "video_path": "output/render/scenes/scene_0009/final.mp4",
+                }
+            ).workspace.items
+        )
+
+        roles = {bytes(name).decode(): role for role, name in model.roleNames().items()}
+
+        self.assertEqual(
+            "file:///cache/final.jpg",
+            model.data(model.index(0, 0), roles["thumbnailUrl"]),
+        )
 
     def test_project_signal_reloads_and_switch_resets_transient_state(self):
         from PySide6.QtCore import QObject, Signal
@@ -1960,6 +2018,36 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIsNotNone(discard_button)
         self.assertEqual("Reload from disk", reload_button.property("text"))
         self.assertEqual("Discard local edits", discard_button.property("text"))
+        selection_hint = root.findChild(object, "selectedSceneCount")
+        self.assertIn("Ctrl+click", selection_hint.property("text"))
+
+    def test_scene_workspace_uses_readable_dark_surfaces_and_roomy_controls(self):
+        from PySide6.QtGui import QColor, QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+
+        self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+        engine = QQmlApplicationEngine()
+        engine.load(qml_entrypoint())
+        root = engine.rootObjects()[0]
+        root.setProperty("currentPage", 11)
+        self.qml_app.processEvents()
+        page = root.findChild(object, "sceneWorkspacePage")
+        toolbar = root.findChild(object, "sceneWorkspaceToolbar")
+        header = root.findChild(object, "workspaceHeader")
+        scene_scroll_thumb = root.findChild(object, "sceneListScrollThumb")
+        image_prompt = root.findChild(object, "sceneImagePrompt")
+
+        self.assertEqual(QColor("#18181B"), page.property("color"))
+        self.assertGreaterEqual(page.property("contentPadding"), 24)
+        self.assertGreaterEqual(page.property("sceneCardHeight"), 108)
+        self.assertEqual(QColor("#27272A"), toolbar.property("color"))
+        self.assertEqual(QColor("#202024"), header.property("color"))
+        self.assertEqual(QColor("#52525B"), scene_scroll_thumb.property("color"))
+        self.assertEqual(QColor("#F4F4F5"), image_prompt.property("color"))
+        self.assertGreaterEqual(image_prompt.property("leftPadding"), 14)
+        self.assertGreaterEqual(image_prompt.property("topPadding"), 12)
 
     def test_movie_project_disables_scene_workspace_navigation_and_leaves_page(self):
         from PySide6.QtGui import QGuiApplication
@@ -2073,13 +2161,41 @@ class StudioQmlTests(unittest.TestCase):
         root = engine.rootObjects()[0]
         root.setProperty("currentPage", 11)
         self.qml_app.processEvents()
+        scene_vm.toggleSelection(1)
+        scene_vm.toggleSelection(3)
         scene_list = root.findChild(QQuickItem, "sceneCardList")
+        page = root.findChild(object, "sceneWorkspacePage")
         scene_list.setProperty("currentIndex", 0)
-        click_point = scene_list.mapToScene(QPointF(40, 121)).toPoint()
+        second_card_center = (
+            page.property("sceneCardHeight")
+            + scene_list.property("spacing")
+            + page.property("sceneCardHeight") / 2
+        )
+        click_point = scene_list.mapToScene(QPointF(40, second_card_center)).toPoint()
 
         QTest.mouseClick(root, Qt.MouseButton.LeftButton, pos=click_point)
         self.qml_app.processEvents()
         self.assertEqual(1, scene_list.property("currentIndex"))
+        self.assertEqual([2], scene_vm.selected_scene_numbers)
+        first_card_center = page.property("sceneCardHeight") / 2
+        first_click_point = scene_list.mapToScene(QPointF(40, first_card_center)).toPoint()
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+            pos=first_click_point,
+        )
+        self.qml_app.processEvents()
+        self.assertEqual([1, 2], scene_vm.selected_scene_numbers)
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.ControlModifier,
+            pos=first_click_point,
+        )
+        self.qml_app.processEvents()
+        self.assertEqual([2], scene_vm.selected_scene_numbers)
+        scene_list.setProperty("currentIndex", 1)
         QTest.keyClick(root, Qt.Key.Key_Down)
         self.assertEqual(2, scene_list.property("currentIndex"))
         QTest.keyClick(root, Qt.Key.Key_Space)

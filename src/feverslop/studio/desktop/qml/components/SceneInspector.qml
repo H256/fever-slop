@@ -9,6 +9,16 @@ ScrollView {
 
     objectName: "sceneInspector"
     clip: true
+    background: Rectangle { color: "#202024" }
+    ScrollBar.vertical: ScrollBar {
+        policy: ScrollBar.AsNeeded
+        contentItem: Rectangle {
+            implicitWidth: 8
+            radius: 4
+            color: "#52525B"
+        }
+        background: Rectangle { color: "#202024" }
+    }
 
     function loadScene() {
         shotDescription.text = scene.shotDescription || ""
@@ -32,39 +42,65 @@ ScrollView {
 
     ColumnLayout {
         width: inspector.availableWidth
-        spacing: 10
+        spacing: 14
 
         Label {
             text: inspector.scene.sceneNumber ? "Scene " + inspector.scene.sceneNumber : "No scene selected"
-            color: "#1C1C1E"
-            font.pixelSize: 18
+            color: "#F4F4F5"
+            font.pixelSize: 22
             font.bold: true
         }
 
-        Label { text: "Shot description"; color: "#48484A"; font.bold: true }
+        Label { text: "Shot description"; color: "#E4E4E7"; font.pixelSize: 14; font.bold: true }
         TextArea {
             id: shotDescription
             objectName: "sceneShotDescription"
             Accessible.name: "Shot description"
             enabled: !!inspector.scene.sceneNumber
             wrapMode: TextEdit.Wrap
+            color: "#F4F4F5"
+            placeholderTextColor: "#A1A1AA"
+            selectionColor: "#6366F1"
+            selectedTextColor: "#FFFFFF"
+            leftPadding: 14
+            rightPadding: 14
+            topPadding: 12
+            bottomPadding: 12
             Layout.fillWidth: true
-            Layout.preferredHeight: 84
+            Layout.preferredHeight: 104
+            background: Rectangle {
+                color: "#18181B"
+                border.color: shotDescription.activeFocus ? "#818CF8" : "#52525B"
+                radius: 8
+            }
         }
 
-        Label { text: "Image prompt"; color: "#48484A"; font.bold: true }
+        Label { text: "Image prompt"; color: "#E4E4E7"; font.pixelSize: 14; font.bold: true }
         TextArea {
             id: imagePrompt
             objectName: "sceneImagePrompt"
             Accessible.name: "Image prompt"
             enabled: !!inspector.scene.sceneNumber
             wrapMode: TextEdit.Wrap
+            color: "#F4F4F5"
+            placeholderTextColor: "#A1A1AA"
+            selectionColor: "#6366F1"
+            selectedTextColor: "#FFFFFF"
+            leftPadding: 14
+            rightPadding: 14
+            topPadding: 12
+            bottomPadding: 12
             Layout.fillWidth: true
-            Layout.preferredHeight: 110
+            Layout.preferredHeight: 150
+            background: Rectangle {
+                color: "#18181B"
+                border.color: imagePrompt.activeFocus ? "#818CF8" : "#52525B"
+                radius: 8
+            }
         }
 
         RowLayout {
-            Label { text: "LTX prompt"; color: "#48484A"; font.bold: true; Layout.fillWidth: true }
+            Label { text: "LTX prompt"; color: "#E4E4E7"; font.pixelSize: 14; font.bold: true; Layout.fillWidth: true }
             ComboBox {
                 id: promptSource
                 objectName: "sceneLtxPromptSource"
@@ -77,6 +113,9 @@ ScrollView {
                     { label: "Base prompt", value: "base_prompt" }
                 ]
                 onCurrentValueChanged: inspector.loadPromptSource()
+                palette.text: "#F4F4F5"
+                palette.buttonText: "#F4F4F5"
+                palette.button: "#27272A"
             }
         }
         TextArea {
@@ -85,27 +124,40 @@ ScrollView {
             Accessible.name: "LTX prompt"
             enabled: !!inspector.scene.sceneNumber
             wrapMode: TextEdit.Wrap
+            color: "#F4F4F5"
+            placeholderTextColor: "#A1A1AA"
+            selectionColor: "#6366F1"
+            selectedTextColor: "#FFFFFF"
+            leftPadding: 14
+            rightPadding: 14
+            topPadding: 12
+            bottomPadding: 12
             Layout.fillWidth: true
-            Layout.preferredHeight: 130
+            Layout.preferredHeight: 180
+            background: Rectangle {
+                color: "#18181B"
+                border.color: videoPrompt.activeFocus ? "#818CF8" : "#52525B"
+                radius: 8
+            }
         }
 
-        Label { text: "References"; color: "#48484A"; font.bold: true }
+        Label { text: "References"; color: "#E4E4E7"; font.bold: true }
         Label {
             text: inspector.scene.referenceIds && inspector.scene.referenceIds.length
                 ? inspector.scene.referenceIds.join(", ") : "None"
-            color: "#6E6E73"
+            color: "#A1A1AA"
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
 
-        Label { text: "Output paths"; color: "#48484A"; font.bold: true }
+        Label { text: "Output paths"; color: "#E4E4E7"; font.bold: true }
         Label {
             text: [
                 inspector.scene.thumbnailPath ? "Preview: " + inspector.scene.thumbnailPath : "",
                 inspector.scene.workflowPath ? "Workflow: " + inspector.scene.workflowPath : "",
                 inspector.scene.videoPath ? "Video: " + inspector.scene.videoPath : ""
             ].filter(Boolean).join("\n") || "No outputs"
-            color: "#6E6E73"
+            color: "#A1A1AA"
             wrapMode: Text.WrapAnywhere
             font.pixelSize: 12
             Layout.fillWidth: true
@@ -113,7 +165,7 @@ ScrollView {
         Label {
             visible: !!inspector.scene.failureMessage
             text: inspector.scene.failureMessage || ""
-            color: "#C62828"
+            color: "#F87171"
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
@@ -121,6 +173,8 @@ ScrollView {
         Button {
             objectName: "saveScenePromptsButton"
             text: "Save prompt fields"
+            palette.button: "#4F46E5"
+            palette.buttonText: "#FFFFFF"
             Accessible.name: "Save prompt fields for selected scene"
             enabled: !!inspector.scene.sceneNumber
             Layout.alignment: Qt.AlignRight
