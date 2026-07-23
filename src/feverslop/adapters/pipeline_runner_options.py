@@ -10,7 +10,7 @@ RUNNER_ARGUMENTS = (
     ("storyboard_workflow", ("--storyboard-workflow",), {"default": str(Path("workflows") / "image_t2i_startframe_v1.json")}),
     ("reference_hero_workflow", ("--reference-hero-workflow",), {"default": str(Path("workflows") / "image_t2i_startframe_krea_v1.json")}),
     ("reference_edit_workflow", ("--reference-edit-workflow",), {"default": str(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json")}),
-    ("msr_workflow", ("--msr-workflow",), {"default": str(Path("workflows") / "video_ltxv_msr_1actor_1background_v3.json")}),
+    ("msr_workflow", ("--msr-workflow",), {"default": str(Path("workflows") / "video_ltxv_msr_1actor_1background_v4.json")}),
     ("ingredients_workflow", ("--ingredients-workflow",), {"default": str(Path("workflows") / "video_ltxv_ingredients_audio_2stage_v6.json")}),
     ("relay_workflow", ("--relay-workflow",), {"default": ""}),
     ("single_prompt_workflow", ("--single-prompt-workflow",), {"default": str(Path("workflows") / "video_ltxv_i2v_v2.json")}),
