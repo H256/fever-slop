@@ -6,7 +6,7 @@ from dataclasses import replace
 from math import ceil
 
 from feverslop.domain.llm_parsing import extract_json_object
-from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, MovieScreenplayArtifact, StoryArch
 from feverslop.domain.screenplay import HEADING_RE, parse_screenplay, split_screenplay_dialogue
 
 
@@ -153,6 +153,7 @@ class LLMMoviePlanner:
         self,
         *,
         bible: MovieBible,
+        screenplay: MovieScreenplayArtifact | None = None,
         desired_length: float,
         width: int,
         height: int,
@@ -281,6 +282,7 @@ class DeterministicMoviePlanner:
         self,
         *,
         bible: MovieBible,
+        screenplay: MovieScreenplayArtifact | None = None,
         desired_length: float,
         width: int,
         height: int,
