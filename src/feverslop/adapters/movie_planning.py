@@ -163,6 +163,7 @@ class LLMMoviePlanner:
         raw = self.llm.complete_prompt(
             _shot_plan_from_bible_prompt(
                 bible=bible,
+                screenplay=screenplay,
                 desired_length=desired_length,
                 width=width,
                 height=height,
@@ -176,6 +177,7 @@ class LLMMoviePlanner:
         if not isinstance(shots, list) or not shots:
             return DeterministicMoviePlanner().plan_shots_from_bible(
                 bible=bible,
+                screenplay=screenplay,
                 desired_length=desired_length,
                 width=width,
                 height=height,
