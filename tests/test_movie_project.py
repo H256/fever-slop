@@ -3670,6 +3670,73 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIn("Write every non-dialogue prose field in English", prompts)
         self.assertIn("Only dialogue may use German", prompts)
 
+    def test_shot_plan_prompt_INCLUDES_screenplay(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import MovieBible, MovieActor, MovieLocation, MovieContinuityRule, StoryArch, MovieScreenplayArtifact, MovieScreenplayScene
+
+        class CapturingLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt(self, prompt, system_prompt=None):
+                self.calls.append(prompt)
+                return json.dumps({
+                    "shots": [{
+                        "shot_id": "shot_0001",
+                        "description": "test",
+                        "duration_seconds": 30,
+                        "camera": "static",
+                        "action": "test",
+                        "acting": "calm",
+                        "location": "Room",
+                        "dialogue": "A: hello",
+                        "actor_ids": ["actor_a"],
+                        "location_id": "room",
+                        "continuity_notes": "",
+                        "transition_from_previous": "cut",
+                    }],
+                })
+
+        llm = CapturingLLM()
+        planner = LLMMoviePlanner(llm)
+        bible = MovieBible(
+            title="Test",
+            premise="A test",
+            story_arch=StoryArch(title="Test", premise="A test", beats=("beat 1",)),
+            actors=(MovieActor(id="actor_a", name="A", role="lead", visual_description="A"),),
+            locations=(MovieLocation(id="room", name="Room", visual_description="Room"),),
+            continuity=(MovieContinuityRule(id="vis", description="visual"),),
+            style_constraints=(),
+            runtime_constraints={},
+        )
+        screenplay = MovieScreenplayArtifact(
+            title="Test",
+            source_type="short_story",
+            dialogue_language="English",
+            scenes=(
+                MovieScreenplayScene(
+                    scene_id="scene_0001",
+                    heading="INT. ROOM - DAY",
+                    summary="A says hello",
+                    action="A stands in the room",
+                    dialogue="A: Hello, world.",
+                    actor_ids=("actor_a",),
+                    location_id="room",
+                ),
+            ),
+        )
+        planner.plan_shots_from_bible(
+            bible=bible,
+            screenplay=screenplay,
+            desired_length=30,
+            width=640,
+            height=480,
+        )
+        prompt = "\n".join(llm.calls)
+        self.assertIn("SCREENPLAY", prompt)
+        self.assertIn("Hello, world", prompt)
+        self.assertIn("Map screenplay scene dialogue", prompt)
+
     def test_movie_planner_preserves_requested_minimum_actor_count(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
 

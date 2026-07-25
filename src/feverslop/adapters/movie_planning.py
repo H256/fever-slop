@@ -913,10 +913,24 @@ Rules for image_prompt:
 """.strip()
 
 
-def _shot_plan_from_bible_prompt(*, bible: MovieBible, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> str:
+def _shot_plan_from_bible_prompt(*, bible: MovieBible, screenplay, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> str:
     target_shots = max(1, ceil(float(desired_length) / max(1.0, min(float(max_duration), 12.0))))
     dialogue_language = str((bible.runtime_constraints or {}).get("dialogue_language") or "").strip()
     dialogue_rule = f"- Every dialogue field must be written in {dialogue_language} only. Do not mix in any other spoken language." if dialogue_language else ""
+    screenplay_json = ""
+    if screenplay is not None:
+        scenes_data = []
+        for scene in getattr(screenplay, "scenes", []):
+            scenes_data.append({
+                "scene_id": scene.scene_id,
+                "heading": scene.heading,
+                "dialogue": scene.dialogue,
+                "action": scene.action,
+                "actor_ids": list(scene.actor_ids),
+                "location_id": scene.location_id,
+            })
+        if scenes_data:
+            screenplay_json = "\nSCREENPLAY: " + json.dumps(scenes_data, ensure_ascii=False)
     return f"""
 Create a continuous cinematic render plan from this movie bible.
 Bible: {json.dumps({
@@ -928,6 +942,7 @@ Bible: {json.dumps({
         "continuity": [rule.description for rule in bible.continuity],
         "style_constraints": list(bible.style_constraints),
     }, ensure_ascii=False)}
+{screenplay_json}
 Target duration seconds: {desired_length}
 Dialogue language: {dialogue_language or "unspecified"}
 Resolution: {width}x{height}
@@ -946,6 +961,7 @@ Rules:
 - Never put more than 4 actors in one shot.
 - Preserve dialogue, camera, acting, action, and continuity as separate fields.
 - If a voice comes from a radio, transmitter, speaker, recorder, future self, unseen source, or distorted entity, mark it with a clear dialogue cue such as "(Radio)" or "(Distorted Voice)" and describe the device/source in action. Do not write it as visible actor lipsync.
+- Map screenplay scene dialogue to shots covering the same location and actors. Distribute scene dialogue across shots so the full scene dialogue appears across the shot sequence for that scene.
 - Use transition_from_previous="continuous" only when this shot directly continues the previous shot in the same location with overlapping actors, no time jump, no perspective jump, and no new story beat. Otherwise use "cut". First shot is always "cut".
 {dialogue_rule}
 """.strip()
