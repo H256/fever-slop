@@ -3656,7 +3656,7 @@ class MovieProjectTests(unittest.TestCase):
             story_design=None,
             config={"dialogue_language": "German"},
         )
-        planner.plan_shots_from_bible(bible=bible, desired_length=30, width=640, height=480)
+        planner.plan_shots_from_bible(bible=bible, screenplay=None, desired_length=30, width=640, height=480)
 
         prompts = "\n".join(planner.llm.calls)
         self.assertIn("Name every actor_ids entry in action", prompts)
