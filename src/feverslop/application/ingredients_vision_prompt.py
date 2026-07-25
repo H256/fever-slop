@@ -45,7 +45,7 @@ class IngredientsPromptResult:
         return (
             "### Reference Sheet Description\n"
             f"{self.reference_description}\n\n"
-            "### Shot Invariants\n"
+            "### Target Description\n"
             f"{self.shot_invariants}"
         )
 
