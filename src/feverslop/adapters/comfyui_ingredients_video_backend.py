@@ -235,11 +235,17 @@ class ComfyUIIngredientsVideoRenderBackend:
             **scene,
             "ltx": {"base_prompt": global_prompt, "prompt_relay": deepcopy(list(relay))},
         }
+        ltx = scene.get("ltx") or {}
+        preroll_prompt = str(ltx.get("msr_preroll_prompt") or ltx.get("preroll_prompt") or "").strip() or None
+        tail_prompt = str(ltx.get("msr_tail_prompt") or ltx.get("tail_prompt") or "").strip() or None
+
         payload = PromptRelayPayloadBuilder().build(
             scene=relay_scene,
             render_frame_count=render_frame_count,
             trim_front_frames=trim_front_frames,
             tail_loss_frames=tail_loss_frames,
+            preroll_prompt=preroll_prompt,
+            tail_prompt=tail_prompt,
         )
         patcher.set_input_by_title("#PROMPT_RELAY", "global_prompt", payload.global_prompt)
         patcher.set_input_by_title("#PROMPT_RELAY", "local_prompts", payload.local_prompts)

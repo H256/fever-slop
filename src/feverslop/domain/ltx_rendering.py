@@ -125,6 +125,8 @@ class PromptRelayPayloadBuilder:
         render_frame_count: int,
         trim_front_frames: int,
         tail_loss_frames: int,
+        preroll_prompt: str | None = None,
+        tail_prompt: str | None = None,
     ) -> PromptRelayPayload:
         ltx = scene["ltx"]
         global_prompt = ltx["base_prompt"].strip()
@@ -145,7 +147,7 @@ class PromptRelayPayloadBuilder:
 
         if trim_front_frames > 0:
             relay_segments.append({
-                "prompt": "pre-roll continuity hold, preserve startframe composition, subtle breathing and atmospheric motion",
+                "prompt": preroll_prompt or _default_preroll_prompt(scene),
                 "length": int(trim_front_frames),
             })
 
@@ -164,7 +166,7 @@ class PromptRelayPayloadBuilder:
 
                 if start > cursor:
                     relay_segments.append({
-                        "prompt": "hold the same shot, subtle breathing and atmospheric motion",
+                        "prompt": "the scene continues its established motion and atmosphere",
                         "length": start - cursor,
                     })
                     cursor = start
@@ -178,13 +180,13 @@ class PromptRelayPayloadBuilder:
 
             if cursor < scene_timeline_frames:
                 relay_segments.append({
-                    "prompt": "hold the same shot, subtle breathing and atmospheric motion",
+                    "prompt": "the scene continues its established motion and atmosphere",
                     "length": scene_timeline_frames - cursor,
                 })
 
         if tail_loss_frames > 0:
             relay_segments.append({
-                "prompt": "tail safety continuation, maintain same motion and atmosphere without introducing a new scene",
+                "prompt": tail_prompt or _default_tail_prompt(scene),
                 "length": int(tail_loss_frames),
             })
 
@@ -242,3 +244,20 @@ class PromptRelayPayloadBuilder:
             del normalized[short_index]
 
         return normalized
+
+
+def _default_preroll_prompt(scene: dict) -> str:
+    metadata = scene.get("metadata") or {}
+    camera = str(metadata.get("camera_motion") or scene.get("camera") or "").strip()
+    concept = str(metadata.get("base_concept") or scene.get("concept") or "").strip()
+    base = "cinematic atmosphere holds"
+    if camera:
+        base = "atmospheric tension builds"
+    return f"{base}; {concept or 'the scene settles into its opening frame'}; {camera or 'the camera holds a steady cinematic composition'} before the main action begins."
+
+
+def _default_tail_prompt(scene: dict) -> str:
+    metadata = scene.get("metadata") or {}
+    camera = str(metadata.get("camera_motion") or scene.get("camera") or "").strip()
+    concept = str(metadata.get("base_concept") or scene.get("concept") or "").strip()
+    return f"The scene carries forward its last motion; {concept or 'the atmosphere persists'}; {camera or 'the camera continues its movement'}; the energy resolves without introducing a new scene."
