@@ -155,6 +155,7 @@ class ScaffoldMovieUseCase:
         shots = plan_movie_shots_from_bible(
             planner=self.planner,
             bible=bible,
+            screenplay=screenplay,
             desired_length=float(request.desired_length),
             width=int(request.width),
             height=int(request.height),
@@ -378,12 +379,13 @@ def generate_movie_bible(*, planner, request: MovieInput, story_arch, config: di
     return _movie_bible_from_config(request=request, story_arch=story_arch, config=config)
 
 
-def plan_movie_shots_from_bible(*, planner, bible: MovieBible, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> tuple[CinematicShot, ...]:
+def plan_movie_shots_from_bible(*, planner, bible: MovieBible, screenplay, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> tuple[CinematicShot, ...]:
     planner_from_bible = getattr(planner, "plan_shots_from_bible", None)
     if callable(planner_from_bible):
         return tuple(
             planner_from_bible(
                 bible=bible,
+                screenplay=screenplay,
                 desired_length=desired_length,
                 width=width,
                 height=height,
