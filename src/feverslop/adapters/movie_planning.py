@@ -1061,7 +1061,7 @@ Rules:
 - Write only the dialogue field in {dialogue_language or "the requested spoken dialogue language"}. Do not put translated dialogue in action or summary.
 - {screenplay_rule}
 - Every scene must visibly implement its matching STORY DESIGN scene_blueprint.
-- For idea/short_story input, write scenes with playable action, dramatic conflict, emotional turn, and dialogue where useful.
+- Dialogue is mandatory. Every scene with two or more actors must include spoken dialogue where each present actor speaks at least once. Every scene with a single actor must include voiceover, narration, monologue, or phone/radio dialogue. Empty dialogue fields are not acceptable.
 - For screenplay input, preserve source dialogue and order exactly, but fill dramaturgical annotation fields from STORY DESIGN.
 - actor_ids must only use these ids: {[actor.id for actor in bible.actors]}
 - Name every actor_ids entry in action and describe how each selected actor participates in the scene.

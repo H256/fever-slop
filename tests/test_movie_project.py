@@ -4165,6 +4165,63 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual(400, job.status_code)
             self.assertIn("movie", job.text.lower())
 
+    def test_screenplay_prompt_requires_dialogue(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.domain.movie import MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+
+        class CapturingLLM:
+            def __init__(self):
+                self.calls = []
+
+            def complete_prompt(self, prompt, system_prompt=None):
+                self.calls.append(prompt)
+                return json.dumps({
+                    "title": "Test",
+                    "source_type": "short_story",
+                    "dialogue_language": "English",
+                    "scenes": [{
+                        "scene_id": "scene_0001",
+                        "heading": "INT. ROOM - DAY",
+                        "summary": "test",
+                        "action": "test",
+                        "dialogue": "A: hello",
+                        "actor_ids": ["actor_a"],
+                        "location_id": "room",
+                        "source_span": "",
+                        "dramatic_purpose": "",
+                        "conflict": "",
+                        "emotional_turn": "",
+                        "subtext": "",
+                        "dialogue_function": "",
+                    }],
+                })
+
+        planner = LLMMoviePlanner(CapturingLLM())
+        bible = MovieBible(
+            title="Test",
+            premise="A test",
+            story_arch=StoryArch(title="Test", premise="A test", beats=("beat 1",)),
+            actors=(MovieActor(id="actor_a", name="A", role="lead", visual_description="A"),),
+            locations=(MovieLocation(id="room", name="Room", visual_description="Room"),),
+            continuity=(MovieContinuityRule(id="vis", description="visual"),),
+            style_constraints=(),
+            runtime_constraints={},
+        )
+        planner.generate_movie_screenplay(
+            title="Test",
+            source_type="short_story",
+            story_text="A short story about A.",
+            desired_length=30,
+            bible=bible,
+            story_arch=bible.story_arch,
+            story_design=None,
+            config={},
+        )
+        prompt = "\n".join(planner.llm.calls).lower()
+        self.assertIn("dialogue is mandatory", prompt)
+        self.assertIn("every scene with two or more actors", prompt)
+        self.assertIn("voiceover", prompt)
+
 
 class TestLocationMergeHelpers(unittest.TestCase):
     """Tests for location fuzzy matching, deduplication, and visual description cleanup."""
