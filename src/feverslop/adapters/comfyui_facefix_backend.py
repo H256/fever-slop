@@ -106,12 +106,49 @@ class ComfyUIFaceFixRenderBackend:
             patcher.set_input_by_title("#LOAD_VIDEO", "videopath", video_name)
 
     def _patch_reference_images(self, patcher: WorkflowPatcher, request: FaceFixSceneRequest) -> None:
-        if request.reference_images:
-            folder_name = self._upload_face_references(request.reference_images, request.scene_number)
+        uploaded = self._upload_face_references(request.reference_images, request.scene_number)
+        if uploaded:
+            load_ids = []
+            for path in uploaded:
+                nid = patcher.find_free_node_id()
+                patcher.add_node(nid, {
+                    "inputs": {"image": path, "choose_folder_to_upload": "upload", "upload_folder": ""},
+                    "class_type": "LoadImage",
+                    "_meta": {"title": f"#FACE_REF_{nid}"},
+                })
+                load_ids.append(str(nid))
+
+            if len(load_ids) == 1:
+                batch_id = load_ids[0]
+            else:
+                batch_id = str(patcher.find_free_node_id())
+                patcher.add_node(batch_id, {
+                    "inputs": {
+                        "inputcount": len(load_ids),
+                        "image_1": [load_ids[0], 0],
+                    },
+                    "class_type": "ImageBatchMulti",
+                    "_meta": {"title": f"#FACE_BATCH_{batch_id}"},
+                })
+                for i, lid in enumerate(load_ids[1:], start=2):
+                    patcher.set_input_by_id(batch_id, f"image_{i}", [lid, 0])
+
             try:
-                patcher.set_input_by_title("#FACE_REFS", "folder", folder_name)
+                _, sampler = patcher.find_node_by_meta_title("#LOOPING_SAMPLER")
+                sampler["inputs"]["optional_cond_images"] = [batch_id, 0]
             except KeyError:
                 pass
+        else:
+            try:
+                _, sampler = patcher.find_node_by_meta_title("#LOOPING_SAMPLER")
+                sampler["inputs"].pop("optional_cond_images", None)
+            except KeyError:
+                pass
+
+        try:
+            patcher.remove_node_by_title("#FACE_REFS")
+        except KeyError:
+            pass
 
     def _patch_facefix_params(self, patcher: WorkflowPatcher) -> None:
         cfg = self.config
@@ -159,13 +196,15 @@ class ComfyUIFaceFixRenderBackend:
         )
         return ComfyUIVideoAssetUploader.comfy_path_from_upload(upload_resp)
 
-    def _upload_face_references(self, images: list[Path], scene_number: int) -> str:
+    def _upload_face_references(self, images: list[Path], scene_number: int) -> list[str]:
         subfolder = f"feverslop/facefix/references/scene_{scene_number:04}"
+        paths = []
         for img_path in images:
-            self.client.upload_image(
+            resp = self.client.upload_image(
                 img_path,
                 subfolder=subfolder,
                 file_type="input",
                 overwrite=True,
             )
-        return subfolder
+            paths.append(ComfyUIVideoAssetUploader.comfy_path_from_upload(resp))
+        return paths

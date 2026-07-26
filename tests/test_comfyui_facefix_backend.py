@@ -12,12 +12,14 @@ class TestFaceFixBackendBuildWorkflow(unittest.TestCase):
         mock_client = MagicMock()
         mock_queue = MagicMock()
         mock_queue.queue_workflow_and_download_first_video.return_value = Path("/tmp/raw.mp4")
+        mock_client.upload_file_via_image_endpoint.return_value = {"name": "scene_0001.mp4", "subfolder": "", "type": "input"}
+        mock_client.upload_image.return_value = {"name": "face.png", "subfolder": "feverslop/facefix/references/scene_0001", "type": "input"}
 
         cfg = FaceFixConfig()
         with patch.object(ComfyUIFaceFixRenderBackend, "load_workflow") as mock_load:
             mock_load.return_value = {
                 "1": {
-                    "class_type": "VHS_LoadVideoPath",
+                    "class_type": "VHS_LoadVideo",
                     "_meta": {"title": "#LOAD_VIDEO"},
                     "inputs": {"video": ""},
                 },
@@ -33,6 +35,7 @@ class TestFaceFixBackendBuildWorkflow(unittest.TestCase):
                         "guiding_strength": 0.0,
                         "cond_image_strength": 0.0,
                         "optional_cond_image_indices": "",
+                        "optional_cond_images": ["2", 0],
                     },
                 },
                 "4": {
@@ -42,30 +45,25 @@ class TestFaceFixBackendBuildWorkflow(unittest.TestCase):
                 },
             }
 
-            with patch("feverslop.adapters.comfyui_facefix_backend.WorkflowPatcher") as MockPatcher:
-                mock_patcher = MagicMock()
-                MockPatcher.return_value = mock_patcher
-                mock_patcher.get.return_value = {"1": {}, "2": {}, "3": {}, "4": {}}
+            with patch("feverslop.adapters.comfyui_facefix_backend.ComfyUIVideoAssetUploader"):
+                with patch("feverslop.adapters.comfyui_facefix_backend.VideoPostProcessor"):
+                    backend = ComfyUIFaceFixRenderBackend(
+                        client=mock_client,
+                        workflow_path=Path("workflows/facefix.json"),
+                        output_dir=Path("/tmp/out"),
+                        config=cfg,
+                        render_queue=mock_queue,
+                    )
 
-                with patch("feverslop.adapters.comfyui_facefix_backend.ComfyUIVideoAssetUploader"):
-                    with patch("feverslop.adapters.comfyui_facefix_backend.VideoPostProcessor"):
-                        backend = ComfyUIFaceFixRenderBackend(
-                            client=mock_client,
-                            workflow_path=Path("workflows/facefix.json"),
-                            output_dir=Path("/tmp/out"),
-                            config=cfg,
-                            render_queue=mock_queue,
-                        )
-
-                        request = FaceFixSceneRequest(
-                            scene_number=1,
-                            source_video=Path("/tmp/scene_0001.mp4"),
-                            reference_images=[Path("/tmp/face.png")],
-                            output_dir=Path("/tmp/out"),
-                        )
-                        scene = {"scene": 1, "fps": 24, "frame_count": 49}
-                        workflow = backend.build_workflow(scene, request=request)
-                        self.assertIsInstance(workflow, dict)
+                    request = FaceFixSceneRequest(
+                        scene_number=1,
+                        source_video=Path("/tmp/scene_0001.mp4"),
+                        reference_images=[Path("/tmp/face.png")],
+                        output_dir=Path("/tmp/out"),
+                    )
+                    scene = {"scene": 1, "fps": 24, "frame_count": 49}
+                    workflow = backend.build_workflow(scene, request=request)
+                    self.assertIsInstance(workflow, dict)
 
 
 class TestFaceFixBackendInit(unittest.TestCase):
