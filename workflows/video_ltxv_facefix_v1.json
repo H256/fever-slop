@@ -180,20 +180,19 @@
       "title": "#VAE_ENCODE"
     }
   },
-    "5298": {
-      "inputs": {
-        "video": "",
-        "force_rate": 0,
-        "custom_width": 0,
-        "custom_height": 0,
-        "frame_load_cap": 0,
-        "skip_first_frames": 0,
-        "select_every_nth": 1
-      },
-      "class_type": "VHS_LoadVideo",
-      "_meta": {
-        "title": "#LOAD_VIDEO"
-      }
+  "5298": {
+    "inputs": {
+      "video": "",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "#LOAD_VIDEO"
     }
   },
   "5301": {
