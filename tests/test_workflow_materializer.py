@@ -288,7 +288,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
             workflow = json.loads(prepared.workflow_path.read_text())
             positive = workflow["2"]["inputs"]["text"]
             self.assertEqual(1, positive.count("### Reference Sheet Description"))
-            self.assertEqual(1, positive.count("### Shot Invariants"))
+            self.assertEqual(1, positive.count("### Target Description"))
             for expected in ("`mara`", "`archive`", "stable full-frame composition", "do not reproduce their framing, composition, borders, panels, or layout", "mouths remain closed"):
                 self.assertIn(expected, positive)
             self.assertEqual(original_negative, workflow["3"]["inputs"]["text"])

@@ -113,7 +113,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
         self.assertIn("framing", system_prompt.lower())
         self.assertIn("layout", system_prompt.lower())
         self.assertEqual(
-            ["### Reference Sheet Description", "### Shot Invariants"],
+            ["### Reference Sheet Description", "### Target Description"],
             [line for line in result.positive_prompt.splitlines() if line.startswith("###")],
         )
         for reference_id in ("mara", "archive"):
@@ -156,7 +156,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                 self.assertEqual(self.fallback_invariants, result.shot_invariants)
                 self.assertEqual("invalid response", result.fallback_reason)
                 self.assertEqual(
-                    "### Reference Sheet Description\nfallback refs\n\n### Shot Invariants\nfallback shot invariants",
+                    "### Reference Sheet Description\nfallback refs\n\n### Target Description\nfallback shot invariants",
                     result.positive_prompt,
                 )
 

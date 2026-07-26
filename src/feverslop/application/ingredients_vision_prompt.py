@@ -13,15 +13,16 @@ _SYSTEM_PROMPT = """You create a vision-grounded Ingredients prompt for video ge
 Return only JSON with this exact shape:
 {
   "references": [
-    {"id": "reference id", "type": "actor or location", "description": "stable visible identity details"}
+    {"id": "reference id", "type": "actor or location", "position": "panel position label", "description": "stable visible identity details"}
   ],
   "shot_invariants": "60-160 word non-temporal continuous-shot contract"
 }
 
 Treat the supplied images as ground truth. Text metadata is supplementary intent only.
-Describe stable visible identity and environment details, but omit source pose, source camera,
-borders, panels, labels, typography, and sheet layout. Do not reproduce the source framing,
-composition, borders, panels, or layout.
+Describe stable visible identity and environment details. Do not reproduce the source character's
+pose or camera angle, but DO include the panel position label from the scene sheet description.
+The panel position tells the model where to find each reference in the ingredients image.
+Do not include borders, typography, or sheet layout details beyond the position labels.
 
 Write shot_invariants in 60-160 words. It must describe one single continuous full-frame shot.
 Specify stable spatial staging, camera framing and motion policy, identity-critical details,
@@ -45,7 +46,7 @@ class IngredientsPromptResult:
         return (
             "### Reference Sheet Description\n"
             f"{self.reference_description}\n\n"
-            "### Shot Invariants\n"
+            "### Target Description\n"
             f"{self.shot_invariants}"
         )
 
@@ -58,6 +59,7 @@ def build_ingredients_vision_prompt(
     target_context: dict[str, Any],
     fallback_reference_description: str,
     fallback_shot_invariants: str,
+    scene_sheet_description: str = "",
 ) -> IngredientsPromptResult:
     unavailable_fallback = IngredientsPromptResult(
         fallback_reference_description, fallback_shot_invariants, "vision unavailable"
@@ -69,7 +71,7 @@ def build_ingredients_vision_prompt(
         return unavailable_fallback
 
     payload = json.dumps(
-        {"references": reference_metadata, "target_context": target_context},
+        {"references": reference_metadata, "target_context": target_context, "scene_sheet_description": scene_sheet_description},
         ensure_ascii=True,
     )
     try:
@@ -92,24 +94,37 @@ def build_ingredients_vision_prompt(
             return invalid_fallback
 
         descriptions: dict[tuple[str, str], str] = {}
+        positions: dict[tuple[str, str], str] = {}
         for item in parsed_references:
             if not isinstance(item, dict):
                 return invalid_fallback
             reference_id = item.get("id")
             reference_type = item.get("type")
+            position = item.get("position")
             description = item.get("description")
             if not all(isinstance(value, str) and value.strip() for value in (reference_id, reference_type, description)):
                 return invalid_fallback
             descriptions[(reference_id, reference_type)] = description.strip()
+            if position and position.strip():
+                positions[(reference_id, reference_type)] = position.strip()
         if set(descriptions) != expected_pairs or len(descriptions) != len(references):
             return invalid_fallback
     except Exception:
         return invalid_fallback
 
-    reference_lines = [
-        f"{_reference_label(reference.type)} `{reference.id}`: {descriptions[(reference.id, reference.type)]}"
-        for reference in references
-    ]
+    reference_lines = []
+    for reference in references:
+        desc = descriptions[(reference.id, reference.type)]
+        pos = positions.get((reference.id, reference.type))
+        label = _reference_label(reference.type)
+        if pos:
+            reference_lines.append(
+                f"{label} `{reference.id}` ({pos}): {desc}"
+            )
+        else:
+            reference_lines.append(
+                f"{label} `{reference.id}`: {desc}"
+            )
     reference_lines.append(
         "The source images provide appearance only; do not reproduce their framing, composition, "
         "borders, panels, or layout."
