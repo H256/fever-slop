@@ -6,10 +6,10 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = (
-    ("video_ltxv_ingredients_2stage_v5.json", False, False),
-    ("video_ltxv_ingredients_audio_2stage_v5.json", True, False),
-    ("video_ltxv_ingredients_2stage_gguf_v5.json", False, True),
-    ("video_ltxv_ingredients_audio_2stage_gguf_v5.json", True, True),
+    ("video_ltxv_ingredients_2stage_v6.json", False, False),
+    ("video_ltxv_ingredients_audio_2stage_v6.json", True, False),
+    ("video_ltxv_ingredients_2stage_gguf_v6.json", False, True),
+    ("video_ltxv_ingredients_audio_2stage_gguf_v6.json", True, True),
 )
 COMMON_ANCHORS = {
     "#INGREDIENTS",
@@ -107,7 +107,6 @@ class IngredientsWorkflowFileTests(unittest.TestCase):
         self.assertIn("UnetLoaderGGUF", classes)
         self.assertIn("DualCLIPLoaderGGUF", classes)
         self.assertNotIn("CheckpointLoaderSimple", classes)
-        self.assertNotIn("LoraLoaderModelOnly", classes)
         vae_names = {
             node["inputs"]["vae_name"]
             for node in workflow.values()

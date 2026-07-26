@@ -3474,13 +3474,13 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertEqual("last-to-start", config["continuity_keyframes"])
 
-    def test_movie_runtime_config_uses_v4_ingredients_workflow_by_default(self):
+    def test_movie_runtime_config_uses_v6_ingredients_workflow_by_default(self):
         from feverslop.studio.job_service import movie_runtime_config
 
         config = movie_runtime_config({"movie_video_workflow": "ingredients"})
 
         self.assertEqual(
-            "workflows/video_ltxv_ingredients_2stage_v4.json",
+            "workflows/video_ltxv_ingredients_2stage_v6.json",
             config["ingredients_workflow"],
         )
 

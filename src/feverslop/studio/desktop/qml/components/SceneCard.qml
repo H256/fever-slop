@@ -12,7 +12,7 @@ Control {
     required property url thumbnailUrl
     required property bool selected
     property bool keyboardCurrent: false
-    signal activated(int sceneNumber)
+    signal activated(int sceneNumber, int modifiers)
 
     objectName: "sceneCard_" + sceneNumber
     Accessible.role: Accessible.ListItem
@@ -20,27 +20,29 @@ Control {
     Accessible.description: (endSeconds - startSeconds).toFixed(1) + " seconds, " + performanceState
     Accessible.checkable: true
     Accessible.checked: selected
-    padding: 8
+    padding: 12
 
     background: Rectangle {
-        color: card.selected ? "#ECECFF" : card.hovered ? "#F2F2F7" : "#FFFFFF"
-        border.color: card.activeFocus || card.keyboardCurrent ? "#5B5FC7" : card.selected ? "#777BE0" : "#D8D8DC"
+        color: card.selected ? "#312E59" : card.hovered ? "#303036" : "#27272A"
+        border.color: card.activeFocus || card.keyboardCurrent ? "#A5B4FC" : card.selected ? "#818CF8" : "#3F3F46"
         border.width: card.activeFocus || card.keyboardCurrent || card.selected ? 2 : 1
-        radius: 7
+        radius: 10
     }
 
     contentItem: RowLayout {
-        spacing: 10
+        spacing: 14
 
         Rectangle {
-            Layout.preferredWidth: 96
-            Layout.preferredHeight: 54
-            color: "#E5E5EA"
-            radius: 4
+            Layout.preferredWidth: 144
+            Layout.preferredHeight: 81
+            color: "#18181B"
+            border.color: "#3F3F46"
+            radius: 7
             clip: true
 
             Image {
                 id: previewImage
+                objectName: "scenePreviewImage_" + card.sceneNumber
                 anchors.fill: parent
                 source: card.thumbnailUrl
                 fillMode: Image.PreserveAspectCrop
@@ -49,26 +51,26 @@ Control {
             }
             Label {
                 anchors.centerIn: parent
-                text: "No preview"
+                text: card.thumbnailUrl ? "Loading preview..." : "No preview"
                 visible: previewImage.status !== Image.Ready
-                color: "#6E6E73"
-                font.pixelSize: 11
+                color: "#A1A1AA"
+                font.pixelSize: 12
             }
         }
 
         ColumnLayout {
-            spacing: 3
+            spacing: 6
             Layout.fillWidth: true
-            Label { text: "Scene " + card.sceneNumber; color: "#1C1C1E"; font.bold: true }
+            Label { text: "Scene " + card.sceneNumber; color: "#F4F4F5"; font.pixelSize: 15; font.bold: true }
             Label {
                 text: card.startSeconds.toFixed(1) + " - " + card.endSeconds.toFixed(1) + " s"
-                color: "#6E6E73"
-                font.pixelSize: 12
+                color: "#A1A1AA"
+                font.pixelSize: 13
             }
             Label {
                 text: card.performanceState || "No performance state"
-                color: "#48484A"
-                font.pixelSize: 12
+                color: "#D4D4D8"
+                font.pixelSize: 13
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -76,8 +78,8 @@ Control {
 
         Label {
             text: card.status || "unknown"
-            color: card.status === "failed" ? "#C62828" : "#48484A"
-            font.pixelSize: 11
+            color: card.status === "failed" ? "#F87171" : "#D4D4D8"
+            font.pixelSize: 12
             font.bold: true
         }
     }
@@ -85,6 +87,6 @@ Control {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: card.activated(card.sceneNumber)
+        onClicked: mouse => card.activated(card.sceneNumber, mouse.modifiers)
     }
 }

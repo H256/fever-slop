@@ -3,8 +3,11 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "components"
 
-Item {
+Rectangle {
     id: page
+    color: "#18181B"
+    property int contentPadding: 24
+    property int sceneCardHeight: 116
     property var sceneVm: typeof sceneWorkspaceViewModel !== "undefined" ? sceneWorkspaceViewModel : null
     property var studioVm: typeof studioViewModel !== "undefined" ? studioViewModel : null
     readonly property int selectedCount: sceneVm && sceneVm.selected_scene_numbers
@@ -24,8 +27,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 10
+        anchors.margins: page.contentPadding
+        spacing: 16
 
         Label {
             objectName: "sceneWorkspaceErrorBanner"
@@ -77,33 +80,50 @@ Item {
         }
 
         Rectangle {
-            color: "#FFFFFF"
-            border.color: "#D8D8DC"
-            radius: 6
+            objectName: "sceneWorkspaceToolbar"
+            color: "#27272A"
+            border.color: "#3F3F46"
+            radius: 10
             Layout.fillWidth: true
-            Layout.preferredHeight: 54
+            Layout.preferredHeight: 68
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 8
+                anchors.margins: 12
+                spacing: 12
 
                 TextField {
                     id: filterField
                     objectName: "sceneFilter"
                     placeholderText: "Filter scene, status, or performance"
+                    color: "#F4F4F5"
+                    placeholderTextColor: "#A1A1AA"
+                    selectionColor: "#6366F1"
+                    selectedTextColor: "#FFFFFF"
+                    leftPadding: 14
+                    rightPadding: 14
                     Accessible.name: "Filter scenes"
-                    Layout.preferredWidth: 280
+                    Layout.preferredWidth: 340
+                    Layout.preferredHeight: 42
+                    background: Rectangle {
+                        color: "#18181B"
+                        border.color: filterField.activeFocus ? "#818CF8" : "#52525B"
+                        radius: 7
+                    }
                 }
                 Label {
                     objectName: "selectedSceneCount"
-                    text: page.selectedCount + (page.selectedCount === 1 ? " scene selected" : " scenes selected")
-                    color: "#48484A"
+                    text: page.selectedCount
+                        + (page.selectedCount === 1 ? " scene selected" : " scenes selected")
+                        + " · Ctrl+click for multiple"
+                    color: "#D4D4D8"
                     Layout.fillWidth: true
                 }
                 Button {
                     objectName: "discardDirtySceneButton"
                     text: "Discard local edits"
+                    palette.button: "#3F3F46"
+                    palette.buttonText: "#F4F4F5"
                     Accessible.name: "Discard local scene edits"
                     visible: page.sceneVm && page.sceneVm.dirty && !page.sceneVm.conflict
                     onClicked: page.sceneVm.discardLocalEdits()
@@ -111,6 +131,8 @@ Item {
                 Button {
                     objectName: "renderSelectedScenesButton"
                     text: "Render"
+                    palette.button: "#4F46E5"
+                    palette.buttonText: "#FFFFFF"
                     Accessible.name: "Render selected scenes"
                     enabled: page.actionsEnabled
                     onClicked: page.sceneVm.startSelectedAction("render")
@@ -118,6 +140,8 @@ Item {
                 Button {
                     objectName: "rerenderSelectedScenesButton"
                     text: "Rerender"
+                    palette.button: "#3F3F46"
+                    palette.buttonText: "#F4F4F5"
                     Accessible.name: "Rerender selected scenes"
                     enabled: page.actionsEnabled
                     onClicked: page.sceneVm.startSelectedAction("rerender")
@@ -125,6 +149,8 @@ Item {
                 Button {
                     objectName: "retakeSelectedScenesButton"
                     text: "Retake"
+                    palette.button: "#3F3F46"
+                    palette.buttonText: "#F4F4F5"
                     Accessible.name: "Retake selected scenes"
                     enabled: page.actionsEnabled
                     onClicked: page.sceneVm.startSelectedAction("retake")
@@ -136,16 +162,38 @@ Item {
             orientation: Qt.Horizontal
             Layout.fillWidth: true
             Layout.fillHeight: true
+            handle: Rectangle {
+                implicitWidth: 10
+                color: "#18181B"
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 2
+                    height: parent.height
+                    color: "#52525B"
+                }
+            }
 
             ScrollView {
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 360
+                SplitView.minimumWidth: 520
                 clip: true
+                background: Rectangle { color: "#18181B" }
+                ScrollBar.vertical: ScrollBar {
+                    objectName: "sceneListScrollBar"
+                    policy: ScrollBar.AsNeeded
+                    contentItem: Rectangle {
+                        objectName: "sceneListScrollThumb"
+                        implicitWidth: 8
+                        radius: 4
+                        color: "#52525B"
+                    }
+                    background: Rectangle { color: "#18181B" }
+                }
 
                 ListView {
                     id: sceneList
                     objectName: "sceneCardList"
-                    spacing: 7
+                    spacing: 12
                     model: page.sceneVm ? page.sceneVm.scenes : null
                     boundsBehavior: Flickable.StopAtBounds
                     keyNavigationEnabled: true
@@ -175,7 +223,7 @@ Item {
                         readonly property bool keyboardCurrent: ListView.isCurrentItem && sceneList.activeFocus
 
                         width: sceneList.width
-                        height: matchesFilter ? 76 : 0
+                        height: matchesFilter ? page.sceneCardHeight : 0
                         visible: matchesFilter
 
                         SceneCard {
@@ -188,10 +236,13 @@ Item {
                             thumbnailUrl: parent.thumbnailUrl
                             selected: parent.selected
                             keyboardCurrent: parent.keyboardCurrent
-                            onActivated: number => {
+                            onActivated: (number, modifiers) => {
                                 sceneList.currentIndex = parent.index
                                 sceneList.forceActiveFocus()
-                                page.sceneVm.toggleSelection(number)
+                                page.sceneVm.selectScene(
+                                    number,
+                                    !!(modifiers & Qt.ControlModifier)
+                                )
                             }
                         }
                     }
@@ -200,20 +251,21 @@ Item {
                         anchors.centerIn: parent
                         visible: sceneList.count === 0
                         text: "No scenes available"
-                        color: "#6E6E73"
+                        color: "#A1A1AA"
                     }
                 }
             }
 
             Rectangle {
-                SplitView.preferredWidth: 440
-                SplitView.minimumWidth: 330
-                color: "#FFFFFF"
-                border.color: "#D8D8DC"
+                SplitView.preferredWidth: 560
+                SplitView.minimumWidth: 440
+                color: "#202024"
+                border.color: "#3F3F46"
+                radius: 10
 
                 SceneInspector {
                     anchors.fill: parent
-                    anchors.margins: 14
+                    anchors.margins: 20
                     sceneVm: page.sceneVm
                 }
             }

@@ -8,7 +8,7 @@ class VideoWorkflowProfileTests(unittest.TestCase):
         values = {
             "name": "ingredients-final",
             "pipeline": "ltx_ingredients",
-            "workflow_path": "workflows/video_ltxv_ingredients_audio_2stage_v5.json",
+            "workflow_path": "workflows/video_ltxv_ingredients_audio_2stage_v6.json",
             "purpose": "final",
             "stages": 2,
             "output_scale": 1.0,

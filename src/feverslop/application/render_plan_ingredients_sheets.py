@@ -171,6 +171,7 @@ def _enrich_scene(
             target_context=_song_target_context(scene),
             fallback_reference_description=enriched.get("ingredients_scene_sheet_description", ""),
             fallback_shot_invariants=fallback_invariants,
+            scene_sheet_description=enriched.get("ingredients_scene_sheet_description", ""),
         )
         enriched["ingredients_global_prompt"] = result.positive_prompt
         if result.fallback_reason:

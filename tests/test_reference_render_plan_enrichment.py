@@ -201,7 +201,7 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
             self.assertNotIn("ingredients_sheets", str(llm.image_paths[0]))
             self.assertIn("Character `singer`", scene["ingredients"]["global_prompt"])
             self.assertIn("silver hair", scene["ingredients"]["global_prompt"])
-            self.assertIn("### Shot Invariants", scene["ingredients"]["global_prompt"])
+            self.assertIn("### Target Description", scene["ingredients"]["global_prompt"])
             self.assertIn("defiant chorus", llm.user_prompt)
             self.assertIn("slow orbit", llm.user_prompt)
             self.assertEqual([(7, [{"id": "singer", "type": "actor"}, {"id": "stage", "type": "location"}])], events)
@@ -221,5 +221,5 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
                 plan, references, project / "fallback.json", llm=None,
             )
             fallback_scene = json.loads(fallback_output.read_text(encoding="utf-8"))[0]
-            self.assertIn("### Shot Invariants", fallback_scene["ingredients"]["global_prompt"])
+            self.assertIn("### Target Description", fallback_scene["ingredients"]["global_prompt"])
             self.assertIn("no vocal performance throughout", fallback_scene["ltx"]["static_prompt"].lower())

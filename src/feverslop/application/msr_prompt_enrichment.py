@@ -273,6 +273,10 @@ Rules:
 - Write rich cinematic direction, usually 25 to 45 words per segment, with action, acting, camera behavior, and visible environment effects.
 - Preroll-like or transition-like segments still need concrete cinematic atmosphere and tension, not generic continuity filler.
 - No markdown, no comments, no frame numbers.
+- When multiple relay segments exist in the same scene, each must have a distinct, non-repeating description.
+  Vary camera motion, character action, environment response, and framing across segments.
+  Do not reuse the same phrasing or description across segments.
+- Each segment should capture the specific moment in time, not the general scene.
 """.strip()
 
 

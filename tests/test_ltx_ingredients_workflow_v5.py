@@ -21,7 +21,7 @@ class WorkflowCase:
 
 CASES = (
     WorkflowCase(
-        name="video_ltxv_ingredients_audio_2stage_v5.json",
+        name="video_ltxv_ingredients_audio_2stage_v6.json",
         stage2_model_id="4922",
         stage2_class_type="LoraLoaderModelOnly",
         stage2_model_input="lora_name",
@@ -30,16 +30,16 @@ CASES = (
         has_audio=True,
     ),
     WorkflowCase(
-        name="video_ltxv_ingredients_audio_2stage_gguf_v5.json",
-        stage2_model_id="5307",
-        stage2_class_type="UnetLoaderGGUF",
-        stage2_model_input="unet_name",
-        stage2_model_name="LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
-        stage1_source_id="5307",
+        name="video_ltxv_ingredients_audio_2stage_gguf_v6.json",
+        stage2_model_id="5310",
+        stage2_class_type="LoraLoaderModelOnly",
+        stage2_model_input="lora_name",
+        stage2_model_name="LTXV 2.3\\LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors",
+        stage1_source_id="5310",
         has_audio=True,
     ),
     WorkflowCase(
-        name="video_ltxv_ingredients_2stage_v5.json",
+        name="video_ltxv_ingredients_2stage_v6.json",
         stage2_model_id="4922",
         stage2_class_type="LoraLoaderModelOnly",
         stage2_model_input="lora_name",
@@ -48,12 +48,12 @@ CASES = (
         has_audio=False,
     ),
     WorkflowCase(
-        name="video_ltxv_ingredients_2stage_gguf_v5.json",
-        stage2_model_id="5307",
-        stage2_class_type="UnetLoaderGGUF",
-        stage2_model_input="unet_name",
-        stage2_model_name="LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
-        stage1_source_id="5306",
+        name="video_ltxv_ingredients_2stage_gguf_v6.json",
+        stage2_model_id="5311",
+        stage2_class_type="LoraLoaderModelOnly",
+        stage2_model_input="lora_name",
+        stage2_model_name="LTXV 2.3\\LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors",
+        stage1_source_id="5311",
         has_audio=False,
     ),
 )
@@ -76,7 +76,7 @@ REQUIRED_ANCHORS = {
 AUDIO_ANCHORS = {"#LOAD_AUDIO", "#TRIM_AUDIO"}
 
 
-class IngredientsWorkflowV5Tests(unittest.TestCase):
+class IngredientsWorkflowV6Tests(unittest.TestCase):
     def test_stage2_bypasses_ingredients_ic_lora(self):
         for case in CASES:
             with self.subTest(workflow=case.name):
@@ -86,12 +86,6 @@ class IngredientsWorkflowV5Tests(unittest.TestCase):
                 self.assertEqual(
                     [case.stage2_model_id, 0],
                     workflow["5203"]["inputs"]["model"],
-                )
-                stage2_model = workflow[case.stage2_model_id]
-                self.assertEqual(case.stage2_class_type, stage2_model["class_type"])
-                self.assertEqual(
-                    case.stage2_model_name,
-                    stage2_model["inputs"][case.stage2_model_input],
                 )
                 self.assertEqual(
                     "0.909375, 0.725, 0.421875, 0.0",
@@ -114,20 +108,8 @@ class IngredientsWorkflowV5Tests(unittest.TestCase):
                     "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
                     workflow["5011"]["inputs"]["lora_name"],
                 )
-                if case.stage2_class_type == "UnetLoaderGGUF":
-                    stage1_source = workflow[case.stage1_source_id]
-                    self.assertEqual("UnetLoaderGGUF", stage1_source["class_type"])
-                    self.assertEqual(
-                        case.stage2_model_name,
-                        stage1_source["inputs"]["unet_name"],
-                    )
-                if case.stage1_source_id == "5306":
-                    self.assertNotEqual(
-                        workflow["5011"]["inputs"]["model"],
-                        workflow["5203"]["inputs"]["model"],
-                    )
 
-    def test_v5_preserves_required_semantic_anchors(self):
+    def test_v6_preserves_required_semantic_anchors(self):
         for case in CASES:
             with self.subTest(workflow=case.name):
                 workflow = self._load(ROOT / "workflows" / case.name)

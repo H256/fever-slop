@@ -5,7 +5,7 @@ from pathlib import Path
 
 class LTXMSRWorkflowFileTests(unittest.TestCase):
     def test_api_workflow_matches_original_loaders_and_msr_anchors(self):
-        workflow_path = Path("workflows/video_ltxv_msr_1actor_1background_v2.json")
+        workflow_path = Path("workflows/video_ltxv_msr_1actor_1background_v4.json")
         workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
 
         self.assertNotIn("nodes", workflow)
@@ -43,7 +43,7 @@ class LTXMSRWorkflowFileTests(unittest.TestCase):
 
         lora_node = next(node for node in workflow.values() if node.get("_meta", {}).get("title") == "#MSR_LORA")
         self.assertEqual("LTXICLoRALoaderModelOnly", lora_node["class_type"])
-        self.assertEqual("LTX-2.3-Licon-MSR-V1.safetensors", lora_node["inputs"]["lora_name"])
+        self.assertEqual("LTX-2.3-Licon-MSR-V2.safetensors", lora_node["inputs"]["lora_name"])
 
         relay_node = next(node for node in workflow.values() if node.get("_meta", {}).get("title") == "#PROMPT_RELAY")
         self.assertEqual("PromptRelayEncode", relay_node["class_type"])
@@ -52,7 +52,7 @@ class LTXMSRWorkflowFileTests(unittest.TestCase):
         self.assertIn("segment_lengths", relay_node["inputs"])
 
     def test_i2v_msr_workflow_reinjects_startframe_after_latent_upscale(self):
-        workflow_path = Path("workflows/video_default_i2v_ltxv_msr_1actor_1background_v2.json")
+        workflow_path = Path("workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json")
         workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
 
         titles = {
