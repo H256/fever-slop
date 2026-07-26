@@ -83,6 +83,7 @@ class ScenePlanningPort(Protocol):
         self,
         *,
         bible: MovieBible,
+        screenplay: MovieScreenplayArtifact | None = None,
         desired_length: float,
         width: int,
         height: int,
