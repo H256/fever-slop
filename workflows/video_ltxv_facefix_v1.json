@@ -236,7 +236,7 @@
   },
   "5285:215": {
     "inputs": {
-      "unet_name": "LTX-2.3-22B-distilled-1.1-Q8_K.gguf"
+      "unet_name": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf"
     },
     "class_type": "UnetLoaderGGUF",
     "_meta": {
