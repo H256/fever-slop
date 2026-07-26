@@ -12,8 +12,6 @@ from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.facefix_rendering import FaceFixConfig, FaceFixSceneRequest
-from feverslop.errors import FeverSlopRenderError
-from feverslop.path_utils import coerce_local_path
 
 
 class ComfyUIFaceFixRenderBackend:

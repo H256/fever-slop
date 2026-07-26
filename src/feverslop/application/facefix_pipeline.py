@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from feverslop.domain.facefix_rendering import FaceFixConfig, FaceFixSceneRequest
-from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
+from feverslop.ports.reporting import NullReporter, Reporter
 
 
 @dataclass(frozen=True)

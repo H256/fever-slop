@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from feverslop.application.facefix_pipeline import FaceFixPipelineStep, FaceFixRequest
-from feverslop.domain.facefix_rendering import FaceFixConfig
 
 
 class TestFaceFixPipelineStep(unittest.TestCase):
