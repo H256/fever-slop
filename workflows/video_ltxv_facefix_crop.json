@@ -1,0 +1,199 @@
+{
+  "1241": {
+    "inputs": {
+      "frame_rate": ["5287", 5],
+      "positive": ["2483", 0],
+      "negative": ["2483", 0]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXVConditioning"
+    }
+  },
+  "2483": {
+    "inputs": {
+      "text": "",
+      "clip": ["5305", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "4637": {
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "4638": {
+    "inputs": {
+      "noise_seed": 42
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "4878": {
+    "inputs": {
+      "cfg": 1,
+      "model": ["5285:215", 0],
+      "positive": ["1241", 0],
+      "negative": ["1241", 1]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG Guider"
+    }
+  },
+  "4880": {
+    "inputs": {
+      "temporal_tile_size": 56,
+      "temporal_overlap": 24,
+      "guiding_strength": 0.2,
+      "temporal_overlap_cond_strength": 0.5,
+      "cond_image_strength": 0.5,
+      "horizontal_tiles": 1,
+      "vertical_tiles": 1,
+      "spatial_overlap": 1,
+      "adain_factor": 0,
+      "guiding_start_step": 0,
+      "guiding_end_step": 1000,
+      "optional_cond_image_indices": "0",
+      "model": ["5285:215", 0],
+      "vae": ["5285:256", 0],
+      "noise": ["4638", 0],
+      "sampler": ["4637", 0],
+      "sigmas": ["4896", 0],
+      "guider": ["4878", 0],
+      "latents": ["5290", 0],
+      "optional_cond_images": ["5301", 0],
+      "optional_guiding_latents": ["5290", 0]
+    },
+    "class_type": "LTXVLoopingSampler",
+    "_meta": {
+      "title": "#LOOPING_SAMPLER"
+    }
+  },
+  "4896": {
+    "inputs": {
+      "sigmas": "0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "ManualSigmas"
+    }
+  },
+  "5287": {
+    "inputs": {
+      "video_info": ["5298", 3]
+    },
+    "class_type": "VHS_VideoInfo",
+    "_meta": {
+      "title": "Video Info \ud83c\udfa5\ud83e\udd16\ud83e\udd17\ud83e\udd22"
+    }
+  },
+  "5289": {
+    "inputs": {
+      "samples": ["4880", 0],
+      "vae": ["5285:256", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "#VAE_DECODE"
+    }
+  },
+  "5290": {
+    "inputs": {
+      "pixels": ["5298", 0],
+      "vae": ["5285:256", 0]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "#VAE_ENCODE"
+    }
+  },
+  "5298": {
+    "inputs": {
+      "video": "video.mp4",
+      "force_rate": 0,
+      "force_size": "Disabled",
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "choose_video_to_upload": "upload",
+      "videopath": ""
+    },
+    "class_type": "VHS_LoadVideoPath",
+    "_meta": {
+      "title": "#LOAD_VIDEO"
+    }
+  },
+  "5301": {
+    "inputs": {
+      "directory": "",
+      "image_load_cap": 0,
+      "skip_first_images": 0,
+      "select_every_nth": 1
+    },
+    "class_type": "LoadImagesFromFolderKJ",
+    "_meta": {
+      "title": "#FACE_REFS"
+    }
+  },
+  "5304": {
+    "inputs": {
+      "frame_rate": 24,
+      "crf": 19,
+      "stdin": false,
+      "trimsupport": false,
+      "save_output": true,
+      "filename_prefix": "ltx_facefix_crop",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "cuda_encoder": false,
+      "save_image": false,
+      "images": ["5289", 0],
+      "meta": ["5287", 0]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "#SAVE_VIDEO"
+    }
+  },
+  "5305": {
+    "inputs": {
+      "clip_name1": "empty",
+      "clip_name2": "empty",
+      "type2": "stableCascade",
+      "device": "cpu"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "DualCLIPLoader"
+    }
+  },
+  "5285:256": {
+    "inputs": {
+      "vae_name": "vae-ft-mse-840000-ema-pruned.safetensors"
+    },
+    "class_type": "VAELoaderKJ",
+    "_meta": {
+      "title": "VAELoader KJ"
+    }
+  },
+  "5285:215": {
+    "inputs": {
+      "unet_name": "ltx-video-2b-v0.9.1-gguf/ltx-video-2b-v0.9-primcnn.q4_k.gguf",
+      "quant": "none"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  }
+}

@@ -36,6 +36,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             msr_workflow=project / "msr.json", ingredients_workflow=project / "ingredients.json",
             relay_workflow=Path(""), single_prompt_workflow=project / "i2v.json",
             facefix_workflow=project / "facefix.json",
+            facefix_crop_workflow=project / "facefix_crop.json",
             plan_for_next_step=context.ingredients_plan if pipeline == "ltx_ingredients" else context.reference_plan,
         )
 

@@ -212,6 +212,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "skip_final_concat": False,
                 "skip_facefix": True,
                 "facefix_workflow": str(Path("workflows") / "video_ltxv_facefix_v1.json"),
+                "facefix_crop_workflow": str(Path("workflows") / "video_ltxv_facefix_crop.json"),
                 "diagnostic_original_audio_mux": False,
                 "no_original_audio_mux": False,
             },

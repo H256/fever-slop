@@ -120,3 +120,27 @@ class SceneArtifactLayout:
             for p in sorted(views.glob("*sheet.png")):
                 sheets.append(p)
         return sheets
+
+    def actors_dir_path(self) -> Path:
+        return self.references_dir / "actors"
+
+    def actor_ids(self) -> list[str]:
+        actors_dir = self.actors_dir_path()
+        if not actors_dir.is_dir():
+            return []
+        return sorted(d.name for d in actors_dir.iterdir() if d.is_dir())
+
+    def scene_facefix_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_dir(scene_number) / "facefix" / actor_id
+
+    def scene_face_crop_mp4(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "face_crop.mp4"
+
+    def scene_face_anchors_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "anchors"
+
+    def scene_face_crops_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "crops"
+
+    def scene_face_repaired_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "repaired"

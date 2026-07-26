@@ -1,3 +1,9 @@
+"""DEPRECATED: Use comfyui_facefix_crop_backend.py for the crop-and-composite approach.
+
+This backend feeds full-res videos to LTX with actor sheets as conditioning,
+which causes OOM on 32GB VRAM. The replacement uses InsightFace-based face
+crops at 768x768 with feather-composite postprocessing.
+"""
 from __future__ import annotations
 
 from pathlib import Path

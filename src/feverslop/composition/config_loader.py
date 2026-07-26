@@ -66,6 +66,7 @@ class PipelineRunState:
     relay_workflow: Path
     single_prompt_workflow: Path
     facefix_workflow: Path
+    facefix_crop_workflow: Path
     plan_for_next_step: Path
     video_only_path: Path | None = None
     final_video_path: Path | None = None

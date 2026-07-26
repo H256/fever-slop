@@ -1,3 +1,8 @@
+"""FaceFix domain models.
+
+Note: video_ltxv_facefix_v1.json is deprecated. Use video_ltxv_facefix_crop.json
+for the crop-and-composite approach with InsightFace-based face tracking.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -5,7 +10,8 @@ from pathlib import Path
 from typing import Sequence
 
 
-DEFAULT_FACEFIX_WORKFLOW = "video_ltxv_facefix_v1.json"
+DEFAULT_FACEFIX_WORKFLOW = "video_ltxv_facefix_crop.json"
+DEFAULT_FACEFIX_LEGACY_WORKFLOW = "video_ltxv_facefix_v1.json"
 DEFAULT_KEYFRAME_INDICES = "0,16,32,48"
 
 
