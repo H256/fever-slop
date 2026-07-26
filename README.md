@@ -176,7 +176,11 @@ uv run python run_pipeline.py ./projects/my-song \
 
 The stage reads `scene_NNNN.mp4` files from the render output directory, applies
 temporal face conditioning at configurable keyframe intervals, and outputs
-`scene_NNNN_facefix.mp4` files alongside the originals.
+`scene_NNNN_facefix.mp4` files alongside the originals. All face reference images
+are passed to the LTXV LoopingSampler, which handles per-face matching internally:
+it detects faces in each keyframe and matches them to the closest reference. This
+means you can provide references for all characters and the workflow applies the
+correct one to each detected face.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
