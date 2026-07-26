@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 
-DEFAULT_FACEFIX_WORKFLOW = "LTX2.3_FaceFixV1_API.json"
+DEFAULT_FACEFIX_WORKFLOW = "video_ltxv_facefix_v1.json"
 DEFAULT_KEYFRAME_INDICES = "0,16,32,48"
 
 
