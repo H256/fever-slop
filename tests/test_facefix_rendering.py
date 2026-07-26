@@ -38,7 +38,7 @@ class TestFaceFixSceneRequest(unittest.TestCase):
         self.assertEqual(req.scene_number, 3)
         self.assertEqual(req.source_video, Path("/tmp/scene_0003.mp4"))
         self.assertEqual(len(req.reference_images), 1)
-        self.assertEqual(req.output_path, Path("/tmp/output/scene_0003_facefix.mp4"))
+        self.assertEqual(req.output_dir, Path("/tmp/output"))
 
     def test_no_references(self):
         req = FaceFixSceneRequest(
@@ -47,7 +47,6 @@ class TestFaceFixSceneRequest(unittest.TestCase):
         )
         self.assertEqual(req.reference_images, ())
         self.assertEqual(req.output_dir, Path("."))
-        self.assertEqual(req.output_path.name, "scene_0001_facefix.mp4")
 
 
 if __name__ == "__main__":

@@ -19,10 +19,8 @@ from feverslop.ports.reporting import ConsoleReporter
 class FaceFixCompositionOptions:
     app_config_path: str | Path = "./app_config.json"
     workflow_path: str | Path = ""
-    output_dir: str | Path = ""
-    rendered_dir: str | Path = ""
+    scenes_dir: str | Path = ""
     project_dir: str | Path | None = None
-    debug_workflows_dir: str | Path | None = None
     scene_numbers: list[int] | None = None
     reference_images: list[Path] | None = None
     skip_existing: bool = True
@@ -67,9 +65,7 @@ def build_facefix_step(
     backend = ComfyUIFaceFixRenderBackend(
         client=client,
         workflow_path=coerce_local_path(options.workflow_path),
-        output_dir=coerce_local_path(options.output_dir),
         project_dir=coerce_local_path(options.project_dir) if options.project_dir else None,
-        debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
         config=config,
         postprocess=options.postprocess,
         ffmpeg_path=options.ffmpeg_path,
@@ -86,19 +82,6 @@ def build_facefix_step(
     )
 
 
-def discover_scene_numbers(rendered_dir: Path) -> list[int]:
-    """Discover scene numbers from rendered video files in the directory."""
-    scenes = []
-    for f in sorted(rendered_dir.iterdir()):
-        if f.name.startswith("scene_") and f.suffix in (".mp4", ".webm", ".mov"):
-            stem = f.stem.replace("scene_", "")
-            try:
-                scenes.append(int(stem))
-            except ValueError:
-                continue
-    return scenes
-
-
 def run_facefix(
     options: FaceFixCompositionOptions,
     *,
@@ -106,16 +89,12 @@ def run_facefix(
 ) -> list[Path]:
     """Build and execute the FaceFix pipeline."""
     step = build_facefix_step(options, console=console)
-    rendered_dir = coerce_local_path(options.rendered_dir)
-
-    scene_numbers = options.scene_numbers or discover_scene_numbers(rendered_dir)
-    reference_images = options.reference_images or []
+    scenes_dir = coerce_local_path(options.scenes_dir)
 
     request = FaceFixRequest(
-        rendered_dir=rendered_dir,
-        output_dir=coerce_local_path(options.output_dir),
-        scene_numbers=scene_numbers,
-        reference_images=reference_images,
+        scenes_dir=scenes_dir,
+        scene_numbers=options.scene_numbers,
+        reference_images=options.reference_images or [],
         skip_existing=options.skip_existing,
     )
 

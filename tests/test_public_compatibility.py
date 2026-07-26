@@ -227,6 +227,7 @@ class PublicCompatibilityTests(unittest.TestCase):
             "ltx_video_renderer.py",
             "storyboard_renderer.py",
             "workflow_patcher.py",
+            "debug_facefix.py",
         }
         actual = {path.name for path in Path(".").glob("*.py")}
         unexpected = sorted(actual - allowed)

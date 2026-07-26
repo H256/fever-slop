@@ -72,10 +72,8 @@ class TestFaceFixBackendInit(unittest.TestCase):
         backend = ComfyUIFaceFixRenderBackend(
             client=mock_client,
             workflow_path=Path("workflows/facefix.json"),
-            output_dir=Path("/tmp/out"),
         )
         self.assertEqual(str(backend.workflow_path), str(Path("workflows/facefix.json")))
-        self.assertEqual(str(backend.output_dir), str(Path("/tmp/out")))
         self.assertIsInstance(backend.config, FaceFixConfig)
 
     def test_init_with_config(self):
@@ -84,7 +82,6 @@ class TestFaceFixBackendInit(unittest.TestCase):
         backend = ComfyUIFaceFixRenderBackend(
             client=mock_client,
             workflow_path=Path("workflows/facefix.json"),
-            output_dir=Path("/tmp/out"),
             config=cfg,
         )
         self.assertEqual(backend.config.guiding_strength, 0.5)
@@ -99,7 +96,6 @@ class TestFaceFixBackendLoadWorkflow(unittest.TestCase):
             backend = ComfyUIFaceFixRenderBackend(
                 client=mock_client,
                 workflow_path=Path("workflows/facefix.json"),
-                output_dir=Path("/tmp/out"),
             )
             result = backend.load_workflow()
             self.assertEqual(result, mock_workflow)
@@ -110,7 +106,6 @@ class TestFaceFixBackendLoadWorkflow(unittest.TestCase):
         backend = ComfyUIFaceFixRenderBackend(
             client=mock_client,
             workflow_path=Path("workflows/facefix.json"),
-            output_dir=Path("/tmp/out"),
             workflow=mock_workflow,
         )
         result = backend.load_workflow()

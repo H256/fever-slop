@@ -46,6 +46,12 @@ Historical internal branch reference removed for the public history.
 - Do not create extra status folders unless the workflow clearly needs them.
 - Keep planning files in `docs/ideas/`, not in the repository root or `.agent/`.
 
+Historical internal tracker reference removed for the public history.
+
+Historical internal tracker reference removed for the public history.
+Historical internal tracker reference removed for the public history.
+- Commits for the feature must be linked in the issue body before closing.
+
 Plan files should use this structure when practical:
 
 ```markdown

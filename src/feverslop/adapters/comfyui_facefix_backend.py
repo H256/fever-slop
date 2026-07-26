@@ -27,9 +27,8 @@ class ComfyUIFaceFixRenderBackend:
         *,
         client: ComfyUIClient,
         workflow_path: str | Path,
-        output_dir: str | Path,
         config: FaceFixConfig | None = None,
-        debug_workflows_dir: str | Path | None = None,
+        output_dir: str | Path | None = None,
         postprocess: bool = True,
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
@@ -46,10 +45,8 @@ class ComfyUIFaceFixRenderBackend:
         self.workflow_path = Path(workflow_path)
         self.workflow = deepcopy(workflow) if workflow is not None else None
         self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir) if output_dir is not None else None
         self.project_dir = Path(project_dir) if project_dir is not None else None
-        self.raw_output_dir = self.output_dir / "raw"
-        self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
         self.config = config or FaceFixConfig()
         self.postprocess = postprocess
         self.postprocess_reencode = postprocess_reencode
@@ -61,6 +58,7 @@ class ComfyUIFaceFixRenderBackend:
             debug=ffmpeg_debug,
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
+        self._face_batch_size = 0
 
     def load_workflow(self) -> dict:
         if self.workflow is not None:
@@ -69,24 +67,23 @@ class ComfyUIFaceFixRenderBackend:
 
     def render_scene(self, scene: dict, *, request: FaceFixSceneRequest) -> Path:
         scene_number = request.scene_number
+        scene_dir = request.output_dir
         workflow = self.build_workflow(scene, request=request)
         workflow = self.model_resolver.resolve_workflow_models(
             workflow,
             workflow_path=self.workflow_label,
         )
-        self._write_debug_workflow(scene_number, workflow)
+        self._write_workflow_json(scene_dir, scene_number, workflow)
 
-        self.raw_output_dir.mkdir(parents=True, exist_ok=True)
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
             scene_number=scene_number,
-            output_path=self.raw_output_dir / f"scene_{scene_number:04}_facefix_raw.mp4",
+            output_path=scene_dir / "raw_facefix.mp4",
         )
         if not self.postprocess:
             return raw_output
 
-        final = request.output_path
-        final.parent.mkdir(parents=True, exist_ok=True)
+        final = scene_dir / "final_facefix.mp4"
         shutil.copy2(raw_output, final)
         return final
 
@@ -108,42 +105,68 @@ class ComfyUIFaceFixRenderBackend:
     def _patch_reference_images(self, patcher: WorkflowPatcher, request: FaceFixSceneRequest) -> None:
         uploaded = self._upload_face_references(request.reference_images, request.scene_number)
         if uploaded:
-            load_ids = []
+            scaled_ids = []
             for path in uploaded:
-                nid = patcher.find_free_node_id()
-                patcher.add_node(nid, {
+                load_id = str(patcher.find_free_node_id())
+                patcher.add_node(load_id, {
                     "inputs": {"image": path, "choose_folder_to_upload": "upload", "upload_folder": ""},
                     "class_type": "LoadImage",
-                    "_meta": {"title": f"#FACE_REF_{nid}"},
+                    "_meta": {"title": f"#FACE_REF_{load_id}"},
                 })
-                load_ids.append(str(nid))
 
-            if len(load_ids) == 1:
-                batch_id = load_ids[0]
+                crop_id = str(patcher.find_free_node_id())
+                patcher.add_node(crop_id, {
+                    "inputs": {
+                        "image": [load_id, 0],
+                        "crop_padding_factor": 0.25,
+                        "cascade_xml": "haarcascade_frontalface_default.xml",
+                    },
+                    "class_type": "Image Crop Face",
+                    "_meta": {"title": f"#FACE_CROP_{crop_id}"},
+                })
+
+                scale_id = str(patcher.find_free_node_id())
+                patcher.add_node(scale_id, {
+                    "inputs": {
+                        "image": [crop_id, 0],
+                        "upscale_method": "lanczos",
+                        "width": 512,
+                        "height": 512,
+                        "crop": "center",
+                    },
+                    "class_type": "ImageScale",
+                    "_meta": {"title": f"#FACE_SCALE_{scale_id}"},
+                })
+                scaled_ids.append(scale_id)
+
+            if len(scaled_ids) == 1:
+                batch_id = scaled_ids[0]
             else:
                 batch_id = str(patcher.find_free_node_id())
                 patcher.add_node(batch_id, {
                     "inputs": {
-                        "inputcount": len(load_ids),
-                        "image_1": [load_ids[0], 0],
+                        "inputcount": len(scaled_ids),
+                        "image_1": [scaled_ids[0], 0],
                     },
                     "class_type": "ImageBatchMulti",
                     "_meta": {"title": f"#FACE_BATCH_{batch_id}"},
                 })
-                for i, lid in enumerate(load_ids[1:], start=2):
-                    patcher.set_input_by_id(batch_id, f"image_{i}", [lid, 0])
+                for i, sid in enumerate(scaled_ids[1:], start=2):
+                    patcher.set_input_by_id(batch_id, f"image_{i}", [sid, 0])
 
             try:
                 _, sampler = patcher.find_node_by_meta_title("#LOOPING_SAMPLER")
                 sampler["inputs"]["optional_cond_images"] = [batch_id, 0]
+                self._face_batch_size = len(scaled_ids)
             except KeyError:
-                pass
+                self._face_batch_size = 0
         else:
             try:
                 _, sampler = patcher.find_node_by_meta_title("#LOOPING_SAMPLER")
                 sampler["inputs"].pop("optional_cond_images", None)
             except KeyError:
                 pass
+            self._face_batch_size = 0
 
         try:
             patcher.remove_node_by_title("#FACE_REFS")
@@ -168,9 +191,15 @@ class ComfyUIFaceFixRenderBackend:
             "#LOOPING_SAMPLER", "temporal_overlap_cond_strength",
             cfg.temporal_overlap_cond_strength,
         )
-        patcher.try_set_existing_input_by_title(
-            "#LOOPING_SAMPLER", "optional_cond_image_indices", cfg.keyframe_indices
-        )
+        if self._face_batch_size > 0:
+            keyframes = cfg.keyframe_indices
+            if isinstance(keyframes, str):
+                indices = [int(x.strip()) for x in keyframes.split(",") if x.strip()]
+                valid = [str(i) for i in indices if i < self._face_batch_size]
+                keyframes = ",".join(valid) if valid else "0"
+            patcher.try_set_existing_input_by_title(
+                "#LOOPING_SAMPLER", "optional_cond_image_indices", keyframes
+            )
 
     def _patch_save_output(self, patcher: WorkflowPatcher, scene_number: int) -> None:
         patcher.set_input_by_title(
@@ -178,11 +207,9 @@ class ComfyUIFaceFixRenderBackend:
             f"ltx_facefix_raw/scene_{scene_number:04}",
         )
 
-    def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
-        if self.debug_workflows_dir is None:
-            return
-        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
-        (self.debug_workflows_dir / f"scene_{scene_number:04}_facefix.json").write_text(
+    def _write_workflow_json(self, scene_dir: Path, scene_number: int, workflow: dict) -> None:
+        scene_dir.mkdir(parents=True, exist_ok=True)
+        (scene_dir / "workflow_facefix.json").write_text(
             json.dumps(workflow, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )

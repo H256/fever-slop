@@ -26,6 +26,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             video_character_lora_strength=None, video_lora_1_strength_model=None,
             video_lora_1_strength_clip=None, lora_split_enabled=False,
             single_prompt_title="#PROMPT", single_prompt_input="text", relay_workflow="",
+            skip_facefix=False,
         )
         context = build_run_context(args)
         return PipelineRunState(
@@ -34,6 +35,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             reference_hero_workflow=project / "hero.json", reference_edit_workflow=project / "edit.json",
             msr_workflow=project / "msr.json", ingredients_workflow=project / "ingredients.json",
             relay_workflow=Path(""), single_prompt_workflow=project / "i2v.json",
+            facefix_workflow=project / "facefix.json",
             plan_for_next_step=context.ingredients_plan if pipeline == "ltx_ingredients" else context.reference_plan,
         )
 
@@ -44,7 +46,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             skip_msr_prompt_enrichment=True, skip_ingredients_sheets=True, skip_ltx=False,
             skip_final_concat=True, render_mode="single_prompt", skip_storyboard=True,
             skip_storyboard_page=True, diagnostic_original_audio_mux=False,
-            no_original_audio_mux=False,
+            no_original_audio_mux=False, skip_facefix=True,
         )
 
         stages = resolve_pipeline_stages(args)

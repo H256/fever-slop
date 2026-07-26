@@ -28,13 +28,12 @@ class FaceFixConfig:
 
 @dataclass(frozen=True)
 class FaceFixSceneRequest:
-    """Single-scene FaceFix request."""
+    """Single-scene FaceFix request.
+
+    output_dir is the scene dir (e.g. render/scenes/scene_0001).
+    """
 
     scene_number: int
     source_video: Path
     reference_images: Sequence[Path] = ()
     output_dir: Path = Path(".")
-
-    @property
-    def output_path(self) -> Path:
-        return self.output_dir / f"scene_{self.scene_number:04}_facefix.mp4"

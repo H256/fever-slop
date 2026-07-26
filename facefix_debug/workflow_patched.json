@@ -23,7 +23,7 @@
     "inputs": {
       "text": "",
       "clip": [
-        "5305",
+        "5285:216",
         0
       ]
     },
@@ -114,7 +114,7 @@
         0
       ],
       "optional_cond_images": [
-        "5301",
+        "10002",
         0
       ],
       "optional_guiding_latents": [
@@ -182,74 +182,29 @@
   },
   "5298": {
     "inputs": {
-      "video": "",
+      "video": "feverslop/facefix/input/scene_0001.mp4",
       "force_rate": 0,
       "custom_width": 0,
       "custom_height": 0,
       "frame_load_cap": 0,
       "skip_first_frames": 0,
-      "select_every_nth": 1,
-      "format": "AnimateDiff"
+      "select_every_nth": 1
     },
     "class_type": "VHS_LoadVideo",
     "_meta": {
       "title": "#LOAD_VIDEO"
     }
   },
-  "5301": {
+  "5303": {
     "inputs": {
-      "folder": "",
-      "width": 512,
-      "height": 512,
-      "keep_aspect_ratio": "crop",
-      "image_load_cap": 0,
-      "start_index": 0,
-      "include_subfolders": false
-    },
-    "class_type": "LoadImagesFromFolderKJ",
-    "_meta": {
-      "title": "#FACE_REFS"
-    }
-  },
-  "5304": {
-    "inputs": {
-      "frame_rate": [
-        "5287",
-        5
-      ],
-      "loop_count": 0,
-      "filename_prefix": "ltx_facefix_raw",
-      "format": "video/h264-mp4",
-      "pix_fmt": "yuv420p",
-      "crf": 19,
-      "save_metadata": true,
-      "trim_to_audio": false,
-      "pingpong": false,
-      "save_output": true,
       "images": [
         "5289",
         0
-      ],
-      "audio": [
-        "5298",
-        2
       ]
     },
-    "class_type": "VHS_VideoCombine",
+    "class_type": "PreviewImage",
     "_meta": {
-      "title": "#SAVE_VIDEO"
-    }
-  },
-  "5305": {
-    "inputs": {
-      "clip_name1": "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
-      "clip_name2": "ltx-2.3_text_projection_bf16.safetensors",
-      "type": "ltxv",
-      "device": "cpu"
-    },
-    "class_type": "DualCLIPLoader",
-    "_meta": {
-      "title": "DualCLIPLoader"
+      "title": "#PREVIEW_IMAGE"
     }
   },
   "5285:256": {
@@ -270,6 +225,80 @@
     "class_type": "UnetLoaderGGUF",
     "_meta": {
       "title": "Unet Loader (GGUF)"
+    }
+  },
+  "5285:216": {
+    "inputs": {
+      "clip_name1": "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+      "clip_name2": "ltx-2.3_text_projection_bf16.safetensors",
+      "type": "ltxv"
+    },
+    "class_type": "DualCLIPLoaderGGUF",
+    "_meta": {
+      "title": "DualCLIPLoader (GGUF)"
+    }
+  },
+  "5304": {
+    "inputs": {
+      "frame_rate": [
+        "5287",
+        5
+      ],
+      "loop_count": 0,
+      "filename_prefix": "ltx_facefix_raw/scene_0001",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "5289",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "#SAVE_VIDEO"
+    }
+  },
+  "10000": {
+    "inputs": {
+      "image": "feverslop/facefix/references/scene_0001/face1.png",
+      "choose_folder_to_upload": "upload",
+      "upload_folder": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#FACE_REF_10000"
+    }
+  },
+  "10001": {
+    "inputs": {
+      "image": "feverslop/facefix/references/scene_0001/face2.png",
+      "choose_folder_to_upload": "upload",
+      "upload_folder": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#FACE_REF_10001"
+    }
+  },
+  "10002": {
+    "inputs": {
+      "inputcount": 2,
+      "image_1": [
+        "10000",
+        0
+      ],
+      "image_2": [
+        "10001",
+        0
+      ]
+    },
+    "class_type": "ImageBatchMulti",
+    "_meta": {
+      "title": "#FACE_BATCH_10002"
     }
   }
 }

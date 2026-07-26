@@ -546,40 +546,27 @@ def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
 
 def _run_facefix_stage(state: PipelineRunState) -> None:
     from feverslop.composition.facefix_pipeline import FaceFixCompositionOptions, run_facefix
-    from feverslop.composition.facefix_pipeline import discover_scene_numbers
 
-    render_dir = state.context.render_dir
-    candidates = [
-        render_dir / "ltx_msr",
-        render_dir / "ltx_ingredients",
-        state.context.ltx_dir,
-    ]
-
-    rendered_dir = None
-    scene_numbers = []
-    for candidate in candidates:
-        if candidate.is_dir():
-            scenes = discover_scene_numbers(candidate)
-            if scenes:
-                rendered_dir = candidate
-                scene_numbers = scenes
-                break
-
-    if rendered_dir is None:
+    layout = state.context.artifact_layout
+    scenes_dir = layout.scenes_dir
+    if not scenes_dir.is_dir():
         console.print(
-            "[yellow]No rendered scenes found in "
-            + " or ".join(str(c) for c in candidates)
-            + ", FaceFix skipped.[/yellow]"
+            "[yellow]No scenes directory found at"
+            + f" {scenes_dir}, FaceFix skipped.[/yellow]"
         )
         return
+
+    scene_numbers = None
+    if state.args.scenes:
+        scene_numbers = sorted(parse_scene_list(state.args.scenes))
 
     options = FaceFixCompositionOptions(
         app_config_path=str(state.app_config_path),
         workflow_path=str(state.facefix_workflow),
-        output_dir=str(rendered_dir / "facefix"),
-        rendered_dir=str(rendered_dir),
+        scenes_dir=str(scenes_dir),
         project_dir=str(state.context.project_config_dir),
         scene_numbers=scene_numbers,
+        reference_images=layout.actor_sheet_images(),
         skip_existing=not state.args.no_skip_existing,
     )
     run_facefix(options, console=console)

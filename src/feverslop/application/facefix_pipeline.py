@@ -9,9 +9,8 @@ from feverslop.ports.reporting import NullReporter, Reporter
 
 @dataclass(frozen=True)
 class FaceFixRequest:
-    rendered_dir: Path
-    output_dir: Path
-    scene_numbers: list[int]
+    scenes_dir: Path
+    scene_numbers: list[int] | None
     reference_images: list[Path] = ()
     skip_existing: bool = True
 
@@ -19,8 +18,8 @@ class FaceFixRequest:
 class FaceFixPipelineStep:
     """Runs LTXV FaceFix postprocessing on rendered scene videos.
 
-    This use case discovers rendered videos, builds per-scene FaceFix requests,
-    and delegates to the backend for each scene.
+    Reads final.mp4 from each scene dir, writes workflow_facefix.json and
+    final_facefix.mp4 back into the scene dir.
     """
 
     def __init__(
@@ -35,20 +34,28 @@ class FaceFixPipelineStep:
         self.reporter = reporter
 
     def execute(self, request: FaceFixRequest) -> list[Path]:
-        request.output_dir.mkdir(parents=True, exist_ok=True)
+        scenes_dir = request.scenes_dir
+        scene_numbers = request.scene_numbers
+        if scene_numbers is None:
+            scene_numbers = sorted(
+                int(d.name.split("_")[1])
+                for d in scenes_dir.iterdir()
+                if d.is_dir() and d.name.startswith("scene_")
+            )
         results = []
-        total = len(request.scene_numbers)
+        total = len(scene_numbers)
 
-        for idx, scene_number in enumerate(request.scene_numbers, 1):
-            source = request.rendered_dir / f"scene_{scene_number:04}.mp4"
+        for idx, scene_number in enumerate(scene_numbers, 1):
+            scene_dir = scenes_dir / f"scene_{scene_number:04d}"
+            source = scene_dir / "final.mp4"
             if not source.exists():
                 self._report(
-                    f"FaceFix: source video missing for scene {scene_number}, skipping",
+                    f"FaceFix: final.mp4 missing for scene {scene_number}, skipping",
                     level="warn",
                 )
                 continue
 
-            final = request.output_dir / f"scene_{scene_number:04}_facefix.mp4"
+            final = scene_dir / "final_facefix.mp4"
             if request.skip_existing and final.exists():
                 results.append(final)
                 self._report(
@@ -61,7 +68,7 @@ class FaceFixPipelineStep:
                 scene_number=scene_number,
                 source_video=source,
                 reference_images=request.reference_images,
-                output_dir=request.output_dir,
+                output_dir=scene_dir,
             )
             scene = {"scene": scene_number}
             out_path = self.backend.render_scene(scene, request=scene_req)
