@@ -157,8 +157,7 @@ class ComfyUIFaceFixRenderBackend:
             file_type="input",
             overwrite=True,
         )
-        name = upload_resp.get("name", video_path.name)
-        return name
+        return ComfyUIVideoAssetUploader.comfy_path_from_upload(upload_resp)
 
     def _upload_face_references(self, images: list[Path], scene_number: int) -> str:
         subfolder = f"feverslop/facefix/references/scene_{scene_number:04}"
