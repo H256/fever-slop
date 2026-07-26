@@ -46,6 +46,7 @@ COMFYUI_RENDERING_STAGES = frozenset({
     PipelineStage.STORYBOARD_FRAMES,
     PipelineStage.MSR_REFERENCES,
     PipelineStage.LTX_RENDER_SCENES,
+    PipelineStage.FACEFIX,
 })
 
 
@@ -63,6 +64,7 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         ingredients_workflow=resolve_runner_path(args.ingredients_workflow),
         relay_workflow=resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path(""),
         single_prompt_workflow=resolve_runner_path(args.single_prompt_workflow),
+        facefix_workflow=resolve_runner_path(args.facefix_workflow),
         plan_for_next_step=_initial_render_plan(context, args, stages),
     )
     app_config = AppConfig.load(app_config_path)

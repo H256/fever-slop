@@ -39,6 +39,7 @@ class PipelineRunContext:
     storyboard_page: Path
     ltx_dir: Path
     ltx_debug_dir: Path
+    facefix_dir: Path
     final_concat_video: Path
     final_concat: Path
     final_concat_scene_audio_debug: Path
@@ -64,6 +65,7 @@ class PipelineRunState:
     ingredients_workflow: Path
     relay_workflow: Path
     single_prompt_workflow: Path
+    facefix_workflow: Path
     plan_for_next_step: Path
     video_only_path: Path | None = None
     final_video_path: Path | None = None
@@ -176,6 +178,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         ltx_debug_dir = render_dir / f"ltx_{args.render_mode}_debug"
     if args.smoke_only:
         ltx_dir = ltx_dir.with_name(ltx_dir.name + "_smoke")
+    facefix_dir = ltx_dir / "facefix"
 
     return PipelineRunContext(
         artifact_layout=artifact_layout,
@@ -203,6 +206,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         storyboard_page=storyboard_dir / "index.html",
         ltx_dir=ltx_dir,
         ltx_debug_dir=ltx_debug_dir,
+        facefix_dir=facefix_dir,
         final_concat_video=artifact_layout.video_only,
         final_concat=artifact_layout.movie,
         final_concat_scene_audio_debug=artifact_layout.final_dir / "scene_audio_debug.mp4",

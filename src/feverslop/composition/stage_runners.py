@@ -544,6 +544,28 @@ def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
     )
 
 
+def _run_facefix_stage(state: PipelineRunState) -> None:
+    from feverslop.composition.facefix_pipeline import FaceFixCompositionOptions, run_facefix
+    from feverslop.composition.facefix_pipeline import discover_scene_numbers
+
+    rendered_dir = state.context.ltx_dir
+    scene_numbers = discover_scene_numbers(rendered_dir)
+    if not scene_numbers:
+        console.print(f"[yellow]No rendered scenes found in {rendered_dir}, FaceFix skipped.[/yellow]")
+        return
+
+    options = FaceFixCompositionOptions(
+        app_config_path=str(state.app_config_path),
+        workflow_path=str(state.facefix_workflow),
+        output_dir=str(state.context.facefix_dir),
+        rendered_dir=str(rendered_dir),
+        project_dir=str(state.context.project_config_dir),
+        scene_numbers=scene_numbers,
+        skip_existing=not state.args.no_skip_existing,
+    )
+    run_facefix(options, console=console)
+
+
 STAGE_RUNNERS = {
     PipelineStage.TESTS: _run_tests_stage,
     PipelineStage.MAIN_PIPELINE: _run_main_pipeline_stage,
@@ -560,6 +582,7 @@ STAGE_RUNNERS = {
     PipelineStage.CONCAT_VIDEO_ONLY: _run_concat_video_only_stage,
     PipelineStage.MUX_ORIGINAL_AUDIO: _run_mux_original_audio_stage,
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: _run_diagnostic_scene_audio_concat_stage,
+    PipelineStage.FACEFIX: _run_facefix_stage,
 }
 
 STAGE_LABELS = {
@@ -578,6 +601,7 @@ STAGE_LABELS = {
     PipelineStage.CONCAT_VIDEO_ONLY: "Final concat video-only",
     PipelineStage.MUX_ORIGINAL_AUDIO: "Mux original audio",
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: "Diagnostic scene-audio concat",
+    PipelineStage.FACEFIX: "FaceFix postprocessing",
 }
 
 
@@ -646,6 +670,10 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         if args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
             stages.append(PipelineStage.LTX_PREPARE_WORKFLOWS)
         stages.append(PipelineStage.LTX_RENDER_SCENES)
+    if not args.skip_facefix:
+        stages.append(PipelineStage.FACEFIX)
+    else:
+        console.print("Skipping FaceFix postprocessing.")
     if not args.skip_final_concat:
         stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         stages.append(PipelineStage.MUX_ORIGINAL_AUDIO)
