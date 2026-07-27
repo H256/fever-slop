@@ -12,3 +12,5 @@ wheels/
 projects
 .agent
 app_config.json
+
+temp*
