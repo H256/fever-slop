@@ -1,0 +1,22 @@
+Create the dramaturgical story design for this movie. This is pre-screenplay story editing, not renderer prompt writing.
+
+Return JSON with:
+{{ "{" }}title{{ "}" }}: string, {{ "{" }}premise{{ "}" }}: string, {{ "{" }}theme{{ "}" }}: string, {{ "{" }}act_structure{{ "}" }}: [{{ "{" }}act_id{{ "}" }}: string, {{ "{" }}title{{ "}" }}: string, {{ "{" }}purpose{{ "}" }}: string, {{ "{" }}scene_ids{{ "}" }}: [string]{{ "}" }}], {{ "{" }}turning_points{{ "}" }}: [{{ "{" }}id{{ "}" }}: string, {{ "{" }}scene_id{{ "}" }}: string, {{ "{" }}description{{ "}" }}: string{{ "}" }}], {{ "{" }}setup_payoff_threads{{ "}" }}: [{{ "{" }}id{{ "}" }}: string, {{ "{" }}setup_scene_id{{ "}" }}: string, {{ "{" }}payoff_scene_id{{ "}" }}: string, {{ "{" }}description{{ "}" }}: string{{ "}" }}], {{ "{" }}character_arcs{{ "}" }}: [{{ "{" }}actor_id{{ "}" }}: string, {{ "{" }}want{{ "}" }}: string, {{ "{" }}need{{ "}" }}: string, {{ "{" }}starting_state{{ "}" }}: string, {{ "{" }}ending_state{{ "}" }}: string{{ "}" }}], {{ "{" }}scene_blueprint{{ "}" }}: [{{ "{" }}scene_id{{ "}" }}: "scene_0001", {{ "{" }}purpose{{ "}" }}: string, {{ "{" }}conflict{{ "}" }}: string, {{ "{" }}emotional_turn{{ "}" }}: string, {{ "{" }}subtext{{ "}" }}: string, {{ "{" }}dialogue_function{{ "}" }}: string, {{ "{" }}required_actors{{ "}" }}: [string], {{ "{" }}location_id{{ "}" }}: string, {{ "{" }}expected_duration{{ "}" }}: number{{ "}" }}]{{ "}" }}
+
+Rules:
+- Write all story-design prose in English: premise, theme, act purposes, turning points, setup/payoff descriptions, character arcs, scene purpose, conflict, emotional_turn, subtext, and dialogue_function.
+- {{ screenplay_rule }}
+- Write screenplay craft, not a scene list: every scene needs a dramatic purpose, conflict, emotional turn, subtext, and dialogue function.
+- actor_ids/required_actors must only use these ids: {{ actor_ids }}
+- location_id must only use these ids: {{ location_ids }}
+- No scene may require more than {{ max_scene_actors }} actors.
+- Dialogue language is {{ dialogue_language }}.
+- Do not include camera, renderer, ComfyUI, MSR, reference-sheet, or visual prompt instructions.
+- Target total duration seconds: {{ desired_length }}.
+
+Title: {{ title }}
+Story arch: {{ story_arch_json }}
+Bible: {{ bible_json }}
+Config: {{ config_json }}
+Source:
+{{ story_text }}

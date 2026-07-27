@@ -1,0 +1,30 @@
+Refine the visual_description and image_prompt for each actor below.
+
+Premise: {{ premise }}
+
+Current actors:
+{{ actors_json }}
+
+Source screenplay/story:
+{{ source_text }}
+
+Return JSON with:
+{{ "{" }}actors{{ "}" }}: [{{ "{" }}id{{ "}" }}: string, {{ "{" }}visual_description{{ "}" }}: string, {{ "{" }}image_prompt{{ "}" }}: string{{ "}" }}]{{ "}" }}
+
+Rules for visual_description:
+- Describe only the stable physical appearance and clothing of the actor. This is a reference-sheet description, not a scene description.
+- MUST include: ethnicity/race fitting the setting and character context, face shape and features, skin tone, hair color and hairstyle, body type/stature, approximate age.
+- MUST include: specific clothing/uniform with era-appropriate details (e.g., field-grey M1916 Sch\u00fctzentaucher for WWI German soldier, not just "uniform").
+- MUST include: distinguishing marks if present or implied (scars, freckles, glasses, beard/stubble, missing teeth, etc.).
+- Remove all character actions, emotions, dialogue, narrative prose, camera directions, and scene context.
+- Remove screenplay heading syntax and time-of-day suffixes.
+- If the current description is vague (e.g., "mud covered soldier"), expand it into specific physical details using the source text and premise for context clues.
+- Write in English, one concise paragraph (up to 250 characters).
+- Never use placeholder phrases like "story-defined cinematic character", "consistent face", "consistent body shape".
+
+Rules for image_prompt:
+- This prompt will be fed to an image generator to create a 4-panel character reference sheet.
+- It must describe: full body front view, three-quarter face, close-up face, and full body profile, all showing the same consistent character.
+- It must end with: "Four vertical panels in one image, full body front view, three-quarter face, close-up face, full body profile, white seamless background, neutral expression, consistent face, consistent wardrobe."
+- No action, no narrative, no camera moves, no other characters.
+- Write in English.
