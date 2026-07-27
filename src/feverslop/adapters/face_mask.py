@@ -34,17 +34,20 @@ class FaceMaskAdapter(FaceMaskPort):
         cy = int((box.y1 + box.y2) / 2.0)
         radius = max(int(box.width / 2.0), int(box.height / 2.0))
 
+        # Scale feather relative to box size for small faces
+        adaptive_feather = min(feather_radius, max(1, radius // 4))
+
         # Create radial gradient
         y, x = np.ogrid[:frame_height, :frame_width]
         dist = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
 
         # Inner circle (full mask)
-        inner_radius = max(1, radius - feather_radius)
+        inner_radius = max(1, radius - adaptive_feather)
         mask[dist <= inner_radius] = 1.0
 
         # Feather transition
         feather_region = (dist > inner_radius) & (dist <= radius)
-        mask[feather_region] = 1.0 - (dist[feather_region] - inner_radius) / feather_radius
+        mask[feather_region] = 1.0 - (dist[feather_region] - inner_radius) / adaptive_feather
 
         return (mask * 255).astype(np.uint8)
 
