@@ -124,9 +124,11 @@ class DebugArtifactPort(Protocol):
         frame: np.ndarray,
         detections: list[FaceDetection],
         decision_reason: str,
+        extra_info: dict[str, str] | None = None,
     ) -> Path:
         """Save frame with detection boxes drawn.
 
+        extra_info adds additional pipeline context lines to the overlay.
         Returns the path to the saved file.
         """
 

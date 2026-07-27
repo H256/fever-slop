@@ -71,7 +71,7 @@ class FakeDebugPort:
         self.images.append((frame_index, label, image))
         return MagicMock()
 
-    def write_detection_overlay(self, frame_index, frame, detections, decision_reason):
+    def write_detection_overlay(self, frame_index, frame, detections, decision_reason, extra_info=None):
         self.images.append((frame_index, "detection", frame))
         return MagicMock()
 

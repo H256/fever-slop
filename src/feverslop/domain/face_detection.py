@@ -164,13 +164,13 @@ class RejectReason(str, Enum):
 
 @dataclass(frozen=True)
 class FaceProcessingPolicy:
-    min_detection_score: float = 0.85
+    min_detection_score: float = 0.3
     min_identity_score: float | None = None
-    min_face_width: float = 48.0
-    min_face_height: float = 48.0
+    min_face_width: float = 16.0
+    min_face_height: float = 16.0
     max_face_frame_ratio: float = 0.80
-    min_face_aspect_ratio: float = 0.55
-    max_face_aspect_ratio: float = 1.45
+    min_face_aspect_ratio: float = 0.3
+    max_face_aspect_ratio: float = 2.5
     track_confirmation_frames: int = 3
     track_max_missing_frames: int = 6
     min_track_iou: float = 0.20
