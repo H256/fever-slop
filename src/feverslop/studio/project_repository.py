@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from feverslop.adapters.movie_planning import DeterministicMoviePlanner, LLMMoviePlanner
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.ports.reporting import Reporter
@@ -92,6 +93,7 @@ class ProjectRepository:
         result = ScaffoldMovieUseCase(
             planner=build_movie_planner(movie_config),
             projects_root=self.projects_root,
+            artifact_writer=LocalMovieArtifactWriter(),
             reporter=self.reporter,
         ).execute(
             MovieInput(

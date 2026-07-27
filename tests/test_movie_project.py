@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from tests.studio_harness import NativeStudioHarness
 
 
@@ -150,6 +151,51 @@ class FakeMoviePlanner:
                 location_id="llm_location",
             ),
         )
+
+    def generate_movie_bible(self, *, title, source_type, story_text, desired_length, story_arch, config):
+        from feverslop.domain.movie import MovieActor, MovieBible, MovieLocation
+
+        return MovieBible(
+            title=title,
+            premise="LLM premise",
+            story_arch=story_arch,
+            actors=(MovieActor(id="mara", name="Mara", role="lead", visual_description="LLM actor"),),
+            locations=(MovieLocation(id="llm_location", name="LLM Location", visual_description="LLM location"),),
+            continuity=(),
+            style_constraints=(),
+            runtime_constraints={"desired_length": desired_length},
+        )
+
+    def plan_shots_from_bible(self, *, bible, screenplay=None, desired_length, width, height, min_duration=4.0, max_duration=20.0):
+        from feverslop.domain.movie import CinematicShot
+
+        self.shot_calls.append((bible, desired_length, width, height))
+        return (
+            CinematicShot(
+                shot_id="shot_0001",
+                description="LLM shot",
+                duration_seconds=float(desired_length),
+                camera="LLM camera",
+                action="LLM action",
+                expression="LLM expression",
+                location="LLM location",
+                dialogue="MARA: LLM line",
+                actor_ids=("mara",),
+                location_id="llm_location",
+            ),
+        )
+
+    def generate_movie_continuity_plan(self, *, title, source_type, story_text, desired_length, bible, shots, config):
+        return {}
+
+    def generate_movie_story_design(self, *, title, source_type, story_text, desired_length, bible, story_arch, config):
+        return {}
+
+    def generate_movie_screenplay(self, *, title, source_type, story_text, desired_length, bible, story_arch, story_design, config):
+        return {}
+
+    def generate_movie_narrative_plan(self, *, title, source_type, desired_length, bible, screenplay, config):
+        return {}
 
 
 class MovieProjectTests(unittest.TestCase):
@@ -318,7 +364,7 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir)).execute(
+            ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
                 MovieInput(
                     name="Archive Memory",
                     source_type="screenplay",
@@ -375,7 +421,7 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            result = ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir)).execute(
+            result = ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
                 MovieInput(
                     name="Compass Radio",
                     source_type="short_story",
@@ -456,8 +502,20 @@ class MovieProjectTests(unittest.TestCase):
                     ),
                 )
 
+            def generate_movie_continuity_plan(self, **_kwargs):
+                return {}
+
+            def generate_movie_story_design(self, **_kwargs):
+                return {}
+
+            def generate_movie_screenplay(self, **_kwargs):
+                return {}
+
+            def generate_movie_narrative_plan(self, **_kwargs):
+                return {}
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            ScaffoldMovieUseCase(planner=BiblePlanner(), projects_root=Path(temp_dir)).execute(
+            ScaffoldMovieUseCase(planner=BiblePlanner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
                 MovieInput(
                     name="Archive",
                     source_type="short_story",
@@ -503,7 +561,7 @@ class MovieProjectTests(unittest.TestCase):
             "max_scene_actors": 1,
         }
         with tempfile.TemporaryDirectory() as temp_dir:
-            ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir)).execute(
+            ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
                 MovieInput(
                     name="Configured Movie",
                     source_type="short_story",
@@ -1878,6 +1936,7 @@ class MovieProjectTests(unittest.TestCase):
             result = ScaffoldMovieUseCase(
                 planner=DeterministicMoviePlanner(),
                 projects_root=Path(temp_dir),
+                artifact_writer=LocalMovieArtifactWriter(),
             ).execute(
                 MovieInput(
                     name="Door Below",
@@ -1949,8 +2008,26 @@ class MovieProjectTests(unittest.TestCase):
                     ),
                 )
 
+            def generate_movie_bible(self, **_kwargs):
+                return {}
+
+            def plan_shots_from_bible(self, **_kwargs):
+                return self.plan_shots()
+
+            def generate_movie_continuity_plan(self, **_kwargs):
+                return {}
+
+            def generate_movie_story_design(self, **_kwargs):
+                return {}
+
+            def generate_movie_screenplay(self, **_kwargs):
+                return {}
+
+            def generate_movie_narrative_plan(self, **_kwargs):
+                return {}
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            ScaffoldMovieUseCase(planner=Planner(), projects_root=Path(temp_dir)).execute(
+            ScaffoldMovieUseCase(planner=Planner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
                 MovieInput(
                     name="Void",
                     source_type="short_story",
@@ -2011,8 +2088,26 @@ class MovieProjectTests(unittest.TestCase):
                     ),
                 )
 
+            def generate_movie_bible(self, **_kwargs):
+                return {}
+
+            def plan_shots_from_bible(self, **_kwargs):
+                return self.plan_shots()
+
+            def generate_movie_continuity_plan(self, **_kwargs):
+                return {}
+
+            def generate_movie_story_design(self, **_kwargs):
+                return {}
+
+            def generate_movie_screenplay(self, **_kwargs):
+                return {}
+
+            def generate_movie_narrative_plan(self, **_kwargs):
+                return {}
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            result = ScaffoldMovieUseCase(planner=Planner(), projects_root=Path(temp_dir)).execute(
+            result = ScaffoldMovieUseCase(planner=Planner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
                 MovieInput(
                     name="Void",
                     source_type="short_story",
@@ -2064,6 +2159,7 @@ class MovieProjectTests(unittest.TestCase):
                 scaffold=ScaffoldMovieUseCase(
                     planner=DeterministicMoviePlanner(),
                     projects_root=Path(temp_dir),
+                    artifact_writer=LocalMovieArtifactWriter(),
                 ),
                 reference_generator=reference_generator,
                 visual_backend=visual_backend,
@@ -2101,6 +2197,7 @@ class MovieProjectTests(unittest.TestCase):
             result = ScaffoldMovieUseCase(
                 planner=DeterministicMoviePlanner(),
                 projects_root=Path(temp_dir),
+                artifact_writer=LocalMovieArtifactWriter(),
             ).execute(
                 MovieInput(
                     name="Door Below",
@@ -2151,9 +2248,10 @@ class MovieProjectTests(unittest.TestCase):
             result = ScaffoldMovieUseCase(
                 planner=DeterministicMoviePlanner(),
                 projects_root=Path(temp_dir),
+                artifact_writer=LocalMovieArtifactWriter(),
             ).execute(
                 MovieInput(
-                    name="Mud Silence",
+                    name="Door Below",
                     source_type="screenplay",
                     story_text=screenplay,
                     desired_length=20,
@@ -2272,6 +2370,7 @@ class MovieProjectTests(unittest.TestCase):
             result = ScaffoldMovieUseCase(
                 planner=DeterministicMoviePlanner(),
                 projects_root=Path(temp_dir),
+                artifact_writer=LocalMovieArtifactWriter(),
             ).execute(
                 MovieInput(
                     name="Blackwood",
@@ -2680,6 +2779,7 @@ class MovieProjectTests(unittest.TestCase):
             result = ScaffoldMovieUseCase(
                 planner=DeterministicMoviePlanner(),
                 projects_root=Path(temp_dir),
+                artifact_writer=LocalMovieArtifactWriter(),
             ).execute(
                 MovieInput(
                     name="Unformatted Idea",
@@ -2713,6 +2813,7 @@ class MovieProjectTests(unittest.TestCase):
             result = ScaffoldMovieUseCase(
                 planner=DeterministicMoviePlanner(),
                 projects_root=Path(temp_dir),
+                artifact_writer=LocalMovieArtifactWriter(),
             ).execute(
                 MovieInput(
                     name="Door Below",

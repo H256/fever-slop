@@ -3,6 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
+from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from feverslop.domain.movie import MovieActor
 
 
@@ -273,9 +274,21 @@ class TestScaffoldWithRefineActors(unittest.TestCase):
                     ),
                 )
 
+            def generate_movie_continuity_plan(self, **_kwargs):
+                return {}
+
+            def generate_movie_story_design(self, **_kwargs):
+                return {}
+
+            def generate_movie_screenplay(self, **_kwargs):
+                return {}
+
+            def generate_movie_narrative_plan(self, **_kwargs):
+                return {}
+
         with tempfile.TemporaryDirectory() as temp_dir:
             planner = RefineActorPlanner()
-            ScaffoldMovieUseCase(planner=planner, projects_root=Path(temp_dir)).execute(
+            ScaffoldMovieUseCase(planner=planner, projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
                 MovieInput(
                     name="Refine Test",
                     source_type="short_story",

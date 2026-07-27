@@ -38,7 +38,13 @@ from feverslop.application.movie_memory import (
     movie_shot_cards_to_dict,
     movie_story_design_to_dict,
 )
-from feverslop.ports.movie import ReferenceGenerationPort, ScenePlanningPort, StoryGenerationPort, VisualGenerationPort
+from feverslop.ports.movie import (
+    MovieArtifactWriter,
+    ReferenceGenerationPort,
+    ScenePlanningPort,
+    StoryGenerationPort,
+    VisualGenerationPort,
+)
 from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
 
 
@@ -81,9 +87,18 @@ class MovieProductionResult(MovieScaffoldResult):
 
 
 class ScaffoldMovieUseCase:
-    def __init__(self, *, planner: StoryGenerationPort & ScenePlanningPort, projects_root: Path, console: Any | None = None, reporter: Reporter | None = None):
+    def __init__(
+        self,
+        *,
+        planner: StoryGenerationPort & ScenePlanningPort,
+        projects_root: Path,
+        artifact_writer: MovieArtifactWriter,
+        console: Any | None = None,
+        reporter: Reporter | None = None,
+    ):
         self.planner = planner
         self.projects_root = Path(projects_root)
+        self.artifact_writer = artifact_writer
         if reporter is not None:
             self.reporter = reporter
         elif console is not None:
@@ -199,8 +214,8 @@ class ScaffoldMovieUseCase:
                 "mode": request.mode,
             },
         }
-        (project_dir / ".studio").mkdir(parents=True, exist_ok=True)
-        (project_dir / ".studio" / "project.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        writer = self.artifact_writer
+        writer.write_json(project_dir / ".studio" / "project.json", metadata)
 
         story_arch_path = movie_dir / "story_arch.json"
         bible_path = movie_dir / "bible.json"
@@ -213,20 +228,19 @@ class ScaffoldMovieUseCase:
         shot_cards_path = movie_dir / "shot_cards.json"
         render_plan_path = movie_dir / "render_plan.json"
         reference_manifest_path = movie_dir / "references" / "manifest.json"
-        story_arch_path.write_text(json.dumps(asdict(movie.story_arch), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        bible_path.write_text(json.dumps(_bible_dict(movie.bible), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        story_design_path.write_text(json.dumps(movie_story_design_to_dict(story_design), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        screenplay_path.write_text(json.dumps(movie_screenplay_to_dict(screenplay), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        screenplay_md_path.write_text(movie_screenplay_to_markdown(screenplay), encoding="utf-8")
-        narrative_plan_path.write_text(json.dumps(movie_narrative_plan_to_dict(narrative_plan), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        scene_cards_path.write_text(json.dumps(movie_scene_cards_to_dict(scene_cards), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        continuity_plan_path.write_text(json.dumps(movie_continuity_plan_to_dict(continuity_plan), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        shot_cards_path.write_text(json.dumps(movie_shot_cards_to_dict(shot_cards), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        writer.write_json(story_arch_path, asdict(movie.story_arch))
+        writer.write_json(bible_path, _bible_dict(movie.bible))
+        writer.write_json(story_design_path, movie_story_design_to_dict(story_design))
+        writer.write_json(screenplay_path, movie_screenplay_to_dict(screenplay))
+        writer.write_text(screenplay_md_path, movie_screenplay_to_markdown(screenplay))
+        writer.write_json(narrative_plan_path, movie_narrative_plan_to_dict(narrative_plan))
+        writer.write_json(scene_cards_path, movie_scene_cards_to_dict(scene_cards))
+        writer.write_json(continuity_plan_path, movie_continuity_plan_to_dict(continuity_plan))
+        writer.write_json(shot_cards_path, movie_shot_cards_to_dict(shot_cards))
         if config:
-            (project_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        render_plan_path.write_text(json.dumps(_render_plan(movie, shot_cards=shot_cards), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        reference_manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        reference_manifest_path.write_text(json.dumps(_reference_manifest(movie), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            writer.write_json(project_dir / "config.json", config)
+        writer.write_json(render_plan_path, _render_plan(movie, shot_cards=shot_cards))
+        writer.write_json(reference_manifest_path, _reference_manifest(movie))
         return MovieScaffoldResult(
             slug,
             project_dir,
@@ -363,39 +377,25 @@ def _reference_manifest(movie: MovieProject) -> dict:
 
 
 
-def generate_movie_bible(*, planner, request: MovieInput, story_arch, config: dict) -> MovieBible:
-    generator = getattr(planner, "generate_movie_bible", None)
-    if callable(generator):
-        bible = generator(
-            title=request.name,
-            source_type=request.source_type,
-            story_text=_planner_source_text(request, config),
-            desired_length=float(request.desired_length),
-            story_arch=story_arch,
-            config=config,
-        )
-        if isinstance(bible, MovieBible):
-            return _normalize_movie_bible(bible, story_arch=story_arch, config=config, request=request)
+def generate_movie_bible(*, planner: ScenePlanningPort, request: MovieInput, story_arch, config: dict) -> MovieBible:
+    bible = planner.generate_movie_bible(
+        title=request.name,
+        source_type=request.source_type,
+        story_text=_planner_source_text(request, config),
+        desired_length=float(request.desired_length),
+        story_arch=story_arch,
+        config=config,
+    )
+    if isinstance(bible, MovieBible):
+        return _normalize_movie_bible(bible, story_arch=story_arch, config=config, request=request)
     return _movie_bible_from_config(request=request, story_arch=story_arch, config=config)
 
 
-def plan_movie_shots_from_bible(*, planner, bible: MovieBible, screenplay, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> tuple[CinematicShot, ...]:
-    planner_from_bible = getattr(planner, "plan_shots_from_bible", None)
-    if callable(planner_from_bible):
-        return tuple(
-            planner_from_bible(
-                bible=bible,
-                screenplay=screenplay,
-                desired_length=desired_length,
-                width=width,
-                height=height,
-                min_duration=min_duration,
-                max_duration=max_duration,
-            )
-        )
+def plan_movie_shots_from_bible(*, planner: ScenePlanningPort, bible: MovieBible, screenplay, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> tuple[CinematicShot, ...]:
     return tuple(
-        planner.plan_shots(
-            story_arch=bible.story_arch,
+        planner.plan_shots_from_bible(
+            bible=bible,
+            screenplay=screenplay,
             desired_length=desired_length,
             width=width,
             height=height,
@@ -405,25 +405,20 @@ def plan_movie_shots_from_bible(*, planner, bible: MovieBible, screenplay, desir
     )
 
 
-def generate_movie_continuity_plan(*, planner, request: MovieInput, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> MovieContinuityPlan:
-    generator = getattr(planner, "generate_movie_continuity_plan", None)
-    if callable(generator):
-        try:
-            raw = generator(
-                title=request.name,
-                source_type=request.source_type,
-                story_text=_planner_source_text(request, config),
-                desired_length=float(request.desired_length),
-                bible=bible,
-                shots=shots,
-                config=config,
-            )
-            if isinstance(raw, MovieContinuityPlan):
-                return normalize_movie_continuity_plan(raw, bible=bible, shots=shots)
-            if isinstance(raw, dict):
-                return movie_continuity_plan_from_dict(raw, bible=bible, shots=shots)
-        except Exception:
-            pass
+def generate_movie_continuity_plan(*, planner: ScenePlanningPort, request: MovieInput, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> MovieContinuityPlan:
+    raw = planner.generate_movie_continuity_plan(
+        title=request.name,
+        source_type=request.source_type,
+        story_text=_planner_source_text(request, config),
+        desired_length=float(request.desired_length),
+        bible=bible,
+        shots=shots,
+        config=config,
+    )
+    if isinstance(raw, MovieContinuityPlan):
+        return normalize_movie_continuity_plan(raw, bible=bible, shots=shots)
+    if isinstance(raw, dict):
+        return movie_continuity_plan_from_dict(raw, bible=bible, shots=shots)
     return build_movie_continuity_fallback(bible=bible, shots=shots)
 
 

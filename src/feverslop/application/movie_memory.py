@@ -24,45 +24,42 @@ from feverslop.domain.movie import (
     MovieStoryDesign,
     MovieTurningPoint,
 )
+from feverslop.ports.movie import ScenePlanningPort
 
 
-def generate_movie_story_design(*, planner, request: Any, bible: MovieBible, story_arch, config: dict, source_text: str) -> MovieStoryDesign:
-    generator = getattr(planner, "generate_movie_story_design", None)
-    if callable(generator):
-        raw = generator(
-            title=request.name,
-            source_type=request.source_type,
-            story_text=source_text,
-            desired_length=float(request.desired_length),
-            bible=bible,
-            story_arch=story_arch,
-            config=config,
-        )
-        if isinstance(raw, MovieStoryDesign):
-            return raw
-        if isinstance(raw, dict) and raw.get("scene_blueprint"):
-            max_actors = int(config.get("max_scene_actors") or (bible.runtime_constraints or {}).get("max_scene_actors") or 4)
-            return movie_story_design_from_dict(raw, fallback_title=request.name, bible=bible, max_scene_actors=max_actors)
+def generate_movie_story_design(*, planner: ScenePlanningPort, request: Any, bible: MovieBible, story_arch, config: dict, source_text: str) -> MovieStoryDesign:
+    raw = planner.generate_movie_story_design(
+        title=request.name,
+        source_type=request.source_type,
+        story_text=source_text,
+        desired_length=float(request.desired_length),
+        bible=bible,
+        story_arch=story_arch,
+        config=config,
+    )
+    if isinstance(raw, MovieStoryDesign):
+        return raw
+    if isinstance(raw, dict) and raw.get("scene_blueprint"):
+        max_actors = int(config.get("max_scene_actors") or (bible.runtime_constraints or {}).get("max_scene_actors") or 4)
+        return movie_story_design_from_dict(raw, fallback_title=request.name, bible=bible, max_scene_actors=max_actors)
     return build_movie_story_design_fallback(request=request, bible=bible, story_arch=story_arch, config=config)
 
 
-def generate_movie_screenplay(*, planner, request: Any, bible: MovieBible, story_arch, story_design: MovieStoryDesign, config: dict, source_text: str) -> MovieScreenplayArtifact:
-    generator = getattr(planner, "generate_movie_screenplay", None)
-    if callable(generator):
-        raw = generator(
-            title=request.name,
-            source_type=request.source_type,
-            story_text=source_text,
-            desired_length=float(request.desired_length),
-            bible=bible,
-            story_arch=story_arch,
-            story_design=story_design,
-            config=config,
-        )
-        if isinstance(raw, MovieScreenplayArtifact):
-            return raw
-        if isinstance(raw, dict) and raw.get("scenes"):
-            return movie_screenplay_from_dict(raw, fallback_title=request.name, source_type=request.source_type, bible=bible)
+def generate_movie_screenplay(*, planner: ScenePlanningPort, request: Any, bible: MovieBible, story_arch, story_design: MovieStoryDesign, config: dict, source_text: str) -> MovieScreenplayArtifact:
+    raw = planner.generate_movie_screenplay(
+        title=request.name,
+        source_type=request.source_type,
+        story_text=source_text,
+        desired_length=float(request.desired_length),
+        bible=bible,
+        story_arch=story_arch,
+        story_design=story_design,
+        config=config,
+    )
+    if isinstance(raw, MovieScreenplayArtifact):
+        return raw
+    if isinstance(raw, dict) and raw.get("scenes"):
+        return movie_screenplay_from_dict(raw, fallback_title=request.name, source_type=request.source_type, bible=bible)
     return build_movie_screenplay_fallback(request=request, bible=bible, story_arch=story_arch, story_design=story_design, config=config)
 
 
@@ -145,21 +142,19 @@ def build_movie_screenplay_fallback(*, request: Any, bible: MovieBible, story_ar
     )
 
 
-def generate_movie_narrative_plan(*, planner, request: Any, bible: MovieBible, screenplay: MovieScreenplayArtifact, config: dict) -> MovieNarrativePlan:
-    generator = getattr(planner, "generate_movie_narrative_plan", None)
-    if callable(generator):
-        raw = generator(
-            title=request.name,
-            source_type=request.source_type,
-            desired_length=float(request.desired_length),
-            bible=bible,
-            screenplay=screenplay,
-            config=config,
-        )
-        if isinstance(raw, MovieNarrativePlan):
-            return raw
-        if isinstance(raw, dict) and (raw.get("sequences") or raw.get("causal_chain")):
-            return movie_narrative_plan_from_dict(raw, fallback_title=request.name)
+def generate_movie_narrative_plan(*, planner: ScenePlanningPort, request: Any, bible: MovieBible, screenplay: MovieScreenplayArtifact, config: dict) -> MovieNarrativePlan:
+    raw = planner.generate_movie_narrative_plan(
+        title=request.name,
+        source_type=request.source_type,
+        desired_length=float(request.desired_length),
+        bible=bible,
+        screenplay=screenplay,
+        config=config,
+    )
+    if isinstance(raw, MovieNarrativePlan):
+        return raw
+    if isinstance(raw, dict) and (raw.get("sequences") or raw.get("causal_chain")):
+        return movie_narrative_plan_from_dict(raw, fallback_title=request.name)
     return build_movie_narrative_plan_fallback(screenplay=screenplay)
 
 
