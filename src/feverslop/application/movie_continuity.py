@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import re
 from dataclasses import replace
-from typing import Any
 
 from feverslop.domain.movie import (
     CinematicShot,
@@ -15,8 +13,9 @@ from feverslop.domain.movie import (
     MovieNarrativeBeat,
     MovieSceneContinuityPacket,
 )
-from feverslop.application.movie_common import (
-    _looks_like_screenplay_dump,
+from feverslop.domain.movie_continuity import (
+    _narrative_for_shot,
+    _safe_continuity_facts,
 )
 from feverslop.domain.movie_utils import string_list
 
@@ -54,129 +53,11 @@ def apply_movie_continuity_to_shots(shots: tuple[CinematicShot, ...], continuity
 
 
 def build_movie_continuity_fallback(*, bible: MovieBible, shots: tuple[CinematicShot, ...]) -> MovieContinuityPlan:
-    style_bible = MovieContinuityStyleBible(
-        visual_style="; ".join(bible.style_constraints),
-        negative_constraints=("visible text", "unmotivated wardrobe changes", "unexplained prop changes"),
-    )
-    characters = {
-        actor.id: MovieContinuityCharacterState(
-            character_id=actor.id,
-            base_identity=actor.visual_description or actor.name,
-            wardrobe=actor.visual_description or actor.name,
-            emotional_state=actor.role,
-        )
-        for actor in bible.actors
-    }
-    locations = {
-        location.id: MovieContinuityLocationState(
-            location_id=location.id,
-            name=location.name,
-            environmental_state=location.visual_description,
-        )
-        for location in bible.locations
-    }
-    scene_continuity: dict[str, MovieSceneContinuityPacket] = {}
-    narrative_chain: list[MovieNarrativeBeat] = []
-    previous_outgoing: tuple[str, ...] = ()
-    previous_after = bible.premise or bible.story_arch.premise
-    for index, shot in enumerate(shots):
-        shot_characters = {
-            actor_id: replace(
-                characters.get(actor_id)
-                or MovieContinuityCharacterState(character_id=actor_id, base_identity=actor_id.replace("_", " ").title()),
-                last_location=shot.location_id or shot.location,
-                last_action=shot.action or shot.description,
-                emotional_state=shot.expression,
-            )
-            for actor_id in shot.actor_ids
-        }
-        location = locations.get(shot.location_id) or MovieContinuityLocationState(
-            location_id=shot.location_id or "primary_location",
-            name=shot.location,
-            environmental_state=shot.location,
-        )
-        carryovers = tuple(
-            item
-            for item in [
-                *_safe_continuity_facts(rule.description for rule in bible.continuity if rule.description),
-                *(f"{actor_id} identity and wardrobe remain consistent" for actor_id in shot.actor_ids),
-                f"location remains {location.name or shot.location}" if location.name or shot.location else "",
-            ]
-            if item
-        )
-        outgoing = tuple(item for item in [shot.action or shot.description, shot.dialogue, shot.expression] if item)
-        scene_continuity[shot.shot_id] = MovieSceneContinuityPacket(
-            shot_id=shot.shot_id,
-            location_id=shot.location_id,
-            incoming=previous_outgoing,
-            required_carryovers=carryovers,
-            allowed_changes=tuple(item for item in [shot.action, shot.camera] if item),
-            outgoing=outgoing,
-            characters=shot_characters,
-            location=location,
-        )
-        next_shot = shots[index + 1] if index + 1 < len(shots) else None
-        state_before = previous_after or f"Before {shot.shot_id}, the story is ready for the next beat."
-        state_after = shot.action or shot.description or f"{shot.shot_id} completes its story beat."
-        narrative_chain.append(
-            MovieNarrativeBeat(
-                shot_id=shot.shot_id,
-                story_state_before=state_before,
-                story_state_after=state_after,
-                cause_from_previous="Opening beat establishes the premise." if index == 0 else f"Previous beat leaves: {'; '.join(previous_outgoing) or previous_after}",
-                narrative_purpose=shot.description,
-                conflict_or_tension=shot.expression or "story tension continues",
-                turning_point=shot.action or shot.description,
-                sets_up_next=(next_shot.description if next_shot else "Final beat resolves the current movie arc."),
-            )
-        )
-        previous_outgoing = outgoing
-        previous_after = state_after
-    return MovieContinuityPlan(
-        continuity_ledger=MovieContinuityLedger(
-            style_bible=style_bible,
-            characters=characters,
-            locations=locations,
-            scene_order=tuple(shot.shot_id for shot in shots),
-        ),
-        scene_continuity=scene_continuity,
-        narrative_chain=tuple(narrative_chain),
-    )
-
-
-def _safe_continuity_facts(value: Any) -> tuple[str, ...]:
-    candidates = _split_continuity_text(value)
-    facts: list[str] = []
-    for candidate in candidates:
-        fact = " ".join(str(candidate or "").split()).strip(" .")
-        if not fact or _looks_like_screenplay_dump(fact):
-            continue
-        if fact not in facts:
-            facts.append(fact)
-    return tuple(facts)
-
-
-def _split_continuity_text(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [part.strip() for part in re.split(r"[;\n]+", value) if part.strip()]
-    if hasattr(value, "__iter__"):
-        parts: list[str] = []
-        for item in value:
-            parts.extend(_split_continuity_text(item))
-        return parts
-    return [str(value).strip()] if str(value).strip() else []
+    return MovieContinuityPlan.fallback(bible=bible, shots=shots)
 
 
 def normalize_movie_continuity_plan(plan: MovieContinuityPlan, *, bible: MovieBible, shots: tuple[CinematicShot, ...]) -> MovieContinuityPlan:
-    fallback = build_movie_continuity_fallback(bible=bible, shots=shots)
-    shot_ids = [shot.shot_id for shot in shots]
-    return MovieContinuityPlan(
-        continuity_ledger=plan.continuity_ledger or fallback.continuity_ledger,
-        scene_continuity={shot_id: plan.scene_continuity.get(shot_id) or fallback.scene_continuity[shot_id] for shot_id in shot_ids},
-        narrative_chain=tuple(_narrative_for_shot(shot_id, plan.narrative_chain, fallback.narrative_chain) for shot_id in shot_ids),
-    )
+    return plan.normalize(bible=bible, shots=shots)
 
 
 def movie_continuity_plan_to_dict(plan: MovieContinuityPlan) -> dict:
@@ -229,26 +110,6 @@ def movie_continuity_plan_from_dict(data: dict, *, bible: MovieBible, shots: tup
         scene_continuity=scene_continuity,
         narrative_chain=narrative_chain,
     )
-
-
-def _narrative_for_shot(shot_id: str, planned: tuple[MovieNarrativeBeat, ...], fallback: tuple[MovieNarrativeBeat, ...]) -> MovieNarrativeBeat:
-    by_id = {beat.shot_id: beat for beat in planned}
-    fallback_by_id = {beat.shot_id: beat for beat in fallback}
-    candidate = by_id.get(shot_id)
-    base = fallback_by_id[shot_id]
-    if candidate is None:
-        return base
-    return MovieNarrativeBeat(
-        shot_id=shot_id,
-        story_state_before=candidate.story_state_before or base.story_state_before,
-        story_state_after=candidate.story_state_after or base.story_state_after,
-        cause_from_previous=candidate.cause_from_previous or base.cause_from_previous,
-        narrative_purpose=candidate.narrative_purpose or base.narrative_purpose,
-        conflict_or_tension=candidate.conflict_or_tension or base.conflict_or_tension,
-        turning_point=candidate.turning_point or base.turning_point,
-        sets_up_next=candidate.sets_up_next or base.sets_up_next,
-    )
-
 
 def _character_state_from_dict(character_id: str, data: dict) -> MovieContinuityCharacterState:
     return MovieContinuityCharacterState(

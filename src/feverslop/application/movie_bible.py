@@ -18,9 +18,7 @@ from feverslop.application.movie_common import (
 )
 from feverslop.domain.movie_utils import clean_visual_description, safe_id
 from feverslop.application.movie_continuity import (
-    build_movie_continuity_fallback,
     movie_continuity_plan_from_dict,
-    normalize_movie_continuity_plan,
 )
 from feverslop.application.movie_references import (
     build_movie_actor_reference_prompt,
@@ -134,66 +132,20 @@ def generate_movie_continuity_plan(*, planner: ScenePlanningPort, request: Movie
         config=config,
     )
     if isinstance(raw, MovieContinuityPlan):
-        return normalize_movie_continuity_plan(raw, bible=bible, shots=shots)
+        return raw.normalize(bible=bible, shots=shots)
     if isinstance(raw, dict):
         return movie_continuity_plan_from_dict(raw, bible=bible, shots=shots)
-    return build_movie_continuity_fallback(bible=bible, shots=shots)
+    return MovieContinuityPlan.fallback(bible=bible, shots=shots)
 
 
 def constrain_movie_shots_to_bible(shots: tuple[CinematicShot, ...], bible: MovieBible) -> tuple[CinematicShot, ...]:
-    actor_ids = [actor.id for actor in bible.actors]
-    location_ids = [location.id for location in bible.locations]
-    default_actor = actor_ids[0] if actor_ids else "main_character"
-    default_location = location_ids[0] if location_ids else "primary_location"
-    max_scene_actors = min(4, max(1, int(bible.runtime_constraints.get("max_scene_actors") or 4)))
-    constrained = []
-    for shot in shots:
-        valid_actors = [actor_id for actor_id in shot.actor_ids if actor_id in actor_ids]
-        if not valid_actors:
-            valid_actors = [default_actor]
-        location_id = shot.location_id if shot.location_id in location_ids else default_location
-        constrained.append(
-            replace(
-                shot,
-                actor_ids=tuple(dict.fromkeys(valid_actors[:max_scene_actors])),
-                location_id=location_id,
-                location=_location_name(bible, location_id),
-            )
-        )
-    return tuple(constrained)
+    return bible.constrain(shots)
 
 
 def augment_movie_bible_from_shot_references(bible: MovieBible, shots: tuple[CinematicShot, ...], *, config: dict) -> MovieBible:
-    configured_actors = bool(_configured_movie_actors(config))
-    configured_locations = bool(_configured_movie_locations(config))
-    actors = list(bible.actors)
-    locations = list(bible.locations)
-    if not configured_actors:
-        shot_actor_ids = []
-        for shot in shots:
-            for actor_id in shot.actor_ids:
-                if actor_id and actor_id not in shot_actor_ids:
-                    shot_actor_ids.append(actor_id)
-        if shot_actor_ids and (len(actors) == 1 and actors[0].id == "main_character"):
-            actors = []
-        known_actor_ids = {actor.id for actor in actors}
-        for index, actor_id in enumerate(shot_actor_ids, start=1):
-            if actor_id not in known_actor_ids:
-                actors.append(_generic_actor_from_id(actor_id, index))
-                known_actor_ids.add(actor_id)
-    if not configured_locations:
-        shot_locations: dict[str, str] = {}
-        for shot in shots:
-            if shot.location_id and shot.location_id not in shot_locations:
-                shot_locations[shot.location_id] = shot.location or shot.location_id.replace("_", " ").title()
-        if shot_locations and (len(locations) == 1 and locations[0].id == "primary_location"):
-            locations = []
-        known_location_ids = {location.id for location in locations}
-        for index, (location_id, name) in enumerate(shot_locations.items(), start=1):
-            if location_id not in known_location_ids:
-                locations.append(_generic_location_from_id(location_id, name, index))
-                known_location_ids.add(location_id)
-    return replace(bible, actors=tuple(actors), locations=tuple(locations))
+    augment_actors = not bool(_configured_movie_actors(config))
+    augment_locations = not bool(_configured_movie_locations(config))
+    return bible.augment_from_shots(shots, actors=augment_actors, locations=augment_locations)
 
 
 def _bible_dict(bible: MovieBible) -> dict:
@@ -344,25 +296,6 @@ def _default_movie_location(request: MovieInput, index: int) -> MovieLocation:
     )
 
 
-def _generic_actor_from_id(actor_id: str, index: int) -> MovieActor:
-    name = actor_id.replace("_", " ").title()
-    return MovieActor(
-        id=safe_id(actor_id, f"actor_{index}"),
-        name=name,
-        role="character",
-        visual_description=name,
-    )
-
-
-def _generic_location_from_id(location_id: str, name: str, index: int) -> MovieLocation:
-    display_name = str(name or location_id.replace("_", " ")).strip()
-    return MovieLocation(
-        id=safe_id(location_id, f"location_{index}"),
-        name=display_name,
-        visual_description=display_name,
-    )
-
-
 def _style_constraints(config: dict) -> tuple[str, ...]:
     values = []
     for key in ("style", "prompt_guidance", "subject"):
@@ -396,13 +329,6 @@ def _story_arch_from_dict(data: dict, *, title: str, premise: str):
         premise=str(data.get("premise") or premise),
         beats=tuple(str(beat).strip() for beat in data.get("beats") or [] if str(beat).strip()),
     )
-
-
-def _location_name(bible: MovieBible, location_id: str) -> str:
-    for location in bible.locations:
-        if location.id == location_id:
-            return location.name
-    return location_id.replace("_", " ").title()
 
 
 def _default_actor_id(config: dict) -> str:

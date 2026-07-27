@@ -6,12 +6,12 @@ from dataclasses import asdict, dataclass
 from feverslop.application.movie import (
     MovieInput,
     build_movie_actor_reference_prompt,
-    build_movie_continuity_fallback,
     generate_movie_bible,
     _bible_dict,
     movie_bible_from_dict,
     movie_continuity_plan_to_dict,
 )
+from feverslop.domain.movie import MovieContinuityPlan
 from feverslop.application.movie_memory import (
     build_movie_narrative_plan_fallback,
     build_movie_scene_cards,
@@ -218,7 +218,7 @@ def ensure_movie_continuity_plan(project_dir: Path) -> Path:
     bible = movie_bible_from_dict(_read_json(bible_path))
     render_plan = _read_json(render_plan_path)
     shots = tuple(_shot_from_render_plan(item, index) for index, item in enumerate(render_plan.get("shots") or [], start=1) if isinstance(item, dict))
-    continuity = build_movie_continuity_fallback(bible=bible, shots=shots)
+    continuity = MovieContinuityPlan.fallback(bible=bible, shots=shots)
     continuity_path.write_text(json.dumps(movie_continuity_plan_to_dict(continuity), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return continuity_path
 
