@@ -397,8 +397,12 @@ class FacePipeline:
             feather_radius=self.policy.mask_feather_radius,
         )
 
-        # Validate mask
-        if not self.mask_port.validate_mask(mask):
+        # Validate mask with box-size-aware threshold
+        effective_ratio = 0.01
+        box = state.candidate.box
+        if max(box.width, box.height) < 50:
+            effective_ratio = 0.001
+        if not self.mask_port.validate_mask(mask, min_nonzero_ratio=effective_ratio):
             raise ValueError("Invalid mask generated")
 
         # Temporal mask smoothing
