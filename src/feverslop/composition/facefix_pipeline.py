@@ -502,8 +502,7 @@ def _extract_face_crop(
     h, w = frame.shape[:2]
     cx = (x1 + x2) / 2
     cy = (y1 + y2) / 2
-    size = max(x2 - x1, y2 - y1)
-    size += int(size * padding * 2)
+    size = int(max(x2 - x1, y2 - y1) + (x2 - x1) * padding * 2)
 
     nx1 = int(cx - size / 2)
     ny1 = int(cy - size / 2)
