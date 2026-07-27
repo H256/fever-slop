@@ -442,9 +442,12 @@ def _run_crop_facefix(
                 if repaired_frames is not None:
                     repaired_dir.mkdir(parents=True, exist_ok=True)
                     for i, frame in enumerate(repaired_frames):
-                        cv2.imwrite(
-                            str(repaired_dir / f"repaired_{i:06d}.png"), frame
-                        )
+                        if i < len(track_entries):
+                            entry = track_entries[i]
+                            cv2.imwrite(
+                                str(repaired_dir / f"repaired_{entry.frame_index:06d}.png"),
+                                frame,
+                            )
 
                 face_repairs_for_composite.append(
                     FaceRepairData(

@@ -22,6 +22,7 @@ class FaceMaskAdapter(FaceMaskPort):
         box: BoundingBox,
         landmarks: FaceLandmarks | None = None,
         feather_radius: int = 16,
+        min_nonzero_ratio: float = 0.01,
     ) -> np.ndarray:
         """Generate a radial feather mask for face compositing.
 
@@ -49,7 +50,17 @@ class FaceMaskAdapter(FaceMaskPort):
         feather_region = (dist > inner_radius) & (dist <= radius)
         mask[feather_region] = 1.0 - (dist[feather_region] - inner_radius) / adaptive_feather
 
-        return (mask * 255).astype(np.uint8)
+        mask = (mask * 255).astype(np.uint8)
+
+        # Validate with box-size-aware threshold
+        effective_ratio = min_nonzero_ratio
+        if max(box.width, box.height) < 50:
+            effective_ratio = 0.001
+        if not self.validate_mask(mask, min_nonzero_ratio=effective_ratio):
+            logger.warning("Mask failed validation (box=%.1fx%.1f, ratio=%.4f)",
+                           box.width, box.height, effective_ratio)
+
+        return mask
 
     def smooth_mask_temporal(
         self,
