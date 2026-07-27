@@ -54,7 +54,7 @@ class FaceMaskAdapter(FaceMaskPort):
 
         # Validate with box-size-aware threshold
         effective_ratio = min_nonzero_ratio
-        if max(box.width, box.height) < 50:
+        if min(box.width, box.height) < 50:
             effective_ratio = 0.001
         if not self.validate_mask(mask, min_nonzero_ratio=effective_ratio):
             logger.warning("Mask failed validation (box=%.1fx%.1f, ratio=%.4f)",
