@@ -4,6 +4,11 @@ import re
 from dataclasses import asdict
 from typing import Any
 
+from feverslop.domain.movie_utils import (
+    safe_id,
+    string_list,
+    transition_from_previous,
+)
 from feverslop.domain.screenplay import (
     is_screenplay_character_cue,
     parse_screenplay,
@@ -222,20 +227,15 @@ def build_movie_shot_cards(*, shots: tuple[CinematicShot, ...], scene_cards: tup
                 dialogue=shot.dialogue,
                 start_frame_brief=_start_frame_brief(shot),
                 end_frame_brief=_end_frame_brief(shot),
-                transition_from_previous=_transition_from_previous(shot.transition_from_previous),
+                transition_from_previous=transition_from_previous(shot.transition_from_previous),
                 transition_reason=_transition_reason(shot),
             )
         )
     return tuple(cards)
 
 
-def _transition_from_previous(value: Any) -> str:
-    transition = str(value or "cut").strip().lower().replace("_", "-")
-    return "continuous" if transition == "continuous" else "cut"
-
-
 def _transition_reason(shot: CinematicShot) -> str:
-    if _transition_from_previous(shot.transition_from_previous) != "continuous":
+    if transition_from_previous(shot.transition_from_previous) != "continuous":
         return "hard cut or new setup"
     return "planned as a direct continuation of the previous shot"
 
@@ -485,7 +485,7 @@ def _is_screenplay_character_cue(line: str) -> bool:
 def _dialogue_actor_ids(dialogue: str) -> list[str]:
     ids = []
     for match in re.finditer(r"\b([A-Z][A-Z0-9 _'-]{1,30}):", dialogue):
-        actor_id = _safe_id(match.group(1))
+        actor_id = safe_id(match.group(1))
         if actor_id and actor_id not in ids:
             ids.append(actor_id)
     return ids
@@ -494,8 +494,8 @@ def _dialogue_actor_ids(dialogue: str) -> list[str]:
 def _valid_actor_ids(raw_ids: Any, bible: MovieBible) -> tuple[str, ...]:
     valid = {actor.id for actor in bible.actors}
     ids = []
-    for raw_id in _string_list(raw_ids):
-        actor_id = _safe_id(raw_id)
+    for raw_id in string_list(raw_ids):
+        actor_id = safe_id(raw_id)
         if actor_id in valid and actor_id not in ids:
             ids.append(actor_id)
     return tuple(ids)
@@ -508,7 +508,7 @@ def _valid_actor_id(raw_id: str, bible: MovieBible) -> str:
 
 def _valid_location_id(location_id: str, bible: MovieBible) -> str:
     valid = {location.id for location in bible.locations}
-    safe = _safe_id(location_id)
+    safe = safe_id(location_id)
     if safe in valid:
         return safe
     return bible.locations[0].id if bible.locations else "primary_location"
@@ -605,14 +605,4 @@ def _end_frame_brief(shot: CinematicShot) -> str:
     return f"Ending frame: {shot.story_state_after or shot.action or shot.description}; preserve actor identity and location geography."
 
 
-def _safe_id(value: Any) -> str:
-    raw = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
-    return raw
 
-
-def _string_list(value: Any) -> list[str]:
-    if isinstance(value, list | tuple):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str) and value.strip():
-        return [value.strip()]
-    return []

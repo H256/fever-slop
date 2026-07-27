@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from dataclasses import asdict, dataclass
-from typing import Any
-
 from feverslop.application.movie import (
     MovieInput,
     build_movie_actor_reference_prompt,
@@ -31,6 +29,7 @@ from feverslop.application.movie_memory import (
     movie_story_design_to_dict,
 )
 from feverslop.domain.movie import CinematicShot
+from feverslop.domain.movie_utils import transition_from_previous
 from feverslop.errors import FeverSlopValidationError
 
 
@@ -285,13 +284,8 @@ def _shot_from_render_plan(shot: dict, index: int) -> CinematicShot:
         conflict_or_tension=str(shot.get("conflict_or_tension") or "").strip(),
         turning_point=str(shot.get("turning_point") or "").strip(),
         sets_up_next=str(shot.get("sets_up_next") or "").strip(),
-        transition_from_previous=_transition_from_previous(shot.get("transition_from_previous")),
+        transition_from_previous=transition_from_previous(shot.get("transition_from_previous")),
     )
-
-
-def _transition_from_previous(value: Any) -> str:
-    transition = str(value or "cut").strip().lower().replace("_", "-")
-    return "continuous" if transition == "continuous" else "cut"
 
 
 def _manifest_actor(actor: dict, current: dict) -> dict:
