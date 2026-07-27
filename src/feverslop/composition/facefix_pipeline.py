@@ -259,8 +259,9 @@ def _run_crop_facefix(
         debug_adapter = FaceDebugAdapter(debug_dir)
         policy = FaceProcessingPolicy(
             min_detection_score=0.5,
-            min_identity_score=0.0,  # tracker CONFIRMED is sufficient gate
-            enable_identity_check=len(actor_embeddings) > 0,
+            min_identity_score=0.0,
+            # Identity check only makes sense with multiple actors to distinguish between.
+            enable_identity_check=len(actor_embeddings) > 1,
             track_confirmation_frames=3,
             track_max_missing_frames=6,
             face_crop_expansion=1.0 + options.crop_padding,
