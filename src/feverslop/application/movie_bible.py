@@ -11,6 +11,7 @@ from feverslop.domain.movie import (
     MovieContinuityRule,
     MovieLocation,
     MovieProject,
+    StoryArch,
 )
 from feverslop.application.movie_common import (
     MovieInput,
@@ -322,8 +323,6 @@ def _runtime_constraints(request: MovieInput, config: dict) -> dict:
 
 
 def _story_arch_from_dict(data: dict, *, title: str, premise: str):
-    from feverslop.domain.movie import StoryArch
-
     return StoryArch(
         title=str(data.get("title") or title),
         premise=str(data.get("premise") or premise),

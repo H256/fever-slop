@@ -9,14 +9,11 @@ from typing import Any
 
 from feverslop.application.msr_prompt_enrichment import _clean_segment_prompt, _is_valid_segment_prompt, _msr_vision_system_prompt
 from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import VisionLLMPort
 
 logger = logging.getLogger(__name__)
-
-
-_SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
-_DIALOGUE_CUE_RE = re.compile(r"\b[A-Z][A-Z0-9 _'-]{1,30}:\s+\S")
 
 
 def enrich_movie_render_plan_with_msr_prompts(
@@ -378,12 +375,7 @@ def _split_continuity_text(value: Any) -> list[str]:
     return [part.strip() for part in re.split(r"[;\n]+", text) if part.strip()]
 
 
-def _looks_like_screenplay_dump(text: str) -> bool:
-    if len(text) > 300:
-        return True
-    if _SCREENPLAY_HEADING_RE.search(text):
-        return True
-    return bool(_DIALOGUE_CUE_RE.search(text))
+_looks_like_screenplay_dump = looks_like_screenplay
 
 
 def _strip_reference_sheet_language(value: str) -> str:

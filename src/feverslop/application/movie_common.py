@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,10 +43,6 @@ class MovieProductionResult(MovieScaffoldResult):
     final_video_path: Path | None = None
 
 
-_SCREENPLAY_HEADING_RE = re.compile(r"\b(?:INT|EXT|INT/EXT)\.\s+", re.IGNORECASE)
-_DIALOGUE_CUE_RE = re.compile(r"\b[A-Z][A-Z0-9 _'-]{1,30}:\s+\S")
-
-
 def validate_movie_input(request: MovieInput) -> None:
     if request.source_type not in {"short_story", "screenplay"}:
         raise FeverSlopValidationError("source_type must be short_story or screenplay")
@@ -84,9 +79,4 @@ def _planner_source_text(request: MovieInput, config: dict) -> str:
     return "\n".join(parts).strip()
 
 
-def _looks_like_screenplay_dump(text: str) -> bool:
-    if len(text) > 300:
-        return True
-    if _SCREENPLAY_HEADING_RE.search(text):
-        return True
-    return bool(_DIALOGUE_CUE_RE.search(text))
+_looks_like_screenplay_dump = looks_like_screenplay

@@ -9,11 +9,7 @@ from feverslop.domain.movie_utils import (
     string_list,
     transition_from_previous,
 )
-from feverslop.domain.screenplay import (
-    is_screenplay_character_cue,
-    parse_screenplay,
-    split_screenplay_dialogue,
-)
+from feverslop.domain.screenplay import parse_screenplay
 from feverslop.domain.movie import (
     CinematicShot,
     MovieBible,
@@ -472,14 +468,6 @@ def _screenplay_scenes_from_beats(beats: tuple[str, ...], *, bible: MovieBible) 
         for index, beat in enumerate(beats, start=1)
         if str(beat).strip()
     )
-
-
-def _split_screenplay_dialogue(lines: list[str]) -> tuple[str, list[str]]:
-    return split_screenplay_dialogue(lines)
-
-
-def _is_screenplay_character_cue(line: str) -> bool:
-    return is_screenplay_character_cue(line)
 
 
 def _dialogue_actor_ids(dialogue: str) -> list[str]:
