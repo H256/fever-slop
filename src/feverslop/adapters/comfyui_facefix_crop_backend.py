@@ -10,13 +10,13 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.domain.facefix_rendering import FaceFixConfig
+from feverslop.domain.facefix_rendering import DEFAULT_FACEFIX_WORKFLOW, FaceFixConfig
 
 
 class ComfyUIFaceFixCropBackend:
-    """Renders face-repaired video via the LTXV FaceFix Crop ComfyUI workflow.
+    """Renders face-repaired video via LTXV FaceFix workflow.
 
-    Takes face-crop MP4 + anchor PNGs, patches the crop workflow, and runs
+    Takes face-crop MP4 + anchor PNGs, patches the workflow, and runs
     the LTXV LoopingSampler with anchor conditioning. CLIP runs on CPU.
     """
 
@@ -24,7 +24,7 @@ class ComfyUIFaceFixCropBackend:
         self,
         *,
         client: ComfyUIClient,
-        workflow_path: str | Path,
+        workflow_path: str | Path | None = None,
         config: FaceFixConfig | None = None,
         output_dir: str | Path | None = None,
         postprocess: bool = True,
@@ -38,7 +38,7 @@ class ComfyUIFaceFixCropBackend:
         project_dir: str | Path | None = None,
     ):
         self.client = client
-        self.workflow_path = Path(workflow_path)
+        self.workflow_path = Path(workflow_path) if workflow_path else Path(DEFAULT_FACEFIX_WORKFLOW)
         self.output_dir = Path(output_dir) if output_dir is not None else None
         self.project_dir = Path(project_dir) if project_dir is not None else None
         self.config = config or FaceFixConfig()
@@ -100,7 +100,7 @@ class ComfyUIFaceFixCropBackend:
     ) -> dict:
         patcher = WorkflowPatcher(self.load_workflow())
         self._patch_video_input(patcher, face_crop_mp4, scene_number, actor_id)
-        self._patch_anchors_dir(patcher, anchors_dir)
+        self._patch_anchors(patcher, anchors_dir)
         self._patch_facefix_params(patcher)
         self._patch_save_output(patcher, scene_number, actor_id)
         return patcher.get()
@@ -112,22 +112,24 @@ class ComfyUIFaceFixCropBackend:
         except KeyError:
             patcher.set_input_by_title("#LOAD_VIDEO", "videopath", video_name)
 
-    def _patch_anchors_dir(self, patcher: WorkflowPatcher, anchors_dir: Path) -> None:
-        try:
-            anchor_count = len(list(anchors_dir.glob("*.png")))
-        except OSError:
-            anchor_count = 0
+    def _patch_anchors(self, patcher: WorkflowPatcher, anchors_dir: Path) -> None:
+        anchor_pngs = sorted(anchors_dir.glob("*.png"))
+        if not anchor_pngs:
+            return
 
-        comfy_subfolder = self._upload_anchors(anchors_dir)
-        try:
-            patcher.set_input_by_title("#FACE_REFS", "directory", comfy_subfolder)
-        except KeyError:
-            pass
+        uploaded_paths = self._upload_anchors(anchors_dir)
+        scaled_ids = self._build_anchor_image_chain(patcher, uploaded_paths)
+        batch_id = self._batch_scaled_images(patcher, scaled_ids)
 
-        if anchor_count > 0:
-            indices = []
-            for i in range(0, anchor_count, 16):
-                indices.append(str(i))
+        if batch_id:
+            try:
+                _, sampler = patcher.find_node_by_meta_title("#LOOPING_SAMPLER")
+                sampler["inputs"]["optional_cond_images"] = [batch_id, 0]
+            except KeyError:
+                pass
+
+            anchor_count = len(anchor_pngs)
+            indices = [str(i) for i in range(0, anchor_count, 16)]
             keyframes = ",".join(indices) if indices else "0"
             patcher.try_set_existing_input_by_title(
                 "#LOOPING_SAMPLER", "optional_cond_image_indices", keyframes
@@ -158,13 +160,60 @@ class ComfyUIFaceFixCropBackend:
         )
         return ComfyUIVideoAssetUploader.comfy_path_from_upload(upload_resp)
 
-    def _upload_anchors(self, anchors_dir: Path) -> str:
-        target_subfolder = f"feverslop/facefix_crop/anchors/{anchors_dir.name}"
+    def _upload_anchors(self, anchors_dir: Path) -> list[str]:
+        subfolder = f"feverslop/facefix_crop/anchors/{anchors_dir.name}"
+        paths = []
         for png in sorted(anchors_dir.glob("*.png")):
-            self.client.upload_image(
+            resp = self.client.upload_image(
                 png,
-                subfolder=target_subfolder,
+                subfolder=subfolder,
                 file_type="input",
                 overwrite=True,
             )
-        return target_subfolder
+            paths.append(ComfyUIVideoAssetUploader.comfy_path_from_upload(resp))
+        return paths
+
+    def _build_anchor_image_chain(self, patcher: WorkflowPatcher, uploaded_paths: list[str]) -> list[str]:
+        scaled_ids = []
+        for path in uploaded_paths:
+            load_id = str(patcher.find_free_node_id())
+            patcher.add_node(load_id, {
+                "inputs": {"image": path, "choose_folder_to_upload": "upload", "upload_folder": ""},
+                "class_type": "LoadImage",
+                "_meta": {"title": f"#ANCHOR_LOAD_{load_id}"},
+            })
+
+            scale_id = str(patcher.find_free_node_id())
+            patcher.add_node(scale_id, {
+                "inputs": {
+                    "image": [load_id, 0],
+                    "upscale_method": "lanczos",
+                    "width": 768,
+                    "height": 768,
+                    "crop": "center",
+                },
+                "class_type": "ImageScale",
+                "_meta": {"title": f"#ANCHOR_SCALE_{scale_id}"},
+            })
+            scaled_ids.append(scale_id)
+        return scaled_ids
+
+    def _batch_scaled_images(self, patcher: WorkflowPatcher, scaled_ids: list[str]) -> str | None:
+        if not scaled_ids:
+            return None
+        if len(scaled_ids) == 1:
+            return scaled_ids[0]
+
+        current = scaled_ids[0]
+        for i in range(1, len(scaled_ids)):
+            batch_id = str(patcher.find_free_node_id())
+            patcher.add_node(batch_id, {
+                "inputs": {
+                    "image1": [current, 0],
+                    "image2": [scaled_ids[i], 0],
+                },
+                "class_type": "ImageBatch",
+                "_meta": {"title": f"#ANCHOR_BATCH_{batch_id}"},
+            })
+            current = batch_id
+        return current

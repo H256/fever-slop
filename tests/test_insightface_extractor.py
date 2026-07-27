@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 
@@ -68,15 +68,23 @@ class TestBestMatchActor(unittest.TestCase):
 
 
 class TestInsightFaceExtractor(unittest.TestCase):
-    def test_detect_and_match_returns_empty_no_faces(self):
-        with patch.object(InsightFaceExtractor, "analyzer", new_callable=lambda: property(lambda self: MagicMock())):
-            extractor = InsightFaceExtractor()
-            extractor._analyzer = MagicMock()
-            extractor._analyzer.get.return_value = []
+    def test_detect_all_returns_empty_no_faces(self):
+        extractor = InsightFaceExtractor()
+        extractor._analyzer = MagicMock()
+        extractor._analyzer.get.return_value = []
 
-            frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            result = extractor.detect_and_match(frame, {}, threshold=0.5)
-            self.assertEqual(result, [])
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = extractor.detect_all(frame)
+        self.assertEqual(result, [])
+
+    def test_detect_and_match_returns_empty_no_faces(self):
+        extractor = InsightFaceExtractor()
+        extractor._analyzer = MagicMock()
+        extractor._analyzer.get.return_value = []
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = extractor.detect_and_match(frame, {}, threshold=0.5)
+        self.assertEqual(result, [])
 
     def test_analyzer_lazy_init(self):
         extractor = InsightFaceExtractor()

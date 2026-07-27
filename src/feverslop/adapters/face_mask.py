@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import logging
+
+import numpy as np
+
+from feverslop.domain.face_detection import (
+    BoundingBox,
+    FaceLandmarks,
+)
+from feverslop.ports.face_pipeline import FaceMaskPort
+
+logger = logging.getLogger(__name__)
+
+
+class FaceMaskAdapter(FaceMaskPort):
+    """cv2-based face mask generation implementing FaceMaskPort."""
+
+    def generate_mask(
+        self,
+        frame: np.ndarray,
+        box: BoundingBox,
+        landmarks: FaceLandmarks | None = None,
+        feather_radius: int = 16,
+    ) -> np.ndarray:
+        """Generate a radial feather mask for face compositing.
+
+        Returns grayscale mask (H, W) with values 0-255.
+        """
+        frame_height, frame_width = frame.shape[:2]
+        mask = np.zeros((frame_height, frame_width), dtype=np.float32)
+
+        cx = int((box.x1 + box.x2) / 2.0)
+        cy = int((box.y1 + box.y2) / 2.0)
+        radius = max(int(box.width / 2.0), int(box.height / 2.0))
+
+        # Create radial gradient
+        y, x = np.ogrid[:frame_height, :frame_width]
+        dist = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+
+        # Inner circle (full mask)
+        inner_radius = max(1, radius - feather_radius)
+        mask[dist <= inner_radius] = 1.0
+
+        # Feather transition
+        feather_region = (dist > inner_radius) & (dist <= radius)
+        mask[feather_region] = 1.0 - (dist[feather_region] - inner_radius) / feather_radius
+
+        return (mask * 255).astype(np.uint8)
+
+    def smooth_mask_temporal(
+        self,
+        previous_mask: np.ndarray,
+        current_mask: np.ndarray,
+        alpha: float = 0.70,
+    ) -> np.ndarray:
+        """Apply temporal smoothing to mask."""
+        result = (
+            alpha * previous_mask.astype(np.float32)
+            + (1.0 - alpha) * current_mask.astype(np.float32)
+        )
+        return np.clip(result, 0, 255).astype(np.uint8)
+
+    def validate_mask(self, mask: np.ndarray, min_nonzero_ratio: float = 0.01) -> bool:
+        """Validate that mask has meaningful content."""
+        if mask.size == 0:
+            return False
+
+        nonzero_ratio = np.count_nonzero(mask) / mask.size
+        return bool(nonzero_ratio >= min_nonzero_ratio)

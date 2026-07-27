@@ -560,12 +560,9 @@ def _run_facefix_stage(state: PipelineRunState) -> None:
     if state.args.scenes:
         scene_numbers = sorted(parse_scene_list(state.args.scenes))
 
-    crop_workflow = state.facefix_crop_workflow if hasattr(state, "facefix_crop_workflow") else ""
-
     options = FaceFixCompositionOptions(
         app_config_path=str(state.app_config_path),
         workflow_path=str(state.facefix_workflow),
-        crop_workflow_path=str(crop_workflow),
         scenes_dir=str(scenes_dir),
         project_dir=str(state.context.project_config_dir),
         scene_numbers=scene_numbers,

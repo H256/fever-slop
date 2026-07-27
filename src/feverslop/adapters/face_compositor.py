@@ -98,14 +98,15 @@ class FaceCompositor:
                 diagnostic_mask_path=None,
             )
 
-        h, w = original_frames.shape[:2]
+        n_frames = len(original_frames)
+        h, w = original_frames.shape[1:3]
         result = original_frames.copy()
 
         feather_base = radial_feather_mask(768, self.feather_pixels)
 
         diagnostic_mask = np.zeros((h, w), dtype=np.float32)
 
-        for frame_idx in range(len(original_frames)):
+        for frame_idx in range(n_frames):
             frame_masks = []
             frame_centers = []
 
@@ -135,7 +136,7 @@ class FaceCompositor:
                 if self.color_match_strength > 0:
                     y2_clip = min(box.y2, h)
                     x2_clip = min(box.x2, w)
-                    target_region = original_frames[box.y1:y2_clip, box.x1:x2_clip]
+                    target_region = original_frames[frame_idx, box.y1:y2_clip, box.x1:x2_clip]
                     if target_region.shape[:2] == repaired_resized.shape[:2]:
                         repaired_resized = color_match(
                             repaired_resized, target_region, self.color_match_strength
@@ -145,21 +146,27 @@ class FaceCompositor:
                 region_w = repaired_resized.shape[1]
                 y_end = min(box.y1 + region_h, h)
                 x_end = min(box.x1 + region_w, w)
-                mask_clipped = feather_clipped[:region_h, :region_w]
+                effective_h = y_end - box.y1
+                effective_w = x_end - box.x1
+                if effective_h <= 0 or effective_w <= 0:
+                    continue
 
-                frame_region = result[box.y1:y_end, box.x1:x_end]
+                mask_clipped = feather_clipped[:effective_h, :effective_w]
+                repaired_clipped = repaired_resized[:effective_h, :effective_w]
+
+                frame_region = result[frame_idx, box.y1:y_end, box.x1:x_end]
                 blended = np.zeros_like(frame_region)
                 for c in range(3):
                     blended[:, :, c] = np.clip(
-                        mask_clipped * repaired_resized[:, :, c] + (1 - mask_clipped) * frame_region[:, :, c],
+                        mask_clipped * repaired_clipped[:, :, c] + (1 - mask_clipped) * frame_region[:, :, c],
                         0, 255,
                     ).astype(np.uint8)
-                result[box.y1:y_end, box.x1:x_end] = blended
+                result[frame_idx, box.y1:y_end, box.x1:x_end] = blended
 
                 mask_for_partition = np.zeros((h, w), dtype=np.float32)
                 mask_for_partition[box.y1:y_end, box.x1:x_end] = mask_clipped
                 frame_masks.append(mask_for_partition)
-                frame_centers.append((box.y1 + region_h // 2, box.x1 + region_w // 2))
+                frame_centers.append((box.y1 + effective_h // 2, box.x1 + effective_w // 2))
 
             if len(frame_masks) > 1:
                 partitioned = voronoi_partition(frame_masks, frame_centers, (h, w))

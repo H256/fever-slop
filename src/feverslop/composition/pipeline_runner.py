@@ -65,7 +65,6 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         relay_workflow=resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path(""),
         single_prompt_workflow=resolve_runner_path(args.single_prompt_workflow),
         facefix_workflow=resolve_runner_path(args.facefix_workflow),
-        facefix_crop_workflow=resolve_runner_path(args.facefix_crop_workflow),
         plan_for_next_step=_initial_render_plan(context, args, stages),
     )
     app_config = AppConfig.load(app_config_path)
@@ -113,3 +112,7 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
 
 def main() -> None:
     run(build_arg_parser().parse_args())
+
+
+if __name__ == "__main__":
+    main()

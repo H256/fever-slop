@@ -23,7 +23,7 @@ class TestInsightFaceTracker(unittest.TestCase):
 
     def test_track_video_empty_result(self):
         extractor = MagicMock()
-        extractor.detect_and_match.return_value = []
+        extractor.detect_all.return_value = []
         tracker = InsightFaceTracker(extractor)
 
         with patch("feverslop.adapters.insightface_tracker.cv2") as mock_cv2:
@@ -50,12 +50,12 @@ class TestInsightFaceTracker(unittest.TestCase):
 
 class TestInsightFaceTrackerAnchorSelection(unittest.TestCase):
     def test_anchor_interval(self):
+        ref_emb = np.ones(512)
+        face_emb = np.ones(512)
         extractor = MagicMock()
-
-        def mock_detect(frame_rgb, embeddings, threshold=0.85):
-            return [FaceBox(x1=10, y1=10, x2=100, y2=100, confidence=0.9, actor_id="hero")]
-
-        extractor.detect_and_match = mock_detect
+        extractor.detect_all.return_value = [
+            FaceBox(x1=10, y1=10, x2=100, y2=100, confidence=0.9, embedding=face_emb)
+        ]
         tracker = InsightFaceTracker(extractor)
 
         with patch("feverslop.adapters.insightface_tracker.cv2") as mock_cv2:
@@ -73,7 +73,7 @@ class TestInsightFaceTrackerAnchorSelection(unittest.TestCase):
 
             result = tracker.track_video(
                 Path("/tmp/video.mp4"),
-                {"hero": np.random.rand(512)},
+                {"hero": ref_emb},
                 crop_size=64,
                 anchor_interval=16,
                 output_dir=Path("/tmp/facefix"),

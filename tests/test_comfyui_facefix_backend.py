@@ -23,11 +23,6 @@ class TestFaceFixBackendBuildWorkflow(unittest.TestCase):
                     "_meta": {"title": "#LOAD_VIDEO"},
                     "inputs": {"video": ""},
                 },
-                "2": {
-                    "class_type": "LoadImagesFromFolderKJ",
-                    "_meta": {"title": "#FACE_REFS"},
-                    "inputs": {"folder": ""},
-                },
                 "3": {
                     "class_type": "LTXVLoopingSampler",
                     "_meta": {"title": "#LOOPING_SAMPLER"},
@@ -35,7 +30,6 @@ class TestFaceFixBackendBuildWorkflow(unittest.TestCase):
                         "guiding_strength": 0.0,
                         "cond_image_strength": 0.0,
                         "optional_cond_image_indices": "",
-                        "optional_cond_images": ["2", 0],
                     },
                 },
                 "4": {
