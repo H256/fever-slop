@@ -259,7 +259,7 @@ def _run_crop_facefix(
         debug_adapter = FaceDebugAdapter(debug_dir)
         policy = FaceProcessingPolicy(
             min_detection_score=0.5,
-            min_identity_score=options.recognition_threshold,
+            min_identity_score=0.0,  # tracker CONFIRMED is sufficient gate
             enable_identity_check=len(actor_embeddings) > 0,
             track_confirmation_frames=3,
             track_max_missing_frames=6,
