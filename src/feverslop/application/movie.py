@@ -18,7 +18,6 @@ from feverslop.application.movie_common import (
     MovieScaffoldResult,
     _looks_like_screenplay_dump,
     _planner_source_text,
-    validate_movie_input,
 )
 
 # Backwards-compatible re-exports of domain utilities (underscore-prefixed)
@@ -100,5 +99,4 @@ __all__ = [
     "_safe_id",
     "_string_list",
     "slugify_project_name",
-    "validate_movie_input",
 ]

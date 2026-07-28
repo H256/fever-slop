@@ -19,7 +19,6 @@ from feverslop.application.movie import (
     MovieInput,
     MovieProductionResult,
     MovieScaffoldResult,
-    validate_movie_input,
 )
 
 # ---------------------------------------------------------------------------
@@ -197,7 +196,6 @@ __all__ = [
     "MovieInput",
     "MovieProductionResult",
     "MovieScaffoldResult",
-    "validate_movie_input",
     # -- Domain models --
     "CinematicShot",
     "MovieActor",
