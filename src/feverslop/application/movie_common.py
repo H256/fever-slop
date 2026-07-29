@@ -4,9 +4,16 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from feverslop.domain.screenplay import looks_like_screenplay
+from feverslop.domain.slug_utils import slugify_project_name
 
 
 class MovieInput(BaseModel):
@@ -42,6 +49,8 @@ class MovieInput(BaseModel):
     def validate_name(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Movie project name is required")
+        if not slugify_project_name(v):
+            raise ValueError("Movie project slug is empty after slugifying the name")
         return v
 
     @field_validator("story_text")
