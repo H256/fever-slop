@@ -69,7 +69,7 @@ class MovieInput(BaseModel):
 
     @field_validator("width", "height")
     @classmethod
-    def validate_resolution(cls, v: int) -> int:
+    def validate_dimensions(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("resolution width and height must be positive")
         return v
