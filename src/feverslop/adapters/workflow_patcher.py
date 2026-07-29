@@ -325,6 +325,27 @@ class WorkflowPatcher:
 
         return patched
 
+    def remove_node_by_title(self, title: str) -> str:
+        """Remove a node by title, return its node id."""
+        node_id, _ = self.find_node_by_meta_title(title)
+        del self.workflow[node_id]
+        return node_id
+
+    def add_node(self, node_id: str | int, node: dict) -> str:
+        """Add a node with the given id. Returns the string id."""
+        key = str(node_id)
+        if key in self.workflow:
+            raise ValueError(f"Node id already exists: {key}")
+        self.workflow[key] = deepcopy(node)
+        return key
+
+    def find_free_node_id(self, start: int = 10000) -> int:
+        """Find a free numeric node id starting from start."""
+        candidate = start
+        while str(candidate) in self.workflow:
+            candidate += 1
+        return candidate
+
 
 _PATH_PART_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)])?")
 

@@ -78,7 +78,7 @@ class ComfyUIVideoAssetUploader:
 
     @staticmethod
     def comfy_path_from_upload(upload_response: dict) -> str:
-        name = upload_response.get("name")
+        name = upload_response.get("name") or upload_response.get("filename")
         subfolder = upload_response.get("subfolder", "")
         if not name:
             raise ValueError(f"Unexpected ComfyUI upload response: {upload_response}")

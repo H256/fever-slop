@@ -67,6 +67,12 @@ class SceneArtifactLayout:
     def scene_final_video(self, scene_number: int) -> Path:
         return self.scene_dir(scene_number) / "final.mp4"
 
+    def scene_workflow_facefix(self, scene_number: int) -> Path:
+        return self.scene_dir(scene_number) / "workflow_facefix.json"
+
+    def scene_final_facefix_video(self, scene_number: int) -> Path:
+        return self.scene_dir(scene_number) / "final_facefix.mp4"
+
     @property
     def storyboard_dir(self) -> Path:
         return self.render_dir / "storyboard"
@@ -98,3 +104,43 @@ class SceneArtifactLayout:
     def find_plan(self, canonical_path: str | Path, *, legacy_paths: Iterable[str | Path] = ()) -> Path | None:
         candidates = [Path(canonical_path), *(Path(path) for path in legacy_paths)]
         return next((path for path in candidates if path.exists()), None)
+
+    def actor_sheet_images(self) -> list[Path]:
+        """Discover actor reference sheet images under output/references/actors/<id>/views/*sheet.png."""
+        actors_dir = self.references_dir / "actors"
+        if not actors_dir.is_dir():
+            return []
+        sheets: list[Path] = []
+        for actor_dir in sorted(actors_dir.iterdir()):
+            if not actor_dir.is_dir():
+                continue
+            views = actor_dir / "views"
+            if not views.is_dir():
+                continue
+            for p in sorted(views.glob("*sheet.png")):
+                sheets.append(p)
+        return sheets
+
+    def actors_dir_path(self) -> Path:
+        return self.references_dir / "actors"
+
+    def actor_ids(self) -> list[str]:
+        actors_dir = self.actors_dir_path()
+        if not actors_dir.is_dir():
+            return []
+        return sorted(d.name for d in actors_dir.iterdir() if d.is_dir())
+
+    def scene_facefix_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_dir(scene_number) / "facefix" / actor_id
+
+    def scene_face_crop_mp4(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "face_crop.mp4"
+
+    def scene_face_anchors_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "anchors"
+
+    def scene_face_crops_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "crops"
+
+    def scene_face_repaired_dir(self, scene_number: int, actor_id: str) -> Path:
+        return self.scene_facefix_dir(scene_number, actor_id) / "repaired"

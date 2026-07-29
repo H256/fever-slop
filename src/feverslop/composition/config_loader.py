@@ -39,6 +39,7 @@ class PipelineRunContext:
     storyboard_page: Path
     ltx_dir: Path
     ltx_debug_dir: Path
+    facefix_dir: Path
     final_concat_video: Path
     final_concat: Path
     final_concat_scene_audio_debug: Path
@@ -64,6 +65,7 @@ class PipelineRunState:
     ingredients_workflow: Path
     relay_workflow: Path
     single_prompt_workflow: Path
+    facefix_workflow: Path
     plan_for_next_step: Path
     video_only_path: Path | None = None
     final_video_path: Path | None = None
@@ -92,6 +94,7 @@ def collect_render_plan_scene_clips(
     output_dir: str | Path,
     *,
     layout: SceneArtifactLayout | None = None,
+    prefer_facefix: bool = False,
 ) -> list[Path]:
     output_dir = Path(output_dir)
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
@@ -99,13 +102,18 @@ def collect_render_plan_scene_clips(
     missing: list[Path] = []
     for scene in render_plan:
         scene_number = int(scene["scene"])
-        candidates = ([layout.scene_final_video(scene_number)] if layout else []) + [
+        candidates = []
+        if layout:
+            if prefer_facefix:
+                candidates.append(layout.scene_final_facefix_video(scene_number))
+            candidates.append(layout.scene_final_video(scene_number))
+        candidates.extend([
             output_dir / f"scene_{scene_number:04}.mp4",
             output_dir / "final" / f"scene_{scene_number:04}.mp4",
-        ]
+        ])
         clip = next((candidate for candidate in candidates if candidate.exists()), None)
         if clip is None:
-            missing.append(layout.scene_final_video(scene_number) if layout else candidates[0])
+            missing.append((layout.scene_final_video(scene_number) if layout else candidates[0]))
             continue
         clips.append(clip)
 
@@ -176,6 +184,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         ltx_debug_dir = render_dir / f"ltx_{args.render_mode}_debug"
     if args.smoke_only:
         ltx_dir = ltx_dir.with_name(ltx_dir.name + "_smoke")
+    facefix_dir = ltx_dir / "facefix"
 
     return PipelineRunContext(
         artifact_layout=artifact_layout,
@@ -203,6 +212,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         storyboard_page=storyboard_dir / "index.html",
         ltx_dir=ltx_dir,
         ltx_debug_dir=ltx_debug_dir,
+        facefix_dir=facefix_dir,
         final_concat_video=artifact_layout.video_only,
         final_concat=artifact_layout.movie,
         final_concat_scene_audio_debug=artifact_layout.final_dir / "scene_audio_debug.mp4",

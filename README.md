@@ -150,6 +150,50 @@ uv run python run_pipeline.py ./projects/my-song \
   --randomize-seed --skip-tests
 ```
 
+### Postprocessing: FaceFix
+
+After rendering, faces can drift across frames. The FaceFix stage applies a
+lightweight video-to-video refinement pass using the LTXV LoopingSampler with
+periodic face keyframe conditioning:
+
+```bash
+# Run FaceFix on all rendered scenes
+uv run python run_pipeline.py ./projects/my-song \
+  --stage facefix
+
+# Run FaceFix with face reference images
+uv run python run_pipeline.py ./projects/my-song \
+  --stage facefix \
+  --facefix-reference-images ./projects/my-song/face_ref_01.jpg \
+  --facefix-reference-images ./projects/my-song/face_ref_02.jpg
+
+# Override keyframe indices and guiding strength
+uv run python run_pipeline.py ./projects/my-song \
+  --stage facefix \
+  --facefix-keyframe-indices "0,8,24,40" \
+  --facefix-guiding-strength 0.3
+```
+
+The stage reads `scene_NNNN.mp4` files from the render output directory, applies
+temporal face conditioning at configurable keyframe intervals, and outputs
+`scene_NNNN_facefix.mp4` files alongside the originals. All face reference images
+are passed to the LTXV LoopingSampler, which handles per-face matching internally:
+it detects faces in each keyframe and matches them to the closest reference. This
+means you can provide references for all characters and the workflow applies the
+correct one to each detected face.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--facefix-reference-images` | none | Path(s) to face reference images from the movie bible |
+| `--facefix-keyframe-indices` | `0,16,32,48` | Frames where face conditioning is applied |
+| `--facefix-guiding-strength` | `0.2` | Strength of face guidance during sampling |
+| `--facefix-cond-image-strength` | `0.5` | Strength of reference image conditioning |
+| `--facefix-temporal-tile-size` | `56` | Frames processed per temporal tile |
+| `--facefix-temporal-overlap` | `24` | Overlap between temporal tiles |
+
+Without reference images, the stage runs video-only conditioning, which still
+stabilizes faces but without character-specific guidance.
+
 ## Full-Auto
 
 Full-Auto creates a project from a short idea and song style, renders ACE-Step audio through ComfyUI, writes `config.json`, and can immediately run the video pipeline.

@@ -22,6 +22,8 @@ class PipelineStage(str, Enum):
     CONCAT_VIDEO_ONLY = "concat_video_only"
     MUX_ORIGINAL_AUDIO = "mux_original_audio"
     DIAGNOSTIC_SCENE_AUDIO_CONCAT = "diagnostic_scene_audio_concat"
+    FACEFIX = "facefix"
+    FACEFIX_CONCAT = "facefix_concat"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
