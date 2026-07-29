@@ -14,7 +14,6 @@ from feverslop.application.movie_common import (
     MovieProductionResult,
     MovieScaffoldResult,
     _planner_source_text,
-    validate_movie_input,
 )
 from feverslop.application.movie_memory import (
     build_movie_scene_cards,
@@ -72,7 +71,6 @@ class ScaffoldMovieUseCase:
             self.reporter = NullReporter()
 
     def execute(self, request: MovieInput) -> MovieScaffoldResult:
-        validate_movie_input(request)
         slug = slugify_project_name(request.name)
         project_dir = self.projects_root / slug
         movie_dir = project_dir / "movie"
