@@ -1,0 +1,29 @@
+Create the canonical structured screenplay for this movie.
+
+Return JSON with:
+{{ "{" }}title{{ "}" }}: string, {{ "{" }}source_type{{ "}" }}: "{{ source_type }}", {{ "{" }}dialogue_language{{ "}" }}: string, {{ "{" }}scenes{{ "}" }}: [{{ "{" }}scene_id{{ "}" }}: "scene_0001", {{ "{" }}heading{{ "}" }}: string, {{ "{" }}summary{{ "}" }}: string, {{ "{" }}action{{ "}" }}: string, {{ "{" }}dialogue{{ "}" }}: string, {{ "{" }}actor_ids{{ "}" }}: [string], {{ "{" }}location_id{{ "}" }}: string, {{ "{" }}source_span{{ "}" }}: string, {{ "{" }}dramatic_purpose{{ "}" }}: string, {{ "{" }}conflict{{ "}" }}: string, {{ "{" }}emotional_turn{{ "}" }}: string, {{ "{" }}subtext{{ "}" }}: string, {{ "{" }}dialogue_function{{ "}" }}: string{{ "}" }}]{{ "}" }}
+
+Rules:
+- Write every non-dialogue screenplay field in English: heading, summary, action, source_span, dramatic_purpose, conflict, emotional_turn, subtext, and dialogue_function.
+- Write only the dialogue field in {{ dialogue_language_or_default }}. Do not put translated dialogue in action or summary.
+- {{ screenplay_rule }}
+- Every scene must visibly implement its matching STORY DESIGN scene_blueprint.
+- Dialogue is mandatory. Every scene with two or more actors must include spoken dialogue where each present actor speaks at least once. Every scene with a single actor must include voiceover, narration, monologue, or phone/radio dialogue. Empty dialogue fields are not acceptable.
+- For screenplay input, preserve source dialogue and order exactly, but fill dramaturgical annotation fields from STORY DESIGN.
+- actor_ids must only use these ids: {{ actor_ids }}
+- Name every actor_ids entry in action and describe how each selected actor participates in the scene.
+- For multiple actors, describe their spatial relationship and coherent shared action without rewriting supplied dialogue.
+- A collective noun such as party, group, or crowd does not replace naming each selected actor.
+- location_id must only use these ids: {{ location_ids }}
+- Dialogue language is {{ dialogue_language }}.
+- Keep screenplay text and dialogue out of actor/location visual descriptions.
+- Do not include camera, renderer, ComfyUI, MSR, reference-sheet, or visual prompt instructions.
+
+Title: {{ title }}
+Target duration seconds: {{ desired_length }}
+Story arch: {{ story_arch_json }}
+STORY DESIGN: {{ story_design_json }}
+Bible: {{ bible_json }}
+Config: {{ config_json }}
+Source:
+{{ story_text }}

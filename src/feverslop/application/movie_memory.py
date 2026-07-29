@@ -4,11 +4,12 @@ import re
 from dataclasses import asdict
 from typing import Any
 
-from feverslop.domain.screenplay import (
-    is_screenplay_character_cue,
-    parse_screenplay,
-    split_screenplay_dialogue,
+from feverslop.domain.movie_utils import (
+    safe_id,
+    string_list,
+    transition_from_previous,
 )
+from feverslop.domain.screenplay import parse_screenplay
 from feverslop.domain.movie import (
     CinematicShot,
     MovieBible,
@@ -24,45 +25,42 @@ from feverslop.domain.movie import (
     MovieStoryDesign,
     MovieTurningPoint,
 )
+from feverslop.ports.movie import ScenePlanningPort
 
 
-def generate_movie_story_design(*, planner, request: Any, bible: MovieBible, story_arch, config: dict, source_text: str) -> MovieStoryDesign:
-    generator = getattr(planner, "generate_movie_story_design", None)
-    if callable(generator):
-        raw = generator(
-            title=request.name,
-            source_type=request.source_type,
-            story_text=source_text,
-            desired_length=float(request.desired_length),
-            bible=bible,
-            story_arch=story_arch,
-            config=config,
-        )
-        if isinstance(raw, MovieStoryDesign):
-            return raw
-        if isinstance(raw, dict) and raw.get("scene_blueprint"):
-            max_actors = int(config.get("max_scene_actors") or (bible.runtime_constraints or {}).get("max_scene_actors") or 4)
-            return movie_story_design_from_dict(raw, fallback_title=request.name, bible=bible, max_scene_actors=max_actors)
+def generate_movie_story_design(*, planner: ScenePlanningPort, request: Any, bible: MovieBible, story_arch, config: dict, source_text: str) -> MovieStoryDesign:
+    raw = planner.generate_movie_story_design(
+        title=request.name,
+        source_type=request.source_type,
+        story_text=source_text,
+        desired_length=float(request.desired_length),
+        bible=bible,
+        story_arch=story_arch,
+        config=config,
+    )
+    if isinstance(raw, MovieStoryDesign):
+        return raw
+    if isinstance(raw, dict) and raw.get("scene_blueprint"):
+        max_actors = int(config.get("max_scene_actors") or (bible.runtime_constraints or {}).get("max_scene_actors") or 4)
+        return movie_story_design_from_dict(raw, fallback_title=request.name, bible=bible, max_scene_actors=max_actors)
     return build_movie_story_design_fallback(request=request, bible=bible, story_arch=story_arch, config=config)
 
 
-def generate_movie_screenplay(*, planner, request: Any, bible: MovieBible, story_arch, story_design: MovieStoryDesign, config: dict, source_text: str) -> MovieScreenplayArtifact:
-    generator = getattr(planner, "generate_movie_screenplay", None)
-    if callable(generator):
-        raw = generator(
-            title=request.name,
-            source_type=request.source_type,
-            story_text=source_text,
-            desired_length=float(request.desired_length),
-            bible=bible,
-            story_arch=story_arch,
-            story_design=story_design,
-            config=config,
-        )
-        if isinstance(raw, MovieScreenplayArtifact):
-            return raw
-        if isinstance(raw, dict) and raw.get("scenes"):
-            return movie_screenplay_from_dict(raw, fallback_title=request.name, source_type=request.source_type, bible=bible)
+def generate_movie_screenplay(*, planner: ScenePlanningPort, request: Any, bible: MovieBible, story_arch, story_design: MovieStoryDesign, config: dict, source_text: str) -> MovieScreenplayArtifact:
+    raw = planner.generate_movie_screenplay(
+        title=request.name,
+        source_type=request.source_type,
+        story_text=source_text,
+        desired_length=float(request.desired_length),
+        bible=bible,
+        story_arch=story_arch,
+        story_design=story_design,
+        config=config,
+    )
+    if isinstance(raw, MovieScreenplayArtifact):
+        return raw
+    if isinstance(raw, dict) and raw.get("scenes"):
+        return movie_screenplay_from_dict(raw, fallback_title=request.name, source_type=request.source_type, bible=bible)
     return build_movie_screenplay_fallback(request=request, bible=bible, story_arch=story_arch, story_design=story_design, config=config)
 
 
@@ -145,21 +143,19 @@ def build_movie_screenplay_fallback(*, request: Any, bible: MovieBible, story_ar
     )
 
 
-def generate_movie_narrative_plan(*, planner, request: Any, bible: MovieBible, screenplay: MovieScreenplayArtifact, config: dict) -> MovieNarrativePlan:
-    generator = getattr(planner, "generate_movie_narrative_plan", None)
-    if callable(generator):
-        raw = generator(
-            title=request.name,
-            source_type=request.source_type,
-            desired_length=float(request.desired_length),
-            bible=bible,
-            screenplay=screenplay,
-            config=config,
-        )
-        if isinstance(raw, MovieNarrativePlan):
-            return raw
-        if isinstance(raw, dict) and (raw.get("sequences") or raw.get("causal_chain")):
-            return movie_narrative_plan_from_dict(raw, fallback_title=request.name)
+def generate_movie_narrative_plan(*, planner: ScenePlanningPort, request: Any, bible: MovieBible, screenplay: MovieScreenplayArtifact, config: dict) -> MovieNarrativePlan:
+    raw = planner.generate_movie_narrative_plan(
+        title=request.name,
+        source_type=request.source_type,
+        desired_length=float(request.desired_length),
+        bible=bible,
+        screenplay=screenplay,
+        config=config,
+    )
+    if isinstance(raw, MovieNarrativePlan):
+        return raw
+    if isinstance(raw, dict) and (raw.get("sequences") or raw.get("causal_chain")):
+        return movie_narrative_plan_from_dict(raw, fallback_title=request.name)
     return build_movie_narrative_plan_fallback(screenplay=screenplay)
 
 
@@ -227,20 +223,15 @@ def build_movie_shot_cards(*, shots: tuple[CinematicShot, ...], scene_cards: tup
                 dialogue=shot.dialogue,
                 start_frame_brief=_start_frame_brief(shot),
                 end_frame_brief=_end_frame_brief(shot),
-                transition_from_previous=_transition_from_previous(shot.transition_from_previous),
+                transition_from_previous=transition_from_previous(shot.transition_from_previous),
                 transition_reason=_transition_reason(shot),
             )
         )
     return tuple(cards)
 
 
-def _transition_from_previous(value: Any) -> str:
-    transition = str(value or "cut").strip().lower().replace("_", "-")
-    return "continuous" if transition == "continuous" else "cut"
-
-
 def _transition_reason(shot: CinematicShot) -> str:
-    if _transition_from_previous(shot.transition_from_previous) != "continuous":
+    if transition_from_previous(shot.transition_from_previous) != "continuous":
         return "hard cut or new setup"
     return "planned as a direct continuation of the previous shot"
 
@@ -479,18 +470,10 @@ def _screenplay_scenes_from_beats(beats: tuple[str, ...], *, bible: MovieBible) 
     )
 
 
-def _split_screenplay_dialogue(lines: list[str]) -> tuple[str, list[str]]:
-    return split_screenplay_dialogue(lines)
-
-
-def _is_screenplay_character_cue(line: str) -> bool:
-    return is_screenplay_character_cue(line)
-
-
 def _dialogue_actor_ids(dialogue: str) -> list[str]:
     ids = []
     for match in re.finditer(r"\b([A-Z][A-Z0-9 _'-]{1,30}):", dialogue):
-        actor_id = _safe_id(match.group(1))
+        actor_id = safe_id(match.group(1))
         if actor_id and actor_id not in ids:
             ids.append(actor_id)
     return ids
@@ -499,8 +482,8 @@ def _dialogue_actor_ids(dialogue: str) -> list[str]:
 def _valid_actor_ids(raw_ids: Any, bible: MovieBible) -> tuple[str, ...]:
     valid = {actor.id for actor in bible.actors}
     ids = []
-    for raw_id in _string_list(raw_ids):
-        actor_id = _safe_id(raw_id)
+    for raw_id in string_list(raw_ids):
+        actor_id = safe_id(raw_id)
         if actor_id in valid and actor_id not in ids:
             ids.append(actor_id)
     return tuple(ids)
@@ -513,7 +496,7 @@ def _valid_actor_id(raw_id: str, bible: MovieBible) -> str:
 
 def _valid_location_id(location_id: str, bible: MovieBible) -> str:
     valid = {location.id for location in bible.locations}
-    safe = _safe_id(location_id)
+    safe = safe_id(location_id)
     if safe in valid:
         return safe
     return bible.locations[0].id if bible.locations else "primary_location"
@@ -610,14 +593,4 @@ def _end_frame_brief(shot: CinematicShot) -> str:
     return f"Ending frame: {shot.story_state_after or shot.action or shot.description}; preserve actor identity and location geography."
 
 
-def _safe_id(value: Any) -> str:
-    raw = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
-    return raw
 
-
-def _string_list(value: Any) -> list[str]:
-    if isinstance(value, list | tuple):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str) and value.strip():
-        return [value.strip()]
-    return []

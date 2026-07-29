@@ -543,7 +543,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
 
             self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
             self.assertIn("brown hair", shot["ingredients_global_prompt"])
-            self.assertIn("### Shot Invariants", shot["ingredients_global_prompt"])
+            self.assertIn("### Target Description", shot["ingredients_global_prompt"])
             self.assertNotIn("It remembers me", shot["ingredients_global_prompt"])
             self.assertIn("It remembers me", shot["ltx"]["prompt_relay"][0]["prompt"])
             self.assertEqual((0, 48), (
@@ -620,7 +620,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             self.assertNotIn("ingredients_global_prompt", shot["ltx"])
             prompt = shot["ingredients_global_prompt"]
             self.assertTrue(prompt.startswith("### Reference Sheet Description\n"))
-            self.assertIn("### Shot Invariants\n", prompt)
+            self.assertIn("### Target Description\n", prompt)
             self.assertIn("Use Character `actor_1` from Left", prompt)
             self.assertIn("Use Setting `loc_1` from Right", prompt)
             self.assertIn("Do not add or omit visible characters", prompt)
@@ -674,7 +674,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
 
             self.assertNotIn("Spanish", prompt)
             self.assertNotIn("Hola mundo", prompt)
-            self.assertIn("### Shot Invariants", prompt)
+            self.assertIn("### Target Description", prompt)
 
     def test_enrichment_global_prompt_graceful_without_bible(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -685,7 +685,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             prompt = data["shots"][0]["ingredients_global_prompt"]
 
             self.assertIsInstance(prompt, str)
-            self.assertIn("### Shot Invariants", prompt)
+            self.assertIn("### Target Description", prompt)
 
 
 class PanelPositionLabelTests(unittest.TestCase):

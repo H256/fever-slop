@@ -1,0 +1,40 @@
+Build a movie continuity plan for AI film generation.
+
+Return valid JSON only. No markdown, no commentary.
+
+Required top-level shape:
+{{ "{" }}
+  "continuity_ledger": {{ "{" }}
+    "style_bible": {{ "{" }}visual_style{{ "}" }}: "", {{ "{" }}palette{{ "}" }}: "", {{ "{" }}lighting{{ "}" }}: "", {{ "{" }}camera{{ "}" }}: "", {{ "{" }}negative_constraints{{ "}" }}: []{{ "}" }},
+    "characters": {{ "{" }}actor_id{{ "}" }}: {{ "{" }}character_id{{ "}" }}: "", {{ "{" }}base_identity{{ "}" }}: "", {{ "{" }}wardrobe{{ "}" }}: "", {{ "{" }}carried_props{{ "}" }}: [], {{ "{" }}physical_state{{ "}" }}: "", {{ "{" }}emotional_state{{ "}" }}: "", {{ "{" }}last_location{{ "}" }}: "", {{ "{" }}last_action{{ "}" }}: ""{{ "}" }},
+    "locations": {{ "{" }}location_id{{ "}" }}: {{ "{" }}location_id{{ "}" }}: "", {{ "{" }}name{{ "}" }}: "", {{ "{" }}time_of_day{{ "}" }}: "", {{ "{" }}lighting{{ "}" }}: "", {{ "{" }}props{{ "}" }}: [], {{ "{" }}environmental_state{{ "}" }}: ""{{ "}" }},
+    "scene_order": []
+  {{ "}" }},
+  "scene_continuity": {{ "{" }}
+    "shot_id": {{ "{" }}shot_id{{ "}" }}: "", {{ "{" }}location_id{{ "}" }}: "", {{ "{" }}incoming{{ "}" }}: [], {{ "{" }}required_carryovers{{ "}" }}: [], {{ "{" }}allowed_changes{{ "}" }}: [], {{ "{" }}outgoing{{ "}" }}: [], {{ "{" }}characters{{ "}" }}: {{ "}" }}, {{ "{" }}location{{ "}" }}: {{ "}" }}{{ "}" }}
+  {{ "}" }},
+  "narrative_chain": [
+    {{ "{" }}shot_id{{ "}" }}: "", {{ "{" }}story_state_before{{ "}" }}: "", {{ "{" }}story_state_after{{ "}" }}: "", {{ "{" }}cause_from_previous{{ "}" }}: "", {{ "{" }}narrative_purpose{{ "}" }}: "", {{ "{" }}conflict_or_tension{{ "}" }}: "", {{ "{" }}turning_point{{ "}" }}: "", {{ "{" }}sets_up_next{{ "}" }}: ""{{ "}" }}
+  ]
+{{ "}" }}
+
+Rules:
+- Write all continuity, state, style, location, and narrative prose in English. Only quoted dialogue text may remain in {{ dialogue_language_or_default }}.
+- Keep actor ids exactly to bible actor ids. Keep location ids exactly to bible location ids.
+- Every shot id from SHOTS must appear once in scene_order, scene_continuity, and narrative_chain.
+- Every shot after the first needs a concrete cause_from_previous.
+- Every shot except the last needs a concrete sets_up_next.
+- required_carryovers are facts the generator must preserve in this shot.
+- allowed_changes are facts allowed or expected to change in this shot.
+- outgoing states become useful incoming state for later shots.
+- Never invent more than {{ max_scene_actors }} visible actors in one shot.
+- Dialogue language is {{ dialogue_language }}; any dialogue continuity must respect it.
+{{ screenplay_rule }}
+
+TITLE: {{ title }}
+TARGET DURATION: {{ desired_length }}
+CONFIG CONSTRAINTS: {{ config_json }}
+BIBLE: {{ bible_json }}
+SHOTS: {{ shots_json }}
+SOURCE:
+{{ story_text }}

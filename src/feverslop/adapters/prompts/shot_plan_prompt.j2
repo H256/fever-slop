@@ -1,0 +1,17 @@
+Create a continuous cinematic shot plan from this story arch.
+Title: {{ story_arch.title }}
+Premise: {{ story_arch.premise }}
+Beats: {{ story_arch.beats_json }}
+Target duration seconds: {{ desired_length }}
+Resolution: {{ width }}x{{ height }}
+Target shot count: about {{ target_shots }}. Prefer varied shot durations from {{ min_duration }} to {{ max_duration }} seconds. Never exceed {{ max_duration }} seconds for one shot.
+
+Return JSON with:
+{{ "{" }}shots{{ "}" }}: [{{ "{" }}description{{ "}" }}: string, {{ "{" }}duration_seconds{{ "}" }}: number, {{ "{" }}camera{{ "}" }}: string, {{ "{" }}action{{ "}" }}: string, {{ "{" }}expression{{ "}" }}: string, {{ "{" }}location{{ "}" }}: string, {{ "{" }}dialogue{{ "}" }}: string, {{ "{" }}actor_ids{{ "}" }}: [string], {{ "{" }}location_id{{ "}" }}: string, {{ "{" }}transition_from_previous{{ "}" }}: "cut|continuous"{{ "}" }}]{{ "}" }}
+
+Rules:
+- Write every non-dialogue prose field in English: description, camera, action, expression, location, and continuity-like text. Only the dialogue field may use the requested spoken dialogue language.
+- If the source or steering names actors/characters, preserve them as stable snake_case actor_ids.
+- If the idea asks for at least N characters, create at least N distinct actor_ids across the shot plan.
+- Use stable snake_case location_id values for recurring locations.
+- Use transition_from_previous="continuous" only when this shot directly continues the previous shot in the same location with overlapping actors, no time jump, no perspective jump, and no new story beat. Otherwise use "cut". First shot is always "cut".

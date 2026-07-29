@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
 from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
@@ -106,3 +106,106 @@ def _project_reference_path(value: Any) -> str:
 
 def _resolve_reference_path(value: str) -> str:
     return _project_reference_path(value)
+
+
+def build_movie_actor_visual_description(cues: str) -> str:
+    return _sanitize_actor_cues(cues)
+
+
+def build_movie_actor_reference_prompt(name: str, cues: str = "") -> str:
+    cue_text = _sanitize_actor_cues(cues)
+    description = f" {cue_text}." if cue_text else ""
+    return (
+        f"Full-body cinematic character reference sheet for {name}.{description} "
+        "Four vertical panels in one image: 1st panel head-and-shoulders closeup, "
+        "2nd panel straight full-body front view, 3rd panel clean full-body left view, "
+        "4th panel clean full-body back view. Consistent face, hair, body shape, wardrobe, "
+        "posture, neutral expression, plain white seamless studio background, even reference-sheet lighting, "
+        "no environment, no scenery, no props, no text, no extra characters."
+    )
+
+
+def _actor_static_cues(shots: list) -> str:
+    parts: list[str] = []
+    for shot in shots[:4]:
+        for value in (getattr(shot, "description", ""), getattr(shot, "expression", "")):
+            text = _sanitize_actor_cue_fragment(str(value or ""))
+            if text and text not in parts:
+                parts.append(text)
+    return "; ".join(parts)[:700]
+
+
+def _sanitize_actor_cues(cues: str) -> str:
+    parts: list[str] = []
+    cues = _strip_actor_prompt_boilerplate(str(cues or ""))
+    for raw in re.split(r";|\.", cues):
+        text = _sanitize_actor_cue_fragment(raw)
+        if text and text not in parts:
+            parts.append(text)
+    return "; ".join(parts).strip(" ;.")
+
+
+def _strip_actor_prompt_boilerplate(value: str) -> str:
+    text = str(value or "")
+    text = re.sub(r"(?is)^.*?Full-body cinematic character reference sheet for [^.]+[.]\s*", "", text)
+    text = re.sub(r"(?is)\bFour vertical panels in one image\b.*$", "", text)
+    text = re.sub(r"(?is)\bConsistent face\b.*$", "", text)
+    text = re.sub(r"(?is),?\s*story-defined cinematic character\b.*$", "", text)
+    return text
+
+
+def _sanitize_actor_cue_fragment(value: str) -> str:
+    text = " ".join(str(value or "").split()).strip(" .;,")
+    if not text:
+        return ""
+    lower = text.lower()
+    if lower.endswith("'s") or lower in {"the man", "the woman", "the character"}:
+        return ""
+    if any(token in lower for token in ("jump cut", "shot", "close-up", "closeup", "camera", "tracking", "split-screen")):
+        text = re.sub(r"(?i)^a\s+(?:sudden,\s+violent\s+)?jump cut to\s+", "", text)
+        text = re.sub(r"(?i)^an?\s+[^.;,]*\bshot of\s+", "", text)
+        text = re.sub(r"(?i)^extreme close-up of\s+", "", text)
+        text = re.sub(r"(?i)^close-up of\s+", "", text)
+        text = re.sub(r"(?i)^medium shot of\s+", "", text)
+        text = re.sub(r"(?i)^wide shot of\s+", "", text)
+    lower = text.lower()
+    if any(
+        token in lower
+        for token in (
+            "lunges", "bellows", "glides", "walks", "stumbles", "recoiling",
+            "falls", "stands", "tearing through", "shaking", "appearing from",
+            "eye fluttering", "eyes roll back", "screen fades", "enters a trance",
+            "gaze", "mesmerized", "reaches", "leans", "breathing",
+        )
+    ):
+        if any(token in lower for token in ("gaze", "mesmerized", "reaches")):
+            return ""
+        if "," not in text and " with " not in lower:
+            return ""
+        text = re.sub(r"(?i)\btearing through\b.*$", "", text)
+        text = re.sub(r"(?i)\bappearing from\b.*$", "", text)
+        text = re.sub(r"(?i)\bglides\b.*$", "", text)
+        text = re.sub(r"(?i)\bbellows\b.*$", "", text)
+        text = re.sub(r"(?i)\blunges\b.*$", "", text)
+        text = re.sub(r"(?i)\beye fluttering\b.*$", "", text)
+        text = re.sub(r"(?i)\beyes roll back\b.*$", "", text)
+        text = re.sub(r"(?i)\bscreen fades\b.*$", "", text)
+    text = text.strip(" .;,")
+    if text.lower().endswith("'s") or text.lower() in {"the man", "the woman", "the character"}:
+        return ""
+    return text
+
+
+def _shot_cues(shots: list, *, include_location: bool) -> str:
+    parts: list[str] = []
+    for shot in shots[:4]:
+        for value in (
+            getattr(shot, "description", ""),
+            getattr(shot, "action", ""),
+            getattr(shot, "expression", ""),
+            getattr(shot, "location", "") if include_location else "",
+        ):
+            text = str(value or "").strip()
+            if text and text not in parts:
+                parts.append(text)
+    return "; ".join(parts)[:700]

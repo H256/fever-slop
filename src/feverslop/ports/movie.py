@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 from feverslop.domain.movie import CinematicShot, MovieBible, MovieContinuityPlan, MovieNarrativePlan, MovieScreenplayArtifact, MovieStoryDesign, StoryArch
+
+
+class MovieArtifactWriter(Protocol):
+    """Persistence adapter for movie planning artifacts (JSON files, text files, directories)."""
+
+    def write_json(self, path: str | Path, data: Any) -> Path:
+        """Serialize *data* as pretty JSON with a trailing newline and write to *path*."""
+
+    def write_text(self, path: str | Path, text: str) -> Path:
+        """Write UTF-8 text to *path* (creates parent directories as needed)."""
+
+    def ensure_dir(self, path: str | Path, *, exist_ok: bool = True) -> Path:
+        """Ensure a directory exists. Raises if the path already exists as a file."""
 
 
 class StoryGenerationPort(Protocol):
@@ -37,7 +50,7 @@ class ScenePlanningPort(Protocol):
         bible: MovieBible,
         shots: tuple[CinematicShot, ...],
         config: dict,
-    ) -> MovieContinuityPlan | dict:
+    ) -> MovieContinuityPlan:
         """Create a causal continuity ledger for movie shots."""
 
     def generate_movie_screenplay(
@@ -51,7 +64,7 @@ class ScenePlanningPort(Protocol):
         story_arch: StoryArch,
         story_design: MovieStoryDesign,
         config: dict,
-    ) -> MovieScreenplayArtifact | dict:
+    ) -> MovieScreenplayArtifact:
         """Create or normalize the canonical persisted movie screenplay."""
 
     def generate_movie_story_design(
@@ -64,7 +77,7 @@ class ScenePlanningPort(Protocol):
         bible: MovieBible,
         story_arch: StoryArch,
         config: dict,
-    ) -> MovieStoryDesign | dict:
+    ) -> MovieStoryDesign:
         """Create dramaturgical design before canonical screenplay authoring."""
 
     def generate_movie_narrative_plan(
@@ -76,13 +89,14 @@ class ScenePlanningPort(Protocol):
         bible: MovieBible,
         screenplay: MovieScreenplayArtifact,
         config: dict,
-    ) -> MovieNarrativePlan | dict:
+    ) -> MovieNarrativePlan:
         """Create act/sequence causality and setup/payoff memory from the canonical screenplay."""
 
     def plan_shots_from_bible(
         self,
         *,
         bible: MovieBible,
+        screenplay: MovieScreenplayArtifact | None = None,
         desired_length: float,
         width: int,
         height: int,

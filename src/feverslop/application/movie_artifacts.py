@@ -3,17 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from dataclasses import asdict, dataclass
-from typing import Any
-
 from feverslop.application.movie import (
     MovieInput,
     build_movie_actor_reference_prompt,
-    build_movie_continuity_fallback,
     generate_movie_bible,
     _bible_dict,
     movie_bible_from_dict,
     movie_continuity_plan_to_dict,
 )
+from feverslop.domain.movie import MovieContinuityPlan
 from feverslop.application.movie_memory import (
     build_movie_narrative_plan_fallback,
     build_movie_scene_cards,
@@ -31,6 +29,7 @@ from feverslop.application.movie_memory import (
     movie_story_design_to_dict,
 )
 from feverslop.domain.movie import CinematicShot
+from feverslop.domain.movie_utils import transition_from_previous
 from feverslop.errors import FeverSlopValidationError
 
 
@@ -219,7 +218,7 @@ def ensure_movie_continuity_plan(project_dir: Path) -> Path:
     bible = movie_bible_from_dict(_read_json(bible_path))
     render_plan = _read_json(render_plan_path)
     shots = tuple(_shot_from_render_plan(item, index) for index, item in enumerate(render_plan.get("shots") or [], start=1) if isinstance(item, dict))
-    continuity = build_movie_continuity_fallback(bible=bible, shots=shots)
+    continuity = MovieContinuityPlan.fallback(bible=bible, shots=shots)
     continuity_path.write_text(json.dumps(movie_continuity_plan_to_dict(continuity), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return continuity_path
 
@@ -285,13 +284,8 @@ def _shot_from_render_plan(shot: dict, index: int) -> CinematicShot:
         conflict_or_tension=str(shot.get("conflict_or_tension") or "").strip(),
         turning_point=str(shot.get("turning_point") or "").strip(),
         sets_up_next=str(shot.get("sets_up_next") or "").strip(),
-        transition_from_previous=_transition_from_previous(shot.get("transition_from_previous")),
+        transition_from_previous=transition_from_previous(shot.get("transition_from_previous")),
     )
-
-
-def _transition_from_previous(value: Any) -> str:
-    transition = str(value or "cut").strip().lower().replace("_", "-")
-    return "continuous" if transition == "continuous" else "cut"
 
 
 def _manifest_actor(actor: dict, current: dict) -> dict:

@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.domain.movie_utils import transition_from_previous
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -179,7 +180,7 @@ class ComfyUIMovieVisualAdapter:
     ) -> bool:
         if mode != "last-to-start" or scene_number <= 1:
             return False
-        if _transition_from_previous(scene) != "continuous":
+        if transition_from_previous(scene.get("transition_from_previous")) != "continuous":
             return False
         if not _continuous_transition_is_valid(scene, previous_scene=previous_scene):
             return False
@@ -223,7 +224,7 @@ class ComfyUIMovieVisualAdapter:
                 "original_style_i2v_prompt": _movie_scene_prompt(scene),
             }
             scene["references"] = scene.get("references") or _references_from_ids(scene.get("reference_ids") or {}, reference_manifest, project_dir)
-            scene["transition_from_previous"] = _transition_from_previous(scene)
+            scene["transition_from_previous"] = transition_from_previous(scene.get("transition_from_previous"))
             if not scene.get("references"):
                 raise ValueError(f"Movie shot {scene['scene']} is missing MSR references")
             scenes.append(scene)
@@ -258,11 +259,6 @@ def _continuity_keyframes(value: object) -> str:
     if mode not in {"none", "last-to-start"}:
         raise ValueError("continuity_keyframes must be one of: last-to-start, none")
     return mode
-
-
-def _transition_from_previous(scene: dict[str, Any]) -> str:
-    transition = str(scene.get("transition_from_previous") or "cut").strip().lower().replace("_", "-")
-    return "continuous" if transition == "continuous" else "cut"
 
 
 def _continuity_handoff_prompt(previous_scene: dict[str, Any] | None) -> str:
@@ -306,7 +302,7 @@ def _validate_selected_continuity_dependencies(scenes: list[dict[str, Any]], *, 
     scenes_by_number = {int(scene["scene"]): scene for scene in scenes}
     for scene_number in sorted(selected):
         scene = scenes_by_number.get(scene_number)
-        if not scene or scene_number <= 1 or _transition_from_previous(scene) != "continuous":
+        if not scene or scene_number <= 1 or transition_from_previous(scene.get("transition_from_previous")) != "continuous":
             continue
         previous_clip = output_dir / f"scene_{scene_number - 1:04}.mp4"
         if not previous_clip.exists():
