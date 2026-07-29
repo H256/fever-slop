@@ -105,10 +105,6 @@ def main() -> None:
         print("Error: specify --screenplay or --story-text", file=sys.stderr)
         sys.exit(1)
 
-    if len(story_text.strip()) < 20:
-        print("Error: story input is too short (must be at least 20 characters)", file=sys.stderr)
-        sys.exit(1)
-
     from feverslop.application.movie import slugify_project_name
 
     projects_root = coerce_local_path(args.projects_root).resolve()
