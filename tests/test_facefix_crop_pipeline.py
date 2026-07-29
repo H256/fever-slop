@@ -417,6 +417,16 @@ class TestSceneArtifactLayoutExtensions(unittest.TestCase):
         repaired = layout.scene_face_repaired_dir(1, "hero")
         self.assertEqual(repaired, scene_dir / "repaired")
 
+    def test_actor_methods_extra(self):
+        from feverslop.scene_artifacts import SceneArtifactLayout
+        layout = SceneArtifactLayout(Path("/tmp/project"))
+
+        facefix = layout.scene_final_facefix_video(1)
+        self.assertEqual(facefix, Path("/tmp/project/output/render/scenes/scene_0001/final_facefix.mp4"))
+
+        workflow = layout.scene_workflow_facefix(1)
+        self.assertEqual(workflow, Path("/tmp/project/output/render/scenes/scene_0001/workflow_facefix.json"))
+
     def test_actor_ids_empty(self):
         from feverslop.scene_artifacts import SceneArtifactLayout
         layout = SceneArtifactLayout(Path("/tmp/nonexistent_project"))

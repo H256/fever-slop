@@ -12,8 +12,19 @@ def encode_face_crop_mp4(
     fps: float,
     output_path: Path,
     ffmpeg_path: str = "ffmpeg",
+    crf: int = 18,
+    force: bool = True,
 ) -> Path:
-    """Encode PNG crop frames into an MP4 video using FFmpeg."""
+    """Encode PNG crop frames into an MP4 video using FFmpeg.
+
+    Args:
+        frames_folder: Directory containing numbered PNG frames.
+        fps: Frame rate for the output video.
+        output_path: Destination MP4 path.
+        ffmpeg_path: Path to the FFmpeg binary.
+        crf: Constant Rate Factor (0=lossless, 51=worse). Default 18 for near-lossless.
+        force: Overwrite output file if it exists (-y flag).
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     pattern = str(frames_folder / "crop_%06d.png")
@@ -24,10 +35,11 @@ def encode_face_crop_mp4(
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-preset", "fast",
-        "-crf", "18",
-        "-y",
-        str(output_path),
+        "-crf", str(crf),
     ]
+    if force:
+        cmd.append("-y")
+    cmd.append(str(output_path))
 
     logger.info("Encoding face crop MP4: %s", output_path)
     result = subprocess.run(cmd, capture_output=True, text=True)
