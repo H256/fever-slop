@@ -568,9 +568,45 @@ def _run_facefix_stage(state: PipelineRunState) -> None:
         scene_numbers=scene_numbers,
         reference_images=layout.actor_sheet_images(),
         skip_existing=not state.args.no_skip_existing,
+        ffmpeg_debug=getattr(state.args, "facefix_debug", False),
         use_crop_pipeline=True,
     )
     run_facefix(options, console=console)
+
+
+def _run_facefix_concat_stage(state: PipelineRunState) -> None:
+    from .config_loader import rewrite_concat_list, collect_render_plan_scene_clips
+
+    clips = collect_render_plan_scene_clips(
+        state.plan_for_next_step,
+        state.context.ltx_dir,
+        layout=state.context.artifact_layout,
+        prefer_facefix=True,
+    )
+    rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
+
+    facefix_video_only = state.context.final_concat_video.with_stem(
+        state.context.final_concat_video.stem + "_facefix"
+    )
+    facefix_final = state.context.final_concat.with_stem(
+        state.context.final_concat.stem + "_facefix"
+    )
+
+    console.print("==> FaceFix concat video-only")
+    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    state.video_only_path = postprocessor.concat_clips(
+        concat_list=state.context.concat_list,
+        output_file=facefix_video_only,
+        video_only=True,
+    )
+
+    console.print("==> FaceFix mux original audio")
+    state.final_video_path = postprocessor.mux_original_audio(
+        video_file=facefix_video_only,
+        audio_file=state.context.input_audio,
+        output_file=facefix_final,
+    )
+    console.print(f"[green]FaceFix final output: {facefix_final}[/green]")
 
 
 STAGE_RUNNERS = {
@@ -590,6 +626,7 @@ STAGE_RUNNERS = {
     PipelineStage.MUX_ORIGINAL_AUDIO: _run_mux_original_audio_stage,
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: _run_diagnostic_scene_audio_concat_stage,
     PipelineStage.FACEFIX: _run_facefix_stage,
+    PipelineStage.FACEFIX_CONCAT: _run_facefix_concat_stage,
 }
 
 STAGE_LABELS = {
@@ -609,6 +646,7 @@ STAGE_LABELS = {
     PipelineStage.MUX_ORIGINAL_AUDIO: "Mux original audio",
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: "Diagnostic scene-audio concat",
     PipelineStage.FACEFIX: "FaceFix postprocessing",
+    PipelineStage.FACEFIX_CONCAT: "FaceFix final concat",
 }
 
 
@@ -677,17 +715,22 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         if args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
             stages.append(PipelineStage.LTX_PREPARE_WORKFLOWS)
         stages.append(PipelineStage.LTX_RENDER_SCENES)
-    if not args.skip_facefix:
-        stages.append(PipelineStage.FACEFIX)
-    else:
-        console.print("Skipping FaceFix postprocessing.")
     if not args.skip_final_concat:
-        stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
+        if not args.skip_facefix:
+            stages.append(PipelineStage.FACEFIX)
+            stages.append(PipelineStage.FACEFIX_CONCAT)
+        else:
+            console.print("Skipping FaceFix postprocessing.")
+            stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         stages.append(PipelineStage.MUX_ORIGINAL_AUDIO)
         if args.diagnostic_original_audio_mux:
             stages.append(PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT)
         elif args.no_original_audio_mux:
             console.print("--no-original-audio-mux is deprecated; original-audio muxing is now always used for final concat.")
+    elif not args.skip_facefix:
+        stages.append(PipelineStage.FACEFIX)
+    else:
+        console.print("Skipping FaceFix postprocessing.")
     return stages
 
 

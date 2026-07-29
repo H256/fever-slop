@@ -168,9 +168,47 @@ class TestFaceVideoEncoder(unittest.TestCase):
         frames_dir = Path("/tmp/crops")
         output = Path("/tmp/face_crop.mp4")
 
+        # Mock subprocess callback creates the output file so integrity check passes
+        def _fake_run(*args, **kwargs):
+            nonlocal output
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"fake_mp4_data")
+            return mock_subprocess.run.return_value
+
+        mock_subprocess.run.side_effect = _fake_run
+
         result = encode_face_crop_mp4(frames_dir, 24.0, output)
         self.assertEqual(result, output)
         mock_subprocess.run.assert_called_once()
+        output.unlink(missing_ok=True)
+
+    @patch("feverslop.adapters.face_video_encoder.subprocess")
+    def test_encode_missing_output_raises(self, mock_subprocess):
+        from feverslop.adapters.face_video_encoder import encode_face_crop_mp4
+
+        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+
+        with self.assertRaises(RuntimeError) as ctx:
+            encode_face_crop_mp4(Path("/tmp/crops"), 24.0, Path("/tmp/does_not_exist.mp4"))
+
+        self.assertIn("no output file", str(ctx.exception))
+
+    @patch("feverslop.adapters.face_video_encoder.subprocess")
+    def test_encode_empty_output_raises(self, mock_subprocess):
+        from feverslop.adapters.face_video_encoder import encode_face_crop_mp4
+
+        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+
+        frames_dir = Path("/tmp/crops")
+        output = Path("/tmp/empty_output.mp4")
+        # Create empty file so it exists but is 0 bytes
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.touch()
+
+        with self.assertRaises(RuntimeError) as ctx:
+            encode_face_crop_mp4(frames_dir, 24.0, output)
+
+        self.assertIn("empty", str(ctx.exception))
 
     @patch("feverslop.adapters.face_video_encoder.subprocess")
     def test_encode_failure_surfaces_stderr(self, mock_subprocess):

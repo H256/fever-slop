@@ -38,4 +38,12 @@ def encode_face_crop_mp4(
             f"FFmpeg encoding failed for {output_path} (exit {result.returncode}): {stderr_msg}"
         )
 
+    # Verify output integrity
+    if not output_path.exists():
+        logger.error("FFmpeg produced no output file: %s", output_path)
+        raise RuntimeError(f"FFmpeg produced no output file: {output_path}")
+    if output_path.stat().st_size == 0:
+        logger.error("FFmpeg produced empty output: %s", output_path)
+        raise RuntimeError(f"FFmpeg produced empty output: {output_path}")
+
     return output_path

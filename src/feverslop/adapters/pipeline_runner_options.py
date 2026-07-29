@@ -42,6 +42,7 @@ RUNNER_ARGUMENTS = (
     ("skip_ltx", ("--skip-ltx",), {"action": "store_true"}),
     ("skip_final_concat", ("--skip-final-concat",), {"action": "store_true"}),
     ("skip_facefix", ("--skip-facefix",), {"action": "store_true", "default": True}),
+    ("facefix_debug", ("--facefix-debug",), {"action": "store_true", "default": False}),
     ("facefix_workflow", ("--facefix-workflow",), {"default": str(Path("workflows") / "video_ltxv_facefix_v1.json")}),
     ("diagnostic_original_audio_mux", ("--diagnostic-original-audio-mux",), {"action": "store_true"}),
     ("no_original_audio_mux", ("--no-original-audio-mux",), {"action": "store_true"}),

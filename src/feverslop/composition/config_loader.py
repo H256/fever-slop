@@ -94,6 +94,7 @@ def collect_render_plan_scene_clips(
     output_dir: str | Path,
     *,
     layout: SceneArtifactLayout | None = None,
+    prefer_facefix: bool = False,
 ) -> list[Path]:
     output_dir = Path(output_dir)
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
@@ -101,13 +102,18 @@ def collect_render_plan_scene_clips(
     missing: list[Path] = []
     for scene in render_plan:
         scene_number = int(scene["scene"])
-        candidates = ([layout.scene_final_video(scene_number)] if layout else []) + [
+        candidates = []
+        if layout:
+            if prefer_facefix:
+                candidates.append(layout.scene_final_facefix_video(scene_number))
+            candidates.append(layout.scene_final_video(scene_number))
+        candidates.extend([
             output_dir / f"scene_{scene_number:04}.mp4",
             output_dir / "final" / f"scene_{scene_number:04}.mp4",
-        ]
+        ])
         clip = next((candidate for candidate in candidates if candidate.exists()), None)
         if clip is None:
-            missing.append(layout.scene_final_video(scene_number) if layout else candidates[0])
+            missing.append((layout.scene_final_video(scene_number) if layout else candidates[0]))
             continue
         clips.append(clip)
 
