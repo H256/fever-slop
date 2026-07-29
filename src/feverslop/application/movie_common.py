@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from feverslop.errors import FeverSlopValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
+
 from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.domain.slug_utils import slugify_project_name
 
 
-@dataclass(frozen=True)
-class MovieInput:
+class MovieInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     name: str
     source_type: str
     story_text: str
@@ -20,7 +28,57 @@ class MovieInput:
     mode: str = "scaffold"
     min_scene_duration: float = 4.0
     max_scene_duration: float = 20.0
-    config: dict = field(default_factory=dict)
+    config: dict = Field(default_factory=dict)
+
+    @field_validator("source_type")
+    @classmethod
+    def validate_source_type(cls, v: str) -> str:
+        if v not in {"short_story", "screenplay"}:
+            raise ValueError("source_type must be short_story or screenplay")
+        return v
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        if v not in {"scaffold", "full_auto"}:
+            raise ValueError("movie mode must be scaffold or full_auto")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Movie project name is required")
+        if not slugify_project_name(v):
+            raise ValueError("Movie project slug is empty after slugifying the name")
+        return v
+
+    @field_validator("story_text")
+    @classmethod
+    def validate_story_text(cls, v: str) -> str:
+        if len(v.strip()) < 20:
+            raise ValueError("Movie story input is too short")
+        return v
+
+    @field_validator("desired_length")
+    @classmethod
+    def validate_desired_length(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("desired_length must be positive")
+        return v
+
+    @field_validator("width", "height")
+    @classmethod
+    def validate_resolution(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("resolution width and height must be positive")
+        return v
+
+    @model_validator(mode="after")
+    def validate_screenplay(self) -> MovieInput:
+        if self.source_type == "screenplay" and not looks_like_screenplay(self.story_text):
+            raise ValueError("screenplay input must contain scene headings such as INT. or EXT.")
+        return self
 
 
 @dataclass(frozen=True)
@@ -41,25 +99,6 @@ class MovieScaffoldResult:
 @dataclass(frozen=True)
 class MovieProductionResult(MovieScaffoldResult):
     final_video_path: Path | None = None
-
-
-def validate_movie_input(request: MovieInput) -> None:
-    if request.source_type not in {"short_story", "screenplay"}:
-        raise FeverSlopValidationError("source_type must be short_story or screenplay")
-    if not request.name.strip():
-        raise FeverSlopValidationError("Movie project name is required")
-    if not slugify_project_name(request.name):
-        raise FeverSlopValidationError("Movie project slug is empty after slugifying the name")
-    if len(request.story_text.strip()) < 20:
-        raise FeverSlopValidationError("Movie story input is too short")
-    if float(request.desired_length) <= 0:
-        raise FeverSlopValidationError("desired_length must be positive")
-    if int(request.width) <= 0 or int(request.height) <= 0:
-        raise FeverSlopValidationError("resolution width and height must be positive")
-    if request.mode not in {"scaffold", "full_auto"}:
-        raise FeverSlopValidationError("movie mode must be scaffold or full_auto")
-    if request.source_type == "screenplay" and not looks_like_screenplay(request.story_text):
-        raise FeverSlopValidationError("screenplay input must contain scene headings such as INT. or EXT.")
 
 
 def _planner_source_text(request: MovieInput, config: dict) -> str:
