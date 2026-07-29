@@ -11,6 +11,7 @@ from feverslop.domain.face_detection import (
     FaceProcessingPolicy,
     RejectReason,
 )
+from feverslop.adapters.face_mask import MaskValidationResult
 from feverslop.application.face_pipeline import FacePipeline
 
 
@@ -60,7 +61,7 @@ class FakeMaskPort:
         return current_mask
 
     def validate_mask(self, mask, min_nonzero_ratio=0.01):
-        return True
+        return MaskValidationResult(valid=True, nonzero_ratio=1.0, message="")
 
 
 class FakeDebugPort:

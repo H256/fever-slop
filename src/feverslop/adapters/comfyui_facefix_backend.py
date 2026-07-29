@@ -6,6 +6,7 @@ crops at 768x768 with feather-composite postprocessing.
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from copy import deepcopy
 import json
@@ -23,9 +24,9 @@ from feverslop.domain.facefix_rendering import FaceFixConfig, FaceFixSceneReques
 class ComfyUIFaceFixRenderBackend:
     """Renders face-refined video via the LTXV FaceFix ComfyUI workflow.
 
-    This adapter takes already-rendered scene videos, uploads them and optional
-    face reference images to ComfyUI, patches the FaceFix workflow, and runs
-    the LTXV LoopingSampler with face conditioning.
+    .. deprecated::
+        Use ComfyUIFaceFixCropBackend instead. The full-res approach causes
+        OOM on 32GB VRAM while the crop pipeline is more memory-efficient.
     """
 
     def __init__(
@@ -65,6 +66,14 @@ class ComfyUIFaceFixRenderBackend:
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self._face_batch_size = 0
+
+        warnings.warn(
+            "ComfyUIFaceFixRenderBackend is deprecated. "
+             "Use ComfyUIFaceFixCropBackend (adapters.comfyui_facefix_crop_backend) "
+            "for the crop-and-composite approach.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     def load_workflow(self) -> dict:
         if self.workflow is not None:

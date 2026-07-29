@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -10,6 +11,14 @@ from feverslop.domain.face_detection import (
     FaceEmbedding,
     FaceLandmarks,
 )
+
+
+@dataclass
+class MaskValidationResult:
+    """Result of mask validation from FaceMaskPort."""
+    valid: bool
+    nonzero_ratio: float
+    message: str = ""
 
 
 class FaceDetectorPort(Protocol):
@@ -174,5 +183,8 @@ class FaceMaskPort(Protocol):
         alpha controls how much to keep from previous mask (0-1).
         """
 
-    def validate_mask(self, mask: np.ndarray, min_nonzero_ratio: float = 0.01) -> bool:
-        """Validate that mask has meaningful content."""
+    def validate_mask(self, mask: np.ndarray, min_nonzero_ratio: float = 0.01) -> "MaskValidationResult":  # noqa: F821
+        """Validate that mask has meaningful content.
+
+        Returns MaskValidationResult with validity flag and diagnostic info.
+        """

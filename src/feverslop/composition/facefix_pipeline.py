@@ -215,6 +215,7 @@ def _run_crop_facefix(
 
     extractor = InsightFaceExtractor()
     actor_embeddings: dict[str, np.ndarray] = {}
+    actor_face_refs: dict[str, Path] = {}
     for sheet_path in actor_sheets:
         actor_id = sheet_path.parent.parent.name
         face_ref = extractor.extract_face_from_image(sheet_path)
@@ -223,6 +224,13 @@ def _run_crop_facefix(
             if emb is not None:
                 actor_embeddings[actor_id] = emb
                 identity_adapter.register_reference(emb, actor_id)
+                # Save face_ref image for later use in crop render.
+                refs_dir = project_dir / "output" / "references" / "actors" / actor_id / "face_ref" if project_dir else None
+                if refs_dir is not None:
+                    refs_dir.mkdir(parents=True, exist_ok=True)
+                    ref_path = refs_dir / f"{actor_id}_ref.png"
+                    cv2.imwrite(str(ref_path), cv2.cvtColor(face_ref, cv2.COLOR_RGB2BGR))
+                    actor_face_refs[actor_id] = ref_path
 
     # -- Per-scene processing --
     for scene_number in scene_numbers:
@@ -297,6 +305,11 @@ def _run_crop_facefix(
                     matched_actor = next(iter(actor_embeddings))
                 else:
                     matched_actor = "unknown"
+                    logger.warning(
+                        "Frame %d: no identity match found for scene %d, "
+                        "marking as %s",
+                        frame_idx, scene_number, matched_actor,
+                    )
 
                 actor_frames.setdefault(matched_actor, []).append(
                     (frame_idx, result)
@@ -430,6 +443,7 @@ def _run_crop_facefix(
                 anchors_dir=anchor_dir,
                 output_dir=facefix_dir,
                 actor_id=actor_id,
+                face_ref_image=actor_face_refs.get(actor_id),
             )
 
             # --- Load repaired frames ---

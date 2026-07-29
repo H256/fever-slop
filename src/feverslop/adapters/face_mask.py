@@ -8,7 +8,7 @@ from feverslop.domain.face_detection import (
     BoundingBox,
     FaceLandmarks,
 )
-from feverslop.ports.face_pipeline import FaceMaskPort
+from feverslop.ports.face_pipeline import FaceMaskPort, MaskValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ class FaceMaskAdapter(FaceMaskPort):
         """Generate a radial feather mask for face compositing.
 
         Returns grayscale mask (H, W) with values 0-255.
+        Raises ValueError if mask validation fails.
         """
         frame_height, frame_width = frame.shape[:2]
         mask = np.zeros((frame_height, frame_width), dtype=np.float32)
@@ -52,13 +53,13 @@ class FaceMaskAdapter(FaceMaskPort):
 
         mask = (mask * 255).astype(np.uint8)
 
-        # Validate with box-size-aware threshold (scales with box area)
-        box_area = box.width * box.height
-        frame_area = mask.shape[0] * mask.shape[1]
-        effective_ratio = max(0.0001, box_area / frame_area * 0.5)
-        if not self.validate_mask(mask, min_nonzero_ratio=effective_ratio):
-            logger.warning("Mask failed validation (box=%.1fx%.1f, ratio=%.4f)",
-                           box.width, box.height, effective_ratio)
+        # Validate; caller decides whether to reject.
+        result = self.validate_mask(mask, min_nonzero_ratio=0.01)
+        if isinstance(result, MaskValidationResult) and not result.valid:
+            logger.warning(
+                "Mask validation failed (box=%.1fx%.1f, ratio=%.4f): %s",
+                box.width, box.height, result.nonzero_ratio, result.message,
+            )
 
         return mask
 
@@ -75,10 +76,24 @@ class FaceMaskAdapter(FaceMaskPort):
         )
         return np.clip(result, 0, 255).astype(np.uint8)
 
-    def validate_mask(self, mask: np.ndarray, min_nonzero_ratio: float = 0.01) -> bool:
-        """Validate that mask has meaningful content."""
+    def validate_mask(
+        self, mask: np.ndarray, min_nonzero_ratio: float = 0.01
+    ) -> MaskValidationResult:
+        """Validate that mask has meaningful content.
+
+        Returns MaskValidationResult with validity flag for explicit handling.
+        """
         if mask.size == 0:
-            return False
+            return MaskValidationResult(
+                valid=False, nonzero_ratio=0.0, message="mask is empty"
+            )
 
         nonzero_ratio = np.count_nonzero(mask) / mask.size
-        return bool(nonzero_ratio >= min_nonzero_ratio)
+        if nonzero_ratio >= min_nonzero_ratio:
+            return MaskValidationResult(valid=True, nonzero_ratio=nonzero_ratio)
+
+        return MaskValidationResult(
+            valid=False,
+            nonzero_ratio=nonzero_ratio,
+            message=f"nonzero_ratio={nonzero_ratio:.4f} < threshold={min_nonzero_ratio:.4f}",
+        )

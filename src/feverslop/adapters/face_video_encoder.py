@@ -32,7 +32,10 @@ def encode_face_crop_mp4(
     logger.info("Encoding face crop MP4: %s", output_path)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        logger.error("FFmpeg failed: %s", result.stderr)
-        raise RuntimeError(f"FFmpeg encoding failed: {result.stderr}")
+        stderr_msg = (result.stderr or "no stderr output").strip()
+        logger.error("FFmpeg failed (code=%d) for %s: %s", result.returncode, output_path, stderr_msg)
+        raise RuntimeError(
+            f"FFmpeg encoding failed for {output_path} (exit {result.returncode}): {stderr_msg}"
+        )
 
     return output_path

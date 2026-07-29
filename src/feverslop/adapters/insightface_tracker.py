@@ -16,6 +16,7 @@ MAX_SHORT_GAP = 2
 RETRY_MATCH_INTERVAL = 4
 MATCH_THRESHOLD = 0.85
 FALLBACK_AFTER_FRAMES = 5
+FALLBACK_ACTOR_ID = "fallback_single"
 
 
 class InsightFaceTracker:
@@ -98,18 +99,20 @@ class InsightFaceTracker:
                 # If we've seen faces but none matched the embedding, switch to size-based fallback.
                 if resolved_actor_id is None and frames_with_faces >= FALLBACK_AFTER_FRAMES and not fallback_mode:
                     fallback_mode = True
-                    logger.info(
-                        "FaceFix: embedding match failed after %d frames with faces, falling back to largest face",
-                        frames_with_faces,
+                    logger.warning(
+                        "FaceFix: embedding match failed after %d frames with faces, "
+                        "falling back to largest face (actor_id=%s)",
+                        frames_with_faces, actor_id or FALLBACK_ACTOR_ID,
                     )
 
             # Fallback mode: pick largest face.
+            fallback_id = resolved_actor_id or FALLBACK_ACTOR_ID
             if fallback_mode and target_face is None and all_faces:
                 largest = max(all_faces, key=lambda f: (f.x2 - f.x1) * (f.y2 - f.y1))
                 if last_box is not None and _bbox_iou(largest, last_box) > 0.3:
-                    target_face = replace(largest, actor_id=actor_id or "unknown")
+                    target_face = replace(largest, actor_id=fallback_id)
                 elif last_box is None:
-                    target_face = replace(largest, actor_id=actor_id or "unknown")
+                    target_face = replace(largest, actor_id=fallback_id)
 
             # If actor already resolved, find nearest face to last position.
             if resolved_actor_id is not None and target_face is None:
@@ -156,7 +159,7 @@ class InsightFaceTracker:
             logger.warning("No face tracks found for actor %s in %s", actor_id, video_path)
 
         return FaceCropResult(
-            actor_id=actor_id or "unknown",
+            actor_id=actor_id or FALLBACK_ACTOR_ID,
             entries=entries,
             anchor_paths=sorted(anchor_paths),
             crop_frames_dir=crop_frames_dir,

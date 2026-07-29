@@ -402,8 +402,9 @@ class FacePipeline:
         box_area = box.width * box.height
         frame_area = frame_height * frame_width
         effective_ratio = max(0.0001, box_area / frame_area * 0.5)
-        if not self.mask_port.validate_mask(mask, min_nonzero_ratio=effective_ratio):
-            raise ValueError("Invalid mask generated")
+        validation = self.mask_port.validate_mask(mask, min_nonzero_ratio=effective_ratio)
+        if not validation.valid:
+            raise ValueError(f"Invalid mask generated: {validation.message}")
 
         # Temporal mask smoothing
         if self._previous_mask is not None:
