@@ -7,6 +7,7 @@ import unittest
 from pydantic import ValidationError
 
 from feverslop.application.movie_common import MovieInput
+from feverslop.domain.slug_utils import slugify_project_name
 
 
 _VALID_STORY = "Once upon a time in a place far away there was adventure."
@@ -67,6 +68,8 @@ class TestMovieInputValidation(unittest.TestCase):
         self.assertEqual(input_.mode, "scaffold")
         self.assertEqual(input_.width, 1280)
         self.assertEqual(input_.height, 704)
+        # confirm slug generation works (tied to name validator slug check)
+        self.assertEqual(slugify_project_name(input_.name), "my-movie")
 
     def test_accepts_screenplay_source(self):
         input_ = MovieInput(
