@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from pathlib import Path
 from typing import Any, Mapping
 
+from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
-    apply_continuity_handoff,
+    can_handoff,
 )
 from feverslop.ports.visual_consistency import PreviousFramePort
+
+_HANDOFF_MODES = {"msr", "i2v"}
 
 
 class ContinuityHandoffUseCase:
@@ -23,12 +28,58 @@ class ContinuityHandoffUseCase:
         *,
         handoff_prompt: str | None = None,
     ) -> dict[str, Any]:
-        return apply_continuity_handoff(
-            previous,
-            current,
-            previous_clip,
-            output_frame,
-            current_scene,
-            frame_extractor=self.frame_extractor,
-            handoff_prompt=handoff_prompt,
+        if (
+            previous.mode not in _HANDOFF_MODES
+            or current.mode not in _HANDOFF_MODES
+            or previous.scene + 1 != current.scene
+            or not can_handoff(previous, current)
+        ):
+            raise ValueError(
+                f"Scene {current.scene} does not support continuity handoff"
+            )
+
+        project_dir = getattr(self.frame_extractor, "project_dir", None)
+        raw_source_clip = Path(previous_clip)
+        source_clip = (
+            (Path(project_dir).resolve() / raw_source_clip).resolve()
+            if project_dir is not None and not raw_source_clip.is_absolute()
+            else raw_source_clip.resolve()
         )
+        extracted = self.frame_extractor.extract_last_frame(
+            source_clip,
+            Path(output_frame),
+        )
+        stored_source_clip = (
+            source_clip.relative_to(Path(project_dir).resolve()).as_posix()
+            if project_dir is not None
+            and source_clip.is_relative_to(Path(project_dir).resolve())
+            else source_clip.as_posix()
+        )
+        scene = deepcopy(dict(current_scene))
+        keyframes = dict(scene.get("keyframes") or {})
+        keyframes.update(
+            {
+                "startframe_path": extracted.as_posix(),
+                "startframe_sha256": sha256_file(extracted),
+                "startframe_source_scene": previous.scene,
+                "startframe_mode": "last_frame_from_previous",
+                "startframe_source_clip_path": stored_source_clip,
+                "startframe_source_clip_sha256": sha256_file(source_clip),
+                "startframe_extractor": "last-frame-v1",
+            }
+        )
+        scene["keyframes"] = keyframes
+        ltx = dict(scene.get("ltx") or {})
+        ltx.update(
+            {
+                "msr_continuity_handoff_prompt": (
+                    str(handoff_prompt or "").strip()
+                    or "Hold the previous scene end state as the shot begins."
+                ),
+                "msr_continuity_handoff_frames": 18,
+                "msr_continuity_msr_frame_count": 17,
+                "msr_continuity_guide_frame_idx": 18,
+            }
+        )
+        scene["ltx"] = ltx
+        return scene
