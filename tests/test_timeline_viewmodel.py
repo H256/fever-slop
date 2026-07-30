@@ -6,13 +6,10 @@ Mocks the service so we only test viewmodel command wiring and status updates.
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, PropertyMock
 
 from feverslop.ports.timeline_documents import AffectedArtifacts
 from feverslop.domain.timeline_editing import (
     EditableTimelineSegment,
-    SceneBoundary,
-    BeatMarker,
     TimelineSnapshot,
 )
 
@@ -189,7 +186,6 @@ class TimelineStudioViewModelTest(unittest.TestCase):
 
     def test_edit_error_updates_status(self):
         self.service._simulate_error = True
-        original = self.service.edit_segment
         def broken(*a, **kw):
             raise ValueError("boom")
         self.service.edit_segment = broken
