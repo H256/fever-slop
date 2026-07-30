@@ -891,6 +891,7 @@ def _prepare_and_render_msr_movie(
         renderer=PreparedWorkflowRenderer(
             project_dir=project_dir, render_queue=backend.render_queue,
             postprocessor=adapter.postprocessor, expected_pipeline="ltx_msr",
+            expected_workflow_profile=Path(adapter.workflow_path).stem,
         ),
         postprocessor=adapter.postprocessor,
         legacy_dirs=[project_dir / "output" / "movie" / "ltx_msr"],
@@ -934,6 +935,7 @@ def _prepare_and_render_ingredients_movie(
         renderer=PreparedWorkflowRenderer(
             project_dir=project_dir, render_queue=backend.render_queue,
             postprocessor=backend.postprocessor, expected_pipeline="ltx_ingredients",
+            expected_workflow_profile=Path(backend.workflow_label).stem,
         ),
         postprocessor=backend.postprocessor,
         legacy_dirs=[project_dir / "output" / "movie" / "ltx_ingredients"],

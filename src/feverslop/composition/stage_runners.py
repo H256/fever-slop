@@ -407,12 +407,37 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
         raise ValueError("ltx_prepare_workflows requires --video-pipeline ltx_msr or ltx_ingredients")
     all_scenes = _all_render_scenes(state) if state.plan_for_next_step.is_file() else []
+    preflight = _run_visual_consistency_preflight(state, all_scenes)
+    all_scenes = _project_visual_consistency_contracts(
+        all_scenes,
+        preflight,
+    )
     scenes = _select_render_scenes(state, all_scenes)
+    profile = _resolved_startframe_profile(state)
+    handoff_predecessors = _music_handoff_predecessors(
+        all_scenes,
+        profile=profile,
+    )
+    if handoff_predecessors:
+        selected_numbers = expand_handoff_selection(
+            [
+                contract
+                for scene in all_scenes
+                if (
+                    contract := _stored_consistency_contract(
+                        scene.to_dict()
+                    )
+                )
+                is not None
+            ],
+            {scene.scene_number for scene in scenes},
+        )
+        scenes = RenderPlan(list(all_scenes)).select(
+            scene_numbers=selected_numbers,
+        ).scenes
     missing = _missing_prepare_inputs(state, scenes)
     if missing:
         raise FileNotFoundError("Cannot prepare scene workflows; missing inputs:\n- " + "\n- ".join(missing))
-    _resolved_startframe_profile(state)
-    _run_visual_consistency_preflight(state, all_scenes)
     backend = _specialized_video_use_case(state).backend
     materializer = WorkflowMaterializer(backend, state.context.artifact_layout)
     total = len(scenes)
@@ -427,6 +452,12 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
     previous = {path: path.read_bytes() if path.is_file() else None for path in paths}
     try:
         for completed, render_scene in enumerate(scenes, start=1):
+            if render_scene.scene_number in handoff_predecessors:
+                console.print(
+                    f"Deferred scene {completed}/{total}: "
+                    f"{render_scene.scene_number} (awaiting predecessor handoff)"
+                )
+                continue
             materializer.prepare(WorkflowMaterializationRequest(
                 scene=render_scene.to_dict(),
                 prompt=render_scene.video_prompt,
@@ -669,7 +700,7 @@ def _write_continuity_dirty(
 def _run_visual_consistency_preflight(
     state: PipelineRunState,
     scenes: list,
-) -> None:
+) -> VisualConsistencyPreflightResult:
     preflight_mode = getattr(
         state.args,
         "visual_consistency_preflight",
@@ -677,7 +708,7 @@ def _run_visual_consistency_preflight(
     )
     preflight_mode = PreflightMode.parse(preflight_mode)
     if preflight_mode is PreflightMode.OFF:
-        return
+        return VisualConsistencyPreflightResult((), ())
     project_config = ProjectConfig.load(state.context.project_config_path)
     snapshot = ProjectReferenceManifestAdapter(
         lambda _project_id: state.context.project_config_dir
@@ -738,6 +769,47 @@ def _run_visual_consistency_preflight(
             "Visual consistency preflight blocked workflow preparation:\n- "
             + details
         )
+    return result
+
+
+def _project_visual_consistency_contracts(
+    scenes: list,
+    result: VisualConsistencyPreflightResult,
+) -> list:
+    """Attach canonical preflight contracts to in-memory render scenes only."""
+    if not isinstance(result, VisualConsistencyPreflightResult):
+        return list(scenes)
+    contracts = {contract.scene: contract for contract in result.contracts}
+    projected = []
+    for scene in scenes:
+        payload = scene.to_dict()
+        contract = contracts.get(scene.scene_number)
+        if contract is not None:
+            payload["visual_consistency"] = contract.to_dict()
+        projected.append(type(scene).from_dict(payload))
+    return projected
+
+
+def _music_handoff_predecessors(
+    scenes: list,
+    *,
+    profile,
+) -> dict[int, int]:
+    if profile is None or not profile.supports_start_frame:
+        return {}
+    predecessors: dict[int, int] = {}
+    payloads = [scene.to_dict() for scene in scenes]
+    for previous_scene, current_scene in zip(payloads, payloads[1:]):
+        previous_contract = _stored_consistency_contract(previous_scene)
+        current_contract = _stored_consistency_contract(current_scene)
+        if (
+            previous_contract is not None
+            and current_contract is not None
+            and previous_contract.scene + 1 == current_contract.scene
+            and can_handoff(previous_contract, current_contract)
+        ):
+            predecessors[current_contract.scene] = previous_contract.scene
+    return predecessors
 
 
 def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
@@ -746,8 +818,17 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
 
     if state.args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
         all_scenes = _all_render_scenes(state)
+        preflight = _run_visual_consistency_preflight(state, all_scenes)
+        all_scenes = _project_visual_consistency_contracts(
+            all_scenes,
+            preflight,
+        )
         scenes = _select_render_scenes(state, all_scenes)
         profile = _resolved_startframe_profile(state)
+        handoff_predecessors = _music_handoff_predecessors(
+            all_scenes,
+            profile=profile,
+        )
         if profile is not None and profile.supports_start_frame:
             contracts = [
                 contract
@@ -770,9 +851,14 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         for scene in scenes:
             workflow_path = state.context.artifact_layout.scene_workflow(scene.scene_number)
             manifest_path = state.context.artifact_layout.scene_manifest(scene.scene_number)
-            if not workflow_path.is_file():
+            deferred = scene.scene_number in handoff_predecessors
+            if not workflow_path.is_file() and (
+                not deferred or manifest_path.is_file()
+            ):
                 missing.append(workflow_path)
-            if not manifest_path.is_file():
+            if not manifest_path.is_file() and (
+                not deferred or workflow_path.is_file()
+            ):
                 missing.append(manifest_path)
         if missing:
             raise FileNotFoundError(
@@ -780,11 +866,29 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                 + ". Run --stage ltx_prepare_workflows first."
             )
         backend = _specialized_video_use_case(state).backend
+        active_workflow_profile = (
+            profile.name
+            if profile is not None
+            else resolve_preflight_workflow_profile(
+                [scene.to_dict() for scene in all_scenes],
+                explicit_profile=getattr(
+                    state.args,
+                    "video_workflow_profile",
+                    None,
+                ),
+                legacy_fallback=(
+                    state.msr_workflow
+                    if state.args.video_pipeline == "ltx_msr"
+                    else state.ingredients_workflow
+                ).stem,
+            )
+        )
         renderer = PreparedWorkflowRenderer(
             project_dir=state.context.project_config_dir,
             render_queue=backend.render_queue,
             postprocessor=backend.postprocessor,
             expected_pipeline=state.args.video_pipeline,
+            expected_workflow_profile=active_workflow_profile,
             max_render_frames=backend.max_render_frames,
             max_render_duration_seconds=backend.max_render_duration_seconds,
             render_budget_workflow_path=backend.render_budget_workflow_path,
@@ -803,29 +907,6 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             if state.args.smoke_only
             else parse_scene_list(state.args.scenes)
         )
-        handoff_predecessors: dict[int, int] = {}
-        if profile is not None and profile.supports_start_frame:
-            payloads = [scene.to_dict() for scene in all_scenes]
-            for previous_scene, current_scene in zip(
-                payloads,
-                payloads[1:],
-            ):
-                previous_contract = _stored_consistency_contract(
-                    previous_scene
-                )
-                current_contract = _stored_consistency_contract(
-                    current_scene
-                )
-                if (
-                    previous_contract is not None
-                    and current_contract is not None
-                    and previous_contract.scene + 1
-                    == current_contract.scene
-                    and can_handoff(previous_contract, current_contract)
-                ):
-                    handoff_predecessors[current_contract.scene] = (
-                        previous_contract.scene
-                    )
         rendered_this_run: set[int] = set()
         dirty_marker = (
             state.context.render_dir / "continuity_dirty.json"
@@ -849,6 +930,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                         or explicit_selection
                         or predecessor_rendered
                         or scene.scene_number in persisted_dirty
+                        or not workflow.is_file()
                     )
                     else not state.args.no_skip_existing
                 )

@@ -309,6 +309,7 @@ class PreparedWorkflowRenderer:
     def __init__(
         self, *, project_dir: str | Path, render_queue: Any, postprocessor: Any,
         expected_pipeline: str,
+        expected_workflow_profile: str | None = None,
         max_render_frames: int | None = None,
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
@@ -321,6 +322,7 @@ class PreparedWorkflowRenderer:
         self.render_queue = render_queue
         self.postprocessor = postprocessor
         self.expected_pipeline = expected_pipeline
+        self.expected_workflow_profile = expected_workflow_profile
         self.max_render_frames = max_render_frames
         self.max_render_duration_seconds = max_render_duration_seconds
         self.render_budget_workflow_path = render_budget_workflow_path
@@ -336,6 +338,16 @@ class PreparedWorkflowRenderer:
             raise ValueError(
                 f"Prepared workflow pipeline {manifest.pipeline!r} does not match "
                 f"expected pipeline {self.expected_pipeline!r}"
+            )
+        if (
+            manifest.consistency is not None
+            and manifest.consistency.workflow_profile
+            != self.expected_workflow_profile
+        ):
+            raise ValueError(
+                "Prepared workflow profile "
+                f"{manifest.consistency.workflow_profile!r} does not match "
+                f"active workflow profile {self.expected_workflow_profile!r}"
             )
         manifest_workflow_path = manifest.workflow.resolve(self.project_dir).resolve()
         if workflow_path.resolve() != manifest_workflow_path:

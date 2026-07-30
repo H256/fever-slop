@@ -252,10 +252,150 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             ):
                 _run_ltx_prepare_workflows_stage(state)
 
-        prepared = materializer.prepare.call_args.args[0].scene
-        self.assertEqual(2, prepared["scene"])
-        self.assertNotIn("keyframes", prepared)
+        materializer.prepare.assert_not_called()
+        self.assertFalse(
+            state.context.artifact_layout.scene_manifest(2).exists()
+        )
         extractor.extract_last_frame.assert_not_called()
+
+    def test_prepare_projects_preflight_contracts_without_mutating_source_plan(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr")
+            _configure_startframe_music_state(state, project)
+            source = json.loads(
+                state.plan_for_next_step.read_text(encoding="utf-8")
+            )
+            contracts = tuple(
+                SceneConsistencyContract.from_dict(
+                    scene.pop("visual_consistency")
+                )
+                for scene in source
+            )
+            state.plan_for_next_step.write_text(
+                json.dumps(source),
+                encoding="utf-8",
+            )
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                return_value=VisualConsistencyPreflightResult(contracts, ()),
+            ):
+                _run_ltx_prepare_workflows_stage(state)
+
+            [request] = [
+                call.args[0]
+                for call in materializer.prepare.call_args_list
+            ]
+            self.assertEqual(
+                contracts[0].to_dict(),
+                request.scene["visual_consistency"],
+            )
+            self.assertEqual(
+                source,
+                json.loads(
+                    state.plan_for_next_step.read_text(encoding="utf-8")
+                ),
+            )
+            self.assertFalse(
+                state.context.artifact_layout.scene_manifest(2).exists()
+            )
+
+    def test_full_prepare_defers_continuous_manifest_until_sequential_render(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr")
+            _configure_startframe_music_state(state, project)
+            contracts = tuple(
+                SceneConsistencyContract.from_dict(
+                    scene["visual_consistency"]
+                )
+                for scene in json.loads(
+                    state.plan_for_next_step.read_text(encoding="utf-8")
+                )
+            )
+            backend = _prepared_backend(_RecordingFramePostprocessor())
+            materializer = Mock()
+
+            def persist_prepared(request):
+                number = request.scene["scene"]
+                workflow = (
+                    state.context.artifact_layout.scene_workflow(number)
+                )
+                workflow.parent.mkdir(parents=True, exist_ok=True)
+                workflow.write_text("{}", encoding="utf-8")
+                workflow.with_name("manifest.json").write_text(
+                    "{}",
+                    encoding="utf-8",
+                )
+
+            materializer.prepare.side_effect = persist_prepared
+            preflight = VisualConsistencyPreflightResult(contracts, ())
+            common_patches = (
+                patch(
+                    "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                    return_value=Mock(backend=backend),
+                ),
+                patch(
+                    "feverslop.composition.stage_runners.WorkflowMaterializer",
+                    return_value=materializer,
+                ),
+                patch(
+                    "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                    return_value=preflight,
+                ),
+            )
+            with common_patches[0], common_patches[1], common_patches[2]:
+                _run_ltx_prepare_workflows_stage(state)
+
+            self.assertEqual(
+                [1],
+                [
+                    call.args[0].scene["scene"]
+                    for call in materializer.prepare.call_args_list
+                ],
+            )
+            self.assertFalse(
+                state.context.artifact_layout.scene_manifest(2).exists()
+            )
+            materializer.reset_mock()
+            renderer = _SequentialPreparedRenderer(
+                state.context.artifact_layout
+            )
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(backend=backend),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=renderer,
+            ), patch(
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                return_value=preflight,
+            ):
+                _run_ltx_render_scenes_stage(state)
+
+            self.assertEqual([1, 2], renderer.rendered)
+            self.assertEqual(
+                [2],
+                [
+                    call.args[0].scene["scene"]
+                    for call in materializer.prepare.call_args_list
+                ],
+            )
+            self.assertTrue(
+                state.context.artifact_layout.scene_manifest(2).exists()
+            )
 
     def test_render_handoff_uses_fresh_or_required_immediate_predecessor(self):
         cases = (
@@ -826,6 +966,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 render_queue=backend.render_queue,
                 postprocessor=backend.postprocessor,
                 expected_pipeline="ltx_ingredients",
+                expected_workflow_profile=state.ingredients_workflow.stem,
                 max_render_frames=None,
                 max_render_duration_seconds=None,
                 render_budget_workflow_path=state.ingredients_workflow,

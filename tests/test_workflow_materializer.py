@@ -856,6 +856,63 @@ class WorkflowMaterializerTests(unittest.TestCase):
                 ).render(prepared.workflow_path)
             self.assertEqual([], queue.workflows)
 
+    def test_renderer_rejects_active_consistency_profile_mismatch_before_upload(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            template.write_text("{}")
+            plan = project / "plan.json"
+            plan.write_text("{}")
+            prepared = WorkflowMaterializer(
+                FakeBackend(template),
+                SceneArtifactLayout(project),
+            ).prepare(
+                WorkflowMaterializationRequest(
+                    scene={
+                        "scene": 2,
+                        "fps": 24,
+                        "frame_count": 9,
+                        "width": 64,
+                        "height": 64,
+                    },
+                    prompt="x",
+                    audio_file=None,
+                    render_plan_path=plan,
+                    pipeline="ltx_msr",
+                    seed=2,
+                )
+            )
+            manifest_payload = json.loads(
+                prepared.manifest_path.read_text(encoding="utf-8")
+            )
+            manifest_payload["consistency"] = SceneConsistencyContract.create(
+                scene=2,
+                mode="msr",
+                workflow_profile="prepared-profile",
+                actors=(),
+                location=None,
+                transition_from_previous="cut",
+            ).to_dict()
+            prepared.manifest_path.write_text(
+                json.dumps(manifest_payload),
+                encoding="utf-8",
+            )
+            queue = FakeQueue()
+            uploader = FakeCurrentServerUploader(existing=set())
+
+            with self.assertRaisesRegex(ValueError, "workflow profile"):
+                PreparedWorkflowRenderer(
+                    project_dir=project,
+                    render_queue=queue,
+                    postprocessor=FakePostprocessor(),
+                    expected_pipeline="ltx_msr",
+                    expected_workflow_profile="active-profile",
+                    asset_uploader=uploader,
+                ).render(prepared.workflow_path)
+
+            self.assertEqual([], queue.workflows)
+            self.assertEqual([], uploader.client.checked)
+
     def test_renderer_rejects_workflow_path_other_than_manifest_workflow(self):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
