@@ -26,7 +26,15 @@ from feverslop.composition import pipeline_runner
 from feverslop.composition.pipeline_runner import PipelineStage
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.ports.timeline_documents import AffectedArtifacts
 from feverslop.studio.logging import render_log_lines
+from feverslop.studio.services import (
+    rebuild_beat_json,
+    rebuild_ltx_prompt,
+    rebuild_render_plan,
+    rebuild_scene_srt,
+    rebuild_stage1_segments,
+)
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
 from feverslop.tools.reference_bible import run as render_reference_bible
 
@@ -56,6 +64,7 @@ PIPELINE_ACTIONS = {
     "msr-reference-sheets",
     "msr-prompt-enrich",
     "rebuild-plan",
+    "rebuild-plan-timeline",
     "concat-video-only",
     "mux-original-audio",
     "main-pipeline",
@@ -187,6 +196,40 @@ class JobRegistry:
             if job_id not in self._jobs:
                 raise KeyError(job_id)
             return dict(self._jobs[job_id])
+
+    def add_rebuild_plan_timeline(self, project_dir: str | Path, affected: AffectedArtifacts, rebuild_id: str | None = None) -> dict:
+        """Schedule a rebuild job for invalidated downstream timeline artifacts.
+
+        Only rebuilds artifacts whose corresponding flag is True in *affected*.
+        Rebuilds execute in dependency order: beat -> scene -> stage1 -> prompt -> render.
+        One failure does not stop the others.
+        """
+        project_dir_str = str(Path(project_dir).resolve())
+        rebuild_id = rebuild_id or uuid.uuid4().hex[:12]
+        affected_dict = {
+            "beat_json": affected.beat_json,
+            "scene_srt": affected.scene_srt,
+            "stage1_segments": affected.stage1_segments,
+            "ltx_prompt": affected.ltx_prompt,
+            "render_plan": affected.render_plan,
+        }
+        payload = {
+            "project_dir": project_dir_str,
+            "affected": affected_dict,
+            "rebuild_id": rebuild_id,
+            "timestamp": time.time(),
+        }
+
+        def handler(log: Callable[[str], None]) -> dict[str, Any]:
+            return _run_rebuild_plan_timeline(project_dir_str, affected_dict, log)
+
+        project_id = Path(project_dir_str).name
+        job_id = self.start(project_id, "rebuild-plan-timeline", handler)
+        job = self.get(job_id)
+        # Flatten payload fields into top level for easy access.
+        job.update(payload)
+        job["payload"] = payload
+        return job
 
     def _run(self, job_id: str, handler: JobHandler) -> None:
         def log(message: str) -> None:
@@ -342,6 +385,73 @@ class JobRegistry:
             job["project_id"] == project_id and job["action"] in PIPELINE_ACTIONS and job["status"] in {"queued", "running"}
             for job in self._jobs.values()
         )
+
+
+# ---------------------------------------------------------------------------
+# Rebuild-plan-timeline handler
+# ---------------------------------------------------------------------------
+
+_REBUILD_FUNC_MAP: dict[str, Callable[[str], dict[str, Any]]] = {
+    "beat_json": rebuild_beat_json,
+    "scene_srt": rebuild_scene_srt,
+    "stage1_segments": rebuild_stage1_segments,
+    "ltx_prompt": rebuild_ltx_prompt,
+    "render_plan": rebuild_render_plan,
+}
+
+_REBUILD_ORDER = list(_REBUILD_FUNC_MAP.keys())
+
+
+def _run_rebuild_plan_timeline(project_dir: str, affected: dict[str, bool], log: Callable[[str], None]) -> dict[str, Any]:
+    """Execute rebuilds for affected artifacts in dependency order.
+
+    One failure does not stop the others. Returns a summary of successes and failures.
+    """
+    # Import fresh references each time so that mock patches applied at
+    # runtime are visible here (the module-level _REBUILD_STEPS list
+    # would cache references at import time, defeating unittest.mock).
+    from feverslop.studio.services import (
+        rebuild_beat_json as _rb_beat,
+        rebuild_ltx_prompt as _rb_ltx,
+        rebuild_render_plan as _rb_render,
+        rebuild_scene_srt as _rb_scene,
+        rebuild_stage1_segments as _rb_stage1,
+    )
+
+    steps = [
+        ("beat_json", _rb_beat),
+        ("scene_srt", _rb_scene),
+        ("stage1_segments", _rb_stage1),
+        ("ltx_prompt", _rb_ltx),
+        ("render_plan", _rb_render),
+    ]
+
+    results: dict[str, dict[str, Any]] = {}
+    has_error = False
+
+    for step_name, rebuild_fn in steps:
+        if not affected.get(step_name):
+            continue
+        log(f"Rebuilding {step_name}...")
+        try:
+            result = rebuild_fn(project_dir)
+            results[step_name] = {"status": "ok", "result": result}
+            log(f"  {step_name}: rebuilt successfully")
+        except Exception as exc:
+            results[step_name] = {"status": "error", "error": str(exc)}
+            log(f"  {step_name}: FAILED — {exc}")
+            has_error = True
+
+    total = sum(1 for v in affected.values() if v)
+    ok = sum(1 for r in results.values() if r["status"] == "ok")
+    status_label = "partial" if has_error else "done"
+    log(f"Rebuild complete: {ok}/{total} rebuilt ({status_label})")
+    return {
+        "total": total,
+        "rebuilt": ok,
+        "failed": total - ok,
+        "results": results,
+    }
 
 
 def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipeline_mode: str | None = None) -> dict[str, Any]:
