@@ -65,10 +65,6 @@ class VisualConsistencyPreflightResult:
     contracts: tuple[SceneConsistencyContract, ...]
     issues: tuple[ConsistencyIssue, ...]
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "contracts", tuple(self.contracts))
-        object.__setattr__(self, "issues", tuple(self.issues))
-
     @property
     def renderable(self) -> bool:
         return not any(issue.severity == "error" for issue in self.issues)
