@@ -1,6 +1,17 @@
 """Application use cases for audio timeline editing.
 
 Thin orchestration layer: reads via ports, applies domain logic, writes via ports.
+
+Public API
+----------
+The four symbols below constitute the application-layer use-case API surface.
+They are wired into ``TimelineStudioService`` at runtime (see
+``feverslop.studio.desktop.viewmodels.timeline``) and validated by the
+dedicated test suite (``tests/test_edit_audio_timeline_app.py``).
+
+Keep this file and its tests: the tests exercise the port protocols and domain
+functions even though production code reaches these use cases indirectly
+through the studio service.
 """
 
 from __future__ import annotations
@@ -20,6 +31,13 @@ from feverslop.ports.timeline_documents import (
     TimelineReadPort,
     TimelineWritePort,
 )
+
+__all__ = [
+    "EditAudioTimeline",
+    "SaveTimelines",
+    "RebuildDownstreamArtifacts",
+    "ComputeEditImpact",
+]
 
 
 # ---------------------------------------------------------------------------

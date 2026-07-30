@@ -185,6 +185,7 @@ ApplicationWindow {
                 NavButton { text: "Project Settings"; icon.name: "document-properties"; page: 5; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Artifacts"; icon.name: "folder-documents"; page: 6; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Queue"; icon.name: "view-list-tree"; page: 7; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
+                NavButton { text: "Audio Timeline"; icon.name: "media-playlist-music"; page: 12; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Review"; icon.name: "video-x-generic"; page: 8; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 NavButton { text: "Final Video"; icon.name: "media-playback-start"; page: 9; checked: root.currentPage === page; enabled: vm && vm.current_project_id }
                 Item { Layout.fillHeight: true }
@@ -250,6 +251,7 @@ ApplicationWindow {
                         MediaPage { reviewMode: false }
                         PlaceholderPage { heading: "Studio Settings"; detail: "The projects root is selected at application startup." }
                         SceneWorkspacePage {}
+                        AudioTimeline {}
                     }
                 }
             }
