@@ -447,6 +447,13 @@ def _run_ingredients_workflow(
             sheet_scale=config.get("ingredients_sheet_scale", 2.0),
             llm=ingredients_llm(),
             on_analysis_status=report_ingredients_analysis,
+            workflow_profile=Path(
+                config.get(
+                    "ingredients_workflow",
+                    "workflows/video_ltxv_ingredients_2stage_v6.json",
+                )
+                or "workflows/video_ltxv_ingredients_2stage_v6.json"
+            ).stem,
         )
     elif not render_plan_ingredients_path.exists():
         render_plan_ingredients_path = None
@@ -520,6 +527,7 @@ def _run_msr_workflow(
             keyframe_mode=args.keyframe_mode,
             llm=ingredients_llm(),
             on_analysis_status=report_msr_analysis,
+            workflow_profile=Path(config["msr_workflow"]).stem,
         )
     elif not render_plan_msr_path.exists():
         render_plan_msr_path = None
@@ -532,6 +540,13 @@ def _run_msr_workflow(
             sheet_scale=config.get("ingredients_sheet_scale", 2.0),
             llm=ingredients_llm(),
             on_analysis_status=report_ingredients_analysis,
+            workflow_profile=Path(
+                config.get(
+                    "ingredients_workflow",
+                    "workflows/video_ltxv_ingredients_2stage_v6.json",
+                )
+                or "workflows/video_ltxv_ingredients_2stage_v6.json"
+            ).stem,
         )
 
     debug_workflows_dir: Path | None = None
@@ -668,6 +683,13 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
         project_dir=project_dir,
         model_resolver=model_resolver,
         debug_workflows_dir=debug_workflows_dir,
+        workflow_profile=Path(
+            config.get(
+                "ingredients_workflow",
+                "workflows/video_ltxv_ingredients_2stage_v6.json",
+            )
+            or "workflows/video_ltxv_ingredients_2stage_v6.json"
+        ).stem,
     )
     return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
 

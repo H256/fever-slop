@@ -6,7 +6,9 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from feverslop.adapters.project_visual_consistency import ProjectReferenceManifestAdapter
 from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
+from feverslop.application.visual_consistency_preflight import preflight_visual_consistency
 from feverslop.config.video_settings import VideoSettings
 from feverslop.errors import FeverSlopValidationError
 
@@ -19,6 +21,79 @@ def _create_minimal_png(path: Path) -> Path:
 
 
 class TestIngredientsEnrichment(unittest.TestCase):
+    def test_equal_references_reuse_sheet_without_collapsing_song_content(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir)
+            references = project / "output" / "references"
+            actor_dir = references / "actors" / "artist"
+            location_dir = references / "locations" / "stage"
+            actor_dir.mkdir(parents=True)
+            location_dir.mkdir(parents=True)
+            actor = _create_minimal_png(actor_dir / "sheet.png")
+            location = _create_minimal_png(location_dir / "sheet.png")
+            (actor_dir / "manifest.json").write_text(json.dumps({
+                "id": "artist",
+                "name": "Artist",
+                "visual_description": "Artist wears a red jacket",
+                "sheet_path": actor.relative_to(project).as_posix(),
+            }), encoding="utf-8")
+            (location_dir / "manifest.json").write_text(json.dumps({
+                "id": "stage",
+                "name": "Stage",
+                "visual_description": "Stage has blue spotlights",
+                "sheet_path": location.relative_to(project).as_posix(),
+            }), encoding="utf-8")
+            scenes = []
+            for number, action, camera, lyric in (
+                (1, "raises one hand", "slow dolly", "First line"),
+                (2, "lowers both hands", "locked wide shot", "Second line"),
+            ):
+                scenes.append({
+                    "scene": number,
+                    "duration_seconds": 2,
+                    "fps": 24,
+                    "frame_count": 48,
+                    "width": 1280,
+                    "height": 704,
+                    "metadata": {
+                        "character_motion": action,
+                        "camera_motion": camera,
+                        "lyrics": lyric,
+                    },
+                    "references": {
+                        "actor_ids": ["artist"],
+                        "location_id": "stage",
+                    },
+                    "ltx": {"prompt_relay": [{
+                        "frame_start": 0,
+                        "frame_end": 47,
+                        "state": "singing",
+                        "prompt": f"{action}; {camera}; sings {lyric}.",
+                    }]},
+                })
+            plan = project / "render_plan.json"
+            plan.write_text(json.dumps(scenes), encoding="utf-8")
+
+            output = enrich_render_plan_with_ingredients_sheets(
+                plan,
+                references,
+                project / "ingredients.json",
+            )
+            runtime = json.loads(output.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                runtime[0]["ingredients"]["sheet_path"],
+                runtime[1]["ingredients"]["sheet_path"],
+            )
+            self.assertIn("raises one hand", runtime[0]["ltx"]["static_prompt"])
+            self.assertIn("lowers both hands", runtime[1]["ltx"]["static_prompt"])
+            self.assertIn("First line", runtime[0]["metadata"]["lyrics"])
+            self.assertIn("Second line", runtime[1]["metadata"]["lyrics"])
+            self.assertNotEqual(
+                runtime[0]["ltx"]["prompt_relay"],
+                runtime[1]["ltx"]["prompt_relay"],
+            )
+
     def test_video_settings_override_render_plan_sheet_resolution(self):
         with tempfile.TemporaryDirectory() as tmp, patch(
             "feverslop.application.render_plan_ingredients_sheets.ingredients_sheet_size",
@@ -112,17 +187,66 @@ class TestIngredientsEnrichment(unittest.TestCase):
             data = json.loads(result.read_text(encoding="utf-8"))
             self.assertEqual(len(data), 1)
             scene = data[0]
-            self.assertEqual(
-                "output/references/ingredients_sheets/scene_0001_ingredients.png",
+            self.assertRegex(
                 scene["ingredients"]["sheet_path"],
+                r"^output/references/ingredients_sheets/by_signature/[0-9a-f]{64}\.png$",
             )
             self.assertIn("artist_1", scene["ingredients"]["global_prompt"])
             self.assertEqual("singing", scene["ltx"]["prompt_relay"][0]["state"])
             self.assertIn("sings immediately", scene["ltx"]["static_prompt"])
+            self.assertEqual(
+                "feverslop.visual-consistency/v1",
+                scene["visual_consistency"]["schema"],
+            )
+            self.assertEqual(
+                scene["ingredients"]["signature"],
+                Path(scene["ingredients"]["sheet_path"]).stem,
+            )
+            self.assertRegex(
+                scene["ingredients"]["sheet_sha256"],
+                r"^[0-9a-f]{64}$",
+            )
+            self.assertEqual(
+                {
+                    "actors": [{
+                        "id": "artist_1",
+                        "path": "output/references/actors/artist_1/msr_sheet.png",
+                    }],
+                    "location": {
+                        "id": "stage",
+                        "path": (
+                            "output/references/locations/stage/"
+                            "msr_background.png"
+                        ),
+                    },
+                },
+                scene["visual_consistency_sources"],
+            )
+            self.assertEqual(
+                1,
+                scene["ingredients"]["global_prompt"].count(
+                    "Continuity anchors (keep unchanged):"
+                ),
+            )
             self.assertNotIn("ingredients_scene_sheet_description", scene)
             self.assertNotIn("ingredients_target_prompt", scene)
             self.assertNotIn("msr_prompt_relay", scene["ltx"])
             self.assertNotIn("actor_reference_descriptions", scene["references"])
+            snapshot = ProjectReferenceManifestAdapter(lambda _project_id: tmp).load(
+                tmp.name
+            )
+            preflight = preflight_visual_consistency(
+                data,
+                snapshot,
+                mode="ingredients",
+                workflow_profile="ingredients-default",
+                preflight_mode="strict",
+                supports_continuous_transitions=False,
+            )
+            self.assertNotIn(
+                "visual_consistency_fingerprint_mismatch",
+                [issue.code for issue in preflight.issues],
+            )
 
     def test_calls_on_scene_complete_callback(self):
         with tempfile.TemporaryDirectory() as tmp:

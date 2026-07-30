@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+from feverslop.domain.visual_consistency_runtime import (
+    reference_look_id,
+    resolve_reference_look,
+)
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.movie_utils import transition_from_previous
 from feverslop.ports.rendering import VideoRenderRequest
@@ -146,6 +150,7 @@ class ComfyUIMovieVisualAdapter:
             debug_workflows_dir=project_dir / "output" / "movie" / "ltx_msr_debug",
             workflow=workflow,
             workflow_label=workflow_path,
+            workflow_profile=workflow_path.stem,
         )
 
     def _build_i2v_backend(self, *, output_dir: Path, project_dir: Path) -> ComfyUIMSRVideoRenderBackend | None:
@@ -165,6 +170,7 @@ class ComfyUIMovieVisualAdapter:
             workflow=self.i2v_workflow,
             workflow_label=workflow_path,
             preroll_frames=0,
+            workflow_profile=workflow_path.stem,
         )
 
     def _attach_continuity_startframe(
@@ -223,7 +229,11 @@ class ComfyUIMovieVisualAdapter:
                 **dict(scene.get("ltx") or {}),
                 "original_style_i2v_prompt": _movie_scene_prompt(scene),
             }
-            scene["references"] = scene.get("references") or _references_from_ids(scene.get("reference_ids") or {}, reference_manifest, project_dir)
+            scene["references"] = scene.get("references") or _references_from_ids(
+                scene,
+                reference_manifest,
+                project_dir,
+            )
             scene["transition_from_previous"] = transition_from_previous(scene.get("transition_from_previous"))
             if not scene.get("references"):
                 raise ValueError(f"Movie shot {scene['scene']} is missing MSR references")
@@ -316,20 +326,45 @@ def _load_reference_manifest(project_dir: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _references_from_ids(reference_ids: dict[str, Any], manifest: dict[str, Any], project_dir: Path) -> dict[str, Any]:
+def _references_from_ids(scene: dict[str, Any], manifest: dict[str, Any], project_dir: Path) -> dict[str, Any]:
+    reference_ids = scene.get("reference_ids") or {}
     actor_ids = [str(actor_id) for actor_id in reference_ids.get("actors") or []]
     location_id = str(reference_ids.get("location") or "")
     actors = {str(actor.get("id")): actor for actor in manifest.get("actors") or []}
     locations = {str(location.get("id")): location for location in manifest.get("locations") or []}
-    actor_items = [_required_manifest_item(actors, actor_id, "actor") for actor_id in actor_ids]
-    location_item = _required_manifest_item(locations, location_id, "location") if location_id else {}
+    actor_items = [
+        resolve_reference_look(
+            _required_manifest_item(actors, actor_id, "actor"),
+            reference_look_id(scene, kind="actor", semantic_id=actor_id),
+        )
+        for actor_id in actor_ids
+    ]
+    location_item = (
+        resolve_reference_look(
+            _required_manifest_item(locations, location_id, "location"),
+            reference_look_id(
+                scene,
+                kind="location",
+                semantic_id=location_id,
+            ),
+        )
+        if location_id
+        else {}
+    )
     actor_paths = [_required_manifest_path(actor, project_dir) for actor in actor_items]
     location_path = _required_manifest_path(location_item, project_dir) if location_item else ""
     if not actor_paths or not location_path:
         return {}
     return {
-        "actor_msr_paths": [path.as_posix() for path in actor_paths],
-        "location_msr_path": location_path.as_posix(),
+        "actor_ids": actor_ids,
+        "location_id": location_id,
+        "actor_msr_paths": [
+            path.relative_to(project_dir.resolve()).as_posix()
+            for path in actor_paths
+        ],
+        "location_msr_path": location_path.relative_to(
+            project_dir.resolve()
+        ).as_posix(),
         "actor_reference_descriptions": [_reference_description(actor) for actor in actor_items],
         "location_reference_description": _reference_description(location_item),
     }
@@ -343,11 +378,32 @@ def _required_manifest_item(items: dict[str, dict], item_id: str, kind: str) -> 
 
 
 def _required_manifest_path(item: dict, project_dir: Path) -> Path:
-    value = str(item.get("msr_sheet_path") or item.get("path") or "").strip()
+    value = str(
+        (
+            item.get("sheet_path")
+            if item.get("look_id") != "default"
+            else (
+                item.get("msr_sheet_path")
+                or item.get("path")
+                or item.get("sheet_path")
+            )
+        )
+        or ""
+    ).strip()
     if not value:
         raise ValueError(f"Movie reference {item.get('id')} has no rendered MSR sheet path")
     path = Path(value)
-    return path if path.is_absolute() else project_dir / path
+    resolved = (
+        path.resolve()
+        if path.is_absolute()
+        else (project_dir / path).resolve()
+    )
+    if not resolved.is_relative_to(project_dir.resolve()):
+        raise ValueError(
+            f"Movie reference {item.get('id')!r} path must be inside the "
+            f"project: {value}"
+        )
+    return resolved
 
 
 def _reference_description(item: dict) -> dict[str, str]:

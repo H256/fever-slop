@@ -278,6 +278,10 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
             llm=llm,
             on_analysis_status=progress.analysis_attempt,
             on_scene_complete=_scene_progress_callback(progress),
+            workflow_profile=str(
+                getattr(state.args, "video_workflow_profile", None)
+                or state.ingredients_workflow.stem
+            ),
         )
 
 
@@ -291,6 +295,11 @@ def _specialized_video_use_case(state: PipelineRunState):
             workflow_path=workflow,
             output_dir=state.context.ltx_dir,
             video_pipeline=state.args.video_pipeline,
+            video_workflow_profile=getattr(
+                state.args,
+                "video_workflow_profile",
+                None,
+            ),
             randomize_seed=state.args.randomize_seed,
             rolling_frame_profile=state.args.rolling_frame_profile,
         ),

@@ -8,16 +8,29 @@ import logging
 import math
 
 from feverslop.application.reference_bible import (
+    INGREDIENTS_SHEET_LAYOUT_VERSION,
     build_ingredients_target_binding,
-    compose_scene_reference_sheet,
+    build_runtime_consistency_contract,
+    compose_cached_ingredients_sheet,
     generate_scene_sheet_description,
     generate_scene_sheet_anchors,
+    ingredients_signature_references,
+    ingredients_signature_sources,
     ingredients_sheet_size,
+    snapshot_ingredients_sources,
+    visual_consistency_sources,
 )
+from feverslop.domain.visual_consistency_runtime import (
+    bind_continuity_anchors,
+    reference_look_id,
+    resolve_reference_look,
+)
+from feverslop.domain.prepared_workflow import sha256_file
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
 from feverslop.application.ingredients_render_plan import project_ingredients_runtime_scene
 from feverslop.domain.vision_references import ReferenceImage
+from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +46,7 @@ def enrich_render_plan_with_ingredients_sheets(
     llm: VisionLLMPort | None = None,
     on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None = None,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
+    workflow_profile: str = "ingredients-default",
 ) -> Path:
     """Compose per-scene Ingredients reference sheets for song-based render plans.
 
@@ -74,6 +88,7 @@ def enrich_render_plan_with_ingredients_sheets(
             references_dir=references_dir,
             llm=llm,
             on_analysis_status=on_analysis_status,
+            workflow_profile=workflow_profile,
         )
         enriched_scenes.append(project_ingredients_runtime_scene(enriched))
         if on_scene_complete is not None:
@@ -94,6 +109,7 @@ def _enrich_scene(
     references_dir: Path,
     llm: VisionLLMPort | None,
     on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None,
+    workflow_profile: str,
 ) -> dict:
     enriched = deepcopy(scene)
     references = enriched.get("references") or {}
@@ -103,13 +119,31 @@ def _enrich_scene(
     for actor_id in actor_ids:
         manifest = actor_manifests.get(str(actor_id))
         if manifest:
+            manifest = resolve_reference_look(
+                manifest,
+                reference_look_id(
+                    scene,
+                    kind="actor",
+                    semantic_id=str(actor_id),
+                ),
+            )
             sheet_path = str(manifest.get("sheet_path") or "").strip()
             if sheet_path and (project_base / sheet_path).exists():
                 desc = str(manifest.get("visual_description") or "").strip()
                 images.append({
                     "path": sheet_path,
+                    "contract_path": str(
+                        sheet_path
+                        if manifest.get("look_id") != "default"
+                        else (
+                            manifest.get("msr_sheet_path")
+                            or manifest.get("msr_input_path")
+                            or sheet_path
+                        )
+                    ).strip(),
                     "type": "actor",
                     "id": str(actor_id),
+                    "look_id": str(manifest.get("look_id") or "default"),
                     "visual_description": desc,
                     "name": str(manifest.get("name") or "").strip(),
                     "image_prompt": str(manifest.get("image_prompt") or "").strip(),
@@ -119,13 +153,31 @@ def _enrich_scene(
     if location_id:
         manifest = location_manifests.get(location_id)
         if manifest:
+            manifest = resolve_reference_look(
+                manifest,
+                reference_look_id(
+                    scene,
+                    kind="location",
+                    semantic_id=location_id,
+                ),
+            )
             sheet_path = str(manifest.get("sheet_path") or "").strip()
             if sheet_path and (project_base / sheet_path).exists():
                 desc = str(manifest.get("visual_description") or "").strip()
                 images.append({
                     "path": sheet_path,
+                    "contract_path": str(
+                        sheet_path
+                        if manifest.get("look_id") != "default"
+                        else (
+                            manifest.get("msr_sheet_path")
+                            or manifest.get("msr_background_path")
+                            or sheet_path
+                        )
+                    ).strip(),
                     "type": "location",
                     "id": location_id,
+                    "look_id": str(manifest.get("look_id") or "default"),
                     "visual_description": desc,
                     "name": str(manifest.get("name") or "").strip(),
                     "image_prompt": str(manifest.get("image_prompt") or "").strip(),
@@ -134,12 +186,30 @@ def _enrich_scene(
     scene_number = int(scene.get("scene", 0))
     if images:
         image_paths = [project_base / img["path"] for img in images]
-        output_dir = references_dir / "ingredients_sheets"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"scene_{scene_number:04}_ingredients.png"
+        source_snapshots = snapshot_ingredients_sources(
+            images,
+            project_base=project_base,
+        )
+        signature_references = ingredients_signature_references(
+            images,
+            project_base=project_base,
+            snapshots=source_snapshots,
+        )
+        signature_sources = ingredients_signature_sources(
+            images,
+            project_base=project_base,
+            snapshots=source_snapshots,
+        )
+        cache_dir = SceneArtifactLayout(project_base).ingredients_sheet_cache_dir
+        output_path, signature = compose_cached_ingredients_sheet(
+            image_paths,
+            cache_dir=cache_dir,
+            references=signature_references,
+            size=sheet_size,
+            snapshots=source_snapshots,
+        )
 
         num_cols = math.ceil(math.sqrt(len(images)))
-        compose_scene_reference_sheet(image_paths, output_path, size=sheet_size)
 
         try:
             relative_sheet = output_path.relative_to(project_base).as_posix()
@@ -151,6 +221,23 @@ def _enrich_scene(
         enriched["ingredients_scene_sheet"] = relative_sheet
         enriched["ingredients_scene_sheet_description"] = description
         enriched["ingredients_scene_sheet_anchors"] = anchors
+        enriched["ingredients_sheet_signature"] = signature
+        enriched["ingredients_sheet_layout_version"] = INGREDIENTS_SHEET_LAYOUT_VERSION
+        enriched["ingredients_sheet_size"] = list(sheet_size)
+        enriched["ingredients_signature_references"] = signature_references
+        enriched["ingredients_signature_sources"] = signature_sources
+        enriched["ingredients_sheet_sha256"] = sha256_file(output_path)
+        enriched["visual_consistency"] = build_runtime_consistency_contract(
+            scene,
+            images=images,
+            project_base=project_base,
+            mode="ingredients",
+            workflow_profile=workflow_profile,
+        ).to_dict()
+        enriched["visual_consistency_sources"] = visual_consistency_sources(
+            images,
+            project_base=project_base,
+        )
     else:
         enriched["ingredients_scene_sheet"] = ""
         enriched["ingredients_scene_sheet_description"] = ""
@@ -173,7 +260,10 @@ def _enrich_scene(
             fallback_shot_invariants=fallback_invariants,
             scene_sheet_description=enriched.get("ingredients_scene_sheet_description", ""),
         )
-        enriched["ingredients_global_prompt"] = result.positive_prompt
+        enriched["ingredients_global_prompt"] = bind_continuity_anchors(
+            result.positive_prompt,
+            enriched.get("visual_consistency"),
+        )
         if result.fallback_reason:
             logger.warning(
                 "Ingredients image analysis fallback: scene=%s reason=%s",
@@ -207,12 +297,23 @@ def _song_target_context(scene: dict) -> dict[str, Any]:
 def _fallback_shot_invariants(scene: dict, *, binding: str) -> str:
     metadata = scene.get("metadata") or {}
     camera = metadata.get("camera_motion") or scene.get("camera_motion") or scene.get("camera") or ""
+    action = (
+        metadata.get("character_motion")
+        or scene.get("character_motion")
+        or scene.get("action")
+        or ""
+    )
+    lyrics = metadata.get("lyrics") or scene.get("lyrics") or ""
     parts = [
         binding.strip(),
         "Maintain one continuous full-frame shot with stable identities, wardrobe, spatial staging, environment, and lighting.",
     ]
+    if action:
+        parts.append(f"Action: {str(action).strip()}")
     if camera:
         parts.append(f"Camera policy: {str(camera).strip()}")
+    if lyrics:
+        parts.append(f"Lyric performance: {str(lyrics).strip()}")
     return " ".join(part for part in parts if part).strip()
 
 

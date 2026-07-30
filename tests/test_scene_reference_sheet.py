@@ -1,8 +1,12 @@
 import json
+import hashlib
 import math
 import tempfile
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 from PIL import Image
 
 from feverslop.application.movie_ingredients_sheets import (
@@ -14,8 +18,12 @@ from feverslop.application.reference_bible import (
     _panel_position_label,
     _type_label,
     compose_scene_reference_sheet,
+    compose_cached_ingredients_sheet,
     generate_scene_sheet_description,
+    ingredients_signature_references,
+    ingredients_sheet_signature,
     ingredients_sheet_size,
+    snapshot_ingredients_sources,
 )
 
 
@@ -46,6 +54,40 @@ class IngredientsSheetSizeTests(unittest.TestCase):
         self.assertGreaterEqual(width, 2560)
         self.assertGreaterEqual(height, 1440)
         self.assertEqual(width * 7, height * 12)
+
+    def test_signature_binds_order_hash_location_size_and_layout(self):
+        actor_a = {"id": "a", "type": "actor", "sha256": "a" * 64}
+        actor_b = {"id": "b", "type": "actor", "sha256": "b" * 64}
+        location = {"id": "room", "type": "location", "sha256": "c" * 64}
+        baseline = ingredients_sheet_signature(
+            [actor_a, actor_b, location],
+            size=(1280, 704),
+        )
+        variants = (
+            ingredients_sheet_signature(
+                [actor_b, actor_a, location],
+                size=(1280, 704),
+            ),
+            ingredients_sheet_signature(
+                [actor_a, {**actor_b, "sha256": "d" * 64}, location],
+                size=(1280, 704),
+            ),
+            ingredients_sheet_signature(
+                [actor_a, actor_b, {**location, "id": "hall"}],
+                size=(1280, 704),
+            ),
+            ingredients_sheet_signature(
+                [actor_a, actor_b, location],
+                size=(1536, 896),
+            ),
+            ingredients_sheet_signature(
+                [actor_a, actor_b, location],
+                size=(1280, 704),
+                layout_version="scene-reference-grid/v2",
+            ),
+        )
+        self.assertEqual(len(variants), len(set(variants)))
+        self.assertNotIn(baseline, variants)
 
     def test_fit_contain_same_size_returns_copy(self):
         src = Image.new("RGB", (100, 100), color=(0, 255, 0))
@@ -243,9 +285,330 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
             result = builder.build(shot)
 
             self.assertEqual(2, result["image_count"])
-            self.assertEqual("movie/ingredients_sheets/shot_001_ingredients.png", result["sheet_path"])
-            self.assertTrue((tmp / "movie" / "ingredients_sheets" / "shot_001_ingredients.png").exists())
+            self.assertRegex(
+                result["sheet_path"],
+                r"^movie/references/ingredients_sheets/by_signature/[0-9a-f]{64}\.png$",
+            )
+            self.assertTrue((tmp / result["sheet_path"]).exists())
             self.assertEqual(2, len(result["images"]))
+
+    def test_equal_reference_sets_reuse_signature_cached_sheet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            actor_sheet = self._make_image(
+                200,
+                200,
+                (255, 0, 0),
+                tmp / "movie" / "references" / "actors" / "actor_1",
+            )
+            location_sheet = self._make_image(
+                200,
+                200,
+                (0, 0, 255),
+                tmp / "movie" / "references" / "locations" / "loc_1",
+            )
+            manifest = {
+                "actors": [{
+                    "id": "actor_1",
+                    "name": "Alice",
+                    "visual_description": "Alice wears a red coat",
+                    "sheet_path": actor_sheet.relative_to(tmp).as_posix(),
+                }],
+                "locations": [{
+                    "id": "loc_1",
+                    "name": "Room",
+                    "visual_description": "A blue concrete room",
+                    "sheet_path": location_sheet.relative_to(tmp).as_posix(),
+                }],
+            }
+            builder = IngredientsSceneSheetBuilder(
+                project_dir=tmp,
+                manifest=manifest,
+                size=(1280, 704),
+            )
+
+            first = builder.build({
+                "shot_id": "shot_001",
+                "scene": 1,
+                "action": "Alice opens the door",
+                "reference_ids": {"actors": ["actor_1"], "location": "loc_1"},
+            })
+            second = builder.build({
+                "shot_id": "shot_002",
+                "scene": 2,
+                "action": "Alice closes the door",
+                "reference_ids": {"actors": ["actor_1"], "location": "loc_1"},
+            })
+
+            self.assertIsNotNone(first.get("signature"))
+            self.assertEqual(first.get("signature"), second.get("signature"))
+            self.assertEqual(first["sheet_path"], second["sheet_path"])
+            self.assertRegex(
+                first["sheet_path"],
+                r"^movie/references/ingredients_sheets/by_signature/[0-9a-f]{64}\.png$",
+            )
+            self.assertEqual(
+                hashlib.sha256(actor_sheet.read_bytes()).hexdigest(),
+                first["signature_references"][0]["sha256"],
+            )
+            self.assertEqual(
+                ["actor", "location"],
+                [item["type"] for item in first["signature_references"]],
+            )
+
+    def test_actor_look_change_changes_signature(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            actor_dir = tmp / "movie" / "references" / "actors" / "actor_1"
+            default_sheet = self._make_image(
+                200, 200, (255, 0, 0), actor_dir
+            )
+            winter_sheet = actor_dir / "winter.png"
+            Image.new("RGB", (200, 200), (0, 255, 0)).save(winter_sheet)
+            manifest = {
+                "actors": [{
+                    "id": "actor_1",
+                    "name": "Alice",
+                    "visual_description": "Alice in a red coat",
+                    "sheet_path": default_sheet.relative_to(tmp).as_posix(),
+                    "looks": [{
+                        "id": "winter",
+                        "visual_description": "Alice in a green winter coat",
+                        "sheet_path": winter_sheet.relative_to(tmp).as_posix(),
+                    }],
+                }],
+                "locations": [],
+            }
+            builder = IngredientsSceneSheetBuilder(
+                project_dir=tmp,
+                manifest=manifest,
+            )
+
+            default = builder.build({
+                "shot_id": "shot_001",
+                "scene": 1,
+                "reference_ids": {"actors": ["actor_1"]},
+            })
+            winter = builder.build({
+                "shot_id": "shot_002",
+                "scene": 2,
+                "reference_ids": {"actors": ["actor_1"]},
+                "look_ids": {"actors": {"actor_1": "winter"}},
+            })
+
+            self.assertNotEqual(default["signature"], winter["signature"])
+            self.assertEqual(
+                hashlib.sha256(winter_sheet.read_bytes()).hexdigest(),
+                winter["signature_references"][0]["sha256"],
+            )
+
+    def test_concurrent_same_signature_composes_once_without_temp_residue(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source = tmp / "actor.png"
+            Image.new("RGB", (64, 64), "red").save(source)
+            cache = tmp / "by_signature"
+            references = [{
+                "id": "actor",
+                "type": "actor",
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            }]
+            original = compose_scene_reference_sheet
+
+            def slow_compose(*args, **kwargs):
+                time.sleep(0.05)
+                return original(*args, **kwargs)
+
+            with patch(
+                "feverslop.application.reference_bible.compose_scene_reference_sheet",
+                side_effect=slow_compose,
+            ) as compose:
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    results = list(executor.map(
+                        lambda _index: compose_cached_ingredients_sheet(
+                            [source],
+                            cache_dir=cache,
+                            references=references,
+                            size=(1280, 704),
+                        ),
+                        range(4),
+                    ))
+                compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+
+            self.assertEqual(1, compose.call_count)
+            self.assertEqual(1, len({path for path, _signature in results}))
+            [cached] = cache.glob("*.png")
+            with Image.open(cached) as image:
+                image.verify()
+            self.assertFalse(
+                any(path.suffix == ".tmp" for path in cache.iterdir())
+            )
+
+    def test_existing_cache_lock_file_does_not_block_composition(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source = tmp / "actor.png"
+            Image.new("RGB", (16, 16), "red").save(source)
+            references = [{
+                "id": "actor",
+                "type": "actor",
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            }]
+            signature = ingredients_sheet_signature(
+                references,
+                size=(1280, 704),
+            )
+            cache = tmp / "by_signature"
+            cache.mkdir()
+            (cache / f".{signature}.lock").write_text("stale", encoding="ascii")
+
+            with patch(
+                "feverslop.application.reference_bible."
+                "_INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS",
+                0.0,
+            ):
+                output, returned_signature = compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+
+            self.assertEqual(signature, returned_signature)
+            self.assertTrue(output.is_file())
+            with Image.open(output) as image:
+                image.verify()
+
+    def test_invalid_cached_sheet_is_recomposed_under_lock(self):
+        for invalid_kind in ("truncated", "wrong-size"):
+            with self.subTest(invalid_kind=invalid_kind):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmp = Path(tmpdir)
+                    source = tmp / "actor.png"
+                    Image.new("RGB", (16, 16), "red").save(source)
+                    references = [{
+                        "id": "actor",
+                        "type": "actor",
+                        "sha256": hashlib.sha256(
+                            source.read_bytes()
+                        ).hexdigest(),
+                    }]
+                    signature = ingredients_sheet_signature(
+                        references,
+                        size=(1280, 704),
+                    )
+                    cache = tmp / "by_signature"
+                    cache.mkdir()
+                    cached = cache / f"{signature}.png"
+                    if invalid_kind == "truncated":
+                        cached.write_bytes(b"\x89PNG\r\n")
+                    else:
+                        Image.new("RGB", (32, 32), "blue").save(cached)
+
+                    with patch(
+                        "feverslop.application.reference_bible."
+                        "compose_scene_reference_sheet",
+                        wraps=compose_scene_reference_sheet,
+                    ) as compose:
+                        output, _ = compose_cached_ingredients_sheet(
+                            [source],
+                            cache_dir=cache,
+                            references=references,
+                            size=(1280, 704),
+                        )
+
+                    self.assertEqual(1, compose.call_count)
+                    with Image.open(output) as image:
+                        self.assertEqual((1280, 704), image.size)
+                        image.verify()
+
+    def test_signature_and_sheet_use_the_same_source_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source = tmp / "actor.png"
+            Image.new("RGB", (16, 16), "red").save(source)
+            original_bytes = source.read_bytes()
+            images = [{"id": "actor", "type": "actor", "path": "actor.png"}]
+            snapshots = snapshot_ingredients_sources(
+                images,
+                project_base=tmp,
+            )
+            references = ingredients_signature_references(
+                images,
+                project_base=tmp,
+                snapshots=snapshots,
+            )
+
+            Image.new("RGB", (16, 16), "blue").save(source)
+            output, signature = compose_cached_ingredients_sheet(
+                [source],
+                cache_dir=tmp / "by_signature",
+                references=references,
+                size=(1280, 704),
+                snapshots=snapshots,
+            )
+            source.write_bytes(original_bytes)
+
+            self.assertEqual(
+                hashlib.sha256(original_bytes).hexdigest(),
+                references[0]["sha256"],
+            )
+            self.assertEqual(
+                ingredients_sheet_signature(references, size=(1280, 704)),
+                signature,
+            )
+            with Image.open(output) as sheet:
+                self.assertEqual((255, 0, 0), sheet.getpixel((640, 352)))
+
+    def test_cached_sheet_syntax_error_is_recomposed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source = tmp / "actor.png"
+            Image.new("RGB", (16, 16), "red").save(source)
+            references = [{
+                "id": "actor",
+                "type": "actor",
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            }]
+            signature = ingredients_sheet_signature(
+                references,
+                size=(1280, 704),
+            )
+            cache = tmp / "by_signature"
+            cache.mkdir()
+            cached = cache / f"{signature}.png"
+            cached.write_bytes(b"malformed")
+            original_open = Image.open
+            rejected = False
+
+            def reject_cached_once(path, *args, **kwargs):
+                nonlocal rejected
+                if Path(path) == cached and not rejected:
+                    rejected = True
+                    raise SyntaxError("malformed PNG")
+                return original_open(path, *args, **kwargs)
+
+            with patch(
+                "feverslop.application.reference_bible.Image.open",
+                side_effect=reject_cached_once,
+            ):
+                output, _ = compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+
+            with Image.open(output) as sheet:
+                self.assertEqual((1280, 704), sheet.size)
+                sheet.verify()
 
     def test_builder_no_references_returns_empty(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -309,7 +672,13 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
                 "actors": [{"id": "actor_1", "name": "Alice", "sheet_path": actor_sheet.relative_to(tmp).as_posix()}],
                 "locations": [],
             }
-            ingredients_sheets = tmp / "movie" / "ingredients_sheets"
+            ingredients_sheets = (
+                tmp
+                / "movie"
+                / "references"
+                / "ingredients_sheets"
+                / "by_signature"
+            )
             self.assertFalse(ingredients_sheets.exists())
             shot = {"shot_id": "shot_005", "scene": 1, "reference_ids": {"actors": ["actor_1"]}}
 
@@ -336,7 +705,11 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
 
             self.assertFalse(result["sheet_path"].startswith("/"))
             self.assertNotIn("\\", result["sheet_path"])
-            self.assertTrue(result["sheet_path"].startswith("movie/ingredients_sheets/"))
+            self.assertTrue(
+                result["sheet_path"].startswith(
+                    "movie/references/ingredients_sheets/by_signature/"
+                )
+            )
 
     def test_builder_uses_sheet_path_only(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -440,7 +813,7 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
             result = builder.build(shot)
 
             self.assertEqual(3, result["image_count"])
-            with Image.open(tmp / "movie" / "ingredients_sheets" / "shot_010_ingredients.png") as _sheet:
+            with Image.open(tmp / result["sheet_path"]) as _sheet:
                 cols = math.ceil(math.sqrt(3))
                 self.assertEqual(2, cols)
 
@@ -509,6 +882,49 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             self.assertIn("ingredients_scene_sheet", data["shots"][0])
             self.assertIn("ingredients_scene_sheet_description", data["shots"][0])
             self.assertIn("ltx", data["shots"][0])
+            self.assertEqual(
+                "ingredients",
+                data["shots"][0]["visual_consistency"]["mode"],
+            )
+            self.assertEqual(
+                data["shots"][0]["ingredients"]["signature"],
+                Path(data["shots"][0]["ingredients"]["sheet_path"]).stem,
+            )
+
+    def test_movie_equal_references_reuse_sheet_but_keep_shot_prompts_distinct(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            plan_path = tmp / "movie" / "render_plan.json"
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            first = plan["shots"][0]
+            first.update({"action": "Alice opens the ledger", "camera": "slow dolly"})
+            plan["shots"].append({
+                **first,
+                "shot_id": "shot_002",
+                "scene": 2,
+                "action": "Alice closes the ledger",
+                "camera": "locked overhead",
+            })
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            output = enrich_movie_render_plan_with_ingredients_sheets(
+                project_dir=tmp
+            )
+            shots = json.loads(output.read_text(encoding="utf-8"))["shots"]
+
+            self.assertEqual(
+                shots[0]["ingredients"]["sheet_path"],
+                shots[1]["ingredients"]["sheet_path"],
+            )
+            self.assertIn("opens the ledger", shots[0]["ingredients_global_prompt"])
+            self.assertIn("closes the ledger", shots[1]["ingredients_global_prompt"])
+            self.assertNotEqual(
+                shots[0]["ingredients_global_prompt"],
+                shots[1]["ingredients_global_prompt"],
+            )
+            self.assertIn("slow dolly", shots[0]["ltx"]["prompt_relay"][0]["prompt"])
+            self.assertIn("locked overhead", shots[1]["ltx"]["prompt_relay"][0]["prompt"])
 
     def test_vision_enrichment_uses_source_images_and_complete_shot_context(self):
         with tempfile.TemporaryDirectory() as tmpdir:

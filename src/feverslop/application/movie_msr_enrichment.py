@@ -7,6 +7,15 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from feverslop.application.reference_bible import (
+    build_runtime_consistency_contract,
+    visual_consistency_sources,
+)
+from feverslop.domain.visual_consistency_runtime import (
+    bind_continuity_anchors,
+    reference_look_id,
+    resolve_reference_look,
+)
 from feverslop.application.msr_prompt_enrichment import _clean_segment_prompt, _is_valid_segment_prompt, _msr_vision_system_prompt
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.domain.screenplay import looks_like_screenplay
@@ -22,6 +31,7 @@ def enrich_movie_render_plan_with_msr_prompts(
     keyframe_mode: str = "none",
     llm: VisionLLMPort | None = None,
     on_analysis_status=None,
+    workflow_profile: str = "msr-default",
 ) -> Path:
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
@@ -46,10 +56,12 @@ def enrich_movie_render_plan_with_msr_prompts(
     enriched["msr_enriched"] = True
     enriched["shots"] = [
         _enrich_shot(
-            shot, bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode,
+            {**shot, "scene": int(shot.get("scene") or index)},
+            bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode,
             shot_cards=shot_cards, project_dir=project_dir, llm=llm, on_analysis_status=on_analysis_status,
+            workflow_profile=workflow_profile,
         )
-        for shot in render_plan.get("shots") or []
+        for index, shot in enumerate(render_plan.get("shots") or [], start=1)
     ]
 
     output_path = movie_dir / "render_plan_msr.json"
@@ -61,6 +73,7 @@ def _enrich_shot(
     shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none",
     shot_cards: dict | None = None, project_dir: Path | None = None, llm: VisionLLMPort | None = None,
     on_analysis_status=None,
+    workflow_profile: str = "msr-default",
 ) -> dict:
     enriched = deepcopy(shot)
     shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
@@ -72,11 +85,23 @@ def _enrich_shot(
         enriched["continuity_notes"] = ""
     frame_count = max(1, int(round(float(shot.get("duration_seconds") or 1) * max(1, fps))))
     fallback_global = _movie_reference_global_prompt(shot, bible=bible, manifest=manifest)
+    contract, contract_sources = _movie_runtime_contract(
+        shot,
+        bible=bible,
+        manifest=manifest,
+        project_dir=project_dir,
+        workflow_profile=workflow_profile,
+    )
     vision = _movie_vision_prompts(
         shot, bible=bible, manifest=manifest, project_dir=project_dir, llm=llm,
         frame_count=frame_count, on_analysis_status=on_analysis_status,
     )
     global_prompt, relay_prompt = vision or (fallback_global, prompt)
+    global_prompt = bind_continuity_anchors(global_prompt, contract)
+    relay_prompt = bind_continuity_anchors(relay_prompt, None)
+    if contract is not None:
+        enriched["visual_consistency"] = contract.to_dict()
+        enriched["visual_consistency_sources"] = contract_sources
     enriched["ltx"] = {
         **dict(enriched.get("ltx") or {}),
         "original_style_i2v_prompt": prompt,
@@ -102,6 +127,64 @@ def _enrich_shot(
             keyframes["end_frame_prompt"] = shot_card["end_frame_brief"]
         enriched["keyframes"] = keyframes
     return enriched
+
+
+def _movie_runtime_contract(
+    shot: dict,
+    *,
+    bible: dict,
+    manifest: dict,
+    project_dir: Path | None,
+    workflow_profile: str,
+):
+    if project_dir is None or type(shot.get("scene")) is not int:
+        return None, {}
+    reference_images = _movie_reference_images(
+        shot,
+        bible=bible,
+        manifest=manifest,
+        project_dir=project_dir,
+    )
+    metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
+    if not reference_images or len(reference_images) != len(metadata):
+        return None, {}
+    images = [
+        {
+            **item,
+            "id": reference.id,
+            "type": reference.type,
+            "path": _project_relative_reference(
+                reference,
+                project_dir=project_dir,
+            ),
+        }
+        for item, reference in zip(metadata, reference_images)
+    ]
+    return (
+        build_runtime_consistency_contract(
+            shot,
+            images=images,
+            project_base=project_dir,
+            mode="msr",
+            workflow_profile=workflow_profile,
+        ),
+        visual_consistency_sources(images, project_base=project_dir),
+    )
+
+
+def _project_relative_reference(
+    reference: ReferenceImage,
+    *,
+    project_dir: Path,
+) -> str:
+    root = Path(project_dir).resolve()
+    path = reference.path.resolve()
+    if not path.is_relative_to(root):
+        raise ValueError(
+            f"Movie MSR reference {reference.id!r} path must be "
+            f"project-relative and inside the project: {reference.path}"
+        )
+    return path.relative_to(root).as_posix()
 
 
 def _movie_vision_prompts(
@@ -180,8 +263,34 @@ def _movie_relay_state(shot: dict) -> str:
 
 def _movie_reference_metadata(shot: dict, *, bible: dict, manifest: dict) -> list[dict]:
     ids = shot.get("reference_ids") or {}
-    actors = _items_for_ids(manifest.get("actors") or bible.get("actors") or [], ids.get("actors") or shot.get("actor_ids") or [])
-    location = _item_for_id(manifest.get("locations") or bible.get("locations") or [], ids.get("location") or shot.get("location_id") or "")
+    actor_ids = ids.get("actors") or shot.get("actor_ids") or []
+    actor_items = manifest.get("actors") or bible.get("actors") or []
+    actors = []
+    for actor_id in actor_ids:
+        item = _item_for_id(actor_items, actor_id)
+        if item:
+            actors.append(resolve_reference_look(
+                item,
+                reference_look_id(
+                    shot,
+                    kind="actor",
+                    semantic_id=str(actor_id),
+                ),
+            ))
+    location_id = ids.get("location") or shot.get("location_id") or ""
+    location = _item_for_id(
+        manifest.get("locations") or bible.get("locations") or [],
+        location_id,
+    )
+    if location:
+        location = resolve_reference_look(
+            location,
+            reference_look_id(
+                shot,
+                kind="location",
+                semantic_id=str(location_id),
+            ),
+        )
     return [dict(item, type="actor") for item in actors] + ([dict(location, type="location")] if location else [])
 
 
@@ -199,7 +308,14 @@ def _movie_reference_images(shot: dict, *, bible: dict, manifest: dict, project_
         return []
     result = []
     for item in metadata:
-        raw_path = str(item.get("msr_sheet_path") or item.get("sheet_path") or "").strip()
+        raw_path = str(
+            (
+                item.get("sheet_path")
+                if item.get("look_id") != "default"
+                else item.get("msr_sheet_path") or item.get("sheet_path")
+            )
+            or ""
+        ).strip()
         path = Path(raw_path)
         if raw_path and not path.is_absolute() and project_dir is not None:
             path = project_dir / path

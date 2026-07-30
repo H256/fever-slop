@@ -8,11 +8,23 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.application.reference_bible import (
+    INGREDIENTS_SHEET_LAYOUT_VERSION,
     build_ingredients_target_binding,
-    compose_scene_reference_sheet,
+    build_runtime_consistency_contract,
+    compose_cached_ingredients_sheet,
     generate_scene_sheet_description,
     generate_scene_sheet_anchors,
+    ingredients_signature_references,
+    ingredients_signature_sources,
     ingredients_sheet_size,
+    snapshot_ingredients_sources,
+    visual_consistency_sources,
+)
+from feverslop.domain.prepared_workflow import sha256_file
+from feverslop.domain.visual_consistency_runtime import (
+    bind_continuity_anchors,
+    reference_look_id,
+    resolve_reference_look,
 )
 from feverslop.application.ingredients_render_plan import build_ingredients_static_prompt
 from feverslop.application.movie_msr_enrichment import _movie_video_prompt
@@ -30,6 +42,7 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     sheet_scale: float = 2.0,
     llm: VisionLLMPort | None = None,
     on_analysis_status: Callable[[str, list[dict[str, str]]], None] | None = None,
+    workflow_profile: str = "ingredients-default",
 ) -> Path:
     """Compose per-shot Ingredients scene reference sheets and write
     movie/render_plan_ingredients.json.
@@ -77,8 +90,20 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     )
     fps = int(render_plan.get("fps") or (bible.get("runtime_constraints") or {}).get("fps") or 24)
     enriched["shots"] = [
-        _enrich_shot(shot, builder=builder, manifest=manifest, bible=bible, fps=fps, llm=llm, on_analysis_status=on_analysis_status)
-        for shot in render_plan.get("shots") or []
+        _enrich_shot(
+            {
+                **shot,
+                "scene": int(shot.get("scene") or index),
+            },
+            builder=builder,
+            manifest=manifest,
+            bible=bible,
+            fps=fps,
+            llm=llm,
+            on_analysis_status=on_analysis_status,
+            workflow_profile=workflow_profile,
+        )
+        for index, shot in enumerate(render_plan.get("shots") or [], start=1)
     ]
 
     output_path = movie_dir / "render_plan_ingredients.json"
@@ -95,6 +120,7 @@ def _enrich_shot(
     fps: int,
     llm: VisionLLMPort | None,
     on_analysis_status: Callable[[str, list[dict[str, str]]], None] | None,
+    workflow_profile: str,
 ) -> dict:
     enriched = deepcopy(shot)
     sheet_result = builder.build(shot)
@@ -102,8 +128,29 @@ def _enrich_shot(
     enriched["ingredients_scene_sheet_description"] = sheet_result.get("scene_reference_sheet_description", "")
     anchors = list(sheet_result.get("scene_reference_sheet_anchors") or [])
     enriched["ingredients_scene_sheet_anchors"] = anchors
+    if images := list(sheet_result.get("images") or []):
+        contract = build_runtime_consistency_contract(
+            shot,
+            images=images,
+            project_base=builder.project_dir,
+            mode="ingredients",
+            workflow_profile=workflow_profile,
+        )
+        enriched["visual_consistency"] = contract.to_dict()
+        enriched["ingredients_sheet_signature"] = sheet_result["signature"]
+        enriched["ingredients_sheet_layout_version"] = sheet_result["layout_version"]
+        enriched["ingredients_sheet_size"] = sheet_result["size"]
+        enriched["ingredients_signature_references"] = sheet_result[
+            "signature_references"
+        ]
+        enriched["ingredients_signature_sources"] = sheet_result[
+            "signature_sources"
+        ]
+        enriched["ingredients_sheet_sha256"] = sheet_result["sheet_sha256"]
+        enriched["visual_consistency_sources"] = sheet_result[
+            "visual_consistency_sources"
+        ]
     fallback_invariants = _fallback_movie_shot_invariants(shot, anchors=anchors)
-    images = list(sheet_result.get("images") or [])
     references = [
         ReferenceImage(id=str(img["id"]), type=img["type"], path=builder.project_dir / img["path"])
         for img in images
@@ -125,7 +172,11 @@ def _enrich_shot(
         fallback_reference_description=enriched["ingredients_scene_sheet_description"],
         fallback_shot_invariants=fallback_invariants,
     )
-    enriched["ingredients_global_prompt"] = result.positive_prompt
+    global_prompt = bind_continuity_anchors(
+        result.positive_prompt,
+        enriched.get("visual_consistency"),
+    )
+    enriched["ingredients_global_prompt"] = global_prompt
     ltx = dict(enriched.get("ltx") or {})
     relay = list(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
     if not relay:
@@ -140,7 +191,19 @@ def _enrich_shot(
     enriched["ingredients"] = {
         "sheet_path": enriched["ingredients_scene_sheet"],
         "anchors": anchors,
-        "global_prompt": result.positive_prompt,
+        "global_prompt": global_prompt,
+        **(
+            {
+                "signature": sheet_result["signature"],
+                "layout_version": sheet_result["layout_version"],
+                "size": sheet_result["size"],
+                "signature_references": sheet_result["signature_references"],
+                "signature_sources": sheet_result["signature_sources"],
+                "sheet_sha256": sheet_result["sheet_sha256"],
+            }
+            if references
+            else {}
+        ),
     }
     if not references:
         logger.warning("Ingredients image analysis fallback: shot=%s reason=no images", shot_id)
@@ -152,8 +215,8 @@ def _enrich_shot(
         )
     enriched["ltx"] = {
         **ltx,
-        "base_prompt": result.positive_prompt,
-        "static_prompt": build_ingredients_static_prompt(result.positive_prompt, relay),
+        "base_prompt": global_prompt,
+        "static_prompt": build_ingredients_static_prompt(global_prompt, relay),
         "prompt_relay": relay,
         "native_audio": True,
     }
@@ -180,12 +243,33 @@ class IngredientsSceneSheetBuilder:
         for actor_id in actor_ids:
             actor_item = _item_for_id(self.manifest.get("actors") or [], actor_id)
             if actor_item:
+                actor_item = resolve_reference_look(
+                    actor_item,
+                    reference_look_id(
+                        shot,
+                        kind="actor",
+                        semantic_id=str(actor_id),
+                    ),
+                )
                 logical = _pick_existing_path(actor_item.get("sheet_path"), self.project_dir)
                 if logical:
                     images.append({
                         "path": logical,
+                        "contract_path": _pick_existing_path(
+                            (
+                                logical
+                                if actor_item.get("look_id") != "default"
+                                else (
+                                    actor_item.get("msr_sheet_path")
+                                    or actor_item.get("msr_input_path")
+                                    or logical
+                                )
+                            ),
+                            self.project_dir,
+                        ) or logical,
                         "type": "actor",
                         "id": actor_id,
+                        "look_id": str(actor_item.get("look_id") or "default"),
                         "visual_description": str(actor_item.get("visual_description") or "").strip(),
                         "name": str(actor_item.get("name") or "").strip(),
                         "image_prompt": str(actor_item.get("image_prompt") or "").strip(),
@@ -194,12 +278,33 @@ class IngredientsSceneSheetBuilder:
         if location_id:
             location_item = _item_for_id(self.manifest.get("locations") or [], location_id)
             if location_item:
+                location_item = resolve_reference_look(
+                    location_item,
+                    reference_look_id(
+                        shot,
+                        kind="location",
+                        semantic_id=str(location_id),
+                    ),
+                )
                 logical = _pick_existing_path(location_item.get("sheet_path"), self.project_dir)
                 if logical:
                     images.append({
                         "path": logical,
+                        "contract_path": _pick_existing_path(
+                            (
+                                logical
+                                if location_item.get("look_id") != "default"
+                                else (
+                                    location_item.get("msr_sheet_path")
+                                    or location_item.get("msr_background_path")
+                                    or logical
+                                )
+                            ),
+                            self.project_dir,
+                        ) or logical,
                         "type": "location",
                         "id": location_id,
+                        "look_id": str(location_item.get("look_id") or "default"),
                         "visual_description": str(location_item.get("visual_description") or "").strip(),
                         "name": str(location_item.get("name") or "").strip(),
                         "image_prompt": str(location_item.get("image_prompt") or "").strip(),
@@ -215,10 +320,38 @@ class IngredientsSceneSheetBuilder:
             }
 
         image_paths = [self.project_dir / img["path"] for img in images]
-        shot_id = shot.get("shot_id") or f"scene_{shot.get('scene')}"
-        output_path = self.project_dir / "movie" / "ingredients_sheets" / f"{shot_id}_ingredients.png"
+        source_snapshots = snapshot_ingredients_sources(
+            images,
+            project_base=self.project_dir,
+        )
+        signature_references = ingredients_signature_references(
+            images,
+            project_base=self.project_dir,
+            snapshots=source_snapshots,
+        )
+        signature_sources = ingredients_signature_sources(
+            images,
+            project_base=self.project_dir,
+            snapshots=source_snapshots,
+        )
+        contract_sources = visual_consistency_sources(
+            images,
+            project_base=self.project_dir,
+        )
+        output_path, signature = compose_cached_ingredients_sheet(
+            image_paths,
+            cache_dir=(
+                self.project_dir
+                / "movie"
+                / "references"
+                / "ingredients_sheets"
+                / "by_signature"
+            ),
+            references=signature_references,
+            size=self.size,
+            snapshots=source_snapshots,
+        )
         num_cols = math.ceil(math.sqrt(len(images)))
-        compose_scene_reference_sheet(image_paths, output_path, size=self.size)
 
         relative_sheet = output_path.relative_to(self.project_dir).as_posix()
         description = generate_scene_sheet_description(images, num_cols, self.size)
@@ -227,6 +360,13 @@ class IngredientsSceneSheetBuilder:
             "sheet_path": relative_sheet,
             "image_count": len(images),
             "images": images,
+            "signature": signature,
+            "layout_version": INGREDIENTS_SHEET_LAYOUT_VERSION,
+            "size": list(self.size),
+            "signature_references": signature_references,
+            "signature_sources": signature_sources,
+            "sheet_sha256": sha256_file(output_path),
+            "visual_consistency_sources": contract_sources,
             "scene_reference_sheet_description": description,
             "scene_reference_sheet_anchors": anchors,
         }
@@ -251,8 +391,14 @@ def _fallback_movie_shot_invariants(shot: dict, *, anchors: list[dict]) -> str:
         "Maintain one continuous full-frame shot with stable identities, wardrobe, spatial staging, environment, and lighting.",
     ]
     camera = shot.get("camera") or shot.get("camera_motion") or ""
+    action = shot.get("action") or ""
+    acting = shot.get("acting") or shot.get("expression") or ""
+    if action:
+        parts.append(f"Action: {str(action).strip()}")
     if camera:
         parts.append(f"Camera policy: {str(camera).strip()}")
+    if acting:
+        parts.append(f"Acting: {str(acting).strip()}")
     return " ".join(part for part in parts if part).strip()
 
 

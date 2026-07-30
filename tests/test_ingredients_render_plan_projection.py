@@ -4,10 +4,40 @@ from copy import deepcopy
 import unittest
 
 from feverslop.application.ingredients_render_plan import project_ingredients_runtime_scene
+from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
+from feverslop.domain.visual_consistency_runtime import scrub_prior_context
 from feverslop.errors import FeverSlopValidationError
 
 
 class IngredientsRenderPlanProjectionTests(unittest.TestCase):
+    def test_scrub_removes_only_structural_continuity_directives(self):
+        self.assertEqual(
+            "Silk enters the tunnel.",
+            scrub_prior_context(
+                "Continue with same wardrobe from before; Silk enters the tunnel."
+            ),
+        )
+        self.assertEqual(
+            "",
+            scrub_prior_context(
+                "Continue with the same wardrobe from before."
+            ),
+        )
+        self.assertEqual(
+            "Silk enters the tunnel.",
+            scrub_prior_context(
+                "As before, Silk enters the tunnel."
+            ),
+        )
+
+    def test_scrub_preserves_previous_scene_as_subject_or_comparison(self):
+        for prompt in (
+            "The critic reviews previous scene compositions.",
+            "Unlike previous scene lighting, this room is bright.",
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(prompt, scrub_prior_context(prompt))
+
     @staticmethod
     def _bloated_scene() -> dict:
         return {
@@ -142,6 +172,81 @@ class IngredientsRenderPlanProjectionTests(unittest.TestCase):
 
         self.assertIn("no vocal performance throughout", projected["ltx"]["static_prompt"].lower())
         self.assertIn("mouths remain closed", projected["ltx"]["static_prompt"].lower())
+
+    def test_projection_binds_one_stable_anchor_block_and_contract(self):
+        scene = self._bloated_scene()
+        actor = ReferenceAnchor(
+            id="silk",
+            kind="actor",
+            look_id="default",
+            asset_role="identity-reference",
+            asset_sha256="a" * 64,
+            prompt_anchor=(
+                "As before after the prior shot, Silk has a sharp black bob "
+                "and a silver jacket."
+            ),
+        )
+        location = ReferenceAnchor(
+            id="mountain_tunnels",
+            kind="location",
+            look_id="default",
+            asset_role="environment-reference",
+            asset_sha256="b" * 64,
+            prompt_anchor=(
+                "Previous scene aside, the mountain tunnel has wet basalt walls "
+                "and amber lamps."
+            ),
+        )
+        contract = SceneConsistencyContract.create(
+            scene=6,
+            mode="ingredients",
+            workflow_profile="ingredients-final",
+            actors=(actor,),
+            location=location,
+            transition_from_previous="cut",
+        )
+        scene["visual_consistency"] = contract.to_dict()
+        scene["ingredients_sheet_signature"] = "c" * 64
+        scene["ingredients_sheet_layout_version"] = "scene-reference-grid/v1"
+        scene["ingredients_sheet_size"] = [1280, 704]
+        scene["ingredients_signature_references"] = [
+            {"id": "silk", "type": "actor", "sha256": "a" * 64},
+            {"id": "mountain_tunnels", "type": "location", "sha256": "b" * 64},
+        ]
+        scene["ingredients_scene_sheet_description"] = (
+            "As before after the prior shot and previous scene; Silk enters the tunnel."
+        )
+        scene["ltx"]["msr_prompt_relay"][0]["prompt"] = (
+            "Continue the action from the previous shot."
+        )
+
+        projected = project_ingredients_runtime_scene(scene)
+
+        self.assertEqual(contract.to_dict(), projected.get("visual_consistency"))
+        self.assertEqual("c" * 64, projected["ingredients"].get("signature"))
+        for prompt in (
+            projected["ingredients"]["global_prompt"],
+            projected["ltx"]["base_prompt"],
+            projected["ltx"]["static_prompt"],
+        ):
+            self.assertEqual(
+                1,
+                prompt.count("Continuity anchors (keep unchanged):"),
+            )
+            self.assertIn("sharp black bob", prompt)
+            self.assertIn("wet basalt walls", prompt)
+            self.assertNotIn("same as before", prompt.lower())
+            self.assertNotIn("previous scene", prompt.lower())
+            self.assertNotIn("prior shot", prompt.lower())
+            self.assertNotIn("as before", prompt.lower())
+        self.assertIn(
+            "Silk and Bobby remain silent",
+            projected["ltx"]["static_prompt"],
+        )
+        self.assertIn(
+            "previous shot",
+            projected["ltx"]["prompt_relay"][0]["prompt"].lower(),
+        )
 
     def test_projection_rejects_missing_global_prompt(self):
         scene = self._bloated_scene()

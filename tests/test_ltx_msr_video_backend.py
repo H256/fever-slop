@@ -1,4 +1,5 @@
 import json
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,8 @@ from unittest.mock import patch
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.prepared_workflow import sha256_file
+from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -66,6 +69,202 @@ class FakeModelResolver:
 
 
 class LTXMSRVideoBackendTests(unittest.TestCase):
+    def test_absolute_msr_reference_is_rejected_with_reference_and_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(json.dumps({
+                "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+            }), encoding="utf-8")
+            anchor = ReferenceAnchor(
+                id="actor",
+                kind="actor",
+                look_id="default",
+                asset_role="identity-reference",
+                asset_sha256=sha256_file(actor),
+                prompt_anchor="Actor wears a red jacket.",
+            )
+            location_anchor = ReferenceAnchor(
+                id="room",
+                kind="location",
+                look_id="default",
+                asset_role="environment-reference",
+                asset_sha256=sha256_file(location),
+                prompt_anchor="Room has concrete walls.",
+            )
+            contract = SceneConsistencyContract.create(
+                scene=1,
+                mode="msr",
+                workflow_profile="msr-final",
+                actors=(anchor,),
+                location=location_anchor,
+                transition_from_previous="cut",
+            )
+            client = FakeClient()
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=client,
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                project_dir=temp,
+                workflow_profile="msr-final",
+            )
+            scene = {
+                "scene": 1,
+                "frame_count": 17,
+                "references": {
+                    "actor_ids": ["actor"],
+                    "location_id": "room",
+                    "actor_msr_paths": [str(actor)],
+                    "location_msr_path": "location.png",
+                },
+                "visual_consistency_sources": {
+                    "actors": [{"id": "actor", "path": "actor.png"}],
+                    "location": {"id": "room", "path": "location.png"},
+                },
+                "visual_consistency": contract.to_dict(),
+            }
+
+            with self.assertRaisesRegex(
+                FeverSlopValidationError,
+                r"actor.*actor.*project-relative.*actor\.png",
+            ):
+                backend.build_workflow(scene, prompt="prompt")
+
+            self.assertEqual([], client.uploaded)
+
+    def test_contract_without_location_rejects_runtime_location_before_upload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(json.dumps({
+                "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+            }), encoding="utf-8")
+            anchor = ReferenceAnchor(
+                id="actor",
+                kind="actor",
+                look_id="default",
+                asset_role="identity-reference",
+                asset_sha256=sha256_file(actor),
+                prompt_anchor="Actor wears a red jacket.",
+            )
+            contract = SceneConsistencyContract.create(
+                scene=1,
+                mode="msr",
+                workflow_profile="msr-final",
+                actors=(anchor,),
+                location=None,
+                transition_from_previous="cut",
+            )
+            client = FakeClient()
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=client,
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                project_dir=temp,
+                workflow_profile="msr-final",
+            )
+            scene = {
+                "scene": 1,
+                "frame_count": 17,
+                "references": {
+                    "actor_ids": ["actor"],
+                    "location_id": "",
+                    "actor_msr_paths": ["actor.png"],
+                    "location_msr_path": "location.png",
+                },
+                "visual_consistency": contract.to_dict(),
+            }
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "location"):
+                backend.build_workflow(scene, prompt="prompt")
+
+            self.assertEqual([], client.uploaded)
+
+    def test_contract_reference_hash_disagreement_blocks_before_upload(self):
+        self.assertIn(
+            "workflow_profile",
+            inspect.signature(ComfyUIMSRVideoRenderBackend).parameters,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"changed actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(json.dumps({
+                "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+            }), encoding="utf-8")
+            actor_anchor = ReferenceAnchor(
+                id="actor",
+                kind="actor",
+                look_id="default",
+                asset_role="identity-reference",
+                asset_sha256="a" * 64,
+                prompt_anchor="Actor wears a red jacket.",
+            )
+            location_anchor = ReferenceAnchor(
+                id="room",
+                kind="location",
+                look_id="default",
+                asset_role="environment-reference",
+                asset_sha256=sha256_file(location),
+                prompt_anchor="Room has blue concrete walls.",
+            )
+            contract = SceneConsistencyContract.create(
+                scene=1,
+                mode="msr",
+                workflow_profile="msr-final",
+                actors=(actor_anchor,),
+                location=location_anchor,
+                transition_from_previous="cut",
+            )
+            client = FakeClient()
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=client,
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                project_dir=temp,
+                workflow_profile="msr-final",
+            )
+            scene = {
+                "scene": 1,
+                "frame_count": 17,
+                "references": {
+                    "actor_ids": ["actor"],
+                    "location_id": "room",
+                    "actor_msr_paths": ["actor.png"],
+                    "location_msr_path": "location.png",
+                },
+                "visual_consistency_sources": {
+                    "actors": [{"id": "actor", "path": "actor.png"}],
+                    "location": {"id": "room", "path": "location.png"},
+                },
+                "visual_consistency": contract.to_dict(),
+            }
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "hash"):
+                backend.build_workflow(scene, prompt="prompt")
+
+            self.assertEqual([], client.uploaded)
+
     def test_render_frame_budget_rejects_above_limit_and_allows_exact_limit(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

@@ -8,6 +8,19 @@ from feverslop.config.project_config import ProjectConfig, ProjectPaths
 
 
 class SceneArtifactLayoutTests(unittest.TestCase):
+    def test_ingredients_sheet_cache_has_canonical_signature_directory(self):
+        project = Path("C:/projects/demo")
+        layout = SceneArtifactLayout(project)
+
+        self.assertEqual(
+            project
+            / "output"
+            / "references"
+            / "ingredients_sheets"
+            / "by_signature",
+            layout.ingredients_sheet_cache_dir,
+        )
+
     def test_exposes_canonical_render_artifact_paths(self):
         project = Path("/project")
         layout = SceneArtifactLayout(project)

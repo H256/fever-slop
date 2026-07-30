@@ -1,11 +1,17 @@
 import json
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
 
+from PIL import Image
+
 from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.ltx_rendering import build_audio_window_spec
+from feverslop.domain.prepared_workflow import sha256_file
+from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
+from feverslop.domain.visual_consistency_runtime import ingredients_sheet_signature
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -111,6 +117,247 @@ def _build_relay_ingredients_workflow():
 
 
 class ComfyUIIngredientsBackendTests(unittest.TestCase):
+    def test_contract_signature_source_hash_disagreement_blocks_before_upload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            source = temp / "signature_actor.png"
+            Image.new("RGB", (16, 16), "red").save(source)
+            contract_source = temp / "contract_actor.png"
+            Image.new("RGB", (16, 16), "blue").save(contract_source)
+            declared_hash = sha256_file(source)
+            signature_references = [
+                {"id": "artist", "type": "actor", "sha256": declared_hash}
+            ]
+            signature = ingredients_sheet_signature(
+                signature_references,
+                size=(1280, 704),
+                layout_version="scene-reference-grid/v1",
+            )
+            sheet = (
+                temp
+                / "output"
+                / "references"
+                / "ingredients_sheets"
+                / "by_signature"
+                / f"{signature}.png"
+            )
+            sheet.parent.mkdir(parents=True)
+            Image.new("RGB", (1280, 704), "white").save(sheet)
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(
+                json.dumps(_build_minimal_ingredients_workflow()),
+                encoding="utf-8",
+            )
+            anchor = ReferenceAnchor(
+                id="artist",
+                kind="actor",
+                look_id="default",
+                asset_role="identity-reference",
+                asset_sha256="b" * 64,
+                prompt_anchor="Artist wears a red jacket.",
+            )
+            contract = SceneConsistencyContract.create(
+                scene=1,
+                mode="ingredients",
+                workflow_profile="ingredients-final",
+                actors=(anchor,),
+                location=None,
+                transition_from_previous="cut",
+            )
+            client = FakeClient()
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=client,
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                workflow_profile="ingredients-final",
+                postprocess=False,
+            )
+            scene = {
+                "scene": 1,
+                "frame_count": 17,
+                "fps": 24,
+                "references": {"actor_ids": ["artist"], "location_id": ""},
+                "ingredients": {
+                    "sheet_path": sheet.relative_to(temp).as_posix(),
+                    "signature": signature,
+                    "layout_version": "scene-reference-grid/v1",
+                    "size": [1280, 704],
+                    "signature_references": signature_references,
+                    "signature_sources": [{
+                        "id": "artist",
+                        "type": "actor",
+                        "path": "signature_actor.png",
+                    }],
+                    "sheet_sha256": sha256_file(sheet),
+                    "global_prompt": "Artist walks.",
+                },
+                "visual_consistency_sources": {
+                    "actors": [{
+                        "id": "artist",
+                        "path": "contract_actor.png",
+                    }],
+                    "location": None,
+                },
+                "visual_consistency": contract.to_dict(),
+                "ltx": {"static_prompt": "Artist walks."},
+            }
+
+            with self.assertRaisesRegex(
+                FeverSlopValidationError,
+                "contract source hash",
+            ):
+                backend.build_workflow(scene, prompt="prompt")
+
+            self.assertEqual([], client.uploaded)
+
+    def test_external_by_signature_sheet_is_rejected_before_upload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            source = temp / "actor.png"
+            Image.new("RGB", (16, 16), "red").save(source)
+            source_hash = sha256_file(source)
+            references = [
+                {"id": "artist", "type": "actor", "sha256": source_hash}
+            ]
+            signature = ingredients_sheet_signature(
+                references,
+                size=(1280, 704),
+                layout_version="scene-reference-grid/v1",
+            )
+            external = temp / "arbitrary" / "by_signature" / f"{signature}.png"
+            external.parent.mkdir(parents=True)
+            Image.new("RGB", (1280, 704), "white").save(external)
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(
+                json.dumps(_build_minimal_ingredients_workflow()),
+                encoding="utf-8",
+            )
+            anchor = ReferenceAnchor(
+                id="artist",
+                kind="actor",
+                look_id="default",
+                asset_role="identity-reference",
+                asset_sha256=source_hash,
+                prompt_anchor="Artist wears a red jacket.",
+            )
+            contract = SceneConsistencyContract.create(
+                scene=1,
+                mode="ingredients",
+                workflow_profile="ingredients-final",
+                actors=(anchor,),
+                location=None,
+                transition_from_previous="cut",
+            )
+            client = FakeClient()
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=client,
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                workflow_profile="ingredients-final",
+                postprocess=False,
+            )
+            scene = {
+                "scene": 1,
+                "frame_count": 17,
+                "fps": 24,
+                "references": {"actor_ids": ["artist"], "location_id": ""},
+                "ingredients": {
+                    "sheet_path": external.relative_to(temp).as_posix(),
+                    "signature": signature,
+                    "layout_version": "scene-reference-grid/v1",
+                    "size": [1280, 704],
+                    "signature_references": references,
+                    "signature_sources": [{
+                        "id": "artist",
+                        "type": "actor",
+                        "path": "actor.png",
+                    }],
+                    "sheet_sha256": sha256_file(external),
+                },
+                "visual_consistency_sources": {
+                    "actors": [{"id": "artist", "path": "actor.png"}],
+                    "location": None,
+                },
+                "visual_consistency": contract.to_dict(),
+                "ltx": {"static_prompt": "Artist walks."},
+            }
+
+            with self.assertRaisesRegex(
+                FeverSlopValidationError,
+                "canonical Ingredients cache",
+            ):
+                backend.build_workflow(scene, prompt="prompt")
+
+            self.assertEqual([], client.uploaded)
+
+    def test_contract_profile_disagreement_blocks_before_sheet_upload(self):
+        self.assertIn(
+            "workflow_profile",
+            inspect.signature(ComfyUIIngredientsVideoRenderBackend).parameters,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "by_signature" / f"{'c' * 64}.png"
+            sheet.parent.mkdir()
+            sheet.write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(
+                json.dumps(_build_minimal_ingredients_workflow()),
+                encoding="utf-8",
+            )
+            anchor = ReferenceAnchor(
+                id="artist",
+                kind="actor",
+                look_id="default",
+                asset_role="identity-reference",
+                asset_sha256="a" * 64,
+                prompt_anchor="Artist wears a red jacket.",
+            )
+            contract = SceneConsistencyContract.create(
+                scene=1,
+                mode="ingredients",
+                workflow_profile="ingredients-draft",
+                actors=(anchor,),
+                location=None,
+                transition_from_previous="cut",
+            )
+            client = FakeClient()
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=client,
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                workflow_profile="ingredients-final",
+                postprocess=False,
+            )
+            scene = {
+                "scene": 1,
+                "frame_count": 17,
+                "fps": 24,
+                "references": {"actor_ids": ["artist"], "location_id": ""},
+                "ingredients": {
+                    "sheet_path": sheet.relative_to(temp).as_posix(),
+                    "signature": "c" * 64,
+                    "layout_version": "scene-reference-grid/v1",
+                    "size": [1280, 704],
+                    "signature_references": [
+                        {"id": "artist", "type": "actor", "sha256": "a" * 64}
+                    ],
+                },
+                "visual_consistency": contract.to_dict(),
+                "ltx": {"static_prompt": "prompt"},
+            }
+
+            with self.assertRaisesRegex(
+                FeverSlopValidationError,
+                "workflow profile",
+            ):
+                backend.build_workflow(scene, prompt="prompt")
+
+            self.assertEqual([], client.uploaded)
+
     def test_render_frame_budget_rejects_above_limit_and_allows_exact_limit(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

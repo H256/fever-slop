@@ -21,6 +21,10 @@ class SceneArtifactLayout:
         return self.output_dir / "references"
 
     @property
+    def ingredients_sheet_cache_dir(self) -> Path:
+        return self.references_dir / "ingredients_sheets" / "by_signature"
+
+    @property
     def render_dir(self) -> Path:
         return self.output_dir / "render"
 

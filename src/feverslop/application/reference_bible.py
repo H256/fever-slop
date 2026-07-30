@@ -1,15 +1,43 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from io import BytesIO
 from pathlib import Path
+import hashlib
 import json
 import math
+import os
+from tempfile import NamedTemporaryFile
+import time
 from typing import Callable, Any
 
 from PIL import Image, ImageDraw, ImageOps
 
 from feverslop.errors import FeverSlopValidationError
+from feverslop.domain.prepared_workflow import sha256_file
+from feverslop.domain.movie_utils import transition_from_previous
+from feverslop.domain.visual_consistency import (
+    ReferenceAnchor,
+    SceneConsistencyContract,
+)
+from feverslop.domain.visual_consistency_runtime import (
+    ingredients_sheet_signature as _ingredients_sheet_signature,
+)
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
+
+
+INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
+_INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS = 30.0
+_MAX_INGREDIENTS_SOURCE_BYTES = 64 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class IngredientsSourceSnapshot:
+    id: str
+    type: str
+    path: str
+    suffix: str
+    content: bytes
 
 
 @dataclass(frozen=True)
@@ -428,6 +456,28 @@ def compose_scene_reference_sheet(
         raise ValueError("Cannot compose a scene reference sheet from an empty list")
 
     images = [Image.open(path).convert("RGB") for path in image_paths]
+    return _compose_scene_reference_images(images, output_path, size=size)
+
+
+def _compose_scene_reference_snapshots(
+    snapshots: list[IngredientsSourceSnapshot],
+    output_path: Path,
+    *,
+    size: tuple[int, int],
+) -> Path:
+    images = []
+    for snapshot in snapshots:
+        with Image.open(BytesIO(snapshot.content)) as source:
+            images.append(source.convert("RGB"))
+    return _compose_scene_reference_images(images, output_path, size=size)
+
+
+def _compose_scene_reference_images(
+    images: list[Image.Image],
+    output_path: Path,
+    *,
+    size: tuple[int, int],
+) -> Path:
     width, height = int(size[0]), int(size[1])
     cols = math.ceil(math.sqrt(len(images)))
     rows = math.ceil(len(images) / cols)
@@ -445,6 +495,296 @@ def compose_scene_reference_sheet(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output_path)
     return output_path
+
+
+def snapshot_ingredients_sources(
+    images: list[dict],
+    *,
+    project_base: Path,
+) -> list[IngredientsSourceSnapshot]:
+    root = Path(project_base).resolve()
+    snapshots = []
+    total_bytes = 0
+    for image in images:
+        raw = Path(str(image["path"]))
+        path = raw.resolve() if raw.is_absolute() else (root / raw).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise ValueError("Ingredients signature source must be a project file")
+        size = path.stat().st_size
+        if size > _MAX_INGREDIENTS_SOURCE_BYTES:
+            raise ValueError(f"Ingredients source is too large to snapshot: {path}")
+        total_bytes += size
+        if total_bytes > _MAX_INGREDIENTS_SOURCE_BYTES:
+            raise ValueError("Ingredients sources are too large to snapshot")
+        content = path.read_bytes()
+        snapshots.append(IngredientsSourceSnapshot(
+            id=str(image.get("id") or "").strip(),
+            type=str(image.get("type") or "").strip(),
+            path=path.relative_to(root).as_posix(),
+            suffix=path.suffix.lower(),
+            content=content,
+        ))
+    return snapshots
+
+
+def ingredients_signature_references(
+    images: list[dict],
+    *,
+    project_base: Path,
+    snapshots: list[IngredientsSourceSnapshot] | None = None,
+) -> list[dict[str, str]]:
+    snapshots = snapshots or snapshot_ingredients_sources(
+        images,
+        project_base=project_base,
+    )
+    return [
+        {
+            "id": snapshot.id,
+            "type": snapshot.type,
+            "sha256": hashlib.sha256(snapshot.content).hexdigest(),
+        }
+        for snapshot in snapshots
+    ]
+
+
+def ingredients_signature_sources(
+    images: list[dict],
+    *,
+    project_base: Path,
+    snapshots: list[IngredientsSourceSnapshot] | None = None,
+) -> list[dict[str, str]]:
+    snapshots = snapshots or snapshot_ingredients_sources(
+        images,
+        project_base=project_base,
+    )
+    return [
+        {"id": snapshot.id, "type": snapshot.type, "path": snapshot.path}
+        for snapshot in snapshots
+    ]
+
+
+def visual_consistency_sources(
+    images: list[dict],
+    *,
+    project_base: Path,
+) -> dict:
+    root = Path(project_base).resolve()
+    actors: list[dict[str, str]] = []
+    location: dict[str, str] | None = None
+    for image in images:
+        raw = Path(str(image.get("contract_path") or image["path"]))
+        path = raw.resolve() if raw.is_absolute() else (root / raw).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise ValueError("Visual consistency source must be a project file")
+        source = {
+            "id": str(image.get("id") or "").strip(),
+            "path": path.relative_to(root).as_posix(),
+        }
+        if image.get("type") == "actor":
+            actors.append(source)
+        elif image.get("type") == "location":
+            location = source
+    return {"actors": actors, "location": location}
+
+
+def ingredients_sheet_signature(
+    references: list[dict[str, str]],
+    *,
+    size: tuple[int, int],
+    layout_version: str = INGREDIENTS_SHEET_LAYOUT_VERSION,
+) -> str:
+    return _ingredients_sheet_signature(
+        references,
+        size=size,
+        layout_version=layout_version,
+    )
+
+
+def compose_cached_ingredients_sheet(
+    image_paths: list[Path],
+    *,
+    cache_dir: Path,
+    references: list[dict[str, str]],
+    size: tuple[int, int],
+    layout_version: str = INGREDIENTS_SHEET_LAYOUT_VERSION,
+    snapshots: list[IngredientsSourceSnapshot] | None = None,
+) -> tuple[Path, str]:
+    if snapshots is not None:
+        snapshot_references = [
+            {
+                "id": snapshot.id,
+                "type": snapshot.type,
+                "sha256": hashlib.sha256(snapshot.content).hexdigest(),
+            }
+            for snapshot in snapshots
+        ]
+        if snapshot_references != references:
+            raise ValueError(
+                "Ingredients source snapshots do not match signature references"
+            )
+    signature = ingredients_sheet_signature(
+        references,
+        size=size,
+        layout_version=layout_version,
+    )
+    output_path = Path(cache_dir) / f"{signature}.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = output_path.parent / f".{signature}.lock"
+    lock_fd = _acquire_cache_lock(lock_path, output_path)
+    try:
+        if _valid_cached_ingredients_sheet(output_path, size=size):
+            return output_path, signature
+        with NamedTemporaryFile(
+            suffix=".png",
+            dir=output_path.parent,
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+        try:
+            if snapshots is None:
+                compose_scene_reference_sheet(image_paths, temporary, size=size)
+            else:
+                _compose_scene_reference_snapshots(
+                    snapshots,
+                    temporary,
+                    size=size,
+                )
+            os.replace(temporary, output_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    finally:
+        _release_cache_lock(lock_fd)
+        os.close(lock_fd)
+    return output_path, signature
+
+
+def _valid_cached_ingredients_sheet(
+    output_path: Path,
+    *,
+    size: tuple[int, int],
+) -> bool:
+    if not output_path.is_file():
+        return False
+    try:
+        with Image.open(output_path) as image:
+            if image.format != "PNG" or image.size != size:
+                return False
+            image.verify()
+    except (OSError, SyntaxError, ValueError):
+        return False
+    return True
+
+
+def _acquire_cache_lock(lock_path: Path, output_path: Path) -> int:
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    if os.fstat(lock_fd).st_size == 0:
+        os.write(lock_fd, b"\0")
+    deadline = time.monotonic() + _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS
+    while True:
+        if _try_cache_lock(lock_fd):
+            return lock_fd
+        if time.monotonic() >= deadline:
+            os.close(lock_fd)
+            raise TimeoutError(
+                f"Timed out waiting for Ingredients cache entry: {output_path}"
+            )
+        time.sleep(0.01)
+
+
+def _try_cache_lock(lock_fd: int) -> bool:
+    os.lseek(lock_fd, 0, os.SEEK_SET)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(lock_fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _release_cache_lock(lock_fd: int) -> None:
+    os.lseek(lock_fd, 0, os.SEEK_SET)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+
+
+def build_runtime_consistency_contract(
+    scene: dict,
+    *,
+    images: list[dict],
+    project_base: Path,
+    mode: str,
+    workflow_profile: str,
+) -> SceneConsistencyContract:
+    actor_anchors = tuple(
+        _runtime_reference_anchor(image, project_base=project_base)
+        for image in images
+        if image.get("type") == "actor"
+    )
+    location_anchor = next(
+        (
+            _runtime_reference_anchor(image, project_base=project_base)
+            for image in images
+            if image.get("type") == "location"
+        ),
+        None,
+    )
+    return SceneConsistencyContract.create(
+        scene=int(scene["scene"]),
+        mode=mode,
+        workflow_profile=workflow_profile,
+        actors=actor_anchors,
+        location=location_anchor,
+        transition_from_previous=transition_from_previous(
+            scene.get("transition_from_previous")
+        ),
+    )
+
+
+def _runtime_reference_anchor(
+    image: dict,
+    *,
+    project_base: Path,
+) -> ReferenceAnchor:
+    kind = str(image.get("type") or "").strip()
+    semantic_id = str(image.get("id") or "").strip()
+    description = " ".join(
+        str(
+            image.get("visual_description")
+            or image.get("image_prompt")
+            or image.get("name")
+            or semantic_id
+        ).split()
+    )
+    return ReferenceAnchor(
+        id=semantic_id,
+        kind=kind,
+        look_id=str(image.get("look_id") or "default").strip() or "default",
+        asset_role=(
+            "identity-reference"
+            if kind == "actor"
+            else "environment-reference"
+        ),
+        asset_sha256=sha256_file(
+            project_base / str(image.get("contract_path") or image["path"])
+        ),
+        prompt_anchor=(
+            f"Reference {kind} `{semantic_id}` (look "
+            f"`{str(image.get('look_id') or 'default').strip() or 'default'}`): "
+            f"{description}"
+        )[:350],
+    )
 
 
 def _panel_position_label(row: int, col: int, num_rows: int, num_cols: int, index: int, total: int) -> str:
