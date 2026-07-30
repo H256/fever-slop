@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from feverslop.domain.visual_consistency import PreflightMode
+
 
 RUNNER_ARGUMENTS = (
     ("app_config", ("--app-config",), {"default": "app_config.json"}),
@@ -19,6 +21,7 @@ RUNNER_ARGUMENTS = (
     ("single_prompt_title", ("--single-prompt-title",), {"default": "#PROMPT"}),
     ("single_prompt_input", ("--single-prompt-input",), {"default": "text"}),
     ("rolling_frame_profile", ("--rolling-frame-profile",), {"choices": ["original", "safe", "off"], "default": "original"}),
+    ("visual_consistency_preflight", ("--visual-consistency-preflight",), {"type": PreflightMode.parse, "choices": tuple(PreflightMode), "default": PreflightMode.WARN}),
     ("storyboard_lora_strength", ("--storyboard-lora-strength",), {"type": float, "default": None}),
     ("video_character_lora_strength", ("--video-character-lora-strength",), {"type": float, "default": None}),
     ("video_lora_1_strength_model", ("--video-lora-1-strength-model",), {"type": float, "default": None}),
@@ -68,5 +71,6 @@ def build_runner_argv(project_config_path: Path, options: dict[str, object]) -> 
         elif action == "store_false" and value is False:
             argv.append(flags[0])
         elif action is None and value not in (None, ""):
-            argv.extend([flags[0], str(value)])
+            serialized = value.value if isinstance(value, PreflightMode) else str(value)
+            argv.extend([flags[0], serialized])
     return argv

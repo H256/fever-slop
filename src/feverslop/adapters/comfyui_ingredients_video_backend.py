@@ -11,6 +11,10 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.visual_consistency_runtime import (
+    validate_backend_visual_consistency,
+)
+from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
 from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder, build_audio_window_spec
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.errors import FeverSlopValidationError
@@ -47,6 +51,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         max_render_frames: int | None = None,
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
+        workflow_profile: str = "ingredients-default",
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -75,6 +80,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.video_settings = video_settings
+        self.workflow_profile = str(workflow_profile)
 
     def load_workflow(self) -> dict:
         if self.workflow is not None:
@@ -82,6 +88,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         return json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
 
     def render_video(self, request: VideoRenderRequest) -> Path:
+        self._validate_visual_consistency(request.scene)
         scene_number = int(request.scene_number)
         rolling = self._rolling_spec(request.scene)
         validate_render_frame_budget(
@@ -136,6 +143,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         comfy_audio_name: str | None = None,
         rolling: AudioWindowSpec | None = None,
     ) -> dict:
+        self._validate_visual_consistency(scene)
         scene_number = int(scene["scene"])
         render_frame_count = int(rolling["render_frame_count"]) if rolling else int(scene.get("frame_count", 0) or 0)
 
@@ -202,7 +210,11 @@ class ComfyUIIngredientsVideoRenderBackend:
         else:
             assembled = str(prompt).strip()
 
-        patcher.set_input_by_title("#PROMPT_POSITIVE", "text", assembled)
+        patcher.set_input_by_title(
+            "#PROMPT_POSITIVE",
+            "text",
+            bind_continuity_anchors(assembled, scene.get("visual_consistency")),
+        )
 
     @staticmethod
     def _patch_prompt_relay(
@@ -247,9 +259,27 @@ class ComfyUIIngredientsVideoRenderBackend:
             preroll_prompt=preroll_prompt,
             tail_prompt=tail_prompt,
         )
-        patcher.set_input_by_title("#PROMPT_RELAY", "global_prompt", payload.global_prompt)
+        patcher.set_input_by_title(
+            "#PROMPT_RELAY",
+            "global_prompt",
+            bind_continuity_anchors(
+                payload.global_prompt,
+                scene.get("visual_consistency"),
+            ),
+        )
         patcher.set_input_by_title("#PROMPT_RELAY", "local_prompts", payload.local_prompts)
         patcher.set_input_by_title("#PROMPT_RELAY", "segment_lengths", payload.segment_lengths)
+
+    def _validate_visual_consistency(self, scene: dict) -> None:
+        try:
+            validate_backend_visual_consistency(
+                scene,
+                mode="ingredients",
+                workflow_profile=self.workflow_profile,
+                project_dir=self.project_dir,
+            )
+        except ValueError as exc:
+            raise FeverSlopValidationError(str(exc)) from exc
 
     @staticmethod
     def _patch_audio_inputs(

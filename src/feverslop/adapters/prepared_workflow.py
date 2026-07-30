@@ -11,9 +11,11 @@ from feverslop.domain.prepared_workflow import (
     PreparedSceneWorkflow,
     SceneWorkflowManifest,
     StoredArtifact,
+    sha256_file,
 )
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
+from feverslop.domain.visual_consistency import SceneConsistencyContract
 from feverslop.ports.workflow import WorkflowMaterializationRequest
 from feverslop.scene_artifacts import SceneArtifactLayout
 
@@ -37,6 +39,7 @@ class WorkflowMaterializer:
     def prepare(self, request: WorkflowMaterializationRequest) -> PreparedSceneWorkflow:
         scene = request.scene
         scene_number = int(scene["scene"])
+        consistency = self._consistency_contract(scene, scene_number)
         manifest_path = self.layout.scene_manifest(scene_number)
         seed = int(request.seed) if request.seed is not None else int(self.backend._seed_for_scene(scene_number))
         original_uploader = self.backend.asset_uploader
@@ -86,7 +89,19 @@ class WorkflowMaterializer:
         temporary_workflow = _write_json_temp(workflow_path, workflow)
         temporary_manifest: Path | None = None
         try:
-            assets = self._manifest_assets(scene, request.audio_file, recording_uploader.names)
+            assets = self._manifest_assets(
+                scene,
+                request.audio_file,
+                recording_uploader.names,
+                consistency,
+            )
+            keyframes = scene.get("keyframes") or {}
+            source_clip_value = keyframes.get("startframe_source_clip_path")
+            source_clip_path = (
+                None
+                if source_clip_value is None
+                else self._project_path(source_clip_value)
+            )
             manifest = SceneWorkflowManifest.create(
                 project_dir=self.layout.project_dir,
                 scene=scene_number,
@@ -112,7 +127,50 @@ class WorkflowMaterializer:
                 round_render_frames_to_8n1=bool(
                     getattr(self.backend, "round_render_frames_to_8n1", False)
                 ),
+                consistency=consistency,
+                startframe_mode=keyframes.get("startframe_mode"),
+                startframe_source_scene=keyframes.get("startframe_source_scene"),
+                startframe_source_clip_path=source_clip_path,
+                startframe_extractor=keyframes.get("startframe_extractor"),
+                startframe_sha256=keyframes.get("startframe_sha256"),
             )
+            provenance_mismatches = manifest.verify_consistency_provenance()
+            claimed_source_clip_sha = str(
+                keyframes.get("startframe_source_clip_sha256") or ""
+            )
+            requires_source_clip_claim = (
+                consistency is not None
+                and consistency.transition_from_previous == "continuous"
+                and consistency.mode in {"msr", "i2v"}
+            )
+            if requires_source_clip_claim and (
+                len(claimed_source_clip_sha) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in claimed_source_clip_sha
+                )
+            ):
+                provenance_mismatches.append(
+                    "consistency: continuous handoff requires a valid "
+                    "startframe source clip SHA-256 claim"
+                )
+            if (
+                claimed_source_clip_sha
+                and (
+                    manifest.startframe_source_clip is None
+                    or manifest.startframe_source_clip.sha256
+                    != claimed_source_clip_sha
+                )
+            ):
+                provenance_mismatches.append(
+                    "consistency: startframe source clip SHA-256 metadata "
+                    "does not match the predecessor clip"
+                )
+            if provenance_mismatches:
+                raise ValueError(
+                    "Prepared workflow consistency provenance failed: "
+                    + "; ".join(provenance_mismatches)
+                )
             workflow_artifact = StoredArtifact.from_path(
                 workflow_path, project_dir=self.layout.project_dir,
             ) if workflow_path.is_file() else replace(
@@ -135,32 +193,110 @@ class WorkflowMaterializer:
         return PreparedSceneWorkflow(scene_number, workflow_path.parent, workflow_path, manifest_path)
 
     def _manifest_assets(
-        self, scene: dict[str, Any], audio_file: Path | None, uploaded_names: dict[Path, str],
-    ) -> list[tuple[str, str | Path, str]]:
-        assets: list[tuple[str, str | Path, str]] = []
+        self,
+        scene: dict[str, Any],
+        audio_file: Path | None,
+        uploaded_names: dict[Path, str],
+        consistency: SceneConsistencyContract | None,
+    ) -> list[tuple]:
+        assets: list[tuple] = []
         if audio_file is not None:
             audio_path = self._project_path(audio_file).resolve()
             assets.append(("audio", audio_path, uploaded_names[audio_path]))
 
         references = scene.get("references") or {}
-        candidates: list[tuple[str, str | Path]] = []
+        candidates: list[tuple[str, str | Path, bool, str]] = []
         ingredients = (scene.get("ingredients") or {}).get("sheet_path") or scene.get("ingredients_scene_sheet")
         if ingredients:
-            candidates.append(("ingredients_sheet", ingredients))
+            candidates.append(("ingredients_sheet", ingredients, False, ""))
         actor_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths") or []
-        candidates.extend(("actor_sheet", path) for path in actor_paths)
+        for index, path in enumerate(actor_paths):
+            reference_id = (
+                consistency.actors[index].id
+                if consistency is not None and index < len(consistency.actors)
+                else ""
+            )
+            candidates.append(("actor_sheet", path, False, reference_id))
         location = references.get("location_msr_path") or references.get("location_sheet_path")
         if location:
-            candidates.append(("location_sheet", location))
+            candidates.append((
+                "location_sheet",
+                location,
+                False,
+                (
+                    consistency.location.id
+                    if consistency is not None and consistency.location is not None
+                    else ""
+                ),
+            ))
         keyframes = scene.get("keyframes") or {}
         startframe = keyframes.get("startframe_path") or keyframes.get("start_frame_path")
         if startframe:
-            candidates.append(("startframe", startframe))
-        for role, value in candidates:
+            candidates.append(("startframe", startframe, False, ""))
+        consistency_sources = scene.get("visual_consistency_sources") or {}
+        for source in consistency_sources.get("actors") or []:
+            if isinstance(source, dict) and source.get("path"):
+                candidates.append((
+                    "actor_sheet",
+                    source["path"],
+                    True,
+                    str(source.get("id") or ""),
+                ))
+        location_source = consistency_sources.get("location")
+        if isinstance(location_source, dict) and location_source.get("path"):
+            candidates.append((
+                "location_sheet",
+                location_source["path"],
+                True,
+                str(location_source.get("id") or ""),
+            ))
+        seen: set[tuple[str, Path, str]] = set()
+        provenance_keys = {
+            (role, self._project_path(value).resolve(), reference_id)
+            for role, value, provenance, reference_id in candidates
+            if provenance
+        }
+        for role, value, _provenance, reference_id in candidates:
             path = self._project_path(value).resolve()
-            if path in uploaded_names:
-                assets.append((role, path, uploaded_names[path]))
+            key = (role, path, reference_id)
+            if key not in seen and (path in uploaded_names or key in provenance_keys):
+                assets.append((
+                    role,
+                    path,
+                    uploaded_names.get(path, ""),
+                    reference_id,
+                ))
+                seen.add(key)
+        ingredients_metadata = scene.get("ingredients") or {}
+        expected_sheet_sha = str(ingredients_metadata.get("sheet_sha256") or "")
+        if expected_sheet_sha:
+            sheets = [
+                self._project_path(value).resolve()
+                for role, value, _provenance, _reference_id in candidates
+                if role == "ingredients_sheet"
+            ]
+            if len(sheets) != 1 or sha256_file(sheets[0]) != expected_sheet_sha:
+                raise ValueError(
+                    "Ingredients sheet hash does not match runtime metadata"
+                )
         return assets
+
+    @staticmethod
+    def _consistency_contract(
+        scene: dict[str, Any], scene_number: int
+    ) -> SceneConsistencyContract | None:
+        payload = scene.get("visual_consistency")
+        if payload is None:
+            return None
+        try:
+            contract = SceneConsistencyContract.from_dict(payload)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"invalid visual consistency contract: {exc}") from exc
+        if contract.scene != scene_number:
+            raise ValueError(
+                "visual consistency scene does not match materialized scene"
+            )
+        return contract
 
     def _project_path(self, value: str | Path) -> Path:
         path = Path(value)
@@ -173,6 +309,7 @@ class PreparedWorkflowRenderer:
     def __init__(
         self, *, project_dir: str | Path, render_queue: Any, postprocessor: Any,
         expected_pipeline: str,
+        expected_workflow_profile: str | None = None,
         max_render_frames: int | None = None,
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
@@ -185,6 +322,7 @@ class PreparedWorkflowRenderer:
         self.render_queue = render_queue
         self.postprocessor = postprocessor
         self.expected_pipeline = expected_pipeline
+        self.expected_workflow_profile = expected_workflow_profile
         self.max_render_frames = max_render_frames
         self.max_render_duration_seconds = max_render_duration_seconds
         self.render_budget_workflow_path = render_budget_workflow_path
@@ -200,6 +338,16 @@ class PreparedWorkflowRenderer:
             raise ValueError(
                 f"Prepared workflow pipeline {manifest.pipeline!r} does not match "
                 f"expected pipeline {self.expected_pipeline!r}"
+            )
+        if (
+            manifest.consistency is not None
+            and manifest.consistency.workflow_profile
+            != self.expected_workflow_profile
+        ):
+            raise ValueError(
+                "Prepared workflow profile "
+                f"{manifest.consistency.workflow_profile!r} does not match "
+                f"active workflow profile {self.expected_workflow_profile!r}"
             )
         manifest_workflow_path = manifest.workflow.resolve(self.project_dir).resolve()
         if workflow_path.resolve() != manifest_workflow_path:
@@ -271,6 +419,10 @@ class PreparedWorkflowRenderer:
         if self.asset_uploader is not None:
             for asset in manifest.assets:
                 stored_name = asset.comfyui_name
+                if not stored_name:
+                    continue
+                if stored_name in replacements:
+                    continue
                 normalized_name = stored_name.replace("\\", "/")
                 if self.asset_uploader.client.input_file_exists(normalized_name):
                     current_name = normalized_name

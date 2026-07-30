@@ -109,6 +109,9 @@ def build_render_video_scenes_use_case(
             max_render_frames=max_render_frames,
             max_render_duration_seconds=max_render_duration_seconds,
             render_budget_workflow_path=render_budget_workflow_path,
+            workflow_profile=str(
+                options.video_workflow_profile or Path(workflow_path).stem
+            ),
         )
     elif options.video_pipeline == "ltx_ingredients":
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
@@ -133,6 +136,9 @@ def build_render_video_scenes_use_case(
             max_render_frames=max_render_frames,
             max_render_duration_seconds=max_render_duration_seconds,
             render_budget_workflow_path=render_budget_workflow_path,
+            workflow_profile=str(
+                options.video_workflow_profile or Path(workflow_path).stem
+            ),
         )
     else:
         backend = ComfyUIVideoRenderBackend(

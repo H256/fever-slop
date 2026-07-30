@@ -12,6 +12,10 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.visual_consistency_runtime import (
+    validate_backend_visual_consistency,
+)
+from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
 from feverslop.errors import FeverSlopValidationError
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
@@ -54,6 +58,7 @@ class ComfyUIMSRVideoRenderBackend:
         max_render_frames: int | None = None,
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
+        workflow_profile: str = "msr-default",
     ):
         if int(msr_frame_count) not in {17, 25, 33, 41}:
             raise FeverSlopValidationError("msr_frame_count must be one of 17, 25, 33, 41")
@@ -85,6 +90,7 @@ class ComfyUIMSRVideoRenderBackend:
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.video_settings = video_settings
+        self.workflow_profile = str(workflow_profile)
 
     def load_workflow(self) -> dict:
         if self.workflow is not None:
@@ -92,6 +98,7 @@ class ComfyUIMSRVideoRenderBackend:
         return json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
 
     def render_video(self, request: VideoRenderRequest) -> Path:
+        self._validate_visual_consistency(request.scene)
         scene_number = int(request.scene_number)
         rolling = self._rolling_spec(request.scene)
         validate_render_frame_budget(
@@ -146,6 +153,7 @@ class ComfyUIMSRVideoRenderBackend:
         comfy_audio_name: str | None = None,
         rolling: AudioWindowSpec | None = None,
     ) -> dict:
+        self._validate_visual_consistency(scene)
         scene_number = int(scene["scene"])
         render_frame_count = int(rolling["render_frame_count"]) if rolling else int(scene.get("frame_count", 0) or 0)
         references = scene.get("references") or {}
@@ -310,11 +318,36 @@ class ComfyUIMSRVideoRenderBackend:
                 prompt=prompt,
                 rolling=rolling,
             )
-            patcher.set_input_by_title("#PROMPT_RELAY", "global_prompt", global_prompt)
+            patcher.set_input_by_title(
+                "#PROMPT_RELAY",
+                "global_prompt",
+                bind_continuity_anchors(
+                    global_prompt,
+                    scene.get("visual_consistency"),
+                ),
+            )
             patcher.set_input_by_title("#PROMPT_RELAY", "local_prompts", local_prompts)
             patcher.set_input_by_title("#PROMPT_RELAY", "segment_lengths", segment_lengths)
             return
-        patcher.set_input_by_title("#PROMPT", "text", str(prompt).strip())
+        patcher.set_input_by_title(
+            "#PROMPT",
+            "text",
+            bind_continuity_anchors(
+                str(prompt).strip(),
+                scene.get("visual_consistency"),
+            ),
+        )
+
+    def _validate_visual_consistency(self, scene: dict) -> None:
+        try:
+            validate_backend_visual_consistency(
+                scene,
+                mode="msr",
+                workflow_profile=self.workflow_profile,
+                project_dir=self.project_dir,
+            )
+        except ValueError as exc:
+            raise FeverSlopValidationError(str(exc)) from exc
 
     @staticmethod
     def _build_prompt_relay_payload(

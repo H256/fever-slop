@@ -701,6 +701,131 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("start_frame", relay)
             self.assertNotIn("end_frame", relay)
 
+    def test_movie_msr_global_prompt_binds_stable_contract_anchors_once(self):
+        from feverslop.application.movie_msr_enrichment import _enrich_shot
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            actor = project / "movie" / "references" / "actor.png"
+            location = project / "movie" / "references" / "location.png"
+            actor.parent.mkdir(parents=True)
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            shot = {
+                "shot_id": "shot_0001",
+                "scene": 1,
+                "description": "As before after the prior shot, Mara enters.",
+                "duration_seconds": 2,
+                "reference_ids": {"actors": ["mara"], "location": "archive"},
+            }
+            manifest = {
+                "actors": [{
+                    "id": "mara",
+                    "name": "Mara",
+                    "visual_description": (
+                        "As before after the previous shot, Mara has a black bob "
+                        "and graphite coat"
+                    ),
+                    "msr_sheet_path": "movie/references/actor.png",
+                }],
+                "locations": [{
+                    "id": "archive",
+                    "name": "Archive",
+                    "visual_description": (
+                        "Prior scene aside, the archive has green lamps and "
+                        "brass shelves"
+                    ),
+                    "msr_sheet_path": "movie/references/location.png",
+                }],
+            }
+
+            enriched = _enrich_shot(
+                shot,
+                bible={"runtime_constraints": {"fps": 24}},
+                manifest=manifest,
+                fps=24,
+                project_dir=project,
+                workflow_profile="msr-final",
+            )
+
+            global_prompt = enriched["ltx"]["msr_global_prompt"]
+            self.assertEqual(
+                1,
+                global_prompt.count("Continuity anchors (keep unchanged):"),
+            )
+            self.assertIn("black bob and graphite coat", global_prompt)
+            self.assertIn("green lamps and brass shelves", global_prompt)
+            self.assertNotIn("same as before", global_prompt.lower())
+            self.assertNotIn("previous scene", global_prompt.lower())
+            self.assertNotIn("prior shot", global_prompt.lower())
+            self.assertNotIn("as before", global_prompt.lower())
+            self.assertEqual(
+                "msr-final",
+                enriched["visual_consistency"]["workflow_profile"],
+            )
+            self.assertEqual(
+                {
+                    "actors": [{
+                        "id": "mara",
+                        "path": "movie/references/actor.png",
+                    }],
+                    "location": {
+                        "id": "archive",
+                        "path": "movie/references/location.png",
+                    },
+                },
+                enriched["visual_consistency_sources"],
+            )
+
+    def test_movie_msr_enrichment_rejects_external_reference_with_context(self):
+        from feverslop.application.movie_msr_enrichment import _enrich_shot
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            project = root / "project"
+            project.mkdir()
+            external = root / "external-actor.png"
+            external.write_bytes(b"actor")
+            location = project / "movie" / "references" / "location.png"
+            location.parent.mkdir(parents=True)
+            location.write_bytes(b"location")
+            shot = {
+                "shot_id": "shot_0001",
+                "scene": 1,
+                "description": "Mara enters.",
+                "duration_seconds": 2,
+                "reference_ids": {
+                    "actors": ["mara"],
+                    "location": "archive",
+                },
+            }
+            manifest = {
+                "actors": [{
+                    "id": "mara",
+                    "name": "Mara",
+                    "visual_description": "black bob",
+                    "msr_sheet_path": str(external),
+                }],
+                "locations": [{
+                    "id": "archive",
+                    "name": "Archive",
+                    "visual_description": "green lamps",
+                    "msr_sheet_path": location.relative_to(project).as_posix(),
+                }],
+            }
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"mara.*project-relative.*external-actor\.png",
+            ):
+                _enrich_shot(
+                    shot,
+                    bible={"runtime_constraints": {"fps": 24}},
+                    manifest=manifest,
+                    fps=24,
+                    project_dir=project,
+                )
+
     def test_movie_msr_enrichment_uses_individual_manifest_images_for_vision(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 
@@ -3313,10 +3438,18 @@ class MovieProjectTests(unittest.TestCase):
             ).render_movie(project_dir=temp, render_plan_path=render_plan_path)
 
             expected_startframe = temp / "output" / "movie" / "keyframes" / "scene_0001_to_0002_start.png"
+            [(source, temporary_frame)] = postprocessor.last_frame_extracts
             self.assertEqual(
-                [(temp / "output" / "movie" / "ltx_msr" / "scene_0001.mp4", expected_startframe)],
-                postprocessor.last_frame_extracts,
+                temp / "output" / "movie" / "ltx_msr" / "scene_0001.mp4",
+                source,
             )
+            self.assertEqual(expected_startframe.parent, temporary_frame.parent)
+            self.assertTrue(
+                temporary_frame.name.startswith(
+                    ".scene_0001_to_0002_start-"
+                )
+            )
+            self.assertTrue(expected_startframe.is_file())
             scene_1_workflow = queue.calls[0][0]
             self.assertFalse(any("#STARTFRAME" == node.get("_meta", {}).get("title") for node in scene_1_workflow.values()))
             scene_2_workflow = queue.calls[1][0]
@@ -3398,6 +3531,7 @@ class MovieProjectTests(unittest.TestCase):
                 asset_uploader=NativeAudioAssetUploader(),
                 postprocessor=postprocessor,
                 continuity_keyframes="last-to-start",
+                continuity_handoff_factory=_continuity_handoff_factory,
             ).render_movie(project_dir=temp, render_plan_path=render_plan_path)
 
             self.assertEqual(0, postprocessor.trim_specs[1].trim_front_frames)
@@ -3486,7 +3620,42 @@ class MovieProjectTests(unittest.TestCase):
                     asset_uploader=NativeAudioAssetUploader(),
                     postprocessor=FakeMoviePostprocessor(),
                     continuity_keyframes="last-to-start",
+                    continuity_handoff_factory=_continuity_handoff_factory,
                 ).render_movie(project_dir=temp, render_plan_path=render_plan_path, selected_scenes=[2])
+
+    def test_selected_movie_predecessor_can_be_rerendered_before_handoff(self):
+        from feverslop.adapters.movie_visual import (
+            _validate_selected_continuity_dependencies,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            scenes = [
+                {
+                    "scene": 1,
+                    "references": {
+                        "actor_msr_paths": [actor.as_posix()],
+                        "location_msr_path": location.as_posix(),
+                    },
+                    "transition_from_previous": "cut",
+                },
+                {
+                    "scene": 2,
+                    "references": {
+                        "actor_msr_paths": [actor.as_posix()],
+                        "location_msr_path": location.as_posix(),
+                    },
+                    "transition_from_previous": "continuous",
+                },
+            ]
+
+            _validate_selected_continuity_dependencies(
+                scenes,
+                output_dir=temp,
+                selected={1, 2},
+            )
 
     def test_comfyui_movie_adapter_concat_only_reuses_existing_scene_clips(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
@@ -4655,6 +4824,27 @@ def _movie_shot(project_dir: Path) -> dict:
         "frame_count": 48,
         "fps": 24,
     }
+
+
+def _continuity_handoff_factory(
+    postprocessor,
+    project_dir: Path,
+    selected_rerender: bool,
+):
+    from feverslop.adapters.postprocessor_frame_extractor import (
+        PostprocessorFrameExtractor,
+    )
+    from feverslop.application.continuity_handoff import (
+        ContinuityHandoffUseCase,
+    )
+
+    return ContinuityHandoffUseCase(
+        PostprocessorFrameExtractor(
+            postprocessor,
+            project_dir=project_dir,
+            selected_rerender=selected_rerender,
+        )
+    )
 
 
     if __name__ == "__main__":

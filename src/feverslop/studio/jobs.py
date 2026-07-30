@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import asdict
+import json
 import re
 import threading
 import time
@@ -10,8 +12,20 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.adapters.pipeline_runner import RunPipelineAdapter
+from feverslop.adapters.project_visual_consistency import (
+    ProjectReferenceManifestAdapter,
+    validate_project_scene_artifacts,
+)
+from feverslop.application.visual_consistency_preflight import (
+    VisualConsistencyPreflightResult,
+    preflight_visual_consistency,
+    resolve_preflight_workflow_profile,
+)
+from feverslop.config.app_config import AppConfig
 from feverslop.composition import pipeline_runner
 from feverslop.composition.pipeline_runner import PipelineStage
+from feverslop.config.project_config import ProjectConfig
+from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.studio.logging import render_log_lines
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
 from feverslop.tools.reference_bible import run as render_reference_bible
@@ -19,6 +33,20 @@ from feverslop.tools.reference_bible import run as render_reference_bible
 
 JobHandler = Callable[[Callable[[str], None]], Any]
 STREAM_CAPTURE_LOCK = threading.Lock()
+
+
+class VisualConsistencyJobPayload(dict[str, Any]):
+    pass
+
+
+class StructuredJobLog(str):
+    pass
+
+
+class VisualConsistencyValidationError(ValueError):
+    def __init__(self, payload: VisualConsistencyJobPayload) -> None:
+        super().__init__("Visual consistency preflight blocked rendering")
+        self.payload = payload
 
 PIPELINE_ACTIONS = {
     "anchor-fix",
@@ -164,7 +192,12 @@ class JobRegistry:
         def log(message: str) -> None:
             with self._lock:
                 job = self._jobs[job_id]
-                for line in render_log_lines(message):
+                lines = (
+                    [str(message)]
+                    if isinstance(message, StructuredJobLog)
+                    else render_log_lines(message)
+                )
+                for line in lines:
                     job["logs"].append(line)
                     self._advance_step_from_log(job, line)
                 job["logs"] = job["logs"][-500:]
@@ -174,12 +207,29 @@ class JobRegistry:
         self._update(job_id, status="running", started_at=time.time())
         try:
             result = handler(log)
+        except VisualConsistencyValidationError as exc:
+            self._update(
+                job_id,
+                status="failed",
+                progress=100,
+                overall_progress=100,
+                completed_at=time.time(),
+                error=str(exc),
+                result=dict(exc.payload),
+            )
+            self._finish_current_step(job_id, "failed")
+            return
         except Exception as exc:  # noqa: BLE001 - job boundary should capture all failures
             self._update(job_id, status="failed", progress=100, overall_progress=100, completed_at=time.time(), error=str(exc))
             self._finish_current_step(job_id, "failed")
             return
         self._finish_all_steps(job_id)
-        self._update(job_id, status="succeeded", progress=100, overall_progress=100, completed_at=time.time(), result=str(result) if result is not None else None)
+        serialized_result = (
+            dict(result)
+            if isinstance(result, VisualConsistencyJobPayload)
+            else str(result) if result is not None else None
+        )
+        self._update(job_id, status="succeeded", progress=100, overall_progress=100, completed_at=time.time(), result=serialized_result)
 
     def _update(self, job_id: str, **fields: Any) -> None:
         with self._lock:
@@ -381,6 +431,116 @@ def build_pipeline_handler(project_config_path: Path, action: str, *, scenes: li
         result = run_with_stream_logging(lambda: adapter.run(project_config_path=project_config_path, options=options), log)
         log(f"Finished {action}")
         return result
+
+    return run
+
+
+def build_visual_consistency_preflight_handler(
+    project_dir: Path,
+    *,
+    plan_path: Path,
+    mode: str,
+    preflight_mode: PreflightMode,
+    workflow_profile: str | None = None,
+) -> JobHandler:
+    project_dir = project_dir.resolve()
+    plan_path = plan_path.resolve()
+    if not plan_path.is_relative_to(project_dir):
+        raise ValueError("Visual consistency plan must be inside the project")
+
+    def run(log: Callable[[str], None]) -> VisualConsistencyJobPayload:
+        payload = json.loads(plan_path.read_text(encoding="utf-8-sig"))
+        if isinstance(payload, list):
+            scenes = payload
+        elif isinstance(payload, dict):
+            scenes = payload.get("scenes", payload.get("shots"))
+        else:
+            scenes = None
+        if not isinstance(scenes, list) or not all(
+            isinstance(scene, dict) for scene in scenes
+        ):
+            raise ValueError(
+                "Render plan must be a JSON array or contain scenes/shots"
+            )
+        if preflight_mode is PreflightMode.OFF:
+            result = VisualConsistencyPreflightResult((), ())
+        else:
+            config = ProjectConfig.load(project_dir / "config.json")
+            snapshot = ProjectReferenceManifestAdapter(
+                lambda _project_id: project_dir
+            ).load(project_dir.name)
+            app_config = AppConfig.load("app_config.json")
+            pipeline = {
+                "ingredients": "ltx_ingredients",
+                "msr": "ltx_msr",
+                "i2v": "ltx_i2v",
+            }[mode]
+            configured_profile = app_config.resolve_video_workflow_profile(
+                pipeline=pipeline,
+                purpose="final",
+            )
+            resolved_profile = resolve_preflight_workflow_profile(
+                scenes,
+                explicit_profile=workflow_profile,
+                legacy_fallback=(
+                    configured_profile.name
+                    if configured_profile is not None
+                    else f"{mode}-default"
+                ),
+            )
+            selected_profile = next(
+                (
+                    profile
+                    for profile in app_config.video_workflow_profiles
+                    if profile.name == resolved_profile
+                    and profile.pipeline == pipeline
+                    and profile.purpose == "final"
+                ),
+                None,
+            )
+            result = preflight_visual_consistency(
+                scenes,
+                snapshot,
+                mode=mode,
+                workflow_profile=resolved_profile,
+                preflight_mode=preflight_mode,
+                subject_mode=config.subject_mode,
+                max_scene_actors=config.max_scene_actors,
+                supports_continuous_transitions=(
+                    mode != "ingredients"
+                    and selected_profile is not None
+                    and selected_profile.supports_start_frame
+                ),
+            )
+            artifact_issues = validate_project_scene_artifacts(
+                project_dir,
+                scenes,
+                mode=mode,
+                preflight_mode=preflight_mode,
+            )
+            result = VisualConsistencyPreflightResult(
+                result.contracts,
+                (*result.issues, *artifact_issues),
+            )
+        log(
+            f"Visual consistency preflight: "
+            f"{'renderable' if result.renderable else 'blocked'}; "
+            f"{len(result.issues)} issue(s)"
+        )
+        for issue in result.issues:
+            log(
+                f"{issue.severity.upper()} scene {issue.scene} "
+                f"{issue.code}: {issue.message}"
+            )
+        payload = VisualConsistencyJobPayload(
+            renderable=result.renderable,
+            contracts=[contract.to_dict() for contract in result.contracts],
+            issues=[asdict(issue) for issue in result.issues],
+        )
+        log(StructuredJobLog(json.dumps(payload, sort_keys=True)))
+        if not result.renderable:
+            raise VisualConsistencyValidationError(payload)
+        return payload
 
     return run
 

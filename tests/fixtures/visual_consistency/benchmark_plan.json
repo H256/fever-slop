@@ -1,0 +1,153 @@
+{
+  "schema": "feverslop.visual-consistency-benchmark-plan/v1",
+  "audio_path": "input/benchmark-song.wav",
+  "fps": 24,
+  "frame_count": 121,
+  "width": 1280,
+  "height": 704,
+  "workflow_profiles": [
+    "msr-default",
+    "msr-startframe"
+  ],
+  "reference_artifacts": {
+    "actors": {
+      "hero": "output/references/actors/hero/sheet.png",
+      "partner": "output/references/actors/partner/sheet.png"
+    },
+    "locations": {
+      "studio": "output/references/locations/studio/sheet.png",
+      "rooftop": "output/references/locations/rooftop/sheet.png"
+    }
+  },
+  "scenes": [
+    {
+      "scene": 1,
+      "benchmark_case": "same-actor-location-cut",
+      "prompt": "Medium shot of the hero performing beside the studio microphone, black denim jacket, amber practical lights, locked camera.",
+      "negative_prompt": "identity drift, wardrobe change, location change, duplicate person",
+      "references": {
+        "actor_ids": ["hero"],
+        "actor_sheet_paths": ["output/references/actors/hero/sheet.png"],
+        "location_id": "studio",
+        "location_sheet_path": "output/references/locations/studio/sheet.png"
+      },
+      "audio_window_seconds": [0.0, 5.0],
+      "width": 1280,
+      "height": 704,
+      "fps": 24,
+      "frame_count": 121,
+      "workflow_profiles": ["msr-default", "msr-startframe"],
+      "seed": 470701,
+      "transition_from_previous": "cut",
+      "lip_sync": true
+    },
+    {
+      "scene": 2,
+      "benchmark_case": "same-actor-new-location",
+      "prompt": "Medium shot of the same hero performing on the rooftop, unchanged black denim jacket, cool blue dusk, locked camera.",
+      "negative_prompt": "identity drift, wardrobe change, studio interior, duplicate person",
+      "references": {
+        "actor_ids": ["hero"],
+        "actor_sheet_paths": ["output/references/actors/hero/sheet.png"],
+        "location_id": "rooftop",
+        "location_sheet_path": "output/references/locations/rooftop/sheet.png"
+      },
+      "audio_window_seconds": [5.0, 10.0],
+      "width": 1280,
+      "height": 704,
+      "fps": 24,
+      "frame_count": 121,
+      "workflow_profiles": ["msr-default", "msr-startframe"],
+      "seed": 470702,
+      "transition_from_previous": "cut",
+      "lip_sync": true
+    },
+    {
+      "scene": 3,
+      "benchmark_case": "valid-continuous-transition",
+      "prompt": "The rooftop performance continues without a cut as the camera moves slowly around the same hero in the unchanged black denim jacket.",
+      "negative_prompt": "cut, identity drift, wardrobe change, location change, duplicate person",
+      "references": {
+        "actor_ids": ["hero"],
+        "actor_sheet_paths": ["output/references/actors/hero/sheet.png"],
+        "location_id": "rooftop",
+        "location_sheet_path": "output/references/locations/rooftop/sheet.png"
+      },
+      "audio_window_seconds": [10.0, 15.0],
+      "width": 1280,
+      "height": 704,
+      "fps": 24,
+      "frame_count": 121,
+      "workflow_profiles": ["msr-default", "msr-startframe"],
+      "seed": 470703,
+      "transition_from_previous": "continuous",
+      "lip_sync": true
+    },
+    {
+      "scene": 4,
+      "benchmark_case": "two-actor-scene",
+      "prompt": "Two-shot of the hero and partner singing together in the studio, hero in black denim and partner in a red leather jacket, amber practical lights.",
+      "negative_prompt": "identity swap, merged faces, wardrobe swap, missing actor, location change",
+      "references": {
+        "actor_ids": ["hero", "partner"],
+        "actor_sheet_paths": [
+          "output/references/actors/hero/sheet.png",
+          "output/references/actors/partner/sheet.png"
+        ],
+        "location_id": "studio",
+        "location_sheet_path": "output/references/locations/studio/sheet.png"
+      },
+      "audio_window_seconds": [15.0, 20.0],
+      "width": 1280,
+      "height": 704,
+      "fps": 24,
+      "frame_count": 121,
+      "workflow_profiles": ["msr-default", "msr-startframe"],
+      "seed": 470704,
+      "transition_from_previous": "cut",
+      "lip_sync": true
+    },
+    {
+      "scene": 5,
+      "benchmark_case": "instrumental-b-roll-no-lip-sync",
+      "prompt": "Instrumental B-roll of the silent hero crossing the studio behind the microphone, mouth closed, unchanged black denim jacket, amber practical lights.",
+      "negative_prompt": "singing, speaking, open mouth, identity drift, wardrobe change, location change",
+      "references": {
+        "actor_ids": ["hero"],
+        "actor_sheet_paths": ["output/references/actors/hero/sheet.png"],
+        "location_id": "studio",
+        "location_sheet_path": "output/references/locations/studio/sheet.png"
+      },
+      "audio_window_seconds": [20.0, 25.0],
+      "width": 1280,
+      "height": 704,
+      "fps": 24,
+      "frame_count": 121,
+      "workflow_profiles": ["msr-default", "msr-startframe"],
+      "seed": 470705,
+      "transition_from_previous": "cut",
+      "lip_sync": false
+    },
+    {
+      "scene": 6,
+      "benchmark_case": "return-to-original-actor-location",
+      "prompt": "Return to the original medium shot of the hero performing beside the studio microphone, unchanged black denim jacket, amber practical lights, locked camera.",
+      "negative_prompt": "identity drift, wardrobe change, rooftop, duplicate person",
+      "references": {
+        "actor_ids": ["hero"],
+        "actor_sheet_paths": ["output/references/actors/hero/sheet.png"],
+        "location_id": "studio",
+        "location_sheet_path": "output/references/locations/studio/sheet.png"
+      },
+      "audio_window_seconds": [25.0, 30.0],
+      "width": 1280,
+      "height": 704,
+      "fps": 24,
+      "frame_count": 121,
+      "workflow_profiles": ["msr-default", "msr-startframe"],
+      "seed": 470706,
+      "transition_from_previous": "cut",
+      "lip_sync": true
+    }
+  ]
+}

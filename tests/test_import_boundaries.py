@@ -4,6 +4,17 @@ from pathlib import Path
 
 
 class ImportBoundaryTests(unittest.TestCase):
+    @staticmethod
+    def _imported_modules(path):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        modules = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                modules.append(node.module or "")
+        return modules
+
     def _pyside6_imports(self, paths):
         offenders = []
         for path in paths:
@@ -121,6 +132,44 @@ class ImportBoundaryTests(unittest.TestCase):
             for token in forbidden:
                 if token in text:
                     offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
+    def test_new_pure_application_modules_do_not_import_runtime_io(self):
+        legacy_filesystem_modules = {
+            "facefix_pipeline.py",
+            "full_auto.py",
+            "generate_render_plan.py",
+            "movie_artifacts.py",
+            "movie_common.py",
+            "movie_i2v_render_plan.py",
+            "movie_ingredients_sheets.py",
+            "movie_msr_enrichment.py",
+            "movie_prepared_workflows.py",
+            "movie_references.py",
+            "movie_use_cases.py",
+            "movie_visual_plan.py",
+            "msr_prompt_enrichment.py",
+            "pipeline_context.py",
+            "prompt_generation_pipeline.py",
+            "reference_bible.py",
+            "render_plan_ingredients_sheets.py",
+            "render_storyboard.py",
+            "render_video.py",
+            "startframe_director_prompts.py",
+            "startframe_i2v_render_plan.py",
+            "startframe_identity.py",
+            "startframe_plan.py",
+            "startframe_validation.py",
+        }
+        forbidden_roots = {"pathlib", "os", "subprocess", "PySide6"}
+        offenders = []
+        for path in Path("src/feverslop/application").glob("*.py"):
+            if path.name in legacy_filesystem_modules:
+                continue
+            for module in self._imported_modules(path):
+                if module.split(".", 1)[0] in forbidden_roots:
+                    offenders.append(f"{path}: {module}")
 
         self.assertEqual([], offenders)
 

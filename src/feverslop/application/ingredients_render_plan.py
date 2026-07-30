@@ -3,6 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping
 
+from feverslop.domain.visual_consistency_runtime import (
+    bind_continuity_anchors,
+    scrub_prior_context,
+)
 from feverslop.errors import FeverSlopValidationError
 
 
@@ -23,7 +27,11 @@ _CORE_METADATA_FIELDS = ("segment_id", "type", "silent_mode", "lyrics")
 def project_ingredients_runtime_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
     ltx = scene.get("ltx") or {}
     relay = deepcopy(ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or [])
-    global_prompt = _ingredients_global_prompt(scene)
+    visual_consistency = deepcopy(scene.get("visual_consistency"))
+    global_prompt = bind_continuity_anchors(
+        _ingredients_global_prompt(scene),
+        visual_consistency,
+    )
     scene_number = scene.get("scene", "?")
     if not global_prompt:
         raise FeverSlopValidationError(f"Scene {scene_number} is missing the Ingredients global prompt")
@@ -42,6 +50,24 @@ def project_ingredients_runtime_scene(scene: Mapping[str, Any]) -> dict[str, Any
         "anchors": deepcopy(list(scene.get("ingredients_scene_sheet_anchors") or [])),
         "global_prompt": global_prompt,
     }
+    if scene.get("ingredients_sheet_signature"):
+        projected["ingredients"].update({
+            "signature": str(scene["ingredients_sheet_signature"]),
+            "layout_version": str(scene.get("ingredients_sheet_layout_version") or ""),
+            "size": deepcopy(list(scene.get("ingredients_sheet_size") or [])),
+            "signature_references": deepcopy(
+                list(scene.get("ingredients_signature_references") or [])
+            ),
+            "signature_sources": deepcopy(
+                list(scene.get("ingredients_signature_sources") or [])
+            ),
+            "sheet_sha256": str(scene.get("ingredients_sheet_sha256") or ""),
+        })
+    if visual_consistency is not None:
+        projected["visual_consistency"] = visual_consistency
+        projected["visual_consistency_sources"] = deepcopy(
+            scene.get("visual_consistency_sources") or {}
+        )
     projected["ltx"] = {
         "base_prompt": global_prompt,
         "static_prompt": build_ingredients_static_prompt(global_prompt, relay),
@@ -62,7 +88,7 @@ def build_ingredients_static_prompt(global_prompt: str, relay: list[dict[str, An
             prefix = "At the start" if index == 0 else f"Then {state}"
             phases.append(f"{prefix}: {str(segment.get('prompt') or '').strip()}")
         policy = "Temporal sequence (best effort in a static workflow): " + " ".join(phases)
-    return f"{global_prompt.strip()}\n{policy}".strip()
+    return scrub_prior_context(f"{global_prompt.strip()}\n{policy}".strip())
 
 
 def _ingredients_global_prompt(scene: Mapping[str, Any]) -> str:
