@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +28,15 @@ def _read_json_file(path: Path) -> Any | None:
 def _write_json_file(path: Path, data: Any) -> None:
     """Persist *data* as pretty-printed JSON, creating parent dirs."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 def _read_text_file(path: Path) -> str | None:
@@ -40,7 +50,14 @@ def _read_text_file(path: Path) -> str | None:
 def _write_text_file(path: Path, content: str) -> None:
     """Persist *content* as text, creating parent dirs."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 # ---------------------------------------------------------------------------

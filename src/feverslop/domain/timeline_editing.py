@@ -191,10 +191,6 @@ def split_segment(
         raise ValueError(
             f"split point {at} must be < end ({segment.end})"
         )
-    if at < segment.start or at > segment.end:
-        raise ValueError(
-            f"split point {at} is outside [{segment.start}, {segment.end}]"
-        )
     left = EditableTimelineSegment(
         start=segment.start,
         end=at,
