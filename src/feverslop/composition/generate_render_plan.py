@@ -124,6 +124,46 @@ def execute_generate_render_plan(
     return use_case.execute(build_generate_render_plan_execution_request(request))
 
 
+def build_rebuild_render_plan_use_case(console: Console | None = None) -> GenerateRenderPlanUseCase:
+    """Build a use case that rebuilds render plan without re-analyzing audio.
+
+    Skips the AudioTimelinePipeline step, using existing timeline/beat JSON from disk.
+    Intended for timeline editing workflows where audio analysis is already done.
+    """
+    return GenerateRenderPlanUseCase(
+        console=console,
+        artifact_store=JsonArtifactStore(),
+        pipeline_services=[
+            SceneTimelinePipeline(
+                scene_generator_factory=_build_scene_generator,
+                enforce_scene_srt_file=enforce_scene_srt_file,
+                parse_scene_srt=parse_scene_srt,
+                validate_scene_durations=validate_scene_durations,
+                build_stage1_segment_json=build_stage1_segment_json,
+                build_scene_prompt_relay=build_scene_prompt_relay,
+            ),
+            PromptGenerationPipeline(
+                llm_factory=_build_llm,
+                prompt_pipeline_factory=MusicVideoPromptPipeline,
+                concept_batcher_factory=ConceptPromptBatcher,
+                scene_prompt_builder_factory=ScenePromptBuilder,
+            ),
+            RenderPlanPipeline(build_render_plan=build_render_plan),
+        ],
+        storyboard_renderer_factory=_build_storyboard_renderer,
+    )
+
+
+def execute_rebuild_render_plan(
+    request: GenerateRenderPlanRequest,
+    *,
+    console: Console | None = None,
+) -> GenerateRenderPlanResult:
+    """Rebuild render plan from existing timeline data, skipping audio analysis."""
+    use_case = build_rebuild_render_plan_use_case(console=console)
+    return use_case.execute(build_generate_render_plan_execution_request(request))
+
+
 def _build_vocal_analyzer(config):
     vocal_cfg = config.vocal_detection
     return VocalTimelineAnalyzer(

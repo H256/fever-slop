@@ -6,6 +6,7 @@ bind to timeline data and trigger edits via slots.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
@@ -27,24 +28,33 @@ class TimelineStudioViewModel(QObject):
     errorChanged = Signal()
     undoRedoChanged = Signal()
     hasChangesChanged = Signal()
+    conflictChanged = Signal()
 
     def __init__(
         self,
         *,
         service: Any,
+        studio_view_model: Any | None = None,
         project_dir: str = "",
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._service = service
+        self._studio_view_model = studio_view_model
         self._project_dir = project_dir
+        self._current_project_id: str = ""
         self._status = "idle"
         self._error = ""
         self._has_changes = False
         self._rebuilding = False
+        self._conflict = False
         self._segments: list[dict[str, Any]] = []
         self._boundaries: list[dict[str, Any]] = []
         self._beats: list[dict[str, Any]] = []
+
+        project_signal = getattr(studio_view_model, "currentProjectChanged", None)
+        if project_signal is not None:
+            project_signal.connect(self._project_selected)
 
     # ------------------------------------------------------------------
     # Status properties
@@ -61,6 +71,10 @@ class TimelineStudioViewModel(QObject):
     @Property(bool, notify=hasChangesChanged)
     def hasChanges(self) -> bool:  # noqa: N802
         return self._has_changes
+
+    @Property(bool, notify=conflictChanged)
+    def conflict(self) -> bool:
+        return self._conflict
 
     @Property(bool, notify=undoRedoChanged)
     def canUndo(self) -> bool:  # noqa: N802
@@ -100,10 +114,52 @@ class TimelineStudioViewModel(QObject):
     # Commands
     # ------------------------------------------------------------------
 
+    @Slot(str, result=bool)
+    def setProjectDir(self, project_dir: str) -> bool:  # noqa: N802
+        """Set the project directory for the timeline service."""
+        try:
+            self._service.set_project_dir(project_dir)
+            self._project_dir = str(Path(project_dir).resolve())
+            self._current_project_id = project_dir
+            self._has_changes = False
+            self._conflict = False
+            self._segments = []
+            self._boundaries = []
+            self._beats = []
+            self._set_status("project_set", error="")
+            self.segmentsChanged.emit()
+            self.boundariesChanged.emit()
+            self.beatsChanged.emit()
+            self.hasChangesChanged.emit()
+            self.conflictChanged.emit()
+            self.undoRedoChanged.emit()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            self._set_status("error", error=str(exc))
+            return False
+
     @Slot(result=bool)
     def loadProject(self) -> bool:  # noqa: N802
         try:
+            project_id: str = self._current_project_id or self._project_dir
+
+            # Resolve project from studio_view_model if not already set
+            if not project_id and self._studio_view_model is not None:
+                studio_id = getattr(self._studio_view_model, "current_project_id", "")
+                if not studio_id:
+                    return False
+                store = getattr(self._studio_view_model, "store", None)
+                if store:
+                    project_root = store.project_root
+                    project_dir = str(Path(project_root) / Path(studio_id).name)
+                else:
+                    project_dir = studio_id
+                self._service.set_project_dir(project_dir)
+                self._current_project_id = studio_id
+
             self._set_status("loading", error="")
+            self._conflict = False
+            self.conflictChanged.emit()
             self._service.load()
 
             # Materialize observable lists from current snapshot
@@ -149,13 +205,24 @@ class TimelineStudioViewModel(QObject):
             return False
 
     @Slot(result=bool)
+    def reloadOnConflict(self) -> bool:  # noqa: N802
+        """Reload timeline after a conflict is detected."""
+        self._conflict = False
+        self.conflictChanged.emit()
+        return self.loadProject()
+
+    @Slot(result=bool)
     def save(self) -> bool:
         try:
             self._service.save()
             self._has_changes = False
+            self._conflict = False
             self._set_status("saved", error="")
+            self.conflictChanged.emit()
             return True
         except Exception as exc:  # noqa: BLE001
+            self._conflict = True
+            self.conflictChanged.emit()
             self._set_status("error", error=str(exc))
             return False
 
@@ -352,3 +419,20 @@ class TimelineStudioViewModel(QObject):
         self._refresh_segments()
         self._refresh_boundaries()
         self._refresh_beats()
+
+    @Slot()
+    def _project_selected(self) -> None:
+        """Reset timeline state when the active project changes."""
+        self._current_project_id = ""
+        self._has_changes = False
+        self._conflict = False
+        self._segments = []
+        self._boundaries = []
+        self._beats = []
+        self._set_status("idle", error="")
+        self.segmentsChanged.emit()
+        self.boundariesChanged.emit()
+        self.beatsChanged.emit()
+        self.hasChangesChanged.emit()
+        self.conflictChanged.emit()
+        self.undoRedoChanged.emit()
