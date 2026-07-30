@@ -184,10 +184,11 @@ class ArchitecturePortsTests(unittest.TestCase):
 
     def test_main_delegates_pipeline_to_generate_render_plan_composition(self):
         self.assertTrue(hasattr(GenerateRenderPlanUseCase, "execute"))
-        source = inspect.getsource(main.main)
 
-        self.assertIn("execute_generate_render_plan", source)
-        self.assertIn("GenerateRenderPlanRequest", source)
+        # main() delegates to _run_render, which uses the composition root.
+        source_render = inspect.getsource(main._run_render)
+        self.assertIn("execute_generate_render_plan", source_render)
+        self.assertIn("GenerateRenderPlanRequest", source_render)
 
     def test_render_storyboard_cli_uses_composition_root(self):
         import render_storyboard
