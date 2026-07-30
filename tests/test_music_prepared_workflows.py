@@ -9,15 +9,30 @@ from feverslop.composition.arg_parser import PipelineStage
 from feverslop.composition.config_loader import PipelineRunState, build_run_context
 from feverslop.composition.stage_runners import (
     STAGE_RUNNERS,
+    _load_continuity_dirty,
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
     resolve_pipeline_stages,
 )
-from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.domain.visual_consistency import (
+    PreflightMode,
+    ReferenceAnchor,
+    SceneConsistencyContract,
+)
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
+    def test_malformed_continuity_marker_fails_closed(self):
+        with TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "continuity_dirty.json"
+            marker.write_text("{", encoding="utf-8")
+
+            self.assertEqual(
+                {1, 2, 3},
+                _load_continuity_dirty(marker, {1, 2, 3}),
+            )
+
     def _state(self, project: Path, *, pipeline: str, scenes: str = "") -> PipelineRunState:
         config = project / "config.json"
         config.write_text(json.dumps({"project_name": "Song", "input_audio": "song.mp3"}), encoding="utf-8")
@@ -134,6 +149,390 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 for call in materializer.prepare.call_args_list
             ],
         )
+
+    def test_prepare_defers_startframe_handoff_until_sequential_render(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr", scenes="2")
+            state.args.video_workflow_profile = "msr-startframe"
+            state.context.input_audio.write_bytes(b"audio")
+            state.msr_workflow = Path(
+                "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json"
+            ).resolve()
+            state.app_config_path.write_text(
+                json.dumps(
+                    {
+                        "video_workflow_profiles": [
+                            {
+                                "name": "msr-startframe",
+                                "pipeline": "ltx_msr",
+                                "workflow": "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json",
+                                "purpose": "final",
+                                "stages": 1,
+                                "output_scale": 1,
+                                "supports_per_pass_loras": False,
+                                "supports_start_frame": True,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            actor = project / "actor.png"
+            location = project / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            scenes = [
+                _consistent_music_scene(1, actor, location),
+                _consistent_music_scene(
+                    2,
+                    actor,
+                    location,
+                    transition="continuous",
+                ),
+            ]
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps(scenes), encoding="utf-8")
+            previous_clip = state.context.artifact_layout.scene_final_video(1)
+            previous_clip.parent.mkdir(parents=True)
+            previous_clip.write_bytes(b"clip")
+            extractor = Mock()
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners.PostprocessorFrameExtractor",
+                return_value=extractor,
+            ), patch(
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight"
+            ):
+                _run_ltx_prepare_workflows_stage(state)
+
+        prepared = materializer.prepare.call_args.args[0].scene
+        self.assertEqual(2, prepared["scene"])
+        self.assertNotIn("keyframes", prepared)
+        extractor.extract_last_frame.assert_not_called()
+
+    def test_render_handoff_uses_fresh_or_required_immediate_predecessor(self):
+        cases = (
+            ("", None, b"new-1"),
+            ("1", None, b"new-1"),
+            ("1,2", b"stale-1", b"new-1"),
+            ("2", b"existing-1", b"existing-1"),
+        )
+        for selection, predecessor_content, expected_source in cases:
+            with self.subTest(selection=selection), TemporaryDirectory() as tmp:
+                project = Path(tmp)
+                state = self._state(
+                    project,
+                    pipeline="ltx_msr",
+                    scenes=selection,
+                )
+                _configure_startframe_music_state(state, project)
+                if predecessor_content is not None:
+                    predecessor = (
+                        state.context.artifact_layout.scene_final_video(1)
+                    )
+                    predecessor.parent.mkdir(parents=True, exist_ok=True)
+                    predecessor.write_bytes(predecessor_content)
+                if selection in {"", "1"}:
+                    stale_downstream = (
+                        state.context.artifact_layout.scene_final_video(2)
+                    )
+                    stale_downstream.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    stale_downstream.write_bytes(b"stale-2")
+                for number in ((1, 2) if selection != "2" else (2,)):
+                    workflow = state.context.artifact_layout.scene_workflow(number)
+                    workflow.parent.mkdir(parents=True, exist_ok=True)
+                    workflow.write_text("{}", encoding="utf-8")
+                    workflow.with_name("manifest.json").write_text(
+                        "{}",
+                        encoding="utf-8",
+                    )
+                postprocessor = _RecordingFramePostprocessor()
+                backend = _prepared_backend(postprocessor)
+                renderer = _SequentialPreparedRenderer(
+                    state.context.artifact_layout
+                )
+                materializer = Mock()
+
+                with patch(
+                    "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                    return_value=Mock(backend=backend),
+                ), patch(
+                    "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                    return_value=renderer,
+                ), patch(
+                    "feverslop.composition.stage_runners.WorkflowMaterializer",
+                    return_value=materializer,
+                ):
+                    _run_ltx_render_scenes_stage(state)
+
+                self.assertEqual([expected_source], postprocessor.sources)
+                self.assertEqual(
+                    [1, 2] if selection != "2" else [2],
+                    renderer.rendered,
+                )
+                handoff_scene = materializer.prepare.call_args.args[0].scene
+                self.assertEqual(2, handoff_scene["scene"])
+                self.assertEqual(
+                    "last_frame_from_previous",
+                    handoff_scene["keyframes"]["startframe_mode"],
+                )
+
+    def test_selected_handoff_requires_existing_unselected_predecessor(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr", scenes="2")
+            _configure_startframe_music_state(state, project)
+            workflow = state.context.artifact_layout.scene_workflow(2)
+            workflow.parent.mkdir(parents=True, exist_ok=True)
+            workflow.write_text("{}", encoding="utf-8")
+            workflow.with_name("manifest.json").write_text(
+                "{}",
+                encoding="utf-8",
+            )
+            backend = _prepared_backend(_RecordingFramePostprocessor())
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(backend=backend),
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=_SequentialPreparedRenderer(
+                    state.context.artifact_layout
+                ),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+            ), self.assertRaisesRegex(
+                ValueError,
+                "missing previous movie scene clip",
+            ):
+                _run_ltx_render_scenes_stage(state)
+
+    def test_rendered_predecessor_dirties_entire_continuous_chain(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr")
+            _configure_startframe_music_state(state, project)
+            plan = json.loads(
+                state.plan_for_next_step.read_text(encoding="utf-8")
+            )
+            plan.append(
+                _consistent_music_scene(
+                    3,
+                    project / "actor.png",
+                    project / "location.png",
+                    transition="continuous",
+                )
+            )
+            state.plan_for_next_step.write_text(
+                json.dumps(plan),
+                encoding="utf-8",
+            )
+            for number in (1, 2, 3):
+                workflow = state.context.artifact_layout.scene_workflow(number)
+                workflow.parent.mkdir(parents=True, exist_ok=True)
+                workflow.write_text("{}", encoding="utf-8")
+                workflow.with_name("manifest.json").write_text(
+                    "{}",
+                    encoding="utf-8",
+                )
+            for number in (2, 3):
+                stale = state.context.artifact_layout.scene_final_video(number)
+                stale.write_bytes(f"stale-{number}".encode())
+            postprocessor = _RecordingFramePostprocessor()
+            backend = _prepared_backend(postprocessor)
+            renderer = _SequentialPreparedRenderer(
+                state.context.artifact_layout
+            )
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(backend=backend),
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=renderer,
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ):
+                _run_ltx_render_scenes_stage(state)
+
+            self.assertEqual([1, 2, 3], renderer.rendered)
+            self.assertEqual([b"new-1", b"new-2"], postprocessor.sources)
+            self.assertEqual(
+                [2, 3],
+                [
+                    call.args[0].scene["scene"]
+                    for call in materializer.prepare.call_args_list
+                ],
+            )
+
+    def test_failed_dependent_persists_dirty_state_for_next_invocation(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr")
+            _configure_startframe_music_state(state, project)
+            _write_prepared_placeholders(state, (1, 2))
+            stale = state.context.artifact_layout.scene_final_video(2)
+            stale.write_bytes(b"stale-2")
+            backend = _prepared_backend(_RecordingFramePostprocessor())
+            failing = _SequentialPreparedRenderer(
+                state.context.artifact_layout,
+                fail_on=2,
+            )
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(backend=backend),
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=failing,
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=Mock(),
+            ), self.assertRaisesRegex(RuntimeError, "scene 2 failed"):
+                _run_ltx_render_scenes_stage(state)
+
+            marker = state.context.render_dir / "continuity_dirty.json"
+            self.assertEqual(
+                [2],
+                json.loads(marker.read_text(encoding="utf-8"))[
+                    "dirty_scenes"
+                ],
+            )
+            resumed = _SequentialPreparedRenderer(
+                state.context.artifact_layout
+            )
+            manifest = Mock(pipeline="ltx_msr")
+            manifest.verify.return_value = []
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(backend=backend),
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=resumed,
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+                return_value=manifest,
+            ):
+                _run_ltx_render_scenes_stage(state)
+
+            self.assertEqual([2], resumed.rendered)
+            self.assertFalse(marker.exists())
+
+    def test_chain_failure_resume_clears_marker_after_last_dependent(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr")
+            _configure_startframe_music_state(state, project)
+            plan = json.loads(
+                state.plan_for_next_step.read_text(encoding="utf-8")
+            )
+            plan.append(
+                _consistent_music_scene(
+                    3,
+                    project / "actor.png",
+                    project / "location.png",
+                    transition="continuous",
+                )
+            )
+            state.plan_for_next_step.write_text(
+                json.dumps(plan),
+                encoding="utf-8",
+            )
+            _write_prepared_placeholders(state, (1, 2, 3))
+            for number in (2, 3):
+                state.context.artifact_layout.scene_final_video(
+                    number
+                ).write_bytes(b"stale")
+            backend = _prepared_backend(_RecordingFramePostprocessor())
+            failing = _SequentialPreparedRenderer(
+                state.context.artifact_layout,
+                fail_on=3,
+            )
+            common = (
+                patch(
+                    "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                    return_value=Mock(backend=backend),
+                ),
+                patch(
+                    "feverslop.composition.stage_runners.WorkflowMaterializer",
+                    return_value=Mock(),
+                ),
+            )
+            with common[0], common[1], patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=failing,
+            ), self.assertRaisesRegex(RuntimeError, "scene 3 failed"):
+                _run_ltx_render_scenes_stage(state)
+
+            marker = state.context.render_dir / "continuity_dirty.json"
+            self.assertEqual(
+                [3],
+                json.loads(marker.read_text(encoding="utf-8"))[
+                    "dirty_scenes"
+                ],
+            )
+            resumed = _SequentialPreparedRenderer(
+                state.context.artifact_layout
+            )
+            manifest = Mock(pipeline="ltx_msr")
+            manifest.verify.return_value = []
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(backend=backend),
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=resumed,
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+                return_value=manifest,
+            ):
+                _run_ltx_render_scenes_stage(state)
+
+            self.assertEqual([3], resumed.rendered)
+            self.assertFalse(marker.exists())
+
+    def test_startframe_profile_rejects_mismatched_materialized_workflow(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr", scenes="1")
+            _configure_startframe_music_state(state, project)
+            mismatched = project / "other-msr.json"
+            mismatched.write_text("{}", encoding="utf-8")
+            state.msr_workflow = mismatched
+
+            with patch(
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight"
+            ), patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case"
+            ) as builder, patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer"
+            ) as materializer, self.assertRaisesRegex(
+                ValueError,
+                "start-frame profile workflow",
+            ):
+                _run_ltx_prepare_workflows_stage(state)
+
+            builder.assert_not_called()
+            materializer.assert_not_called()
 
     def test_strict_visual_consistency_preflight_blocks_before_materialization(self):
         with TemporaryDirectory() as tmp:
@@ -441,6 +840,157 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
 
             self.assertFalse(state.context.artifact_layout.scene_manifest(1).exists())
             self.assertFalse(state.context.artifact_layout.scene_manifest(2).exists())
+
+
+def _consistent_music_scene(
+    number: int,
+    actor_path: Path,
+    location_path: Path,
+    *,
+    transition: str = "cut",
+) -> dict:
+    actor = ReferenceAnchor(
+        id="hero",
+        kind="actor",
+        look_id="default",
+        asset_role="identity-reference",
+        asset_sha256="a" * 64,
+        prompt_anchor="hero",
+    )
+    location = ReferenceAnchor(
+        id="archive",
+        kind="location",
+        look_id="default",
+        asset_role="environment-reference",
+        asset_sha256="b" * 64,
+        prompt_anchor="archive",
+    )
+    contract = SceneConsistencyContract.create(
+        scene=number,
+        mode="msr",
+        workflow_profile="msr-startframe",
+        actors=(actor,),
+        location=location,
+        transition_from_previous=transition,
+    )
+    return {
+        "scene": number,
+        "transition_from_previous": transition,
+        "references": {
+            "actor_ids": ["hero"],
+            "location_id": "archive",
+            "actor_msr_paths": [actor_path.as_posix()],
+            "location_msr_path": location_path.as_posix(),
+        },
+        "visual_consistency": contract.to_dict(),
+        "ltx": {"base_prompt": f"scene {number}"},
+    }
+
+
+def _configure_startframe_music_state(
+    state: PipelineRunState,
+    project: Path,
+) -> None:
+    state.args.video_workflow_profile = "msr-startframe"
+    state.context.input_audio.write_bytes(b"audio")
+    state.msr_workflow = Path(
+        "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json"
+    ).resolve()
+    state.app_config_path.write_text(
+        json.dumps(
+            {
+                "video_workflow_profiles": [
+                    {
+                        "name": "msr-startframe",
+                        "pipeline": "ltx_msr",
+                        "workflow": "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json",
+                        "purpose": "final",
+                        "stages": 1,
+                        "output_scale": 1,
+                        "supports_per_pass_loras": False,
+                        "supports_start_frame": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    actor = project / "actor.png"
+    location = project / "location.png"
+    actor.write_bytes(b"actor")
+    location.write_bytes(b"location")
+    state.plan_for_next_step.parent.mkdir(parents=True, exist_ok=True)
+    state.plan_for_next_step.write_text(
+        json.dumps(
+            [
+                _consistent_music_scene(1, actor, location),
+                _consistent_music_scene(
+                    2,
+                    actor,
+                    location,
+                    transition="continuous",
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _prepared_backend(postprocessor):
+    backend = Mock()
+    backend.postprocessor = postprocessor
+    backend.max_render_frames = None
+    backend.max_render_duration_seconds = None
+    backend.render_budget_workflow_path = Path("msr.json")
+    backend.round_render_frames_to_8n1 = False
+    backend.asset_uploader = Mock()
+    backend.model_resolver = Mock()
+    backend.workflow_label = Path("msr.json")
+    return backend
+
+
+def _write_prepared_placeholders(
+    state: PipelineRunState,
+    numbers,
+) -> None:
+    for number in numbers:
+        workflow = state.context.artifact_layout.scene_workflow(number)
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text("{}", encoding="utf-8")
+        workflow.with_name("manifest.json").write_text(
+            "{}",
+            encoding="utf-8",
+        )
+
+
+class _RecordingFramePostprocessor:
+    def __init__(self):
+        self.sources = []
+
+    def extract_last_frame(self, video_path, output_path):
+        source = Path(video_path).read_bytes()
+        self.sources.append(source)
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"frame:" + source)
+        return output_path
+
+
+class _SequentialPreparedRenderer:
+    def __init__(self, layout, *, fail_on=None):
+        self.layout = layout
+        self.rendered = []
+        self.fail_on = fail_on
+
+    def render(self, workflow_path):
+        number = int(Path(workflow_path).parent.name.removeprefix("scene_"))
+        if number == self.fail_on:
+            raise RuntimeError(f"scene {number} failed")
+        self.rendered.append(number)
+        output = self.layout.scene_final_video(number)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(f"new-{number}".encode())
+        return output
 
 
 if __name__ == "__main__":

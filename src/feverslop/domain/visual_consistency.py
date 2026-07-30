@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
@@ -271,3 +273,85 @@ def can_handoff(
     previous_actor_ids = {anchor.id for anchor in previous.actors}
     current_actor_ids = {anchor.id for anchor in current.actors}
     return bool(previous_actor_ids & current_actor_ids)
+
+
+def apply_continuity_handoff(
+    previous: SceneConsistencyContract,
+    current: SceneConsistencyContract,
+    previous_clip,
+    output_frame,
+    current_scene: Mapping[str, Any],
+    *,
+    frame_extractor,
+    handoff_prompt: str | None = None,
+) -> dict[str, Any]:
+    if (
+        previous.mode not in _HANDOFF_MODES
+        or current.mode not in _HANDOFF_MODES
+        or previous.scene + 1 != current.scene
+        or not can_handoff(previous, current)
+    ):
+        raise ValueError(
+            f"Scene {current.scene} does not support continuity handoff"
+        )
+
+    extracted = frame_extractor.extract_last_frame(
+        previous_clip,
+        output_frame,
+    )
+    scene = deepcopy(dict(current_scene))
+    keyframes = dict(scene.get("keyframes") or {})
+    keyframes.update(
+        {
+            "startframe_path": extracted.as_posix(),
+            "startframe_source_scene": previous.scene,
+            "startframe_mode": "last_frame_from_previous",
+        }
+    )
+    scene["keyframes"] = keyframes
+    ltx = dict(scene.get("ltx") or {})
+    ltx.update(
+        {
+            "msr_continuity_handoff_prompt": (
+                str(handoff_prompt or "").strip()
+                or "Hold the previous scene end state as the shot begins."
+            ),
+            "msr_continuity_handoff_frames": 18,
+            "msr_continuity_msr_frame_count": 17,
+            "msr_continuity_guide_frame_idx": 18,
+        }
+    )
+    scene["ltx"] = ltx
+    return scene
+
+
+def validate_scene_sequence(
+    scenes: Iterable[Mapping[str, Any]],
+) -> tuple[Mapping[str, Any], ...]:
+    items = tuple(scenes)
+    numbers = [scene.get("scene") for scene in items]
+    if any(type(number) is not int or number <= 0 for number in numbers):
+        raise ValueError(
+            "Scenes must use canonical consecutive order with positive integers"
+        )
+    if numbers and numbers != list(range(numbers[0], numbers[0] + len(numbers))):
+        raise ValueError(
+            "Scenes must use canonical consecutive order without duplicates or gaps"
+        )
+    return items
+
+
+def expand_handoff_selection(
+    contracts: Iterable[SceneConsistencyContract],
+    selected: set[int],
+) -> set[int]:
+    expanded = set(selected)
+    items = tuple(contracts)
+    for previous, current in zip(items, items[1:]):
+        if (
+            previous.scene in expanded
+            and previous.scene + 1 == current.scene
+            and can_handoff(previous, current)
+        ):
+            expanded.add(current.scene)
+    return expanded

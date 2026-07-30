@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
@@ -35,6 +36,15 @@ class ReferenceManifestSnapshot:
 class ReferenceManifestPort(Protocol):
     def load(self, project_id: str) -> ReferenceManifestSnapshot:
         """Load immutable project reference anchors and their revision."""
+
+
+class PreviousFramePort(Protocol):
+    def extract_last_frame(
+        self,
+        video_path: Path,
+        output_path: Path,
+    ) -> Path:
+        """Extract the final video frame to a PNG path."""
 
 
 def _validated_anchors(

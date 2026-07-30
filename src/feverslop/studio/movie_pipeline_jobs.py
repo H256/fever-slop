@@ -456,6 +456,12 @@ def build_movie_visual_adapter(
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
     from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
+    from feverslop.adapters.postprocessor_frame_extractor import (
+        PostprocessorFrameExtractor,
+    )
+    from feverslop.application.continuity_handoff import (
+        ContinuityHandoffUseCase,
+    )
     from feverslop.config.app_config import AppConfig
 
     app_config = AppConfig.load("app_config.json")
@@ -470,6 +476,15 @@ def build_movie_visual_adapter(
         i2v_workflow_path=Path(config["msr_i2v_workflow"]) if config.get("msr_i2v_workflow") else None,
         i2v_workflow=i2v_workflow,
         continuity_keyframes=config["continuity_keyframes"],
+        continuity_handoff_factory=lambda postprocessor, root, selected: (
+            ContinuityHandoffUseCase(
+                PostprocessorFrameExtractor(
+                    postprocessor,
+                    project_dir=root,
+                    selected_rerender=selected,
+                )
+            )
+        ),
         model_resolver=ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides),
     )
 

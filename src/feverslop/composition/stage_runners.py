@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+import hashlib
 import json
+import os
 import subprocess
+from tempfile import NamedTemporaryFile
 
 from rich.console import Console
 from rich.progress import (
@@ -25,7 +28,11 @@ from feverslop.adapters.prepared_workflow import (
     WorkflowMaterializationRequest,
     WorkflowMaterializer,
 )
+from feverslop.adapters.postprocessor_frame_extractor import (
+    PostprocessorFrameExtractor,
+)
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
@@ -38,7 +45,13 @@ from feverslop.application.visual_consistency_preflight import (
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.render_plan import RenderPlan
-from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.domain.visual_consistency import (
+    PreflightMode,
+    SceneConsistencyContract,
+    can_handoff,
+    expand_handoff_selection,
+    validate_scene_sequence,
+)
 from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case  # noqa: F401
 from feverslop.composition.generate_render_plan import execute_generate_render_plan
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
@@ -313,6 +326,7 @@ def _selected_render_scenes(state: PipelineRunState) -> list:
 
 def _all_render_scenes(state: PipelineRunState) -> list:
     payload = json.loads(state.plan_for_next_step.read_text(encoding="utf-8-sig"))
+    validate_scene_sequence(payload)
     return RenderPlan.from_dicts(payload).scenes
 
 
@@ -396,6 +410,7 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
     missing = _missing_prepare_inputs(state, scenes)
     if missing:
         raise FileNotFoundError("Cannot prepare scene workflows; missing inputs:\n- " + "\n- ".join(missing))
+    _resolved_startframe_profile(state)
     _run_visual_consistency_preflight(state, all_scenes)
     backend = _specialized_video_use_case(state).backend
     materializer = WorkflowMaterializer(backend, state.context.artifact_layout)
@@ -426,6 +441,212 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
             else:
                 path.write_bytes(content)
         raise
+
+
+def _attach_music_continuity_handoffs(
+    state: PipelineRunState,
+    *,
+    all_scenes: list,
+    selected_scenes: list,
+    backend,
+) -> list:
+    if state.args.video_pipeline != "ltx_msr":
+        return selected_scenes
+    profile = _resolved_startframe_profile(state)
+    if profile is None or not profile.supports_start_frame:
+        return selected_scenes
+
+    all_payloads = [scene.to_dict() for scene in all_scenes]
+    by_number = {int(scene["scene"]): scene for scene in all_payloads}
+    selected_numbers = {scene.scene_number for scene in selected_scenes}
+    explicitly_selected = bool(
+        {state.args.smoke_scene}
+        if state.args.smoke_only
+        else parse_scene_list(state.args.scenes)
+    )
+    attached = []
+    for render_scene in selected_scenes:
+        scene = render_scene.to_dict()
+        number = render_scene.scene_number
+        previous = by_number.get(number - 1)
+        previous_contract = _stored_consistency_contract(previous)
+        current_contract = _stored_consistency_contract(scene)
+        if (
+            previous_contract is None
+            or current_contract is None
+            or previous_contract.scene + 1 != current_contract.scene
+            or not can_handoff(previous_contract, current_contract)
+        ):
+            attached.append(render_scene)
+            continue
+        previous_clip = state.context.artifact_layout.scene_final_video(number - 1)
+        if not previous_clip.is_file() and not explicitly_selected:
+            attached.append(render_scene)
+            continue
+        output_frame = (
+            state.context.render_dir
+            / "keyframes"
+            / f"scene_{number - 1:04}_to_{number:04}_start.png"
+        )
+        scene = ContinuityHandoffUseCase(
+            PostprocessorFrameExtractor(
+                backend.postprocessor,
+                project_dir=state.context.project_config_dir,
+                selected_rerender=explicitly_selected
+                and number in selected_numbers,
+            )
+        ).execute(
+            previous_contract,
+            current_contract,
+            previous_clip,
+            output_frame,
+            scene,
+            handoff_prompt=_music_handoff_prompt(previous),
+        )
+        attached.append(type(render_scene).from_dict(scene))
+    return attached
+
+
+def _stored_consistency_contract(scene: dict | None):
+    payload = scene.get("visual_consistency") if scene else None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return SceneConsistencyContract.from_dict(payload)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _music_handoff_prompt(previous_scene: dict | None) -> str:
+    ltx = (previous_scene or {}).get("ltx") or {}
+    relays = ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or []
+    if relays and isinstance(relays[-1], dict):
+        prompt = str(relays[-1].get("prompt") or "").strip()
+        if prompt:
+            return prompt
+    return str(
+        ltx.get("original_style_i2v_prompt")
+        or ltx.get("base_prompt")
+        or ""
+    ).strip()
+
+
+def _resolved_startframe_profile(state: PipelineRunState):
+    if state.args.video_pipeline != "ltx_msr":
+        return None
+    app_config = AppConfig.load(state.app_config_path)
+    profile = app_config.resolve_video_workflow_profile(
+        pipeline="ltx_msr",
+        purpose="final",
+        name=getattr(state.args, "video_workflow_profile", None),
+    )
+    if profile is not None and profile.supports_start_frame:
+        configured = Path(profile.workflow_path).resolve()
+        materialized = Path(state.msr_workflow).resolve()
+        if configured != materialized:
+            raise ValueError(
+                "Configured start-frame profile workflow does not match "
+                f"the materialized MSR workflow: {configured} != {materialized}"
+            )
+    return profile
+
+
+def _continuity_downstream(
+    scene_number: int,
+    predecessors: dict[int, int],
+) -> set[int]:
+    downstream: set[int] = set()
+    current = scene_number
+    while True:
+        dependent = next(
+            (
+                candidate
+                for candidate, predecessor in predecessors.items()
+                if predecessor == current
+            ),
+            None,
+        )
+        if dependent is None:
+            return downstream
+        downstream.add(dependent)
+        current = dependent
+
+
+def _load_continuity_dirty(
+    path: Path,
+    scene_numbers: set[int],
+) -> set[int]:
+    if not path.exists() and not path.is_symlink():
+        return set()
+    if path.is_symlink() or not path.is_file():
+        return set(scene_numbers)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        dirty = payload["dirty_scenes"]
+        if (
+            payload.get("schema") != "feverslop.continuity-dirty/v1"
+            or not isinstance(dirty, list)
+            or any(type(number) is not int for number in dirty)
+            or not set(dirty).issubset(scene_numbers)
+        ):
+            raise ValueError("invalid continuity dirty marker")
+        return set(dirty)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return set(scene_numbers)
+
+
+def _write_continuity_dirty(
+    path: Path,
+    *,
+    dirty_scenes: set[int],
+    predecessor_scene: int,
+    predecessor_contract: SceneConsistencyContract | None,
+    predecessor_output: Path,
+    project_dir: Path,
+) -> None:
+    project_root = Path(project_dir).resolve()
+    marker = path.resolve()
+    output = Path(predecessor_output).resolve()
+    if (
+        not marker.is_relative_to(project_root)
+        or not output.is_relative_to(project_root)
+    ):
+        raise ValueError("Continuity dirty state must remain inside project")
+    relative_output = output.relative_to(project_root).as_posix()
+    payload = {
+        "schema": "feverslop.continuity-dirty/v1",
+        "dirty_scenes": sorted(dirty_scenes),
+        "predecessor": {
+            "scene": predecessor_scene,
+            "fingerprint": (
+                predecessor_contract.fingerprint
+                if predecessor_contract is not None
+                else None
+            ),
+            "output": {
+                "path": relative_output,
+                "sha256": (
+                    hashlib.sha256(output.read_bytes()).hexdigest()
+                    if output.is_file()
+                    else None
+                ),
+            },
+        },
+    }
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=marker.parent,
+        delete=False,
+    ) as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+        temporary = Path(handle.name)
+    try:
+        os.replace(temporary, marker)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _run_visual_consistency_preflight(
@@ -495,7 +716,27 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         raise ValueError(f"RenderMode '{state.args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
 
     if state.args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
-        scenes = _selected_render_scenes(state)
+        all_scenes = _all_render_scenes(state)
+        scenes = _select_render_scenes(state, all_scenes)
+        profile = _resolved_startframe_profile(state)
+        if profile is not None and profile.supports_start_frame:
+            contracts = [
+                contract
+                for scene in all_scenes
+                if (
+                    contract := _stored_consistency_contract(
+                        scene.to_dict()
+                    )
+                )
+                is not None
+            ]
+            selected_numbers = expand_handoff_selection(
+                contracts,
+                {scene.scene_number for scene in scenes},
+            )
+            scenes = RenderPlan(list(all_scenes)).select(
+                scene_numbers=selected_numbers
+            ).scenes
         missing: list[Path] = []
         for scene in scenes:
             workflow_path = state.context.artifact_layout.scene_workflow(scene.scene_number)
@@ -524,13 +765,131 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             model_workflow_path=backend.workflow_label,
         )
         total = len(scenes)
+        materializer = WorkflowMaterializer(
+            backend,
+            state.context.artifact_layout,
+        )
+        explicit_selection = bool(
+            {state.args.smoke_scene}
+            if state.args.smoke_only
+            else parse_scene_list(state.args.scenes)
+        )
+        handoff_predecessors: dict[int, int] = {}
+        if profile is not None and profile.supports_start_frame:
+            payloads = [scene.to_dict() for scene in all_scenes]
+            for previous_scene, current_scene in zip(
+                payloads,
+                payloads[1:],
+            ):
+                previous_contract = _stored_consistency_contract(
+                    previous_scene
+                )
+                current_contract = _stored_consistency_contract(
+                    current_scene
+                )
+                if (
+                    previous_contract is not None
+                    and current_contract is not None
+                    and previous_contract.scene + 1
+                    == current_contract.scene
+                    and can_handoff(previous_contract, current_contract)
+                ):
+                    handoff_predecessors[current_contract.scene] = (
+                        previous_contract.scene
+                    )
+        rendered_this_run: set[int] = set()
+        dirty_marker = (
+            state.context.render_dir / "continuity_dirty.json"
+        )
+        persisted_dirty = _load_continuity_dirty(
+            dirty_marker,
+            {scene.scene_number for scene in all_scenes},
+        )
         with RenderProgressReporter("Rendering prepared LTX scenes", total) as progress:
             for completed, scene in enumerate(scenes, start=1):
                 workflow = state.context.artifact_layout.scene_workflow(scene.scene_number)
                 final_path = state.context.artifact_layout.scene_final_video(scene.scene_number)
-                skip_existing = False if state.args.smoke_only else not state.args.no_skip_existing
+                predecessor_rendered = (
+                    handoff_predecessors.get(scene.scene_number)
+                    in rendered_this_run
+                )
+                skip_existing = (
+                    False
+                    if (
+                        state.args.smoke_only
+                        or explicit_selection
+                        or predecessor_rendered
+                        or scene.scene_number in persisted_dirty
+                    )
+                    else not state.args.no_skip_existing
+                )
                 if not (skip_existing and final_path.is_file()):
+                    downstream = _continuity_downstream(
+                        scene.scene_number,
+                        handoff_predecessors,
+                    )
+                    if downstream:
+                        persisted_dirty.update(downstream)
+                        _write_continuity_dirty(
+                            dirty_marker,
+                            dirty_scenes=persisted_dirty,
+                            predecessor_scene=scene.scene_number,
+                            predecessor_contract=(
+                                _stored_consistency_contract(
+                                    scene.to_dict()
+                                )
+                            ),
+                            predecessor_output=final_path,
+                            project_dir=state.context.project_config_dir,
+                        )
+                    [render_scene] = _attach_music_continuity_handoffs(
+                        state,
+                        all_scenes=all_scenes,
+                        selected_scenes=[scene],
+                        backend=backend,
+                    )
+                    if render_scene.to_dict() != scene.to_dict():
+                        materializer.prepare(
+                            WorkflowMaterializationRequest(
+                                scene=render_scene.to_dict(),
+                                prompt=render_scene.video_prompt,
+                                audio_file=state.context.input_audio,
+                                render_plan_path=state.plan_for_next_step,
+                                pipeline=state.args.video_pipeline,
+                            )
+                        )
                     final_path = renderer.render(workflow)
+                    rendered_this_run.add(scene.scene_number)
+                    if downstream:
+                        _write_continuity_dirty(
+                            dirty_marker,
+                            dirty_scenes=persisted_dirty,
+                            predecessor_scene=scene.scene_number,
+                            predecessor_contract=(
+                                _stored_consistency_contract(
+                                    scene.to_dict()
+                                )
+                            ),
+                            predecessor_output=final_path,
+                            project_dir=state.context.project_config_dir,
+                        )
+                    if scene.scene_number in persisted_dirty:
+                        persisted_dirty.remove(scene.scene_number)
+                        if persisted_dirty:
+                            _write_continuity_dirty(
+                                dirty_marker,
+                                dirty_scenes=persisted_dirty,
+                                predecessor_scene=scene.scene_number,
+                                predecessor_contract=(
+                                    _stored_consistency_contract(
+                                        scene.to_dict()
+                                    )
+                                ),
+                                predecessor_output=final_path,
+                                project_dir=state.context.project_config_dir,
+                            )
+                        else:
+                            dirty_marker.unlink(missing_ok=True)
                 else:
                     manifest = SceneWorkflowManifest.read(state.context.artifact_layout.scene_manifest(scene.scene_number))
                     if manifest.pipeline != state.args.video_pipeline:

@@ -16,6 +16,7 @@ class VideoWorkflowProfile:
     output_scale: float
     supports_per_pass_loras: bool
     satisfies_final_output: bool
+    supports_start_frame: bool = False
 
     @classmethod
     def create(
@@ -29,6 +30,7 @@ class VideoWorkflowProfile:
         output_scale: float,
         supports_per_pass_loras: bool,
         satisfies_final_output: bool | None = None,
+        supports_start_frame: bool = False,
     ) -> VideoWorkflowProfile:
         resolved_name = str(name).strip()
         resolved_pipeline = str(pipeline).strip()
@@ -56,6 +58,8 @@ class VideoWorkflowProfile:
 
         if type(supports_per_pass_loras) is not bool:
             raise ValueError("workflow profile supports_per_pass_loras must be a boolean")
+        if type(supports_start_frame) is not bool:
+            raise ValueError("workflow profile supports_start_frame must be a boolean")
         if satisfies_final_output is not None and type(satisfies_final_output) is not bool:
             raise ValueError("workflow profile satisfies_final_output must be a boolean or None")
 
@@ -72,4 +76,5 @@ class VideoWorkflowProfile:
             output_scale=resolved_output_scale,
             supports_per_pass_loras=supports_per_pass_loras,
             satisfies_final_output=final,
+            supports_start_frame=supports_start_frame,
         )
