@@ -40,6 +40,8 @@ class StudioDesktopCompositionTests(unittest.TestCase):
     def test_scene_video_thumbnail_url_uses_cached_ffmpeg_frame(self):
         from unittest.mock import patch
 
+        from PySide6.QtCore import QUrl
+
         from feverslop.studio.desktop.runtime import scene_video_thumbnail_url
 
         with patch(
@@ -52,7 +54,9 @@ class StudioDesktopCompositionTests(unittest.TestCase):
                 "output/render/scenes/scene_0009/final.mp4",
             )
 
-        self.assertEqual(Path("C:/cache/scene.jpg").as_uri(), result)
+        # Match production code: QUrl.fromLocalFile instead of Path.as_uri()
+        expected = QUrl.fromLocalFile(str(Path("C:/cache/scene.jpg"))).toString()
+        self.assertEqual(expected, result)
         generate.assert_called_once()
 
     def test_scene_video_thumbnail_url_ignores_disappearing_video(self):
@@ -1942,6 +1946,8 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(requests[0].reference_id, "warrior_lead")
 
     def test_import_audio_uses_native_file_stream(self):
+        from mimetypes import guess_type
+
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 
         uploads = []
@@ -1962,7 +1968,9 @@ class StudioViewModelTests(unittest.TestCase):
 
             self.assertTrue(view_model.import_audio(audio_path.as_uri()))
 
-        self.assertEqual(uploads, [("scholoraid", "song.wav", "audio/wav", b"wave-data")])
+        # Use platform-specific MIME type (audio/wav on Windows, audio/x-wav on Linux)
+        expected_mime = guess_type("song.wav")[0]
+        self.assertEqual(uploads, [("scholoraid", "song.wav", expected_mime, b"wave-data")])
 
 
 class StudioQmlTests(unittest.TestCase):
