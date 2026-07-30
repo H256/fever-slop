@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 import full_auto
+from feverslop.domain.visual_consistency import PreflightMode
 
 
 class FullAutoCliTests(unittest.TestCase):
@@ -199,6 +200,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "smoke_only": True,
                 "smoke_scene": 2,
                 "rolling_frame_profile": "off",
+                "visual_consistency_preflight": PreflightMode.WARN,
                 "no_skip_existing": False,
                 "skip_main_pipeline": False,
                 "skip_relay_compact": False,
@@ -211,6 +213,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "skip_ltx": True,
                 "skip_final_concat": False,
                 "skip_facefix": True,
+                "facefix_debug": False,
                 "facefix_workflow": str(Path("workflows") / "video_ltxv_facefix_v1.json"),
                 "diagnostic_original_audio_mux": False,
                 "no_original_audio_mux": False,

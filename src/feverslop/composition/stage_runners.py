@@ -16,6 +16,10 @@ from rich.progress import (
 )
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from feverslop.adapters.project_visual_consistency import (
+    ProjectReferenceManifestAdapter,
+    validate_project_scene_artifacts,
+)
 from feverslop.adapters.prepared_workflow import (
     PreparedWorkflowRenderer,
     WorkflowMaterializationRequest,
@@ -27,8 +31,14 @@ from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
+from feverslop.application.visual_consistency_preflight import (
+    VisualConsistencyPreflightResult,
+    preflight_visual_consistency,
+)
+from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.render_plan import RenderPlan
+from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case  # noqa: F401
 from feverslop.composition.generate_render_plan import execute_generate_render_plan
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
@@ -289,9 +299,17 @@ def _specialized_video_use_case(state: PipelineRunState):
 
 
 def _selected_render_scenes(state: PipelineRunState) -> list:
-    selected = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
+    return _select_render_scenes(state, _all_render_scenes(state))
+
+
+def _all_render_scenes(state: PipelineRunState) -> list:
     payload = json.loads(state.plan_for_next_step.read_text(encoding="utf-8-sig"))
-    return RenderPlan.from_dicts(payload).select(scene_numbers=selected).scenes
+    return RenderPlan.from_dicts(payload).scenes
+
+
+def _select_render_scenes(state: PipelineRunState, scenes: list) -> list:
+    selected = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
+    return RenderPlan(list(scenes)).select(scene_numbers=selected).scenes
 
 
 def _missing_prepare_inputs(state: PipelineRunState, scenes: list) -> list[str]:
@@ -364,10 +382,12 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: list) -> list[str]:
 def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
         raise ValueError("ltx_prepare_workflows requires --video-pipeline ltx_msr or ltx_ingredients")
-    scenes = _selected_render_scenes(state) if state.plan_for_next_step.is_file() else []
+    all_scenes = _all_render_scenes(state) if state.plan_for_next_step.is_file() else []
+    scenes = _select_render_scenes(state, all_scenes)
     missing = _missing_prepare_inputs(state, scenes)
     if missing:
         raise FileNotFoundError("Cannot prepare scene workflows; missing inputs:\n- " + "\n- ".join(missing))
+    _run_visual_consistency_preflight(state, all_scenes)
     backend = _specialized_video_use_case(state).backend
     materializer = WorkflowMaterializer(backend, state.context.artifact_layout)
     total = len(scenes)
@@ -397,6 +417,68 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
             else:
                 path.write_bytes(content)
         raise
+
+
+def _run_visual_consistency_preflight(
+    state: PipelineRunState,
+    scenes: list,
+) -> None:
+    preflight_mode = getattr(
+        state.args,
+        "visual_consistency_preflight",
+        PreflightMode.WARN,
+    )
+    preflight_mode = PreflightMode.parse(preflight_mode)
+    if preflight_mode is PreflightMode.OFF:
+        return
+    project_config = ProjectConfig.load(state.context.project_config_path)
+    snapshot = ProjectReferenceManifestAdapter(
+        lambda _project_id: state.context.project_config_dir
+    ).load(state.context.project_config_dir.name)
+    mode = "msr" if state.args.video_pipeline == "ltx_msr" else "ingredients"
+    workflow = (
+        state.msr_workflow
+        if state.args.video_pipeline == "ltx_msr"
+        else state.ingredients_workflow
+    )
+    scene_payloads = [scene.to_dict() for scene in scenes]
+    result = preflight_visual_consistency(
+        scene_payloads,
+        snapshot,
+        mode=mode,
+        workflow_profile=str(
+            getattr(state.args, "video_workflow_profile", None) or workflow.stem
+        ),
+        preflight_mode=preflight_mode,
+        subject_mode=project_config.subject_mode,
+        max_scene_actors=project_config.max_scene_actors,
+        supports_continuous_transitions=False,
+    )
+    artifact_issues = validate_project_scene_artifacts(
+        state.context.project_config_dir,
+        scene_payloads,
+        mode=mode,
+        preflight_mode=preflight_mode,
+    )
+    result = VisualConsistencyPreflightResult(
+        result.contracts,
+        (*result.issues, *artifact_issues),
+    )
+    for issue in result.issues:
+        console.print(
+            f"Visual consistency {issue.severity.upper()} "
+            f"scene {issue.scene} {issue.code}: {issue.message}"
+        )
+    if not result.renderable:
+        details = "\n- ".join(
+            f"{issue.code}: {issue.message}"
+            for issue in result.issues
+            if issue.severity == "error"
+        )
+        raise ValueError(
+            "Visual consistency preflight blocked workflow preparation:\n- "
+            + details
+        )
 
 
 def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:

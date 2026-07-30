@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 import hashlib
 import json
 from typing import Any
@@ -12,6 +13,19 @@ _HANDOFF_MODES = {"msr", "i2v"}
 _KINDS = {"actor", "location"}
 _TRANSITIONS = {"cut", "continuous"}
 _SEVERITIES = {"warning", "error"}
+
+
+class PreflightMode(StrEnum):
+    STRICT = "strict"
+    WARN = "warn"
+    OFF = "off"
+
+    @classmethod
+    def parse(cls, value: PreflightMode | str) -> PreflightMode:
+        try:
+            return value if isinstance(value, cls) else cls(str(value).strip().lower())
+        except ValueError:
+            raise ValueError("preflight mode must be strict, warn, or off") from None
 
 
 def _required(value: str, field: str) -> None:

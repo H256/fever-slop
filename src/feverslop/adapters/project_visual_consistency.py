@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.domain.prepared_workflow import sha256_file
-from feverslop.domain.visual_consistency import ReferenceAnchor
+from feverslop.domain.visual_consistency import (
+    ConsistencyIssue,
+    PreflightMode,
+    ReferenceAnchor,
+)
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
@@ -305,3 +309,119 @@ class ProjectReferenceManifestAdapter:
             )
         destination[key] = anchor
         sources[key] = source_path
+
+
+def validate_project_scene_artifacts(
+    project_root: str | Path,
+    scenes: list[Mapping[str, Any]],
+    *,
+    mode: str,
+    preflight_mode: PreflightMode | str,
+) -> tuple[ConsistencyIssue, ...]:
+    policy = PreflightMode.parse(preflight_mode)
+    if policy is PreflightMode.OFF:
+        return ()
+    root = Path(project_root).resolve()
+    issues: list[ConsistencyIssue] = []
+    for scene in scenes:
+        scene_number = scene.get("scene")
+        if type(scene_number) is not int or scene_number <= 0:
+            continue
+        if mode == "ingredients":
+            ingredients = scene.get("ingredients")
+            ingredients = ingredients if isinstance(ingredients, Mapping) else {}
+            sheet = ingredients.get("sheet_path") or scene.get(
+                "ingredients_scene_sheet"
+            )
+            if isinstance(sheet, str) and sheet.strip():
+                issue = _validate_artifact_path(
+                    root,
+                    sheet,
+                    scene=scene_number,
+                    role="ingredients_sheet",
+                    policy=policy,
+                )
+                if issue:
+                    issues.append(issue)
+        elif mode == "msr":
+            references = scene.get("references")
+            references = references if isinstance(references, Mapping) else {}
+            actor_paths = (
+                references.get("actor_msr_paths")
+                or references.get("actor_sheet_paths")
+            )
+            if isinstance(actor_paths, (list, tuple)):
+                for path in actor_paths:
+                    if isinstance(path, str) and path.strip():
+                        issue = _validate_artifact_path(
+                            root,
+                            path,
+                            scene=scene_number,
+                            role="msr_actor",
+                            policy=policy,
+                        )
+                        if issue:
+                            issues.append(issue)
+            location_path = (
+                references.get("location_msr_path")
+                or references.get("location_sheet_path")
+            )
+            if isinstance(location_path, str) and location_path.strip():
+                issue = _validate_artifact_path(
+                    root,
+                    location_path,
+                    scene=scene_number,
+                    role="msr_location",
+                    policy=policy,
+                )
+                if issue:
+                    issues.append(issue)
+    return tuple(issues)
+
+
+def _validate_artifact_path(
+    root: Path,
+    value: str,
+    *,
+    scene: int,
+    role: str,
+    policy: PreflightMode,
+) -> ConsistencyIssue | None:
+    raw = Path(value)
+    if raw.is_absolute():
+        return _artifact_issue(
+            f"invalid_{role}_path",
+            scene,
+            f"Scene {scene} {role.replace('_', ' ')} path must be project-relative",
+            policy,
+        )
+    resolved = (root / raw).resolve()
+    if not resolved.is_relative_to(root):
+        return _artifact_issue(
+            f"invalid_{role}_path",
+            scene,
+            f"Scene {scene} {role.replace('_', ' ')} path escapes the project",
+            policy,
+        )
+    if not resolved.exists() or not resolved.is_file():
+        return _artifact_issue(
+            f"missing_{role}_file",
+            scene,
+            f"Scene {scene} {role.replace('_', ' ')} is missing or not a file",
+            policy,
+        )
+    return None
+
+
+def _artifact_issue(
+    code: str,
+    scene: int,
+    message: str,
+    policy: PreflightMode,
+) -> ConsistencyIssue:
+    return ConsistencyIssue(
+        code=code,
+        scene=scene,
+        severity="error" if policy is PreflightMode.STRICT else "warning",
+        message=message,
+    )

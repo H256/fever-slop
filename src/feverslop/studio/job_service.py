@@ -34,10 +34,12 @@ from feverslop.studio.jobs import (
     build_pipeline_options,
     build_recut_scene_handler,
     build_reference_rerender_handler,
+    build_visual_consistency_preflight_handler,
     run_with_stream_logging,
 )
 from feverslop.studio.logging import render_log_lines
 from feverslop.studio.projects import ProjectStore
+from feverslop.domain.visual_consistency import PreflightMode
 
 
 FullAutoHandlerFactory = Callable[..., Any]
@@ -57,6 +59,16 @@ class StudioJobRequest:
     raw_in_seconds: float | None = None
     raw_out_seconds: float | None = None
     exact: bool = False
+    plan: str | None = None
+    visual_consistency_mode: str | None = None
+    preflight_mode: PreflightMode = PreflightMode.WARN
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "preflight_mode",
+            PreflightMode.parse(self.preflight_mode),
+        )
 
 
 class ActionHandler(Protocol):
@@ -97,6 +109,7 @@ class StudioJobService:
                 MovieRenderAction(store),
                 MovieFinalConcatAction(store),
                 MovieFullAutoAction(store),
+                VisualConsistencyPreflightAction(store),
             ],
             PipelineAction(store, pipeline_handler),
         )
@@ -129,6 +142,36 @@ class ReferenceRerenderAction:
             config_path,
             reference_kind=request.reference_kind,
             reference_id=request.reference_id,
+        )
+
+
+class VisualConsistencyPreflightAction:
+    action = "visual-consistency-preflight"
+
+    def __init__(self, store: ProjectStore):
+        self.store = store
+
+    def build(
+        self,
+        project_id: str,
+        request: StudioJobRequest,
+        metadata: dict[str, Any],
+    ) -> JobHandler:
+        mode = request.visual_consistency_mode or "ingredients"
+        if mode not in {"ingredients", "msr", "i2v"}:
+            raise ValueError(
+                "visual_consistency_mode must be ingredients, msr, or i2v"
+            )
+        project_dir = self.store.resolve_project_path(project_id, ".")
+        plan_path = self.store.resolve_project_path(
+            project_id,
+            request.plan or "output/render/plans/ingredients.json",
+        )
+        return build_visual_consistency_preflight_handler(
+            project_dir,
+            plan_path=plan_path,
+            mode=mode,
+            preflight_mode=request.preflight_mode,
         )
 
 

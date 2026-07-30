@@ -13,6 +13,8 @@ from feverslop.composition.stage_runners import (
     _run_ltx_render_scenes_stage,
     resolve_pipeline_stages,
 )
+from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
@@ -75,11 +77,272 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             backend = use_case.backend
             materializer = Mock()
             with patch("feverslop.composition.stage_runners.build_render_video_scenes_use_case", return_value=use_case), \
-                 patch("feverslop.composition.stage_runners.WorkflowMaterializer", return_value=materializer):
+                 patch("feverslop.composition.stage_runners.WorkflowMaterializer", return_value=materializer), \
+                 patch("feverslop.composition.stage_runners._run_visual_consistency_preflight") as preflight:
                 _run_ltx_prepare_workflows_stage(state)
 
         self.assertEqual([1, 3], [call.args[0].scene["scene"] for call in materializer.prepare.call_args_list])
+        self.assertEqual(
+            [1, 2, 3],
+            [scene.scene_number for scene in preflight.call_args.args[1]],
+        )
         backend.render_queue.queue_workflow_and_download_first_video.assert_not_called()
+
+    def test_selected_continuous_scene_preflights_its_predecessor(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients", scenes="2")
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([
+                {
+                    "scene": 1,
+                    "ingredients": {"sheet_path": "sheet1.png", "anchors": []},
+                    "ltx": {"base_prompt": "one", "static_prompt": "one"},
+                },
+                {
+                    "scene": 2,
+                    "transition_from_previous": "continuous",
+                    "ingredients": {"sheet_path": "sheet2.png", "anchors": []},
+                    "ltx": {"base_prompt": "two", "static_prompt": "two"},
+                },
+            ]), encoding="utf-8")
+            for number in (1, 2):
+                (project / f"sheet{number}.png").write_bytes(b"sheet")
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight"
+            ) as preflight:
+                _run_ltx_prepare_workflows_stage(state)
+
+        self.assertEqual(
+            [1, 2],
+            [scene.scene_number for scene in preflight.call_args.args[1]],
+        )
+        self.assertEqual(
+            [2],
+            [
+                call.args[0].scene["scene"]
+                for call in materializer.prepare.call_args_list
+            ],
+        )
+
+    def test_strict_visual_consistency_preflight_blocks_before_materialization(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients", scenes="1")
+            state.args.visual_consistency_preflight = "strict"
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([{
+                "scene": 1,
+                "references": {"actor_ids": ["missing"]},
+                "ingredients": {
+                    "sheet_path": "sheet.png",
+                    "anchors": [{"id": "missing"}],
+                    "global_prompt": "Reference `missing`",
+                },
+                "ltx": {"base_prompt": "scene", "static_prompt": "scene"},
+            }]), encoding="utf-8")
+            (project / "sheet.png").write_bytes(b"sheet")
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case"
+            ) as use_case, patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer"
+            ) as materializer, self.assertRaisesRegex(
+                ValueError, "missing_actor_reference"
+            ):
+                _run_ltx_prepare_workflows_stage(state)
+
+            use_case.assert_not_called()
+            materializer.assert_not_called()
+
+    def test_warn_preflight_reports_missing_actor_and_still_prepares(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients", scenes="1")
+            state.args.visual_consistency_preflight = PreflightMode.WARN
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([{
+                "scene": 1,
+                "references": {"actor_ids": ["missing"]},
+                "ingredients": {
+                    "sheet_path": "sheet.png",
+                    "anchors": [{"id": "missing"}],
+                    "global_prompt": "Reference `missing`",
+                },
+                "ltx": {"base_prompt": "scene", "static_prompt": "scene"},
+            }]), encoding="utf-8")
+            (project / "sheet.png").write_bytes(b"sheet")
+            use_case = Mock()
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=use_case,
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners.console.print"
+            ) as output:
+                _run_ltx_prepare_workflows_stage(state)
+
+            materializer.prepare.assert_called_once()
+            self.assertTrue(
+                any(
+                    "WARNING" in str(call.args[0])
+                    and "missing_actor_reference" in str(call.args[0])
+                    for call in output.call_args_list
+                )
+            )
+
+    def test_off_preflight_bypasses_manifest_config_and_contract_loading(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients", scenes="1")
+            state.args.visual_consistency_preflight = PreflightMode.OFF
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([{
+                "scene": 1,
+                "ingredients": {"sheet_path": "sheet.png", "anchors": []},
+                "ltx": {"base_prompt": "scene", "static_prompt": "scene"},
+            }]), encoding="utf-8")
+            (project / "sheet.png").write_bytes(b"sheet")
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners.ProjectConfig.load"
+            ) as config_load, patch(
+                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter"
+            ) as manifest_adapter, patch(
+                "feverslop.composition.stage_runners.preflight_visual_consistency"
+            ) as contract_preflight:
+                _run_ltx_prepare_workflows_stage(state)
+
+            materializer.prepare.assert_called_once()
+            config_load.assert_not_called()
+            manifest_adapter.assert_not_called()
+            contract_preflight.assert_not_called()
+
+    def test_strict_preflight_rejects_external_ingredients_artifact(self):
+        with TemporaryDirectory() as tmp, TemporaryDirectory() as outside_tmp:
+            project = Path(tmp)
+            outside = Path(outside_tmp) / "outside.png"
+            outside.write_bytes(b"outside")
+            state = self._state(project, pipeline="ltx_ingredients", scenes="1")
+            state.args.visual_consistency_preflight = PreflightMode.STRICT
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            reference_dir = (
+                project / "output" / "references" / "actors" / "hero"
+            )
+            reference_dir.mkdir(parents=True)
+            reference_asset = reference_dir / "sheet.png"
+            reference_asset.write_bytes(b"hero")
+            (reference_dir / "manifest.json").write_text(
+                json.dumps({
+                    "id": "hero",
+                    "sheet_path": reference_asset.relative_to(project).as_posix(),
+                    "visual_description": "hero reference",
+                }),
+                encoding="utf-8",
+            )
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([{
+                "scene": 1,
+                "references": {"actor_ids": ["hero"]},
+                "ingredients": {
+                    "sheet_path": str(outside),
+                    "anchors": [{"id": "hero"}],
+                    "global_prompt": "Reference `hero`",
+                },
+                "ltx": {"base_prompt": "scene", "static_prompt": "scene"},
+            }]), encoding="utf-8")
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case"
+            ) as use_case, patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer"
+            ) as materializer, self.assertRaisesRegex(
+                ValueError, "invalid_ingredients_sheet_path"
+            ):
+                _run_ltx_prepare_workflows_stage(state)
+
+            use_case.assert_not_called()
+            materializer.assert_not_called()
+
+    def test_default_preflight_warns_for_legacy_plan_and_loads_manifest_once(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients", scenes="1,2")
+            self.assertFalse(hasattr(state.args, "visual_consistency_preflight"))
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([
+                {
+                    "scene": number,
+                    "ingredients": {
+                        "sheet_path": f"sheet{number}.png",
+                        "anchors": [],
+                    },
+                    "ltx": {"base_prompt": f"scene {number}", "static_prompt": f"scene {number}"},
+                }
+                for number in (1, 2)
+            ]), encoding="utf-8")
+            for number in (1, 2):
+                (project / f"sheet{number}.png").write_bytes(b"sheet")
+            adapter = Mock()
+            adapter.load.return_value = ReferenceManifestSnapshot(
+                actors={},
+                locations={},
+                revision="legacy",
+            )
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter",
+                return_value=adapter,
+            ), patch(
+                "feverslop.composition.stage_runners.console.print"
+            ) as output:
+                _run_ltx_prepare_workflows_stage(state)
+
+            self.assertEqual(2, materializer.prepare.call_count)
+            adapter.load.assert_called_once()
+            warnings = [
+                str(call.args[0])
+                for call in output.call_args_list
+                if "legacy_contract_unknown" in str(call.args[0])
+            ]
+            self.assertEqual(2, len(warnings))
 
     def test_render_requires_prepared_scene_and_names_prepare_stage(self):
         with TemporaryDirectory() as tmp:

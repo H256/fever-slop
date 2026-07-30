@@ -6,7 +6,9 @@ import unittest
 
 from feverslop.adapters.project_visual_consistency import (
     ProjectReferenceManifestAdapter,
+    validate_project_scene_artifacts,
 )
+from feverslop.domain.visual_consistency import PreflightMode
 
 
 class ProjectReferenceManifestAdapterTests(unittest.TestCase):
@@ -120,6 +122,81 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
 
         self.assertIn(("hero", "default"), first.actors)
         self.assertEqual(first.revision, second.revision)
+
+    def test_validates_contained_ingredients_artifact_paths(self):
+        self._asset("sheets/scene.png")
+
+        issues = validate_project_scene_artifacts(
+            self.project,
+            [{"scene": 1, "ingredients": {"sheet_path": "sheets/scene.png"}}],
+            mode="ingredients",
+            preflight_mode=PreflightMode.STRICT,
+        )
+
+        self.assertEqual((), issues)
+
+    def test_reports_missing_and_external_ingredients_artifacts(self):
+        outside = self.projects_root / "outside.png"
+        outside.write_bytes(b"outside")
+
+        missing = validate_project_scene_artifacts(
+            self.project,
+            [{"scene": 1, "ingredients": {"sheet_path": "missing.png"}}],
+            mode="ingredients",
+            preflight_mode=PreflightMode.STRICT,
+        )
+        external = validate_project_scene_artifacts(
+            self.project,
+            [{"scene": 2, "ingredients": {"sheet_path": str(outside)}}],
+            mode="ingredients",
+            preflight_mode=PreflightMode.STRICT,
+        )
+
+        self.assertEqual("missing_ingredients_sheet_file", missing[0].code)
+        self.assertEqual("error", missing[0].severity)
+        self.assertEqual("invalid_ingredients_sheet_path", external[0].code)
+
+    def test_reports_missing_and_external_msr_artifacts(self):
+        outside = self.projects_root / "outside.png"
+        outside.write_bytes(b"outside")
+        self._asset("refs/hero.png")
+
+        issues = validate_project_scene_artifacts(
+            self.project,
+            [{
+                "scene": 1,
+                "references": {
+                    "actor_msr_paths": ["refs/hero.png", "missing.png"],
+                    "location_msr_path": str(outside),
+                },
+            }],
+            mode="msr",
+            preflight_mode=PreflightMode.WARN,
+        )
+
+        self.assertEqual(
+            ["missing_msr_actor_file", "invalid_msr_location_path"],
+            [issue.code for issue in issues],
+        )
+        self.assertTrue(all(issue.severity == "warning" for issue in issues))
+
+    def test_rejects_symlink_escape_when_supported(self):
+        outside = self.projects_root / "outside.png"
+        outside.write_bytes(b"outside")
+        link = self.project / "linked.png"
+        try:
+            link.symlink_to(outside)
+        except OSError as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+
+        issues = validate_project_scene_artifacts(
+            self.project,
+            [{"scene": 1, "ingredients": {"sheet_path": "linked.png"}}],
+            mode="ingredients",
+            preflight_mode=PreflightMode.STRICT,
+        )
+
+        self.assertEqual("invalid_ingredients_sheet_path", issues[0].code)
 
     def test_rejects_missing_external_and_directory_assets(self):
         outside = self.projects_root / "outside.png"
