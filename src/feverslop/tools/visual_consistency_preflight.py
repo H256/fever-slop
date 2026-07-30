@@ -14,7 +14,9 @@ from feverslop.adapters.project_visual_consistency import (
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
     preflight_visual_consistency,
+    resolve_preflight_workflow_profile,
 )
+from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.visual_consistency import PreflightMode
 
@@ -37,6 +39,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=PreflightMode.WARN,
     )
     parser.add_argument("--workflow-profile", default=None)
+    parser.add_argument("--app-config", default="app_config.json")
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -65,15 +68,43 @@ def run(argv: list[str] | None = None) -> int:
             snapshot = ProjectReferenceManifestAdapter(
                 lambda _project_id: project
             ).load(project.name)
+            app_config = AppConfig.load(args.app_config)
+            configured_profile = app_config.resolve_video_workflow_profile(
+                pipeline=_pipeline_for_mode(args.mode),
+                purpose="final",
+            )
+            workflow_profile = resolve_preflight_workflow_profile(
+                scenes,
+                explicit_profile=args.workflow_profile,
+                legacy_fallback=(
+                    configured_profile.name
+                    if configured_profile is not None
+                    else f"{args.mode}-default"
+                ),
+            )
+            selected_profile = next(
+                (
+                    profile
+                    for profile in app_config.video_workflow_profiles
+                    if profile.name == workflow_profile
+                    and profile.pipeline == _pipeline_for_mode(args.mode)
+                    and profile.purpose == "final"
+                ),
+                None,
+            )
             result = preflight_visual_consistency(
                 scenes,
                 snapshot,
                 mode=args.mode,
-                workflow_profile=args.workflow_profile or f"{args.mode}-default",
+                workflow_profile=workflow_profile,
                 preflight_mode=args.preflight_mode,
                 subject_mode=config.subject_mode if config else "multi",
                 max_scene_actors=config.max_scene_actors if config else 4,
-                supports_continuous_transitions=args.mode == "i2v",
+                supports_continuous_transitions=(
+                    args.mode != "ingredients"
+                    and selected_profile is not None
+                    and selected_profile.supports_start_frame
+                ),
             )
             artifact_issues = validate_project_scene_artifacts(
                 project,
@@ -98,6 +129,14 @@ def run(argv: list[str] | None = None) -> int:
 
     _print_result(result, json_output=args.json)
     return 0 if result.renderable else 2
+
+
+def _pipeline_for_mode(mode: str) -> str:
+    return {
+        "ingredients": "ltx_ingredients",
+        "msr": "ltx_msr",
+        "i2v": "ltx_i2v",
+    }[mode]
 
 
 def _plan_scenes(payload: Any) -> list[dict[str, Any]]:

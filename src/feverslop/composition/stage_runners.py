@@ -41,6 +41,7 @@ from feverslop.application.render_video import RenderVideoScenesRequest
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
     preflight_visual_consistency,
+    resolve_preflight_workflow_profile,
 )
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
@@ -531,14 +532,30 @@ def _music_handoff_prompt(previous_scene: dict | None) -> str:
     ).strip()
 
 
-def _resolved_startframe_profile(state: PipelineRunState):
+_PROFILE_UNSET = object()
+
+
+def _resolved_startframe_profile(
+    state: PipelineRunState,
+    profile_name: str | None | object = _PROFILE_UNSET,
+):
     if state.args.video_pipeline != "ltx_msr":
         return None
     app_config = AppConfig.load(state.app_config_path)
+    selected_name = (
+        profile_name
+        if profile_name is not _PROFILE_UNSET
+        else getattr(state.args, "video_workflow_profile", None)
+    )
+    if profile_name is not _PROFILE_UNSET and selected_name is not None and not any(
+        profile.name == selected_name
+        for profile in app_config.video_workflow_profiles
+    ):
+        return None
     profile = app_config.resolve_video_workflow_profile(
         pipeline="ltx_msr",
         purpose="final",
-        name=getattr(state.args, "video_workflow_profile", None),
+        name=selected_name,
     )
     if profile is not None and profile.supports_start_frame:
         configured = Path(profile.workflow_path).resolve()
@@ -672,17 +689,29 @@ def _run_visual_consistency_preflight(
         else state.ingredients_workflow
     )
     scene_payloads = [scene.to_dict() for scene in scenes]
+    workflow_profile = resolve_preflight_workflow_profile(
+        scene_payloads,
+        explicit_profile=getattr(state.args, "video_workflow_profile", None),
+        legacy_fallback=workflow.stem,
+    )
+    selected_profile = (
+        _resolved_startframe_profile(state, workflow_profile)
+        if mode == "msr"
+        else None
+    )
     result = preflight_visual_consistency(
         scene_payloads,
         snapshot,
         mode=mode,
-        workflow_profile=str(
-            getattr(state.args, "video_workflow_profile", None) or workflow.stem
-        ),
+        workflow_profile=workflow_profile,
         preflight_mode=preflight_mode,
         subject_mode=project_config.subject_mode,
         max_scene_actors=project_config.max_scene_actors,
-        supports_continuous_transitions=False,
+        supports_continuous_transitions=(
+            mode == "msr"
+            and selected_profile is not None
+            and selected_profile.supports_start_frame
+        ),
     )
     artifact_issues = validate_project_scene_artifacts(
         state.context.project_config_dir,

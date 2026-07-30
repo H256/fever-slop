@@ -61,6 +61,7 @@ class StudioJobRequest:
     exact: bool = False
     plan: str | None = None
     visual_consistency_mode: str | None = None
+    workflow_profile: str | None = None
     preflight_mode: PreflightMode = PreflightMode.WARN
 
     def __post_init__(self) -> None:
@@ -172,6 +173,7 @@ class VisualConsistencyPreflightAction:
             plan_path=plan_path,
             mode=mode,
             preflight_mode=request.preflight_mode,
+            workflow_profile=request.workflow_profile,
         )
 
 

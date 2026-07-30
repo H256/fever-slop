@@ -11,6 +11,9 @@ from unittest.mock import patch
 from feverslop.adapters.pipeline_runner_options import build_runner_argv
 from feverslop.composition.arg_parser import build_arg_parser as build_pipeline_parser
 from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.application.visual_consistency_preflight import (
+    VisualConsistencyPreflightResult,
+)
 from feverslop.tools.visual_consistency_preflight import (
     build_arg_parser,
     main,
@@ -19,6 +22,62 @@ from feverslop.tools.visual_consistency_preflight import (
 
 
 class VisualConsistencyCliTests(unittest.TestCase):
+    def test_structured_plan_uses_stored_custom_profile_and_configured_capability(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = self._valid_project(root)
+            plan = project / "output/render/plans/ingredients.json"
+            scenes = json.loads(plan.read_text(encoding="utf-8"))
+            scenes[0]["visual_consistency"] = {
+                "workflow_profile": "custom-msr"
+            }
+            plan.write_text(json.dumps(scenes), encoding="utf-8")
+            app_config = root / "app.json"
+            app_config.write_text(json.dumps({
+                "video_workflow_profiles": [{
+                    "name": "custom-msr",
+                    "pipeline": "ltx_msr",
+                    "workflow": "workflows/custom.json",
+                    "purpose": "final",
+                    "stages": 1,
+                    "output_scale": 1.0,
+                    "supports_per_pass_loras": False,
+                    "supports_start_frame": True,
+                }]
+            }), encoding="utf-8")
+
+            with patch(
+                "feverslop.tools.visual_consistency_preflight.preflight_visual_consistency",
+                return_value=VisualConsistencyPreflightResult((), ()),
+            ) as preflight:
+                status = run([
+                    str(project), "--mode", "msr", "--preflight-mode", "strict",
+                    "--app-config", str(app_config), "--json",
+                ])
+
+        self.assertEqual(0, status)
+        self.assertEqual("custom-msr", preflight.call_args.kwargs["workflow_profile"])
+        self.assertTrue(
+            preflight.call_args.kwargs["supports_continuous_transitions"]
+        )
+
+    def test_structured_plan_rejects_mixed_stored_profiles(self):
+        with TemporaryDirectory() as tmp:
+            project = self._valid_project(Path(tmp))
+            plan = project / "output/render/plans/ingredients.json"
+            scenes = json.loads(plan.read_text(encoding="utf-8"))
+            scenes.extend([
+                {"scene": 2, "visual_consistency": {"workflow_profile": "one"}},
+                {"scene": 3, "visual_consistency": {"workflow_profile": "two"}},
+            ])
+            plan.write_text(json.dumps(scenes), encoding="utf-8")
+            output = io.StringIO()
+            with redirect_stdout(output):
+                status = run([str(project), "--json"])
+
+        self.assertEqual(1, status)
+        self.assertIn("mixed visual consistency workflow profiles", output.getvalue())
+
     @staticmethod
     def _snapshot(project: Path) -> dict[str, bytes]:
         return {

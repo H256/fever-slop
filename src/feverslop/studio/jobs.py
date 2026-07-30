@@ -19,7 +19,9 @@ from feverslop.adapters.project_visual_consistency import (
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
     preflight_visual_consistency,
+    resolve_preflight_workflow_profile,
 )
+from feverslop.config.app_config import AppConfig
 from feverslop.composition import pipeline_runner
 from feverslop.composition.pipeline_runner import PipelineStage
 from feverslop.config.project_config import ProjectConfig
@@ -439,6 +441,7 @@ def build_visual_consistency_preflight_handler(
     plan_path: Path,
     mode: str,
     preflight_mode: PreflightMode,
+    workflow_profile: str | None = None,
 ) -> JobHandler:
     project_dir = project_dir.resolve()
     plan_path = plan_path.resolve()
@@ -466,15 +469,48 @@ def build_visual_consistency_preflight_handler(
             snapshot = ProjectReferenceManifestAdapter(
                 lambda _project_id: project_dir
             ).load(project_dir.name)
+            app_config = AppConfig.load("app_config.json")
+            pipeline = {
+                "ingredients": "ltx_ingredients",
+                "msr": "ltx_msr",
+                "i2v": "ltx_i2v",
+            }[mode]
+            configured_profile = app_config.resolve_video_workflow_profile(
+                pipeline=pipeline,
+                purpose="final",
+            )
+            resolved_profile = resolve_preflight_workflow_profile(
+                scenes,
+                explicit_profile=workflow_profile,
+                legacy_fallback=(
+                    configured_profile.name
+                    if configured_profile is not None
+                    else f"{mode}-default"
+                ),
+            )
+            selected_profile = next(
+                (
+                    profile
+                    for profile in app_config.video_workflow_profiles
+                    if profile.name == resolved_profile
+                    and profile.pipeline == pipeline
+                    and profile.purpose == "final"
+                ),
+                None,
+            )
             result = preflight_visual_consistency(
                 scenes,
                 snapshot,
                 mode=mode,
-                workflow_profile=f"{mode}-default",
+                workflow_profile=resolved_profile,
                 preflight_mode=preflight_mode,
                 subject_mode=config.subject_mode,
                 max_scene_actors=config.max_scene_actors,
-                supports_continuous_transitions=mode == "i2v",
+                supports_continuous_transitions=(
+                    mode != "ingredients"
+                    and selected_profile is not None
+                    and selected_profile.supports_start_frame
+                ),
             )
             artifact_issues = validate_project_scene_artifacts(
                 project_dir,

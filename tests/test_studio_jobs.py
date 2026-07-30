@@ -6,6 +6,10 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.application.visual_consistency_preflight import (
+    VisualConsistencyPreflightResult,
+)
+from feverslop.config.app_config import AppConfig
 from feverslop.studio.job_service import (
     StudioJobRequest,
     StudioJobService,
@@ -29,6 +33,77 @@ class _Store:
 
 
 class StudioVisualConsistencyJobTests(unittest.TestCase):
+    def test_structured_plan_uses_typed_profile_and_configured_capability(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "config.json").write_text(
+                json.dumps({"input_audio": "song.mp3"}), encoding="utf-8"
+            )
+            (project / "plan.json").write_text(json.dumps([{
+                "scene": 1,
+                "visual_consistency": {"workflow_profile": "custom-i2v"},
+            }]), encoding="utf-8")
+            app_path = project / "app.json"
+            app_path.write_text(json.dumps({
+                "video_workflow_profiles": [{
+                    "name": "custom-i2v",
+                    "pipeline": "ltx_i2v",
+                    "workflow": "workflows/custom.json",
+                    "purpose": "final",
+                    "stages": 1,
+                    "output_scale": 1.0,
+                    "supports_per_pass_loras": False,
+                    "supports_start_frame": True,
+                }]
+            }), encoding="utf-8")
+            action = VisualConsistencyPreflightAction(_Store(project))
+            request = StudioJobRequest(
+                action="visual-consistency-preflight",
+                plan="plan.json",
+                visual_consistency_mode="i2v",
+                workflow_profile="custom-i2v",
+                preflight_mode="strict",
+            )
+            with patch(
+                "feverslop.studio.jobs.AppConfig.load",
+                return_value=AppConfig.load(app_path),
+            ), patch(
+                "feverslop.studio.jobs.preflight_visual_consistency",
+                return_value=VisualConsistencyPreflightResult((), ()),
+            ) as preflight:
+                result = action.build("demo", request, {})(lambda _message: None)
+
+        self.assertTrue(result["renderable"])
+        self.assertEqual("custom-i2v", preflight.call_args.kwargs["workflow_profile"])
+        self.assertTrue(
+            preflight.call_args.kwargs["supports_continuous_transitions"]
+        )
+
+    def test_structured_plan_rejects_mixed_profiles_clearly(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / "config.json").write_text(
+                json.dumps({"input_audio": "song.mp3"}), encoding="utf-8"
+            )
+            (project / "plan.json").write_text(json.dumps([
+                {"scene": 1, "visual_consistency": {"workflow_profile": "one"}},
+                {"scene": 2, "visual_consistency": {"workflow_profile": "two"}},
+            ]), encoding="utf-8")
+            action = VisualConsistencyPreflightAction(_Store(project))
+            handler = action.build(
+                "demo",
+                StudioJobRequest(
+                    action="visual-consistency-preflight",
+                    plan="plan.json",
+                ),
+                {},
+            )
+
+            with self.assertRaisesRegex(
+                ValueError, "mixed visual consistency workflow profiles"
+            ):
+                handler(lambda _message: None)
+
     def test_read_only_action_is_registered_with_typed_options(self):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)

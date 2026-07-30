@@ -18,6 +18,48 @@ from feverslop.domain.scene_cast import resolve_scene_cast
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
+def resolve_preflight_workflow_profile(
+    scenes: list[dict[str, Any]],
+    *,
+    explicit_profile: str | None,
+    legacy_fallback: str | None,
+) -> str:
+    """Resolve one profile without silently rewriting stored contracts."""
+    stored_profiles: set[str] = set()
+    has_structured_contract = False
+    for scene in scenes:
+        payload = scene.get("visual_consistency")
+        if not isinstance(payload, dict):
+            continue
+        has_structured_contract = True
+        profile = payload.get("workflow_profile")
+        if isinstance(profile, str) and profile.strip():
+            stored_profiles.add(profile.strip())
+
+    if len(stored_profiles) > 1:
+        profiles = ", ".join(sorted(stored_profiles))
+        raise ValueError(
+            f"Render plan contains mixed visual consistency workflow profiles: {profiles}"
+        )
+    if stored_profiles:
+        stored_profile = next(iter(stored_profiles))
+        if explicit_profile and explicit_profile != stored_profile:
+            raise ValueError(
+                "Selected workflow profile does not match the stored visual "
+                f"consistency profile: {explicit_profile} != {stored_profile}"
+            )
+        return stored_profile
+    if has_structured_contract:
+        raise ValueError(
+            "Structured visual consistency contracts must declare workflow_profile"
+        )
+    if explicit_profile:
+        return explicit_profile
+    if legacy_fallback:
+        return legacy_fallback
+    raise ValueError("A visual consistency workflow profile is required")
+
+
 @dataclass(frozen=True)
 class VisualConsistencyPreflightResult:
     contracts: tuple[SceneConsistencyContract, ...]

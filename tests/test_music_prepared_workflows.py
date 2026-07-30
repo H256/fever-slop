@@ -1,6 +1,7 @@
 import argparse
 import json
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
@@ -12,6 +13,7 @@ from feverslop.composition.stage_runners import (
     _load_continuity_dirty,
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
+    _run_visual_consistency_preflight,
     resolve_pipeline_stages,
 )
 from feverslop.domain.visual_consistency import (
@@ -20,9 +22,46 @@ from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
 )
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
+from feverslop.application.visual_consistency_preflight import (
+    VisualConsistencyPreflightResult,
+)
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
+    def test_stage_resolves_selected_profile_continuous_capability(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_msr")
+            state.args.video_workflow_profile = "custom-msr"
+            state.args.visual_consistency_preflight = PreflightMode.STRICT
+            scene = Mock()
+            scene.to_dict.return_value = {
+                "scene": 1,
+                "visual_consistency": {"workflow_profile": "custom-msr"},
+            }
+            with patch(
+                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter.load",
+                return_value=Mock(spec=ReferenceManifestSnapshot),
+            ), patch(
+                "feverslop.composition.stage_runners._resolved_startframe_profile",
+                return_value=SimpleNamespace(
+                    name="custom-msr",
+                    supports_start_frame=True,
+                ),
+            ), patch(
+                "feverslop.composition.stage_runners.preflight_visual_consistency",
+                return_value=VisualConsistencyPreflightResult((), ()),
+            ) as preflight, patch(
+                "feverslop.composition.stage_runners.validate_project_scene_artifacts",
+                return_value=(),
+            ):
+                _run_visual_consistency_preflight(state, [scene])
+
+        self.assertEqual("custom-msr", preflight.call_args.kwargs["workflow_profile"])
+        self.assertTrue(
+            preflight.call_args.kwargs["supports_continuous_transitions"]
+        )
+
     def test_malformed_continuity_marker_fails_closed(self):
         with TemporaryDirectory() as tmp:
             marker = Path(tmp) / "continuity_dirty.json"
