@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from feverslop.ports.timeline_documents import AffectedArtifacts
 
@@ -246,7 +246,6 @@ class TimelineStudioViewModel(QObject):
         try:
             self._rebuilding = True
             self._set_status("rebuilding", error="")
-            snapshot = self._service.current_snapshot()
             # Compute a blanket affected set for all changed artifacts
             affected = AffectedArtifacts(
                 timeline=True,
