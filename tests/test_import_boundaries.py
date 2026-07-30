@@ -137,6 +137,7 @@ class ImportBoundaryTests(unittest.TestCase):
 
     def test_new_pure_application_modules_do_not_import_runtime_io(self):
         legacy_filesystem_modules = {
+            "continuity_handoff.py",
             "facefix_pipeline.py",
             "full_auto.py",
             "generate_render_plan.py",
