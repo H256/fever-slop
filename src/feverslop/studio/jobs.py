@@ -28,13 +28,6 @@ from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.ports.timeline_documents import AffectedArtifacts
 from feverslop.studio.logging import render_log_lines
-from feverslop.studio.services import (
-    rebuild_beat_json,
-    rebuild_ltx_prompt,
-    rebuild_render_plan,
-    rebuild_scene_srt,
-    rebuild_stage1_segments,
-)
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
 from feverslop.tools.reference_bible import run as render_reference_bible
 
@@ -391,67 +384,41 @@ class JobRegistry:
 # Rebuild-plan-timeline handler
 # ---------------------------------------------------------------------------
 
-_REBUILD_FUNC_MAP: dict[str, Callable[[str], dict[str, Any]]] = {
-    "beat_json": rebuild_beat_json,
-    "scene_srt": rebuild_scene_srt,
-    "stage1_segments": rebuild_stage1_segments,
-    "ltx_prompt": rebuild_ltx_prompt,
-    "render_plan": rebuild_render_plan,
-}
-
-_REBUILD_ORDER = list(_REBUILD_FUNC_MAP.keys())
-
 
 def _run_rebuild_plan_timeline(project_dir: str, affected: dict[str, bool], log: Callable[[str], None]) -> dict[str, Any]:
-    """Execute rebuilds for affected artifacts in dependency order.
+    """Rebuild downstream artifacts via the pipeline, skipping audio analysis.
 
-    One failure does not stop the others. Returns a summary of successes and failures.
+    Calls execute_rebuild_render_plan which assembles SceneTimelinePipeline,
+    PromptGenerationPipeline, and RenderPlanPipeline to regenerate all
+    affected artifacts from the current timeline on disk.
     """
-    # Import fresh references each time so that mock patches applied at
-    # runtime are visible here (the module-level _REBUILD_STEPS list
-    # would cache references at import time, defeating unittest.mock).
-    from feverslop.studio.services import (
-        rebuild_beat_json as _rb_beat,
-        rebuild_ltx_prompt as _rb_ltx,
-        rebuild_render_plan as _rb_render,
-        rebuild_scene_srt as _rb_scene,
-        rebuild_stage1_segments as _rb_stage1,
+    from feverslop.application.generate_render_plan import (
+        GenerateRenderPlanRequest,
+    )
+    from feverslop.composition.generate_render_plan import (
+        execute_rebuild_render_plan,
     )
 
-    steps = [
-        ("beat_json", _rb_beat),
-        ("scene_srt", _rb_scene),
-        ("stage1_segments", _rb_stage1),
-        ("ltx_prompt", _rb_ltx),
-        ("render_plan", _rb_render),
-    ]
-
-    results: dict[str, dict[str, Any]] = {}
-    has_error = False
-
-    for step_name, rebuild_fn in steps:
-        if not affected.get(step_name):
-            continue
-        log(f"Rebuilding {step_name}...")
-        try:
-            result = rebuild_fn(project_dir)
-            results[step_name] = {"status": "ok", "result": result}
-            log(f"  {step_name}: rebuilt successfully")
-        except Exception as exc:
-            results[step_name] = {"status": "error", "error": str(exc)}
-            log(f"  {step_name}: FAILED — {exc}")
-            has_error = True
-
-    total = sum(1 for v in affected.values() if v)
-    ok = sum(1 for r in results.values() if r["status"] == "ok")
-    status_label = "partial" if has_error else "done"
-    log(f"Rebuild complete: {ok}/{total} rebuilt ({status_label})")
-    return {
-        "total": total,
-        "rebuilt": ok,
-        "failed": total - ok,
-        "results": results,
-    }
+    log("Rebuilding render plan from timeline data...")
+    config_path = Path(project_dir) / "config.json"
+    try:
+        request = GenerateRenderPlanRequest(project_config_path=config_path)
+        result = execute_rebuild_render_plan(request)
+        log(f"  Render plan rebuilt: {result.scene_count} scenes")
+        return {
+            "total": len(affected),
+            "rebuilt": len(affected),
+            "failed": 0,
+            "result": result,
+        }
+    except Exception as exc:
+        log(f"  Rebuild failed: {exc}")
+        return {
+            "total": len(affected),
+            "rebuilt": 0,
+            "failed": 1,
+            "error": str(exc),
+        }
 
 
 def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipeline_mode: str | None = None) -> dict[str, Any]:
