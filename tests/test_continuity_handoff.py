@@ -84,21 +84,32 @@ class ContinuityHandoffTests(unittest.TestCase):
             clip.write_bytes(b"clip")
             frame = project / "output" / "keyframes" / "handoff.png"
             extractor = _Extractor()
+            extractor.project_dir = project
             scene = {"scene": 2, "keyframes": {"kept": True}, "ltx": {"base_prompt": "next"}}
 
             result = ContinuityHandoffUseCase(extractor).execute(
                 _contract(1),
                 _contract(2, mode="i2v", transition="continuous"),
-                clip,
+                clip.relative_to(project),
                 frame,
                 scene,
             )
 
         self.assertEqual({"scene": 2, "keyframes": {"kept": True}, "ltx": {"base_prompt": "next"}}, scene)
-        self.assertEqual([(clip, frame)], extractor.calls)
+        self.assertEqual([(clip.resolve(), frame)], extractor.calls)
         self.assertEqual("last_frame_from_previous", result["keyframes"]["startframe_mode"])
         self.assertEqual(1, result["keyframes"]["startframe_source_scene"])
         self.assertEqual(frame.as_posix(), result["keyframes"]["startframe_path"])
+        self.assertEqual(
+            __import__("hashlib").sha256(b"frame").hexdigest(),
+            result["keyframes"]["startframe_sha256"],
+        )
+        self.assertEqual(
+            "output/scene_0001.mp4",
+            result["keyframes"]["startframe_source_clip_path"],
+        )
+        self.assertEqual("last-frame-v1", result["keyframes"]["startframe_extractor"])
+        self.assertEqual(64, len(result["keyframes"]["startframe_source_clip_sha256"]))
         self.assertTrue(result["keyframes"]["kept"])
         self.assertEqual(18, result["ltx"]["msr_continuity_handoff_frames"])
         self.assertEqual(17, result["ltx"]["msr_continuity_msr_frame_count"])

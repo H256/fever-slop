@@ -14,7 +14,8 @@ from feverslop.adapters.prepared_workflow import (
     WorkflowMaterializationRequest,
     WorkflowMaterializer,
 )
-from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.prepared_workflow import SceneWorkflowManifest, sha256_file
+from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
 from feverslop.errors import FeverSlopValidationError
 from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
 from feverslop.scene_artifacts import SceneArtifactLayout
@@ -25,6 +26,9 @@ class FakeUploader:
         return "feverslop/audio/song-audiohash.wav"
 
     def resolve_reference_image_name(self, path, **_kwargs):
+        return f"actual/{Path(path).name}"
+
+    def resolve_startframe_name(self, path, **_kwargs):
         return f"actual/{Path(path).name}"
 
 
@@ -66,6 +70,9 @@ class FakeBackend:
             reference_name = self.asset_uploader.resolve_reference_image_name(ingredients_sheet)
         else:
             reference_name = None
+        startframe = (scene.get("keyframes") or {}).get("startframe_path")
+        if startframe:
+            self.asset_uploader.resolve_startframe_name(startframe)
         seed = self.seed_offset + scene["scene"]
         return {"scene": scene["scene"], "prompt": prompt, "audio": comfy_audio_name,
                 "reference": reference_name, "frames": rolling["render_frame_count"], "seed": seed}
@@ -129,6 +136,42 @@ class FakeCurrentServerResolver:
 
 
 class WorkflowMaterializerTests(unittest.TestCase):
+    @staticmethod
+    def _ingredients_contract(
+        scene: int,
+        actor_sha: str,
+        location_sha: str,
+        *,
+        fingerprint: str | None = None,
+    ) -> dict:
+        contract = SceneConsistencyContract.create(
+            scene=scene,
+            mode="ingredients",
+            workflow_profile="ingredients-v4",
+            actors=(
+                ReferenceAnchor(
+                    id="hero",
+                    kind="actor",
+                    look_id="default",
+                    asset_role="identity-reference",
+                    asset_sha256=actor_sha,
+                    prompt_anchor="hero",
+                ),
+            ),
+            location=ReferenceAnchor(
+                id="archive",
+                kind="location",
+                look_id="default",
+                asset_role="environment-reference",
+                asset_sha256=location_sha,
+                prompt_anchor="archive",
+            ),
+            transition_from_previous="cut",
+        ).to_dict()
+        if fingerprint is not None:
+            contract["fingerprint"] = fingerprint
+        return contract
+
     def test_renderer_accepts_current_server_asset_and_model_adapters(self):
         parameters = signature(PreparedWorkflowRenderer).parameters
 
@@ -333,6 +376,250 @@ class WorkflowMaterializerTests(unittest.TestCase):
 
             manifest = SceneWorkflowManifest.read(prepared.manifest_path)
             self.assertEqual({"ingredients_sheet"}, {asset.role for asset in manifest.assets})
+
+    def test_prepare_records_exact_contract_and_source_provenance(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            plan = project / "plan.json"
+            sheet = project / "sheet.png"
+            actor = project / "actor.png"
+            location = project / "location.png"
+            for path, content in (
+                (template, b"{}"),
+                (plan, b"{}"),
+                (sheet, b"sheet"),
+                (actor, b"actor"),
+                (location, b"location"),
+            ):
+                path.write_bytes(content)
+            contract_payload = self._ingredients_contract(
+                3, sha256_file(actor), sha256_file(location)
+            )
+            scene = {
+                "scene": 3,
+                "fps": 24,
+                "frame_count": 49,
+                "width": 1280,
+                "height": 704,
+                "ingredients": {
+                    "sheet_path": sheet.relative_to(project).as_posix(),
+                    "sheet_sha256": sha256_file(sheet),
+                },
+                "visual_consistency": contract_payload,
+                "visual_consistency_sources": {
+                    "actors": [
+                        {
+                            "id": "hero",
+                            "path": actor.relative_to(project).as_posix(),
+                        }
+                    ],
+                    "location": {
+                        "id": "archive",
+                        "path": location.relative_to(project).as_posix(),
+                    },
+                },
+            }
+
+            prepared = WorkflowMaterializer(
+                FakeBackend(template), SceneArtifactLayout(project)
+            ).prepare(
+                WorkflowMaterializationRequest(
+                    scene=scene,
+                    prompt="x",
+                    audio_file=None,
+                    render_plan_path=plan,
+                    pipeline="ltx_ingredients",
+                    seed=100003,
+                )
+            )
+
+            manifest = SceneWorkflowManifest.read(prepared.manifest_path)
+            self.assertEqual(
+                SceneConsistencyContract.from_dict(contract_payload),
+                manifest.consistency,
+            )
+            self.assertEqual(100003, manifest.seed)
+            self.assertEqual(
+                {"ingredients_sheet", "actor_sheet", "location_sheet"},
+                {asset.role for asset in manifest.assets},
+            )
+            self.assertTrue(
+                all(not Path(asset.path).is_absolute() for asset in manifest.assets)
+            )
+            self.assertEqual([], manifest.verify(project))
+
+    def test_prepare_rejects_tampered_consistency_fingerprint_before_build(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            plan = project / "plan.json"
+            actor = project / "actor.png"
+            location = project / "location.png"
+            for path in (template, plan, actor, location):
+                path.write_bytes(path.name.encode())
+            backend = FakeBackend(template)
+
+            with self.assertRaisesRegex(
+                ValueError, "fingerprint does not match canonical payload"
+            ):
+                WorkflowMaterializer(backend, SceneArtifactLayout(project)).prepare(
+                    WorkflowMaterializationRequest(
+                        scene={
+                            "scene": 1,
+                            "fps": 24,
+                            "frame_count": 49,
+                            "width": 1280,
+                            "height": 704,
+                            "visual_consistency": self._ingredients_contract(
+                                1,
+                                sha256_file(actor),
+                                sha256_file(location),
+                                fingerprint="0" * 64,
+                            ),
+                        },
+                        prompt="x",
+                        audio_file=None,
+                        render_plan_path=plan,
+                        pipeline="ltx_ingredients",
+                        seed=100001,
+                    )
+                )
+
+            self.assertEqual(0, backend.build_calls)
+
+    def test_prepare_rejects_invalid_consistency_provenance_before_manifest_replace(self):
+        failures = (
+            "source_hash",
+            "mode",
+            "missing_startframe",
+            "startframe_hash",
+            "missing_source_clip_hash",
+        )
+        for failure in failures:
+            with self.subTest(failure=failure), TemporaryDirectory() as tmp:
+                project = Path(tmp)
+                template = project / "template.json"
+                plan = project / "plan.json"
+                sheet = project / "sheet.png"
+                actor = project / "actor.png"
+                wrong_actor = project / "wrong-actor.png"
+                location = project / "location.png"
+                for path, content in (
+                    (template, b"{}"),
+                    (plan, b"{}"),
+                    (sheet, b"sheet"),
+                    (actor, b"actor"),
+                    (wrong_actor, b"wrong"),
+                    (location, b"location"),
+                ):
+                    path.write_bytes(content)
+                if failure in {
+                    "missing_startframe",
+                    "startframe_hash",
+                    "missing_source_clip_hash",
+                }:
+                    contract = SceneConsistencyContract.create(
+                        scene=2,
+                        mode="msr",
+                        workflow_profile="msr-startframe",
+                        actors=(
+                            ReferenceAnchor(
+                                id="hero",
+                                kind="actor",
+                                look_id="default",
+                                asset_role="identity-reference",
+                                asset_sha256=sha256_file(actor),
+                                prompt_anchor="hero",
+                            ),
+                        ),
+                        location=ReferenceAnchor(
+                            id="archive",
+                            kind="location",
+                            look_id="default",
+                            asset_role="environment-reference",
+                            asset_sha256=sha256_file(location),
+                            prompt_anchor="archive",
+                        ),
+                        transition_from_previous="continuous",
+                    )
+                    pipeline = "ltx_msr"
+                    scene_number = 2
+                else:
+                    contract = SceneConsistencyContract.from_dict(
+                        self._ingredients_contract(
+                            1, sha256_file(actor), sha256_file(location)
+                        )
+                    )
+                    pipeline = "ltx_msr" if failure == "mode" else "ltx_ingredients"
+                    scene_number = 1
+                actor_source = wrong_actor if failure == "source_hash" else actor
+                scene = {
+                    "scene": scene_number,
+                    "fps": 24,
+                    "frame_count": 49,
+                    "width": 1280,
+                    "height": 704,
+                    "ingredients": {
+                        "sheet_path": sheet.relative_to(project).as_posix(),
+                        "sheet_sha256": sha256_file(sheet),
+                    },
+                    "visual_consistency": contract.to_dict(),
+                    "visual_consistency_sources": {
+                        "actors": [{
+                            "id": "hero",
+                            "path": actor_source.relative_to(project).as_posix(),
+                        }],
+                        "location": {
+                            "id": "archive",
+                            "path": location.relative_to(project).as_posix(),
+                        },
+                    },
+                }
+                if failure in {"startframe_hash", "missing_source_clip_hash"}:
+                    source_clip = layout_source = (
+                        project
+                        / "output"
+                        / "render"
+                        / "scenes"
+                        / "scene_0001"
+                        / "final.mp4"
+                    )
+                    source_clip.parent.mkdir(parents=True, exist_ok=True)
+                    source_clip.write_bytes(b"source clip")
+                    startframe = project / "startframe.png"
+                    startframe.write_bytes(b"extracted frame")
+                    claimed_startframe_sha = sha256_file(startframe)
+                    if failure == "startframe_hash":
+                        startframe.write_bytes(b"tampered frame")
+                    scene["keyframes"] = {
+                        "startframe_path": startframe.relative_to(project).as_posix(),
+                        "startframe_sha256": claimed_startframe_sha,
+                        "startframe_mode": "last_frame_from_previous",
+                        "startframe_source_scene": 1,
+                        "startframe_source_clip_path": (
+                            layout_source.relative_to(project).as_posix()
+                        ),
+                        "startframe_source_clip_sha256": sha256_file(source_clip),
+                        "startframe_extractor": "last-frame-v1",
+                    }
+                    if failure == "missing_source_clip_hash":
+                        scene["keyframes"].pop("startframe_source_clip_sha256")
+                layout = SceneArtifactLayout(project)
+
+                with self.assertRaisesRegex(ValueError, "consistency provenance"):
+                    WorkflowMaterializer(FakeBackend(template), layout).prepare(
+                        WorkflowMaterializationRequest(
+                            scene=scene,
+                            prompt="x",
+                            audio_file=None,
+                            render_plan_path=plan,
+                            pipeline=pipeline,
+                            seed=100000 + scene_number,
+                        )
+                    )
+
+                self.assertFalse(layout.scene_manifest(scene_number).exists())
 
     def test_prepare_selects_random_seed_once_when_request_does_not_supply_one(self):
         with TemporaryDirectory() as tmp:

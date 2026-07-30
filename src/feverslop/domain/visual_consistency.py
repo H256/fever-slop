@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
+from feverslop.domain.artifact_hash import sha256_file
 
 SCHEMA = "feverslop.visual-consistency/v1"
 _MODES = {"ingredients", "msr", "i2v"}
@@ -295,17 +297,34 @@ def apply_continuity_handoff(
             f"Scene {current.scene} does not support continuity handoff"
         )
 
+    project_dir = getattr(frame_extractor, "project_dir", None)
+    raw_source_clip = Path(previous_clip)
+    source_clip = (
+        (Path(project_dir).resolve() / raw_source_clip).resolve()
+        if project_dir is not None and not raw_source_clip.is_absolute()
+        else raw_source_clip.resolve()
+    )
     extracted = frame_extractor.extract_last_frame(
-        previous_clip,
+        source_clip,
         output_frame,
+    )
+    stored_source_clip = (
+        source_clip.relative_to(Path(project_dir).resolve()).as_posix()
+        if project_dir is not None
+        and source_clip.is_relative_to(Path(project_dir).resolve())
+        else source_clip.as_posix()
     )
     scene = deepcopy(dict(current_scene))
     keyframes = dict(scene.get("keyframes") or {})
     keyframes.update(
         {
             "startframe_path": extracted.as_posix(),
+            "startframe_sha256": sha256_file(extracted),
             "startframe_source_scene": previous.scene,
             "startframe_mode": "last_frame_from_previous",
+            "startframe_source_clip_path": stored_source_clip,
+            "startframe_source_clip_sha256": sha256_file(source_clip),
+            "startframe_extractor": "last-frame-v1",
         }
     )
     scene["keyframes"] = keyframes
