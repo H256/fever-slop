@@ -10,6 +10,7 @@ from feverslop.studio.job_service import StudioJobService
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.projects import ProjectStore
 from feverslop.studio.scene_workspace_service import SceneWorkspaceService
+from feverslop.studio.timeline_service import TimelineStudioService
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class StudioContext:
     jobs: JobRegistry
     job_service: StudioJobService
     scene_service: SceneWorkspaceService
+    timeline_service: TimelineStudioService
 
 
 def create_studio_context(projects_root: str | Path) -> StudioContext:
@@ -43,5 +45,5 @@ def create_studio_context(projects_root: str | Path) -> StudioContext:
                 )
             ),
         ),
+        timeline_service=TimelineStudioService(job_registry=jobs),
     )
-
