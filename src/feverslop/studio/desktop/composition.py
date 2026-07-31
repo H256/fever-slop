@@ -5,11 +5,13 @@ from pathlib import Path
 
 from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
 from feverslop.application.scene_workspace import LoadSceneWorkspaceUseCase, PatchSceneUseCase
+from feverslop.infra.sqlite_adapter import SqliteRevisionStore
 from feverslop.ports.reporting import NullReporter
 from feverslop.studio.job_service import StudioJobService
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.projects import ProjectStore
 from feverslop.studio.reference_workspace_service import ReferenceWorkspaceService
+from feverslop.studio.rebuild_service import RebuildService
 from feverslop.studio.scene_workspace_service import SceneWorkspaceService
 from feverslop.studio.timeline_service import TimelineStudioService
 
@@ -21,6 +23,7 @@ class StudioContext:
     job_service: StudioJobService
     scene_service: SceneWorkspaceService
     timeline_service: TimelineStudioService
+    rebuild_service: RebuildService
     reference_factory: type[ReferenceWorkspaceService] = ReferenceWorkspaceService
 
 
@@ -29,6 +32,7 @@ def create_studio_context(projects_root: str | Path) -> StudioContext:
     jobs = JobRegistry()
     job_service = StudioJobService(store=store, jobs=jobs)
     scene_documents = ProjectSceneDocuments(store.project_root)
+    revisions_db = str(store.projects_root / "render" / "prompt_revisions.db")
     return StudioContext(
         store=store,
         jobs=jobs,
@@ -48,4 +52,5 @@ def create_studio_context(projects_root: str | Path) -> StudioContext:
             ),
         ),
         timeline_service=TimelineStudioService(job_registry=jobs),
+        rebuild_service=RebuildService(SqliteRevisionStore(revisions_db)),
     )

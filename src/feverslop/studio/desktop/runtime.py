@@ -9,6 +9,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 from feverslop.studio.desktop.composition import create_studio_context
 from feverslop.studio.desktop.viewmodels.references import ReferenceWorkspaceViewModel
+from feverslop.studio.desktop.viewmodels.rebuild import RebuildViewModel
 from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
 from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 from feverslop.studio.desktop.viewmodels.timeline import TimelineStudioViewModel
@@ -90,12 +91,14 @@ def run_studio(projects_root: str | Path) -> int:
         service=ref_service,
         project_root=str(context.store.projects_root),
     )
+    rebuild_view_model = RebuildViewModel(service=context.rebuild_service)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("studioViewModel", view_model)
     engine.rootContext().setContextProperty("sceneWorkspaceViewModel", scene_view_model)
     engine.rootContext().setContextProperty("timelineViewModel", timeline_view_model)
     engine.rootContext().setContextProperty("referenceWorkspaceViewModel", ref_view_model)
-    engine._feverslop_view_models = (view_model, scene_view_model, timeline_view_model, ref_view_model)  # type: ignore[attr-defined]
+    engine.rootContext().setContextProperty("rebuildViewModel", rebuild_view_model)
+    engine._feverslop_view_models = (view_model, scene_view_model, timeline_view_model, ref_view_model, rebuild_view_model)  # type: ignore[attr-defined]
     engine.load(qml_entrypoint())
     if not engine.rootObjects():
         return 1
