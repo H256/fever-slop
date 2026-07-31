@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -430,7 +431,7 @@ def _record_action_fingerprint(
                 ),
             )
         except Exception:
-            pass
+            logging.debug("Failed to record artifact fingerprint for %s", action, exc_info=True)
 
 
 def _action_to_artifact_kind(action: str):

@@ -250,7 +250,11 @@ def preview_rebuild(
         rebuild.discard(ArtifactKind.BEAT_MARKERS)
         rebuild.discard(ArtifactKind.REFERENCE_SOURCES)
 
-    # Use provenance data to filter out artifacts that are already CURRENT
+    # Use provenance data to filter out artifacts that are already CURRENT.
+    # NOTE: Until `_record_action_fingerprint` computes actual output-file hashes,
+    # `Freshness.CURRENT` is unreliable — it indicates an artifact was produced at
+    # least once, but does NOT guarantee its content matches the current inputs.
+    # This means the filter may incorrectly exclude artifacts that should be rebuilt.
     if current_fingerprints:
         for kind in list(rebuild):
             if current_fingerprints.get(kind) == Freshness.CURRENT:

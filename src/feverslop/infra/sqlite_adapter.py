@@ -71,7 +71,11 @@ def ensure_schema(
 
     connection.executescript(SCHEMA_SQL)
 
-    # Migrate v1 -> v2: add project_id column if missing
+    # Migrate v1 -> v2: add project_id column if missing.
+    # NOTE: Legacy rows that were created before v2 will get project_id="" after
+    # this migration. These rows become invisible to queries filtered by a real
+    # project_id. Users with pre-v2 databases should expect orphaned revision
+    # history until they re-create the project and new revisions are saved.
     try:
         cursor = connection.execute(
             "PRAGMA table_info(prompt_revisions)"
@@ -95,16 +99,6 @@ def ensure_schema(
     return connection
 
 
-def check_schema_version(connection: sqlite3.Connection) -> int | None:
-    """Return the current schema version from the database, or None if not yet migrated."""
-    try:
-        cursor = connection.execute("SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1")
-        row = cursor.fetchone()
-        return row["version"] if row else None
-    except Exception:
-        return None
-
-
 class SqliteRevisionStore(RevisionStorePort):
     """SQLite-backed implementation of RevisionStorePort."""
 
@@ -119,13 +113,6 @@ class SqliteRevisionStore(RevisionStorePort):
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         ensure_schema(conn)
-        # Runtime schema version check
-        db_version = check_schema_version(conn)
-        if db_version is not None and db_version < SCHEMA_VERSION:
-            raise RuntimeError(
-                f"Database schema version {db_version} is outdated, "
-                f"expected {SCHEMA_VERSION}. Please reinitialize the database."
-            )
         try:
             yield conn
         finally:
@@ -215,12 +202,6 @@ class SqliteArtifactProvenance(ArtifactProvenancePort):
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         ensure_schema(conn)
-        db_version = check_schema_version(conn)
-        if db_version is not None and db_version < SCHEMA_VERSION:
-            raise RuntimeError(
-                f"Database schema version {db_version} is outdated, "
-                f"expected {SCHEMA_VERSION}. Please reinitialize the database."
-            )
         try:
             yield conn
         finally:
