@@ -75,7 +75,23 @@ ScrollView {
             }
         }
 
-        Label { text: "Image prompt"; color: "#E4E4E7"; font.pixelSize: 14; font.bold: true }
+        RowLayout {
+            spacing: 8
+            Label { text: "Image prompt"; color: "#E4E4E7"; font.pixelSize: 14; font.bold: true; Layout.fillWidth: true }
+            Button {
+                objectName: "imagePromptHistoryButton"
+                text: "↩"
+                palette.button: "#3F3F46"
+                palette.buttonText: "#A1A1AA"
+                Accessible.name: "Show image prompt revision history"
+                onClicked: {
+                    if (typeof rebuildViewModel !== "undefined" && !!inspector.scene.sceneNumber) {
+                        rebuildViewModel.loadRevisions(inspector.scene.sceneNumber, "z_image_prompt")
+                        revisionDrawer.open(Drawer.Right)
+                    }
+                }
+            }
+        }
         TextArea {
             id: imagePrompt
             objectName: "sceneImagePrompt"
@@ -100,7 +116,21 @@ ScrollView {
         }
 
         RowLayout {
+            spacing: 8
             Label { text: "LTX prompt"; color: "#E4E4E7"; font.pixelSize: 14; font.bold: true; Layout.fillWidth: true }
+            Button {
+                objectName: "videoPromptHistoryButton"
+                text: "↩"
+                palette.button: "#3F3F46"
+                palette.buttonText: "#A1A1AA"
+                Accessible.name: "Show video prompt revision history"
+                onClicked: {
+                    if (typeof rebuildViewModel !== "undefined" && !!inspector.scene.sceneNumber) {
+                        rebuildViewModel.loadRevisions(inspector.scene.sceneNumber, "i2v_prompt")
+                        revisionDrawer.open(Drawer.Right)
+                    }
+                }
+            }
             ComboBox {
                 id: promptSource
                 objectName: "sceneLtxPromptSource"

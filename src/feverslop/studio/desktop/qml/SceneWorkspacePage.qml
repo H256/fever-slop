@@ -155,6 +155,15 @@ Rectangle {
                     enabled: page.actionsEnabled
                     onClicked: page.sceneVm.startSelectedAction("retake")
                 }
+                Button {
+                    objectName: "rebuildPreviewButton"
+                    text: "Rebuild Preview"
+                    palette.button: "#3F3F46"
+                    palette.buttonText: "#F4F4F5"
+                    Accessible.name: "Preview rebuild impact"
+                    enabled: page.actionsEnabled
+                    onClicked: rebuildDialog.open()
+                }
             }
         }
 
@@ -267,6 +276,28 @@ Rectangle {
                     anchors.fill: parent
                     anchors.margins: 20
                     sceneVm: page.sceneVm
+                }
+            }
+        }
+
+        PromptRevisionDrawer {
+            id: revisionDrawer
+            edge: drawer.Right
+            sceneVm: page.sceneVm
+            rebuildVm: typeof rebuildViewModel !== "undefined" ? rebuildViewModel : null
+            parent: page
+        }
+
+        RebuildPreviewDialog {
+            id: rebuildDialog
+            parent: page
+            studioVm: page.studioVm
+            sceneVm: page.sceneVm
+            onRebuildAccepted: {
+                const rebuildKinds = rebuildSection.artifactKinds
+                if (rebuildKinds.length > 0 && typeof rebuildViewModel !== "undefined") {
+                    const action = rebuildViewModel.artifactKindsToAction(rebuildKinds)
+                    page.sceneVm.startSelectedAction(action)
                 }
             }
         }

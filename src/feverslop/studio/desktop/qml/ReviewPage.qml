@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtMultimedia
+import "components"
 
 Item {
     id: page
@@ -125,6 +126,9 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 14
                     Label { text: page.selectedItem ? "Scene " + page.selectedItem.scene : "No scene"; color: "#1C1C1E"; font.bold: true; font.pixelSize: 18 }
+                    ArtifactFreshnessBadge {
+                        status: page.selectedItem ? (page.selectedItem.freshness || "unknown") : "unknown"
+                    }
                     Label {
                         text: page.selectedItem ? page.selectedItem.status : "missing"
                         color: page.selectedItem && page.selectedItem.status === "final" ? "#2E7D32" : "#B26A00"
@@ -252,6 +256,10 @@ Item {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         Label { text: "Scene " + modelData.scene; color: "#FFFFFF"; font.bold: true; Layout.fillWidth: true }
+                                        ArtifactFreshnessBadge {
+                                            id: shotBadge
+                                            status: modelData.freshness || (modelData.stale ? "stale" : "unknown")
+                                        }
                                         Label { text: modelData.status; color: modelData.status === "final" ? "#7EDB82" : "#FFCA5C"; font.pixelSize: 11 }
                                     }
                                     Label { text: modelData.preview || modelData.clip; color: "#C7C7CC"; elide: Text.ElideRight; Layout.fillWidth: true }

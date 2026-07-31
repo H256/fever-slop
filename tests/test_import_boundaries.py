@@ -38,6 +38,7 @@ class ImportBoundaryTests(unittest.TestCase):
             *Path("src/feverslop/ports").rglob("*.py"),
             *Path("src/feverslop/application").rglob("*.py"),
             *Path("src/feverslop/adapters").rglob("*.py"),
+            *Path("src/feverslop/infra").rglob("*.py"),
             *(path for path in studio_root.rglob("*.py") if desktop_root not in path.parents),
         ]
 
@@ -186,6 +187,8 @@ class ImportBoundaryTests(unittest.TestCase):
         forbidden = [
             "from feverslop.adapters.",
             "import feverslop.adapters.",
+            "from feverslop.infra.",
+            "import feverslop.infra.",
         ]
         offenders = []
         for layer_root in inner_layers:
