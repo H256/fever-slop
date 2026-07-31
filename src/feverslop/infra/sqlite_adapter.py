@@ -1,0 +1,248 @@
+from __future__ import annotations
+
+import datetime
+import sqlite3
+from contextlib import contextmanager
+from typing import Generator
+
+from feverslop.domain.prompt_revisions import PromptField, PromptHistory, PromptRevision
+from feverslop.domain.rebuild_policy import ArtifactFingerprint, ArtifactKind
+from feverslop.ports.rebuild_execution import ArtifactProvenancePort
+from feverslop.ports.revision_store import (
+    DuplicateRevisionError,
+    RevisionStorePort,
+)
+
+_UTC = datetime.timezone.utc
+
+SCHEMA_VERSION = 1
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS prompt_revisions (
+    id TEXT PRIMARY KEY,
+    scene_number INTEGER NOT NULL,
+    field TEXT NOT NULL,
+    value TEXT NOT NULL,
+    parent_id TEXT,
+    restored_from TEXT,
+    content_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_revisions_scene_field
+    ON prompt_revisions (scene_number, field);
+
+CREATE TABLE IF NOT EXISTS schema_versions (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS artifact_provenance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    artifact_kind TEXT NOT NULL,
+    scene_number INTEGER,
+    prompt_hash TEXT,
+    workflow_hash TEXT,
+    reference_hash TEXT,
+    timeline_hash TEXT,
+    dimensions_hash TEXT,
+    recorded_at TEXT NOT NULL,
+    UNIQUE(project_id, artifact_kind, scene_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_artifact_provenance_project
+    ON artifact_provenance (project_id);
+
+CREATE INDEX IF NOT EXISTS idx_artifact_provenance_kind
+    ON artifact_provenance (project_id, artifact_kind, scene_number);
+"""
+
+
+def ensure_schema(
+    connection: sqlite3.Connection | None = None,
+) -> sqlite3.Connection:
+    """Ensure the database schema is up to date. Opens a new connection if none provided."""
+    if connection is None:
+        raise ValueError("Database connection required")
+
+    connection.executescript(SCHEMA_SQL)
+    connection.commit()
+    return connection
+
+
+class SqliteRevisionStore(RevisionStorePort):
+    """SQLite-backed implementation of RevisionStorePort."""
+
+    def __init__(self, db_path: str) -> None:
+        self._db_path = db_path
+
+    @contextmanager
+    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Open a connection with WAL mode and return it."""
+        conn = sqlite3.connect(self._db_path, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.row_factory = sqlite3.Row
+        ensure_schema(conn)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def save_revision(self, revision: PromptRevision) -> None:
+        with self._connection() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO prompt_revisions
+                        (id, scene_number, field, value, parent_id, restored_from, content_hash, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        revision.id,
+                        revision.scene_number,
+                        revision.field.value,
+                        revision.value,
+                        revision.parent_id,
+                        revision.restored_from,
+                        revision.content_hash,
+                        revision.created_at.isoformat(),
+                    ),
+                )
+                conn.commit()
+            except sqlite3.IntegrityError as exc:
+                raise DuplicateRevisionError(revision.id) from exc
+
+    def load_history(
+        self,
+        scene_number: int,
+        field: PromptField,
+    ) -> PromptHistory:
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT * FROM prompt_revisions
+                WHERE scene_number = ? AND field = ?
+                ORDER BY created_at ASC
+                """,
+                (scene_number, field.value),
+            )
+            rows = cursor.fetchall()
+
+        revisions = [
+            PromptRevision(
+                id=row["id"],
+                scene_number=row["scene_number"],
+                field=PromptField(row["field"]),
+                value=row["value"],
+                parent_id=row["parent_id"],
+                restored_from=row["restored_from"],
+                content_hash=row["content_hash"],
+                created_at=datetime.datetime.fromisoformat(row["created_at"]),
+            )
+            for row in rows
+        ]
+
+        return PromptHistory(scene_number=scene_number, field=field, revisions=tuple(revisions))
+
+    def list_fields(self, scene_number: int) -> list[PromptField]:
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT DISTINCT field FROM prompt_revisions
+                WHERE scene_number = ?
+                """,
+                (scene_number,),
+            )
+            return [PromptField(row["field"]) for row in cursor.fetchall()]
+
+
+class SqliteArtifactProvenance(ArtifactProvenancePort):
+    """SQLite-backed implementation of ArtifactProvenancePort."""
+
+    def __init__(self, db_path: str) -> None:
+        self._db_path = db_path
+
+    @contextmanager
+    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
+        conn = sqlite3.connect(self._db_path, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.row_factory = sqlite3.Row
+        ensure_schema(conn)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def record_fingerprint(self, project_id: str, fingerprint: ArtifactFingerprint) -> None:
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO artifact_provenance
+                    (project_id, artifact_kind, scene_number, prompt_hash, workflow_hash, reference_hash, timeline_hash, dimensions_hash, recorded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    fingerprint.artifact_kind.value,
+                    fingerprint.scene_number,
+                    fingerprint.prompt_hash,
+                    fingerprint.workflow_hash,
+                    fingerprint.reference_hash,
+                    fingerprint.timeline_hash,
+                    fingerprint.dimensions_hash,
+                    datetime.datetime.now(_UTC).isoformat(),
+                ),
+            )
+            conn.commit()
+
+    def load_fingerprint(
+        self, project_id: str, kind: ArtifactKind, scene_number: int | None = None
+    ) -> ArtifactFingerprint | None:
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT * FROM artifact_provenance
+                WHERE project_id = ? AND artifact_kind = ?
+                AND (scene_number = ? OR (scene_number IS NULL AND ? IS NULL))
+                ORDER BY recorded_at DESC LIMIT 1
+                """,
+                (project_id, kind.value, scene_number, scene_number),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return ArtifactFingerprint(
+                artifact_kind=ArtifactKind(row["artifact_kind"]),
+                scene_number=row["scene_number"],
+                prompt_hash=row["prompt_hash"],
+                workflow_hash=row["workflow_hash"],
+                reference_hash=row["reference_hash"],
+                timeline_hash=row["timeline_hash"],
+                dimensions_hash=row["dimensions_hash"],
+            )
+
+    def load_fingerprints(self, project_id: str) -> list[ArtifactFingerprint]:
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT * FROM artifact_provenance
+                WHERE project_id = ?
+                ORDER BY recorded_at DESC
+                """,
+                (project_id,),
+            )
+            return [
+                ArtifactFingerprint(
+                    artifact_kind=ArtifactKind(row["artifact_kind"]),
+                    scene_number=row["scene_number"],
+                    prompt_hash=row["prompt_hash"],
+                    workflow_hash=row["workflow_hash"],
+                    reference_hash=row["reference_hash"],
+                    timeline_hash=row["timeline_hash"],
+                    dimensions_hash=row["dimensions_hash"],
+                )
+                for row in cursor.fetchall()
+            ]

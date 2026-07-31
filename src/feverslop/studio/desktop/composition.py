@@ -5,7 +5,7 @@ from pathlib import Path
 
 from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
 from feverslop.application.scene_workspace import LoadSceneWorkspaceUseCase, PatchSceneUseCase
-from feverslop.infra.sqlite_adapter import SqliteRevisionStore
+from feverslop.infra.sqlite_adapter import SqliteArtifactProvenance, SqliteRevisionStore
 from feverslop.ports.reporting import NullReporter
 from feverslop.studio.job_service import StudioJobService
 from feverslop.studio.jobs import JobRegistry
@@ -24,6 +24,7 @@ class StudioContext:
     scene_service: SceneWorkspaceService
     timeline_service: TimelineStudioService
     rebuild_service: RebuildService
+    provenance: SqliteArtifactProvenance
     reference_factory: type[ReferenceWorkspaceService] = ReferenceWorkspaceService
 
 
@@ -53,4 +54,5 @@ def create_studio_context(projects_root: str | Path) -> StudioContext:
         ),
         timeline_service=TimelineStudioService(job_registry=jobs),
         rebuild_service=RebuildService(SqliteRevisionStore(revisions_db)),
+        provenance=SqliteArtifactProvenance(revisions_db),
     )

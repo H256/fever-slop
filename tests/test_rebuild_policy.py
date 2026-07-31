@@ -5,7 +5,6 @@ from feverslop.domain.rebuild_policy import (
     ChangeKind,
     ChangeSet,
     Freshness,
-    RebuildPlan,
     compute_freshness,
     preview_rebuild,
 )

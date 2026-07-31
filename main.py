@@ -6,6 +6,8 @@ import sys
 from rich.console import Console
 
 from feverslop.cli.movie_cli import build_movie_arg_parser
+from feverslop.cli.revision_commands import run_rebuild_preview, run_revisions
+from feverslop.cli.revisions import build_rebuild_preview_parser, build_revisions_parser
 from feverslop.composition.generate_render_plan import execute_generate_render_plan
 
 
@@ -109,6 +111,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # --- render subcommand ---
     _build_render_parser(subparsers)
 
+    # --- revisions subcommand ---
+    build_revisions_parser(subparsers)
+
+    # --- rebuild-preview subcommand ---
+    build_rebuild_preview_parser(subparsers)
+
     # --- backward-compatibility: top-level render-plan args ---
     # When no subcommand is given, these top-level args are parsed and the
     # render pipeline is executed automatically.
@@ -210,6 +218,10 @@ def main() -> None:
         _run_movie(args)
     elif args.command == "render":
         _run_render(args)
+    elif args.command == "revisions":
+        run_revisions(args)
+    elif args.command == "rebuild-preview":
+        run_rebuild_preview(args)
     elif args.project:
         # Backward compatibility: --project at top level => render pipeline.
         _run_render(args)

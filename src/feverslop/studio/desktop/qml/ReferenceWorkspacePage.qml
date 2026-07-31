@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "components"
 
 Rectangle {
     id: page
@@ -222,13 +223,17 @@ Rectangle {
                                         Layout.fillWidth: true
                                     }
 
-                                    Label {
-                                        text: model.kind + (model.stale ? " (stale)" : "") + (model.source ? " - " + model.source : "")
-                                        color: "#8E8E93"
-                                        font.pixelSize: 11
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
+                                        Label {
+                                            text: model.kind + (model.source ? " - " + model.source : "")
+                                            color: "#8E8E93"
+                                            font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+
+                                        ArtifactFreshnessBadge {
+                                            status: model.exists ? (model.stale ? "stale" : "current") : "unknown"
+                                        }
                                 }
                             }
 
@@ -359,11 +364,15 @@ Rectangle {
 
                         Label {
                             text: "Status: " +
-                                (refVm.selected_asset_info.exists ? "exists" : "MISSING") +
-                                " " + (refVm.selected_asset_info.stale ? "(stale)" : "(fresh)")
+                                (refVm.selected_asset_info.exists ? "exists" : "missing") +
+                                (refVm.selected_asset_info.stale ? " - stale" : " - fresh")
                             color: refVm.selected_asset_info.exists ? "#C7C7CC" : "#C62828"
                             font.pixelSize: 12
                             Layout.fillWidth: true
+                        }
+
+                        ArtifactFreshnessBadge {
+                            status: refVm.selected_asset_info.exists ? (refVm.selected_asset_info.stale ? "stale" : "current") : "unknown"
                         }
 
                         Label {

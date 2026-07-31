@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "components"
 
 Item {
     readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
@@ -34,6 +35,9 @@ Item {
                         Label { text: modelData.current_step || modelData.id; color: "#6E6E73"; elide: Text.ElideRight; Layout.fillWidth: true }
                     }
                     Label { text: modelData.status; color: modelData.status === "failed" ? "#C62828" : modelData.status === "succeeded" ? "#2E7D32" : "#5B5FC7"; font.bold: true }
+                    ArtifactFreshnessBadge {
+                        status: modelData.status === "succeeded" ? "current" : modelData.status === "failed" ? "stale" : "unknown"
+                    }
                     ProgressBar { from: 0; to: 100; value: modelData.overall_progress || modelData.progress || 0; Layout.preferredWidth: 220 }
                 }
             }

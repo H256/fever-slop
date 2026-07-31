@@ -5,7 +5,6 @@ import difflib
 import hashlib
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import FrozenSet
 
 
 class PromptField(Enum):
