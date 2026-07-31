@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from feverslop.adapters.project_reference_library import (
     ProjectReferenceLibrary,
@@ -31,7 +30,7 @@ class _FixtureProject:
         if actors:
             data["actors"] = [{"id": a} for a in actors]
         if locations:
-            data["locations"] = [{"id": l} for l in locations]
+            data["locations"] = [{"id": loc} for loc in locations]
         manifest_path = manifest_dir / "manifest.json"
         manifest_path.write_text(json.dumps(data), encoding="utf-8")
 

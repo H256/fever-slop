@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from feverslop.domain.reference_workspace import (
     ReferenceAsset,
@@ -13,10 +12,8 @@ from feverslop.domain.reference_workspace import (
     SceneReferenceAssignment,
 )
 from feverslop.studio.reference_workspace_service import (
-    CommandResult,
     GenerationCommand,
     ReferenceWorkspaceService,
-    StaleState,
     _assignment_from_dict,
     _assignment_to_dict,
     _asset_to_dict,

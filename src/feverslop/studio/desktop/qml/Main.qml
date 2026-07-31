@@ -243,7 +243,7 @@ ApplicationWindow {
                         DashboardPage {}
                         PipelinePage {}
                         JsonWorkspace { heading: "Render Plan"; defaultPath: "render_plan.json" }
-                        ArtifactPage { categoryFilter: "references"; titleText: "Reference assets" }
+                        ReferenceWorkspacePage {}
                         JsonWorkspace { heading: "Project Configuration"; defaultPath: "config.json" }
                         ArtifactPage { categoryFilter: ""; titleText: "Project artifacts" }
                         QueuePage {}
