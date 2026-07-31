@@ -295,8 +295,9 @@ Rectangle {
             sceneVm: page.sceneVm
             onRebuildAccepted: {
                 const rebuildKinds = rebuildSection.artifactKinds
-                if (rebuildKinds.length > 0) {
-                    page.sceneVm.startSelectedAction(rebuildKinds[0])
+                if (rebuildKinds.length > 0 && typeof rebuildViewModel !== "undefined") {
+                    const action = rebuildViewModel.artifactKindsToAction(rebuildKinds)
+                    page.sceneVm.startSelectedAction(action)
                 }
             }
         }

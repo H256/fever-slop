@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from PySide6.QtCore import (
     QAbstractListModel,
@@ -17,6 +17,7 @@ from PySide6.QtCore import (
     Slot,
 )
 
+from feverslop.domain.rebuild_policy import ArtifactKind
 from feverslop.domain.prompt_revisions import PromptField
 from feverslop.studio.rebuild_service import PromptSaveConflict, RebuildService
 
@@ -183,6 +184,10 @@ class RebuildViewModel(QObject):
             return url.toString()
         return QUrl.fromLocalFile(str(Path(path).resolve())).toString()
 
+    @Slot(list, result=str)
+    def artifactKindsToAction(self, kinds: list) -> str:  # noqa: N802 - QML API
+        return artifact_kinds_to_action(kinds)
+
     def set_project_id(self, project_id: str) -> None:
         self._project_id = project_id
 
@@ -212,3 +217,44 @@ def _compute_diff(current: str, previous: str) -> str:
         tofile="current",
     )
     return "".join(diff)
+
+
+# Map artifact kinds to job action names for rebuild execution.
+_ARTIFACT_KIND_TO_ACTION: dict[str, str] = {
+    ArtifactKind.RENDER_PLAN.value: "rebuild-plan-timeline",
+    ArtifactKind.PROMPT_GENERATION.value: "rebuild-plan-timeline",
+    ArtifactKind.SCENE_RENDER.value: "ltx-render-scenes",
+    ArtifactKind.FINAL_VIDEO.value: "final-concat",
+    ArtifactKind.PREPARED_WORKFLOW.value: "rebuild-plan",
+    ArtifactKind.REFERENCE_SHEETS.value: "rebuild-plan",
+    ArtifactKind.SCENE_STORYBOARD.value: "storyboard",
+    ArtifactKind.REVIEW_ORDERING.value: "rebuild-plan-timeline",
+}
+
+
+def artifact_kinds_to_action(kinds: Sequence[str | object]) -> str:
+    """Convert artifact kind names/values to the corresponding job action name.
+
+    Prefers timeline-aware rebuild for multi-artifact scenarios.
+    """
+    kind_values = set()
+    for kind in kinds:
+        if isinstance(kind, ArtifactKind):
+            kind_values.add(kind.value)
+        elif isinstance(kind, str):
+            kind_values.add(kind)
+
+    if not kind_values:
+        return "rebuild-plan-timeline"
+
+    # If there are prompt/render-plan changes, use the timeline-aware rebuild
+    if ArtifactKind.RENDER_PLAN.value in kind_values or ArtifactKind.PROMPT_GENERATION.value in kind_values:
+        return "rebuild-plan-timeline"
+
+    # First try direct mapping, then default to timeline rebuild
+    for kind_val in sorted(kind_values):
+        action = _ARTIFACT_KIND_TO_ACTION.get(kind_val)
+        if action:
+            return action
+
+    return "rebuild-plan-timeline"

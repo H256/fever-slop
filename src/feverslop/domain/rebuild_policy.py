@@ -94,7 +94,7 @@ class _RebuildStage:
     order: int
 
 
-PLANING_STAGE = _RebuildStage("planning", 1)
+PLANNING_STAGE = _RebuildStage("planning", 1)
 REFERENCE_STAGE = _RebuildStage("references", 2)
 RENDER_STAGE = _RebuildStage("render", 3)
 FINAL_STAGE = _RebuildStage("final", 4)
@@ -193,7 +193,10 @@ _CHANGE_TO_ARTIFACT: dict[ChangeKind, set[ArtifactKind]] = {
 }
 
 
-def preview_rebuild(change: ChangeSet) -> RebuildPlan:
+def preview_rebuild(
+    change: ChangeSet,
+    current_fingerprints: dict[ArtifactKind, Freshness] | None = None,
+) -> RebuildPlan:
     """Compute which artifacts need rebuild given a change set."""
     if not change.change_kinds:
         return RebuildPlan()
@@ -247,6 +250,12 @@ def preview_rebuild(change: ChangeSet) -> RebuildPlan:
         rebuild.discard(ArtifactKind.BEAT_MARKERS)
         rebuild.discard(ArtifactKind.REFERENCE_SOURCES)
 
+    # Use provenance data to filter out artifacts that are already CURRENT
+    if current_fingerprints:
+        for kind in list(rebuild):
+            if current_fingerprints.get(kind) == Freshness.CURRENT:
+                rebuild.discard(kind)
+
     # Determine reuse: artifacts not in rebuild
     all_kinds = set(ArtifactKind)
     reuse = all_kinds - rebuild
@@ -258,7 +267,7 @@ def preview_rebuild(change: ChangeSet) -> RebuildPlan:
     stages: set[_RebuildStage] = set()
     rebuild_set = frozenset(rebuild)
     if ArtifactKind.PROMPT_GENERATION in rebuild_set or ArtifactKind.RENDER_PLAN in rebuild_set:
-        stages.add(PLANING_STAGE)
+        stages.add(PLANNING_STAGE)
     if ArtifactKind.REFERENCE_SHEETS in rebuild_set:
         stages.add(REFERENCE_STAGE)
     if ArtifactKind.SCENE_RENDER in rebuild_set or ArtifactKind.SCENE_STORYBOARD in rebuild_set or ArtifactKind.PREPARED_WORKFLOW in rebuild_set:

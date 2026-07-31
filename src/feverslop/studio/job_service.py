@@ -40,6 +40,7 @@ from feverslop.studio.jobs import (
 from feverslop.studio.logging import render_log_lines
 from feverslop.studio.projects import ProjectStore
 from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.ports.rebuild_execution import ArtifactProvenancePort
 
 
 FullAutoHandlerFactory = Callable[..., Any]
@@ -94,11 +95,13 @@ class StudioJobService:
         *,
         store: ProjectStore,
         jobs: JobRegistry,
+        provenance: ArtifactProvenancePort | None = None,
         full_auto_handler: FullAutoHandlerFactory | None = None,
         pipeline_handler: PipelineHandlerFactory | None = None,
     ):
         self.store = store
         self.jobs = jobs
+        self.provenance = provenance
         self.registry = ActionRegistry(
             [
                 ReferenceRerenderAction(store),
@@ -112,7 +115,7 @@ class StudioJobService:
                 MovieFullAutoAction(store),
                 VisualConsistencyPreflightAction(store),
             ],
-            PipelineAction(store, pipeline_handler),
+            PipelineAction(store, pipeline_handler, provenance),
         )
 
     def start_job(self, project_id: str, request: StudioJobRequest) -> dict[str, Any]:
@@ -346,9 +349,10 @@ class MovieFinalConcatAction:
 class PipelineAction:
     action = "*"
 
-    def __init__(self, store: ProjectStore, factory: PipelineHandlerFactory | None):
+    def __init__(self, store: ProjectStore, factory: PipelineHandlerFactory | None, provenance: ArtifactProvenancePort | None = None):
         self.store = store
         self.factory = factory
+        self.provenance = provenance
 
     def build(self, project_id: str, request: StudioJobRequest, metadata: dict[str, Any]) -> JobHandler:
         config_path = self.store.resolve_project_path(project_id, "config.json")
@@ -362,6 +366,7 @@ class PipelineAction:
             handler,
             scenes=request.scenes,
             pipeline_mode=pipeline_mode,
+            provenance=self.provenance,
         )
 
 
@@ -373,6 +378,7 @@ def record_pipeline_state(
     *,
     scenes: list[int] | None = None,
     pipeline_mode: str | None = None,
+    provenance: ArtifactProvenancePort | None = None,
 ) -> JobHandler:
     if action not in PIPELINE_ACTIONS:
         return handler
@@ -384,9 +390,73 @@ def record_pipeline_state(
             store.record_pipeline_run(project_id, action=action, stages=pipeline_state_stages(action, scenes=scenes, pipeline_mode=pipeline_mode), status="failed")
             raise
         store.record_pipeline_run(project_id, action=action, stages=pipeline_state_stages(action, scenes=scenes, pipeline_mode=pipeline_mode), status="succeeded")
+        if provenance is not None:
+            _record_action_fingerprint(project_id, action, scenes=scenes, provenance=provenance)
         return result
 
     return run
+
+
+def _record_action_fingerprint(
+    project_id: str,
+    action: str,
+    *,
+    scenes: list[int] | None = None,
+    provenance: ArtifactProvenancePort,
+) -> None:
+    """Record artifact provenance fingerprints for known pipeline actions.
+
+    Maps pipeline actions to artifact kinds and records a fingerprint
+    with the action name as a simple identifier. Full hash computation
+    from output files is deferred to avoid blocking the job path.
+    """
+    from feverslop.domain.rebuild_policy import (
+        ArtifactFingerprint,
+    )
+
+    kind = _action_to_artifact_kind(action)
+    if kind is None:
+        return
+
+    scene_numbers = scenes or [None]
+    for scene_number in scene_numbers:
+        try:
+            provenance.record_fingerprint(
+                project_id=project_id,
+                fingerprint=ArtifactFingerprint(
+                    artifact_kind=kind,
+                    scene_number=scene_number,
+                    workflow_hash=_hash_action(action),
+                ),
+            )
+        except Exception:
+            pass
+
+
+def _action_to_artifact_kind(action: str):
+    from feverslop.domain.rebuild_policy import ArtifactKind
+
+    mapping: dict[str, ArtifactKind] = {
+        "rebuild-plan-timeline": ArtifactKind.RENDER_PLAN,
+        "rebuild-plan": ArtifactKind.PREPARED_WORKFLOW,
+        "ltx-render-scenes": ArtifactKind.SCENE_RENDER,
+        "storyboard-frames": ArtifactKind.SCENE_STORYBOARD,
+        "storyboard-page": ArtifactKind.SCENE_STORYBOARD,
+        "storyboard": ArtifactKind.SCENE_STORYBOARD,
+        "final-concat": ArtifactKind.FINAL_VIDEO,
+        "concat-video-only": ArtifactKind.FINAL_VIDEO,
+        "mux-original-audio": ArtifactKind.FINAL_VIDEO,
+        "msr-reference-sheets": ArtifactKind.REFERENCE_SHEETS,
+        "msr-references": ArtifactKind.REFERENCE_SOURCES,
+        "msr-prompt-enrich": ArtifactKind.PROMPT_GENERATION,
+        "msr-enrich": ArtifactKind.PROMPT_GENERATION,
+        "review-ordering": ArtifactKind.REVIEW_ORDERING,
+    }
+    return mapping.get(action)
+
+
+def _hash_action(action: str) -> str:
+    return hashlib.sha256(action.encode()).hexdigest()[:16]
 
 
 def pipeline_state_stages(action: str, *, scenes: list[int] | None = None, pipeline_mode: str | None = None) -> list[str]:

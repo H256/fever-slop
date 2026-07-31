@@ -48,7 +48,7 @@ class PreviewRebuildUseCase:
         change: ChangeSet,
         current_fingerprints: dict[ArtifactKind, Freshness] | None = None,
     ) -> RebuildPreviewResult:
-        plan = preview_rebuild(change)
+        plan = preview_rebuild(change, current_fingerprints=current_fingerprints)
 
         stages_map = {
             "planning": RebuildStage.PLANNING,
@@ -96,8 +96,9 @@ class RequestRebuildUseCase:
         *,
         project_id: str,
         change: ChangeSet,
+        current_fingerprints: dict[ArtifactKind, Freshness] | None = None,
     ) -> str:
-        plan = preview_rebuild(change)
+        plan = preview_rebuild(change, current_fingerprints=current_fingerprints)
         if not plan.rebuild:
             return ""
         return self._executor.request_rebuild(project_id, plan)

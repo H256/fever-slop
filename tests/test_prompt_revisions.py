@@ -14,6 +14,7 @@ class BuildRevisionTests(unittest.TestCase):
     def test_stable_id_from_same_inputs(self):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         rev = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A singer on stage",
@@ -29,6 +30,7 @@ class BuildRevisionTests(unittest.TestCase):
     def test_different_id_for_different_value(self):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         rev_a = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A singer on stage",
@@ -36,6 +38,7 @@ class BuildRevisionTests(unittest.TestCase):
             now=ts,
         )
         rev_b = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A different prompt",
@@ -48,6 +51,7 @@ class BuildRevisionTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 11, 0, 0, tzinfo=datetime.timezone.utc)
         rev1 = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A singer on stage",
@@ -55,6 +59,7 @@ class BuildRevisionTests(unittest.TestCase):
             now=ts1,
         )
         rev2 = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A singer on stage",
@@ -67,6 +72,7 @@ class BuildRevisionTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 11, 0, 0, tzinfo=datetime.timezone.utc)
         rev1 = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A singer on stage",
@@ -74,6 +80,7 @@ class BuildRevisionTests(unittest.TestCase):
             now=ts1,
         )
         rev2 = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A singer on stage",
@@ -86,6 +93,7 @@ class BuildRevisionTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
         rev1 = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="v1",
@@ -93,6 +101,7 @@ class BuildRevisionTests(unittest.TestCase):
             now=ts1,
         )
         rev2 = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="v2",
@@ -105,6 +114,7 @@ class BuildRevisionTests(unittest.TestCase):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         with self.assertRaises(ValueError):
             build_revision(
+                project_id="proj1",
                 scene_number=3,
                 field=PromptField.Z_IMAGE_PROMPT,
                 value="",
@@ -116,6 +126,7 @@ class BuildRevisionTests(unittest.TestCase):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         with self.assertRaises(ValueError):
             build_revision(
+                project_id="proj1",
                 scene_number=3,
                 field=PromptField.Z_IMAGE_PROMPT,
                 value="   \n  ",
@@ -127,6 +138,7 @@ class BuildRevisionTests(unittest.TestCase):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         with self.assertRaises(ValueError):
             build_revision(
+                project_id="proj1",
                 scene_number=3,
                 field="nonexistent_field",
                 value="A prompt",
@@ -138,6 +150,7 @@ class BuildRevisionTests(unittest.TestCase):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         with self.assertRaises(ValueError):
             build_revision(
+                project_id="proj1",
                 scene_number=-1,
                 field=PromptField.Z_IMAGE_PROMPT,
                 value="A prompt",
@@ -148,6 +161,7 @@ class BuildRevisionTests(unittest.TestCase):
     def test_revision_is_frozen(self):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         rev = build_revision(
+            project_id="proj1",
             scene_number=3,
             field=PromptField.Z_IMAGE_PROMPT,
             value="A singer on stage",
@@ -160,6 +174,7 @@ class BuildRevisionTests(unittest.TestCase):
     def test_deterministic_id_given_same_inputs(self):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         rev1 = build_revision(
+            project_id="proj1",
             scene_number=5,
             field=PromptField.I2V_PROMPT,
             value="deterministic prompt",
@@ -167,6 +182,7 @@ class BuildRevisionTests(unittest.TestCase):
             now=ts,
         )
         rev2 = build_revision(
+            project_id="proj1",
             scene_number=5,
             field=PromptField.I2V_PROMPT,
             value="deterministic prompt",
@@ -181,9 +197,9 @@ class RestoreRevisionTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
         ts3 = datetime.datetime(2026, 7, 21, 10, 2, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
-        r2 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
-        r3 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v3", parent_id=r2.id, now=ts3)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
+        r2 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
+        r3 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v3", parent_id=r2.id, now=ts3)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1, r2, r3])
 
         restored = restore_revision(history, revision_id=r1.id, now=ts3.replace(minute=3))
@@ -195,8 +211,8 @@ class RestoreRevisionTests(unittest.TestCase):
     def test_restore_value_matches_original(self):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="original text", parent_id=None, now=ts1)
-        r2 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="changed", parent_id=r1.id, now=ts2)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="original text", parent_id=None, now=ts1)
+        r2 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="changed", parent_id=r1.id, now=ts2)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1, r2])
 
         restored = restore_revision(history, revision_id=r1.id, now=ts2.replace(minute=2))
@@ -207,8 +223,8 @@ class RestoreRevisionTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
         ts3 = datetime.datetime(2026, 7, 21, 10, 2, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
-        r2 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
+        r2 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1, r2])
 
         restored = restore_revision(history, revision_id=r1.id, now=ts3)
@@ -220,8 +236,8 @@ class RestoreRevisionTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
         ts3 = datetime.datetime(2026, 7, 21, 10, 2, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
-        r2 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
+        r2 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1, r2])
 
         restored = restore_revision(history, revision_id=r1.id, now=ts3, with_parent=True)
@@ -230,7 +246,7 @@ class RestoreRevisionTests(unittest.TestCase):
 
     def test_restore_invalid_id_raises(self):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1])
 
         with self.assertRaises(ValueError):
@@ -249,9 +265,9 @@ class PromptHistoryTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
         ts3 = datetime.datetime(2026, 7, 21, 10, 2, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
-        r2 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
-        r3 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v3", parent_id=r2.id, now=ts3)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
+        r2 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
+        r3 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v3", parent_id=r2.id, now=ts3)
 
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r3, r1, r2])
         self.assertEqual(len(history.revisions), 3)
@@ -260,8 +276,8 @@ class PromptHistoryTests(unittest.TestCase):
     def test_latest_value(self):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
-        r2 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v1", parent_id=None, now=ts1)
+        r2 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="v2", parent_id=r1.id, now=ts2)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1, r2])
 
         self.assertEqual("v2", history.latest_value)
@@ -274,9 +290,9 @@ class PromptHistoryTests(unittest.TestCase):
         ts1 = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
         ts2 = datetime.datetime(2026, 7, 21, 10, 1, 0, tzinfo=datetime.timezone.utc)
         ts3 = datetime.datetime(2026, 7, 21, 10, 2, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="hello world", parent_id=None, now=ts1)
-        r2 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="hello beautiful world", parent_id=r1.id, now=ts2)
-        r3 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="goodbye beautiful world", parent_id=r2.id, now=ts3)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="hello world", parent_id=None, now=ts1)
+        r2 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="hello beautiful world", parent_id=r1.id, now=ts2)
+        r3 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="goodbye beautiful world", parent_id=r2.id, now=ts3)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1, r2, r3])
 
         diff = history.diff_with_previous(r3.id)
@@ -286,7 +302,7 @@ class PromptHistoryTests(unittest.TestCase):
 
     def test_diff_first_revision_is_none(self):
         ts = datetime.datetime(2026, 7, 21, 10, 0, 0, tzinfo=datetime.timezone.utc)
-        r1 = build_revision(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="first", parent_id=None, now=ts)
+        r1 = build_revision(project_id="proj1", scene_number=3, field=PromptField.Z_IMAGE_PROMPT, value="first", parent_id=None, now=ts)
         history = PromptHistory(scene_number=3, field=PromptField.Z_IMAGE_PROMPT, revisions=[r1])
 
         self.assertIsNone(history.diff_with_previous(r1.id))

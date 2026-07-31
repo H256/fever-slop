@@ -5,21 +5,24 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Generator
 
-from feverslop.domain.prompt_revisions import PromptField, PromptHistory, PromptRevision
+from feverslop.domain.prompt_revisions import (
+    DuplicateRevisionError,
+    PromptField,
+    PromptHistory,
+    PromptRevision,
+)
 from feverslop.domain.rebuild_policy import ArtifactFingerprint, ArtifactKind
 from feverslop.ports.rebuild_execution import ArtifactProvenancePort
-from feverslop.ports.revision_store import (
-    DuplicateRevisionError,
-    RevisionStorePort,
-)
+from feverslop.ports.revision_store import RevisionStorePort
 
 _UTC = datetime.timezone.utc
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS prompt_revisions (
     id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL DEFAULT '',
     scene_number INTEGER NOT NULL,
     field TEXT NOT NULL,
     value TEXT NOT NULL,
@@ -30,7 +33,7 @@ CREATE TABLE IF NOT EXISTS prompt_revisions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_prompt_revisions_scene_field
-    ON prompt_revisions (scene_number, field);
+    ON prompt_revisions (project_id, scene_number, field);
 
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -67,8 +70,39 @@ def ensure_schema(
         raise ValueError("Database connection required")
 
     connection.executescript(SCHEMA_SQL)
+
+    # Migrate v1 -> v2: add project_id column if missing
+    try:
+        cursor = connection.execute(
+            "PRAGMA table_info(prompt_revisions)"
+        )
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "project_id" not in columns:
+            connection.execute("ALTER TABLE prompt_revisions ADD COLUMN project_id TEXT NOT NULL DEFAULT ''")
+    except Exception:
+        pass
+
+    # Record schema version
+    try:
+        connection.execute(
+            "INSERT OR REPLACE INTO schema_versions (version, applied_at) VALUES (?, ?)",
+            (SCHEMA_VERSION, datetime.datetime.now(datetime.timezone.utc).isoformat()),
+        )
+    except Exception:
+        pass
+
     connection.commit()
     return connection
+
+
+def check_schema_version(connection: sqlite3.Connection) -> int | None:
+    """Return the current schema version from the database, or None if not yet migrated."""
+    try:
+        cursor = connection.execute("SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1")
+        row = cursor.fetchone()
+        return row["version"] if row else None
+    except Exception:
+        return None
 
 
 class SqliteRevisionStore(RevisionStorePort):
@@ -85,6 +119,13 @@ class SqliteRevisionStore(RevisionStorePort):
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         ensure_schema(conn)
+        # Runtime schema version check
+        db_version = check_schema_version(conn)
+        if db_version is not None and db_version < SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Database schema version {db_version} is outdated, "
+                f"expected {SCHEMA_VERSION}. Please reinitialize the database."
+            )
         try:
             yield conn
         finally:
@@ -96,11 +137,12 @@ class SqliteRevisionStore(RevisionStorePort):
                 conn.execute(
                     """
                     INSERT INTO prompt_revisions
-                        (id, scene_number, field, value, parent_id, restored_from, content_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, project_id, scene_number, field, value, parent_id, restored_from, content_hash, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         revision.id,
+                        revision.project_id,
                         revision.scene_number,
                         revision.field.value,
                         revision.value,
@@ -116,6 +158,7 @@ class SqliteRevisionStore(RevisionStorePort):
 
     def load_history(
         self,
+        project_id: str,
         scene_number: int,
         field: PromptField,
     ) -> PromptHistory:
@@ -123,16 +166,17 @@ class SqliteRevisionStore(RevisionStorePort):
             cursor = conn.execute(
                 """
                 SELECT * FROM prompt_revisions
-                WHERE scene_number = ? AND field = ?
+                WHERE project_id = ? AND scene_number = ? AND field = ?
                 ORDER BY created_at ASC
                 """,
-                (scene_number, field.value),
+                (project_id, scene_number, field.value),
             )
             rows = cursor.fetchall()
 
         revisions = [
             PromptRevision(
                 id=row["id"],
+                project_id=row["project_id"] if "project_id" in row.keys() else "",
                 scene_number=row["scene_number"],
                 field=PromptField(row["field"]),
                 value=row["value"],
@@ -146,14 +190,14 @@ class SqliteRevisionStore(RevisionStorePort):
 
         return PromptHistory(scene_number=scene_number, field=field, revisions=tuple(revisions))
 
-    def list_fields(self, scene_number: int) -> list[PromptField]:
+    def list_fields(self, project_id: str, scene_number: int) -> list[PromptField]:
         with self._connection() as conn:
             cursor = conn.execute(
                 """
                 SELECT DISTINCT field FROM prompt_revisions
-                WHERE scene_number = ?
+                WHERE project_id = ? AND scene_number = ?
                 """,
-                (scene_number,),
+                (project_id, scene_number),
             )
             return [PromptField(row["field"]) for row in cursor.fetchall()]
 
@@ -171,6 +215,12 @@ class SqliteArtifactProvenance(ArtifactProvenancePort):
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
         ensure_schema(conn)
+        db_version = check_schema_version(conn)
+        if db_version is not None and db_version < SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Database schema version {db_version} is outdated, "
+                f"expected {SCHEMA_VERSION}. Please reinitialize the database."
+            )
         try:
             yield conn
         finally:

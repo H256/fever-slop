@@ -5,16 +5,14 @@ from dataclasses import dataclass
 from typing import Callable
 
 from feverslop.domain.prompt_revisions import (
+    DuplicateRevisionError,
     PromptField,
     PromptHistory,
     PromptRevision,
     build_revision,
     restore_revision,
 )
-from feverslop.ports.revision_store import (
-    DuplicateRevisionError,
-    RevisionStorePort,
-)
+from feverslop.ports.revision_store import RevisionStorePort
 
 
 Clock = Callable[[], datetime.datetime]
@@ -48,7 +46,7 @@ class PatchPromptUseCase:
         field: PromptField,
         value: str,
     ) -> PromptRevision:
-        history = self._store.load_history(scene_number, field)
+        history = self._store.load_history(project_id, scene_number, field)
         parent_id = history.revisions[-1].id if history.revisions else None
 
         if history.revisions and history.revisions[-1].value == value:
@@ -59,6 +57,7 @@ class PatchPromptUseCase:
         now = self._clock()
         try:
             revision = build_revision(
+                project_id=project_id,
                 scene_number=scene_number,
                 field=field,
                 value=value,
@@ -87,8 +86,8 @@ class LoadPromptHistoryUseCase:
         scene_number: int,
         field: PromptField,
     ) -> HistoryLoadResult:
-        history = self._store.load_history(scene_number, field)
-        available_fields = self._store.list_fields(scene_number)
+        history = self._store.load_history(project_id, scene_number, field)
+        available_fields = self._store.list_fields(project_id, scene_number)
         return HistoryLoadResult(history=history, available_fields=available_fields)
 
 
@@ -110,7 +109,7 @@ class RestoreRevisionUseCase:
         field: PromptField,
         revision_id: str,
     ) -> PromptRevision:
-        history = self._store.load_history(scene_number, field)
+        history = self._store.load_history(project_id, scene_number, field)
         now = self._clock()
         restored = restore_revision(history, revision_id=revision_id, now=now)
         try:

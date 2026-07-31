@@ -12,6 +12,12 @@ class PromptField(Enum):
     I2V_PROMPT = "i2v_prompt"
 
 
+class DuplicateRevisionError(ValueError):
+    def __init__(self, revision_id: str) -> None:
+        super().__init__(f"Revision {revision_id!r} already exists")
+        self.revision_id = revision_id
+
+
 def _compute_content_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -32,6 +38,7 @@ def _compute_revision_id(
 @dataclass(frozen=True)
 class PromptRevision:
     id: str
+    project_id: str
     scene_number: int
     field: PromptField
     value: str
@@ -81,6 +88,7 @@ class PromptHistory:
 
 def build_revision(
     *,
+    project_id: str,
     scene_number: int,
     field: PromptField,
     value: str,
@@ -101,6 +109,7 @@ def build_revision(
 
     return PromptRevision(
         id=revision_id,
+        project_id=project_id,
         scene_number=scene_number,
         field=field,
         value=value,
@@ -139,6 +148,7 @@ def restore_revision(
 
     return PromptRevision(
         id=new_id,
+        project_id=source.project_id,
         scene_number=source.scene_number,
         field=source.field,
         value=source.value,

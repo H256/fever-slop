@@ -20,6 +20,7 @@ class _make_revision:
     @staticmethod
     def create(
         *,
+        project_id: str = "proj1",
         scene_number: int = 1,
         field: PromptField = PromptField.Z_IMAGE_PROMPT,
         value: str = "test prompt",
@@ -28,6 +29,7 @@ class _make_revision:
     ) -> PromptRevision:
         timestamp = now or datetime.datetime.now(datetime.timezone.utc)
         return build_revision(
+            project_id=project_id,
             scene_number=scene_number,
             field=field,
             value=value,
@@ -54,7 +56,7 @@ class SqliteRevisionStoreTests(unittest.TestCase):
         revision = _make_revision.create(value="initial prompt")
         store.save_revision(revision)
 
-        history = store.load_history(revision.scene_number, revision.field)
+        history = store.load_history("proj1", revision.scene_number, revision.field)
 
         self.assertEqual(len(history.revisions), 1)
         self.assertEqual(history.revisions[0].value, "initial prompt")
@@ -77,7 +79,7 @@ class SqliteRevisionStoreTests(unittest.TestCase):
         store.save_revision(rev1)
         store.save_revision(rev2)
 
-        history = store.load_history(rev1.scene_number, rev1.field)
+        history = store.load_history("proj1", rev1.scene_number, rev1.field)
 
         self.assertEqual(len(history.revisions), 2)
         self.assertEqual(history.revisions[0].value, "v1")
@@ -88,20 +90,20 @@ class SqliteRevisionStoreTests(unittest.TestCase):
         store.save_revision(_make_revision.create(value="z", field=PromptField.Z_IMAGE_PROMPT, scene_number=5))
         store.save_revision(_make_revision.create(value="i", field=PromptField.I2V_PROMPT, scene_number=5))
 
-        fields = store.list_fields(5)
+        fields = store.list_fields("proj1", 5)
         self.assertIn(PromptField.Z_IMAGE_PROMPT, fields)
         self.assertIn(PromptField.I2V_PROMPT, fields)
 
     def test_list_fields_empty(self):
         store = SqliteRevisionStore(self.db_file.name)
 
-        fields = store.list_fields(99)
+        fields = store.list_fields("proj1", 99)
         self.assertEqual(fields, [])
 
     def test_load_empty_history(self):
         store = SqliteRevisionStore(self.db_file.name)
 
-        history = store.load_history(99, PromptField.Z_IMAGE_PROMPT)
+        history = store.load_history("proj1", 99, PromptField.Z_IMAGE_PROMPT)
         self.assertEqual(len(history.revisions), 0)
 
     def test_concurrent_writes(self):
@@ -113,7 +115,7 @@ class SqliteRevisionStoreTests(unittest.TestCase):
         store1.save_revision(rev1)
         store2.save_revision(rev2)
 
-        history = store2.load_history(10, PromptField.Z_IMAGE_PROMPT)
+        history = store2.load_history("proj1", 10, PromptField.Z_IMAGE_PROMPT)
         self.assertEqual(len(history.revisions), 2)
 
 

@@ -16,11 +16,11 @@ class _FakeRevisionStore:
     """Minimal in-memory revision store for testing."""
 
     def __init__(self) -> None:
-        self._revisions: dict[tuple[int, str], list[PromptRevision]] = {}
+        self._revisions: dict[tuple[str, int, str], list[PromptRevision]] = {}
         self._clock_calls: list[str] = []
 
-    def load_history(self, scene_number: int, field: PromptField) -> PromptHistory:
-        key = (scene_number, field.value)
+    def load_history(self, project_id: str, scene_number: int, field: PromptField) -> PromptHistory:
+        key = (project_id, scene_number, field.value)
         return PromptHistory(
             scene_number=scene_number,
             field=field,
@@ -28,14 +28,14 @@ class _FakeRevisionStore:
         )
 
     def save_revision(self, revision: PromptRevision) -> None:
-        key = (revision.scene_number, revision.field.value)
+        key = (revision.project_id, revision.scene_number, revision.field.value)
         if key not in self._revisions:
             self._revisions[key] = []
         self._revisions[key].append(revision)
 
-    def list_fields(self, scene_number: int) -> list[PromptField]:
-        keys = [k for k in self._revisions if k[0] == scene_number]
-        return [PromptField(k[1]) for k in keys]
+    def list_fields(self, project_id: str, scene_number: int) -> list[PromptField]:
+        keys = [k for k in self._revisions if k[0] == project_id and k[1] == scene_number]
+        return [PromptField(k[2]) for k in keys]
 
 
 class RebuildServicePromptSaveTests(unittest.TestCase):

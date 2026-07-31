@@ -10,24 +10,22 @@ from feverslop.application.prompt_revisions import (
     RestoreRevisionUseCase,
 )
 from feverslop.domain.prompt_revisions import (
+    DuplicateRevisionError,
     PromptField,
     PromptHistory,
     PromptRevision,
 )
-from feverslop.ports.revision_store import (
-    DuplicateRevisionError,
-    RevisionStorePort,
-)
+from feverslop.ports.revision_store import RevisionStorePort
 
 
 class _MemoryRevisionStore(RevisionStorePort):
     """In-memory revision store for testing."""
 
     def __init__(self) -> None:
-        self._data: dict[tuple[int, str], list[dict[str, Any]]] = {}
+        self._data: dict[tuple[str, int, str], list[dict[str, Any]]] = {}
 
     def save_revision(self, revision: PromptRevision) -> None:
-        key = (revision.scene_number, revision.field.value)
+        key = (revision.project_id, revision.scene_number, revision.field.value)
         record = revision.__dict__.copy()
         record["created_at_iso"] = revision.created_at.isoformat()
         existing_ids = {r.get("id") for r in self._data.get(key, [])}
@@ -37,13 +35,14 @@ class _MemoryRevisionStore(RevisionStorePort):
             self._data[key] = []
         self._data[key].append(record)
 
-    def load_history(self, scene_number: int, field: PromptField) -> PromptHistory:
-        key = (scene_number, field.value)
+    def load_history(self, project_id: str, scene_number: int, field: PromptField) -> PromptHistory:
+        key = (project_id, scene_number, field.value)
         records = self._data.get(key, [])
         revisions: list[PromptRevision] = []
         for rec in records:
             rev = PromptRevision(
                 id=rec["id"],
+                project_id=rec.get("project_id", ""),
                 scene_number=rec["scene_number"],
                 field=rec["field"],
                 value=rec["value"],
@@ -55,10 +54,10 @@ class _MemoryRevisionStore(RevisionStorePort):
             revisions.append(rev)
         return PromptHistory(scene_number=scene_number, field=field, revisions=tuple(revisions))
 
-    def list_fields(self, scene_number: int) -> list[PromptField]:
+    def list_fields(self, project_id: str, scene_number: int) -> list[PromptField]:
         fields = set()
-        for (sn, fv) in self._data:
-            if sn == scene_number:
+        for (pid, sn, fv) in self._data:
+            if pid == project_id and sn == scene_number:
                 fields.add(PromptField(fv))
         return list(fields)
 

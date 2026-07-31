@@ -92,6 +92,7 @@ def run_studio(projects_root: str | Path) -> int:
         project_root=str(context.store.projects_root),
     )
     rebuild_view_model = RebuildViewModel(service=context.rebuild_service)
+    view_model.currentProjectChanged.connect(lambda: rebuild_view_model.set_project_id(view_model.current_project_id))  # type: ignore[attr-defined]
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("studioViewModel", view_model)
     engine.rootContext().setContextProperty("sceneWorkspaceViewModel", scene_view_model)
