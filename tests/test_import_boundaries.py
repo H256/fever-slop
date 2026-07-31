@@ -260,6 +260,51 @@ class ImportBoundaryTests(unittest.TestCase):
 
         self.assertEqual([], offenders)
 
+    def test_lyric_timeline_propagates_to_render_plan(self):
+        """Editing lyrics on a timeline segment should propagate through the render plan."""
+        from feverslop.domain.timeline_editing import EditableTimelineSegment, TimelineSnapshot
+
+        segments = [
+            EditableTimelineSegment(
+                start=0.0, end=5.0, kind="vocal", text="Verse 1", lyrics_line="Hello world", is_draft=True,
+            ),
+            EditableTimelineSegment(
+                start=5.0, end=10.0, kind="instrumental", text="Bridge", lyrics_line=None, is_draft=True,
+            ),
+        ]
+        snapshot = TimelineSnapshot(segments=segments, scene_boundaries=[], beat_markers=[], metadata={})
+
+        serialized = snapshot.to_json()
+        restored = TimelineSnapshot.from_json(serialized)
+
+        self.assertEqual("Hello world", restored.segments[0].lyrics_line)
+        self.assertIsNone(restored.segments[1].lyrics_line)
+        self.assertEqual(len(restored.segments), 2)
+
+    def test_instrumental_segments_trigger_closed_mouth_policy(self):
+        """Render plan scenes with only instrumental segments must get closed-mouth policy."""
+        from feverslop.application.ingredients_render_plan import build_ingredients_static_prompt
+
+        instrumental_relay = [
+            {"state": "motion", "prompt": "Camera pans across stage"},
+            {"state": "motion", "prompt": "Lighting shifts"},
+        ]
+        singing_relay = [
+            {"state": "singing", "prompt": "Performer sings"},
+            {"state": "motion", "prompt": "Camera pulls back"},
+        ]
+
+        instrumental_static = build_ingredients_static_prompt(
+            "Stage performance", instrumental_relay
+        )
+        singing_static = build_ingredients_static_prompt(
+            "Stage performance", singing_relay
+        )
+
+        self.assertIn("closed", instrumental_static.lower())
+        self.assertNotIn("closed", singing_static.lower())
+        self.assertIn("temporal", singing_static.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
