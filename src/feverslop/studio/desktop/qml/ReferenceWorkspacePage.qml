@@ -520,7 +520,7 @@ Rectangle {
                     }
                     onClicked: {
                         if (page.refVm) {
-                            page.refVm.save_assignments(page.refVm.assignments_model ? [] : [])
+                            page.refVm.save_assignments(page.refVm.collect_assignments())
                         }
                     }
                 }

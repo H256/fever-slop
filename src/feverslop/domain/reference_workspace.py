@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
-
 from feverslop.domain.scene_cast import resolve_scene_cast
 
 
@@ -64,7 +62,7 @@ class SceneReferenceAssignment:
         if isinstance(self.scene_number, bool) or not isinstance(self.scene_number, int) or self.scene_number <= 0:
             raise ValueError("Scene number must be a positive integer")
         object.__setattr__(self, "actor_ids", tuple(dict.fromkeys(str(a).strip() for a in self.actor_ids if str(a).strip())))
-        object.__setattr__(self, "location_ids", tuple(dict.fromkeys(str(l).strip() for l in self.location_ids if str(l).strip())))
+        object.__setattr__(self, "location_ids", tuple(dict.fromkeys(str(loc).strip() for loc in self.location_ids if str(loc).strip())))
         object.__setattr__(self, "background_ids", tuple(dict.fromkeys(str(b).strip() for b in self.background_ids or () if str(b).strip())))
         object.__setattr__(self, "style_ids", tuple(dict.fromkeys(str(s).strip() for s in self.style_ids if str(s).strip())))
         object.__setattr__(
@@ -107,7 +105,7 @@ class SceneReferenceAssignment:
             max_scene_actors=max_scene_actors,
         )
         if len(self.actor_ids) > len(resolved.actors):
-            issues.append(f"Scene {self.scene_number} has {len(self.actor_ids)} actors; at most 4 actors allowed")
+            issues.append(f"Scene {self.scene_number} has {len(self.actor_ids)} actors; at most {max_scene_actors} actors allowed")
 
         return issues
 

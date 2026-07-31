@@ -6,6 +6,7 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QModelIndex,
     QObject,
+    QPoint,
     Property,
     Qt,
     Signal,
@@ -167,11 +168,18 @@ class ReferenceWorkspaceViewModel(QObject):
         *,
         service: ReferenceWorkspaceService,
         media_url: Callable[[str], str] | None = None,
+        project_root: str = "",
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._service = service
-        self._media_url = media_url or (lambda p: "")
+        self._project_root = project_root
+        if media_url:
+            self._media_url = media_url
+        elif project_root:
+            self._media_url = self._resolve_media_url
+        else:
+            self._media_url = lambda p: ""
         self._library_model = ReferenceListModel(media_url=self._media_url, parent=self)
         self._assignments_model = SceneAssignmentListModel(parent=self)
         self._current_project: str = ""
@@ -184,6 +192,15 @@ class ReferenceWorkspaceViewModel(QObject):
         self._preview_result: CommandResult | None = None
 
     # -- QML properties --
+
+    def _resolve_media_url(self, path: str) -> str:  # type: ignore[misc]
+        from pathlib import Path
+        from PySide6.QtCore import QUrl
+
+        p = Path(path)
+        if not p.is_absolute() and self._project_root:
+            p = Path(self._project_root) / p
+        return QUrl.fromLocalFile(str(p)).toString()
 
     @Property("QVariant", notify=libraryChanged)
     def library_model(self) -> ReferenceListModel:
@@ -309,6 +326,25 @@ class ReferenceWorkspaceViewModel(QObject):
         self._error_message = result.error.message if result.error else "Save failed"
         self.errorMessageChanged.emit()
         return ""
+
+    @Slot(result="QVariantList")
+    def collect_assignments(self) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for row in range(self._assignments_model.rowCount()):
+            item = {"scene_number": 0, "actor_ids": [], "location_ids": [], "background_ids": [], "style_ids": [], "actor_look_ids": {}}
+            for role, key in [
+                (self._assignments_model.SceneNumberRole, "scene_number"),
+                (self._assignments_model.ActorIdsRole, "actor_ids"),
+                (self._assignments_model.LocationIdsRole, "location_ids"),
+                (self._assignments_model.BackgroundIdsRole, "background_ids"),
+                (self._assignments_model.StyleIdsRole, "style_ids"),
+                (self._assignments_model.ActorLookIdsRole, "actor_look_ids"),
+            ]:
+                val = self._assignments_model.data(self._assignments_model.indexAt(QPoint(0, row)), role)
+                if val is not None:
+                    item[key] = val
+            result.append(item)
+        return result
 
     @Slot(str, dict, result="QVariant")
     def queue_generation(self, action: str, params: dict) -> dict:

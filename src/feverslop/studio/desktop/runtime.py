@@ -88,7 +88,7 @@ def run_studio(projects_root: str | Path) -> int:
     )
     ref_view_model = ReferenceWorkspaceViewModel(
         service=ref_service,
-        media_url=lambda path: QUrl.fromLocalFile(str(Path(path))).toString(),
+        project_root=str(context.store.projects_root),
     )
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("studioViewModel", view_model)

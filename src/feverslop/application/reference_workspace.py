@@ -136,21 +136,19 @@ class SaveSceneAssignmentsUseCase:
                 issues=tuple(all_issues),
             )
 
+        old_snap = self._library.load(project_id)
+        old_assignments = old_snap.assignments
+
         new_revision: str
         try:
             new_revision = self._library.save_assignments(project_id, assignments, expected_revision)
         except ValueError:
             raise  # Revision mismatch bubbles up
 
-        old_snap = self._library.load(project_id)
-        changed_scene_numbers: list[int] = sorted(
-            {a.scene_number for a in assignments} - {a.scene_number for a in old_snap.assignments}
-        )
-        if not changed_scene_numbers:
-            changed_scene_numbers = [a.scene_number for a in assignments]
+        changed_scene_numbers = self._find_changed_scenes(assignments, old_assignments)
 
-        changed_actors = self._collect_changed_ids(assignments, old_snap.assignments, field="actor_ids")
-        changed_locations = self._collect_changed_ids(assignments, old_snap.assignments, field="location_ids")
+        changed_actors = self._collect_changed_ids(assignments, old_assignments, field="actor_ids")
+        changed_locations = self._collect_changed_ids(assignments, old_assignments, field="location_ids")
 
         invalidated = self._invalidation.get_invalidated_artifacts(
             project_id=project_id,
@@ -179,6 +177,37 @@ class SaveSceneAssignmentsUseCase:
         for a in old_assignments:
             old_ids.update(getattr(a, field))
         return list(new_ids ^ old_ids)
+
+    @staticmethod
+    def _find_changed_scenes(
+        new_assignments: tuple[SceneReferenceAssignment, ...],
+        old_assignments: tuple[SceneReferenceAssignment, ...],
+    ) -> list[int]:
+        def _scene_key(a: SceneReferenceAssignment) -> tuple:
+            return (
+                a.actor_ids,
+                a.location_ids,
+                a.background_ids,
+                a.style_ids,
+                tuple(sorted((a.actor_look_ids or {}).items())),
+            )
+
+        old_map: dict[int, tuple] = {}
+        for a in old_assignments:
+            old_map[a.scene_number] = _scene_key(a)
+
+        new_map: dict[int, tuple] = {}
+        for a in new_assignments:
+            new_map[a.scene_number] = _scene_key(a)
+
+        changed: list[int] = []
+        all_scenes = set(old_map.keys()) | set(new_map.keys())
+        for sn in all_scenes:
+            old_key = old_map.get(sn)
+            new_key = new_map.get(sn)
+            if old_key is None or new_key is None or new_key != old_key:
+                changed.append(sn)
+        return sorted(changed)
 
 
 class ImportReferenceUseCase:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -123,7 +124,7 @@ class ProjectReferenceLibrary(
         asset: ReferenceAsset,
     ) -> ReferenceAsset:
         source_path = Path(source_path)
-        if ".." in source_path.parts or (source_path.is_absolute() and source_path.is_relative_to(Path("/")) is False):
+        if ".." in source_path.parts:
             raise ValueError(f"Directory traversal detected in source path: {source_path}")
 
         dest_dir = self._project_root / "movie" / "references" / "imported"
@@ -272,9 +273,11 @@ class ProjectReferenceLibrary(
 
 
 def _next_revision(current: str) -> str:
-    prefix = "r"
-    num = int(current[len(prefix):]) if current[len(prefix):].isdigit() else 0
-    return f"{prefix}{num + 1}"
+    match = re.match(r"^r(\d+)$", current)
+    if match:
+        num = int(match.group(1))
+        return f"r{num + 1}"
+    return "r1"
 
 
 def _safe_filename(id: str, suffix: str) -> str:

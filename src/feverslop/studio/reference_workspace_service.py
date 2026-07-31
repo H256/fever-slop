@@ -18,6 +18,7 @@ from feverslop.domain.reference_workspace import (
     ReferenceWorkspaceSnapshot,
     SceneReferenceAssignment,
 )
+from feverslop.ports.reference_library import GenerationJobPort
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,7 @@ class StaleState:
 class ReferenceWorkspaceService:
     """Coordinates reference workspace operations without Qt dependency."""
 
-    def __init__(self, *, project_root: Path, max_scene_actors: int = 4):
+    def __init__(self, *, project_root: Path, max_scene_actors: int = 4, generation_jobs: GenerationJobPort | None = None):
         self._project_root = project_root
         self._library = ProjectReferenceLibrary(project_root, max_scene_actors=max_scene_actors)
         self._load = LoadReferenceWorkspaceUseCase(self._library)
@@ -67,7 +68,9 @@ class ReferenceWorkspaceService:
             invalidation=self._library,
         )
         self._import = ImportReferenceUseCase(importer=self._library)
-        self._generation = GenerationJobUseCase(jobs=FakeGenerationJobRegistry())
+        self._generation = GenerationJobUseCase(
+            jobs=generation_jobs if generation_jobs is not None else FakeGenerationJobRegistry(),
+        )
         self._current_project: str | None = None
 
     def set_project(self, project_id: str) -> None:
