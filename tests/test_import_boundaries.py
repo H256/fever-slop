@@ -154,6 +154,7 @@ class ImportBoundaryTests(unittest.TestCase):
             "pipeline_context.py",
             "prompt_generation_pipeline.py",
             "reference_bible.py",
+            "reference_workspace.py",
             "render_plan_ingredients_sheets.py",
             "render_storyboard.py",
             "render_video.py",

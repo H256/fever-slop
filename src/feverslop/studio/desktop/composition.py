@@ -9,6 +9,7 @@ from feverslop.ports.reporting import NullReporter
 from feverslop.studio.job_service import StudioJobService
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.projects import ProjectStore
+from feverslop.studio.reference_workspace_service import ReferenceWorkspaceService
 from feverslop.studio.scene_workspace_service import SceneWorkspaceService
 from feverslop.studio.timeline_service import TimelineStudioService
 
@@ -20,6 +21,7 @@ class StudioContext:
     job_service: StudioJobService
     scene_service: SceneWorkspaceService
     timeline_service: TimelineStudioService
+    reference_factory: type[ReferenceWorkspaceService] = ReferenceWorkspaceService
 
 
 def create_studio_context(projects_root: str | Path) -> StudioContext:

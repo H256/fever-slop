@@ -8,11 +8,13 @@ from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtQml import QQmlApplicationEngine
 
 from feverslop.studio.desktop.composition import create_studio_context
+from feverslop.studio.desktop.viewmodels.references import ReferenceWorkspaceViewModel
 from feverslop.studio.desktop.viewmodels.scenes import SceneWorkspaceViewModel
 from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 from feverslop.studio.desktop.viewmodels.timeline import TimelineStudioViewModel
 from feverslop.studio.job_service import thumbnail_path
 from feverslop.studio.projects import ProjectStore
+from feverslop.studio.reference_workspace_service import ReferenceWorkspaceService
 
 
 def qml_entrypoint() -> QUrl:
@@ -81,11 +83,19 @@ def run_studio(projects_root: str | Path) -> int:
         service=context.timeline_service,
         studio_view_model=view_model,
     )
+    ref_service = ReferenceWorkspaceService(
+        project_root=context.store.projects_root,
+    )
+    ref_view_model = ReferenceWorkspaceViewModel(
+        service=ref_service,
+        project_root=str(context.store.projects_root),
+    )
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("studioViewModel", view_model)
     engine.rootContext().setContextProperty("sceneWorkspaceViewModel", scene_view_model)
     engine.rootContext().setContextProperty("timelineViewModel", timeline_view_model)
-    engine._feverslop_view_models = (view_model, scene_view_model, timeline_view_model)  # type: ignore[attr-defined]
+    engine.rootContext().setContextProperty("referenceWorkspaceViewModel", ref_view_model)
+    engine._feverslop_view_models = (view_model, scene_view_model, timeline_view_model, ref_view_model)  # type: ignore[attr-defined]
     engine.load(qml_entrypoint())
     if not engine.rootObjects():
         return 1
