@@ -1,11 +1,9 @@
 import unittest
-from unittest.mock import MagicMock, patch
 
 from feverslop.domain.prompt_revisions import (
     PromptField,
     PromptHistory,
     PromptRevision,
-    build_revision,
 )
 from feverslop.studio.rebuild_service import (
     PromptSaveConflict,

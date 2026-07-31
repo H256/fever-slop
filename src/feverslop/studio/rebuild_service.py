@@ -14,7 +14,6 @@ from feverslop.application.prompt_revisions import (
 )
 from feverslop.domain.prompt_revisions import (
     PromptField,
-    PromptHistory,
     PromptRevision,
 )
 
