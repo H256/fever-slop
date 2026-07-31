@@ -5,6 +5,7 @@ These require PySide6 to run.
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -30,8 +31,16 @@ from feverslop.studio.desktop.viewmodels.references import (
 )
 from feverslop.studio.reference_workspace_service import (
     CommandResult,
+    GenerationCommand,
     ReferenceWorkspaceService,
 )
+
+
+def _fixture_path(proj_dir: Path) -> Path:
+    """Return the movie/references dir inside an adapter project."""
+    ref_dir = proj_dir / "movie" / "references"
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    return ref_dir
 
 
 class TestReferenceWorkspaceIntegration(unittest.TestCase):
@@ -46,46 +55,47 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp()
-        self._projects_root = Path(self._tmp) / "projects"
-        self._projects_root.mkdir()
+        self._project_root = Path(self._tmp)
 
     def tearDown(self) -> None:
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _make_test_project(self, project_id: str = "test") -> Path:
-        proj_dir = self._projects_root / project_id
+        proj_dir = self._project_root / project_id
         proj_dir.mkdir()
-        # Create a minimal project config
-        config = proj_dir / "config.json"
-        config.write_text("{}")
+        (proj_dir / "config.json").write_text("{}")
         return proj_dir
 
     def _create_assets(self, proj_dir: Path, assets: list[dict[str, Any]]) -> None:
-        """Create test asset files in the project's reference directory."""
-        ref_dir = proj_dir / "references"
-        ref_dir.mkdir(exist_ok=True)
+        """Create test asset files in the project's movie/references directory."""
+        ref_dir = _fixture_path(proj_dir)
         for asset in assets:
             path = ref_dir / asset.get("filename", asset["id"] + ".png")
             if not asset.get("exists", True):
                 continue
-            # Create a minimal PNG-like file (just for existence testing)
             path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
 
+    def _create_manifest(self, proj_dir: Path, actors: list[str] | None = None, locations: list[str] | None = None) -> None:
+        """Create movie/references/manifest.json with known actor/location IDs."""
+        ref_dir = _fixture_path(proj_dir)
+        data: dict[str, list[dict[str, str]]] = {}
+        if actors:
+            data["actors"] = [{"id": a} for a in actors]
+        if locations:
+            data["locations"] = [{"id": loc} for loc in locations]
+        (ref_dir / "manifest.json").write_text(json.dumps(data))
+
     def test_service_creation(self) -> None:
-        """Service can be created with projects_root."""
+        """Service can be created with a project root."""
         proj_dir = self._make_test_project()
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         self.assertIsNotNone(service)
 
     def test_load_empty_project(self) -> None:
         """Loading an empty project returns empty snapshot."""
         proj_dir = self._make_test_project("empty")
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         snap = service.load_library("empty")
         self.assertEqual(0, len(snap.assets))
         self.assertEqual(0, len(snap.assignments))
@@ -93,42 +103,35 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
     def test_load_with_assets(self) -> None:
         """Loading a project with asset files returns assets."""
         proj_dir = self._make_test_project("assets")
-        self._create_assets(proj_dir, [{"id": "hero", "filename": "hero.png"}])
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
-        service.set_project("assets")
+        self._create_assets(proj_dir, [{"id": "scene3_msr_sheet", "filename": "scene3_msr_sheet.png"}])
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         snap = service.load_library("assets")
-        # At minimum, the snapshot loads without error
-        self.assertIsNotNone(snap.revision)
+        self.assertIn(ReferenceKind.MSR_SHEET, {a.kind for a in snap.assets})
 
     def test_filter_assets(self) -> None:
         """Filtering by kind works correctly."""
         proj_dir = self._make_test_project("filter")
         self._create_assets(
             proj_dir,
-            [{"id": "hero", "filename": "hero.png"}, {"id": "loc1", "filename": "loc1.png"}],
+            [
+                {"id": "scene3_msr_sheet", "filename": "scene3_msr_sheet.png"},
+                {"id": "scene1_storyboard_main", "filename": "scene1_storyboard_main.png"},
+            ],
         )
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
-        service.set_project("filter")
-        all_assets = service.load_library("filter").filter_assets(kinds=list(ReferenceKind))
-        # Should have at least the files we created
-        asset_ids = {a.id for a in all_assets}
-        self.assertTrue(asset_ids)
+        service = ReferenceWorkspaceService(project_root=proj_dir)
+        snap = service.load_library("filter")
+        msr = snap.filter_assets(kinds=[ReferenceKind.MSR_SHEET])
+        self.assertEqual(1, len(msr))
+        self.assertEqual("scene3_msr_sheet", msr[0].id)
+        sb = snap.filter_assets(kinds=[ReferenceKind.STORYBOARD_FRAME])
+        self.assertEqual(1, len(sb))
+        self.assertEqual("scene1_storyboard_main", sb[0].id)
 
     def test_preview_assignment(self) -> None:
         """Preview scene assignment validates actor_ids."""
         proj_dir = self._make_test_project("preview")
-        config = proj_dir / "references" / "scene_assignments.json"
-        config.parent.mkdir(exist_ok=True)
-        config.write_text("{}")
-        self._create_assets(proj_dir, [{"id": "hero", "filename": "hero.png"}])
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
-        # Preview with valid actors should succeed
+        self._create_manifest(proj_dir, actors=["hero", "villain"])
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         result: CommandResult = service.preview_assignment(
             "preview",
             1,
@@ -136,30 +139,36 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
         )
         self.assertTrue(result.success)
 
+    def test_preview_unknown_actor(self) -> None:
+        """Preview fails when actor ID is not known."""
+        proj_dir = self._make_test_project("preview_bad")
+        self._create_manifest(proj_dir, actors=["hero"])
+        service = ReferenceWorkspaceService(project_root=proj_dir)
+        result: CommandResult = service.preview_assignment(
+            "preview_bad",
+            1,
+            actor_ids=("unknown",),
+        )
+        self.assertFalse(result.success)
+
     def test_save_assignments(self) -> None:
         """Save assignments creates/persists the assignments file."""
         proj_dir = self._make_test_project("save")
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
-        service.set_project("save")
-        old_snap = service.load_library("save")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
+        snap = service.load_library("save")
         result: CommandResult = service.save_assignments(
             "save",
             tuple([]),
-            old_snap.revision,
+            snap.revision,
         )
-        # Should succeed for initial empty save
         self.assertTrue(result.success)
         self.assertIn("new_revision", result.data)
 
     def test_assignment_roundtrip(self) -> None:
         """Assignments survive load -> save -> load cycle."""
         proj_dir = self._make_test_project("roundtrip")
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
-        service.set_project("roundtrip")
+        self._create_manifest(proj_dir, actors=["hero"])
+        service = ReferenceWorkspaceService(project_root=proj_dir)
 
         snap1 = service.load_library("roundtrip")
         result: CommandResult = service.save_assignments(
@@ -177,13 +186,9 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
     def test_revision_conflict(self) -> None:
         """Save with stale revision should fail."""
         proj_dir = self._make_test_project("conflict")
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
-        service.set_project("conflict")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
 
         snap1 = service.load_library("conflict")
-        # First save with current revision
         result1: CommandResult = service.save_assignments(
             "conflict",
             tuple([{"scene_number": 1, "actor_ids": []}]),
@@ -191,32 +196,25 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
         )
         self.assertTrue(result1.success)
 
-        # Second save with stale revision should fail
         result2: CommandResult = service.save_assignments(
             "conflict",
             tuple([{"scene_number": 2, "actor_ids": []}]),
-            snap1.revision,  # old revision
+            snap1.revision,
         )
         self.assertFalse(result2.success)
 
     def test_viewmodel_creation(self) -> None:
         """Viewmodel can be created and bound to service."""
         proj_dir = self._make_test_project("vm")
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         vm = ReferenceWorkspaceViewModel(service=service)
         self.assertIsNotNone(vm.library_model)
         self.assertIsNotNone(vm.assignments_model)
 
     def test_viewmodel_project_switch(self) -> None:
         """Viewmodel updates when switching projects."""
-        self._make_test_project("proj_a")
-        self._make_test_project("proj_b")
-        proj_dir = self._projects_root / "proj_a"
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
+        proj_dir = self._make_test_project("proj_a")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         vm = ReferenceWorkspaceViewModel(service=service)
         ok = vm.set_project("proj_a")
         self.assertTrue(ok)
@@ -225,9 +223,7 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
     def test_viewmodel_asset_selection(self) -> None:
         """Viewmodel can select and track assets."""
         proj_dir = self._make_test_project("select")
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         vm = ReferenceWorkspaceViewModel(service=service)
         vm.set_project("select")
         vm.select_asset("hero")
@@ -236,13 +232,10 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
     def test_viewmodel_filter(self) -> None:
         """Viewmodel can filter assets by kind."""
         proj_dir = self._make_test_project("filter_vm")
-        service = ReferenceWorkspaceService(
-            project_root=proj_dir.parent,
-        )
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         vm = ReferenceWorkspaceViewModel(service=service)
         vm.set_project("filter_vm")
         vm.set_filter_kind("actor")
-        # After filter, library_model should update
         self.assertIsNotNone(vm.library_model)
 
     def test_list_model_data(self) -> None:
@@ -262,7 +255,7 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
 
 
 class TestReferenceWorkspaceServiceFull(unittest.TestCase):
-    """Full service lifecycle tests."""
+    """Full service lifecycle tests (no PySide6 required)."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp()
@@ -278,31 +271,30 @@ class TestReferenceWorkspaceServiceFull(unittest.TestCase):
         (proj_dir / "config.json").write_text("{}")
         return proj_dir
 
+    def _create_manifest(self, proj_dir: Path, actors: list[str] | None = None, locations: list[str] | None = None) -> None:
+        ref_dir = _fixture_path(proj_dir)
+        data: dict[str, list[dict[str, str]]] = {}
+        if actors:
+            data["actors"] = [{"id": a} for a in actors]
+        if locations:
+            data["locations"] = [{"id": loc} for loc in locations]
+        (ref_dir / "manifest.json").write_text(json.dumps(data))
+
     def test_queue_generation_storyboard(self) -> None:
         """Queue storyboard generation returns job ID."""
-        self._make_project("gen")
-        service = ReferenceWorkspaceService(
-            project_root=self._project_root,
-        )
-        service.set_project("gen")
-        from feverslop.studio.reference_workspace_service import GenerationCommand
-
+        proj_dir = self._make_project("gen")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         result: CommandResult = service.queue_generation(
             "gen",
-            GenerationCommand(action="storyboard"),
+            GenerationCommand(action="storyboard_frame"),
         )
         self.assertTrue(result.success)
-        self.assertIn("generation_job_id", result.data)
+        self.assertIn("job_id", result.data)
 
     def test_queue_generation_msr(self) -> None:
         """Queue MSR generation returns job ID."""
-        self._make_project("msr")
-        service = ReferenceWorkspaceService(
-            project_root=self._project_root,
-        )
-        service.set_project("msr")
-        from feverslop.studio.reference_workspace_service import GenerationCommand
-
+        proj_dir = self._make_project("msr")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         result: CommandResult = service.queue_generation(
             "msr",
             GenerationCommand(action="msr_sheet", scene_number=1),
@@ -312,39 +304,46 @@ class TestReferenceWorkspaceServiceFull(unittest.TestCase):
     def test_check_stale(self) -> None:
         """Check stale identifies modified assets."""
         proj_dir = self._make_project("stale")
-        ref_dir = proj_dir / "references"
-        ref_dir.mkdir()
-        asset_file = ref_dir / "hero.png"
+        ref_dir = _fixture_path(proj_dir)
+        asset_file = ref_dir / "scene1_ingredients_main.png"
         asset_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
 
-        service = ReferenceWorkspaceService(
-            project_root=self._project_root,
-        )
-        service.set_project("stale")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
 
-        # Snapshot, then modify the asset file
         asset_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\xFF" * 50)
 
         stale_state = service.check_stale("stale")
-        # At least check that it runs without error
         self.assertTrue(isinstance(stale_state.stale_assets, tuple))
 
     def test_scenes_using_asset(self) -> None:
         """Scenes using asset returns correct scene numbers."""
         proj_dir = self._make_project("scenes")
-        ref_dir = proj_dir / "references"
-        ref_dir.mkdir()
-        (ref_dir / "scene_assignments.json").write_text(
-            '{"assignments":['
-            '{"scene_number":3,"actor_ids":["hero","villain"],"location_ids":[],"background_ids":[],"style_ids":[],"actor_look_ids":{}}'
-            ','
-            '{"scene_number":5,"actor_ids":["villain"],"location_ids":[],"background_ids":[],"style_ids":[],"actor_look_ids":{}}'
-            '],"revision":"v2"}',
+        assignments_dir = proj_dir / "movie"
+        assignments_dir.mkdir(parents=True, exist_ok=True)
+        (assignments_dir / "reference_assignments.json").write_text(
+            json.dumps({
+                "revision": "v2",
+                "assignments": [
+                    {
+                        "scene_number": 3,
+                        "actor_ids": ["hero", "villain"],
+                        "location_ids": [],
+                        "background_ids": [],
+                        "style_ids": [],
+                        "actor_look_ids": {},
+                    },
+                    {
+                        "scene_number": 5,
+                        "actor_ids": ["villain"],
+                        "location_ids": [],
+                        "background_ids": [],
+                        "style_ids": [],
+                        "actor_look_ids": {},
+                    },
+                ],
+            })
         )
-        service = ReferenceWorkspaceService(
-            project_root=self._project_root,
-        )
-        service.set_project("scenes")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
         snap = service.load_library("scenes")
         hero_scenes = snap.scenes_using_asset("hero")
         self.assertEqual((3,), hero_scenes)
