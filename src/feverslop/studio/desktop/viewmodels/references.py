@@ -63,6 +63,7 @@ class ReferenceListModel(QAbstractListModel):
         super().__init__(parent)
         self._items: list[ReferenceAsset] = []
         self._media_url = media_url or (lambda p: "")
+        self._selection: str = ""
 
     def roleNames(self) -> dict[int, bytes]:  # noqa: N802
         return dict(self._ROLE_NAMES)

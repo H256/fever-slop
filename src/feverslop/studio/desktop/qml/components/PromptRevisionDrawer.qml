@@ -54,7 +54,7 @@ Drawer {
 
                 Label {
                     text: sceneVm
-                        ? "Scene " + sceneVm.scene_map.selected_scene || "—"
+                        ? "Scene " + sceneVm.inspectedScene.sceneNumber || "—"
                         : ""
                     color: "#A1A1AA"
                     font.pixelSize: 13
