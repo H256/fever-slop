@@ -57,14 +57,11 @@ def is_safe_identifier(value: str) -> bool:
 
     Rejects ``..`` segments, leading ``/``, and absolute Windows drive roots.
     """
-    if ".." in (value or "").split("/"):
-        return False
     p = Path(value)
     if p.is_absolute():
         return False
-    parts = p.parts
     # Reject if any component is ".."
-    if ".." in parts:
+    if ".." in p.parts:
         return False
     return True
 
