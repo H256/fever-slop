@@ -26,7 +26,7 @@ class LLMClientRetryTests(unittest.TestCase):
             Image.new("RGB", (10, 10), "red").save(actor_path)
             Image.new("RGB", (10, 10), "blue").save(location_path)
 
-            client = LocalOpenAIClient()
+            client = LocalOpenAIClient(api_key="test-key")
             result = client.complete_prompt_with_images(
                 system_prompt="system",
                 prompt="describe",
@@ -62,7 +62,7 @@ class LLMClientRetryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             image_path = Path(tmp) / "image.png"
             Image.new("RGB", (10, 10), "red").save(image_path)
-            client = LocalOpenAIClient(max_retries=2, retry_base_delay=0.01)
+            client = LocalOpenAIClient(api_key="test-key", max_retries=2, retry_base_delay=0.01)
             client.client = mock_client
             result = client.complete_prompt_with_images(
                 system_prompt="system",
@@ -96,7 +96,7 @@ class LLMClientRetryTests(unittest.TestCase):
 
         mock_client.chat.completions.create.side_effect = side_effect
 
-        client = LocalOpenAIClient(max_retries=3, retry_base_delay=0.01)
+        client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.01)
         client.client = mock_client
         result = client.complete_prompt("test")
         self.assertEqual(result, "ok")
@@ -112,7 +112,7 @@ class LLMClientRetryTests(unittest.TestCase):
             "rate limited", response=MagicMock(), body=None
         )
 
-        client = LocalOpenAIClient(max_retries=3, retry_base_delay=0.01)
+        client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.01)
         client.client = mock_client
         with self.assertRaises(FeverSlopLMLError) as ctx:
             client.complete_prompt("test")
@@ -134,7 +134,7 @@ class LLMClientRetryTests(unittest.TestCase):
 
         mock_client.chat.completions.create.side_effect = side_effect
 
-        client = LocalOpenAIClient(max_retries=3, retry_base_delay=0.5)
+        client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.5)
         client.client = mock_client
         with self.assertRaises(FeverSlopLMLError):
             client.complete_prompt("test")
@@ -161,7 +161,7 @@ class LLMClientRetryTests(unittest.TestCase):
 
         mock_client.chat.completions.create.side_effect = side_effect
 
-        client = LocalOpenAIClient(max_retries=5, retry_base_delay=0.1)
+        client = LocalOpenAIClient(api_key="test-key", max_retries=5, retry_base_delay=0.1)
         client.client = mock_client
         with self.assertRaises(FeverSlopLMLError):
             client.complete_prompt("test")
@@ -179,7 +179,7 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_resp.choices = [MagicMock(message=MagicMock(content="result"))]
         mock_client.chat.completions.create.return_value = mock_resp
 
-        client = LocalOpenAIClient()
+        client = LocalOpenAIClient(api_key="test-key")
         client.client = mock_client
         client.complete_prompt("test", timeout=60.0)
 
@@ -196,7 +196,7 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_resp.choices = [MagicMock(message=MagicMock(content="result"))]
         mock_client.chat.completions.create.return_value = mock_resp
 
-        client = LocalOpenAIClient()
+        client = LocalOpenAIClient(api_key="test-key")
         client.client = mock_client
         client.complete_prompt("test")
 
@@ -212,7 +212,7 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_resp.choices = [MagicMock(message=MagicMock(content="hello"))]
         mock_client.chat.completions.create.return_value = mock_resp
 
-        client = LocalOpenAIClient(max_retries=3, retry_base_delay=0.01)
+        client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.01)
         client.client = mock_client
         result = client.complete_prompt("hi")
         self.assertEqual(result, "hello")

@@ -154,6 +154,7 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
+        api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,
@@ -252,6 +253,7 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
+        api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,
@@ -277,6 +279,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
+        api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,

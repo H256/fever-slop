@@ -46,6 +46,7 @@ def main():
 
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
+        api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,
