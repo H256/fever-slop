@@ -119,6 +119,11 @@ class RebuildViewModel(QObject):
     def selected_revision_id(self) -> str:
         return self._selected_revision_id
 
+    @selected_revision_id.setter  # type: ignore[assignment]
+    def selected_revision_id(self, value: str) -> None:
+        self._selected_revision_id = value
+        self.stateChanged.emit()
+
     @Property(str, notify=stateChanged)
     def error(self) -> str:
         return self._error
