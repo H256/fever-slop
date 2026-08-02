@@ -6,7 +6,7 @@ Menu {
 
     required property var textControl
 
-    popupType: Popup.Item
+    popupType: Popup.Window
     padding: 4
 
     background: Rectangle {
