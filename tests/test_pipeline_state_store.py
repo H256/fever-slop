@@ -50,6 +50,47 @@ class PipelineStateStoreTests(unittest.TestCase):
         self.assertEqual({"stage-one", "stage-two"}, set(state["completed_stages"]))
         self.assertEqual({"first", "second"}, {run["action"] for run in state["runs"]})
 
+    def test_separate_store_instances_share_lock_for_same_state_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            start = threading.Barrier(3)
+
+            def read_json(path: Path):
+                value = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+                time.sleep(0.05)
+                return value
+
+            stores = [
+                PipelineStateStore(lambda _project_id: root, read_json),
+                PipelineStateStore(lambda _project_id: root, read_json),
+            ]
+
+            def record(store: PipelineStateStore, action: str, stage: str) -> None:
+                start.wait()
+                store.record_pipeline_run(
+                    "demo",
+                    action=action,
+                    stages=[stage],
+                    status="succeeded",
+                )
+
+            threads = [
+                threading.Thread(target=record, args=(stores[0], "first", "stage-one")),
+                threading.Thread(target=record, args=(stores[1], "second", "stage-two")),
+            ]
+            for thread in threads:
+                thread.start()
+            start.wait()
+            for thread in threads:
+                thread.join(2.0)
+
+            state = json.loads(
+                (root / ".studio" / "pipeline_state.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual({"stage-one", "stage-two"}, set(state["completed_stages"]))
+        self.assertEqual({"first", "second"}, {run["action"] for run in state["runs"]})
+
     def test_failed_write_preserves_existing_state_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

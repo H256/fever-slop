@@ -8,16 +8,25 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+_PATH_LOCKS_GUARD = threading.Lock()
+_PATH_LOCKS: dict[Path, threading.RLock] = {}
+
+
+def _lock_for_path(path: Path) -> threading.RLock:
+    canonical_path = path.resolve()
+    with _PATH_LOCKS_GUARD:
+        return _PATH_LOCKS.setdefault(canonical_path, threading.RLock())
+
+
 class PipelineStateStore:
     def __init__(self, project_root: Callable[[str], Path], read_json_file: Callable[[Path], Any]):
         self.project_root = project_root
         self.read_json_file = read_json_file
-        self._lock = threading.RLock()
 
     def record_pipeline_run(self, project_id: str, *, action: str, stages: list[str], status: str) -> dict[str, Any]:
-        with self._lock:
-            root = self.project_root(project_id)
-            path = root / ".studio" / "pipeline_state.json"
+        root = self.project_root(project_id)
+        path = root / ".studio" / "pipeline_state.json"
+        with _lock_for_path(path):
             state = self.read_json_file(path)
             if not isinstance(state, dict):
                 state = {}
