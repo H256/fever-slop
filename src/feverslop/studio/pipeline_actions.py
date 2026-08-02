@@ -87,8 +87,16 @@ def _missing_workflow_scenes(project_root: Path, scenes: list[int]) -> list[int]
 
 def _all_render_plan_clips_exist(project_root: Path) -> bool:
     layout = SceneArtifactLayout(project_root)
+    video_pipeline = _configured_video_pipeline(project_root)
+    candidates = (
+        (layout.references_plan, layout.base_plan)
+        if video_pipeline == "ltx_msr"
+        else (layout.ingredients_plan, layout.base_plan)
+        if video_pipeline == "ltx_ingredients"
+        else (layout.base_plan,)
+    )
     render_plan = next(
-        (path for path in (layout.references_plan, layout.ingredients_plan, layout.base_plan) if path.is_file()),
+        (path for path in candidates if path.is_file()),
         None,
     )
     if render_plan is None:
@@ -108,6 +116,14 @@ def _all_render_plan_clips_exist(project_root: Path) -> bool:
         )
     except (KeyError, TypeError, ValueError):
         return False
+
+
+def _configured_video_pipeline(project_root: Path) -> str:
+    try:
+        config = json.loads((project_root / "config.json").read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(config.get("video_pipeline") or "") if isinstance(config, dict) else ""
 
 
 def _completed_actions(project_root: Path) -> set[str]:
