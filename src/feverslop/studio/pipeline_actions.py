@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
-import json
+
+from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 def pipeline_action_availability(project_root: Path, scenes: list[int] | None = None) -> list[dict[str, Any]]:
@@ -60,8 +62,8 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
         ),
         _action(
             "Final concat", "final-concat",
-            enabled=_has_rendered_scene_clip(project_root),
-            reason="" if _has_rendered_scene_clip(project_root) else "Render scene clips first.",
+            enabled=_all_render_plan_clips_exist(project_root),
+            reason="" if _all_render_plan_clips_exist(project_root) else "Render scene clips first.",
         ),
     ]
 
@@ -83,9 +85,29 @@ def _missing_workflow_scenes(project_root: Path, scenes: list[int]) -> list[int]
     return missing
 
 
-def _has_rendered_scene_clip(project_root: Path) -> bool:
-    scenes_dir = project_root / "output" / "render" / "scenes"
-    return any(scenes_dir.glob("scene_*/final.mp4"))
+def _all_render_plan_clips_exist(project_root: Path) -> bool:
+    layout = SceneArtifactLayout(project_root)
+    render_plan = next(
+        (path for path in (layout.references_plan, layout.ingredients_plan, layout.base_plan) if path.is_file()),
+        None,
+    )
+    if render_plan is None:
+        return False
+    try:
+        scenes = json.loads(render_plan.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(scenes, list) or not scenes:
+        return False
+    legacy_dirs = (layout.render_dir / "ltx_msr", layout.render_dir / "ltx_ingredients")
+    try:
+        return all(
+            isinstance(scene, dict)
+            and layout.find_scene_final_video(int(scene["scene"]), legacy_dirs=legacy_dirs) is not None
+            for scene in scenes
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 def _completed_actions(project_root: Path) -> set[str]:

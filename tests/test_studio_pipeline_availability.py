@@ -72,3 +72,20 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
 
         self.assertFalse(actions["final-concat"]["enabled"])
         self.assertEqual("Render scene clips first.", actions["final-concat"]["reason"])
+
+    def test_final_concat_stays_blocked_after_partial_scene_render(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plans = root / "output" / "render" / "plans"
+            plans.mkdir(parents=True)
+            (plans / "references.json").write_text('[{"scene": 1}, {"scene": 3}]', encoding="utf-8")
+            rendered = root / "output" / "render" / "scenes" / "scene_0001"
+            rendered.mkdir(parents=True)
+            (rendered / "final.mp4").touch()
+
+            actions = {item["value"]: item for item in pipeline_action_availability(root, [1])}
+
+        self.assertFalse(actions["final-concat"]["enabled"])
+        self.assertEqual("Render scene clips first.", actions["final-concat"]["reason"])
