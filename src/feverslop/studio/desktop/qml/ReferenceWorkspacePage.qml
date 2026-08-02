@@ -253,7 +253,7 @@ Rectangle {
                         text: "No assets found"
                         color: "#666668"
                         font.italic: true
-                        anchors.horizontalCenter: parent.horizontalCenter
+                        Layout.alignment: Qt.AlignHCenter
                     }
                 }
             }
