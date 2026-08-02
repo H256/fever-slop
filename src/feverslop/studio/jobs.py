@@ -132,6 +132,17 @@ STEP_ALIASES: dict[str, list[str]] = {
     "LTX render": ["ltx-render-scenes"],
     "LTX MSR native-audio render": ["LTX MSR", "native audio"],
     "Final movie": ["Movie Complete"],
+    "MSR enrichment": ["MSR reference sheets", "MSR prompt enrichment"],
+    "Storyboard": ["Storyboard frames", "Storyboard page"],
+    "Ingredients sheets": ["Ingredients scene sheets"],
+    "Final concat": ["Final concat video-only", "Mux original audio"],
+}
+
+
+FULL_PIPELINE_STEPS_BY_MODE = {
+    "classic": ["Main pipeline", "Storyboard", "LTX render", "Final concat"],
+    "msr": ["Main pipeline", "MSR references", "MSR enrichment", "LTX render", "Final concat"],
+    "ingredients": ["Main pipeline", "MSR enrichment", "Ingredients sheets", "LTX render", "Final concat"],
 }
 
 
@@ -156,6 +167,7 @@ class JobRegistry:
         *,
         project_type: str = "standard_music_video",
         reject_if_project_active: bool = False,
+        pipeline_mode: str | None = None,
     ) -> str:
         job_id = uuid.uuid4().hex
         now = time.time()
@@ -174,7 +186,7 @@ class JobRegistry:
                 "progress": 0,
                 "overall_progress": 0,
                 "current_step": None,
-                "steps": self._initial_steps(action),
+                "steps": self._initial_steps(action, pipeline_mode=pipeline_mode),
                 "logs": [],
                 "recent_logs": [],
                 "error": None,
@@ -323,7 +335,7 @@ class JobRegistry:
             self._refresh_runtime(job)
 
     @staticmethod
-    def _initial_steps(action: str) -> list[dict[str, Any]]:
+    def _initial_steps(action: str, *, pipeline_mode: str | None = None) -> list[dict[str, Any]]:
         return [
             {
                 "name": name,
@@ -333,7 +345,7 @@ class JobRegistry:
                 "completed_at": None,
                 "elapsed_seconds": 0.0,
             }
-            for name in PIPELINE_STEPS.get(action, [action])
+            for name in _pipeline_step_names(action, pipeline_mode=pipeline_mode)
         ]
 
     def _advance_step_from_log(self, job: dict[str, Any], message: str) -> None:
@@ -744,6 +756,16 @@ def _video_pipeline_for_mode(pipeline_mode: str | None) -> str:
     if pipeline_mode in {"ingredients", "ltx_ingredients"}:
         return "ltx_ingredients"
     raise ValueError("pipeline_mode must be classic, msr, or ingredients")
+
+
+def _pipeline_step_names(action: str, *, pipeline_mode: str | None = None) -> list[str]:
+    if action != "full-pipeline":
+        return PIPELINE_STEPS.get(action, [action])
+    if pipeline_mode in {"msr", "ltx_msr"}:
+        return FULL_PIPELINE_STEPS_BY_MODE["msr"]
+    if pipeline_mode in {"ingredients", "ltx_ingredients"}:
+        return FULL_PIPELINE_STEPS_BY_MODE["ingredients"]
+    return FULL_PIPELINE_STEPS_BY_MODE["classic"]
 
 
 def build_reference_rerender_handler(project_config_path: Path, *, reference_kind: str, reference_id: str) -> JobHandler:
