@@ -23,89 +23,56 @@ Item {
         Label { text: "Pipeline action"; color: "#1C1C1E"; font.bold: true; font.pixelSize: 16 }
         RowLayout {
             Layout.fillWidth: true
-            ComboBox {
+            Item {
                 id: action
+                objectName: "pipelineActionSelector"
                 Layout.fillWidth: true
-                implicitHeight: 44
-                textRole: "label"
-                valueRole: "value"
-                contentItem: Label {
-                    objectName: "pipelineActionCurrentValue"
-                    leftPadding: 12
-                    rightPadding: action.indicator.width + 12
-                    text: action.displayText
-                    color: "#F4F4F5"
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-                background: Rectangle {
-                    color: "#303033"
-                    border.color: action.activeFocus ? "#5B5FC7" : "#68686D"
-                    radius: 4
-                }
-                model: page.movie ? [
+                Layout.preferredHeight: expanded ? 44 + Math.min(actions.length * 40, 280) : 44
+                property bool expanded: false
+                property var actions: page.movie ? [
                     { label: "Movie full auto", value: "movie-full-auto" },
                     { label: "Movie references", value: "movie-references" },
                     { label: "Render selected scenes", value: "movie-render" },
                     { label: "Final concat", value: "movie-final-concat" }
-                ] : (vm ? (vm.jobs, vm.pipeline_actions(page.selectedScenes)) : [])
-                onModelChanged: {
-                    if (page.movie) return
-                    for (var i = 0; i < count; ++i) {
-                        if (model[i].recommended) {
+                ] : (vm ? (vm.current_project_id, vm.jobs, vm.pipeline_actions(page.selectedScenes)) : [])
+                property int currentIndex: -1
+                readonly property var currentItem: currentIndex >= 0 && currentIndex < actions.length ? actions[currentIndex] : null
+                readonly property string currentValue: currentItem ? currentItem.value : ""
+                onActionsChanged: {
+                    for (var i = 0; i < actions.length; ++i) {
+                        if (actions[i].recommended) {
                             currentIndex = i
                             return
                         }
                     }
-                    currentIndex = count > 0 ? 0 : -1
+                    currentIndex = actions.length > 0 ? 0 : -1
                 }
-                delegate: ItemDelegate {
-                    id: delegateItem
-                    required property var modelData
-                    width: action.width
-                    implicitHeight: 40
-                    enabled: modelData.enabled !== false
-                    text: modelData.recommended ? modelData.label + " (next)" : modelData.label
-                    contentItem: Label {
-                        text: delegateItem.text
-                        color: delegateItem.enabled ? "#1C1C1E" : "#6E6E73"
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                    }
-                    background: Rectangle {
-                        color: delegateItem.highlighted ? "#E8E8FF" : "#FFFFFF"
-                    }
-                    ToolTip.visible: hovered && !enabled && modelData.reason
-                    ToolTip.text: modelData.reason || ""
+                Rectangle {
+                    width: parent.width; height: 44; color: "#303033"; border.color: "#68686D"; radius: 4
+                    Label { anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; leftPadding: 12; rightPadding: 36; text: action.currentItem ? action.currentItem.label : "No pipeline actions available"; color: "#F4F4F5"; elide: Text.ElideRight }
+                    Label { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: action.expanded ? "▲" : "▼"; color: "#C7C7CC" }
+                    MouseArea { anchors.fill: parent; onClicked: action.expanded = !action.expanded }
                 }
-                popup: Popup {
-                    y: action.height - 1
-                    width: action.width
-                    implicitHeight: contentItem.implicitHeight + topPadding + bottomPadding
-                    padding: 1
-                    contentItem: ListView {
-                        objectName: "pipelineActionList"
-                        clip: true
-                        implicitHeight: contentHeight
-                        model: action.popup.visible ? action.delegateModel : null
-                        currentIndex: action.highlightedIndex
-                        ScrollIndicator.vertical: ScrollIndicator { }
-                    }
-                    background: Rectangle {
-                        color: "#FFFFFF"
-                        border.color: "#68686D"
-                        radius: 4
+                ListView {
+                    visible: action.expanded; y: 44; width: parent.width; height: Math.min(contentHeight, 280); clip: true; model: action.actions
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: action.width; height: 40; color: modelData.enabled === false ? "#EEEEF0" : "#FFFFFF"
+                        Label { anchors.fill: parent; anchors.leftMargin: 12; verticalAlignment: Text.AlignVCenter; text: modelData.recommended ? modelData.label + " (next)" : modelData.label; color: modelData.enabled === false ? "#6E6E73" : "#1C1C1E" }
+                        MouseArea { anchors.fill: parent; enabled: modelData.enabled !== false; onClicked: { action.currentIndex = index; action.expanded = false } }
                     }
                 }
             }
             StyledTextField {
                 id: scenes
+                Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: 240
                 implicitHeight: 44
                 placeholderText: "Scenes: 1,3,5,10"
             }
             Button {
                 text: "Start"
+                Layout.alignment: Qt.AlignTop
                 icon.name: "media-playback-start"
                 implicitHeight: 44
                 enabled: vm && !vm.active_job.id && action.currentIndex >= 0
