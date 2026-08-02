@@ -10,6 +10,7 @@ from typing import Any
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 
 from feverslop.studio.job_service import StudioJobRequest
+from feverslop.studio.pipeline_actions import pipeline_action_availability
 from feverslop.studio.desktop.requests import project_create_request
 from feverslop.studio.desktop.review_timeline import ReviewTimelineState
 from feverslop.studio.projects import ArtifactRequest, RenderPlanPatch
@@ -113,7 +114,12 @@ class StudioViewModel(QObject):
     def job_logs(self) -> str:
         if not self._jobs:
             return "Ready."
-        logs = self._jobs[0].get("logs") or self._jobs[0].get("recent_logs") or []
+        job = self._jobs[0]
+        logs = list(job.get("logs") or job.get("recent_logs") or [])
+        error = str(job.get("error") or "").strip()
+        error_line = f"ERROR: {error}"
+        if error and error_line not in logs:
+            logs.append(error_line)
         return "\n".join(str(line) for line in logs)
 
     @Property("QVariantMap", notify=jobsChanged)
@@ -213,6 +219,20 @@ class StudioViewModel(QObject):
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
             return False
+
+    @Slot("QVariantList", result="QVariantList")
+    def pipeline_actions(self, scenes: list[Any] | None = None) -> list[dict[str, Any]]:
+        if not self.current_project_id or self._current_project.get("project_type") == "movie":
+            return []
+        try:
+            selected_scenes = [int(scene) for scene in scenes or []]
+            return pipeline_action_availability(
+                self.store.project_root(self.current_project_id),
+                selected_scenes,
+            )
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self._set_error(str(exc))
+            return []
 
     @Slot(str, str, float, float, bool, result=bool)
     def start_recut(

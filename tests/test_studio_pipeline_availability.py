@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+
+class PipelineActionAvailabilityTests(unittest.TestCase):
+    def test_missing_selected_scene_workflow_recommends_preparation_and_blocks_render(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            state_dir = root / ".studio"
+            state_dir.mkdir()
+            (state_dir / "pipeline_state.json").write_text(
+                '{"completed_stages": ["main-pipeline", "msr-references", "msr-enrich"]}',
+                encoding="utf-8",
+            )
+            prepared = root / "output" / "render" / "scenes" / "scene_0001"
+            prepared.mkdir(parents=True)
+            (prepared / "workflow.json").write_text("{}", encoding="utf-8")
+            (prepared / "manifest.json").write_text("{}", encoding="utf-8")
+
+            actions = {item["value"]: item for item in pipeline_action_availability(root, [1, 3])}
+
+        self.assertTrue(actions["ltx-prepare-workflows"]["enabled"])
+        self.assertTrue(actions["ltx-prepare-workflows"]["recommended"])
+        self.assertFalse(actions["ltx-render-scenes"]["enabled"])
+        self.assertEqual("Prepare LTX workflows for scenes 3 first.", actions["ltx-render-scenes"]["reason"])
+
+    def test_unfinished_enrichment_blocks_workflow_preparation(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            state_dir = root / ".studio"
+            state_dir.mkdir()
+            (state_dir / "pipeline_state.json").write_text(
+                '{"completed_stages": ["main-pipeline", "msr-references"]}',
+                encoding="utf-8",
+            )
+
+            actions = {item["value"]: item for item in pipeline_action_availability(root, [3])}
+
+        self.assertTrue(actions["msr-enrich"]["recommended"])
+        self.assertFalse(actions["ltx-prepare-workflows"]["enabled"])
+        self.assertEqual("Run MSR enrichment first.", actions["ltx-prepare-workflows"]["reason"])
+
+    def test_all_selected_workflows_enable_render(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for scene in [1, 3]:
+                prepared = root / "output" / "render" / "scenes" / f"scene_{scene:04d}"
+                prepared.mkdir(parents=True)
+                (prepared / "workflow.json").write_text("{}", encoding="utf-8")
+                (prepared / "manifest.json").write_text("{}", encoding="utf-8")
+
+            actions = {item["value"]: item for item in pipeline_action_availability(root, [1, 3])}
+
+        self.assertTrue(actions["ltx-render-scenes"]["enabled"])
+        self.assertTrue(actions["ltx-render-scenes"]["recommended"])
+        self.assertEqual("", actions["ltx-render-scenes"]["reason"])
