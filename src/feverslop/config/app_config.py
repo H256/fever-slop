@@ -17,6 +17,12 @@ class LLMConfig:
     temperature: float = 0.7
     max_tokens: int = 4096
 
+    @property
+    def api_key(self) -> str | None:
+        """Return LLM_API_KEY from environment, or None if not set."""
+        import os
+        return os.environ.get("LLM_API_KEY")
+
 
 @dataclass(frozen=True)
 class VideoWorkflowLimitConfig:
