@@ -3796,6 +3796,14 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIsInstance(output, dict)
         self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in output.values()))
 
+    def test_movie_workflow_patcher_is_available_without_studio_imports(self):
+        from feverslop.composition.movie_workflow import patch_movie_msr_workflow
+
+        output = patch_movie_msr_workflow()
+
+        self.assertIsInstance(output, dict)
+        self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in output.values()))
+
     def test_movie_workflow_patcher_patches_msr_i2v_startframe_anchor(self):
         from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
 
