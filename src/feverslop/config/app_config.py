@@ -1,9 +1,10 @@
 ﻿from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 import json
 import math
+import os
+from pathlib import Path
 
 from feverslop.config.comfyui import ComfyUIModelOverride
 from feverslop.domain.video_workflow_profile import VideoWorkflowProfile
@@ -16,12 +17,14 @@ class LLMConfig:
     model: str = "default"
     temperature: float = 0.7
     max_tokens: int = 4096
+    _local_api_key: str | None = field(default=None, repr=False)
 
     @property
     def api_key(self) -> str | None:
-        """Return LLM_API_KEY from environment, or None if not set."""
-        import os
-        return os.environ.get("LLM_API_KEY")
+        """Resolve the process environment before persistent local config."""
+        if "LLM_API_KEY" in os.environ:
+            return os.environ["LLM_API_KEY"]
+        return self._local_api_key
 
 
 @dataclass(frozen=True)
@@ -120,13 +123,14 @@ class AppConfig:
     @classmethod
     def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> "AppConfig":
         path = coerce_local_path(path)
+        dotenv_api_key = _read_dotenv_value(path.parent / ".env", "LLM_API_KEY")
 
         if not path.exists():
             if required_keys:
                 missing = ", ".join(f"'{key}'" for key in required_keys)
                 raise ValueError(f"App config not found at {path}; required keys absent: {missing}")
             return cls(
-                llm=LLMConfig(),
+                llm=LLMConfig(_local_api_key=dotenv_api_key),
                 comfyui=ComfyUIConfig(),
             )
 
@@ -138,10 +142,10 @@ class AppConfig:
                 details = "; ".join(f"'{key}'" for key in missing)
                 raise ValueError(f"Missing required config keys: {details}")
 
-        return cls._build_config(raw)
+        return cls._build_config(raw, dotenv_api_key=dotenv_api_key)
 
     @classmethod
-    def _build_config(cls, raw: dict) -> "AppConfig":
+    def _build_config(cls, raw: dict, *, dotenv_api_key: str | None = None) -> "AppConfig":
         llm_raw = raw.get("llm", {})
         comfyui_raw = raw.get("comfyui", {})
         default_max_render_duration_raw = comfyui_raw.get("default_max_render_duration_seconds")
@@ -176,6 +180,7 @@ class AppConfig:
                 model=llm_raw.get("model", "default"),
                 temperature=float(llm_raw.get("temperature", 0.7)),
                 max_tokens=int(llm_raw.get("max_tokens", 4096)),
+                _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),
             comfyui=ComfyUIConfig(
                 base_url=comfyui_raw.get("base_url", "http://127.0.0.1:8188"),
@@ -194,6 +199,35 @@ class AppConfig:
             video_workflow_profiles=video_workflow_profiles,
             _video_workflow_profile_defaults=video_workflow_profile_defaults,
         )
+
+
+def _optional_secret(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("llm.api_key must be a string")
+    return value.strip() or None
+
+
+def _read_dotenv_value(path: Path, name: str) -> str | None:
+    if not path.is_file():
+        return None
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        key, separator, raw_value = line.partition("=")
+        if not separator or key.strip() != name:
+            continue
+        value = raw_value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        elif " #" in value:
+            value = value.split(" #", 1)[0].rstrip()
+        return value or None
+    return None
 
 
 _VIDEO_WORKFLOW_PROFILE_FIELDS = frozenset({

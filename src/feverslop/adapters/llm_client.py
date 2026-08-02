@@ -25,8 +25,8 @@ def _resolve_api_key(api_key: str | None) -> str:
             )
         if not api_key:
             raise ValueError(
-                "LLM API key is empty. Set LLM_API_KEY environment variable "
-                "or pass a valid api_key."
+                "LLM API key is empty. Set LLM_API_KEY, configure llm.api_key "
+                "in app_config.json or LLM_API_KEY in .env, or pass a valid api_key."
             )
         return api_key
     env_key = os.environ.get("LLM_API_KEY", "")
@@ -38,8 +38,8 @@ def _resolve_api_key(api_key: str | None) -> str:
         )
     if not env_key:
         raise ValueError(
-            "No LLM API key provided. Set LLM_API_KEY environment variable "
-            "or pass a valid api_key argument."
+            "No LLM API key provided. Set LLM_API_KEY, configure llm.api_key "
+            "in app_config.json or LLM_API_KEY in .env, or pass a valid api_key argument."
         )
     return env_key
 

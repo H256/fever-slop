@@ -14,6 +14,8 @@ class TestResolveApiKey(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 _resolve_api_key(None)
             self.assertIn("LLM_API_KEY", str(ctx.exception))
+            self.assertIn("app_config.json", str(ctx.exception))
+            self.assertIn(".env", str(ctx.exception))
 
     def test_empty_key_raises_value_error(self):
         with self.assertRaises(ValueError):
