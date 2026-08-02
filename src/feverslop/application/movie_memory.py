@@ -79,7 +79,7 @@ def build_movie_story_design_fallback(*, request: Any, bible: MovieBible, story_
             scene_id=scene.scene_id,
             purpose=_scene_purpose(scene, index, len(parsed_scenes)),
             conflict=_scene_conflict(scene),
-            emotional_turn=_scene_emotional_turn(scene, index, len(parsed_scenes)),
+            emotional_turn=_scene_emotional_turn(index, len(parsed_scenes)),
             subtext=_scene_subtext(scene),
             dialogue_function=_scene_dialogue_function(scene),
             required_actors=tuple(scene.actor_ids[:max_actors]),
@@ -553,7 +553,7 @@ def _scene_conflict(scene: MovieScreenplayScene) -> str:
     return f"The visible goal is pressured by opposition or uncertainty in: {base}"
 
 
-def _scene_emotional_turn(scene: MovieScreenplayScene, index: int, total: int) -> str:
+def _scene_emotional_turn(index: int, total: int) -> str:
     if index == 1:
         return "The emotional state moves from orientation into tension."
     if index == total:
