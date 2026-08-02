@@ -1,5 +1,6 @@
 {
   "llm": {
+    "api_key": "",
     "base_url": "http://llm.elysium.lan/v1",
     "model": "gemma4-26b-a4b:instruct",
     "temperature": 0.7,

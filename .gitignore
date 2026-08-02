@@ -12,6 +12,9 @@ wheels/
 projects
 .agent
 app_config.json
+.env
+.env.*
+!.env.example
 
 temp*
 *debug*

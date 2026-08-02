@@ -4,9 +4,63 @@ from contextlib import contextmanager
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 import os
+from unittest.mock import patch
 
 
 class AppConfigTests(unittest.TestCase):
+    def test_loads_llm_api_key_from_app_config(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {"api_key": "json-secret"}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+            self.assertEqual("json-secret", config.llm.api_key)
+            self.assertNotIn("json-secret", repr(config.llm))
+
+    def test_loads_llm_api_key_from_adjacent_dotenv(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
+            root = Path(temp_dir)
+            config_path = root / "app_config.json"
+            config_path.write_text('{"llm": {}}', encoding="utf-8")
+            (root / ".env").write_text(
+                'LLM_API_KEY="dotenv-secret" # local key\n', encoding="utf-8"
+            )
+
+            config = AppConfig.load(config_path)
+            self.assertEqual("dotenv-secret", config.llm.api_key)
+            self.assertNotIn("LLM_API_KEY", os.environ)
+
+    def test_app_config_key_takes_precedence_over_dotenv(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
+            root = Path(temp_dir)
+            config_path = root / "app_config.json"
+            config_path.write_text('{"llm": {"api_key": "json-secret"}}', encoding="utf-8")
+            (root / ".env").write_text("LLM_API_KEY=dotenv-secret\n", encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+            self.assertEqual("json-secret", config.llm.api_key)
+
+    def test_process_environment_key_takes_precedence_over_local_config(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            os.environ, {"LLM_API_KEY": "environment-secret"}, clear=True
+        ):
+            root = Path(temp_dir)
+            config_path = root / "app_config.json"
+            config_path.write_text('{"llm": {"api_key": "json-secret"}}', encoding="utf-8")
+            (root / ".env").write_text("LLM_API_KEY=dotenv-secret\n", encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+
+            self.assertEqual("environment-secret", config.llm.api_key)
+
     def test_loads_video_workflow_duration_limits(self):
         from feverslop.config.app_config import AppConfig
 
