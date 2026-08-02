@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import contextlib
+import copy
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict
 import json
 import re
@@ -133,9 +135,17 @@ STEP_ALIASES: dict[str, list[str]] = {
 
 
 class JobRegistry:
-    def __init__(self):
+    def __init__(self, *, max_workers: int = 4):
+        if max_workers < 1:
+            raise ValueError("max_workers must be at least 1")
         self._jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="feverslop-studio-job",
+        )
+        self._futures: dict[Future[Any], str] = {}
+        self._closed = False
 
     def start(
         self,
@@ -149,6 +159,8 @@ class JobRegistry:
         job_id = uuid.uuid4().hex
         now = time.time()
         with self._lock:
+            if self._closed:
+                raise RuntimeError("Job registry is shut down")
             if reject_if_project_active and self._has_active_locked(project_id):
                 raise ValueError("Pipeline is already running for this project")
             self._jobs[job_id] = {
@@ -173,9 +185,37 @@ class JobRegistry:
                 "elapsed_seconds": 0.0,
                 "eta_seconds": None,
             }
-        thread = threading.Thread(target=self._run, args=(job_id, handler), daemon=True)
-        thread.start()
+            future = self._executor.submit(self._run, job_id, handler)
+            self._futures[future] = job_id
+            future.add_done_callback(self._finish_future)
         return job_id
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+    def __enter__(self) -> JobRegistry:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.shutdown()
+
+    def _finish_future(self, future: Future[Any]) -> None:
+        with self._lock:
+            job_id = self._futures.pop(future, None)
+            if job_id is None or not future.cancelled():
+                return
+            job = self._jobs[job_id]
+            if job["status"] == "queued":
+                job.update(
+                    status="cancelled",
+                    completed_at=time.time(),
+                    error="Job cancelled before execution",
+                )
+                self._refresh_runtime(job)
 
     def has_active_pipeline(self, project_id: str) -> bool:
         with self._lock:
@@ -183,14 +223,18 @@ class JobRegistry:
 
     def list(self, project_id: str | None = None) -> list[dict[str, Any]]:
         with self._lock:
-            jobs = [dict(job) for job in self._jobs.values() if project_id is None or job["project_id"] == project_id]
+            jobs = [
+                copy.deepcopy(job)
+                for job in self._jobs.values()
+                if project_id is None or job["project_id"] == project_id
+            ]
         return sorted(jobs, key=lambda job: job["created_at"], reverse=True)
 
     def get(self, job_id: str) -> dict[str, Any]:
         with self._lock:
             if job_id not in self._jobs:
                 raise KeyError(job_id)
-            return dict(self._jobs[job_id])
+            return copy.deepcopy(self._jobs[job_id])
 
     def add_rebuild_plan_timeline(self, project_dir: str | Path, affected: AffectedArtifacts, rebuild_id: str | None = None) -> dict:
         """Schedule a rebuild job for invalidated downstream timeline artifacts.

@@ -684,7 +684,10 @@ class StudioBackendTests(unittest.TestCase):
         bad = registry.start("demo", "bad", lambda _log: (_ for _ in ()).throw(RuntimeError("boom")))
 
         for _ in range(50):
-            if registry.get(ok)["status"] != "running" and registry.get(bad)["status"] != "running":
+            if all(
+                registry.get(job_id)["status"] not in {"queued", "running"}
+                for job_id in (ok, bad)
+            ):
                 break
             time.sleep(0.01)
 
@@ -692,6 +695,56 @@ class StudioBackendTests(unittest.TestCase):
         self.assertEqual("failed", registry.get(bad)["status"])
         self.assertIn("done", registry.get(ok)["logs"])
         self.assertIn("boom", registry.get(bad)["error"])
+
+    def test_job_registry_limits_parallel_jobs_to_configured_workers(self):
+        registry = JobRegistry(max_workers=2)
+        release = threading.Event()
+        started = 0
+        started_lock = threading.Lock()
+
+        def blocking_job(_log):
+            nonlocal started
+            with started_lock:
+                started += 1
+            release.wait(1.0)
+
+        try:
+            job_ids = [registry.start("demo", f"job-{index}", blocking_job) for index in range(4)]
+            for _ in range(100):
+                with started_lock:
+                    if started >= 2:
+                        break
+                time.sleep(0.005)
+
+            with started_lock:
+                self.assertEqual(2, started)
+            self.assertEqual(
+                2,
+                sum(registry.get(job_id)["status"] == "queued" for job_id in job_ids),
+            )
+        finally:
+            release.set()
+            shutdown = getattr(registry, "shutdown", None)
+            if shutdown is not None:
+                shutdown(wait=True)
+
+    def test_job_registry_returns_isolated_nested_snapshots(self):
+        registry = JobRegistry()
+        job_id = registry.start("demo", "snapshot", lambda log: log("original"))
+        for _ in range(100):
+            if registry.get(job_id)["status"] == "succeeded":
+                break
+            time.sleep(0.005)
+
+        snapshot = registry.get(job_id)
+        snapshot["logs"].append("external")
+        snapshot["steps"][0]["status"] = "corrupted"
+        listed = registry.list("demo")[0]
+        listed["logs"].append("listed-external")
+
+        current = registry.get(job_id)
+        self.assertEqual(["original"], current["logs"])
+        self.assertEqual("completed", current["steps"][0]["status"])
 
     def test_job_registry_serializes_steps_elapsed_and_recent_logs(self):
         registry = JobRegistry()
