@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
-from feverslop.adapters.movie_planning import DeterministicMoviePlanner, LLMMoviePlanner
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+from feverslop.composition.movie_planner import build_movie_planner
 from feverslop.ports.reporting import Reporter
 from feverslop.studio.project_validation import validate_full_auto_inputs
 from feverslop.domain.slug_utils import slugify_project_name
@@ -293,28 +293,6 @@ def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, widt
         "lora_split_enabled": False,
         "loras": [],
     }
-
-
-def build_movie_planner(config: dict[str, Any] | None = None):
-    backend = str((config or {}).get("planner_backend") or "llm").strip().lower()
-    if backend in {"deterministic", "local", "placeholder"}:
-        return DeterministicMoviePlanner()
-    if backend != "llm":
-        raise ValueError("movie_planner_backend must be llm or deterministic")
-
-    from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
-    from feverslop.config.app_config import AppConfig
-
-    app_config = AppConfig.load("app_config.json")
-    return LLMMoviePlanner(
-        OpenAICompatibleLLMClient(
-            base_url=app_config.llm.base_url,
-            api_key=app_config.llm.api_key,
-            model=app_config.llm.model,
-            temperature=app_config.llm.temperature,
-            max_tokens=app_config.llm.max_tokens,
-        )
-    )
 
 
 def _movie_planner_backend(value: str) -> str:
