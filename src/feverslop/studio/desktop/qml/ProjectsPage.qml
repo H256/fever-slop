@@ -74,11 +74,13 @@ ScrollView {
         width: 520
         title: "Create Project"
         standardButtons: Dialog.Cancel
+        property string songStyleError: ""
         onOpened: {
             projectType.currentIndex = 0
             projectName.text = ""
             projectIdea.text = ""
             songStyle.text = ""
+            songStyleError = ""
             duration.value = 120
             silentMode.checked = false
         }
@@ -100,12 +102,26 @@ ScrollView {
                 wrapMode: TextEdit.Wrap
                 background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
             }
-            StyledTextField {
-                id: songStyle
+            ColumnLayout {
                 visible: projectType.currentIndex === 1
                 Layout.fillWidth: true
-                placeholderText: "Song style"
-                implicitHeight: 44
+                spacing: 4
+                Label { text: "Song style *"; color: "#1C1C1E"; font.bold: true }
+                StyledTextField {
+                    id: songStyle
+                    Layout.fillWidth: true
+                    placeholderText: "Song style"
+                    implicitHeight: 44
+                    onTextChanged: if (text.trim().length > 0) createDialog.songStyleError = ""
+                }
+                Label {
+                    visible: createDialog.songStyleError.length > 0
+                    Layout.fillWidth: true
+                    text: createDialog.songStyleError
+                    color: "#C62828"
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                }
             }
             RowLayout {
                 visible: projectType.currentIndex > 0
@@ -125,6 +141,11 @@ ScrollView {
                 palette.buttonText: "#FFFFFF"
                 background: Rectangle { color: parent.enabled ? (parent.hovered ? "#666AD1" : "#5B5FC7") : "#AEAEB2"; radius: 6 }
                 onClicked: {
+                    if (projectType.currentIndex === 1 && songStyle.text.trim().length === 0) {
+                        createDialog.songStyleError = "Song style is required"
+                        songStyle.forceActiveFocus()
+                        return
+                    }
                     var types = ["standard_music_video", "full_auto", "movie"]
                     var payload = {
                         project_type: types[projectType.currentIndex],
