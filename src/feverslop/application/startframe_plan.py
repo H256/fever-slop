@@ -4,14 +4,16 @@ import json
 from pathlib import Path
 from typing import Any
 
+from feverslop.utils.io import read_json, read_json_or_none
+
 
 def build_startframe_plan(*, project_dir: Path) -> Path:
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
-    render_plan = _read_json(movie_dir / "render_plan.json")
-    bible = _read_json(movie_dir / "bible.json")
+    render_plan = read_json(movie_dir / "render_plan.json")
+    bible = read_json(movie_dir / "bible.json")
     continuity = _read_json_if_exists(movie_dir / "continuity_plan.json")
-    identity = _read_json(movie_dir / "identity_ledger.json")
+    identity = read_json(movie_dir / "identity_ledger.json")
     width, height = _resolution(render_plan)
     locations = {str(item.get("id")): item for item in bible.get("locations", []) if isinstance(item, dict)}
     shots = []
@@ -78,14 +80,9 @@ def build_startframe_plan(*, project_dir: Path) -> Path:
     return output_path
 
 
-def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def _read_json_if_exists(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    return _read_json(path)
+    data = read_json_or_none(path)
+    return {} if data is None else data
 
 
 def _shots(render_plan: dict[str, Any]) -> list[dict[str, Any]]:
