@@ -9,6 +9,32 @@ QML_ROOT = Path(__file__).parents[1] / "src" / "feverslop" / "studio" / "desktop
 
 
 class StudioTextContextMenuTests(unittest.TestCase):
+    def test_right_click_opens_a_usable_width_menu(self) -> None:
+        from PySide6.QtCore import QObject, QPoint, Qt, QUrl
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+        from PySide6.QtTest import QTest
+
+        app = QGuiApplication.instance() or QGuiApplication([])
+        engine = QQmlApplicationEngine()
+        engine.addImportPath(str(QML_ROOT))
+        engine.loadData(
+            b'''import QtQuick\nimport QtQuick.Controls\nApplicationWindow { width: 500; height: 300; visible: true; StyledTextArea { anchors.fill: parent; text: "hello" } }''',
+            QUrl.fromLocalFile(str(QML_ROOT / "ContextMenuHarness.qml")),
+        )
+        root = engine.rootObjects()[0]
+        app.processEvents()
+
+        QTest.mouseClick(root, Qt.MouseButton.RightButton, pos=QPoint(50, 50))
+        app.processEvents()
+        menu = next(
+            obj for obj in root.findChildren(QObject)
+            if obj.metaObject().className().startswith("TextContextMenu_")
+        )
+
+        self.assertTrue(menu.property("opened"))
+        self.assertGreaterEqual(menu.property("width"), 200)
+
     def test_text_controls_use_the_custom_qml_context_menu(self) -> None:
         menu = QML_ROOT / "TextContextMenu.qml"
         text_area = QML_ROOT / "StyledTextArea.qml"
