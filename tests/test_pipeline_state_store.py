@@ -5,13 +5,27 @@ from pathlib import Path
 import tempfile
 import threading
 import time
+import gc
 import unittest
+import weakref
 from unittest.mock import patch
 
 from feverslop.studio.pipeline_state_store import PipelineStateStore
+from feverslop.studio import pipeline_state_store
 
 
 class PipelineStateStoreTests(unittest.TestCase):
+    def test_path_locks_are_released_when_no_run_uses_them(self):
+        path = Path("pipeline_state.json").resolve()
+        lock = pipeline_state_store._lock_for_path(path)
+        lock_reference = weakref.ref(lock)
+
+        del lock
+        gc.collect()
+
+        self.assertIsNone(lock_reference())
+        self.assertNotIn(path, pipeline_state_store._PATH_LOCKS)
+
     def test_successful_main_pipeline_invalidates_downstream_completion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
