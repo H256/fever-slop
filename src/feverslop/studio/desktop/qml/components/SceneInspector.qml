@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import ".."
 
 ScrollView {
     id: inspector
@@ -52,7 +53,7 @@ ScrollView {
         }
 
         Label { text: "Shot description"; color: "#E4E4E7"; font.pixelSize: 14; font.bold: true }
-        TextArea {
+        StyledTextArea {
             id: shotDescription
             objectName: "sceneShotDescription"
             Accessible.name: "Shot description"
@@ -92,7 +93,7 @@ ScrollView {
                 }
             }
         }
-        TextArea {
+        StyledTextArea {
             id: imagePrompt
             objectName: "sceneImagePrompt"
             Accessible.name: "Image prompt"
@@ -148,7 +149,7 @@ ScrollView {
                 palette.button: "#27272A"
             }
         }
-        TextArea {
+        StyledTextArea {
             id: videoPrompt
             objectName: "sceneLtxPrompt"
             Accessible.name: "LTX prompt"

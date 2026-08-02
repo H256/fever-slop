@@ -144,14 +144,14 @@ Item {
                     }
                     Item { Layout.fillHeight: true }
                     Label { text: "Raw in"; color: "#6E6E73" }
-                    TextField {
+                    StyledTextField {
                         id: trimIn
                         text: page.selectedItem ? Number(page.selectedItem.raw_in_seconds).toFixed(3) : "0"
                         validator: DoubleValidator { bottom: 0 }
                         Layout.fillWidth: true
                     }
                     Label { text: "Raw out"; color: "#6E6E73" }
-                    TextField {
+                    StyledTextField {
                         id: trimOut
                         text: page.selectedItem ? Number(page.selectedItem.raw_out_seconds).toFixed(3) : "0"
                         validator: DoubleValidator { bottom: 0 }

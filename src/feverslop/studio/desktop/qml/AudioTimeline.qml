@@ -762,7 +762,7 @@ Rectangle {
                     Item { height: 6 }
 
                     Label { text: "Lyrics line"; color: "#8E8E93"; font.pixelSize: 11 }
-                    TextField {
+                    StyledTextField {
                         id: fieldLyrics
                         placeholderText: "Enter lyrics or leave empty"
                         placeholderTextColor: "#6E6E73"
@@ -779,7 +779,7 @@ Rectangle {
                     }
 
                     Label { text: "Notes"; color: "#8E8E93"; font.pixelSize: 11 }
-                    TextField {
+                    StyledTextField {
                         id: fieldNotes
                         placeholderText: "Editor notes for this segment"
                         placeholderTextColor: "#6E6E73"
@@ -924,7 +924,7 @@ Rectangle {
             Label { text: "Add Beat Marker"; color: "#F4F4F5"; font.bold: true }
 
             Label { text: "Time (seconds)"; color: "#8E8E93"; font.pixelSize: 11 }
-            TextField {
+            StyledTextField {
                 id: beatTimeField
                 placeholderText: "0.00"
                 placeholderTextColor: "#6E6E73"
@@ -938,7 +938,7 @@ Rectangle {
             }
 
             Label { text: "Label (optional)"; color: "#8E8E93"; font.pixelSize: 11 }
-            TextField {
+            StyledTextField {
                 id: beatLabelField
                 placeholderText: "e.g. drop, fill, snare"
                 placeholderTextColor: "#6E6E73"
@@ -1017,7 +1017,7 @@ Rectangle {
             Label { text: "Add Scene Boundary"; color: "#F4F4F5"; font.bold: true }
 
             Label { text: "Start (seconds)"; color: "#8E8E93"; font.pixelSize: 11 }
-            TextField {
+            StyledTextField {
                 id: bndStartField
                 placeholderText: "0.00"
                 placeholderTextColor: "#6E6E73"
@@ -1031,7 +1031,7 @@ Rectangle {
             }
 
             Label { text: "End (seconds)"; color: "#8E8E93"; font.pixelSize: 11 }
-            TextField {
+            StyledTextField {
                 id: bndEndField
                 placeholderText: "0.00"
                 placeholderTextColor: "#6E6E73"
@@ -1045,7 +1045,7 @@ Rectangle {
             }
 
             Label { text: "Reason"; color: "#8E8E93"; font.pixelSize: 11 }
-            TextField {
+            StyledTextField {
                 id: bndReasonField
                 placeholderText: "e.g. chorus change, bridge transition"
                 placeholderTextColor: "#6E6E73"
