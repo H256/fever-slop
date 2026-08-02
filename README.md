@@ -282,3 +282,12 @@ Python and native Studio tests:
 uv run ruff check .
 uv run python -m unittest discover -s tests
 ```
+
+Dependency security audit:
+
+```bash
+uvx pip-audit .
+```
+
+To run the same check automatically before committing, install the checked-in
+hook configuration once with `uvx pre-commit install`.
