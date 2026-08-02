@@ -26,8 +26,9 @@ class StudioTextContextMenuTests(unittest.TestCase):
 
         for control in (text_area, text_field):
             source = control.read_text(encoding="utf-8")
-            self.assertIn("ContextMenu.menu: contextMenu", source)
-            self.assertNotIn("TapHandler", source)
+            self.assertIn("MouseArea", source)
+            self.assertIn("acceptedButtons: Qt.RightButton", source)
+            self.assertIn("contextMenu.popup()", source)
 
         for path in QML_ROOT.rglob("*.qml"):
             if path.name in {"StyledTextArea.qml", "StyledTextField.qml"}:
