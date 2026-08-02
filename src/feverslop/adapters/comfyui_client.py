@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import json
 import time
@@ -7,6 +8,8 @@ import uuid
 import requests
 
 from feverslop.errors import FeverSlopWorkflowError
+
+logger = logging.getLogger(__name__)
 
 
 class ComfyUIHTTPError(FeverSlopWorkflowError):
@@ -253,8 +256,8 @@ class ComfyUIClient:
                 timeout=30,
             )
             self._raise_for_status(response, "free cache and vram")
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - cache release is deliberately best-effort
+            logger.debug("ComfyUI cache/VRAM release failed: %s", exc)
 
     def _raise_for_status(self, response: requests.Response, operation: str) -> None:
         if response.ok:
