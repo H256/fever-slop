@@ -83,9 +83,17 @@ console = Console()
 
 
 class RenderProgressReporter:
-    def __init__(self, description: str, total: int, *, console: Console = console):
+    def __init__(
+        self,
+        description: str,
+        total: int,
+        *,
+        console: Console = console,
+        emit_scene_progress: bool = False,
+    ):
         self.description = description
         self.total = total
+        self.emit_scene_progress = emit_scene_progress
         self.progress = Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -105,9 +113,11 @@ class RenderProgressReporter:
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.progress.__exit__(exc_type, exc_value, traceback)
 
-    def update(self, _output_path: Path, completed: int, _total: int) -> None:
+    def update(self, _output_path: Path, completed: int, total: int) -> None:
         if self.task_id is not None:
             self.progress.update(self.task_id, completed=completed)
+        if self.emit_scene_progress:
+            console.print(f"Rendered scene {completed}/{total}")
 
     def analysis_attempt(self, scene_id: int, references: list[dict[str, str]]) -> None:
         summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
@@ -918,7 +928,9 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             dirty_marker,
             {scene.scene_number for scene in all_scenes},
         )
-        with RenderProgressReporter("Rendering prepared LTX scenes", total) as progress:
+        with RenderProgressReporter(
+            "Rendering prepared LTX scenes", total, emit_scene_progress=True
+        ) as progress:
             for completed, scene in enumerate(scenes, start=1):
                 workflow = state.context.artifact_layout.scene_workflow(scene.scene_number)
                 final_path = state.context.artifact_layout.scene_final_video(scene.scene_number)
@@ -1048,7 +1060,9 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
     )
     ltx_scene_numbers = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
     ltx_total = count_render_plan_items(state.plan_for_next_step, scene_numbers=ltx_scene_numbers)
-    with RenderProgressReporter("Rendering LTX scenes", ltx_total) as ltx_progress:
+    with RenderProgressReporter(
+        "Rendering LTX scenes", ltx_total, emit_scene_progress=True
+    ) as ltx_progress:
         video_use_case.execute(
             RenderVideoScenesRequest(
                 render_plan_path=state.plan_for_next_step,

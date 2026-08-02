@@ -763,6 +763,22 @@ class StudioBackendTests(unittest.TestCase):
         self.assertTrue(any(step["status"] == "completed" for step in job["steps"]))
         self.assertEqual(["line"], job["recent_logs"])
 
+    def test_ltx_scene_progress_and_finished_action_advance_ltx_step(self):
+        registry = JobRegistry()
+        job = {"steps": registry._initial_steps("ltx-render-scenes"), "progress": 0}
+
+        registry._advance_step_from_log(job, "Rendered scene 1/3")
+
+        step = job["steps"][0]
+        self.assertEqual("LTX render", step["name"])
+        self.assertEqual("running", step["status"])
+        self.assertEqual(33, step["progress"])
+
+        registry._advance_step_from_log(job, "Finished ltx-render-scenes")
+
+        self.assertEqual("completed", step["status"])
+        self.assertEqual(100, job["overall_progress"])
+
     def test_job_registry_sanitizes_rich_logs_and_tracks_acestep_step(self):
         registry = JobRegistry()
 
