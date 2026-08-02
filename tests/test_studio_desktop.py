@@ -2147,6 +2147,22 @@ class StudioQmlTests(unittest.TestCase):
     def setUpClass(cls):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+    def test_pipeline_action_menu_declares_readable_delegate_colors(self):
+        qml_path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "feverslop"
+            / "studio"
+            / "desktop"
+            / "qml"
+            / "PipelinePage.qml"
+        )
+        qml = qml_path.read_text(encoding="utf-8")
+
+        self.assertIn('color: delegateItem.enabled ? "#1C1C1E" : "#6E6E73"', qml)
+        self.assertIn('color: delegateItem.highlighted ? "#E8E8FF" : "#FFFFFF"', qml)
+        self.assertIn("implicitHeight: 40", qml)
+
     def test_main_qml_loads_and_exposes_editor_shell(self):
         from PySide6.QtGui import QGuiApplication
         from PySide6.QtQml import QQmlApplicationEngine

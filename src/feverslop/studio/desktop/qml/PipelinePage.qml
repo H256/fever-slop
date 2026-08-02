@@ -45,10 +45,21 @@ Item {
                     }
                 }
                 delegate: ItemDelegate {
+                    id: delegateItem
                     required property var modelData
                     width: action.width
+                    implicitHeight: 40
                     enabled: modelData.enabled !== false
                     text: modelData.recommended ? modelData.label + " (next)" : modelData.label
+                    contentItem: Label {
+                        text: delegateItem.text
+                        color: delegateItem.enabled ? "#1C1C1E" : "#6E6E73"
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+                    background: Rectangle {
+                        color: delegateItem.highlighted ? "#E8E8FF" : "#FFFFFF"
+                    }
                     ToolTip.visible: hovered && !enabled && modelData.reason
                     ToolTip.text: modelData.reason || ""
                 }

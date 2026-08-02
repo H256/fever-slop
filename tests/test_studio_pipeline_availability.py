@@ -78,6 +78,77 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertFalse(actions["ltx-render-scenes"]["enabled"])
         self.assertEqual("Prepare LTX workflows for scenes 3 first.", actions["ltx-render-scenes"]["reason"])
 
+    def test_empty_selection_uses_render_plan_for_workflow_preparation(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "config.json").write_text('{"video_pipeline": "ltx_msr"}', encoding="utf-8")
+            state_dir = root / ".studio"
+            state_dir.mkdir()
+            (state_dir / "pipeline_state.json").write_text(
+                '{"completed_stages": ["main-pipeline", "msr-references", "msr_reference_sheets", "msr_prompt_enrich"]}',
+                encoding="utf-8",
+            )
+            plans = root / "output" / "render" / "plans"
+            plans.mkdir(parents=True)
+            (plans / "references.json").write_text(
+                '[{"scene": 1}, {"scene": 3}]', encoding="utf-8"
+            )
+
+            actions = {item["value"]: item for item in pipeline_action_availability(root)}
+
+        self.assertTrue(actions["ltx-prepare-workflows"]["enabled"])
+        self.assertTrue(actions["ltx-prepare-workflows"]["recommended"])
+        self.assertEqual("Prepare LTX workflows (all scenes)", actions["ltx-prepare-workflows"]["label"])
+
+    def test_empty_selection_enables_rendering_all_prepared_render_plan_scenes(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "config.json").write_text('{"video_pipeline": "ltx_msr"}', encoding="utf-8")
+            plans = root / "output" / "render" / "plans"
+            plans.mkdir(parents=True)
+            (plans / "references.json").write_text(
+                '[{"scene": 1}, {"scene": 3}]', encoding="utf-8"
+            )
+            for scene in (1, 3):
+                prepared = root / "output" / "render" / "scenes" / f"scene_{scene:04d}"
+                prepared.mkdir(parents=True)
+                (prepared / "workflow.json").write_text("{}", encoding="utf-8")
+                (prepared / "manifest.json").write_text("{}", encoding="utf-8")
+
+            actions = {item["value"]: item for item in pipeline_action_availability(root)}
+
+        self.assertTrue(actions["ltx-render-scenes"]["enabled"])
+        self.assertTrue(actions["ltx-render-scenes"]["recommended"])
+        self.assertEqual("Render all scenes", actions["ltx-render-scenes"]["label"])
+
+    def test_empty_selection_rejects_malformed_render_plan_entries(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "config.json").write_text('{"video_pipeline": "ltx_msr"}', encoding="utf-8")
+            state_dir = root / ".studio"
+            state_dir.mkdir()
+            (state_dir / "pipeline_state.json").write_text(
+                '{"completed_stages": ["main-pipeline", "msr-references", "msr_reference_sheets", "msr_prompt_enrich"]}',
+                encoding="utf-8",
+            )
+            plans = root / "output" / "render" / "plans"
+            plans.mkdir(parents=True)
+            (plans / "references.json").write_text('[{"scene": 1}, null]', encoding="utf-8")
+
+            actions = {item["value"]: item for item in pipeline_action_availability(root)}
+
+        self.assertFalse(actions["ltx-prepare-workflows"]["enabled"])
+        self.assertEqual(
+            "No scenes are available in the active render plan.",
+            actions["ltx-prepare-workflows"]["reason"],
+        )
+
     def test_unfinished_enrichment_blocks_workflow_preparation(self):
         from feverslop.studio.pipeline_actions import pipeline_action_availability
 

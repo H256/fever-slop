@@ -20,15 +20,13 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
     main_ready = _complete(completed, "main-pipeline", "main_pipeline", "full-pipeline")
     references_ready = _complete(completed, "msr-references", "msr_references", "full-pipeline")
     enrichment_ready = _complete(completed, "msr-enrich", "msr_prompt_enrich", "full-pipeline")
-    missing_workflows = _missing_workflow_scenes(project_root, selected_scenes)
-    selection_reason = "Select at least one scene first."
-    render_reason = (
-        selection_reason
-        if not selected_scenes
-        else _prepare_reason(missing_workflows)
-    )
-    render_enabled = bool(selected_scenes) and not missing_workflows
-    prepare_enabled = bool(selected_scenes) and enrichment_ready
+    target_scenes = selected_scenes or _render_plan_scene_numbers(project_root)
+    all_scenes = not selected_scenes
+    missing_workflows = _missing_workflow_scenes(project_root, target_scenes)
+    no_target_reason = "No scenes are available in the active render plan."
+    render_reason = no_target_reason if not target_scenes else _prepare_reason(missing_workflows)
+    render_enabled = bool(target_scenes) and not missing_workflows
+    prepare_enabled = bool(target_scenes) and enrichment_ready
 
     return [
         _action("Full pipeline", "full-pipeline"),
@@ -44,18 +42,18 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
             reason="Run MSR references first." if not references_ready else "",
         ),
         _action(
-            "Prepare LTX workflows",
+            "Prepare LTX workflows (all scenes)" if all_scenes else "Prepare LTX workflows",
             "ltx-prepare-workflows",
             enabled=prepare_enabled,
             recommended=prepare_enabled and bool(missing_workflows),
             reason=(
-                selection_reason if not selected_scenes
+                no_target_reason if not target_scenes
                 else "Run MSR enrichment first." if not enrichment_ready
                 else ""
             ),
         ),
         _action(
-            "Render selected scenes",
+            "Render all scenes" if all_scenes else "Render selected scenes",
             "ltx-render-scenes",
             enabled=render_enabled,
             recommended=render_enabled,
@@ -88,6 +86,21 @@ def _missing_workflow_scenes(project_root: Path, scenes: list[int]) -> list[int]
 
 def _all_render_plan_clips_exist(project_root: Path) -> bool:
     layout = SceneArtifactLayout(project_root)
+    render_plan = _active_render_plan(project_root)
+    if render_plan is None:
+        return False
+    scene_numbers = _render_plan_scene_numbers(project_root)
+    if not scene_numbers:
+        return False
+    legacy_dirs = (layout.render_dir / "ltx_msr", layout.render_dir / "ltx_ingredients")
+    return all(
+        layout.find_scene_final_video(scene_number, legacy_dirs=legacy_dirs) is not None
+        for scene_number in scene_numbers
+    )
+
+
+def _active_render_plan(project_root: Path) -> Path | None:
+    layout = SceneArtifactLayout(project_root)
     video_pipeline = _configured_video_pipeline(project_root)
     candidates = (
         (layout.references_plan, layout.base_plan)
@@ -96,27 +109,25 @@ def _all_render_plan_clips_exist(project_root: Path) -> bool:
         if video_pipeline == "ltx_ingredients"
         else (layout.base_plan,)
     )
-    render_plan = next(
-        (path for path in candidates if path.is_file()),
-        None,
-    )
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def _render_plan_scene_numbers(project_root: Path) -> list[int]:
+    render_plan = _active_render_plan(project_root)
     if render_plan is None:
-        return False
+        return []
     try:
         scenes = json.loads(render_plan.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
-        return False
+        return []
     if not isinstance(scenes, list) or not scenes:
-        return False
-    legacy_dirs = (layout.render_dir / "ltx_msr", layout.render_dir / "ltx_ingredients")
+        return []
     try:
-        return all(
-            isinstance(scene, dict)
-            and layout.find_scene_final_video(int(scene["scene"]), legacy_dirs=legacy_dirs) is not None
-            for scene in scenes
-        )
+        if not all(isinstance(scene, dict) for scene in scenes):
+            return []
+        return sorted({int(scene["scene"]) for scene in scenes})
     except (KeyError, TypeError, ValueError):
-        return False
+        return []
 
 
 def _configured_video_pipeline(project_root: Path) -> str:
