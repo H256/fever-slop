@@ -91,6 +91,21 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             self.assertEqual("Mara", enriched[0]["references"]["actor_reference_descriptions"][0]["name"])
             self.assertEqual("lead singer", enriched[0]["references"]["actor_reference_descriptions"][0]["role"])
             self.assertEqual("Mirror Stage", enriched[0]["references"]["location_reference_description"]["name"])
+            self.assertEqual(
+                {
+                    "actors": [
+                        {
+                            "id": "singer",
+                            "path": "output/references/actors/singer/views/hero.png",
+                        }
+                    ],
+                    "location": {
+                        "id": "stage",
+                        "path": "output/references/locations/stage/views/hero.png",
+                    },
+                },
+                enriched[0].get("visual_consistency_sources"),
+            )
 
     def test_reports_progress_per_scene(self):
         with tempfile.TemporaryDirectory() as temp_dir:
