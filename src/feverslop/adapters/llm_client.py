@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import os
 from pathlib import Path
 
 from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
@@ -14,20 +15,50 @@ from feverslop.prompting.vision_references import prepare_vision_image
 RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
 
 
+def _resolve_api_key(api_key: str | None) -> str:
+    """Resolve API key: explicit > env var > error."""
+    if api_key is not None:
+        if api_key == "not-needed":
+            raise ValueError(
+                "Hardcoded API key 'not-needed' detected. Set LLM_API_KEY "
+                "environment variable or pass a valid api_key."
+            )
+        if not api_key:
+            raise ValueError(
+                "LLM API key is empty. Set LLM_API_KEY environment variable "
+                "or pass a valid api_key."
+            )
+        return api_key
+    env_key = os.environ.get("LLM_API_KEY", "")
+    env_key = env_key.strip()
+    if env_key == "not-needed":
+        raise ValueError(
+            "Hardcoded API key 'not-needed' in LLM_API_KEY. "
+            "Set a valid API key."
+        )
+    if not env_key:
+        raise ValueError(
+            "No LLM API key provided. Set LLM_API_KEY environment variable "
+            "or pass a valid api_key argument."
+        )
+    return env_key
+
+
 class LocalOpenAIClient:
     def __init__(
         self,
         base_url: str = "http://localhost:8080/v1",
-        api_key: str = "not-needed",
+        api_key: str | None = None,
         model: str = "default",
         temperature: float = 0.7,
         max_tokens: int = 512,
         max_retries: int = 3,
         retry_base_delay: float = 0.5,
     ):
+        resolved_key = _resolve_api_key(api_key)
         self.client = OpenAI(
             base_url=base_url,
-            api_key=api_key,
+            api_key=resolved_key,
         )
         self.model = model
         self.temperature = temperature
