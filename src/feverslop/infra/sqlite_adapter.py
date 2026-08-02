@@ -17,7 +17,7 @@ from feverslop.ports.revision_store import RevisionStorePort
 
 _UTC = datetime.timezone.utc
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS prompt_revisions (
@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS prompt_revisions (
     created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_prompt_revisions_scene_field
-    ON prompt_revisions (project_id, scene_number, field);
+CREATE INDEX IF NOT EXISTS idx_prompt_revisions_history
+    ON prompt_revisions (project_id, scene_number, field, created_at);
 
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -54,11 +54,9 @@ CREATE TABLE IF NOT EXISTS artifact_provenance (
     UNIQUE(project_id, artifact_kind, scene_number)
 );
 
-CREATE INDEX IF NOT EXISTS idx_artifact_provenance_project
-    ON artifact_provenance (project_id);
+CREATE INDEX IF NOT EXISTS idx_artifact_provenance_project_recorded_at
+    ON artifact_provenance (project_id, recorded_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_artifact_provenance_kind
-    ON artifact_provenance (project_id, artifact_kind, scene_number);
 """
 
 
@@ -70,6 +68,9 @@ def ensure_schema(
         raise ValueError("Database connection required")
 
     connection.executescript(SCHEMA_SQL)
+    connection.execute("DROP INDEX IF EXISTS idx_prompt_revisions_scene_field")
+    connection.execute("DROP INDEX IF EXISTS idx_artifact_provenance_project")
+    connection.execute("DROP INDEX IF EXISTS idx_artifact_provenance_kind")
 
     # Migrate v1 -> v2: add project_id column if missing.
     # NOTE: Legacy rows that were created before v2 will get project_id="" after

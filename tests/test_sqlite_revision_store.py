@@ -138,6 +138,16 @@ class EnsureSchemaTests(unittest.TestCase):
 
         self.assertIn("prompt_revisions", tables)
 
+    def test_schema_records_index_migration_version(self):
+        conn = sqlite3.connect(self.db_file.name)
+        ensure_schema(conn)
+        version = conn.execute(
+            "SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1"
+        ).fetchone()[0]
+        conn.close()
+
+        self.assertEqual(3, version)
+
     def test_idempotent(self):
         conn = sqlite3.connect(self.db_file.name)
         ensure_schema(conn)
@@ -145,6 +155,91 @@ class EnsureSchemaTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_file.name)
         ensure_schema(conn)
         conn.close()
+
+    def test_history_query_uses_created_at_index(self):
+        conn = sqlite3.connect(self.db_file.name)
+        ensure_schema(conn)
+
+        plan = conn.execute(
+            """
+            EXPLAIN QUERY PLAN
+            SELECT * FROM prompt_revisions
+            WHERE project_id = ? AND scene_number = ? AND field = ?
+            ORDER BY created_at ASC
+            """,
+            ("project", 1, PromptField.Z_IMAGE_PROMPT.value),
+        ).fetchall()
+        conn.close()
+
+        self.assertTrue(
+            any("idx_prompt_revisions_history" in row[3] for row in plan),
+            plan,
+        )
+
+    def test_schema_replaces_legacy_prefix_indexes(self):
+        conn = sqlite3.connect(self.db_file.name)
+        conn.executescript(
+            """
+            CREATE TABLE prompt_revisions (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                scene_number INTEGER NOT NULL,
+                field TEXT NOT NULL,
+                value TEXT NOT NULL,
+                parent_id TEXT,
+                restored_from TEXT,
+                content_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_prompt_revisions_scene_field
+                ON prompt_revisions (project_id, scene_number, field);
+            CREATE TABLE artifact_provenance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL,
+                artifact_kind TEXT NOT NULL,
+                scene_number INTEGER,
+                prompt_hash TEXT,
+                workflow_hash TEXT,
+                reference_hash TEXT,
+                timeline_hash TEXT,
+                dimensions_hash TEXT,
+                recorded_at TEXT NOT NULL,
+                UNIQUE(project_id, artifact_kind, scene_number)
+            );
+            CREATE INDEX idx_artifact_provenance_project
+                ON artifact_provenance (project_id);
+            CREATE INDEX idx_artifact_provenance_kind
+                ON artifact_provenance (project_id, artifact_kind, scene_number);
+            """
+        )
+
+        ensure_schema(conn)
+        indexes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+        conn.close()
+
+        self.assertNotIn("idx_prompt_revisions_scene_field", indexes)
+        self.assertNotIn("idx_artifact_provenance_project", indexes)
+        self.assertNotIn("idx_artifact_provenance_kind", indexes)
+        self.assertIn("idx_prompt_revisions_history", indexes)
+        self.assertIn("idx_artifact_provenance_project_recorded_at", indexes)
+
+    def test_schema_uses_unique_constraint_index_for_fingerprint_lookup(self):
+        conn = sqlite3.connect(self.db_file.name)
+        ensure_schema(conn)
+        indexes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+        conn.close()
+
+        self.assertNotIn("idx_artifact_provenance_kind", indexes)
 
 
 if __name__ == "__main__":
