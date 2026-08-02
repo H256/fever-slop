@@ -1,6 +1,6 @@
 import unittest
 
-from feverslop.audio.vocal_timeline_analyzer import TimelineSegment
+from feverslop.domain.timeline import TimelineSegment
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 
 
