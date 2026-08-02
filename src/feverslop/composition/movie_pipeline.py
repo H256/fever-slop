@@ -804,7 +804,8 @@ def _ensure_movie_bible_artifact(project_dir):
 
 def _regenerate_movie_bible_artifact(project_dir, planner_backend):
     from feverslop.application.movie_artifacts import regenerate_movie_bible
-    from feverslop.studio.project_repository import build_movie_planner
+    from feverslop.composition.movie_planner import build_movie_planner
+
     return regenerate_movie_bible(project_dir, planner=build_movie_planner({"planner_backend": planner_backend}))
 
 
