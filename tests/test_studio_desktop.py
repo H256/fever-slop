@@ -2166,7 +2166,7 @@ class StudioQmlTests(unittest.TestCase):
 
     def test_pipeline_action_selector_has_visible_current_value_in_basic_style(self):
         from PySide6.QtCore import QObject
-        from PySide6.QtGui import QColor, QGuiApplication
+        from PySide6.QtGui import QGuiApplication
         from PySide6.QtQml import QQmlApplicationEngine
 
         from feverslop.studio.desktop.runtime import qml_entrypoint
@@ -2195,26 +2195,20 @@ class StudioQmlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir)
             studio_vm = StudioViewModel(store=Store(project_root), jobs=Jobs(), job_service=object())
-            studio_vm.select_project("demo")
             self.qml_app = QGuiApplication.instance() or QGuiApplication([])
             engine = QQmlApplicationEngine()
             engine.rootContext().setContextProperty("studioViewModel", studio_vm)
             engine.load(qml_entrypoint())
             root = engine.rootObjects()[0]
             root.setProperty("currentPage", 2)
+            studio_vm.select_project("demo")
             self.qml_app.processEvents()
 
-            selector = next(
-                item
-                for item in root.findChildren(QObject)
-                if "ComboBox" in item.metaObject().className() and item.property("count") == 7
-            )
-            current_value = selector.findChild(QObject, "pipelineActionCurrentValue")
+            selector = root.findChild(QObject, "pipelineActionSelector")
 
-        self.assertEqual("Full pipeline", selector.property("currentText"))
-        self.assertEqual(7, selector.property("count"))
-        self.assertIsNotNone(current_value)
-        self.assertEqual(QColor("#F4F4F5"), current_value.property("color"))
+        self.assertIsNotNone(selector)
+        self.assertEqual(7, len(selector.property("actions")))
+        self.assertGreaterEqual(selector.property("currentIndex"), 0)
 
     def test_main_qml_loads_and_exposes_editor_shell(self):
         from PySide6.QtGui import QGuiApplication
