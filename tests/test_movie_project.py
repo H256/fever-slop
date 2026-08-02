@@ -3754,6 +3754,14 @@ class MovieProjectTests(unittest.TestCase):
             config["ingredients_workflow"],
         )
 
+    def test_movie_planner_factory_is_available_without_studio_repository(self):
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.composition.movie_planner import build_movie_planner
+
+        planner = build_movie_planner({"planner_backend": "deterministic"})
+
+        self.assertIsInstance(planner, DeterministicMoviePlanner)
+
     def test_movie_visual_adapter_defaults_to_comfyui_not_placeholder(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
         from feverslop.studio.job_service import build_movie_visual_adapter
