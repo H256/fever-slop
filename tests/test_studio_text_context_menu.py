@@ -24,6 +24,11 @@ class StudioTextContextMenuTests(unittest.TestCase):
         self.assertIn("#71717A", menu_source)
         self.assertIn("#3F3F46", menu_source)
 
+        for control in (text_area, text_field):
+            source = control.read_text(encoding="utf-8")
+            self.assertIn("ContextMenu.menu: contextMenu", source)
+            self.assertNotIn("TapHandler", source)
+
         for path in QML_ROOT.rglob("*.qml"):
             if path.name in {"StyledTextArea.qml", "StyledTextField.qml"}:
                 continue
