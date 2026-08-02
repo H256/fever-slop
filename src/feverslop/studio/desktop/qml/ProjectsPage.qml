@@ -74,6 +74,14 @@ ScrollView {
         width: 520
         title: "Create Project"
         standardButtons: Dialog.Cancel
+        onOpened: {
+            projectType.currentIndex = 0
+            projectName.text = ""
+            projectIdea.text = ""
+            songStyle.text = ""
+            duration.value = 120
+            silentMode.checked = false
+        }
         ColumnLayout {
             width: parent.width
             spacing: 12
@@ -136,10 +144,17 @@ ScrollView {
                     }
                     var projectId = vm ? vm.create_project(payload) : ""
                     if (projectId) {
-                        if (projectType.currentIndex === 1) vm.start_job("full-auto", [])
+                        var currentType = projectType.currentIndex
+                        if (currentType === 1) vm.start_job("full-auto", [])
+                        projectType.currentIndex = 0
+                        projectName.text = ""
+                        projectIdea.text = ""
+                        songStyle.text = ""
+                        duration.value = 120
+                        silentMode.checked = false
                         createDialog.close()
-                        root.currentPage = projectType.currentIndex === 1 ? 2 : 1
-                        root.pageTitle = projectType.currentIndex === 1 ? "Pipeline" : "Dashboard"
+                        root.currentPage = currentType === 1 ? 2 : 1
+                        root.pageTitle = currentType === 1 ? "Pipeline" : "Dashboard"
                     }
                 }
             }
