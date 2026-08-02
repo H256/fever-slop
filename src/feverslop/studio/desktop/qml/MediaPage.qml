@@ -64,14 +64,14 @@ Item {
                 visible: page.reviewMode
                 Layout.fillWidth: true
                 Label { text: "In"; color: "#6E6E73" }
-                TextField {
+                StyledTextField {
                     id: trimIn
                     text: "0"
                     validator: DoubleValidator { bottom: 0 }
                     Layout.preferredWidth: 90
                 }
                 Label { text: "Out"; color: "#6E6E73" }
-                TextField {
+                StyledTextField {
                     id: trimOut
                     text: player.duration > 0 ? (player.duration / 1000).toFixed(3) : "0"
                     validator: DoubleValidator { bottom: 0 }

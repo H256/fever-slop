@@ -90,8 +90,8 @@ ScrollView {
                 Layout.fillWidth: true
                 model: ["Music video", "Full auto music video", "Movie"]
             }
-            TextField { id: projectName; Layout.fillWidth: true; placeholderText: "Project name"; implicitHeight: 44 }
-            TextArea {
+            StyledTextField { id: projectName; Layout.fillWidth: true; placeholderText: "Project name"; implicitHeight: 44 }
+            StyledTextArea {
                 id: projectIdea
                 visible: projectType.currentIndex > 0
                 Layout.fillWidth: true
@@ -100,7 +100,7 @@ ScrollView {
                 wrapMode: TextEdit.Wrap
                 background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
             }
-            TextField {
+            StyledTextField {
                 id: songStyle
                 visible: projectType.currentIndex === 1
                 Layout.fillWidth: true

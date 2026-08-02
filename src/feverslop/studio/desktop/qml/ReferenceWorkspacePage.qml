@@ -109,7 +109,7 @@ Rectangle {
                     onToggled: page.refVm.set_missing_only(checked)
                 }
 
-                TextField {
+                StyledTextField {
                     id: searchField
                     objectName: "refSearchField"
                     placeholderText: "Search assets..."

@@ -53,7 +53,7 @@ Item {
                     ToolTip.text: modelData.reason || ""
                 }
             }
-            TextField {
+            StyledTextField {
                 id: scenes
                 Layout.preferredWidth: 240
                 implicitHeight: 44
@@ -102,7 +102,7 @@ Item {
         ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            TextArea {
+            StyledTextArea {
                 readOnly: true
                 text: vm ? vm.job_logs : "Ready."
                 color: "#E5E5EA"

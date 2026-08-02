@@ -92,7 +92,7 @@ Rectangle {
                 anchors.margins: 12
                 spacing: 12
 
-                TextField {
+                StyledTextField {
                     id: filterField
                     objectName: "sceneFilter"
                     placeholderText: "Filter scene, status, or performance"
