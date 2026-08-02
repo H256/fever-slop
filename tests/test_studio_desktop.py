@@ -2218,6 +2218,15 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIn("edge: Qt.RightEdge", qml)
         self.assertNotIn("edge: drawer.Right", qml)
 
+    def test_audio_timeline_detail_bindings_are_null_safe(self):
+        qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "AudioTimeline.qml"
+        qml = qml_path.read_text(encoding="utf-8")
+
+        details = qml[qml.index("id: panel") : qml.index("// BEAT TABLE")]
+        self.assertNotIn("panel.selData.", details)
+        self.assertIn('readonly property real selectedStart: selData ? selData.start : 0', details)
+        self.assertIn('readonly property string selectedLyrics: selData ? selData.lyrics_line : ""', details)
+
     def test_pipeline_action_selector_has_visible_current_value_in_basic_style(self):
         from PySide6.QtCore import QObject
         from PySide6.QtGui import QGuiApplication

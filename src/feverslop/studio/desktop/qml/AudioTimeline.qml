@@ -700,6 +700,12 @@ Rectangle {
             readonly property var selData: page.selectedSegment >= 0
                 ? (page.vm ? page.vm.segments[page.selectedSegment] : null)
                 : null
+            readonly property real selectedStart: selData ? selData.start : 0
+            readonly property real selectedEnd: selData ? selData.end : 0
+            readonly property string selectedKind: selData ? selData.kind : ""
+            readonly property bool selectedDraft: selData ? selData.is_draft : false
+            readonly property string selectedLyrics: selData ? selData.lyrics_line : ""
+            readonly property string selectedNotes: selData ? selData.notes : ""
 
             ColumnLayout {
                 id: detailLayout
@@ -729,7 +735,7 @@ Rectangle {
 
                         Label { text: "Start (s)"; color: "#8E8E93"; font.pixelSize: 11 }
                         Label {
-                            text: panel.selData.start.toFixed(3)
+                            text: panel.selectedStart.toFixed(3)
                             color: "#D4D4D8"
                             font.pixelSize: 11
                             font.family: "monospace"
@@ -737,7 +743,7 @@ Rectangle {
 
                         Label { text: "End (s)"; color: "#8E8E93"; font.pixelSize: 11 }
                         Label {
-                            text: panel.selData.end.toFixed(3)
+                            text: panel.selectedEnd.toFixed(3)
                             color: "#D4D4D8"
                             font.pixelSize: 11
                             font.family: "monospace"
@@ -745,7 +751,7 @@ Rectangle {
 
                         Label { text: "Kind"; color: "#8E8E93"; font.pixelSize: 11 }
                         Label {
-                            text: panel.selData.kind
+                            text: panel.selectedKind
                             color: "#D4D4D8"
                             font.pixelSize: 11
                             font.bold: true
@@ -753,8 +759,8 @@ Rectangle {
 
                         Label { text: "Draft"; color: "#8E8E93"; font.pixelSize: 11 }
                         Label {
-                            text: panel.selData.is_draft ? "Yes" : "No"
-                            color: panel.selData.is_draft ? "#F59E0B" : "#D4D4D8"
+                            text: panel.selectedDraft ? "Yes" : "No"
+                            color: panel.selectedDraft ? "#F59E0B" : "#D4D4D8"
                             font.pixelSize: 11
                         }
                     }
@@ -766,7 +772,7 @@ Rectangle {
                         id: fieldLyrics
                         placeholderText: "Enter lyrics or leave empty"
                         placeholderTextColor: "#6E6E73"
-                        text: panel.selData.lyrics_line
+                        text: panel.selectedLyrics
                         color: "#F4F4F5"
                         selectionColor: "#3B3F8C"
                         selectedTextColor: "#FFFFFF"
@@ -783,7 +789,7 @@ Rectangle {
                         id: fieldNotes
                         placeholderText: "Editor notes for this segment"
                         placeholderTextColor: "#6E6E73"
-                        text: panel.selData.notes
+                        text: panel.selectedNotes
                         color: "#F4F4F5"
                         selectionColor: "#3B3F8C"
                         selectedTextColor: "#FFFFFF"
