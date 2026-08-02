@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -38,6 +39,39 @@ class StudioDesktopCompositionTests(unittest.TestCase):
         self.assertIsInstance(context.jobs, JobRegistry)
         self.assertIsInstance(context.job_service, StudioJobService)
         self.assertIsInstance(context.scene_service, SceneWorkspaceService)
+
+    def test_runtime_registers_nonblocking_job_shutdown(self):
+        from feverslop.studio.desktop import runtime
+
+        app = MagicMock()
+        type(app).aboutToQuit = MagicMock()
+        app.aboutToQuit = MagicMock()
+        jobs = MagicMock()
+        context = SimpleNamespace(
+            store=MagicMock(),
+            jobs=jobs,
+            job_service=MagicMock(),
+            scene_service=MagicMock(),
+            timeline_service=MagicMock(),
+            rebuild_service=MagicMock(),
+        )
+        engine = MagicMock()
+        engine.rootObjects.return_value = [object()]
+
+        with patch.object(runtime.QGuiApplication, "instance", return_value=app), patch.object(
+            runtime, "create_studio_context", return_value=context
+        ), patch.object(runtime, "StudioViewModel"), patch.object(
+            runtime, "SceneWorkspaceViewModel"
+        ), patch.object(runtime, "TimelineStudioViewModel"), patch.object(
+            runtime, "ReferenceWorkspaceService"
+        ), patch.object(runtime, "ReferenceWorkspaceViewModel"), patch.object(
+            runtime, "RebuildViewModel"
+        ), patch.object(runtime, "QQmlApplicationEngine", return_value=engine):
+            self.assertEqual(0, runtime.run_studio("projects", smoke_test=True))
+
+        callback = app.aboutToQuit.connect.call_args.args[0]
+        callback()
+        jobs.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
 
     def test_scene_video_thumbnail_url_uses_cached_ffmpeg_frame(self):
         from unittest.mock import patch
@@ -1514,6 +1548,27 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(requests[0][1].scenes, [1, 3, 5])
         self.assertEqual(view_model.jobs[0]["status"], "running")
         self.assertEqual(view_model.job_logs, "Planning\nRendering")
+
+    def test_refresh_jobs_does_not_emit_for_unchanged_snapshot(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        class Jobs:
+            def list(self, project_id):
+                return [{"id": "job-1", "project_id": project_id, "status": "running"}]
+
+        view_model = StudioViewModel(store=Store(), jobs=Jobs(), job_service=object())
+        view_model.select_project("demo")
+        emissions = []
+        view_model.jobsChanged.connect(lambda: emissions.append(True))
+
+        view_model.refresh_jobs()
+        view_model.refresh_jobs()
+
+        self.assertEqual(1, len(emissions))
 
     def test_pipeline_actions_expose_scene_specific_preparation_guidance(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
