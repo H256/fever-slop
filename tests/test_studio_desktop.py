@@ -2162,6 +2162,7 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIn('color: delegateItem.enabled ? "#1C1C1E" : "#6E6E73"', qml)
         self.assertIn('color: delegateItem.highlighted ? "#E8E8FF" : "#FFFFFF"', qml)
         self.assertIn("implicitHeight: 40", qml)
+        self.assertIn("currentIndex = count > 0 ? 0 : -1", qml)
 
     def test_pipeline_action_selector_has_visible_current_value_in_basic_style(self):
         from PySide6.QtCore import QObject
