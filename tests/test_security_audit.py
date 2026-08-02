@@ -165,11 +165,19 @@ class PathContainmentTests(unittest.TestCase):
 
     def test_is_safe_identifier_rejects_parent_dir(self):
         self.assertFalse(is_safe_identifier("foo/../bar"))
+        self.assertFalse(is_safe_identifier("foo\\..\\bar"))
         self.assertFalse(is_safe_identifier("../"))
         self.assertFalse(is_safe_identifier("../../../etc"))
 
     def test_is_safe_identifier_rejects_absolute(self):
-        self.assertFalse(is_safe_identifier("/etc/passwd"))
+        for value in (
+            "/etc/passwd",
+            "\\etc\\passwd",
+            "C:\\projects\\demo",
+            "\\\\server\\share\\demo",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(is_safe_identifier(value))
 
     def test_is_safe_identifier_accepts_safe_names(self):
         self.assertTrue(is_safe_identifier("my-song"))
@@ -184,6 +192,13 @@ class PathContainmentTests(unittest.TestCase):
             # Ensure traversal can't be used as a project id
             with self.assertRaises(StudioPathError):
                 store.project_root("../../../etc")
+
+    def test_project_store_project_root_reports_missing_direct_child(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ProjectStore(Path(tmp))
+
+            with self.assertRaises(FileNotFoundError):
+                store.project_root("missing-project")
 
     def test_project_store_resolve_project_path_rejects_escape(self):
         with tempfile.TemporaryDirectory() as tmp:

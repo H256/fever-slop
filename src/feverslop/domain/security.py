@@ -7,7 +7,7 @@ are never regressed.
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 
 # ---------------------------------------------------------------------------
@@ -55,15 +55,15 @@ def sanitize_path_component(value: str) -> str:
 def is_safe_identifier(value: str) -> bool:
     """Return ``True`` if *value* contains no path traversal tokens.
 
-    Rejects ``..`` segments, leading ``/``, and absolute Windows drive roots.
+    Rejects ``..`` segments and absolute path forms on every supported host.
     """
-    p = Path(value)
-    if p.is_absolute():
+    if value.startswith(("/", "\\")):
         return False
-    # Reject if any component is ".."
-    if ".." in p.parts:
-        return False
-    return True
+    paths = (PurePosixPath(value), PureWindowsPath(value))
+    return not any(
+        path.is_absolute() or path.drive or ".." in path.parts
+        for path in paths
+    )
 
 
 # ---------------------------------------------------------------------------

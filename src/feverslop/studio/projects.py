@@ -290,10 +290,10 @@ class ProjectStore:
 
     def project_root(self, project_id: str) -> Path:
         root = (self.projects_root / project_id).resolve()
-        if not root.exists() or not root.is_dir():
-            raise FileNotFoundError(f"Project not found: {project_id}")
         if root.parent != self.projects_root:
             raise StudioPathError("Project id must name a direct child of projects root")
+        if not root.exists() or not root.is_dir():
+            raise FileNotFoundError(f"Project not found: {project_id}")
         return root
 
     @staticmethod
