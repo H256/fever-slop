@@ -659,7 +659,8 @@ def _build_visual_adapter(project_dir: Path, config: dict[str, Any], workflow: d
 
 
 def _patch_movie_msr_workflow(template_path: Path):
-    from feverslop.studio.job_service import patch_movie_msr_workflow
+    from feverslop.composition.movie_workflow import patch_movie_msr_workflow
+
     return patch_movie_msr_workflow(template_path=template_path)
 
 
