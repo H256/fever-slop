@@ -993,6 +993,42 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(json.loads(view_model.editor_text), {"scene": 5, "prompt": "gate"})
         self.assertEqual(view_model.editor_path, "render_plan.json")
 
+    def test_missing_render_plan_loads_as_empty_json_array(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": None, "exists": False, "revision": None}
+
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("scholoraid")
+        view_model.load_json_artifact("render_plan.json")
+
+        self.assertEqual("[]", view_model.editor_text)
+
+    def test_render_plan_editor_rejects_null_document(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        writes = []
+
+        class Store:
+            def write_artifact(self, project_id, request):
+                writes.append((project_id, request))
+                return {"path": request.path, "data": request.data, "exists": True}
+
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("scholoraid")
+
+        self.assertFalse(view_model.save_json_artifact("render_plan.json", "null"))
+        self.assertEqual([], writes)
+        self.assertIn("Render plan", view_model.error)
+
     def test_json_editor_draft_marks_dirty_without_editor_changed_feedback(self):
         from PySide6.QtTest import QSignalSpy
 
