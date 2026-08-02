@@ -1003,6 +1003,9 @@ class StudioBackendTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual([("neon-wolves", "A cyberpunk chase", "dark synthwave")], calls)
+            state = json.loads((Path(temp_dir) / "neon-wolves" / ".studio" / "pipeline_state.json").read_text())
+            self.assertEqual("full-auto", state["last_run"]["action"])
+            self.assertEqual("succeeded", state["last_run"]["status"])
 
     def test_api_create_accepts_and_validates_silent_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
