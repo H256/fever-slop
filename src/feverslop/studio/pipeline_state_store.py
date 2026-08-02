@@ -4,12 +4,13 @@ import json
 import threading
 import time
 import uuid
+import weakref
 from pathlib import Path
 from typing import Any, Callable
 
 
 _PATH_LOCKS_GUARD = threading.Lock()
-_PATH_LOCKS: dict[Path, threading.RLock] = {}
+_PATH_LOCKS: weakref.WeakValueDictionary[Path, threading.RLock] = weakref.WeakValueDictionary()
 
 
 def _lock_for_path(path: Path) -> threading.RLock:
