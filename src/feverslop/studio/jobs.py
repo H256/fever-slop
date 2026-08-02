@@ -64,6 +64,7 @@ PIPELINE_ACTIONS = {
     "storyboard",
     "msr-references",
     "msr-enrich",
+    "ltx-prepare-workflows",
     "ltx-render-scenes",
     "final-concat",
     "full-pipeline",
@@ -89,6 +90,7 @@ PIPELINE_STEPS: dict[str, list[str]] = {
     "storyboard": ["Storyboard", "Storyboard page"],
     "msr-references": ["MSR references"],
     "msr-enrich": ["MSR reference enrichment", "MSR prompt enrichment"],
+    "ltx-prepare-workflows": ["Prepare LTX workflows"],
     "ltx-render-scenes": ["LTX render"],
     "final-concat": ["Final concat"],
     "full-pipeline": [
@@ -244,6 +246,7 @@ class JobRegistry:
         try:
             result = handler(log)
         except VisualConsistencyValidationError as exc:
+            log(f"ERROR: {exc}")
             self._update(
                 job_id,
                 status="failed",
@@ -256,6 +259,7 @@ class JobRegistry:
             self._finish_current_step(job_id, "failed")
             return
         except Exception as exc:  # noqa: BLE001 - job boundary should capture all failures
+            log(f"ERROR: {exc}")
             self._update(job_id, status="failed", progress=100, overall_progress=100, completed_at=time.time(), error=str(exc))
             self._finish_current_step(job_id, "failed")
             return
@@ -476,6 +480,12 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipe
     elif action == "ingredients-sheets":
         base["video_pipeline"] = "ltx_ingredients"
         base["stages"] = [PipelineStage.INGREDIENTS_SHEETS.value]
+    elif action == "ltx-prepare-workflows":
+        base["video_pipeline"] = video_pipeline
+        base["stages"] = [PipelineStage.LTX_PREPARE_WORKFLOWS.value]
+        base["skip_ltx"] = False
+        if scenes:
+            base["scenes"] = ",".join(str(scene) for scene in scenes)
     elif action == "ltx-render-scenes":
         base["video_pipeline"] = video_pipeline
         base["stages"] = [PipelineStage.LTX_RENDER_SCENES.value]

@@ -1515,6 +1515,52 @@ class StudioViewModelTests(unittest.TestCase):
         self.assertEqual(view_model.jobs[0]["status"], "running")
         self.assertEqual(view_model.job_logs, "Planning\nRendering")
 
+    def test_pipeline_actions_expose_scene_specific_preparation_guidance(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            state_dir = root / ".studio"
+            state_dir.mkdir()
+            (state_dir / "pipeline_state.json").write_text(
+                '{"completed_stages": ["main-pipeline", "msr-references", "msr-enrich"]}',
+                encoding="utf-8",
+            )
+
+            class Store:
+                def describe_project(self, project_id):
+                    return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+                def project_root(self, project_id):
+                    if project_id != "song":
+                        raise AssertionError(project_id)
+                    return root
+
+            view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+            view_model.select_project("song")
+            actions = {item["value"]: item for item in view_model.pipeline_actions([1, 3])}
+
+        self.assertTrue(actions["ltx-prepare-workflows"]["recommended"])
+        self.assertFalse(actions["ltx-render-scenes"]["enabled"])
+        self.assertIn("1, 3", actions["ltx-render-scenes"]["reason"])
+
+    def test_job_logs_keep_failure_reason_visible(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        class Jobs:
+            def list(self, _project_id):
+                return [{"id": "job-1", "status": "failed", "logs": ["Starting render"], "error": "workflow missing"}]
+
+        view_model = StudioViewModel(store=Store(), jobs=Jobs(), job_service=object())
+        view_model.select_project("song")
+        view_model.refresh_jobs()
+
+        self.assertEqual("Starting render\nERROR: workflow missing", view_model.job_logs)
+
     def test_patch_render_scene_uses_structured_patch(self):
         from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
 
