@@ -830,6 +830,27 @@ class StudioBackendTests(unittest.TestCase):
         self.assertEqual("completed", step["status"])
         self.assertEqual(100, job["overall_progress"])
 
+    def test_full_pipeline_stage_logs_advance_progress_for_classic_mode(self):
+        registry = JobRegistry()
+        job = {"steps": registry._initial_steps("full-pipeline", pipeline_mode="classic"), "progress": 0}
+
+        registry._advance_step_from_log(job, "Starting full-pipeline")
+        registry._advance_step_from_log(job, "==> Stage Main pipeline")
+        registry._advance_step_from_log(job, "==> Stage Storyboard frames")
+
+        self.assertEqual(["Main pipeline", "Storyboard", "LTX render", "Final concat"], [step["name"] for step in job["steps"]])
+        self.assertEqual("completed", job["steps"][0]["status"])
+        self.assertEqual("running", job["steps"][1]["status"])
+        self.assertEqual(25, job["overall_progress"])
+
+    def test_full_pipeline_omits_msr_steps_for_classic_mode(self):
+        registry = JobRegistry()
+
+        steps = registry._initial_steps("full-pipeline", pipeline_mode="classic")
+
+        self.assertNotIn("MSR references", [step["name"] for step in steps])
+        self.assertNotIn("MSR enrichment", [step["name"] for step in steps])
+
     def test_job_registry_sanitizes_rich_logs_and_tracks_acestep_step(self):
         registry = JobRegistry()
 

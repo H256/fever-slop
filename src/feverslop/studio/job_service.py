@@ -123,6 +123,9 @@ class StudioJobService:
     def start_job(self, project_id: str, request: StudioJobRequest) -> dict[str, Any]:
         metadata = self.store.project_metadata(project_id)
         handler = self.registry.resolve(request.action).build(project_id, request, metadata)
+        pipeline_mode = request.pipeline_mode
+        if request.action in PIPELINE_ACTIONS and not pipeline_mode and metadata.get("project_type") != "movie":
+            pipeline_mode = pipeline_mode_from_config(self.store.resolve_project_path(project_id, "config.json"))
         return self.jobs.get(
             self.jobs.start(
                 project_id,
@@ -130,6 +133,7 @@ class StudioJobService:
                 handler,
                 project_type=str(metadata.get("project_type", "standard_music_video")),
                 reject_if_project_active=request.action in PIPELINE_ACTIONS,
+                pipeline_mode=pipeline_mode,
             )
         )
 
