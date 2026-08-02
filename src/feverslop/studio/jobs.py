@@ -129,6 +129,7 @@ STEP_ALIASES: dict[str, list[str]] = {
     "Scene planning": ["Render Plan Ready", "Planning Scenes"],
     "Krea2 visual consistency": ["Krea2"],
     "Movie references": ["Movie references", "Reference sheets"],
+    "LTX render": ["ltx-render-scenes"],
     "LTX MSR native-audio render": ["LTX MSR", "native audio"],
     "Final movie": ["Movie Complete"],
 }
@@ -357,11 +358,17 @@ class JobRegistry:
                 step["started_at"] = step["started_at"] or time.time()
                 current = step
                 break
-            if text.startswith("finished") and current and current["name"].lower() in text:
+        if text.startswith("finished") and current:
+            current_matches = current["name"].lower() in text or any(
+                alias.lower() in text
+                for alias in STEP_ALIASES.get(current["name"], [])
+            )
+            if current_matches:
                 current["status"] = "completed"
                 current["progress"] = 100
                 current["completed_at"] = time.time()
-                next_step = steps[index + 1] if index + 1 < len(steps) else None
+                current_index = steps.index(current)
+                next_step = steps[current_index + 1] if current_index + 1 < len(steps) else None
                 if next_step:
                     next_step["status"] = "running"
                     next_step["started_at"] = time.time()
@@ -371,6 +378,20 @@ class JobRegistry:
             completed = int(clip_progress.group(1))
             total = max(1, int(clip_progress.group(2)))
             render_step = next((step for step in steps if step["name"] == "LTX MSR native-audio render"), current)
+            if render_step:
+                if current and current is not render_step and current["status"] == "running":
+                    current["status"] = "completed"
+                    current["progress"] = 100
+                    current["completed_at"] = time.time()
+                render_step["status"] = "running"
+                render_step["started_at"] = render_step["started_at"] or time.time()
+                render_step["progress"] = min(100, int((completed / total) * 100))
+                current = render_step
+        scene_progress = re.search(r"rendered scene\s+(\d+)\s*/\s*(\d+)", text)
+        if scene_progress:
+            completed = int(scene_progress.group(1))
+            total = max(1, int(scene_progress.group(2)))
+            render_step = next((step for step in steps if step["name"] == "LTX render"), current)
             if render_step:
                 if current and current is not render_step and current["status"] == "running":
                     current["status"] = "completed"
