@@ -2203,6 +2203,14 @@ class StudioQmlTests(unittest.TestCase):
             self.assertIn('color: "#1C1C1E"', input_block)
             self.assertIn('placeholderTextColor: "#6E6E73"', input_block)
 
+    def test_rebuild_preview_dialog_defines_unknown_artifact_holder(self):
+        qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "components" / "RebuildPreviewDialog.qml"
+        qml = qml_path.read_text(encoding="utf-8")
+
+        unknown_section = qml[qml.index("id: unknownSection") : qml.index("// Summary")]
+        self.assertIn("id: unknownHolder", unknown_section)
+        self.assertIn("property var kinds: []", unknown_section)
+
     def test_pipeline_action_selector_has_visible_current_value_in_basic_style(self):
         from PySide6.QtCore import QObject
         from PySide6.QtGui import QGuiApplication

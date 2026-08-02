@@ -217,6 +217,12 @@ Dialog {
                         }
                     }
                 }
+
+                Item {
+                    id: unknownHolder
+                    Layout.fillWidth: true
+                    property var kinds: []
+                }
             }
         }
 
