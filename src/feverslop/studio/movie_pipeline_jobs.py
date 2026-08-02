@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
+from feverslop.composition.movie_workflow import patch_movie_msr_workflow
 from feverslop.application.movie_artifacts import (
     ensure_movie_planning_artifacts,
     write_movie_reference_manifest_from_bible,
@@ -685,12 +686,3 @@ def _default_startframe_director_workflow(backend: object) -> str:
 
 def backend_config_path(value: str) -> str:
     return Path(value).as_posix()
-
-
-def patch_movie_msr_workflow(*, template_path: Path = Path("workflows") / "video_default_ltxv_msr_1actor_1background_v4.json") -> dict[str, Any]:
-    from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
-
-    if not template_path.exists():
-        raise FileNotFoundError(f"Movie MSR workflow template not found: {template_path}")
-    workflow = json.loads(template_path.read_text(encoding="utf-8"))
-    return MovieWorkflowPatcher().strip_audio_inputs(workflow)
