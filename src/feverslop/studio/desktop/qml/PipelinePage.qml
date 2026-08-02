@@ -27,7 +27,7 @@ Item {
                 id: action
                 objectName: "pipelineActionSelector"
                 Layout.fillWidth: true
-                Layout.preferredHeight: expanded ? 44 + Math.min(actions.length * 40, 280) : 44
+                Layout.preferredHeight: 44
                 property bool expanded: false
                 property var actions: page.movie ? [
                     { label: "Movie full auto", value: "movie-full-auto" },
@@ -54,7 +54,7 @@ Item {
                     MouseArea { anchors.fill: parent; onClicked: action.expanded = !action.expanded }
                 }
                 ListView {
-                    visible: action.expanded; y: 44; width: parent.width; height: Math.min(contentHeight, 280); clip: true; z: 10; model: action.actions
+                    visible: action.expanded; y: 44; width: parent.width; height: Math.min(contentHeight, 280); clip: true; z: 100; model: action.actions
                     delegate: Rectangle {
                         required property var modelData
                         width: action.width; height: 40; color: modelData.enabled === false ? "#EEEEF0" : "#FFFFFF"
