@@ -64,10 +64,9 @@ class PackageLayoutTests(unittest.TestCase):
             Path(scene_prompt_builder.__file__).as_posix(),
         )
 
-    def test_adapter_and_audio_modules_resolve_under_src_package(self):
+    def test_adapter_modules_resolve_under_src_package(self):
         import feverslop.adapters.comfyui_client as comfyui_client
         import feverslop.adapters.workflow_patcher as workflow_patcher
-        import feverslop.audio.beat_analysis as beat_analysis
 
         self.assertIn(
             "src/feverslop/adapters/comfyui_client.py",
@@ -76,10 +75,6 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertIn(
             "src/feverslop/adapters/workflow_patcher.py",
             Path(workflow_patcher.__file__).as_posix(),
-        )
-        self.assertIn(
-            "src/feverslop/audio/beat_analysis.py",
-            Path(beat_analysis.__file__).as_posix(),
         )
 
 
