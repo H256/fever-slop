@@ -3,6 +3,20 @@ from __future__ import annotations
 from typing import Any
 
 
+VIDEO_PIPELINE_BY_MODE = {
+    "classic": "ltx_i2v",
+    "msr": "ltx_msr",
+    "ingredients": "ltx_ingredients",
+}
+
+
+def validate_pipeline_mode(value: Any) -> str:
+    pipeline_mode = str(value or "classic")
+    if pipeline_mode not in VIDEO_PIPELINE_BY_MODE:
+        raise ValueError("pipeline_mode must be classic, msr, or ingredients")
+    return pipeline_mode
+
+
 def validate_project_config(data: Any, *, project_type: str = "standard_music_video") -> None:
     if not isinstance(data, dict):
         raise ValueError("config.json must be a JSON object")
@@ -32,5 +46,4 @@ def validate_full_auto_inputs(request: Any) -> None:
         raise ValueError("height must be a positive integer")
     if int(request.fps) not in {16, 24, 50}:
         raise ValueError("fps must be one of 16, 24, or 50")
-    if str(request.pipeline_mode or "classic") not in {"classic", "msr", "ingredients"}:
-        raise ValueError("pipeline_mode must be classic, msr, or ingredients")
+    validate_pipeline_mode(request.pipeline_mode)

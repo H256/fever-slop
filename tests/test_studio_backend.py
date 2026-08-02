@@ -186,6 +186,41 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("My Cool Video", metadata["display_name"])
             self.assertFalse(project["silent_mode"])
 
+    def test_create_standard_project_persists_selected_video_pipeline(self):
+        expected_video_pipelines = {
+            "classic": "ltx_i2v",
+            "msr": "ltx_msr",
+            "ingredients": "ltx_ingredients",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            for pipeline_mode, expected_video_pipeline in expected_video_pipelines.items():
+                with self.subTest(pipeline_mode=pipeline_mode):
+                    project = store.create_project(
+                        ProjectCreateRequest(
+                            project_type="standard_music_video",
+                            name=f"Pipeline {pipeline_mode}",
+                            pipeline_mode=pipeline_mode,
+                        )
+                    )
+                    config = json.loads((Path(temp_dir) / project["id"] / "config.json").read_text())
+
+                    self.assertEqual(expected_video_pipeline, config["video_pipeline"])
+
+    def test_create_standard_project_rejects_unknown_pipeline_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectStore(temp_dir)
+
+            with self.assertRaisesRegex(ValueError, "pipeline_mode must be classic, msr, or ingredients"):
+                store.create_project(
+                    ProjectCreateRequest(
+                        project_type="standard_music_video",
+                        name="Unknown pipeline",
+                        pipeline_mode="unknown",
+                    )
+                )
+
     def test_create_project_persists_silent_mode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
@@ -1152,7 +1187,7 @@ class StudioBackendTests(unittest.TestCase):
                 if job["status"] == "succeeded":
                     break
                 time.sleep(0.01)
-            self.assertEqual([("config.json", "full-pipeline", None, None)], calls)
+            self.assertEqual([("config.json", "full-pipeline", None, "classic")], calls)
 
     def test_api_atomic_pipeline_job_records_completed_stage(self):
         def fake_pipeline_handler(config_path, action, *, scenes=None, pipeline_mode=None):
