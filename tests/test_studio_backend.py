@@ -4,7 +4,9 @@ import importlib.util
 import tempfile
 import threading
 import time
+import gc
 import unittest
+import weakref
 from pathlib import Path
 from rich.panel import Panel
 
@@ -431,6 +433,20 @@ class StudioBackendTests(unittest.TestCase):
 
     def test_artifact_locking_module_is_available(self):
         self.assertIsNotNone(importlib.util.find_spec("feverslop.studio.artifact_locking"))
+
+    def test_artifact_locks_are_released_when_no_writer_uses_them(self):
+        from feverslop.studio import artifact_locking
+
+        path = Path("artifact.json").resolve()
+        with artifact_locking._LOCKS_GUARD:
+            lock = artifact_locking._LOCKS.setdefault(path, threading.RLock())
+        lock_reference = weakref.ref(lock)
+
+        del lock
+        gc.collect()
+
+        self.assertIsNone(lock_reference())
+        self.assertNotIn(path, artifact_locking._LOCKS)
 
     def test_config_write_validates_required_fields_and_preserves_unknown_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:

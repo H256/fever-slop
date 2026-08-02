@@ -659,7 +659,8 @@ def _build_visual_adapter(project_dir: Path, config: dict[str, Any], workflow: d
 
 
 def _patch_movie_msr_workflow(template_path: Path):
-    from feverslop.studio.job_service import patch_movie_msr_workflow
+    from feverslop.composition.movie_workflow import patch_movie_msr_workflow
+
     return patch_movie_msr_workflow(template_path=template_path)
 
 
@@ -804,7 +805,8 @@ def _ensure_movie_bible_artifact(project_dir):
 
 def _regenerate_movie_bible_artifact(project_dir, planner_backend):
     from feverslop.application.movie_artifacts import regenerate_movie_bible
-    from feverslop.studio.project_repository import build_movie_planner
+    from feverslop.composition.movie_planner import build_movie_planner
+
     return regenerate_movie_bible(project_dir, planner=build_movie_planner({"planner_backend": planner_backend}))
 
 

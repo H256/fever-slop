@@ -3754,6 +3754,14 @@ class MovieProjectTests(unittest.TestCase):
             config["ingredients_workflow"],
         )
 
+    def test_movie_planner_factory_is_available_without_studio_repository(self):
+        from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.composition.movie_planner import build_movie_planner
+
+        planner = build_movie_planner({"planner_backend": "deterministic"})
+
+        self.assertIsInstance(planner, DeterministicMoviePlanner)
+
     def test_movie_visual_adapter_defaults_to_comfyui_not_placeholder(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
         from feverslop.studio.job_service import build_movie_visual_adapter
@@ -3790,6 +3798,14 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_workflow_patcher_uses_default_movie_msr_template(self):
         from feverslop.studio.job_service import patch_movie_msr_workflow
+
+        output = patch_movie_msr_workflow()
+
+        self.assertIsInstance(output, dict)
+        self.assertFalse(any(node.get("class_type") in {"LoadAudio", "TrimAudioDuration"} for node in output.values()))
+
+    def test_movie_workflow_patcher_is_available_without_studio_imports(self):
+        from feverslop.composition.movie_workflow import patch_movie_msr_workflow
 
         output = patch_movie_msr_workflow()
 

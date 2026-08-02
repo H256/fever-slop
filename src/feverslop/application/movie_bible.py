@@ -187,8 +187,8 @@ def movie_bible_from_dict(data: dict) -> MovieBible:
 def _normalize_movie_bible(bible: MovieBible, *, story_arch, config: dict, request: MovieInput) -> MovieBible:
     configured_actors = _configured_movie_actors(config)
     configured_locations = _configured_movie_locations(config)
-    actors = tuple(configured_actors) if configured_actors else tuple(bible.actors) or (_default_movie_actor(request, 1),)
-    locations = tuple(configured_locations) if configured_locations else tuple(bible.locations) or (_default_movie_location(request, 1),)
+    actors = tuple(configured_actors) if configured_actors else tuple(bible.actors) or (_default_movie_actor(request),)
+    locations = tuple(configured_locations) if configured_locations else tuple(bible.locations) or (_default_movie_location(),)
     runtime_constraints = _runtime_constraints(request, config)
     runtime_constraints.update(dict(bible.runtime_constraints or {}))
     if "max_scene_actors" in config:
@@ -205,8 +205,8 @@ def _normalize_movie_bible(bible: MovieBible, *, story_arch, config: dict, reque
 
 
 def _movie_bible_from_config(*, request: MovieInput, story_arch, config: dict) -> MovieBible:
-    actors = tuple(_configured_movie_actors(config)) or (_default_movie_actor(request, 1),)
-    locations = tuple(_configured_movie_locations(config)) or (_default_movie_location(request, 1),)
+    actors = tuple(_configured_movie_actors(config)) or (_default_movie_actor(request),)
+    locations = tuple(_configured_movie_locations(config)) or (_default_movie_location(),)
     continuity = (
         MovieContinuityRule(id="visual_continuity", description="Keep actor wardrobe, locations, lighting logic, and story geography consistent across shots."),
     )
@@ -277,7 +277,7 @@ def _location_from_dict(location: dict, index: int) -> MovieLocation:
     )
 
 
-def _default_movie_actor(request: MovieInput, index: int) -> MovieActor:
+def _default_movie_actor(request: MovieInput) -> MovieActor:
     subject = request.config.get("subject") if isinstance(request.config, dict) else None
     name = str(subject or "Main Character").strip()
     return MovieActor(
@@ -288,7 +288,7 @@ def _default_movie_actor(request: MovieInput, index: int) -> MovieActor:
     )
 
 
-def _default_movie_location(request: MovieInput, index: int) -> MovieLocation:
+def _default_movie_location() -> MovieLocation:
     location_name = "Primary Location"
     return MovieLocation(
         id=safe_id(location_name, "primary_location"),
