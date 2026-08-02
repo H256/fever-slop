@@ -57,6 +57,7 @@ Item {
                             return
                         }
                     }
+                    currentIndex = count > 0 ? 0 : -1
                 }
                 delegate: ItemDelegate {
                     id: delegateItem
