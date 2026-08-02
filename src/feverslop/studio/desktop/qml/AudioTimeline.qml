@@ -221,7 +221,7 @@ Rectangle {
                             anchors.fill: parent
                             renderStrategy: Canvas.Immediate
 
-                            function paint() {
+                            onPaint: function() {
                                 var ctx = timelineCanvas.getContext("2d")
                                 ctx.reset()
                                 var w = timelineCanvas.width
