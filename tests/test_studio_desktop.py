@@ -2180,6 +2180,13 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIn("modelData.error", qml)
         self.assertIn("recent_logs", qml)
 
+    def test_project_dialog_declares_inline_song_style_validation(self):
+        qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "ProjectsPage.qml"
+        qml = qml_path.read_text(encoding="utf-8")
+
+        self.assertIn("Song style *", qml)
+        self.assertIn("Song style is required", qml)
+
     def test_pipeline_action_selector_has_visible_current_value_in_basic_style(self):
         from PySide6.QtCore import QObject
         from PySide6.QtGui import QGuiApplication
