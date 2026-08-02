@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import tempfile
 import unittest
 from uuid import uuid4
@@ -51,6 +52,31 @@ class TestSqliteArtifactProvenance(unittest.TestCase):
             self.store.record_fingerprint(self.project_id, fp)
         all_fps = self.store.load_fingerprints(self.project_id)
         self.assertEqual(3, len(all_fps))
+
+    def test_project_fingerprint_list_uses_recorded_at_index(self) -> None:
+        self.store.record_fingerprint(
+            self.project_id,
+            ArtifactFingerprint(
+                artifact_kind=ArtifactKind.FINAL_VIDEO,
+                scene_number=None,
+            ),
+        )
+        conn = sqlite3.connect(self._db_path)
+        plan = conn.execute(
+            """
+            EXPLAIN QUERY PLAN
+            SELECT * FROM artifact_provenance
+            WHERE project_id = ?
+            ORDER BY recorded_at DESC
+            """,
+            (self.project_id,),
+        ).fetchall()
+        conn.close()
+
+        self.assertTrue(
+            any("idx_artifact_provenance_project_recorded_at" in row[3] for row in plan),
+            plan,
+        )
 
     def test_duplicate_key_replaces(self) -> None:
         fp1 = ArtifactFingerprint(
