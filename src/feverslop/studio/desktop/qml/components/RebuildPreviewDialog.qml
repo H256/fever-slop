@@ -4,10 +4,6 @@ import QtQuick.Layouts
 
 /**
  * RebuildPreviewDialog - modal dialog showing rebuild impact before confirmation.
- *
- * Groups artifacts into Reuse, Rebuild, Invalidate, and Unknown sections.
- * Shows affected scene numbers. Requires explicit choice for Unknown artifacts.
- * Disables acceptance when preview source is stale or a conflicting job is active.
  */
 Dialog {
     id: dialog
@@ -23,11 +19,10 @@ Dialog {
 
     objectName: "rebuildPreviewDialog"
     modal: true
-    standardOverlay: true
+    dim: true
     closePolicy: Popup.CloseOnEscape
 
     title: "Rebuild Preview"
-    icon.source: "qrc:/icons/rebuild.svg"
 
     width: Math.min(parent.width * 0.8, 700)
         + ((reuseSection.height > 0 || rebuildSection.height > 0
@@ -47,56 +42,182 @@ Dialog {
         }
 
         // Reusable artifacts - green
-        _ArtifactSection {
+        Rectangle {
             id: reuseSection
-            sectionTitle: "Reuse"
-            sectionColor: "#22C55E"
-            sectionBgColor: "#052E16"
-            icon: "✓"
-            artifactKinds: []
-            sceneNumbers: []
+            color: "#052E16"
+            border.color: "#22C55E"
+            radius: 8
             Layout.fillWidth: true
-            visible: reuseSection.artifactKinds.length > 0
+            visible: reuseSection.children.length > 0
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 8
+
+                RowLayout {
+                    spacing: 8
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "\u2713"
+                        color: "#22C55E"
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+
+                    Label {
+                        text: "Reuse"
+                        color: "#F4F4F5"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Label { Layout.fillWidth: true }
+                }
+
+                Item {
+                    id: reuseHolder
+                    Layout.fillWidth: true
+                    property var kinds: []
+                    property var scenes: []
+                }
+            }
         }
 
         // Rebuild artifacts - blue
-        _ArtifactSection {
+        Rectangle {
             id: rebuildSection
-            sectionTitle: "Rebuild"
-            sectionColor: "#60A5FA"
-            sectionBgColor: "#1E3A5F"
-            icon: "⟳"
-            artifactKinds: []
-            sceneNumbers: []
+            color: "#1E3A5F"
+            border.color: "#60A5FA"
+            radius: 8
             Layout.fillWidth: true
-            visible: rebuildSection.artifactKinds.length > 0
+            visible: rebuildHolder.kinds.length > 0
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 8
+
+                RowLayout {
+                    spacing: 8
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "⟳"
+                        color: "#60A5FA"
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+
+                    Label {
+                        text: "Rebuild"
+                        color: "#F4F4F5"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Label { Layout.fillWidth: true }
+                }
+
+                Item {
+                    id: rebuildHolder
+                    Layout.fillWidth: true
+                    property var kinds: []
+                    property var scenes: []
+                }
+            }
         }
 
         // Invalidated artifacts - orange
-        _ArtifactSection {
+        Rectangle {
             id: invalidateSection
-            sectionTitle: "Invalidate"
-            sectionColor: "#FB923C"
-            sectionBgColor: "#451A03"
-            icon: "⚠"
-            artifactKinds: []
-            sceneNumbers: []
+            color: "#451A03"
+            border.color: "#FB923C"
+            radius: 8
             Layout.fillWidth: true
-            visible: invalidateSection.artifactKinds.length > 0
+            visible: invalidateHolder.kinds.length > 0
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 8
+
+                RowLayout {
+                    spacing: 8
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "⚠"
+                        color: "#FB923C"
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+
+                    Label {
+                        text: "Invalidate"
+                        color: "#F4F4F5"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Label { Layout.fillWidth: true }
+                }
+
+                Item {
+                    id: invalidateHolder
+                    Layout.fillWidth: true
+                    property var kinds: []
+                    property var scenes: []
+                }
+            }
         }
 
         // Unknown legacy artifacts - gray
-        _ArtifactSection {
+        Rectangle {
             id: unknownSection
-            sectionTitle: "Unknown Legacy"
-            sectionColor: "#94A3B8"
-            sectionBgColor: "#1E293B"
-            icon: "?"
-            artifactKinds: []
-            sceneNumbers: []
-            requireChoice: true
+            color: "#1E293B"
+            border.color: "#94A3B8"
+            radius: 8
             Layout.fillWidth: true
-            visible: unknownSection.artifactKinds.length > 0
+            visible: unknownHolder.kinds.length > 0
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 8
+
+                RowLayout {
+                    spacing: 8
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "?"
+                        color: "#94A3B8"
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+
+                    Label {
+                        text: "Unknown Legacy"
+                        color: "#F4F4F5"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Label { Layout.fillWidth: true }
+
+                    CheckBox {
+                        visible: true
+                        text: "I understand these artifacts lack provenance"
+                        checked: false
+                        contentItem: Text {
+                            text: parent.text
+                            color: "#94A3B8"
+                        }
+                    }
+                }
+            }
         }
 
         // Summary
@@ -114,12 +235,12 @@ Dialog {
                 anchors.margins: 14
                 spacing: 6
 
-                Labels {
+                Label {
                     text: "Total: "
-                    + (reuseSection.artifactKinds.length
-                       + rebuildSection.artifactKinds.length
-                       + invalidateSection.artifactKinds.length
-                       + unknownSection.artifactKinds.length)
+                    + (reuseHolder.kinds.length
+                       + rebuildHolder.kinds.length
+                       + invalidateHolder.kinds.length
+                       + unknownHolder.kinds.length)
                     + " artifact types affected"
                 }
             }
@@ -148,18 +269,15 @@ Dialog {
         }
     }
 
-    // Buttons
     standardButtons: Dialog.Cancel | Dialog.Apply
 
-    onApply: {
+    onApplied: {
         if (!dialog.acceptDisabled) {
-            // Emit signal for handler to execute rebuild
             dialog.rebuildAccepted()
             dialog.close()
         }
     }
 
-    // Re-enable button when job completes
     Button {
         visible: dialog.acceptDisabled
         enabled: false
@@ -171,92 +289,9 @@ Dialog {
     signal rebuildAccepted()
 
     function _setSections(reuse, rebuild, invalidate, unknown) {
-        reuseSection.artifactKinds = reuse
-        rebuildSection.artifactKinds = rebuild
-        invalidateSection.artifactKinds = invalidate
-        unknownSection.artifactKinds = unknown
-    }
-}
-
-/**
- * _ArtifactSection - reusable section for grouping artifacts by category.
- */
-Rectangle {
-    id: sectionRoot
-    property string sectionTitle: ""
-    property string sectionColor: "#60A5FA"
-    property string sectionBgColor: "#1E3A5F"
-    property string icon: ""
-    property var artifactKinds: []
-    property var sceneNumbers: []
-    property bool requireChoice: false
-
-    color: sectionRoot.sectionBgColor
-    border.color: sectionRoot.sectionColor
-    radius: 8
-
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
-
-        RowLayout {
-            spacing: 8
-            Layout.fillWidth: true
-
-            Label {
-                text: sectionRoot.icon
-                color: sectionRoot.sectionColor
-                font.pixelSize: 16
-                font.bold: true
-            }
-
-            Label {
-                text: sectionRoot.sectionTitle
-                color: "#F4F4F5"
-                font.pixelSize: 14
-                font.bold: true
-            }
-
-            Label {
-                Layout.fillWidth: true
-            }
-
-            Label {
-                text: sectionRoot.artifactKinds.length > 0
-                    ? sectionRoot.artifactKinds.length + " type"
-                      + (sectionRoot.artifactKinds.length > 1 ? "s" : "")
-                    : ""
-                color: sectionRoot.sectionColor
-                font.pixelSize: 12
-            }
-        }
-
-        // Artifact kinds list
-        Repeater {
-            model: sectionRoot.artifactKinds
-
-            delegate: Label {
-                text: "  · " + modelData
-                color: "#D4D4D8"
-                font.pixelSize: 13
-            }
-        }
-
-        // Scene numbers
-        Label {
-            visible: sectionRoot.sceneNumbers.length > 0
-            text: "Scenes: " + sectionRoot.sceneNumbers.join(", ")
-            color: "#A1A1AA"
-            font.pixelSize: 12
-        }
-
-        // Unknown choice requirement
-        CheckBox {
-            visible: sectionRoot.requireChoice
-            text: "I understand these artifacts lack provenance"
-            color: sectionRoot.sectionColor
-            checked: false
-        }
+        reuseHolder.kinds = reuse
+        rebuildHolder.kinds = rebuild
+        invalidateHolder.kinds = invalidate
+        unknownHolder.kinds = unknown
     }
 }

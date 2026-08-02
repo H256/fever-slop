@@ -22,8 +22,8 @@ Drawer {
 
     objectName: "promptRevisionDrawer"
 
-    standardOverlay: false
     modal: false
+    dim: false
     width: parent.width * 0.7
     implicitHeight: parent.height
 
@@ -36,8 +36,15 @@ Drawer {
             Layout.fillWidth: true
             Layout.preferredHeight: headerRow.implicitHeight + 24
             color: "#27272A"
-            border.bottom.color: "#3F3F46"
-            border.bottom.width: 1
+
+            // Bottom separator line (Rectangle.border has no "bottom" sub-property)
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: "#3F3F46"
+            }
 
             RowLayout {
                 id: headerRow

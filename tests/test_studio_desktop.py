@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import importlib.util
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,35 +74,35 @@ class StudioDesktopCompositionTests(unittest.TestCase):
 
         self.assertEqual("", result)
 
-    def test_headless_qml_timeline_page_loads_without_crash(self):
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QGuiApplication
-        from PySide6.QtQml import QQmlApplicationEngine
+    def test_headless_desktop_smoke_test_loads_the_production_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env = os.environ.copy()
+            env["QT_QPA_PLATFORM"] = "offscreen"
+            env["QT_QUICK_BACKEND"] = "software"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-W",
+                    "error::RuntimeWarning",
+                    "-m",
+                    "feverslop.studio.desktop",
+                    "--projects-root",
+                    temp_dir,
+                    "--smoke-test",
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
 
-        from feverslop.studio.desktop.viewmodels.timeline import TimelineStudioViewModel
-
-        QGuiApplication.instance() or QGuiApplication([])
-
-        class DummyService:
-            def can_undo(self):
-                return False
-
-            def can_redo(self):
-                return False
-
-        engine = QQmlApplicationEngine()
-        vm = TimelineStudioViewModel(service=DummyService())
-        engine.rootContext().setContextProperty("timelineViewModel", vm)
-
-        qml_dir = Path("src/feverslop/studio/desktop/qml")
-        qml_path = qml_dir / "AudioTimeline.qml"
-        self.assertTrue(qml_path.exists(), f"AudioTimeline.qml not found at {qml_path}")
-
-        engine.addImportPath(str(qml_dir))
-        engine.load(QUrl.fromLocalFile(str(qml_path)))
-        loaded = len(engine.rootObjects()) > 0
-
-        self.assertTrue(loaded or True, "QML page attempted load (success or parse errors are ok)")
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"desktop smoke test failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
 
 
 class SceneWorkspaceViewModelTests(unittest.TestCase):
@@ -990,6 +992,42 @@ class StudioViewModelTests(unittest.TestCase):
 
         self.assertEqual(json.loads(view_model.editor_text), {"scene": 5, "prompt": "gate"})
         self.assertEqual(view_model.editor_path, "render_plan.json")
+
+    def test_missing_render_plan_loads_as_empty_json_array(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def read_artifact(self, project_id, path):
+                return {"path": path, "data": None, "exists": False, "revision": None}
+
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("scholoraid")
+        view_model.load_json_artifact("render_plan.json")
+
+        self.assertEqual("[]", view_model.editor_text)
+
+    def test_render_plan_editor_rejects_null_document(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        writes = []
+
+        class Store:
+            def write_artifact(self, project_id, request):
+                writes.append((project_id, request))
+                return {"path": request.path, "data": request.data, "exists": True}
+
+            def describe_project(self, project_id):
+                return {"id": project_id, "name": project_id, "status": {}, "artifacts": {}}
+
+        view_model = StudioViewModel(store=Store(), jobs=object(), job_service=object())
+        view_model.select_project("scholoraid")
+
+        self.assertFalse(view_model.save_json_artifact("render_plan.json", "null"))
+        self.assertEqual([], writes)
+        self.assertIn("Render plan", view_model.error)
 
     def test_json_editor_draft_marks_dirty_without_editor_changed_feedback(self):
         from PySide6.QtTest import QSignalSpy
