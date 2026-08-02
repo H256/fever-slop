@@ -256,11 +256,12 @@ class FullAutoAction:
         if metadata.get("project_type") != "full_auto":
             raise ValueError("full-auto jobs require a full_auto project")
         factory = self.factory or build_full_auto_handler
-        return factory(
+        handler = factory(
             store=self.store,
             project_id=project_id,
             payload={**dict(metadata.get("full_auto") or {}), "silent_mode": bool(metadata.get("silent_mode", False))},
         )
+        return record_pipeline_state(self.store, project_id, self.action, handler)
 
 
 class MovieFullAutoAction:
