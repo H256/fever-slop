@@ -83,7 +83,10 @@ class ComfyUIClientTests(unittest.TestCase):
         with patch("requests.Session") as session_class:
             session_class.return_value.post.side_effect = requests.RequestException("offline")
 
-            ComfyUIClient().free_cache_and_vram()
+            with self.assertLogs("feverslop.adapters.comfyui_client", level="DEBUG") as logs:
+                ComfyUIClient().free_cache_and_vram()
+
+        self.assertIn("ComfyUI cache/VRAM release failed: offline", logs.output[0])
 
 
 if __name__ == "__main__":
