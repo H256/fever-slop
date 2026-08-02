@@ -15,14 +15,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from feverslop.utils.io import read_json_or_none
+
 
 def _read_json_file(path: Path) -> Any | None:
     """Read and parse a JSON file, returning ``None`` if missing."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None
-    return json.loads(text)
+    return read_json_or_none(path)
 
 
 def _write_json_file(path: Path, data: Any) -> None:

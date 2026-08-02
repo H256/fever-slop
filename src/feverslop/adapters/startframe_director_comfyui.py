@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
-import json
 import shutil
 
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.ports.rendering import WorkflowAnchorConfig
+from feverslop.utils.io import read_json
 
 
 class ComfyUIStartframeDirectorVisualAdapter:
@@ -89,9 +90,9 @@ class ComfyUIStartframeDirectorVisualAdapter:
         selected_scenes: set[int],
         on_startframe_step: Callable[[dict[str, Any]], None] | None,
     ) -> Path:
-        plan = _read_json(project_dir / "movie" / "startframe_plan.json")
-        prompts = _read_json(project_dir / "movie" / "startframe_director_prompts.json")
-        identity = _read_json(project_dir / "movie" / "identity_ledger.json")
+        plan = read_json(project_dir / "movie" / "startframe_plan.json")
+        prompts = read_json(project_dir / "movie" / "startframe_director_prompts.json")
+        identity = read_json(project_dir / "movie" / "identity_ledger.json")
         prompt_by_shot = {str(item.get("shot_id")): item for item in prompts.get("shots") or []}
         shots = [shot for shot in plan.get("shots") or [] if not selected_scenes or int(shot.get("scene") or 0) in selected_scenes]
         total = sum(1 + len(shot.get("actors") or []) * 2 + 2 for shot in shots)
@@ -147,7 +148,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
 
     def _render_director(self, *, project_dir: Path, shot: dict[str, Any], prompt: dict[str, Any]) -> Path:
         scene = int(shot.get("scene") or 0)
-        patcher = WorkflowPatcher(_read_json(self.director_workflow_path))
+        patcher = WorkflowPatcher(read_json(self.director_workflow_path))
         patcher.set_existing_input_by_title_any("#PROMPT_POSITIVE", "text", str(prompt.get("positive_prompt") or ""))
         patcher.set_existing_input_by_title_any("#PROMPT_NEGATIVE", "text", str(prompt.get("negative_prompt") or ""))
         _patch_dimensions(
@@ -175,7 +176,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
     ) -> Path:
         actor_id = str(actor.get("actor_id") or "")
         actor_contract = (identity_ledger.get("actors") or {}).get(actor_id) or {}
-        patcher = WorkflowPatcher(_read_json(self.mask_workflow_path))
+        patcher = WorkflowPatcher(read_json(self.mask_workflow_path))
         patcher.set_input_by_title("#INPUT_IMAGE", "image", self._upload(source_image, "feverslop/startframe/director"))
         patcher.set_existing_input_by_title("#SEGMENT_PROMPT", "prompt", _mask_prompt(actor_id, actor_contract))
         patcher.set_input_by_title("#SAVE_MASK", "filename_prefix", f"startframe/masks/scene_{scene:04}_{actor_id}")
@@ -200,7 +201,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
         actor_contract = (identity_ledger.get("actors") or {}).get(actor_id) or {}
         reference = project_dir / str((actor_contract.get("reference_paths") or {}).get("full_body") or "")
         prompt = _repair_prompt(actor_id, actor_contract)
-        patcher = WorkflowPatcher(_read_json(self.identity_repair_workflow_path))
+        patcher = WorkflowPatcher(read_json(self.identity_repair_workflow_path))
         patcher.set_input_by_title("#INPUT_IMAGE", "image", self._upload(source_image, "feverslop/startframe/director"))
         patcher.set_input_by_title("#IDENTITY_REFERENCE", "image", self._upload(reference, "feverslop/startframe/references"))
         patcher.set_input_by_title("#REGION_MASK_IMAGE", "image", self._upload(mask_image, "feverslop/startframe/masks"))
@@ -221,7 +222,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
         )
 
     def _render_detail(self, *, project_dir: Path, scene: int, source_image: Path, shot: dict[str, Any]) -> Path:
-        patcher = WorkflowPatcher(_read_json(self.detail_workflow_path))
+        patcher = WorkflowPatcher(read_json(self.detail_workflow_path))
         patcher.set_input_by_title("#INPUT_IMAGE", "image", self._upload(source_image, "feverslop/startframe/repair"))
         try:
             patcher.set_existing_input_by_title("#SDXL_CHECKPOINT", "positive", str((shot.get("ltx_motion") or {}).get("prompt") or "cinematic startframe"))
@@ -269,10 +270,6 @@ class ComfyUIStartframeDirectorVisualAdapter:
             json.dumps(workflow, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
 
 def _patch_seed_inputs(patcher: WorkflowPatcher, seed: int) -> None:
