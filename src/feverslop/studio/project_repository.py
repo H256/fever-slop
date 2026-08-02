@@ -8,7 +8,7 @@ from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.composition.movie_planner import build_movie_planner
 from feverslop.ports.reporting import Reporter
-from feverslop.studio.project_validation import validate_full_auto_inputs
+from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE, validate_full_auto_inputs, validate_pipeline_mode
 from feverslop.domain.slug_utils import slugify_project_name
 from feverslop.studio.projects import ProjectCreateRequest, StudioPathError
 
@@ -42,6 +42,9 @@ class ProjectRepository:
             raise StudioPathError("Project id must name a direct child of projects root")
         if root.exists():
             raise ValueError(f"Project already exists: {slug}")
+        pipeline_mode = "classic"
+        if project_type != "movie":
+            pipeline_mode = validate_pipeline_mode(request.pipeline_mode)
         if project_type == "full_auto":
             if not str(request.idea or "").strip():
                 raise ValueError("Full-auto idea is required")
@@ -67,7 +70,7 @@ class ProjectRepository:
                 "height": int(request.height),
                 "fps": int(request.fps),
                 "silent_mode": bool(request.silent_mode),
-                "pipeline_mode": str(request.pipeline_mode or "classic"),
+                "pipeline_mode": pipeline_mode,
             }
         self.write_project_metadata(root, metadata)
         if project_type == "standard_music_video":
@@ -77,6 +80,7 @@ class ProjectRepository:
                         "project_name": name,
                         "input_audio": "",
                         "silent_mode": bool(request.silent_mode),
+                        "video_pipeline": VIDEO_PIPELINE_BY_MODE[pipeline_mode],
                         "audio": {"language": "en"},
                         "scene_generation": {"seed": -1},
                     },
