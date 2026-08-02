@@ -206,8 +206,11 @@ Rectangle {
                 width: Math.ceil(page.totalDuration * page.timelineZoom) + 200
                 height: timelineScroll.contentHeight
 
-                Clip {
+                Rectangle {
+                    id: clipper
                     anchors.fill: parent
+                    clip: true
+
                     Rectangle {
                         id: timelineCanvasArea
                         anchors.fill: parent

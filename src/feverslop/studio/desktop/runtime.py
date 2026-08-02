@@ -55,7 +55,7 @@ def scene_video_thumbnail_url(
     return QUrl.fromLocalFile(str(preview)).toString()
 
 
-def run_studio(projects_root: str | Path) -> int:
+def run_studio(projects_root: str | Path, *, smoke_test: bool = False) -> int:
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
     app = QGuiApplication.instance() or QGuiApplication([])
     app.setApplicationName("FeverSlop Studio")
@@ -103,6 +103,8 @@ def run_studio(projects_root: str | Path) -> int:
     engine.load(qml_entrypoint())
     if not engine.rootObjects():
         return 1
+    if smoke_test:
+        return 0
     view_model.refresh_projects()
     view_model.start_polling()
     return app.exec()
