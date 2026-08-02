@@ -2235,6 +2235,14 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIn("Layout.alignment: Qt.AlignHCenter", empty_label)
         self.assertNotIn("anchors.horizontalCenter", empty_label)
 
+    def test_audio_timeline_canvas_uses_on_paint_signal_handler(self):
+        qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "AudioTimeline.qml"
+        qml = qml_path.read_text(encoding="utf-8")
+
+        canvas = qml[qml.index("id: timelineCanvas") : qml.index("// ---- SEGMENTS ----")]
+        self.assertIn("onPaint: function()", canvas)
+        self.assertNotIn("function paint()", canvas)
+
     def test_pipeline_action_selector_has_visible_current_value_in_basic_style(self):
         from PySide6.QtCore import QObject
         from PySide6.QtGui import QGuiApplication
