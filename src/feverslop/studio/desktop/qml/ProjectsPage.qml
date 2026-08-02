@@ -92,13 +92,23 @@ ScrollView {
                 Layout.fillWidth: true
                 model: ["Music video", "Full auto music video", "Movie"]
             }
-            StyledTextField { id: projectName; Layout.fillWidth: true; placeholderText: "Project name"; implicitHeight: 44 }
+            StyledTextField {
+                id: projectName
+                Layout.fillWidth: true
+                placeholderText: "Project name"
+                placeholderTextColor: "#6E6E73"
+                color: "#1C1C1E"
+                implicitHeight: 44
+                background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
+            }
             StyledTextArea {
                 id: projectIdea
                 visible: projectType.currentIndex > 0
                 Layout.fillWidth: true
                 Layout.preferredHeight: 130
                 placeholderText: projectType.currentIndex === 2 ? "Short story or screenplay" : "Music video idea"
+                placeholderTextColor: "#6E6E73"
+                color: "#1C1C1E"
                 wrapMode: TextEdit.Wrap
                 background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
             }
@@ -111,7 +121,10 @@ ScrollView {
                     id: songStyle
                     Layout.fillWidth: true
                     placeholderText: "Song style"
+                    placeholderTextColor: "#6E6E73"
+                    color: "#1C1C1E"
                     implicitHeight: 44
+                    background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
                     onTextChanged: if (text.trim().length > 0) createDialog.songStyleError = ""
                 }
                 Label {
