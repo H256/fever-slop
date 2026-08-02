@@ -29,6 +29,20 @@ Item {
                 implicitHeight: 44
                 textRole: "label"
                 valueRole: "value"
+                contentItem: Label {
+                    objectName: "pipelineActionCurrentValue"
+                    leftPadding: 12
+                    rightPadding: action.indicator.width + 12
+                    text: action.displayText
+                    color: "#F4F4F5"
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+                background: Rectangle {
+                    color: "#303033"
+                    border.color: action.activeFocus ? "#5B5FC7" : "#68686D"
+                    radius: 4
+                }
                 model: page.movie ? [
                     { label: "Movie full auto", value: "movie-full-auto" },
                     { label: "Movie references", value: "movie-references" },
@@ -62,6 +76,25 @@ Item {
                     }
                     ToolTip.visible: hovered && !enabled && modelData.reason
                     ToolTip.text: modelData.reason || ""
+                }
+                popup: Popup {
+                    y: action.height - 1
+                    width: action.width
+                    implicitHeight: contentItem.implicitHeight + topPadding + bottomPadding
+                    padding: 1
+                    contentItem: ListView {
+                        objectName: "pipelineActionList"
+                        clip: true
+                        implicitHeight: contentHeight
+                        model: action.popup.visible ? action.delegateModel : null
+                        currentIndex: action.highlightedIndex
+                        ScrollIndicator.vertical: ScrollIndicator { }
+                    }
+                    background: Rectangle {
+                        color: "#FFFFFF"
+                        border.color: "#68686D"
+                        radius: 4
+                    }
                 }
             }
             StyledTextField {
