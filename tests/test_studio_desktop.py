@@ -2164,6 +2164,12 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIn("implicitHeight: 40", qml)
         self.assertIn("currentIndex = count > 0 ? 0 : -1", qml)
 
+    def test_pipeline_action_menu_is_layered_above_following_controls_when_expanded(self):
+        qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "PipelinePage.qml"
+        qml = qml_path.read_text(encoding="utf-8")
+
+        self.assertIn("z: action.expanded ? 1 : 0", qml)
+
     def test_queue_page_exposes_expandable_failure_details(self):
         qml_path = (
             Path(__file__).resolve().parents[1]
@@ -2232,6 +2238,68 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIsNotNone(selector)
         self.assertEqual(7, len(selector.property("actions")))
         self.assertGreaterEqual(selector.property("currentIndex"), 0)
+
+    def test_pipeline_action_selector_refreshes_after_all_scene_clips_complete(self):
+        from PySide6.QtCore import QObject
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+
+        from feverslop.studio.desktop.runtime import qml_entrypoint
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Store:
+            def __init__(self, project_root):
+                self.project_root_path = project_root
+
+            def describe_project(self, project_id):
+                return {
+                    "id": project_id,
+                    "name": project_id,
+                    "project_type": "standard_music_video",
+                    "status": {},
+                    "artifacts": {},
+                }
+
+            def project_root(self, _project_id):
+                return self.project_root_path
+
+        class Jobs:
+            def __init__(self):
+                self.entries = []
+
+            def list(self, _project_id):
+                return self.entries
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            (project_root / "config.json").write_text('{"video_pipeline": "ltx_msr"}', encoding="utf-8")
+            plans = project_root / "output" / "render" / "plans"
+            plans.mkdir(parents=True)
+            (plans / "references.json").write_text('[{"scene": 1}]', encoding="utf-8")
+            jobs = Jobs()
+            studio_vm = StudioViewModel(store=Store(project_root), jobs=jobs, job_service=object())
+            self.qml_app = QGuiApplication.instance() or QGuiApplication([])
+            engine = QQmlApplicationEngine()
+            engine.rootContext().setContextProperty("studioViewModel", studio_vm)
+            engine.load(qml_entrypoint())
+            root = engine.rootObjects()[0]
+            root.setProperty("currentPage", 2)
+            studio_vm.select_project("demo")
+            self.qml_app.processEvents()
+            selector = root.findChild(QObject, "pipelineActionSelector")
+            initial_actions = {item["value"]: item for item in selector.property("actions")}
+
+            rendered = project_root / "output" / "render" / "scenes" / "scene_0001"
+            rendered.mkdir(parents=True)
+            (rendered / "final.mp4").touch()
+            jobs.entries = [{"id": "job-1", "status": "succeeded"}]
+            studio_vm.refresh_jobs()
+            self.qml_app.processEvents()
+            refreshed_actions = {item["value"]: item for item in selector.property("actions")}
+
+        self.assertFalse(initial_actions["final-concat"]["enabled"])
+        self.assertTrue(refreshed_actions["final-concat"]["enabled"])
+        self.assertTrue(refreshed_actions["final-concat"]["recommended"])
 
     def test_main_qml_loads_and_exposes_editor_shell(self):
         from PySide6.QtGui import QGuiApplication

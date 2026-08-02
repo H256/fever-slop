@@ -27,6 +27,7 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
     render_reason = no_target_reason if not target_scenes else _prepare_reason(missing_workflows)
     render_enabled = bool(target_scenes) and not missing_workflows
     prepare_enabled = bool(target_scenes) and enrichment_ready
+    final_concat_ready = _all_render_plan_clips_exist(project_root)
 
     return [
         _action("Full pipeline", "full-pipeline"),
@@ -56,13 +57,14 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
             "Render all scenes" if all_scenes else "Render selected scenes",
             "ltx-render-scenes",
             enabled=render_enabled,
-            recommended=render_enabled,
+            recommended=render_enabled and not final_concat_ready,
             reason=render_reason,
         ),
         _action(
             "Final concat", "final-concat",
-            enabled=_all_render_plan_clips_exist(project_root),
-            reason="" if _all_render_plan_clips_exist(project_root) else "Render scene clips first.",
+            enabled=final_concat_ready,
+            recommended=final_concat_ready,
+            reason="" if final_concat_ready else "Render scene clips first.",
         ),
     ]
 
