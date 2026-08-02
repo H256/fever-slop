@@ -925,6 +925,7 @@ def enrich_render_plan_with_reference_sheets(
     render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
     actor_manifests = _load_manifests_by_id(references_dir / "actors")
     location_manifests = _load_manifests_by_id(references_dir / "locations")
+    project_base = _infer_reference_artifact_base_dir(references_dir)
 
     required_actor_ids = {
         str(actor_id)
@@ -979,6 +980,20 @@ def enrich_render_plan_with_reference_sheets(
                 fallback_key="sheet_path",
             )
             references["location_reference_description"] = _reference_description(location_manifests[str(location_id)])
+        consistency_images = [
+            {"id": actor_id, "type": "actor", "path": path}
+            for actor_id, path in zip(actor_ids, references["actor_msr_paths"])
+        ]
+        if location_id:
+            consistency_images.append({
+                "id": str(location_id),
+                "type": "location",
+                "path": references["location_msr_path"],
+            })
+        scene["visual_consistency_sources"] = visual_consistency_sources(
+            consistency_images,
+            project_base=project_base,
+        )
         if on_scene_complete is not None:
             on_scene_complete(int(scene.get("scene", index)), index, total)
 
