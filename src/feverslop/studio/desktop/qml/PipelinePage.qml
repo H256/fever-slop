@@ -23,6 +23,7 @@ Item {
         Label { text: "Pipeline action"; color: "#1C1C1E"; font.bold: true; font.pixelSize: 16 }
         RowLayout {
             Layout.fillWidth: true
+            z: action.expanded ? 1 : 0
             Item {
                 id: action
                 objectName: "pipelineActionSelector"
