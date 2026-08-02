@@ -188,7 +188,7 @@ class LLMClientRetryTests(unittest.TestCase):
         self.assertEqual(call_kwargs["timeout"], 60.0)
 
     @patch("feverslop.adapters.llm_client.OpenAI")
-    def test_timeout_none_by_default(self, mock_openai):
+    def test_uses_configured_timeout_when_call_does_not_override_it(self, mock_openai):
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
 
@@ -196,12 +196,16 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_resp.choices = [MagicMock(message=MagicMock(content="result"))]
         mock_client.chat.completions.create.return_value = mock_resp
 
-        client = LocalOpenAIClient(api_key="test-key")
+        client = LocalOpenAIClient(api_key="test-key", request_timeout_seconds=45.0)
         client.client = mock_client
         client.complete_prompt("test")
 
         call_kwargs = mock_client.chat.completions.create.call_args[1]
-        self.assertIsNone(call_kwargs["timeout"])
+        self.assertEqual(45.0, call_kwargs["timeout"])
+
+    def test_rejects_non_positive_default_timeout(self):
+        with self.assertRaisesRegex(ValueError, "request_timeout_seconds"):
+            LocalOpenAIClient(api_key="test-key", request_timeout_seconds=0)
 
     @patch("feverslop.adapters.llm_client.OpenAI")
     def test_no_retry_on_success(self, mock_openai):

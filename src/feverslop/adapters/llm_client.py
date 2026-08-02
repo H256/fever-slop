@@ -54,7 +54,10 @@ class LocalOpenAIClient:
         max_tokens: int = 512,
         max_retries: int = 3,
         retry_base_delay: float = 0.5,
+        request_timeout_seconds: float = 180.0,
     ):
+        if request_timeout_seconds <= 0:
+            raise ValueError("request_timeout_seconds must be greater than zero")
         resolved_key = _resolve_api_key(api_key)
         self.client = OpenAI(
             base_url=base_url,
@@ -65,6 +68,7 @@ class LocalOpenAIClient:
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
+        self.request_timeout_seconds = float(request_timeout_seconds)
 
     def complete_prompt(
         self,
@@ -111,6 +115,7 @@ class LocalOpenAIClient:
 
     def _complete(self, messages, timeout: float | None) -> str:
         last_error = None
+        request_timeout = self.request_timeout_seconds if timeout is None else timeout
         for attempt in range(self.max_retries):
             try:
                 response = self.client.chat.completions.create(
@@ -119,7 +124,7 @@ class LocalOpenAIClient:
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
                     stream=False,
-                    timeout=timeout,
+                    timeout=request_timeout,
                 )
                 return response.choices[0].message.content.strip()
             except RETRYABLE_ERRORS as exc:

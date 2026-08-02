@@ -63,6 +63,9 @@ def run_studio(projects_root: str | Path, *, smoke_test: bool = False) -> int:
     app.setPalette(studio_palette())
 
     context = create_studio_context(projects_root)
+    app.aboutToQuit.connect(
+        lambda: context.jobs.shutdown(wait=False, cancel_futures=True)
+    )
     view_model = StudioViewModel(
         store=context.store,
         jobs=context.jobs,

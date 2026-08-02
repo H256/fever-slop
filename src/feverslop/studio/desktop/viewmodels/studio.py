@@ -197,7 +197,10 @@ class StudioViewModel(QObject):
         if not self.current_project_id or not hasattr(self.jobs_service, "list"):
             return
         try:
-            self._jobs = self.jobs_service.list(self.current_project_id)
+            jobs = self.jobs_service.list(self.current_project_id)
+            if jobs == self._jobs:
+                return
+            self._jobs = jobs
             self.jobsChanged.emit()
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
