@@ -14,7 +14,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
             state_dir = root / ".studio"
             state_dir.mkdir()
             (state_dir / "pipeline_state.json").write_text(
-                '{"completed_stages": ["main-pipeline", "msr-references", "msr-enrich"]}',
+                '{"completed_stages": ["main-pipeline", "msr-references", "msr_reference_sheets", "msr_prompt_enrich"]}',
                 encoding="utf-8",
             )
             prepared = root / "output" / "render" / "scenes" / "scene_0001"
@@ -63,3 +63,12 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertTrue(actions["ltx-render-scenes"]["enabled"])
         self.assertTrue(actions["ltx-render-scenes"]["recommended"])
         self.assertEqual("", actions["ltx-render-scenes"]["reason"])
+
+    def test_final_concat_is_blocked_until_scene_clips_exist(self):
+        from feverslop.studio.pipeline_actions import pipeline_action_availability
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            actions = {item["value"]: item for item in pipeline_action_availability(Path(temp_dir), [1])}
+
+        self.assertFalse(actions["final-concat"]["enabled"])
+        self.assertEqual("Render scene clips first.", actions["final-concat"]["reason"])

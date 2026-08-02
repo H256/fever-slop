@@ -16,7 +16,7 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
     completed = _completed_actions(project_root)
     main_ready = _complete(completed, "main-pipeline", "full-pipeline")
     references_ready = _complete(completed, "msr-references", "full-pipeline")
-    enrichment_ready = _complete(completed, "msr-enrich", "full-pipeline")
+    enrichment_ready = _complete(completed, "msr-enrich", "msr_prompt_enrich", "full-pipeline")
     missing_workflows = _missing_workflow_scenes(project_root, selected_scenes)
     selection_reason = "Select at least one scene first."
     render_reason = (
@@ -58,7 +58,11 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
             recommended=render_enabled,
             reason=render_reason,
         ),
-        _action("Final concat", "final-concat"),
+        _action(
+            "Final concat", "final-concat",
+            enabled=_has_rendered_scene_clip(project_root),
+            reason="" if _has_rendered_scene_clip(project_root) else "Render scene clips first.",
+        ),
     ]
 
 
@@ -77,6 +81,11 @@ def _missing_workflow_scenes(project_root: Path, scenes: list[int]) -> list[int]
         if not (scene_dir / "workflow.json").is_file() or not (scene_dir / "manifest.json").is_file():
             missing.append(scene)
     return missing
+
+
+def _has_rendered_scene_clip(project_root: Path) -> bool:
+    scenes_dir = project_root / "output" / "render" / "scenes"
+    return any(scenes_dir.glob("scene_*/final.mp4"))
 
 
 def _completed_actions(project_root: Path) -> set[str]:
