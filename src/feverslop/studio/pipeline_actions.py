@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.studio.pipeline_state_store import reconcile_completed_stages
 
 
 def pipeline_action_availability(project_root: Path, scenes: list[int] | None = None) -> list[dict[str, Any]]:
@@ -16,8 +17,8 @@ def pipeline_action_availability(project_root: Path, scenes: list[int] | None = 
     """
     selected_scenes = sorted(set(scenes or []))
     completed = _completed_actions(project_root)
-    main_ready = _complete(completed, "main-pipeline", "full-pipeline")
-    references_ready = _complete(completed, "msr-references", "full-pipeline")
+    main_ready = _complete(completed, "main-pipeline", "main_pipeline", "full-pipeline")
+    references_ready = _complete(completed, "msr-references", "msr_references", "full-pipeline")
     enrichment_ready = _complete(completed, "msr-enrich", "msr_prompt_enrich", "full-pipeline")
     missing_workflows = _missing_workflow_scenes(project_root, selected_scenes)
     selection_reason = "Select at least one scene first."
@@ -136,7 +137,7 @@ def _completed_actions(project_root: Path) -> set[str]:
         return set()
     if not isinstance(payload, dict):
         return set()
-    return {str(value) for value in payload.get("completed_stages") or []}
+    return set(reconcile_completed_stages(payload))
 
 
 def _complete(completed: set[str], *actions: str) -> bool:
