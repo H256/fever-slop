@@ -278,8 +278,12 @@ class StudioViewModel(QObject):
         try:
             artifact = self.store.read_artifact(self.current_project_id, path)
             self._editor_path = path
-            self._editor_data = copy.deepcopy(artifact["data"])
-            self._editor_baseline = copy.deepcopy(artifact["data"])
+            data = artifact["data"]
+            if data is None and not artifact.get("exists", False):
+                if Path(path).name == "render_plan.json":
+                    data = []
+            self._editor_data = copy.deepcopy(data)
+            self._editor_baseline = copy.deepcopy(data)
             self._editor_revision = artifact.get("revision")
             self._editor_exists = bool(
                 artifact.get("exists", artifact["data"] is not None)
@@ -298,6 +302,8 @@ class StudioViewModel(QObject):
             return False
         try:
             data = json.loads(text)
+            if Path(path).name == "render_plan.json" and not isinstance(data, list):
+                raise ValueError("Render plan must be a JSON array")
             if path == self._editor_path:
                 if not self._editor_exists:
                     request = ArtifactRequest(path=path, data=data, create_only=True)
