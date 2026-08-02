@@ -2211,6 +2211,13 @@ class StudioQmlTests(unittest.TestCase):
         self.assertIn("id: unknownHolder", unknown_section)
         self.assertIn("property var kinds: []", unknown_section)
 
+    def test_scene_workspace_uses_a_valid_qt_edge_for_revision_drawer(self):
+        qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "SceneWorkspacePage.qml"
+        qml = qml_path.read_text(encoding="utf-8")
+
+        self.assertIn("edge: Qt.RightEdge", qml)
+        self.assertNotIn("edge: drawer.Right", qml)
+
     def test_pipeline_action_selector_has_visible_current_value_in_basic_style(self):
         from PySide6.QtCore import QObject
         from PySide6.QtGui import QGuiApplication

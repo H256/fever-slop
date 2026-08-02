@@ -282,7 +282,7 @@ Rectangle {
 
         PromptRevisionDrawer {
             id: revisionDrawer
-            edge: drawer.Right
+            edge: Qt.RightEdge
             sceneVm: page.sceneVm
             rebuildVm: typeof rebuildViewModel !== "undefined" ? rebuildViewModel : null
             parent: page
