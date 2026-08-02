@@ -16,9 +16,8 @@ class AppConfigTests(unittest.TestCase):
             config_path.write_text('{"llm": {"api_key": "json-secret"}}', encoding="utf-8")
 
             config = AppConfig.load(config_path)
-
-        self.assertEqual("json-secret", config.llm.api_key)
-        self.assertNotIn("json-secret", repr(config.llm))
+            self.assertEqual("json-secret", config.llm.api_key)
+            self.assertNotIn("json-secret", repr(config.llm))
 
     def test_loads_llm_api_key_from_adjacent_dotenv(self):
         from feverslop.config.app_config import AppConfig
@@ -27,12 +26,13 @@ class AppConfigTests(unittest.TestCase):
             root = Path(temp_dir)
             config_path = root / "app_config.json"
             config_path.write_text('{"llm": {}}', encoding="utf-8")
-            (root / ".env").write_text('LLM_API_KEY="dotenv-secret"\n', encoding="utf-8")
+            (root / ".env").write_text(
+                'LLM_API_KEY="dotenv-secret" # local key\n', encoding="utf-8"
+            )
 
             config = AppConfig.load(config_path)
-
-        self.assertEqual("dotenv-secret", config.llm.api_key)
-        self.assertNotIn("LLM_API_KEY", os.environ)
+            self.assertEqual("dotenv-secret", config.llm.api_key)
+            self.assertNotIn("LLM_API_KEY", os.environ)
 
     def test_app_config_key_takes_precedence_over_dotenv(self):
         from feverslop.config.app_config import AppConfig
@@ -44,8 +44,7 @@ class AppConfigTests(unittest.TestCase):
             (root / ".env").write_text("LLM_API_KEY=dotenv-secret\n", encoding="utf-8")
 
             config = AppConfig.load(config_path)
-
-        self.assertEqual("json-secret", config.llm.api_key)
+            self.assertEqual("json-secret", config.llm.api_key)
 
     def test_process_environment_key_takes_precedence_over_local_config(self):
         from feverslop.config.app_config import AppConfig

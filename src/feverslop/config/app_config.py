@@ -221,13 +221,29 @@ def _read_dotenv_value(path: Path, name: str) -> str | None:
         key, separator, raw_value = line.partition("=")
         if not separator or key.strip() != name:
             continue
-        value = raw_value.strip()
+        value = _strip_dotenv_comment(raw_value.strip())
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
             value = value[1:-1]
-        elif " #" in value:
-            value = value.split(" #", 1)[0].rstrip()
         return value or None
     return None
+
+
+def _strip_dotenv_comment(value: str) -> str:
+    quote: str | None = None
+    escaped = False
+    for index, character in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote == '"':
+            escaped = True
+            continue
+        if character in {'"', "'"}:
+            quote = None if quote == character else character if quote is None else quote
+            continue
+        if character == "#" and quote is None and index > 0 and value[index - 1].isspace():
+            return value[:index].rstrip()
+    return value
 
 
 _VIDEO_WORKFLOW_PROFILE_FIELDS = frozenset({
