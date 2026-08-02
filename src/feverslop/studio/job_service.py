@@ -39,6 +39,7 @@ from feverslop.studio.jobs import (
     run_with_stream_logging,
 )
 from feverslop.studio.logging import render_log_lines
+from feverslop.studio.pipeline_actions import ensure_pipeline_action_available
 from feverslop.studio.projects import ProjectStore
 from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.ports.rebuild_execution import ArtifactProvenancePort
@@ -357,6 +358,11 @@ class PipelineAction:
 
     def build(self, project_id: str, request: StudioJobRequest, metadata: dict[str, Any]) -> JobHandler:
         config_path = self.store.resolve_project_path(project_id, "config.json")
+        ensure_pipeline_action_available(
+            self.store.project_root(project_id),
+            request.action,
+            request.scenes,
+        )
         factory = self.factory or build_pipeline_handler
         pipeline_mode = request.pipeline_mode or pipeline_mode_from_config(config_path)
         handler = factory(config_path, request.action, scenes=request.scenes, pipeline_mode=pipeline_mode)

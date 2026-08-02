@@ -776,6 +776,13 @@ class StudioBackendTests(unittest.TestCase):
         self.assertFalse(options["skip_ltx"])
         self.assertEqual("2,4", options["scenes"])
 
+    def test_pipeline_option_builder_prepares_only_selected_ltx_workflows(self):
+        options = build_pipeline_options("ltx-prepare-workflows", scenes=[2, 4])
+
+        self.assertEqual(["ltx_prepare_workflows"], options["stages"])
+        self.assertFalse(options["skip_ltx"])
+        self.assertEqual("2,4", options["scenes"])
+
     def test_pipeline_option_builder_maps_atomic_actions_to_stages(self):
         self.assertEqual(["anchor_fix"], build_pipeline_options("anchor-fix")["stages"])
         self.assertEqual(["relay_compact"], build_pipeline_options("relay-compact")["stages"])

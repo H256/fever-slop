@@ -6,6 +6,15 @@ Item {
     id: page
     readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
     property bool movie: vm && vm.current_project.project_type === "movie"
+    property var selectedScenes: {
+        var selected = []
+        var parts = scenes.text.split(",")
+        for (var i = 0; i < parts.length; ++i) {
+            var number = parseInt(parts[i].trim())
+            if (!isNaN(number) && selected.indexOf(number) === -1) selected.push(number)
+        }
+        return selected
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -25,14 +34,24 @@ Item {
                     { label: "Movie references", value: "movie-references" },
                     { label: "Render selected scenes", value: "movie-render" },
                     { label: "Final concat", value: "movie-final-concat" }
-                ] : [
-                    { label: "Full pipeline", value: "full-pipeline" },
-                    { label: "Main pipeline", value: "main-pipeline" },
-                    { label: "MSR references", value: "msr-references" },
-                    { label: "MSR enrichment", value: "msr-enrich" },
-                    { label: "Render selected scenes", value: "ltx-render-scenes" },
-                    { label: "Final concat", value: "final-concat" }
-                ]
+                ] : (vm ? (vm.jobs, vm.pipeline_actions(page.selectedScenes)) : [])
+                onModelChanged: {
+                    if (page.movie) return
+                    for (var i = 0; i < count; ++i) {
+                        if (model[i].recommended) {
+                            currentIndex = i
+                            return
+                        }
+                    }
+                }
+                delegate: ItemDelegate {
+                    required property var modelData
+                    width: action.width
+                    enabled: modelData.enabled !== false
+                    text: modelData.recommended ? modelData.label + " (next)" : modelData.label
+                    ToolTip.visible: hovered && !enabled && modelData.reason
+                    ToolTip.text: modelData.reason || ""
+                }
             }
             StyledTextField {
                 id: scenes
@@ -44,19 +63,21 @@ Item {
                 text: "Start"
                 icon.name: "media-playback-start"
                 implicitHeight: 44
-                enabled: vm && !vm.active_job.id
+                enabled: vm && !vm.active_job.id && action.currentIndex >= 0
+                         && (!action.currentItem || action.currentItem.enabled)
                 palette.buttonText: "#FFFFFF"
                 background: Rectangle { color: parent.enabled ? (parent.hovered ? "#666AD1" : "#5B5FC7") : "#AEAEB2"; radius: 6 }
                 onClicked: {
-                    var selected = []
-                    var parts = scenes.text.split(",")
-                    for (var i = 0; i < parts.length; ++i) {
-                        var number = parseInt(parts[i].trim())
-                        if (!isNaN(number)) selected.push(number)
-                    }
-                    if (vm) vm.start_job(action.currentValue, selected)
+                    if (vm) vm.start_job(action.currentValue, page.selectedScenes)
                 }
             }
+        }
+        Label {
+            Layout.fillWidth: true
+            visible: !page.movie && action.currentItem && !action.currentItem.enabled
+            text: visible ? action.currentItem.reason : ""
+            color: "#9C2C2C"
+            wrapMode: Text.Wrap
         }
         Rectangle {
             Layout.fillWidth: true
@@ -67,7 +88,14 @@ Item {
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 16
-                Label { text: vm && vm.active_job.id ? vm.active_job.action : "Pipeline idle"; color: "#1C1C1E"; font.bold: true; Layout.fillWidth: true }
+                Label {
+                    text: vm && vm.active_job.id ? vm.active_job.action
+                         : vm && vm.jobs.length && vm.jobs[0].status === "failed" ? "Pipeline failed"
+                         : "Pipeline idle"
+                    color: vm && vm.jobs.length && vm.jobs[0].status === "failed" ? "#C62828" : "#1C1C1E"
+                    font.bold: true
+                    Layout.fillWidth: true
+                }
                 ProgressBar { from: 0; to: 100; value: vm && vm.active_job.id ? (vm.active_job.overall_progress || 0) : 0; Layout.preferredWidth: 300 }
             }
         }
