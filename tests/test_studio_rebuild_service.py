@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from feverslop.domain.prompt_revisions import (
     PromptField,
@@ -10,6 +12,7 @@ from feverslop.studio.rebuild_service import (
     RebuildService,
     RevisionSaveResult,
 )
+from feverslop.infra.sqlite_adapter import SqliteRevisionStore
 
 
 class _FakeRevisionStore:
@@ -184,6 +187,47 @@ class RebuildServiceRestoreTests(unittest.TestCase):
                 field=PromptField.Z_IMAGE_PROMPT,
                 revision_id="nonexistent",
             )
+
+
+class RebuildServiceSqliteIntegrationTests(unittest.TestCase):
+    def test_saved_and_restored_revisions_persist_across_service_instances(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "revisions.sqlite"
+            project_id = "integration-project"
+            service = RebuildService(store=SqliteRevisionStore(str(db_path)))
+
+            original = service.save_prompt(
+                project_id=project_id,
+                scene_number=4,
+                field=PromptField.I2V_PROMPT,
+                value="original prompt",
+            )
+            service.save_prompt(
+                project_id=project_id,
+                scene_number=4,
+                field=PromptField.I2V_PROMPT,
+                value="edited prompt",
+            )
+            restored = service.restore_revision(
+                project_id=project_id,
+                scene_number=4,
+                field=PromptField.I2V_PROMPT,
+                revision_id=original.revision.id,
+            )
+
+            reloaded_service = RebuildService(store=SqliteRevisionStore(str(db_path)))
+            history = reloaded_service.get_history(
+                project_id=project_id,
+                scene_number=4,
+                field=PromptField.I2V_PROMPT,
+            ).history
+
+            self.assertEqual(
+                ["original prompt", "edited prompt", "original prompt"],
+                [revision.value for revision in history.revisions],
+            )
+            self.assertEqual(original.revision.id, restored.revision.restored_from)
+            self.assertEqual(original.revision.id, history.revisions[-1].restored_from)
 
 
 if __name__ == "__main__":
