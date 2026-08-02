@@ -19,7 +19,7 @@ class StudioTextContextMenuTests(unittest.TestCase):
         self.assertTrue(text_field.is_file())
 
         menu_source = menu.read_text(encoding="utf-8")
-        self.assertIn("popupType: Popup.Item", menu_source)
+        self.assertIn("popupType: Popup.Window", menu_source)
         self.assertIn("#F4F4F5", menu_source)
         self.assertIn("#71717A", menu_source)
         self.assertIn("#3F3F46", menu_source)
