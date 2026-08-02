@@ -4,11 +4,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+from feverslop.utils.io import read_json, read_json_or_none
+
 
 def build_startframe_identity_ledger(*, project_dir: Path) -> Path:
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
-    bible = _read_json(movie_dir / "bible.json")
+    bible = read_json(movie_dir / "bible.json")
     manifest = _read_json_if_exists(movie_dir / "references" / "manifest.json")
     manifest_actors = {
         str(actor.get("id")): actor
@@ -70,14 +72,9 @@ def build_startframe_identity_ledger(*, project_dir: Path) -> Path:
     return output_path
 
 
-def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def _read_json_if_exists(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    return _read_json(path)
+    data = read_json_or_none(path)
+    return {} if data is None else data
 
 
 def _identity_terms(description: str) -> list[str]:
