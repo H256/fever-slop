@@ -34,7 +34,7 @@ Item {
                     visible: page.categoryFilter === "references"
                     Layout.fillWidth: true
                     ComboBox { id: referenceKind; model: ["actor", "location"]; Layout.preferredWidth: 110 }
-                    TextField { id: referenceId; placeholderText: "Reference ID"; Layout.fillWidth: true; implicitHeight: 40 }
+                    StyledTextField { id: referenceId; placeholderText: "Reference ID"; Layout.fillWidth: true; implicitHeight: 40 }
                 }
                 RowLayout {
                     visible: page.categoryFilter === "references"
@@ -88,7 +88,7 @@ Item {
                 Label { text: page.selectedPath || "Select an artifact"; color: "#6E6E73"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; wrapMode: Text.Wrap }
                 Image { source: vm ? vm.media_url(page.selectedPath) : ""; fillMode: Image.PreserveAspectFit; asynchronous: true }
                 ScrollView {
-                    TextArea { readOnly: true; text: vm ? vm.editor_text : ""; color: "#1C1C1E"; font.family: "monospace"; wrapMode: TextEdit.NoWrap; background: null }
+                    StyledTextArea { readOnly: true; text: vm ? vm.editor_text : ""; color: "#1C1C1E"; font.family: "monospace"; wrapMode: TextEdit.NoWrap; background: null }
                 }
             }
         }

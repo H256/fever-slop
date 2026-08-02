@@ -280,7 +280,7 @@ ApplicationWindow {
                     ScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        TextArea {
+                        StyledTextArea {
                             readOnly: true
                             text: vm ? vm.job_logs : "Ready."
                             color: "#C7C7CC"

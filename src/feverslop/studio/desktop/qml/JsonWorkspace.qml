@@ -38,7 +38,7 @@ Item {
         spacing: 12
         RowLayout {
             Layout.fillWidth: true
-            TextField { id: pathField; text: page.defaultPath; placeholderText: "Relative JSON path"; Layout.fillWidth: true; implicitHeight: 44 }
+            StyledTextField { id: pathField; text: page.defaultPath; placeholderText: "Relative JSON path"; Layout.fillWidth: true; implicitHeight: 44 }
             ButtonGroup { id: editorMode }
             ToolButton {
                 visible: page.renderPlanMode
@@ -131,7 +131,7 @@ Item {
                         ScrollView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            TextArea {
+                            StyledTextArea {
                                 id: promptField
                                 wrapMode: TextEdit.Wrap
                                 color: "#1C1C1E"
@@ -139,7 +139,7 @@ Item {
                             }
                         }
                         Label { text: "Shot description"; color: "#6E6E73" }
-                        TextArea {
+                        StyledTextArea {
                             id: shotField
                             Layout.fillWidth: true
                             Layout.preferredHeight: 100
@@ -172,7 +172,7 @@ Item {
                 ScrollView {
                     anchors.fill: parent
                     anchors.margins: 1
-                    TextArea {
+                    StyledTextArea {
                         id: editor
                         objectName: page.renderPlanMode ? "renderPlanJsonEditor" : "configJsonEditor"
                         property bool applyingModelText: false

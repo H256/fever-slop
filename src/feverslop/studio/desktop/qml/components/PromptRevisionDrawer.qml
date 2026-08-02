@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import ".."
 
 /**
  * PromptRevisionDrawer - swipeable panel showing prompt revision history.
@@ -188,7 +189,7 @@ Drawer {
                         }
 
                         // Diff (only show for non-current revisions)
-                        TextArea {
+                        StyledTextArea {
                             objectName: "revisionDiff"
                             visible: !!model.diff
                             readOnly: true
