@@ -83,6 +83,7 @@ ScrollView {
             songStyleError = ""
             duration.value = 120
             silentMode.checked = false
+            pipelineMode.currentIndex = 0
         }
         ColumnLayout {
             width: parent.width
@@ -91,6 +92,30 @@ ScrollView {
                 id: projectType
                 Layout.fillWidth: true
                 model: ["Music video", "Full auto music video", "Movie"]
+            }
+            ColumnLayout {
+                visible: projectType.currentIndex < 2
+                Layout.fillWidth: true
+                spacing: 4
+                Label { text: "Video pipeline"; color: "#1C1C1E"; font.bold: true }
+                ComboBox {
+                    id: pipelineMode
+                    Layout.fillWidth: true
+                    textRole: "label"
+                    model: [
+                        { label: "Classic I2V", value: "classic" },
+                        { label: "MSR (reference-guided)", value: "msr" },
+                        { label: "Ingredients", value: "ingredients" }
+                    ]
+                }
+                Label {
+                    visible: projectType.currentIndex < 2
+                    Layout.fillWidth: true
+                    text: "Storyboard is started later as a pipeline action; it is not a video pipeline choice."
+                    color: "#6E6E73"
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                }
             }
             StyledTextField {
                 id: projectName
@@ -165,11 +190,13 @@ ScrollView {
                         name: projectName.text.trim(),
                         silent_mode: silentMode.checked
                     }
+                    if (projectType.currentIndex < 2) {
+                        payload.pipeline_mode = pipelineMode.currentValue
+                    }
                     if (projectType.currentIndex === 1) {
                         payload.idea = projectIdea.text.trim()
                         payload.song_style = songStyle.text.trim()
                         payload.duration_seconds = duration.value
-                        payload.pipeline_mode = "msr"
                     } else if (projectType.currentIndex === 2) {
                         payload.story_text = projectIdea.text.trim()
                         payload.desired_length = duration.value
@@ -181,6 +208,7 @@ ScrollView {
                         var currentType = projectType.currentIndex
                         if (currentType === 1) vm.start_job("full-auto", [])
                         projectType.currentIndex = 0
+                        pipelineMode.currentIndex = 0
                         projectName.text = ""
                         projectIdea.text = ""
                         songStyle.text = ""
