@@ -1,0 +1,352 @@
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import random
+
+from feverslop.adapters.comfyui_client import ComfyUIClient
+from feverslop.adapters.comfyui_minimax_h3_video_backend import ComfyUIMiniMaxH3VideoRenderBackend
+from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
+from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
+from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.domain.postprocessing import TrimSpec
+from feverslop.errors import FeverSlopValidationError
+from feverslop.config.video_settings import VideoSettings
+from feverslop.path_utils import coerce_local_path
+from feverslop.ports.rendering import VideoRenderRequest
+
+
+class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
+    """MiniMax H3 reference-to-video backend using FeverSlop meta-anchors.
+
+    Subclass of ComfyUIMiniMaxH3VideoRenderBackend that patches workflows by
+    meta-title anchors (#PROMPT, #SEED, #DURATION, #MEGAPIXELS, #REF_N,
+    #LOAD_AUDIO, #TRIM_AUDIO, #SAVE_VIDEO) instead of direct class-type
+    patching.
+    """
+
+    MAX_REF_IMAGES = 9
+    FPS = 24
+
+    def __init__(
+        self,
+        *,
+        client: ComfyUIClient,
+        workflow_path: str | Path,
+        output_dir: str | Path,
+        seed_offset: int = 100000,
+        randomize_seed: bool = False,
+        debug_workflows_dir: str | Path | None = None,
+        preroll_frames: int = 0,
+        tail_loss_frames: int = 0,
+        postprocess: bool = True,
+        ffmpeg_path: str = "ffmpeg",
+        postprocess_reencode: bool = True,
+        ffmpeg_debug: bool = False,
+        asset_uploader: ComfyUIVideoAssetUploader | None = None,
+        render_queue: ComfyUIRenderQueue | None = None,
+        postprocessor: VideoPostProcessor | None = None,
+        model_resolver=None,
+        video_settings: VideoSettings | None = None,
+        project_dir: str | Path | None = None,
+        workflow: dict | None = None,
+        workflow_label: str | Path | None = None,
+    ):
+        super().__init__(
+            client=client,
+            workflow_path=workflow_path,
+            output_dir=output_dir,
+            preroll_frames=preroll_frames,
+            tail_loss_frames=tail_loss_frames,
+            postprocess=postprocess,
+            ffmpeg_path=ffmpeg_path,
+            postprocess_reencode=postprocess_reencode,
+            ffmpeg_debug=ffmpeg_debug,
+            asset_uploader=asset_uploader,
+            render_queue=render_queue,
+            postprocessor=postprocessor,
+            model_resolver=model_resolver,
+            video_settings=video_settings,
+            project_dir=project_dir,
+            workflow=workflow,
+        )
+        self.seed_offset = int(seed_offset)
+        self.randomize_seed = bool(randomize_seed)
+        self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
+        self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
+        self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
+
+    # -----------------------------------------------------------------------
+    # High-level entry points
+    # -----------------------------------------------------------------------
+
+    def build_workflow(
+        self,
+        scene: dict,
+        *,
+        prompt: str,
+        comfy_audio_name: str | None = None,
+        duration_seconds: float | None = None,
+        frame_count: int | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        ref_image_paths: list[str | Path] | None = None,
+    ) -> dict:
+        """Build a patched R2V workflow dict from *scene*.
+
+        Patches FeverSlop meta-anchors:
+        - ``#PROMPT``  → ``value``
+        - ``#SEED``    → ``noise_seed``
+        - ``#DURATION`` → ``value``
+        - ``#MEGAPIXELS`` → ``megapixels`` (computed from width × height when given)
+        - ``#REF_1``, ``#REF_2``, … → ``image``
+        - ``#LOAD_AUDIO`` / ``#TRIM_AUDIO`` (audio workflow only)
+        - ``#SAVE_VIDEO`` → ``filename_prefix``
+        """
+        self._validate_scene(scene)
+        scene_number = int(scene.get("scene", 0))
+
+        patcher = WorkflowPatcher(self.load_workflow())
+
+        # -- prompt -----------------------------------------------------------
+        patcher.set_input_by_title("#PROMPT", "value", str(prompt).strip())
+
+        # -- seed -------------------------------------------------------------
+        self._patch_seed(patcher, self._seed_for_scene(scene_number))
+
+        # -- duration ---------------------------------------------------------
+        if duration_seconds is not None:
+            patcher.set_input_by_title("#DURATION", "value", float(duration_seconds))
+
+        # -- resolution (megapixels) ------------------------------------------
+        if width is not None and height is not None:
+            megapixels = (int(width) * int(height)) / 1_000_000
+            self._patch_megapixels(patcher, megapixels)
+
+        # -- reference images -------------------------------------------------
+        self._patch_reference_images(patcher, ref_image_paths or [])
+
+        # -- audio (workflow may or may not have these anchors) ----------------
+        if comfy_audio_name is not None:
+            self._patch_audio_inputs(patcher, comfy_audio_name, duration_seconds)
+
+        # -- output filename --------------------------------------------------
+        patcher.set_input_by_title(
+            "#SAVE_VIDEO",
+            "filename_prefix",
+            f"minimaxh3_raw/scene_{scene_number:04}",
+        )
+
+        return patcher.get()
+
+    def render_video(self, request: VideoRenderRequest) -> Path:
+        """Complete render flow for one R2V scene."""
+        self._validate_scene(request.scene)
+        scene_number = int(request.scene_number)
+
+        # -- compute duration / frame count -----------------------------------
+        duration_seconds: float | None = None
+        raw_duration = request.scene.get("duration_seconds")
+        if raw_duration is not None:
+            duration_seconds = float(raw_duration)
+        frame_count: int | None = None
+
+        # -- resolve audio name -----------------------------------------------
+        comfy_audio_name: str | None = None
+        if request.upload_audio or request.uploaded_audio_name:
+            comfy_audio_name = self.asset_uploader.resolve_audio_name(
+                request.audio_file,
+                upload_audio=request.upload_audio,
+                uploaded_audio_name=request.uploaded_audio_name,
+            )
+
+        # -- resolve reference image paths ------------------------------------
+        ref_image_paths = self._resolve_ref_image_paths(request.scene)
+
+        # -- build workflow ---------------------------------------------------
+        workflow = self.build_workflow(
+            request.scene,
+            prompt=request.prompt,
+            comfy_audio_name=comfy_audio_name,
+            duration_seconds=duration_seconds,
+            frame_count=frame_count,
+            width=int(request.scene.get("width", 0) or 0) or None,
+            height=int(request.scene.get("height", 0) or 0) or None,
+            ref_image_paths=ref_image_paths,
+        )
+
+        # -- resolve model references -----------------------------------------
+        workflow = self.model_resolver.resolve_workflow_models(
+            workflow,
+            workflow_path=self.workflow_label,
+        )
+
+        # -- debug write ------------------------------------------------------
+        self._write_debug_workflow(scene_number, workflow)
+
+        # -- queue and download -----------------------------------------------
+        self.raw_output_dir.mkdir(parents=True, exist_ok=True)
+        raw_output = self.render_queue.queue_workflow_and_download_first_video(
+            workflow,
+            scene_number=scene_number,
+            output_path=self.raw_output_dir / f"scene_{scene_number:04}_raw.mp4",
+        )
+
+        if not self.postprocess:
+            return raw_output
+
+        # -- postprocess trim -------------------------------------------------
+        keep_frames = self._frames_from_duration(
+            duration_seconds if duration_seconds else 5.0
+        )
+        return self._postprocess_with_audio(
+            raw_output,
+            TrimSpec(
+                source_file=raw_output,
+                output_file=self.output_dir / f"scene_{scene_number:04}.mp4",
+                fps=self.FPS,
+                trim_front_frames=int(self.preroll_frames),
+                keep_frames=keep_frames,
+                scene=scene_number,
+            ),
+        )
+
+    # -----------------------------------------------------------------------
+    # Patching helpers
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _patch_megapixels(
+        patcher: WorkflowPatcher,
+        megapixels: float,
+    ) -> None:
+        """Patch the ``#MEGAPIXELS`` anchor with a megapixel value.
+
+        The value should be ``width * height / 1_000_000`` rounded to
+        the nearest 0.1.
+        """
+        patcher.set_input_by_title("#MEGAPIXELS", "megapixels", round(megapixels, 1))
+
+    def _patch_reference_images(
+        self,
+        patcher: WorkflowPatcher,
+        ref_image_paths: list[str | Path] | None,
+    ) -> None:
+        """Map reference image paths to ``#REF_1``, ``#REF_2``, … anchors."""
+        if not ref_image_paths:
+            return
+        if len(ref_image_paths) > self.MAX_REF_IMAGES:
+            raise FeverSlopValidationError(
+                f"At most {self.MAX_REF_IMAGES} reference images allowed, "
+                f"got {len(ref_image_paths)}"
+            )
+        for index, path in enumerate(ref_image_paths, start=1):
+            title = f"#REF_{index}"
+            if self._has_anchor(patcher, title):
+                image_name = self.asset_uploader.resolve_reference_image_name(path)
+                patcher.set_input_by_title(title, "image", image_name)
+
+    @staticmethod
+    def _patch_audio_inputs(
+        patcher: WorkflowPatcher,
+        comfy_audio_name: str,
+        duration_seconds: float | None = None,
+    ) -> None:
+        """Patch ``#LOAD_AUDIO`` and ``#TRIM_AUDIO`` anchors (audio workflow only)."""
+        if patcher.try_set_existing_input_by_title(
+            "#LOAD_AUDIO", "audio", comfy_audio_name
+        ):
+            patcher.try_set_existing_input_by_title(
+                "#LOAD_AUDIO",
+                "audioUI",
+                f"/api/view?filename={comfy_audio_name}&type=input",
+            )
+        if duration_seconds is not None:
+            patcher.try_set_existing_input_by_title(
+                "#TRIM_AUDIO", "duration", float(duration_seconds)
+            )
+
+    @staticmethod
+    def _patch_seed(patcher: WorkflowPatcher, seed: int) -> None:
+        """Patch the ``#SEED`` anchor with the given seed value."""
+        for input_name in ("noise_seed", "seed", "value"):
+            if patcher.try_set_existing_input_by_title("#SEED", input_name, seed):
+                return
+        # Fallback: set noise_seed unconditionally (it exists in current workflows)
+        patcher.set_input_by_title("#SEED", "noise_seed", seed)
+
+    # -----------------------------------------------------------------------
+    # Validation
+    # -----------------------------------------------------------------------
+
+    def _validate_scene(self, scene: dict) -> None:
+        """Validate that the scene has at least one actor reference."""
+        references = scene.get("references") or {}
+        actor_paths = (
+            references.get("actor_sheet_paths", [])
+            or references.get("actor_msr_paths", [])
+        )
+        if not actor_paths:
+            scene_number = scene.get("scene", "?")
+            raise FeverSlopValidationError(
+                f"Scene {scene_number} requires at least one actor reference"
+            )
+
+    # -----------------------------------------------------------------------
+    # Internals
+    # -----------------------------------------------------------------------
+
+    def _seed_for_scene(self, scene_number: int) -> int:
+        if self.randomize_seed:
+            return random.randint(0, 2**63 - 1)
+        return self.seed_offset + int(scene_number)
+
+    def _resolve_ref_image_paths(self, scene: dict) -> list[Path]:
+        """Extract and resolve reference image paths from a scene dict."""
+        references = scene.get("references") or {}
+
+        actor_paths = (
+            references.get("actor_sheet_paths", [])
+            or references.get("actor_msr_paths", [])
+        )
+        paths: list[Path] = [self._resolve_project_path(p) for p in actor_paths]
+
+        location_path = (
+            references.get("location_sheet_path")
+            or references.get("location_msr_path")
+        )
+        if location_path:
+            paths.append(self._resolve_project_path(location_path))
+
+        style_paths = references.get("style_reference_paths", [])
+        if self.project_dir is not None:
+            style_paths = [self.project_dir / p for p in style_paths]
+        paths.extend(str(p) for p in style_paths)
+
+        return paths[: self.MAX_REF_IMAGES]
+
+    def _resolve_project_path(self, path: str | Path) -> Path:
+        if self.project_dir is None:
+            return coerce_local_path(path)
+        return coerce_local_path(path, base_dir=self.project_dir)
+
+    def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
+        if self.debug_workflows_dir is None:
+            return
+        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
+        (
+            self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json"
+        ).write_text(
+            json.dumps(workflow, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
+        try:
+            patcher.find_node_by_meta_title(title)
+            return True
+        except KeyError:
+            return False
