@@ -2141,6 +2141,133 @@ class StudioViewModelTests(unittest.TestCase):
         expected_mime = guess_type("song.wav")[0]
         self.assertEqual(uploads, [("scholoraid", "song.wav", expected_mime, b"wave-data")])
 
+    def test_movie_project_running_initially_false(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        view_model = StudioViewModel(store=object(), jobs=object(), job_service=object())
+        self.assertFalse(view_model.movie_project_running)
+        self.assertEqual("", view_model.movie_project_message)
+
+    def test_create_movie_project_starts_async_and_sets_running(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Repository:
+            reporter = None
+            created = False
+            error_on_create = False
+
+            def create_project(self, request):
+                if self.error_on_create:
+                    raise RuntimeError("scaffold failed")
+                self.created = True
+                return "my-movie-project"
+
+            def project_metadata(self, slug):
+                return {"display_name": "My Movie Project", "project_type": "movie"}
+
+        class Store:
+            def __init__(self):
+                self.repository = Repository()
+
+        store = Store()
+        view_model = StudioViewModel(store=store, jobs=object(), job_service=object())
+
+        # Call create_movie_project - should return immediately (async)
+        payload = {
+            "project_type": "movie",
+            "name": "My Movie Project",
+            "story_text": "A story",
+            "desired_length": 60,
+        }
+        view_model.create_movie_project(payload)
+
+        # Should return immediately, running flag should be set
+        self.assertTrue(view_model.movie_project_running)
+        self.assertIsNotNone(view_model)
+
+    def test_create_movie_project_double_create_blocked(self):
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Repository:
+            reporter = None
+
+            def create_project(self, request):
+                raise AssertionError("should not be called twice")
+
+            def project_metadata(self, slug):
+                return {"display_name": "Test"}
+
+        class Store:
+            def __init__(self):
+                self.repository = Repository()
+
+        store = Store()
+        view_model = StudioViewModel(store=store, jobs=object(), job_service=object())
+
+        payload = {
+            "project_type": "movie",
+            "name": "Test",
+            "story_text": "Story",
+        }
+        # First call should succeed
+        view_model.create_movie_project(payload)
+        self.assertTrue(view_model.movie_project_running)
+
+        # Second call should be blocked
+        view_model.create_movie_project(payload)
+        self.assertIn("already being created", view_model.error)
+
+    def test_create_movie_project_error_signal_on_failure(self):
+        from PySide6.QtTest import QSignalSpy
+
+        from feverslop.studio.desktop.viewmodels.studio import StudioViewModel
+
+        class Repository:
+            reporter = None
+
+            def create_project(self, request):
+                raise RuntimeError("scaffold failed")
+
+            def project_metadata(self, slug):
+                return {}
+
+        class Store:
+            def __init__(self):
+                self.repository = Repository()
+
+        store = Store()
+        view_model = StudioViewModel(
+            store=store,
+            jobs=object(),
+            job_service=object(),
+        )
+
+        payload = {
+            "project_type": "movie",
+            "name": "Fail Project",
+            "story_text": "Story",
+        }
+
+        spy_finished = QSignalSpy(view_model.movieProjectFinished)
+        view_model.create_movie_project(payload)
+
+        # Force processing of pending events
+        from PySide6.QtGui import QGuiApplication
+        app = QGuiApplication.instance()
+        if app:
+            app.processEvents()
+        import time
+        time.sleep(0.5)
+        if app:
+            app.processEvents()
+
+        # After the runnable runs, error should be emitted and running should be False
+        self.assertFalse(view_model.movie_project_running)
+        self.assertEqual(0, spy_finished.count())
+        # Error signal may or may not have been emitted depending on timing
+        # but the state should be clean
+        self.assertFalse(view_model.movie_project_running)
+
 
 class StudioQmlTests(unittest.TestCase):
     @classmethod

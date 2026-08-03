@@ -75,12 +75,15 @@ ScrollView {
         title: "Create Project"
         standardButtons: Dialog.Cancel
         property string songStyleError: ""
+        property string movieCreateError: ""
+        property bool creatingMovie: false
         onOpened: {
             projectType.currentIndex = 0
             projectName.text = ""
             projectIdea.text = ""
             songStyle.text = ""
             songStyleError = ""
+            movieCreateError = ""
             duration.value = 120
             silentMode.checked = false
         }
@@ -144,11 +147,20 @@ ScrollView {
                 Item { Layout.fillWidth: true }
                 CheckBox { id: silentMode; visible: projectType.currentIndex < 2; text: "Silent mode" }
             }
+            Label {
+                visible: createDialog.movieCreateError.length > 0
+                Layout.fillWidth: true
+                text: createDialog.movieCreateError
+                color: "#C62828"
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+            }
             Button {
                 text: projectType.currentIndex === 1 ? "Create and start" : "Create Project"
                 icon.name: "list-add"
                 icon.color: "#FFFFFF"
                 enabled: projectName.text.trim().length > 0 && (projectType.currentIndex === 0 || projectIdea.text.trim().length > 0)
+                    && !(projectType.currentIndex === 2 && vm && vm.movie_project_running)
                 implicitHeight: 44
                 Layout.alignment: Qt.AlignRight
                 palette.buttonText: "#FFFFFF"
@@ -176,22 +188,75 @@ ScrollView {
                         payload.source_type = "short_story"
                         payload.movie_mode = "scaffold"
                     }
-                    var projectId = vm ? vm.create_project(payload) : ""
-                    if (projectId) {
-                        var currentType = projectType.currentIndex
-                        if (currentType === 1) vm.start_job("full-auto", [])
-                        projectType.currentIndex = 0
-                        projectName.text = ""
-                        projectIdea.text = ""
-                        songStyle.text = ""
-                        duration.value = 120
-                        silentMode.checked = false
-                        createDialog.close()
-                        root.currentPage = currentType === 1 ? 2 : 1
-                        root.pageTitle = currentType === 1 ? "Pipeline" : "Dashboard"
+                    if (projectType.currentIndex === 2) {
+                        // Movie: async creation
+                        vm.create_movie_project(payload)
+                    } else {
+                        // Non-movie: synchronous creation
+                        var projectId = vm ? vm.create_project(payload) : ""
+                        if (projectId) {
+                            var currentType = projectType.currentIndex
+                            if (currentType === 1) vm.start_job("full-auto", [])
+                            createDialog.close()
+                            root.currentPage = currentType === 1 ? 2 : 1
+                            root.pageTitle = currentType === 1 ? "Pipeline" : "Dashboard"
+                        }
                     }
                 }
             }
+        }
+
+        Connections {
+            target: vm
+            function onMovieProjectStarted() {
+                createBusy.visible = true
+                createDialog.standardButtons = Dialog.NoButton
+            }
+            function onMovieProjectProgress(msg) {
+                createBusyText.text = msg
+            }
+            function onMovieProjectFinished(projectId, name) {
+                createBusy.visible = false
+                createDialog.standardButtons = Dialog.Cancel
+                createDialog.close()
+                vm.refresh_projects()
+                vm.select_project(projectId)
+                root.currentPage = 1
+                root.pageTitle = "Dashboard"
+                projectType.currentIndex = 0
+                projectName.text = ""
+                projectIdea.text = ""
+                songStyle.text = ""
+                duration.value = 120
+                silentMode.checked = false
+                createDialog.creatingMovie = false
+            }
+            function onMovieProjectError(errorMessage) {
+                createBusy.visible = false
+                createDialog.standardButtons = Dialog.Cancel
+                createDialog.movieCreateError = errorMessage
+            }
+        }
+
+        BusyIndicator {
+            id: createBusy
+            visible: false
+            anchors.centerIn: parent
+            running: true
+            z: 10
+            opacity: 0.8
+        }
+
+        Label {
+            id: createBusyText
+            visible: createBusy.visible
+            anchors.top: createBusy.bottom
+            anchors.topMargin: 12
+            anchors.horizontalCenter: createBusy.horizontalCenter
+            text: "Creating project..."
+            color: "#6E6E73"
+            font.pixelSize: 12
+            z: 10
         }
     }
 }
