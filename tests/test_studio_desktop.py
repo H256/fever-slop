@@ -2330,6 +2330,37 @@ class StudioQmlTests(unittest.TestCase):
             self.assertIn('color: "#1C1C1E"', input_block)
             self.assertIn('placeholderTextColor: "#6E6E73"', input_block)
 
+    def test_project_dialog_pipeline_selector(self):
+        qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "ProjectsPage.qml"
+        qml = qml_path.read_text(encoding="utf-8")
+
+        # 1. Three pipeline options present
+        self.assertIn("Classic I2V", qml)
+        self.assertIn("MSR (reference-guided)", qml)
+        self.assertIn("Ingredients", qml)
+
+        # 2. ComboBox uses object model with label/value keys
+        self.assertIn('{ label:', qml)
+        self.assertIn('"classic"', qml)
+        self.assertIn('"msr"', qml)
+        self.assertIn('"ingredients"', qml)
+        self.assertIn('id: pipelineMode', qml)
+        self.assertIn('textRole: "label"', qml)
+
+        # 3. Visibility: only for Music video (0) and Full auto (1), not Movie (2)
+        self.assertIn("visible: projectType.currentIndex < 2", qml)
+
+        # 4. Payload uses binding, not hardcoded string
+        self.assertIn('pipeline_mode', qml)
+        self.assertIn('pipelineMode.currentValue', qml)
+        self.assertNotIn('pipeline_mode = "msr"', qml)
+
+        # 5. Reset to classic (index 0) on dialog open and after success
+        self.assertIn("pipelineMode.currentIndex = 0", qml)
+
+        # 6. Storyboard help text present
+        self.assertIn("Storyboard is started later as a pipeline action", qml)
+
     def test_rebuild_preview_dialog_defines_unknown_artifact_holder(self):
         qml_path = Path(__file__).resolve().parents[1] / "src" / "feverslop" / "studio" / "desktop" / "qml" / "components" / "RebuildPreviewDialog.qml"
         qml = qml_path.read_text(encoding="utf-8")
