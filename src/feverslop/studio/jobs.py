@@ -143,6 +143,8 @@ FULL_PIPELINE_STEPS_BY_MODE = {
     "classic": ["Main pipeline", "Storyboard", "LTX render", "Final concat"],
     "msr": ["Main pipeline", "MSR references", "MSR enrichment", "LTX render", "Final concat"],
     "ingredients": ["Main pipeline", "MSR enrichment", "Ingredients sheets", "LTX render", "Final concat"],
+    "minimax_h3_r2v": ["Main pipeline", "LTX render", "Final concat"],
+    "minimax_h3_t2v": ["Main pipeline", "LTX render", "Final concat"],
 }
 
 
@@ -577,8 +579,8 @@ def build_pipeline_options(action: str, *, scenes: list[int] | None = None, pipe
         return {
             "skip_tests": True,
             "video_pipeline": video_pipeline,
-            "skip_msr_reference_render": video_pipeline != "ltx_msr",
-            "skip_msr_prompt_enrichment": video_pipeline != "ltx_msr",
+            "skip_msr_reference_render": video_pipeline not in {"ltx_msr", "ltx_ingredients"},
+            "skip_msr_prompt_enrichment": video_pipeline not in {"ltx_msr", "ltx_ingredients"},
             "skip_ingredients_sheets": video_pipeline != "ltx_ingredients",
         }
     else:
@@ -755,7 +757,11 @@ def _video_pipeline_for_mode(pipeline_mode: str | None) -> str:
         return "ltx_msr"
     if pipeline_mode in {"ingredients", "ltx_ingredients"}:
         return "ltx_ingredients"
-    raise ValueError("pipeline_mode must be classic, msr, or ingredients")
+    if pipeline_mode in {"minimax_h3_r2v", "minimax-h3-r2v"}:
+        return "minimax-h3-r2v"
+    if pipeline_mode in {"minimax_h3_t2v", "minimax-h3-t2v"}:
+        return "minimax-h3-t2v"
+    raise ValueError("pipeline_mode must be classic, msr, ingredients, minimax_h3_r2v, or minimax_h3_t2v")
 
 
 def _pipeline_step_names(action: str, *, pipeline_mode: str | None = None) -> list[str]:
@@ -765,6 +771,10 @@ def _pipeline_step_names(action: str, *, pipeline_mode: str | None = None) -> li
         return FULL_PIPELINE_STEPS_BY_MODE["msr"]
     if pipeline_mode in {"ingredients", "ltx_ingredients"}:
         return FULL_PIPELINE_STEPS_BY_MODE["ingredients"]
+    if pipeline_mode in {"minimax_h3_r2v", "minimax-h3-r2v"}:
+        return FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_r2v"]
+    if pipeline_mode in {"minimax_h3_t2v", "minimax-h3-t2v"}:
+        return FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_t2v"]
     return FULL_PIPELINE_STEPS_BY_MODE["classic"]
 
 

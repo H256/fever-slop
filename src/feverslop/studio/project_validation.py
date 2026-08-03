@@ -7,13 +7,15 @@ VIDEO_PIPELINE_BY_MODE = {
     "classic": "ltx_i2v",
     "msr": "ltx_msr",
     "ingredients": "ltx_ingredients",
+    "minimax_h3_r2v": "minimax-h3-r2v",
+    "minimax_h3_t2v": "minimax-h3-t2v",
 }
 
 
 def validate_pipeline_mode(value: Any) -> str:
     pipeline_mode = str(value or "classic")
     if pipeline_mode not in VIDEO_PIPELINE_BY_MODE:
-        raise ValueError("pipeline_mode must be classic, msr, or ingredients")
+        raise ValueError("pipeline_mode must be classic, msr, ingredients, minimax_h3_r2v, or minimax_h3_t2v")
     return pipeline_mode
 
 
@@ -30,8 +32,8 @@ def validate_project_config(data: Any, *, project_type: str = "standard_music_vi
     if subject_mode not in {"single", "multi"}:
         raise ValueError("subject_mode must be 'single' or 'multi'")
     video_pipeline = data.get("video_pipeline")
-    if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr", "ltx_ingredients"}:
-        raise ValueError("video_pipeline must be 'ltx_i2v', 'ltx_msr', or 'ltx_ingredients'")
+    if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-t2v"}:
+        raise ValueError("video_pipeline must be 'ltx_i2v', 'ltx_msr', 'ltx_ingredients', 'minimax-h3-r2v', or 'minimax-h3-t2v'")
     max_scene_actors = int(data.get("max_scene_actors", 1 if subject_mode == "single" else 4))
     if max_scene_actors < 1 or max_scene_actors > 4:
         raise ValueError("max_scene_actors must be between 1 and 4")

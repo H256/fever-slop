@@ -6,6 +6,8 @@ from pathlib import Path
 from rich.console import Console
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
+from feverslop.adapters.comfyui_minimax_h3_r2v_backend import ComfyUIMiniMaxH3R2VBackend
+from feverslop.adapters.comfyui_minimax_h3_t2v_backend import ComfyUIMiniMaxH3T2VBackend
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
@@ -139,6 +141,46 @@ def build_render_video_scenes_use_case(
             workflow_profile=str(
                 options.video_workflow_profile or Path(workflow_path).stem
             ),
+        )
+    elif options.video_pipeline == "minimax-h3-r2v":
+        project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
+        project_dir = ProjectConfig.load(project_config_path).project_dir if project_config_path else None
+        backend = ComfyUIMiniMaxH3R2VBackend(
+            client=client,
+            workflow_path=coerce_local_path(workflow_path),
+            output_dir=coerce_local_path(options.output_dir),
+            project_dir=project_dir,
+            seed_offset=options.seed_offset,
+            randomize_seed=options.randomize_seed,
+            debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
+            preroll_frames=preroll_frames,
+            tail_loss_frames=tail_loss_frames,
+            postprocess=options.postprocess,
+            ffmpeg_path=options.ffmpeg_path,
+            postprocess_reencode=options.postprocess_reencode,
+            ffmpeg_debug=options.ffmpeg_debug,
+            model_resolver=model_resolver,
+            video_settings=video_settings,
+        )
+    elif options.video_pipeline == "minimax-h3-t2v":
+        project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
+        project_dir = ProjectConfig.load(project_config_path).project_dir if project_config_path else None
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=client,
+            workflow_path=coerce_local_path(workflow_path),
+            output_dir=coerce_local_path(options.output_dir),
+            project_dir=project_dir,
+            seed_offset=options.seed_offset,
+            randomize_seed=options.randomize_seed,
+            debug_workflows_dir=coerce_local_path(options.debug_workflows_dir) if options.debug_workflows_dir else None,
+            preroll_frames=preroll_frames,
+            tail_loss_frames=tail_loss_frames,
+            postprocess=options.postprocess,
+            ffmpeg_path=options.ffmpeg_path,
+            postprocess_reencode=options.postprocess_reencode,
+            ffmpeg_debug=options.ffmpeg_debug,
+            model_resolver=model_resolver,
+            video_settings=video_settings,
         )
     else:
         backend = ComfyUIVideoRenderBackend(
