@@ -10,7 +10,7 @@ Item {
         anchors.centerIn: parent
         width: Math.min(560, parent.width - 56)
         spacing: 10
-        Label { text: heading; color: "#1C1C1E"; font.bold: true; font.pixelSize: 22; Layout.alignment: Qt.AlignHCenter }
-        Label { text: detail; color: "#6E6E73"; font.pixelSize: 15; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
+        Label { text: heading; color: theme.primaryText; font.bold: true; font.pixelSize: 22; Layout.alignment: Qt.AlignHCenter }
+        Label { text: detail; color: theme.secondaryText; font.pixelSize: 15; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
     }
 }

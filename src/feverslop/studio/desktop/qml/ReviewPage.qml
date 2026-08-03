@@ -92,7 +92,7 @@ Item {
                 }
             }
             Item { Layout.fillWidth: true }
-            Label { text: "Zoom"; color: "#6E6E73" }
+            Label { text: "Zoom"; color: theme.secondaryText }
             Slider { from: 0.75; to: 4; value: page.zoom; onMoved: page.zoom = value; Layout.preferredWidth: 150 }
         }
 
@@ -119,13 +119,13 @@ Item {
             Rectangle {
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
-                color: "#FFFFFF"
-                border.color: "#D8D8DC"
+                color: theme.cardBg
+                border.color: theme.cardBorder
                 radius: 6
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 14
-                    Label { text: page.selectedItem ? "Scene " + page.selectedItem.scene : "No scene"; color: "#1C1C1E"; font.bold: true; font.pixelSize: 18 }
+                    Label { text: page.selectedItem ? "Scene " + page.selectedItem.scene : "No scene"; color: theme.primaryText; font.bold: true; font.pixelSize: 18 }
                     ArtifactFreshnessBadge {
                         status: page.selectedItem ? (page.selectedItem.freshness || "unknown") : "unknown"
                     }
@@ -136,21 +136,20 @@ Item {
                     }
                     Label {
                         text: page.selectedItem ? page.selectedItem.preview : ""
-                        color: "#6E6E73"
-                        wrapMode: Text.WordWrap
+                        color: theme.secondaryText
                         elide: Text.ElideRight
                         maximumLineCount: 5
                         Layout.fillWidth: true
                     }
                     Item { Layout.fillHeight: true }
-                    Label { text: "Raw in"; color: "#6E6E73" }
+                    Label { text: "Raw in"; color: theme.secondaryText }
                     StyledTextField {
                         id: trimIn
                         text: page.selectedItem ? Number(page.selectedItem.raw_in_seconds).toFixed(3) : "0"
                         validator: DoubleValidator { bottom: 0 }
                         Layout.fillWidth: true
                     }
-                    Label { text: "Raw out"; color: "#6E6E73" }
+                    Label { text: "Raw out"; color: theme.secondaryText }
                     StyledTextField {
                         id: trimOut
                         text: page.selectedItem ? Number(page.selectedItem.raw_out_seconds).toFixed(3) : "0"
@@ -215,7 +214,7 @@ Item {
                     }
                 }
             }
-            Label { text: page.scrubSeconds.toFixed(2) + " / " + (vm ? vm.review_duration.toFixed(2) : "0.00") + " s"; color: "#1C1C1E"; Layout.preferredWidth: 120 }
+            Label { text: page.scrubSeconds.toFixed(2) + " / " + (vm ? vm.review_duration.toFixed(2) : "0.00") + " s"; color: theme.primaryText; Layout.preferredWidth: 120 }
         }
 
         Rectangle {

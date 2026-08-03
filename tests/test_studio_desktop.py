@@ -2859,5 +2859,81 @@ class StudioQmlTests(unittest.TestCase):
         self.assertEqual(palette.color(QPalette.ColorRole.Highlight).name(), "#5b5fc7")
 
 
+class ThemeDetectionTests(unittest.TestCase):
+    """Tests for system color scheme detection and themed palette."""
+
+    def test_detect_dark_from_env(self):
+        from feverslop.studio.desktop import runtime
+        with patch.dict(os.environ, {"FEVSLOP_COLOR_MODE": "dark"}):
+            self.assertEqual(runtime._detect_color_mode(), "dark")
+
+    def test_detect_light_from_env(self):
+        from feverslop.studio.desktop import runtime
+        with patch.dict(os.environ, {"FEVSLOP_COLOR_MODE": "light"}):
+            self.assertEqual(runtime._detect_color_mode(), "light")
+
+    def test_detect_light_when_no_hints(self):
+        from PySide6.QtGui import QGuiApplication
+        from feverslop.studio.desktop import runtime
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FEVSLOP_COLOR_MODE", None)
+            with patch.object(QGuiApplication, "styleHints", return_value=None):
+                self.assertEqual(runtime._detect_color_mode(), "light")
+
+    def test_dark_palette_has_dark_colors(self):
+        from PySide6.QtGui import QPalette
+        from feverslop.studio.desktop.runtime import studio_palette
+        palette = studio_palette("dark")
+        self.assertEqual(palette.color(QPalette.ColorRole.Window).name(), "#1c1c1e")
+        self.assertEqual(palette.color(QPalette.ColorRole.WindowText).name(), "#f5f5f7")
+        self.assertEqual(palette.color(QPalette.ColorRole.Base).name(), "#2c2c2e")
+        self.assertEqual(palette.color(QPalette.ColorRole.Text).name(), "#f5f5f7")
+        self.assertEqual(palette.color(QPalette.ColorRole.Button).name(), "#2c2c2e")
+        self.assertEqual(palette.color(QPalette.ColorRole.ButtonText).name(), "#f5f5f7")
+
+    def test_light_palette_has_light_colors(self):
+        from PySide6.QtGui import QPalette
+        from feverslop.studio.desktop.runtime import studio_palette
+        palette = studio_palette("light")
+        self.assertEqual(palette.color(QPalette.ColorRole.Window).name(), "#f5f5f7")
+        self.assertEqual(palette.color(QPalette.ColorRole.WindowText).name(), "#1c1c1e")
+        self.assertEqual(palette.color(QPalette.ColorRole.Base).name(), "#ffffff")
+        self.assertEqual(palette.color(QPalette.ColorRole.Text).name(), "#1c1c1e")
+        self.assertEqual(palette.color(QPalette.ColorRole.Button).name(), "#f5f5f7")
+        self.assertEqual(palette.color(QPalette.ColorRole.ButtonText).name(), "#1c1c1e")
+
+    def test_theme_has_required_keys(self):
+        from feverslop.studio.desktop.runtime import _build_theme
+        required_keys = [
+            "mode", "window", "contentBg", "primaryText", "secondaryText",
+            "cardBg", "cardBorder", "contentHeaderBg", "contentHeaderText",
+            "contentHeaderSeparator", "inputBg", "inputBorder",
+            "navUnchecked", "navHovered", "navChecked", "navUnhovered",
+            "contentHeaderBgScene", "contentHeaderSceneText",
+            "contentHeaderSceneSeparator", "tertiaryText",
+        ]
+        for mode in ("dark", "light"):
+            theme = _build_theme(mode)
+            self.assertEqual(theme["mode"], mode)
+            for key in required_keys:
+                self.assertIn(key, theme, f"Missing key '{key}' in {mode} theme")
+
+    def test_dark_theme_has_dark_colors(self):
+        from feverslop.studio.desktop.runtime import _build_theme
+        theme = _build_theme("dark")
+        self.assertEqual(theme["contentBg"], "#1C1C1E")
+        self.assertEqual(theme["primaryText"], "#F5F5F7")
+        self.assertEqual(theme["cardBg"], "#2C2C2E")
+        self.assertEqual(theme["cardBorder"], "#3A3A3C")
+
+    def test_light_theme_has_light_colors(self):
+        from feverslop.studio.desktop.runtime import _build_theme
+        theme = _build_theme("light")
+        self.assertEqual(theme["contentBg"], "#F5F5F7")
+        self.assertEqual(theme["primaryText"], "#1C1C1E")
+        self.assertEqual(theme["cardBg"], "#FFFFFF")
+        self.assertEqual(theme["cardBorder"], "#D8D8DC")
+
+
 if __name__ == "__main__":
     unittest.main()

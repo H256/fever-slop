@@ -88,8 +88,8 @@ Item {
                 Rectangle {
                     Layout.preferredWidth: 250
                     Layout.fillHeight: true
-                    color: "#FFFFFF"
-                    border.color: "#D8D8DC"
+                    color: theme.cardBg
+                    border.color: theme.cardBorder
                     radius: 6
                     ListView {
                         anchors.fill: parent
@@ -114,8 +114,8 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: "#FFFFFF"
-                    border.color: "#D8D8DC"
+                    color: theme.cardBg
+                    border.color: theme.cardBorder
                     radius: 6
                     ColumnLayout {
                         anchors.fill: parent
@@ -123,29 +123,29 @@ Item {
                         spacing: 10
                         Label {
                             text: page.selectedScene ? "Scene " + page.selectedScene.scene : "Select a scene"
-                            color: "#1C1C1E"
+                            color: theme.primaryText
                             font.bold: true
                             font.pixelSize: 18
                         }
-                        Label { text: "Target prompt"; color: "#6E6E73" }
+                        Label { text: "Target prompt"; color: theme.secondaryText }
                         ScrollView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             StyledTextArea {
                                 id: promptField
                                 wrapMode: TextEdit.Wrap
-                                color: "#1C1C1E"
-                                background: Rectangle { color: "#F5F5F7"; border.color: "#D8D8DC"; radius: 4 }
+                                color: theme.primaryText
+                                background: Rectangle { color: theme.inputBg; border.color: theme.inputBorder; radius: 4 }
                             }
                         }
-                        Label { text: "Shot description"; color: "#6E6E73" }
+                        Label { text: "Shot description"; color: theme.secondaryText }
                         StyledTextArea {
                             id: shotField
                             Layout.fillWidth: true
                             Layout.preferredHeight: 100
                             wrapMode: TextEdit.Wrap
-                            color: "#1C1C1E"
-                            background: Rectangle { color: "#F5F5F7"; border.color: "#D8D8DC"; radius: 4 }
+                            color: theme.primaryText
+                            background: Rectangle { color: theme.inputBg; border.color: theme.inputBorder; radius: 4 }
                         }
                         Button {
                             text: "Save scene"
@@ -166,8 +166,8 @@ Item {
             }
 
             Rectangle {
-                color: "#FFFFFF"
-                border.color: "#D8D8DC"
+                color: theme.cardBg
+                border.color: theme.cardBorder
                 radius: 6
                 ScrollView {
                     anchors.fill: parent
@@ -187,7 +187,7 @@ Item {
                         onTextChanged: {
                             if (!applyingModelText && vm) vm.set_json_editor_draft(text)
                         }
-                        color: "#1C1C1E"
+                        color: theme.primaryText
                         selectionColor: "#7B83EB"
                         selectedTextColor: "#FFFFFF"
                         font.family: "monospace"

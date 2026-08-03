@@ -20,7 +20,7 @@ Item {
         anchors.fill: parent
         anchors.margins: 28
         spacing: 16
-        Label { text: "Pipeline action"; color: "#1C1C1E"; font.bold: true; font.pixelSize: 16 }
+        Label { text: "Pipeline action"; color: theme.primaryText; font.bold: true; font.pixelSize: 16 }
         RowLayout {
             Layout.fillWidth: true
             z: action.expanded ? 1 : 0
@@ -58,8 +58,8 @@ Item {
                     visible: action.expanded; y: 44; width: parent.width; height: Math.min(contentHeight, 280); clip: true; model: action.actions
                     delegate: Rectangle {
                         required property var modelData
-                        width: action.width; height: 40; color: modelData.enabled === false ? "#EEEEF0" : "#FFFFFF"
-                        Label { anchors.fill: parent; anchors.leftMargin: 12; verticalAlignment: Text.AlignVCenter; text: modelData.recommended ? modelData.label + " (next)" : modelData.label; color: modelData.enabled === false ? "#6E6E73" : "#1C1C1E" }
+                        width: action.width; height: 40; color: modelData.enabled === false ? theme.disabledItemBg : theme.cardBg
+                        Label { anchors.fill: parent; anchors.leftMargin: 12; verticalAlignment: Text.AlignVCenter; text: modelData.recommended ? modelData.label + " (next)" : modelData.label; color: modelData.enabled === false ? theme.secondaryText : theme.primaryText }
                         MouseArea { anchors.fill: parent; enabled: modelData.enabled !== false; onClicked: { action.currentIndex = index; action.expanded = false } }
                     }
                 }
@@ -95,8 +95,8 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 88
-            color: "#FFFFFF"
-            border.color: "#D8D8DC"
+            color: theme.cardBg
+            border.color: theme.cardBorder
             radius: 6
             RowLayout {
                 anchors.fill: parent
@@ -105,7 +105,7 @@ Item {
                     text: vm && vm.active_job.id ? vm.active_job.action
                          : vm && vm.jobs.length && vm.jobs[0].status === "failed" ? "Pipeline failed"
                          : "Pipeline idle"
-                    color: vm && vm.jobs.length && vm.jobs[0].status === "failed" ? "#C62828" : "#1C1C1E"
+                    color: vm && vm.jobs.length && vm.jobs[0].status === "failed" ? "#C62828" : theme.primaryText
                     font.bold: true
                     Layout.fillWidth: true
                 }
