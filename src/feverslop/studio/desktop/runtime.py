@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -30,7 +30,7 @@ def _detect_color_mode() -> str:
     hints = QGuiApplication.styleHints()
     if hints is not None:
         scheme = hints.colorScheme()
-        return "dark" if scheme == QPalette.ColorScheme.Dark else "light"
+        return "dark" if scheme == Qt.ColorScheme.Dark else "light"
     return "light"
 
 

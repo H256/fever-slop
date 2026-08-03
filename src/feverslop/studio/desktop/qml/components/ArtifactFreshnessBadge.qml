@@ -18,7 +18,7 @@ Control {
 
     objectName: "freshnessBadge"
 
-    Accessible.role: Accessible.Alert
+    Accessible.role: Accessible.AlertMessage
     Accessible.name: _displayText + " " + status
     Accessible.description: tooltip
 
