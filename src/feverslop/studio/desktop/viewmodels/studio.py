@@ -7,13 +7,95 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import (
+    Property,
+    QObject,
+    QRunnable,
+    QThreadPool,
+    QTimer,
+    QUrl,
+    Signal,
+    Slot,
+)
 
 from feverslop.studio.job_service import StudioJobRequest
 from feverslop.studio.pipeline_actions import pipeline_action_availability
 from feverslop.studio.desktop.requests import project_create_request
 from feverslop.studio.desktop.review_timeline import ReviewTimelineState
-from feverslop.studio.projects import ArtifactRequest, RenderPlanPatch
+from feverslop.studio.projects import ArtifactRequest, ProjectCreateRequest, RenderPlanPatch
+
+
+class _ProjectCreationSignals(QObject):
+    """Signal bridge from background scaffold thread to main thread."""
+
+    progress = Signal(str)
+    finished = Signal(str, str)  # project_slug, project_name
+    error = Signal(str)
+
+
+class _MovieScopedReporter:
+    """Wraps a Reporter, forwarding all calls to both the original and a signal bridge."""
+
+    def __init__(self, inner, signal_bridge: _ProjectCreationSignals):
+        object.__setattr__(self, "_inner", inner)
+        object.__setattr__(self, "_bridge", signal_bridge)
+
+    def __getattr__(self, name):
+        inner = object.__getattribute__(self, "_inner")
+        if inner is not None and hasattr(inner, name):
+            attr = getattr(inner, name)
+            if callable(attr):
+                def wrapper(*args, **kwargs):
+                    result = attr(*args, **kwargs)
+                    return result
+                return wrapper
+            return attr
+        # Method not on inner — create stubs for Reporter protocol
+        bridge = object.__getattribute__(self, "_bridge")
+        if name == "step":
+            return lambda title: bridge.progress.emit(title)
+        if name == "message":
+            return lambda text: None
+        if name == "file":
+            return lambda label, path: None
+        if name == "panel":
+            return lambda text, *, title=None: None
+        if name == "table":
+            return lambda title, columns, rows: None
+        if name == "run_progress":
+            return lambda description, func: func()
+        raise AttributeError(name)
+
+
+class _MovieProjectRunnable(QRunnable):
+    """Runs movie project scaffold on a background thread."""
+
+    def __init__(
+        self,
+        repository,
+        request: ProjectCreateRequest,
+        slug: str,
+        signal_bridge: _ProjectCreationSignals,
+    ):
+        super().__init__()
+        self._repository = repository
+        self._request = request
+        self._slug = slug
+        self._signal_bridge = signal_bridge
+
+    def run(self):
+        old_reporter = self._repository.reporter
+        wrapped = _MovieScopedReporter(old_reporter, self._signal_bridge)
+        self._repository.reporter = wrapped
+        try:
+            slug_result = self._repository.create_project(self._request)
+            metadata = self._repository.project_metadata(slug_result)
+            project_name = metadata.get("display_name", str(self._request.name))
+            self._signal_bridge.finished.emit(slug_result, project_name)
+        except Exception as exc:
+            self._signal_bridge.error.emit(str(exc))
+        finally:
+            self._repository.reporter = old_reporter
 
 
 class StudioViewModel(QObject):
@@ -24,6 +106,12 @@ class StudioViewModel(QObject):
     jobsChanged = Signal()
     reviewChanged = Signal()
     errorChanged = Signal()
+    movieProjectStarted = Signal()
+    movieProjectProgress = Signal(str)
+    movieProjectFinished = Signal(str, str)  # project_id, project_name
+    movieProjectError = Signal(str)
+    movieProjectMessageChanged = Signal()
+    movieProjectRunningChanged = Signal()
 
     def __init__(self, *, store: Any, jobs: Any, job_service: Any, parent: QObject | None = None):
         super().__init__(parent)
@@ -45,6 +133,8 @@ class StudioViewModel(QObject):
         self._review_revision: str | None = None
         self._review_project_id = ""
         self._error = ""
+        self._movie_project_running = False
+        self._movie_project_message = ""
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(500)
         self._poll_timer.timeout.connect(self.refresh_jobs)
@@ -153,6 +243,14 @@ class StudioViewModel(QObject):
     def error(self) -> str:
         return self._error
 
+    @Property(bool, notify=movieProjectRunningChanged)
+    def movie_project_running(self) -> bool:
+        return self._movie_project_running
+
+    @Property(str, notify=movieProjectMessageChanged)
+    def movie_project_message(self) -> str:
+        return self._movie_project_message
+
     @Slot()
     def refresh_projects(self) -> None:
         try:
@@ -187,6 +285,61 @@ class StudioViewModel(QObject):
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self._set_error(str(exc))
             return ""
+
+    @Slot("QVariantMap")
+    def create_movie_project(self, payload: dict[str, Any]) -> None:
+        """Create a movie project asynchronously on a background thread."""
+        if self._movie_project_running:
+            self._set_error("A movie project is already being created")
+            self.movieProjectError.emit("A movie project is already being created")
+            return
+        self._movie_project_running = True
+        self.movieProjectRunningChanged.emit()
+        self._movie_project_message = ""
+        self.movieProjectMessageChanged.emit()
+        self.movieProjectStarted.emit()
+        try:
+            request = project_create_request(payload)
+        except Exception as exc:
+            self._set_error(str(exc))
+            self.movieProjectError.emit(str(exc))
+            self._movie_project_running = False
+            self.movieProjectRunningChanged.emit()
+            return
+
+        bridge = _ProjectCreationSignals()
+        bridge.progress.connect(self._on_movie_progress)
+        bridge.finished.connect(self._on_movie_finished)
+        bridge.error.connect(self._on_movie_error)
+
+        runnable = _MovieProjectRunnable(
+            self.store.repository,
+            request,
+            "",
+            bridge,
+        )
+        QThreadPool.globalInstance().start(runnable)
+
+    def _on_movie_progress(self, message: str) -> None:
+        self._movie_project_message = message
+        self.movieProjectMessageChanged.emit()
+        self.movieProjectProgress.emit(message)
+
+    def _on_movie_finished(self, project_slug: str, project_name: str) -> None:
+        self._movie_project_running = False
+        self._movie_project_message = ""
+        self.movieProjectRunningChanged.emit()
+        self.movieProjectMessageChanged.emit()
+        self._set_error("")
+        self.movieProjectFinished.emit(project_slug, project_name)
+
+    def _on_movie_error(self, error_message: str) -> None:
+        self._movie_project_running = False
+        self._movie_project_message = ""
+        self.movieProjectRunningChanged.emit()
+        self.movieProjectMessageChanged.emit()
+        self._set_error(error_message)
+        self.movieProjectError.emit(error_message)
 
     @Slot()
     def start_polling(self) -> None:
