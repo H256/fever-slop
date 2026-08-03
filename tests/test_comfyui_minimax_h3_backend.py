@@ -227,6 +227,24 @@ class PatchMiniMaxCoreTests(unittest.TestCase):
         self.assertEqual(1024, node["inputs"]["height"])
         self.assertEqual(120, node["inputs"]["length"])
 
+    def test_patches_t2v_node(self):
+        """MiniMaxH3ImageToVideo is recognized and patched."""
+        workflow = {
+            "1": {
+                "class_type": "MiniMaxH3ImageToVideo",
+                "inputs": {"prompt": "", "width": 0, "height": 0, "length": 0},
+            },
+        }
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_minimax_core(
+            patcher, "t2v prompt", 1024, 768, 120,
+        )
+        node = patcher.get()["1"]
+        self.assertEqual("t2v prompt", node["inputs"]["prompt"])
+        self.assertEqual(1024, node["inputs"]["width"])
+        self.assertEqual(768, node["inputs"]["height"])
+        self.assertEqual(120, node["inputs"]["length"])
+
     def test_prefers_t2v_over_r2v(self):
         """MiniMaxH3Video takes priority when both are present."""
         workflow = {
@@ -259,6 +277,163 @@ class PatchMiniMaxCoreTests(unittest.TestCase):
             )
         self.assertIn("MiniMaxH3Video", str(ctx.exception))
         self.assertIn("MiniMaxH3ReferenceToVideo", str(ctx.exception))
+        self.assertIn("MiniMaxH3ImageToVideo", str(ctx.exception))
+
+
+# ---------------------------------------------------------------------------
+# _patch_megapixels
+# ---------------------------------------------------------------------------
+
+class PatchMegapixelsTests(unittest.TestCase):
+    def _r2v_workflow(self):
+        """Minimal workflow with #MEGAPIXELS anchor (R2V)."""
+        return {
+            "1": {
+                "class_type": "ResolutionSelector",
+                "_meta": {"title": "#MEGAPIXELS"},
+                "inputs": {"megapixels": 0.4, "aspect_ratio": "16:9", "multiple": 32},
+            },
+        }
+
+    def _t2v_workflow(self):
+        """Minimal workflow with #MEGAPIXEL anchor (T2V)."""
+        return {
+            "1": {
+                "class_type": "ResolutionSelector",
+                "_meta": {"title": "#MEGAPIXEL"},
+                "inputs": {"megapixels": 0.4, "aspect_ratio": "16:9", "multiple": 32},
+            },
+        }
+
+    def test_patches_plural_anchor(self):
+        """#MEGAPIXELS (R2V convention)."""
+        workflow = self._r2v_workflow()
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_megapixels(patcher, 1.0)
+        self.assertEqual(1.0, patcher.get()["1"]["inputs"]["megapixels"])
+
+    def test_patches_singular_anchor(self):
+        """#MEGAPIXEL (T2V convention)."""
+        workflow = self._t2v_workflow()
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_megapixels(patcher, 0.8)
+        self.assertEqual(0.8, patcher.get()["1"]["inputs"]["megapixels"])
+
+    def test_prefers_plural_over_singular(self):
+        """#MEGAPIXELS takes priority when both exist."""
+        workflow = {
+            "1": {
+                "class_type": "ResolutionSelector",
+                "_meta": {"title": "#MEGAPIXELS"},
+                "inputs": {"megapixels": 0.1},
+            },
+            "2": {
+                "class_type": "ResolutionSelector",
+                "_meta": {"title": "#MEGAPIXEL"},
+                "inputs": {"megapixels": 0.2},
+            },
+        }
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_megapixels(patcher, 0.5)
+        # Plural patched
+        self.assertEqual(0.5, patcher.get()["1"]["inputs"]["megapixels"])
+        # Singular NOT patched
+        self.assertEqual(0.2, patcher.get()["2"]["inputs"]["megapixels"])
+
+    def test_raises_when_neither_present(self):
+        workflow = {
+            "1": {"class_type": "OtherNode", "inputs": {}},
+        }
+        patcher = WorkflowPatcher(workflow)
+        with self.assertRaises(KeyError):
+            ComfyUIMiniMaxH3VideoRenderBackend._patch_megapixels(patcher, 1.0)
+
+    def test_rounds_to_one_decimal(self):
+        workflow = self._r2v_workflow()
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_megapixels(patcher, 0.786432)
+        self.assertEqual(0.8, patcher.get()["1"]["inputs"]["megapixels"])
+
+
+# ---------------------------------------------------------------------------
+# _patch_seed
+# ---------------------------------------------------------------------------
+
+class PatchSeedTests(unittest.TestCase):
+    def _workflow_with_input(self, input_name):
+        return {
+            "1": {
+                "class_type": "RandomNoise",
+                "_meta": {"title": "#SEED"},
+                "inputs": {input_name: 12345},
+            },
+        }
+
+    def test_patches_noise_seed(self):
+        workflow = self._workflow_with_input("noise_seed")
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_seed(patcher, 99999)
+        self.assertEqual(99999, patcher.get()["1"]["inputs"]["noise_seed"])
+
+    def test_patches_seed_fallback(self):
+        workflow = self._workflow_with_input("seed")
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_seed(patcher, 77777)
+        self.assertEqual(77777, patcher.get()["1"]["inputs"]["seed"])
+
+    def test_patches_value_fallback(self):
+        workflow = self._workflow_with_input("value")
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_seed(patcher, 55555)
+        self.assertEqual(55555, patcher.get()["1"]["inputs"]["value"])
+
+    def test_unconditional_fallback(self):
+        """When none of the inputs exist, set noise_seed unconditionally."""
+        workflow = {
+            "1": {
+                "class_type": "RandomNoise",
+                "_meta": {"title": "#SEED"},
+                "inputs": {"other_field": "x"},
+            },
+        }
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_seed(patcher, 11111)
+        self.assertEqual(11111, patcher.get()["1"]["inputs"]["noise_seed"])
+        # Other field untouched
+        self.assertEqual("x", patcher.get()["1"]["inputs"]["other_field"])
+
+
+# ---------------------------------------------------------------------------
+# _patch_save_video
+# ---------------------------------------------------------------------------
+
+class PatchSaveVideoTests(unittest.TestCase):
+    def _workflow(self):
+        return {
+            "1": {
+                "class_type": "VHS_VideoCombine",
+                "_meta": {"title": "#SAVE_VIDEO"},
+                "inputs": {"filename_prefix": "AnimateDiff", "format": "video/h264-mp4"},
+            },
+        }
+
+    def test_basic_save_prefix(self):
+        workflow = self._workflow()
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_save_video(patcher, 1)
+        self.assertEqual(
+            "minimaxh3_raw/scene_0001",
+            patcher.get()["1"]["inputs"]["filename_prefix"],
+        )
+
+    def test_zero_padded_scene_number(self):
+        workflow = self._workflow()
+        patcher = WorkflowPatcher(workflow)
+        ComfyUIMiniMaxH3VideoRenderBackend._patch_save_video(patcher, 42)
+        self.assertEqual(
+            "minimaxh3_raw/scene_0042",
+            patcher.get()["1"]["inputs"]["filename_prefix"],
+        )
 
 
 # ---------------------------------------------------------------------------

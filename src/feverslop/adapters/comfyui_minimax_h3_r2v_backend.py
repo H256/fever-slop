@@ -145,11 +145,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             self._patch_audio_inputs(patcher, comfy_audio_name, duration_seconds)
 
         # -- output filename --------------------------------------------------
-        patcher.set_input_by_title(
-            "#SAVE_VIDEO",
-            "filename_prefix",
-            f"minimaxh3_raw/scene_{scene_number:04}",
-        )
+        self._patch_save_video(patcher, scene_number)
 
         return patcher.get()
 
@@ -237,18 +233,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     # Patching helpers
     # -----------------------------------------------------------------------
 
-    @staticmethod
-    def _patch_megapixels(
-        patcher: WorkflowPatcher,
-        megapixels: float,
-    ) -> None:
-        """Patch the ``#MEGAPIXELS`` anchor with a megapixel value.
-
-        The value should be ``width * height / 1_000_000`` rounded to
-        the nearest 0.1.
-        """
-        patcher.set_input_by_title("#MEGAPIXELS", "megapixels", round(megapixels, 1))
-
     def _patch_reference_images(
         self,
         patcher: WorkflowPatcher,
@@ -325,15 +309,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             patcher.try_set_existing_input_by_title(
                 "#TRIM_AUDIO", "duration", float(duration_seconds)
             )
-
-    @staticmethod
-    def _patch_seed(patcher: WorkflowPatcher, seed: int) -> None:
-        """Patch the ``#SEED`` anchor with the given seed value."""
-        for input_name in ("noise_seed", "seed", "value"):
-            if patcher.try_set_existing_input_by_title("#SEED", input_name, seed):
-                return
-        # Fallback: set noise_seed unconditionally (it exists in current workflows)
-        patcher.set_input_by_title("#SEED", "noise_seed", seed)
 
     # -----------------------------------------------------------------------
     # Validation

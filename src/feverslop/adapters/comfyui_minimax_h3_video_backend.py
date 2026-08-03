@@ -97,7 +97,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         frames: int,
     ) -> None:
         """Set prompt, resolution, and frame count on the MiniMax H3 core node."""
-        for target_class in ("MiniMaxH3Video", "MiniMaxH3ReferenceToVideo"):
+        for target_class in ("MiniMaxH3Video", "MiniMaxH3ReferenceToVideo", "MiniMaxH3ImageToVideo"):
             try:
                 _, node = patcher.find_nodes_by_class_type(target_class)[0]
                 node.setdefault("inputs", {})["prompt"] = prompt
@@ -108,7 +108,48 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
             except IndexError:
                 continue
         raise KeyError(
-            "Workflow has neither MiniMaxH3Video nor MiniMaxH3ReferenceToVideo node"
+            "Workflow has neither MiniMaxH3Video nor MiniMaxH3ReferenceToVideo "
+            "nor MiniMaxH3ImageToVideo node"
+        )
+
+    @staticmethod
+    def _patch_megapixels(
+        patcher: WorkflowPatcher,
+        megapixels: float,
+    ) -> None:
+        """Patch the megapixels anchor (#MEGAPIXELS or #MEGAPIXEL).
+
+        Tries the plural anchor first (R2V convention), then falls back to
+        the singular anchor (T2V convention).
+        """
+        rounded = round(megapixels, 1)
+        if patcher.try_set_existing_input_by_title("#MEGAPIXELS", "megapixels", rounded):
+            return
+        if patcher.try_set_existing_input_by_title("#MEGAPIXEL", "megapixels", rounded):
+            return
+        raise KeyError("Workflow has neither #MEGAPIXELS nor #MEGAPIXEL anchor")
+
+    @staticmethod
+    def _patch_seed(patcher: WorkflowPatcher, seed: int) -> None:
+        """Patch the #SEED anchor with the given seed value.
+
+        Tries noise_seed, seed, and value inputs in preference order.
+        """
+        for input_name in ("noise_seed", "seed", "value"):
+            if patcher.try_set_existing_input_by_title("#SEED", input_name, seed):
+                return
+        patcher.set_input_by_title("#SEED", "noise_seed", seed)
+
+    @staticmethod
+    def _patch_save_video(
+        patcher: WorkflowPatcher,
+        scene_number: int,
+    ) -> None:
+        """Patch the #SAVE_VIDEO anchor with a deterministic filename prefix."""
+        patcher.set_input_by_title(
+            "#SAVE_VIDEO",
+            "filename_prefix",
+            f"minimaxh3_raw/scene_{scene_number:04}",
         )
 
     @staticmethod
