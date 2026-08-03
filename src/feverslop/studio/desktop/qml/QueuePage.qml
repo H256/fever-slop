@@ -10,7 +10,7 @@ Item {
         anchors.margins: 24
         RowLayout {
             Layout.fillWidth: true
-            Label { text: "Studio jobs"; color: "#1C1C1E"; font.bold: true; font.pixelSize: 18; Layout.fillWidth: true }
+            Label { text: "Studio jobs"; color: theme.primaryText; font.bold: true; font.pixelSize: 18; Layout.fillWidth: true }
             Button { icon.name: "view-refresh"; text: "Refresh"; implicitHeight: 44; onClicked: if (vm) vm.refresh_jobs() }
         }
         ListView {
@@ -27,8 +27,8 @@ Item {
                 readonly property string logText: (modelData.logs || modelData.recent_logs || []).join("\n")
                 width: ListView.view.width
                 height: expanded && failed ? 250 : 86
-                color: "#FFFFFF"
-                border.color: "#D8D8DC"
+                color: theme.cardBg
+                border.color: theme.cardBorder
                 radius: 6
                 ColumnLayout {
                     anchors.fill: parent
@@ -37,8 +37,8 @@ Item {
                         Layout.fillWidth: true
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: modelData.action; color: "#1C1C1E"; font.bold: true }
-                            Label { text: modelData.current_step || modelData.id; color: "#6E6E73"; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Label { text: modelData.action; color: theme.primaryText; font.bold: true }
+                            Label { text: modelData.current_step || modelData.id; color: theme.secondaryText; elide: Text.ElideRight; Layout.fillWidth: true }
                         }
                         Label { text: modelData.status; color: failed ? "#C62828" : modelData.status === "succeeded" ? "#2E7D32" : "#5B5FC7"; font.bold: true }
                         ArtifactFreshnessBadge {

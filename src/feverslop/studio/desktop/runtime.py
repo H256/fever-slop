@@ -22,9 +22,72 @@ def qml_entrypoint() -> QUrl:
     return QUrl.fromLocalFile(str(Path(__file__).with_name("qml") / "Main.qml"))
 
 
-def studio_palette() -> QPalette:
-    palette = QPalette()
-    colors = {
+def _detect_color_mode() -> str:
+    """Return 'dark' or 'light' based on system hints or env override."""
+    override = os.environ.get("FEVSLOP_COLOR_MODE", "").lower()
+    if override in ("dark", "light"):
+        return override
+    hints = QGuiApplication.styleHints()
+    if hints is not None:
+        scheme = hints.colorScheme()
+        return "dark" if scheme == QPalette.ColorScheme.Dark else "light"
+    return "light"
+
+
+def _build_theme(color_mode: str) -> dict:
+    """Build color tokens for QML theme context property."""
+    is_dark = color_mode == "dark"
+    if is_dark:
+        return {
+            "mode": "dark",
+            "window": "#1C1C1E",
+            "contentBg": "#1C1C1E",
+            "contentHeaderBg": "#2C2C2E",
+            "contentHeaderBgScene": "#202024",
+            "contentHeaderText": "#F5F5F7",
+            "contentHeaderSceneText": "#F4F4F5",
+            "contentHeaderSeparator": "#3A3A3C",
+            "contentHeaderSceneSeparator": "#3F3F46",
+            "primaryText": "#F5F5F7",
+            "secondaryText": "#8E8E93",
+            "tertiaryText": "#6E6E73",
+            "cardBg": "#2C2C2E",
+            "cardBorder": "#3A3A3C",
+            "inputBg": "#3A3A3C",
+            "inputBorder": "#3F3F46",
+            "navUnchecked": "#C7C7CC",
+            "navUnhovered": "transparent",
+            "navHovered": "#303034",
+            "navChecked": "#3A3A40",
+            "disabledItemBg": "#2A2A2D",
+        }
+    return {
+        "mode": "light",
+        "window": "#F5F5F7",
+        "contentBg": "#F5F5F7",
+        "contentHeaderBg": "#FFFFFF",
+        "contentHeaderBgScene": "#202024",
+        "contentHeaderText": "#1C1C1E",
+        "contentHeaderSceneText": "#F4F4F5",
+        "contentHeaderSeparator": "#D8D8DC",
+        "contentHeaderSceneSeparator": "#3F3F46",
+        "primaryText": "#1C1C1E",
+        "secondaryText": "#6E6E73",
+        "tertiaryText": "#8E8E93",
+        "cardBg": "#FFFFFF",
+        "cardBorder": "#D8D8DC",
+        "inputBg": "#F5F5F7",
+        "inputBorder": "#D8D8DC",
+        "navUnchecked": "#C7C7CC",
+        "navUnhovered": "transparent",
+        "navHovered": "#303034",
+        "navChecked": "#3A3A40",
+        "disabledItemBg": "#EEEEF0",
+    }
+
+
+def studio_palette(color_mode: str = "light") -> QPalette:
+    light_colors = {
         QPalette.ColorRole.Window: "#F5F5F7",
         QPalette.ColorRole.WindowText: "#1C1C1E",
         QPalette.ColorRole.Base: "#FFFFFF",
@@ -36,10 +99,26 @@ def studio_palette() -> QPalette:
         QPalette.ColorRole.HighlightedText: "#FFFFFF",
         QPalette.ColorRole.PlaceholderText: "#6E6E73",
     }
+    dark_colors = {
+        QPalette.ColorRole.Window: "#1C1C1E",
+        QPalette.ColorRole.WindowText: "#F5F5F7",
+        QPalette.ColorRole.Base: "#2C2C2E",
+        QPalette.ColorRole.AlternateBase: "#3A3A3C",
+        QPalette.ColorRole.Text: "#F5F5F7",
+        QPalette.ColorRole.Button: "#2C2C2E",
+        QPalette.ColorRole.ButtonText: "#F5F5F7",
+        QPalette.ColorRole.Highlight: "#5B5FC7",
+        QPalette.ColorRole.HighlightedText: "#FFFFFF",
+        QPalette.ColorRole.PlaceholderText: "#8E8E93",
+    }
+    colors = dark_colors if color_mode == "dark" else light_colors
+    palette = QPalette()
     for role, color in colors.items():
         palette.setColor(role, QColor(color))
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#6E6E73"))
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor("#8E8E93"))
+    disabled_text = "#6E6E73" if color_mode == "light" else "#8E8E93"
+    disabled_btn = "#8E8E93" if color_mode == "light" else "#6E6E73"
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(disabled_text))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(disabled_btn))
     return palette
 
 
@@ -60,7 +139,8 @@ def run_studio(projects_root: str | Path, *, smoke_test: bool = False) -> int:
     app = QGuiApplication.instance() or QGuiApplication([])
     app.setApplicationName("FeverSlop Studio")
     app.setOrganizationName("FeverSlop")
-    app.setPalette(studio_palette())
+    color_mode = _detect_color_mode()
+    app.setPalette(studio_palette(color_mode))
 
     context = create_studio_context(projects_root)
     app.aboutToQuit.connect(
@@ -102,6 +182,7 @@ def run_studio(projects_root: str | Path, *, smoke_test: bool = False) -> int:
     engine.rootContext().setContextProperty("timelineViewModel", timeline_view_model)
     engine.rootContext().setContextProperty("referenceWorkspaceViewModel", ref_view_model)
     engine.rootContext().setContextProperty("rebuildViewModel", rebuild_view_model)
+    engine.rootContext().setContextProperty("theme", _build_theme(color_mode))
     engine._feverslop_view_models = (view_model, scene_view_model, timeline_view_model, ref_view_model, rebuild_view_model)  # type: ignore[attr-defined]
     engine.load(qml_entrypoint())
     if not engine.rootObjects():

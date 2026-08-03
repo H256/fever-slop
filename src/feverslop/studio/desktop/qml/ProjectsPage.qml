@@ -14,11 +14,11 @@ ScrollView {
 
         RowLayout {
             Layout.fillWidth: true
-            Label { text: "Local project folders"; color: "#6E6E73"; font.pixelSize: 15; Layout.fillWidth: true }
+            Label { text: "Local project folders"; color: theme.secondaryText; font.pixelSize: 15; Layout.fillWidth: true }
             Button {
                 text: "Create Project"
                 icon.name: "list-add"
-                icon.color: "#FFFFFF"
+                icon.color: theme.cardBg
                 implicitHeight: 44
                 palette.buttonText: "#FFFFFF"
                 background: Rectangle { color: parent.hovered ? "#666AD1" : "#5B5FC7"; radius: 6 }
@@ -40,14 +40,14 @@ ScrollView {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 6
-                    color: mouse.containsMouse ? "#F5F5F7" : "#FFFFFF"
-                    border.color: "#D8D8DC"
+                    color: mouse.containsMouse ? "#3A3A3C" : theme.cardBg
+                    border.color: theme.cardBorder
                     radius: 6
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 18
-                        Label { text: modelData.name; color: "#1C1C1E"; font.bold: true; font.pixelSize: 17; elide: Text.ElideRight; Layout.fillWidth: true }
-                        Label { text: modelData.id; color: "#6E6E73"; font.pixelSize: 13; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                        Label { text: modelData.name; color: theme.primaryText; font.bold: true; font.pixelSize: 17; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Label { text: modelData.id; color: theme.secondaryText; font.pixelSize: 13; elide: Text.ElideMiddle; Layout.fillWidth: true }
                         Item { Layout.fillHeight: true }
                         Label { text: String(modelData.project_type || "standard_music_video").replace(/_/g, " "); color: "#5B5FC7"; font.pixelSize: 12 }
                     }
@@ -100,7 +100,7 @@ ScrollView {
                 visible: projectType.currentIndex < 2
                 Layout.fillWidth: true
                 spacing: 4
-                Label { text: "Video pipeline"; color: "#1C1C1E"; font.bold: true }
+                Label { text: "Video pipeline"; color: theme.primaryText; font.bold: true }
                 ComboBox {
                     id: pipelineMode
                     Layout.fillWidth: true
@@ -115,7 +115,7 @@ ScrollView {
                     visible: projectType.currentIndex < 2
                     Layout.fillWidth: true
                     text: "Storyboard is started later as a pipeline action; it is not a video pipeline choice."
-                    color: "#6E6E73"
+                    color: theme.secondaryText
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
                 }
@@ -124,10 +124,10 @@ ScrollView {
                 id: projectName
                 Layout.fillWidth: true
                 placeholderText: "Project name"
-                placeholderTextColor: "#6E6E73"
-                color: "#1C1C1E"
+                placeholderTextColor: theme.secondaryText
+                color: theme.primaryText
                 implicitHeight: 44
-                background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
+                background: Rectangle { color: theme.cardBg; border.color: theme.cardBorder; radius: 4 }
             }
             StyledTextArea {
                 id: projectIdea
@@ -135,24 +135,24 @@ ScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 130
                 placeholderText: projectType.currentIndex === 2 ? "Short story or screenplay" : "Music video idea"
-                placeholderTextColor: "#6E6E73"
-                color: "#1C1C1E"
+                placeholderTextColor: theme.secondaryText
+                color: theme.primaryText
                 wrapMode: TextEdit.Wrap
-                background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
+                background: Rectangle { color: theme.cardBg; border.color: theme.cardBorder; radius: 4 }
             }
             ColumnLayout {
                 visible: projectType.currentIndex === 1
                 Layout.fillWidth: true
                 spacing: 4
-                Label { text: "Song style *"; color: "#1C1C1E"; font.bold: true }
+                Label { text: "Song style *"; color: theme.primaryText; font.bold: true }
                 StyledTextField {
                     id: songStyle
                     Layout.fillWidth: true
                     placeholderText: "Song style"
-                    placeholderTextColor: "#6E6E73"
-                    color: "#1C1C1E"
+                    placeholderTextColor: theme.secondaryText
+                    color: theme.primaryText
                     implicitHeight: 44
-                    background: Rectangle { color: "#FFFFFF"; border.color: "#D8D8DC"; radius: 4 }
+                    background: Rectangle { color: theme.cardBg; border.color: theme.cardBorder; radius: 4 }
                     onTextChanged: if (text.trim().length > 0) createDialog.songStyleError = ""
                 }
                 Label {
@@ -167,7 +167,7 @@ ScrollView {
             RowLayout {
                 visible: projectType.currentIndex > 0
                 Layout.fillWidth: true
-                Label { text: "Duration"; color: "#6E6E73" }
+                Label { text: "Duration"; color: theme.secondaryText }
                 SpinBox { id: duration; from: 1; to: 3600; value: projectType.currentIndex === 2 ? 60 : 120; editable: true }
                 Item { Layout.fillWidth: true }
                 CheckBox { id: silentMode; visible: projectType.currentIndex < 2; text: "Silent mode" }
@@ -183,7 +183,7 @@ ScrollView {
             Button {
                 text: projectType.currentIndex === 1 ? "Create and start" : "Create Project"
                 icon.name: "list-add"
-                icon.color: "#FFFFFF"
+                icon.color: theme.cardBg
                 enabled: projectName.text.trim().length > 0 && (projectType.currentIndex === 0 || projectIdea.text.trim().length > 0)
                     && !(projectType.currentIndex === 2 && vm && vm.movie_project_running)
                 implicitHeight: 44
@@ -289,7 +289,7 @@ ScrollView {
             anchors.topMargin: 12
             anchors.horizontalCenter: createBusy.horizontalCenter
             text: "Creating project..."
-            color: "#6E6E73"
+            color: theme.secondaryText
             font.pixelSize: 12
             z: 10
         }

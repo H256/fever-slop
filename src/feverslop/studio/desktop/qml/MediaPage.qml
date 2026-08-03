@@ -23,8 +23,8 @@ Item {
         Rectangle {
             Layout.preferredWidth: 320
             Layout.fillHeight: true
-            color: "#FFFFFF"
-            border.color: "#D8D8DC"
+            color: theme.cardBg
+            border.color: theme.cardBorder
             radius: 6
             ListView {
                 anchors.fill: parent
@@ -58,19 +58,19 @@ Item {
                 Layout.fillWidth: true
                 ToolButton { icon.name: player.playbackState === MediaPlayer.PlayingState ? "media-playback-pause" : "media-playback-start"; ToolTip.visible: hovered; ToolTip.text: "Play or pause"; onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play() }
                 Slider { from: 0; to: Math.max(1, player.duration); value: player.position; Layout.fillWidth: true; onMoved: player.position = value }
-                Label { text: Math.floor(player.position / 1000) + " / " + Math.floor(player.duration / 1000) + " s"; color: "#1C1C1E"; Layout.preferredWidth: 100 }
+                Label { text: Math.floor(player.position / 1000) + " / " + Math.floor(player.duration / 1000) + " s"; color: theme.primaryText; Layout.preferredWidth: 100 }
             }
             RowLayout {
                 visible: page.reviewMode
                 Layout.fillWidth: true
-                Label { text: "In"; color: "#6E6E73" }
+                Label { text: "In"; color: theme.secondaryText }
                 StyledTextField {
                     id: trimIn
                     text: "0"
                     validator: DoubleValidator { bottom: 0 }
                     Layout.preferredWidth: 90
                 }
-                Label { text: "Out"; color: "#6E6E73" }
+                Label { text: "Out"; color: theme.secondaryText }
                 StyledTextField {
                     id: trimOut
                     text: player.duration > 0 ? (player.duration / 1000).toFixed(3) : "0"

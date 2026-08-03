@@ -23,13 +23,13 @@ Item {
         Rectangle {
             Layout.preferredWidth: 360
             Layout.fillHeight: true
-            color: "#FFFFFF"
-            border.color: "#D8D8DC"
+            color: theme.cardBg
+            border.color: theme.cardBorder
             radius: 6
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
-                Label { text: page.titleText; color: "#1C1C1E"; font.bold: true; font.pixelSize: 16 }
+                Label { text: page.titleText; color: theme.primaryText; font.bold: true; font.pixelSize: 16 }
                 RowLayout {
                     visible: page.categoryFilter === "references"
                     Layout.fillWidth: true
@@ -78,17 +78,17 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#FFFFFF"
-            border.color: "#D8D8DC"
+            color: theme.cardBg
+            border.color: theme.cardBorder
             radius: 6
             StackLayout {
                 anchors.fill: parent
                 anchors.margins: 12
                 currentIndex: page.selectedKind === "image" ? 1 : page.selectedKind === "json" ? 2 : 0
-                Label { text: page.selectedPath || "Select an artifact"; color: "#6E6E73"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; wrapMode: Text.Wrap }
+                Label { text: page.selectedPath || "Select an artifact"; color: theme.secondaryText; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; wrapMode: Text.Wrap }
                 Image { source: vm ? vm.media_url(page.selectedPath) : ""; fillMode: Image.PreserveAspectFit; asynchronous: true }
                 ScrollView {
-                    StyledTextArea { readOnly: true; text: vm ? vm.editor_text : ""; color: "#1C1C1E"; font.family: "monospace"; wrapMode: TextEdit.NoWrap; background: null }
+                    StyledTextArea { readOnly: true; text: vm ? vm.editor_text : ""; color: theme.primaryText; font.family: "monospace"; wrapMode: TextEdit.NoWrap; background: null }
                 }
             }
         }

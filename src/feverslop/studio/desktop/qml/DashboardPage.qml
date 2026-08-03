@@ -13,13 +13,13 @@ ScrollView {
         spacing: 18
         Label {
             text: vm && vm.current_project_id ? vm.current_project.name : "No project selected"
-            color: "#1C1C1E"
+            color: theme.primaryText
             font.bold: true
             font.pixelSize: 22
         }
         Label {
             text: vm && vm.current_project_id ? vm.current_project.path : ""
-            color: "#6E6E73"
+            color: theme.secondaryText
             font.pixelSize: 13
             elide: Text.ElideMiddle
             Layout.fillWidth: true
@@ -38,14 +38,14 @@ ScrollView {
                     required property var modelData
                     width: 210
                     height: 92
-                    color: "#FFFFFF"
-                    border.color: "#D8D8DC"
+                    color: theme.cardBg
+                    border.color: theme.cardBorder
                     radius: 6
                     Column {
                         anchors.fill: parent
                         anchors.margins: 16
                         spacing: 8
-                        Label { text: modelData.label; color: "#1C1C1E"; font.bold: true }
+                        Label { text: modelData.label; color: theme.primaryText; font.bold: true }
                         Label {
                             property string state: vm && vm.current_project.status ? (vm.current_project.status[modelData.key] || "missing") : "missing"
                             text: state === "present" ? "Ready" : "Missing"
@@ -58,22 +58,22 @@ ScrollView {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 110
-            color: "#FFFFFF"
-            border.color: "#D8D8DC"
+            color: theme.cardBg
+            border.color: theme.cardBorder
             radius: 6
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 18
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Label { text: "Project type"; color: "#6E6E73" }
-                    Label { text: vm ? String(vm.current_project.project_type || "standard_music_video").replace(/_/g, " ") : ""; color: "#1C1C1E"; font.bold: true }
+                    Label { text: "Project type"; color: theme.secondaryText }
+                    Label { text: vm ? String(vm.current_project.project_type || "standard_music_video").replace(/_/g, " ") : ""; color: theme.primaryText; font.bold: true }
                 }
                 ColumnLayout {
-                    Label { text: "Artifact size"; color: "#6E6E73" }
+                    Label { text: "Artifact size"; color: theme.secondaryText }
                     Label {
                         text: vm && vm.current_project.artifact_sizes ? Math.round(vm.current_project.artifact_sizes.total_bytes / 1048576) + " MB" : "0 MB"
-                        color: "#1C1C1E"
+                        color: theme.primaryText
                         font.bold: true
                     }
                 }

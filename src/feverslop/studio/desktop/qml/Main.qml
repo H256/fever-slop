@@ -10,7 +10,7 @@ ApplicationWindow {
     minimumHeight: 680
     visible: true
     title: "FeverSlop Studio"
-    color: "#1C1C1E"
+    color: theme.window
 
     readonly property var vm: typeof studioViewModel !== "undefined" ? studioViewModel : null
     property int currentPage: 0
@@ -44,15 +44,15 @@ ApplicationWindow {
         rightPadding: 12
         display: AbstractButton.TextBesideIcon
         font.pixelSize: 14
-        palette.buttonText: checked ? "#FFFFFF" : "#C7C7CC"
+        palette.buttonText: checked ? "#FFFFFF" : theme.navUnchecked
         palette.disabled.buttonText: "#8E8E93"
-        icon.color: enabled ? (checked ? "#FFFFFF" : "#C7C7CC") : "#8E8E93"
+        icon.color: enabled ? (checked ? "#FFFFFF" : theme.navUnchecked) : "#8E8E93"
         contentItem: RowLayout {
             spacing: 10
             Label {
                 text: parent.parent.fallbackIcon
                 color: parent.parent.enabled
-                    ? (parent.parent.checked ? "#FFFFFF" : "#C7C7CC")
+                    ? (parent.parent.checked ? "#FFFFFF" : theme.navUnchecked)
                     : "#8E8E93"
                 font.pixelSize: 18
                 horizontalAlignment: Text.AlignHCenter
@@ -61,7 +61,7 @@ ApplicationWindow {
             Label {
                 text: parent.parent.text
                 color: parent.parent.enabled
-                    ? (parent.parent.checked ? "#FFFFFF" : "#C7C7CC")
+                    ? (parent.parent.checked ? "#FFFFFF" : theme.navUnchecked)
                     : "#8E8E93"
                 font: parent.parent.font
                 elide: Text.ElideRight
@@ -70,7 +70,7 @@ ApplicationWindow {
             }
         }
         background: Rectangle {
-            color: checked ? "#3A3A40" : parent.hovered ? "#303034" : "transparent"
+            color: checked ? theme.navChecked : parent.hovered ? theme.navHovered : theme.navUnhovered
             radius: 6
             Rectangle {
                 visible: parent.parent.checked
@@ -200,7 +200,7 @@ ApplicationWindow {
             Layout.fillHeight: true
 
             Rectangle {
-                color: "#F5F5F7"
+                color: theme.contentBg
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
@@ -210,7 +210,7 @@ ApplicationWindow {
 
                     Rectangle {
                         objectName: "workspaceHeader"
-                        color: root.currentPage === 11 ? "#202024" : "#FFFFFF"
+                        color: root.currentPage === 11 ? theme.contentHeaderBgScene : theme.contentHeaderBg
                         Layout.fillWidth: true
                         Layout.preferredHeight: 72
                         RowLayout {
@@ -219,7 +219,7 @@ ApplicationWindow {
                             anchors.rightMargin: 28
                             Label {
                                 text: root.pageTitle
-                                color: root.currentPage === 11 ? "#F4F4F5" : "#1C1C1E"
+                                color: root.currentPage === 11 ? theme.contentHeaderSceneText : theme.contentHeaderText
                                 font.pixelSize: 24
                                 font.bold: true
                                 Layout.fillWidth: true
@@ -230,7 +230,7 @@ ApplicationWindow {
                             anchors.bottom: parent.bottom
                             width: parent.width
                             height: 1
-                            color: root.currentPage === 11 ? "#3F3F46" : "#D8D8DC"
+                            color: root.currentPage === 11 ? theme.contentHeaderSceneSeparator : theme.contentHeaderSeparator
                         }
                     }
 
@@ -258,7 +258,7 @@ ApplicationWindow {
 
             Rectangle {
                 objectName: "jobPanel"
-                color: "#1C1C1E"
+                color: theme.window
                 Layout.fillWidth: true
                 Layout.preferredHeight: 120
                 RowLayout {
