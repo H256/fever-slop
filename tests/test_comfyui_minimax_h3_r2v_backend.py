@@ -25,12 +25,24 @@ class FakeClient:
 class FakeAssetUploader:
     def __init__(self):
         self.resolve_reference_image_calls: list[Path | str] = []
+        self.resolve_reference_video_calls: list[Path | str] = []
+        self.resolve_reference_audio_calls: list[Path | str] = []
         self.resolve_audio_calls: list[tuple] = []
 
     def resolve_reference_image_name(self, image_path, **kwargs):
         self.resolve_reference_image_calls.append(image_path)
         p = Path(image_path)
         return f"feverslop/references/{p.stem}-abc123{p.suffix}"
+
+    def resolve_reference_video_name(self, video_path, **kwargs):
+        self.resolve_reference_video_calls.append(video_path)
+        p = Path(video_path)
+        return f"feverslop/references/{p.stem}-vid456{p.suffix}"
+
+    def resolve_reference_audio_name(self, audio_path, **kwargs):
+        self.resolve_reference_audio_calls.append(audio_path)
+        p = Path(audio_path)
+        return f"feverslop/references/{p.stem}-aud789{p.suffix}"
 
     def resolve_audio_name(self, audio_file, *, upload_audio, uploaded_audio_name):
         self.resolve_audio_calls.append((audio_file, upload_audio, uploaded_audio_name))
@@ -104,6 +116,71 @@ def _native_r2v_workflow() -> dict:
             "class_type": "LoadImage",
             "_meta": {"title": "#REF_2"},
             "inputs": {"image": "placeholder2.png"},
+        },
+        "51": {
+            "class_type": "LoadImage",
+            "_meta": {"title": "#REF_3"},
+            "inputs": {"image": ""},
+        },
+        "52": {
+            "class_type": "LoadImage",
+            "_meta": {"title": "#REF_4"},
+            "inputs": {"image": ""},
+        },
+        "53": {
+            "class_type": "LoadImage",
+            "_meta": {"title": "#REF_5"},
+            "inputs": {"image": ""},
+        },
+        "54": {
+            "class_type": "LoadImage",
+            "_meta": {"title": "#REF_6"},
+            "inputs": {"image": ""},
+        },
+        "55": {
+            "class_type": "LoadImage",
+            "_meta": {"title": "#REF_7"},
+            "inputs": {"image": ""},
+        },
+        "56": {
+            "class_type": "LoadImage",
+            "_meta": {"title": "#REF_8"},
+            "inputs": {"image": ""},
+        },
+        "57": {
+            "class_type": "LoadImage",
+            "_meta": {"title": "#REF_9"},
+            "inputs": {"image": ""},
+        },
+        "61": {
+            "class_type": "LoadVideo",
+            "_meta": {"title": "#VIDEO_1"},
+            "inputs": {"video": ""},
+        },
+        "62": {
+            "class_type": "LoadVideo",
+            "_meta": {"title": "#VIDEO_2"},
+            "inputs": {"video": ""},
+        },
+        "63": {
+            "class_type": "LoadVideo",
+            "_meta": {"title": "#VIDEO_3"},
+            "inputs": {"video": ""},
+        },
+        "64": {
+            "class_type": "LoadAudio",
+            "_meta": {"title": "#AUDIO_1"},
+            "inputs": {"audio": ""},
+        },
+        "65": {
+            "class_type": "LoadAudio",
+            "_meta": {"title": "#AUDIO_2"},
+            "inputs": {"audio": ""},
+        },
+        "66": {
+            "class_type": "LoadAudio",
+            "_meta": {"title": "#AUDIO_3"},
+            "inputs": {"audio": ""},
         },
         "70": {
             "class_type": "VHS_VideoCombine",
@@ -395,18 +472,15 @@ class PatchReferenceImagesTests(unittest.TestCase):
         self.assertIn("9", str(ctx.exception))
 
     def test_anchors_beyond_workflow_count_ignored(self):
-        """Only patch anchors that exist in the workflow."""
+        """Only patch anchors that exist in the workflow (9 present)."""
         backend = self._backend()
-        # Workflow only has #REF_1 and #REF_2
+        # Workflow has #REF_1 through #REF_9
         wf = _native_r2v_workflow()
         patcher = WorkflowPatcher(wf)
-        backend._patch_reference_images(patcher, [
-            "/tmp/a.png", "/tmp/b.png", "/tmp/c.png",
-        ])
-        # #REF_3 doesn't exist, so only 1 and 2 should be patched
-        patched = patcher.get()
-        self.assertIn("abc123", patched["50"]["inputs"]["image"])
-        self.assertIn("b", patched["60"]["inputs"]["image"])
+        # Pass all 9 valid paths to confirm all are patched
+        paths = [f"/tmp/a{i}.png" for i in range(9)]
+        backend._patch_reference_images(patcher, paths)
+        self.assertEqual(9, len(backend.asset_uploader.resolve_reference_image_calls))
 
 
 # ---------------------------------------------------------------------------
@@ -722,6 +796,286 @@ class ResolveRefImagePathsTests(unittest.TestCase):
         )
         scene = {"references": {}}
         paths = backend._resolve_ref_image_paths(scene)
+        self.assertEqual(0, len(paths))
+
+
+# ---------------------------------------------------------------------------
+# Class constants tests
+# ---------------------------------------------------------------------------
+
+class ClassConstantsTests(unittest.TestCase):
+    def test_max_ref_videos(self):
+        self.assertEqual(3, ComfyUIMiniMaxH3R2VBackend.MAX_REF_VIDEOS)
+
+    def test_max_ref_audios(self):
+        self.assertEqual(3, ComfyUIMiniMaxH3R2VBackend.MAX_REF_AUDIOS)
+
+    def test_max_ref_images(self):
+        self.assertEqual(9, ComfyUIMiniMaxH3R2VBackend.MAX_REF_IMAGES)
+
+
+# ---------------------------------------------------------------------------
+# _patch_reference_videos tests
+# ---------------------------------------------------------------------------
+
+class PatchVideoInputsTests(unittest.TestCase):
+    def _backend(self):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+        )
+
+    def test_one_video(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_reference_videos(patcher, ["/tmp/clip.mp4"])
+        patched = patcher.get()
+        self.assertIn("vid456", patched["61"]["inputs"]["video"])
+
+    def test_three_videos(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_reference_videos(patcher, [
+            "/tmp/clip1.mp4", "/tmp/clip2.mp4", "/tmp/clip3.mp4"
+        ])
+        patched = patcher.get()
+        self.assertIn("vid456", patched["61"]["inputs"]["video"])
+        self.assertIn("clip2", patched["62"]["inputs"]["video"])
+        self.assertIn("clip3", patched["63"]["inputs"]["video"])
+
+    def test_no_paths_does_nothing(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_reference_videos(patcher, [])
+        self.assertEqual("", patcher.get()["61"]["inputs"]["video"])
+
+    def test_none_does_nothing(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_reference_videos(patcher, None)
+        self.assertEqual("", patcher.get()["61"]["inputs"]["video"])
+
+    def test_max_videos_raises(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        paths = [f"/tmp/vid{i}.mp4" for i in range(4)]
+        with self.assertRaises(FeverSlopValidationError) as ctx:
+            backend._patch_reference_videos(patcher, paths)
+        self.assertIn("3", str(ctx.exception))
+
+    def test_anchors_beyond_workflow_count_ignored(self):
+        """Only patch anchors that exist in the workflow (3 present)."""
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        # Pass exactly 3 paths - all 3 anchors exist, all 3 should be patched
+        backend._patch_reference_videos(patcher, [f"/tmp/v{i}.mp4" for i in range(3)])
+        self.assertEqual(3, len(backend.asset_uploader.resolve_reference_video_calls))
+
+
+# ---------------------------------------------------------------------------
+# _patch_reference_audios tests
+# ---------------------------------------------------------------------------
+
+class PatchReferenceAudioInputsTests(unittest.TestCase):
+    def _backend(self):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+        )
+
+    def test_one_audio(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_reference_audios(patcher, ["/tmp/sound.wav"])
+        patched = patcher.get()
+        self.assertIn("aud789", patched["64"]["inputs"]["audio"])
+
+    def test_three_audios(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_reference_audios(patcher, [
+            "/tmp/s1.wav", "/tmp/s2.wav", "/tmp/s3.wav"
+        ])
+        patched = patcher.get()
+        self.assertIn("aud789", patched["64"]["inputs"]["audio"])
+        self.assertIn("s2", patched["65"]["inputs"]["audio"])
+        self.assertIn("s3", patched["66"]["inputs"]["audio"])
+
+    def test_no_paths_does_nothing(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_reference_audios(patcher, [])
+        self.assertEqual("", patcher.get()["64"]["inputs"]["audio"])
+
+    def test_max_audios_raises(self):
+        backend = self._backend()
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        paths = [f"/tmp/s{i}.wav" for i in range(4)]
+        with self.assertRaises(FeverSlopValidationError) as ctx:
+            backend._patch_reference_audios(patcher, paths)
+        self.assertIn("3", str(ctx.exception))
+
+
+# ---------------------------------------------------------------------------
+# build_workflow with video/audio tests
+# ---------------------------------------------------------------------------
+
+class BuildWorkflowVideoAudioTests(unittest.TestCase):
+    def _backend(self, workflow=None):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            workflow=workflow or _native_r2v_workflow(),
+        )
+
+    def test_ref_videos_and_audios_passthrough(self):
+        backend = self._backend()
+        result = backend.build_workflow(
+            {"scene": 1, "references": {"actor_sheet_paths": ["/tmp/a.png"]}},
+            prompt="test",
+            ref_video_paths=["/tmp/clip1.mp4", "/tmp/clip2.mp4"],
+            ref_audio_paths=["/tmp/sound1.wav"],
+        )
+        self.assertIn("vid456", result["61"]["inputs"]["video"])
+        self.assertIn("clip2", result["62"]["inputs"]["video"])
+        self.assertIn("aud789", result["64"]["inputs"]["audio"])
+
+    def test_video_and_audio_anchors_absent_in_workflow(self):
+        """Workflow without video/audio anchors ignores them silently."""
+        # Use a minimal workflow missing the video/audio nodes
+        minimal = {
+            "10": {"class_type": "ResolutionSelector", "_meta": {"title": "#MEGAPIXELS"}, "inputs": {}},
+            "20": {"class_type": "RandomNoise", "_meta": {"title": "#SEED"}, "inputs": {"noise_seed": 0}},
+            "30": {"class_type": "PrimitiveFloat", "_meta": {"title": "#DURATION"}, "inputs": {}},
+            "40": {"class_type": "PrimitiveStringMultiline", "_meta": {"title": "#PROMPT"}, "inputs": {}},
+            "50": {"class_type": "LoadImage", "_meta": {"title": "#REF_1"}, "inputs": {"image": ""}},
+            "70": {"class_type": "VHS_VideoCombine", "_meta": {"title": "#SAVE_VIDEO"}, "inputs": {}},
+        }
+        backend = self._backend(workflow=minimal)
+        result = backend.build_workflow(
+            {"scene": 1, "references": {"actor_sheet_paths": ["/tmp/a.png"]}},
+            prompt="test",
+            ref_video_paths=["/tmp/clip.mp4"],
+            ref_audio_paths=["/tmp/sound.wav"],
+        )
+        # Should not raise, just silently skip
+        self.assertEqual("test", result["40"]["inputs"]["value"])
+
+    def test_no_videos_no_audios(self):
+        """Omitting both still works."""
+        backend = self._backend()
+        result = backend.build_workflow(
+            {"scene": 1, "references": {"actor_sheet_paths": ["/tmp/a.png"]}},
+            prompt="test",
+        )
+        self.assertEqual("", result["61"]["inputs"]["video"])
+        self.assertEqual("", result["64"]["inputs"]["audio"])
+
+
+# ---------------------------------------------------------------------------
+# _resolve_ref_video_paths tests
+# ---------------------------------------------------------------------------
+
+class ResolveRefVideoPathsTests(unittest.TestCase):
+    def test_basic(self):
+        backend = ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+        )
+        scene = {
+            "references": {
+                "reference_video_paths": ["clip1.mp4", "clip2.mp4"],
+            }
+        }
+        paths = backend._resolve_ref_video_paths(scene)
+        self.assertEqual(2, len(paths))
+
+    def test_clamped_to_max(self):
+        backend = ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+        )
+        scene = {
+            "references": {
+                "reference_video_paths": [f"v{i}.mp4" for i in range(5)],
+            }
+        }
+        paths = backend._resolve_ref_video_paths(scene)
+        self.assertEqual(3, len(paths))
+
+    def test_empty_refs(self):
+        backend = ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+        )
+        scene = {"references": {}}
+        paths = backend._resolve_ref_video_paths(scene)
+        self.assertEqual(0, len(paths))
+
+
+# ---------------------------------------------------------------------------
+# _resolve_ref_audio_paths tests
+# ---------------------------------------------------------------------------
+
+class ResolveRefAudioPathsTests(unittest.TestCase):
+    def test_basic(self):
+        backend = ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+        )
+        scene = {
+            "references": {
+                "reference_audio_paths": ["sound1.wav", "sound2.wav"],
+            }
+        }
+        paths = backend._resolve_ref_audio_paths(scene)
+        self.assertEqual(2, len(paths))
+
+    def test_clamped_to_max(self):
+        backend = ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+        )
+        scene = {
+            "references": {
+                "reference_audio_paths": [f"s{i}.wav" for i in range(5)],
+            }
+        }
+        paths = backend._resolve_ref_audio_paths(scene)
+        self.assertEqual(3, len(paths))
+
+    def test_empty_refs(self):
+        backend = ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+        )
+        scene = {"references": {}}
+        paths = backend._resolve_ref_audio_paths(scene)
         self.assertEqual(0, len(paths))
 
 

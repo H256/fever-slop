@@ -219,8 +219,56 @@
         "145",
         0
       ],
+      "ref_images.ref_image_2": [
+        "146",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "147",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "148",
+        0
+      ],
+      "ref_images.ref_image_5": [
+        "149",
+        0
+      ],
+      "ref_images.ref_image_6": [
+        "150",
+        0
+      ],
+      "ref_images.ref_image_7": [
+        "151",
+        0
+      ],
+      "ref_images.ref_image_8": [
+        "152",
+        0
+      ],
+      "ref_videos.ref_video_0": [
+        "153",
+        0
+      ],
+      "ref_videos.ref_video_1": [
+        "154",
+        0
+      ],
+      "ref_videos.ref_video_2": [
+        "155",
+        0
+      ],
       "ref_audios.ref_audio_0": [
         "144",
+        0
+      ],
+      "ref_audios.ref_audio_1": [
+        "156",
+        0
+      ],
+      "ref_audios.ref_audio_2": [
+        "157",
         0
       ]
     },
@@ -317,6 +365,114 @@
     "class_type": "LoadImage",
     "_meta": {
       "title": "#REF_2"
+    }
+  },
+  "146": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_3"
+    }
+  },
+  "147": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_4"
+    }
+  },
+  "148": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_5"
+    }
+  },
+  "149": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_6"
+    }
+  },
+  "150": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_7"
+    }
+  },
+  "151": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_8"
+    }
+  },
+  "152": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_9"
+    }
+  },
+  "153": {
+    "inputs": {
+      "video": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "#VIDEO_1"
+    }
+  },
+  "154": {
+    "inputs": {
+      "video": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "#VIDEO_2"
+    }
+  },
+  "155": {
+    "inputs": {
+      "video": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "#VIDEO_3"
+    }
+  },
+  "156": {
+    "inputs": {
+      "audio": ""
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "#AUDIO_2"
+    }
+  },
+  "157": {
+    "inputs": {
+      "audio": ""
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "#AUDIO_3"
     }
   }
 }

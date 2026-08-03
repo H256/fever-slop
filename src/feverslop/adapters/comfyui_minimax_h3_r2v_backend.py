@@ -28,6 +28,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     """
 
     MAX_REF_IMAGES = 9
+    MAX_REF_VIDEOS = 3
+    MAX_REF_AUDIOS = 3
     FPS = 24
 
     def __init__(
@@ -93,6 +95,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         width: int | None = None,
         height: int | None = None,
         ref_image_paths: list[str | Path] | None = None,
+        ref_video_paths: list[str | Path] | None = None,
+        ref_audio_paths: list[str | Path] | None = None,
     ) -> dict:
         """Build a patched R2V workflow dict from *scene*.
 
@@ -102,6 +106,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         - ``#DURATION`` → ``value``
         - ``#MEGAPIXELS`` → ``megapixels`` (computed from width × height when given)
         - ``#REF_1``, ``#REF_2``, … → ``image``
+        - ``#VIDEO_1``, ``#VIDEO_2``, ``#VIDEO_3`` → ``video``
+        - ``#AUDIO_1``, ``#AUDIO_2``, ``#AUDIO_3`` → ``audio``
         - ``#LOAD_AUDIO`` / ``#TRIM_AUDIO`` (audio workflow only)
         - ``#SAVE_VIDEO`` → ``filename_prefix``
         """
@@ -127,6 +133,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         # -- reference images -------------------------------------------------
         self._patch_reference_images(patcher, ref_image_paths or [])
+
+        # -- reference videos -------------------------------------------------
+        self._patch_reference_videos(patcher, ref_video_paths or [])
+
+        # -- reference audios -------------------------------------------------
+        self._patch_reference_audios(patcher, ref_audio_paths or [])
 
         # -- audio (workflow may or may not have these anchors) ----------------
         if comfy_audio_name is not None:
@@ -165,6 +177,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- resolve reference image paths ------------------------------------
         ref_image_paths = self._resolve_ref_image_paths(request.scene)
 
+        # -- resolve reference video paths ------------------------------------
+        ref_video_paths = self._resolve_ref_video_paths(request.scene)
+
+        # -- resolve reference audio paths ------------------------------------
+        ref_audio_paths = self._resolve_ref_audio_paths(request.scene)
+
         # -- build workflow ---------------------------------------------------
         workflow = self.build_workflow(
             request.scene,
@@ -175,6 +193,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             width=int(request.scene.get("width", 0) or 0) or None,
             height=int(request.scene.get("height", 0) or 0) or None,
             ref_image_paths=ref_image_paths,
+            ref_video_paths=ref_video_paths,
+            ref_audio_paths=ref_audio_paths,
         )
 
         # -- resolve model references -----------------------------------------
@@ -247,6 +267,44 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             if self._has_anchor(patcher, title):
                 image_name = self.asset_uploader.resolve_reference_image_name(path)
                 patcher.set_input_by_title(title, "image", image_name)
+
+    def _patch_reference_videos(
+        self,
+        patcher: WorkflowPatcher,
+        ref_video_paths: list[str | Path] | None,
+    ) -> None:
+        """Map reference video paths to ``#VIDEO_1``, ``#VIDEO_2``, ``#VIDEO_3`` anchors."""
+        if not ref_video_paths:
+            return
+        if len(ref_video_paths) > self.MAX_REF_VIDEOS:
+            raise FeverSlopValidationError(
+                f"At most {self.MAX_REF_VIDEOS} reference videos allowed, "
+                f"got {len(ref_video_paths)}"
+            )
+        for index, path in enumerate(ref_video_paths, start=1):
+            title = f"#VIDEO_{index}"
+            if self._has_anchor(patcher, title):
+                video_name = self.asset_uploader.resolve_reference_video_name(path)
+                patcher.set_input_by_title(title, "video", video_name)
+
+    def _patch_reference_audios(
+        self,
+        patcher: WorkflowPatcher,
+        ref_audio_paths: list[str | Path] | None,
+    ) -> None:
+        """Map reference audio paths to ``#AUDIO_1``, ``#AUDIO_2``, ``#AUDIO_3`` anchors."""
+        if not ref_audio_paths:
+            return
+        if len(ref_audio_paths) > self.MAX_REF_AUDIOS:
+            raise FeverSlopValidationError(
+                f"At most {self.MAX_REF_AUDIOS} reference audio clips allowed, "
+                f"got {len(ref_audio_paths)}"
+            )
+        for index, path in enumerate(ref_audio_paths, start=1):
+            title = f"#AUDIO_{index}"
+            if self._has_anchor(patcher, title):
+                audio_name = self.asset_uploader.resolve_reference_audio_name(path)
+                patcher.set_input_by_title(title, "audio", audio_name)
 
     @staticmethod
     def _patch_audio_inputs(
@@ -326,6 +384,22 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         paths.extend(str(p) for p in style_paths)
 
         return paths[: self.MAX_REF_IMAGES]
+
+    def _resolve_ref_video_paths(self, scene: dict) -> list[Path]:
+        """Extract and resolve reference video paths from a scene dict."""
+        references = scene.get("references") or {}
+        video_paths = references.get("reference_video_paths", [])[:self.MAX_REF_VIDEOS]
+        if self.project_dir is not None:
+            video_paths = [self._resolve_project_path(p) for p in video_paths]
+        return list(video_paths)
+
+    def _resolve_ref_audio_paths(self, scene: dict) -> list[Path]:
+        """Extract and resolve reference audio paths from a scene dict."""
+        references = scene.get("references") or {}
+        audio_paths = references.get("reference_audio_paths", [])[:self.MAX_REF_AUDIOS]
+        if self.project_dir is not None:
+            audio_paths = [self._resolve_project_path(p) for p in audio_paths]
+        return list(audio_paths)
 
     def _resolve_project_path(self, path: str | Path) -> Path:
         if self.project_dir is None:

@@ -118,6 +118,82 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unexpected ComfyUI upload response"):
             ComfyUIVideoAssetUploader.comfy_path_from_upload({"subfolder": "x"})
 
+    def test_reference_video_upload_uses_image_endpoint(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        name = uploader.resolve_reference_video_name(Path("ref_clip.mp4"))
+
+        self.assertEqual("feverslop/references/ref_clip.mp4", name)
+        self.assertEqual(
+            [(Path("ref_clip.mp4"), "feverslop/references", "input", True, "ref_clip.mp4")],
+            client.image_uploads,
+        )
+
+    def test_reference_video_can_be_skipped(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        uploader = ComfyUIVideoAssetUploader(FakeComfyUIClient())
+
+        self.assertEqual(
+            "ref_clip.mp4",
+            uploader.resolve_reference_video_name(Path("ref_clip.mp4"), upload_references=False),
+        )
+
+    def test_reference_audio_upload_uses_image_endpoint(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        name = uploader.resolve_reference_audio_name(Path("ref_sound.wav"))
+
+        self.assertEqual("feverslop/references/ref_sound.wav", name)
+        self.assertEqual(
+            [(Path("ref_sound.wav"), "feverslop/references", "input", True, "ref_sound.wav")],
+            client.image_uploads,
+        )
+
+    def test_reference_audio_can_be_skipped(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        uploader = ComfyUIVideoAssetUploader(FakeComfyUIClient())
+
+        self.assertEqual(
+            "ref_sound.wav",
+            uploader.resolve_reference_audio_name(Path("ref_sound.wav"), upload_references=False),
+        )
+
+    def test_reference_video_content_addressed(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video = Path(temp_dir) / "ref_video.mp4"
+            video.write_bytes(b"video data here")
+            digest = hashlib.sha256(b"video data here").hexdigest()[:12]
+            client = FakeComfyUIClient()
+            uploader = ComfyUIVideoAssetUploader(client)
+
+            name = uploader.resolve_reference_video_name(video)
+
+        self.assertEqual(f"feverslop/references/ref_video-{digest}.mp4", name)
+
+    def test_reference_audio_content_addressed(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio = Path(temp_dir) / "ref_audio.wav"
+            audio.write_bytes(b"audio data")
+            digest = hashlib.sha256(b"audio data").hexdigest()[:12]
+            client = FakeComfyUIClient()
+            uploader = ComfyUIVideoAssetUploader(client)
+
+            name = uploader.resolve_reference_audio_name(audio)
+
+        self.assertEqual(f"feverslop/references/ref_audio-{digest}.wav", name)
+
 
 class LTXWorkflowPatcherTests(unittest.TestCase):
     def _workflow_with_titles(self, titles: list[str]) -> str:

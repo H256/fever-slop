@@ -67,7 +67,43 @@ class ComfyUIVideoAssetUploader:
         )
         return self.comfy_path_from_upload(image_upload)
 
-    
+
+    def resolve_reference_video_name(
+        self,
+        video_path: str | Path,
+        *,
+        upload_references: bool = True,
+    ) -> str:
+        video_path = Path(video_path)
+        if not upload_references:
+            return video_path.name
+        image_upload = self.client.upload_image(
+            video_path,
+            subfolder="feverslop/references",
+            file_type="input",
+            overwrite=True,
+            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(video_path),
+        )
+        return self.comfy_path_from_upload(image_upload)
+
+    def resolve_reference_audio_name(
+        self,
+        audio_path: str | Path,
+        *,
+        upload_references: bool = True,
+    ) -> str:
+        audio_path = Path(audio_path)
+        if not upload_references:
+            return audio_path.name
+        image_upload = self.client.upload_image(
+            audio_path,
+            subfolder="feverslop/references",
+            file_type="input",
+            overwrite=True,
+            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(audio_path),
+        )
+        return self.comfy_path_from_upload(image_upload)
+
     @staticmethod
     def content_addressed_name(file_path: Path) -> str:
         if not file_path.exists():
