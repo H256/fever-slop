@@ -144,6 +144,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if comfy_audio_name is not None:
             self._patch_audio_inputs(patcher, comfy_audio_name, duration_seconds, scene)
 
+        # -- dynamic ref wiring: fill remaining slots from scene refs -------
+        self._patch_dynamic_ref_inputs(patcher, scene)
+
         # -- output filename --------------------------------------------------
         self._patch_save_video(patcher, scene_number)
 
@@ -393,6 +396,125 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             trim_node_id,
             0,
         ]
+
+    # -----------------------------------------------------------------------
+    # Dynamic ref wiring
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _find_occupied_ref_slots(
+        patcher: WorkflowPatcher,
+        slot_type: str,
+    ) -> set[int]:
+        """Return set of occupied input slot indices on the core node.
+
+        *slot_type* is one of ``ref_images``, ``ref_videos``, ``ref_audios``.
+        """
+        occupied: set[int] = set()
+        for _, core in patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo"):
+            inputs = core.get("inputs", {})
+            for input_name in inputs:
+                if input_name.startswith(f"{slot_type}."):
+                    suffix = input_name[len(f"{slot_type}."):]
+                    # suffix is like "ref_image_0" -> extract 0
+                    try:
+                        idx = int(suffix.split("_")[-1])
+                        occupied.add(idx)
+                    except (ValueError, IndexError):
+                        continue
+        return occupied
+
+    def _add_ref_node_and_wire(
+        self,
+        patcher: WorkflowPatcher,
+        slot_type: str,
+        slot_index: int,
+        source_path: str | Path,
+    ) -> str:
+        """Create a loader node for *source_path*, wire to core node at *slot_index*.
+
+        Returns the prompt tag string (e.g. ``"<Picture 5>"`` for images).
+        """
+        class_type_map = {
+            "ref_images": ("LoadImage", "image", "ref_image"),
+            "ref_videos": ("LoadVideo", "video", "ref_video"),
+            "ref_audios": ("LoadAudio", "audio", "ref_audio"),
+        }
+        class_type, loader_input, input_singular = class_type_map[slot_type]
+
+        # Resolve asset name
+        if slot_type == "ref_images":
+            asset_name = self.asset_uploader.resolve_reference_image_name(source_path)
+        elif slot_type == "ref_videos":
+            asset_name = self.asset_uploader.resolve_reference_video_name(source_path)
+        else:
+            asset_name = self.asset_uploader.resolve_reference_audio_name(source_path)
+
+        # Create loader node with fresh ID
+        loader_id = str(patcher.find_free_node_id())
+        title = f"#DYN_{slot_type}_{slot_index}"
+        patcher.add_node(loader_id, {
+            "class_type": class_type,
+            "_meta": {"title": title},
+            "inputs": {loader_input: asset_name},
+        })
+
+        # Wire to core node
+        for _, core in patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo"):
+            core.setdefault("inputs", {})[
+                f"{slot_type}.{input_singular}_{slot_index}"
+            ] = [loader_id, 0]
+
+        # Build prompt tag
+        if slot_type == "ref_images":
+            return f"<Picture {slot_index + 1}>"
+        elif slot_type == "ref_videos":
+            return f"<Video {slot_index + 1}>"
+        else:
+            return f"<Audio {slot_index + 1}>"
+
+    def _collect_scene_references(
+        self,
+        scene: dict,
+    ) -> tuple[list[str], list[str], list[str]]:
+        """Collect all scene references by type.
+
+        Returns ``(image_paths, video_paths, audio_paths)`` — each already clamped to max.
+        """
+        image_paths = [str(p) for p in self._resolve_ref_image_paths(scene)]
+        video_paths = [str(p) for p in self._resolve_ref_video_paths(scene)]
+        audio_paths = [str(p) for p in self._resolve_ref_audio_paths(scene)]
+        return image_paths, video_paths, audio_paths
+
+    def _patch_dynamic_ref_inputs(
+        self,
+        patcher: WorkflowPatcher,
+        scene: dict,
+    ) -> list[str]:
+        """Wire all scene references to unoccupied core node slots.
+
+        Collects refs from *scene*, finds occupied slots, fills empty slots with
+        new loader nodes. Returns list of prompt tags.
+        """
+        prompt_tags: list[str] = []
+
+        image_paths, video_paths, audio_paths = self._collect_scene_references(scene)
+
+        for slot_type, paths, max_count in [
+            ("ref_images", image_paths, self.MAX_REF_IMAGES),
+            ("ref_videos", video_paths, self.MAX_REF_VIDEOS),
+            ("ref_audios", audio_paths, self.MAX_REF_AUDIOS),
+        ]:
+            occupied = self._find_occupied_ref_slots(patcher, slot_type)
+            for i, path in enumerate(paths):
+                if i in occupied:
+                    continue  # slot already filled by pre-wired anchor
+                if i >= max_count:
+                    break
+                tag = self._add_ref_node_and_wire(patcher, slot_type, i, path)
+                prompt_tags.append(tag)
+
+        return prompt_tags
 
     # -----------------------------------------------------------------------
     # Validation

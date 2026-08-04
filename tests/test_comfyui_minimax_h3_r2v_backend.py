@@ -1221,5 +1221,391 @@ class ResolveRefAudioPathsTests(unittest.TestCase):
         self.assertEqual(0, len(paths))
 
 
+# ---------------------------------------------------------------------------
+# _find_occupied_ref_slots tests
+# ---------------------------------------------------------------------------
+
+def _r2v_core_workflow(occupied_indices=None):
+    """Create workflow with MiniMaxH3ReferenceToVideo core node + some occupied slots."""
+    inputs = {}
+    if occupied_indices:
+        for idx in occupied_indices:
+            inputs[f"ref_images.ref_image_{idx}"] = [str(idx + 100), 0]
+    return {
+        "42": {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": inputs,
+        },
+    }
+
+
+class FindOccupiedRefSlotsTests(unittest.TestCase):
+    def test_occupied_slots_empty(self):
+        wf = _r2v_core_workflow()
+        patcher = WorkflowPatcher(wf)
+        occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
+            patcher, "ref_images"
+        )
+        self.assertEqual(set(), occupied)
+
+    def test_occupied_slots_partial(self):
+        wf = _r2v_core_workflow(occupied_indices=[0, 2])
+        patcher = WorkflowPatcher(wf)
+        occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
+            patcher, "ref_images"
+        )
+        self.assertEqual({0, 2}, occupied)
+
+    def test_occupied_slots_all_images(self):
+        wf = _r2v_core_workflow(occupied_indices=list(range(9)))
+        patcher = WorkflowPatcher(wf)
+        occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
+            patcher, "ref_images"
+        )
+        self.assertEqual(set(range(9)), occupied)
+
+    def test_occupied_slots_other_groups_ignored(self):
+        """Only ref_videos inputs present -> empty for ref_images."""
+        wf = {
+            "42": {
+                "class_type": "MiniMaxH3ReferenceToVideo",
+                "_meta": {"title": "#R2V_COMBINE"},
+                "inputs": {
+                    "ref_videos.ref_video_0": ["100", 0],
+                    "ref_videos.ref_video_1": ["101", 0],
+                },
+            },
+        }
+        patcher = WorkflowPatcher(wf)
+        occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
+            patcher, "ref_images"
+        )
+        self.assertEqual(set(), occupied)
+
+    def test_occupied_slots_no_core_node(self):
+        wf = {
+            "10": {
+                "class_type": "LoadImage",
+                "_meta": {"title": "#REF_1"},
+                "inputs": {"image": "test.png"},
+            },
+        }
+        patcher = WorkflowPatcher(wf)
+        occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
+            patcher, "ref_images"
+        )
+        self.assertEqual(set(), occupied)
+
+
+# ---------------------------------------------------------------------------
+# _add_ref_node_and_wire tests
+# ---------------------------------------------------------------------------
+
+class AddRefNodeAndWireTests(unittest.TestCase):
+    def _backend(self, workflow=None):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            workflow=workflow or _r2v_core_workflow(),
+        )
+
+    def test_add_image_node_and_wire(self):
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        tag = backend._add_ref_node_and_wire(
+            patcher, "ref_images", 0, "/tmp/actor.png"
+        )
+        patched = patcher.get()
+        # Check loader node was created
+        self.assertEqual("/tmp/actor.png", backend.asset_uploader.resolve_reference_image_calls[0])
+        # Loader has correct class type
+        loader_id = patched["42"]["inputs"]["ref_images.ref_image_0"][0]
+        self.assertEqual("LoadImage", patched[loader_id]["class_type"])
+        self.assertEqual("<Picture 1>", tag)
+
+    def test_add_video_node_and_wire(self):
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        tag = backend._add_ref_node_and_wire(
+            patcher, "ref_videos", 1, "/tmp/clip.mp4"
+        )
+        patched = patcher.get()
+        loader_id = patched["42"]["inputs"]["ref_videos.ref_video_1"][0]
+        self.assertEqual("LoadVideo", patched[loader_id]["class_type"])
+        self.assertEqual("<Video 2>", tag)
+
+    def test_add_audio_node_and_wire(self):
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        tag = backend._add_ref_node_and_wire(
+            patcher, "ref_audios", 2, "/tmp/sound.wav"
+        )
+        patched = patcher.get()
+        loader_id = patched["42"]["inputs"]["ref_audios.ref_audio_2"][0]
+        self.assertEqual("LoadAudio", patched[loader_id]["class_type"])
+        self.assertEqual("<Audio 3>", tag)
+
+    def test_fresh_node_id(self):
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._add_ref_node_and_wire(patcher, "ref_images", 0, "/tmp/a.png")
+        backend._add_ref_node_and_wire(patcher, "ref_images", 1, "/tmp/b.png")
+        patched = patcher.get()
+        id_a = patched["42"]["inputs"]["ref_images.ref_image_0"][0]
+        id_b = patched["42"]["inputs"]["ref_images.ref_image_1"][0]
+        self.assertNotEqual(id_a, id_b)
+
+    def test_wires_to_correct_slot(self):
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._add_ref_node_and_wire(patcher, "ref_images", 0, "/tmp/a.png")
+        backend._add_ref_node_and_wire(patcher, "ref_images", 3, "/tmp/b.png")
+        cores = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
+        core_inputs = cores[0][1]["inputs"]
+        self.assertIn("ref_images.ref_image_0", core_inputs)
+        self.assertIn("ref_images.ref_image_3", core_inputs)
+        self.assertNotIn("ref_images.ref_image_1", core_inputs)
+
+
+# ---------------------------------------------------------------------------
+# _collect_scene_references tests
+# ---------------------------------------------------------------------------
+
+class CollectSceneReferencesTests(unittest.TestCase):
+    def _backend(self):
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+        )
+
+    def test_all_types(self):
+        backend = self._backend()
+        scene = {
+            "references": {
+                "actor_sheet_paths": ["actor1.png", "actor2.png"],
+                "location_sheet_path": "loc.png",
+                "reference_video_paths": ["clip1.mp4"],
+                "reference_audio_paths": ["sound1.wav"],
+            },
+        }
+        img, vid, aud = backend._collect_scene_references(scene)
+        self.assertEqual(3, len(img))
+        self.assertEqual(1, len(vid))
+        self.assertEqual(1, len(aud))
+
+    def test_only_actors(self):
+        backend = self._backend()
+        scene = {
+            "references": {
+                "actor_sheet_paths": ["a1.png", "a2.png"],
+            },
+        }
+        img, vid, aud = backend._collect_scene_references(scene)
+        self.assertEqual(2, len(img))
+        self.assertEqual(0, len(vid))
+        self.assertEqual(0, len(aud))
+
+    def test_clamped(self):
+        backend = self._backend()
+        scene = {
+            "references": {
+                "actor_sheet_paths": [f"a{i}.png" for i in range(20)],
+            },
+        }
+        img, vid, aud = backend._collect_scene_references(scene)
+        self.assertEqual(9, len(img))
+
+
+# ---------------------------------------------------------------------------
+# _patch_dynamic_ref_inputs tests
+# ---------------------------------------------------------------------------
+
+class PatchDynamicRefInputsTests(unittest.TestCase):
+    def _backend(self, workflow=None):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            workflow=workflow or _r2v_core_workflow(),
+        )
+
+    def _scene(self, images=None, videos=None, audios=None):
+        refs = {}
+        if images:
+            refs["actor_sheet_paths"] = [f"/tmp/actor{i}.png" for i in range(images)]
+        if videos:
+            refs["reference_video_paths"] = [f"/tmp/clip{j}.mp4" for j in range(videos)]
+        if audios:
+            refs["reference_audio_paths"] = [f"/tmp/sound{j}.wav" for j in range(audios)]
+        return {"references": refs}
+
+    def test_fills_empty_slots_from_scene(self):
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        tags = backend._patch_dynamic_ref_inputs(patcher, self._scene(images=3))
+        cores = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
+        core_inputs = cores[0][1]["inputs"]
+        self.assertIn("ref_images.ref_image_0", core_inputs)
+        self.assertIn("ref_images.ref_image_1", core_inputs)
+        self.assertIn("ref_images.ref_image_2", core_inputs)
+        self.assertEqual(3, len(tags))
+        self.assertEqual("<Picture 1>", tags[0])
+
+    def test_skips_occupied_slots(self):
+        """Slots 0 and 2 occupied -> slots 1,3,4 get dynamic wiring from 5 images."""
+        wf = _r2v_core_workflow(occupied_indices=[0, 2])
+        backend = self._backend(workflow=wf)
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        tags = backend._patch_dynamic_ref_inputs(patcher, self._scene(images=5))
+        cores = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
+        core_inputs = cores[0][1]["inputs"]
+        # Slots 0,2 already pre-wired; 1,3,4 filled dynamically
+        self.assertIn("ref_images.ref_image_0", core_inputs)
+        self.assertIn("ref_images.ref_image_1", core_inputs)
+        self.assertIn("ref_images.ref_image_2", core_inputs)
+        self.assertIn("ref_images.ref_image_3", core_inputs)
+        self.assertIn("ref_images.ref_image_4", core_inputs)
+        # 3 new tags for slots 1,3,4
+        self.assertEqual(3, len(tags))
+
+    def test_all_occupied_is_noop(self):
+        """3 scene images, all 3 slots occupied -> no new nodes."""
+        wf = _r2v_core_workflow(occupied_indices=[0, 1, 2])
+        backend = self._backend(workflow=wf)
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        initial_node_count = len(patcher.get())
+        tags = backend._patch_dynamic_ref_inputs(patcher, self._scene(images=3))
+        patched = patcher.get()
+        self.assertEqual(initial_node_count, len(patched))
+        self.assertEqual(0, len(tags))
+
+    def test_respects_max_limits(self):
+        """20 scene images -> clamped to MAX_REF_IMAGES (9)."""
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        tags = backend._patch_dynamic_ref_inputs(patcher, self._scene(images=20))
+        # Only 9 image tags (max)
+        image_tags = [t for t in tags if t.startswith("<Picture")]
+        self.assertEqual(9, len(image_tags))
+
+    def test_returns_prompt_tags(self):
+        backend = self._backend()
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        tags = backend._patch_dynamic_ref_inputs(
+            patcher, self._scene(images=2, videos=1, audios=1)
+        )
+        self.assertEqual(["<Picture 1>", "<Picture 2>", "<Video 1>", "<Audio 1>"], tags)
+
+
+# ---------------------------------------------------------------------------
+# build_workflow dynamic wiring integration tests
+# ---------------------------------------------------------------------------
+
+class BuildWorkflowDynamicWiringTests(unittest.TestCase):
+    def _backend(self, workflow=None):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            workflow=workflow,
+        )
+
+    def _r2v_workflow_with_core(self):
+        wf = _native_r2v_workflow()
+        wf["42"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": {},
+        }
+        return wf
+
+    def test_no_paths_uses_dynamic(self):
+        """Without explicit ref_image_paths, scene refs are used via dynamic wiring."""
+        wf = self._r2v_workflow_with_core()
+        backend = self._backend(workflow=wf)
+        scene = {
+            "scene": 1,
+            "references": {
+                "actor_sheet_paths": ["/tmp/a1.png", "/tmp/a2.png"],
+            },
+        }
+        result = backend.build_workflow(scene, prompt="test")
+        cores = [(nid, n) for nid, n in result.items()
+                 if n.get("class_type") == "MiniMaxH3ReferenceToVideo"]
+        self.assertTrue(len(cores) >= 1)
+        core_inputs = cores[0][1].get("inputs", {})
+        # Dynamic wiring should have filled slots 0 and 1
+        self.assertIn("ref_images.ref_image_0", core_inputs)
+        self.assertIn("ref_images.ref_image_1", core_inputs)
+
+    def test_with_paths_and_dynamic(self):
+        """Explicit paths fill slots first, dynamic wiring fills remainder."""
+        wf = self._r2v_workflow_with_core()
+        backend = self._backend(workflow=wf)
+        scene = {
+            "scene": 1,
+            "references": {
+                "actor_sheet_paths": ["/tmp/a1.png", "/tmp/a2.png", "/tmp/a3.png"],
+                "location_sheet_path": "/tmp/loc.png",
+            },
+        }
+        result = backend.build_workflow(
+            scene,
+            prompt="test",
+            ref_image_paths=["/tmp/explicit.png"],
+        )
+        cores = [(nid, n) for nid, n in result.items()
+                 if n.get("class_type") == "MiniMaxH3ReferenceToVideo"]
+        core_inputs = cores[0][1].get("inputs", {})
+        # Explicit path fills slot 0 via anchor, scene refs fill remaining via dynamic
+        # Note: _clear_reference_group clears first, then _patch_reference_patches
+        # slot 0, then dynamic fills slots from scene. But scene's first ref is
+        # now slot 0 which is occupied so it skips to slot 1.
+        # Total nodes wired: 1 explicit + scene refs for remaining slots
+        self.assertIn("ref_images.ref_image_0", core_inputs)
+
+    def test_partial_paths(self):
+        """2 explicit paths + 1 scene extra -> slots 0,1,2 all filled."""
+        wf = self._r2v_workflow_with_core()
+        backend = self._backend(workflow=wf)
+        scene = {
+            "scene": 1,
+            "references": {
+                "actor_sheet_paths": ["/tmp/a1.png", "/tmp/a2.png", "/tmp/a3.png"],
+            },
+        }
+        result = backend.build_workflow(
+            scene,
+            prompt="test",
+            ref_image_paths=["/tmp/exp1.png", "/tmp/exp2.png"],
+        )
+        cores = [(nid, n) for nid, n in result.items()
+                 if n.get("class_type") == "MiniMaxH3ReferenceToVideo"]
+        core_inputs = cores[0][1].get("inputs", {})
+        self.assertIn("ref_images.ref_image_0", core_inputs)
+        self.assertIn("ref_images.ref_image_1", core_inputs)
+        # Scene refs fill slot 2 (dynamic)
+        self.assertIn("ref_images.ref_image_2", core_inputs)
+
+
 if __name__ == "__main__":
     unittest.main()
