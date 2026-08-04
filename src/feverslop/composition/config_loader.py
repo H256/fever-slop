@@ -180,11 +180,11 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         ltx_dir = render_dir / "ltx_ingredients"
         ltx_debug_dir = render_dir / "ltx_ingredients_debug"
     elif vp == "minimax-h3-r2v":
-        ltx_dir = render_dir / "minimax_h3_r2v"
-        ltx_debug_dir = render_dir / "minimax_h3_r2v_debug"
+        ltx_dir = artifact_layout.scenes_dir
+        ltx_debug_dir = artifact_layout.scenes_dir
     elif vp == "minimax-h3-t2v":
-        ltx_dir = render_dir / "minimax_h3_t2v"
-        ltx_debug_dir = render_dir / "minimax_h3_t2v_debug"
+        ltx_dir = artifact_layout.scenes_dir
+        ltx_debug_dir = artifact_layout.scenes_dir
     else:
         ltx_dir = render_dir / f"ltx_{args.render_mode}"
         ltx_debug_dir = render_dir / f"ltx_{args.render_mode}_debug"

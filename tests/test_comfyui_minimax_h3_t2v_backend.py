@@ -357,7 +357,7 @@ class BuildWorkflowTests(unittest.TestCase):
         # Text data patched
         self.assertEqual("start: blue; end: pink", result["138"]["inputs"]["value"])
         # Save prefix patched
-        self.assertEqual("minimaxh3_raw/scene_0003", result["135"]["inputs"]["filename_prefix"])
+        self.assertEqual("scene_0003/raw", result["135"]["inputs"]["filename_prefix"])
 
     def test_minimal_prompt_only(self):
         backend = self._backend(workflow=_t2v_workflow())
@@ -423,7 +423,7 @@ class BuildWorkflowTests(unittest.TestCase):
             {"scene": 42},
             prompt="test",
         )
-        self.assertEqual("minimaxh3_raw/scene_0042", result["135"]["inputs"]["filename_prefix"])
+        self.assertEqual("scene_0042/raw", result["135"]["inputs"]["filename_prefix"])
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +470,7 @@ class RenderVideoTests(unittest.TestCase):
             self.assertEqual(1, len(postprocessor.trim_specs))
             # Final file exists
             self.assertTrue(result.exists())
-            self.assertEqual(tmp_path / "output" / "scene_0002.mp4", result)
+            self.assertEqual(tmp_path / "output" / "scene_0002" / "final.mp4", result)
 
     def test_no_postprocess_returns_raw(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -501,7 +501,8 @@ class RenderVideoTests(unittest.TestCase):
                 upload_audio=False,
             )
             result = backend.render_video(request)
-            self.assertIn("raw", str(result))
+            # Raw file in per-scene directory
+            self.assertEqual(tmp_path / "output" / "scene_0001" / "raw.mp4", result)
 
     def test_debug_workflow_written(self):
         with tempfile.TemporaryDirectory() as tmp:

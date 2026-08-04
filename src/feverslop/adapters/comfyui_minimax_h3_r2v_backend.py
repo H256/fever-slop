@@ -202,12 +202,15 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- debug write ------------------------------------------------------
         self._write_debug_workflow(scene_number, workflow)
 
+        # -- per-scene output directory ---------------------------------------
+        scene_dir = self.output_dir / f"scene_{scene_number:04}"
+
         # -- queue and download -----------------------------------------------
-        self.raw_output_dir.mkdir(parents=True, exist_ok=True)
+        scene_dir.mkdir(parents=True, exist_ok=True)
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
             scene_number=scene_number,
-            output_path=self.raw_output_dir / f"scene_{scene_number:04}_raw.mp4",
+            output_path=scene_dir / "raw.mp4",
         )
 
         if not self.postprocess:
@@ -221,7 +224,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             raw_output,
             TrimSpec(
                 source_file=raw_output,
-                output_file=self.output_dir / f"scene_{scene_number:04}.mp4",
+                output_file=scene_dir / "final.mp4",
                 fps=self.FPS,
                 trim_front_frames=int(self.preroll_frames),
                 keep_frames=keep_frames,
