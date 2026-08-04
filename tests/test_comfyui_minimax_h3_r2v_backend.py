@@ -482,6 +482,37 @@ class PatchReferenceImagesTests(unittest.TestCase):
         backend._patch_reference_images(patcher, paths)
         self.assertEqual(9, len(backend.asset_uploader.resolve_reference_image_calls))
 
+    def test_creates_missing_loaders_and_connects_dynamic_r2v_inputs(self):
+        backend = self._backend()
+        patcher = WorkflowPatcher({
+            "42": {
+                "class_type": "MiniMaxH3ReferenceToVideo",
+                "_meta": {"title": "#R2V_COMBINE"},
+                "inputs": {
+                    "model": ["1", 0],
+                    "ref_images.ref_image_8": ["98", 0],
+                    "ref_videos.ref_video_2": ["99", 0],
+                },
+            },
+        })
+
+        backend._patch_reference_images(patcher, ["/tmp/actor.png"])
+        backend._patch_reference_videos(patcher, ["/tmp/clip.mp4"])
+        backend._patch_reference_audios(patcher, ["/tmp/voice.wav"])
+
+        workflow = patcher.get()
+        core_inputs = workflow["42"]["inputs"]
+        expected = {
+            "ref_images.ref_image_0": "LoadImage",
+            "ref_videos.ref_video_0": "LoadVideo",
+            "ref_audios.ref_audio_0": "LoadAudio",
+        }
+        self.assertNotIn("ref_images.ref_image_8", core_inputs)
+        self.assertNotIn("ref_videos.ref_video_2", core_inputs)
+        for input_name, class_type in expected.items():
+            loader_id, output_index = core_inputs[input_name]
+            self.assertEqual(0, output_index)
+            self.assertEqual(class_type, workflow[loader_id]["class_type"])
 
 # ---------------------------------------------------------------------------
 # _patch_audio_inputs tests

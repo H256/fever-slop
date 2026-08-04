@@ -239,6 +239,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         ref_image_paths: list[str | Path] | None,
     ) -> None:
         """Map reference image paths to ``#REF_1``, ``#REF_2``, … anchors."""
+        self._clear_reference_group(patcher, "ref_images")
         if not ref_image_paths:
             return
         if len(ref_image_paths) > self.MAX_REF_IMAGES:
@@ -248,9 +249,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             )
         for index, path in enumerate(ref_image_paths, start=1):
             title = f"#REF_{index}"
-            if self._has_anchor(patcher, title):
-                image_name = self.asset_uploader.resolve_reference_image_name(path)
-                patcher.set_input_by_title(title, "image", image_name)
+            image_name = self.asset_uploader.resolve_reference_image_name(path)
+            self._patch_reference_asset(
+                patcher, title, "LoadImage", "image", image_name, "ref_images", index - 1
+            )
 
     def _patch_reference_videos(
         self,
@@ -258,6 +260,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         ref_video_paths: list[str | Path] | None,
     ) -> None:
         """Map reference video paths to ``#VIDEO_1``, ``#VIDEO_2``, ``#VIDEO_3`` anchors."""
+        self._clear_reference_group(patcher, "ref_videos")
         if not ref_video_paths:
             return
         if len(ref_video_paths) > self.MAX_REF_VIDEOS:
@@ -267,9 +270,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             )
         for index, path in enumerate(ref_video_paths, start=1):
             title = f"#VIDEO_{index}"
-            if self._has_anchor(patcher, title):
-                video_name = self.asset_uploader.resolve_reference_video_name(path)
-                patcher.set_input_by_title(title, "video", video_name)
+            video_name = self.asset_uploader.resolve_reference_video_name(path)
+            self._patch_reference_asset(
+                patcher, title, "LoadVideo", "video", video_name, "ref_videos", index - 1
+            )
 
     def _patch_reference_audios(
         self,
@@ -277,6 +281,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         ref_audio_paths: list[str | Path] | None,
     ) -> None:
         """Map reference audio paths to ``#AUDIO_1``, ``#AUDIO_2``, ``#AUDIO_3`` anchors."""
+        self._clear_reference_group(patcher, "ref_audios")
         if not ref_audio_paths:
             return
         if len(ref_audio_paths) > self.MAX_REF_AUDIOS:
@@ -286,9 +291,49 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             )
         for index, path in enumerate(ref_audio_paths, start=1):
             title = f"#AUDIO_{index}"
-            if self._has_anchor(patcher, title):
-                audio_name = self.asset_uploader.resolve_reference_audio_name(path)
-                patcher.set_input_by_title(title, "audio", audio_name)
+            audio_name = self.asset_uploader.resolve_reference_audio_name(path)
+            self._patch_reference_asset(
+                patcher, title, "LoadAudio", "audio", audio_name, "ref_audios", index - 1
+            )
+
+    @staticmethod
+    def _clear_reference_group(patcher: WorkflowPatcher, input_group: str) -> None:
+        for _, core in patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo"):
+            inputs = core.setdefault("inputs", {})
+            for input_name in list(inputs):
+                if input_name.startswith(f"{input_group}."):
+                    del inputs[input_name]
+
+    @staticmethod
+    def _patch_reference_asset(
+        patcher: WorkflowPatcher,
+        title: str,
+        class_type: str,
+        loader_input: str,
+        asset_name: str,
+        input_group: str,
+        index: int,
+    ) -> None:
+        try:
+            loader_id, loader = patcher.find_node_by_meta_title(title)
+            loader.setdefault("inputs", {})[loader_input] = asset_name
+        except KeyError:
+            core_nodes = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
+            if not core_nodes:
+                return
+            numeric_ids = [int(node_id) for node_id in patcher.get() if node_id.isdigit()]
+            loader_id = str(max(numeric_ids, default=0) + 1)
+            patcher.get()[loader_id] = {
+                "class_type": class_type,
+                "_meta": {"title": title},
+                "inputs": {loader_input: asset_name},
+            }
+
+        core_nodes = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
+        if core_nodes:
+            core_nodes[0][1].setdefault("inputs", {})[
+                f"{input_group}.{input_group[:-1]}_{index}"
+            ] = [loader_id, 0]
 
     @staticmethod
     def _patch_audio_inputs(
