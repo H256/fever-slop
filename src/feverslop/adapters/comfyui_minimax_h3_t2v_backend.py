@@ -169,14 +169,21 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             workflow_path=self.workflow_label,
         )
 
+        # -- per-scene output directory
+        scene_dir = self.output_dir / f"scene_{scene_number:04}"
+        scene_dir.mkdir(parents=True, exist_ok=True)
+
+        # -- scene workflow.json (production artifact)
+        workflow_path = scene_dir / "workflow.json"
+        workflow_path.write_text(
+            json.dumps(workflow, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
         # -- debug write
         self._write_debug_workflow(scene_number, workflow)
 
-        # -- per-scene output directory
-        scene_dir = self.output_dir / f"scene_{scene_number:04}"
-
         # -- queue and download
-        scene_dir.mkdir(parents=True, exist_ok=True)
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
             scene_number=scene_number,
