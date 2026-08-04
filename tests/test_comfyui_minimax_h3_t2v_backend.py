@@ -563,6 +563,38 @@ class RenderVideoTests(unittest.TestCase):
             wf = backend.build_workflow(request.scene, prompt=request.prompt)
             self.assertIn("131", wf)
 
+    def test_scene_workflow_json_written(self):
+        """workflow.json is written to the per-scene directory."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            uploader = FakeAssetUploader()
+            queue = FakeRenderQueue()
+            backend = ComfyUIMiniMaxH3T2VBackend(
+                client=FakeClient(),
+                workflow_path=tmp_path / "wf.json",
+                output_dir=tmp_path / "output",
+                asset_uploader=uploader,
+                render_queue=queue,
+                postprocess=False,
+                model_resolver=FakeModelResolver(),
+                workflow=_t2v_workflow(),
+            )
+            request = VideoRenderRequest(
+                scene={"scene": 3, "description": "Test"},
+                scene_number=3,
+                prompt="Test prompt",
+                workflow_path=tmp_path / "wf.json",
+                output_dir=tmp_path / "output",
+                audio_file=tmp_path / "song.wav",
+                storyboard_dir=tmp_path / "storyboard",
+                upload_audio=False,
+            )
+            backend.render_video(request)
+            scene_workflow = tmp_path / "output" / "scene_0003" / "workflow.json"
+            self.assertTrue(scene_workflow.exists())
+            data = json.loads(scene_workflow.read_text())
+            self.assertIsInstance(data, dict)
+
 
 # ---------------------------------------------------------------------------
 # Frame path resolution tests
