@@ -1326,4 +1326,16 @@ def _initial_render_plan(context: PipelineRunContext, args: argparse.Namespace, 
         existing = context.artifact_layout.find_plan(context.ingredients_plan, legacy_paths=[legacy_ingredients])
         if existing:
             return existing
+    # MiniMax R2V needs reference paths (actor_msr_paths, location_msr_path) from
+    # an existing MSR/ingredients plan so it can patch them into its workflow.
+    if args.video_pipeline == "minimax-h3-r2v":
+        for plan_path, legacy_paths in (
+            (context.ingredients_plan, [legacy_ingredients]),
+            (context.reference_plan, [legacy_references]),
+            (context.render_plan, [legacy_base]),
+        ):
+            existing = context.artifact_layout.find_plan(plan_path, legacy_paths=legacy_paths)
+            if existing:
+                return existing
+        return context.render_plan
     return context.artifact_layout.find_plan(context.render_plan, legacy_paths=[legacy_base]) or context.render_plan
