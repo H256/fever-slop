@@ -79,6 +79,14 @@ def _get_reference_bible_parser():
     return _REFERENCE_BIBLE_PARSER
 
 
+def _get_resolution(args: argparse.Namespace) -> tuple[int, int] | None:
+    """Extract resolution tuple from CLI args if --resolution was provided."""
+    res = getattr(args, "resolution", None)
+    if res is None:
+        return None
+    return (res.width, res.height)
+
+
 console = Console()
 
 
@@ -145,6 +153,7 @@ def _selected_video_workflows(state: PipelineRunState) -> tuple[Path, ...]:
 
 
 def _run_main_pipeline_stage(state: PipelineRunState) -> None:
+    resolution = _get_resolution(state.args)
     execute_generate_render_plan(
         GenerateRenderPlanRequest(
             project_config_path=state.context.project_config_path,
@@ -154,6 +163,7 @@ def _run_main_pipeline_stage(state: PipelineRunState) -> None:
             rolling_frame_profile=state.args.rolling_frame_profile,
         ),
         console=console,
+        resolution=resolution,
     )
     state.plan_for_next_step = state.context.render_plan
 
@@ -285,6 +295,11 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
         raise ValueError("ingredients_sheets requires --video-pipeline ltx_ingredients")
     from feverslop.config.project_config import ProjectConfig
     project_config = ProjectConfig.load(state.context.project_config_path)
+    resolution = _get_resolution(state.args)
+    if resolution is not None:
+        project_config = project_config.apply_resolution_override(
+            width=resolution[0], height=resolution[1],
+        )
     video_settings = project_config.to_video_settings()
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
@@ -329,6 +344,7 @@ def _specialized_video_use_case(state: PipelineRunState):
             ),
             randomize_seed=state.args.randomize_seed,
             rolling_frame_profile=state.args.rolling_frame_profile,
+            resolution=_get_resolution(state.args),
         ),
         console=console,
     )
@@ -1055,6 +1071,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             randomize_seed=state.args.randomize_seed,
             debug_workflows_dir=state.context.ltx_debug_dir,
             rolling_frame_profile=state.args.rolling_frame_profile,
+            resolution=_get_resolution(state.args),
         ),
         console=console,
     )

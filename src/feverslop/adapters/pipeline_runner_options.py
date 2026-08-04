@@ -2,12 +2,29 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import NamedTuple
 
 from feverslop.domain.visual_consistency import PreflightMode
 
 
+class ResolutionTuple(NamedTuple):
+    width: int
+    height: int
+
+    @staticmethod
+    def parse(value: str) -> "ResolutionTuple":
+        parts = value.split("x")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid resolution format '{value}': expected 'WxH' (e.g. 1280x720)")
+        return ResolutionTuple(
+            width=int(parts[0]),
+            height=int(parts[1]),
+        )
+
+
 RUNNER_ARGUMENTS = (
     ("app_config", ("--app-config",), {"default": "app_config.json"}),
+    ("resolution", ("--resolution",), {"type": ResolutionTuple.parse, "default": None}),
     ("concept_batch_size", ("--concept-batch-size",), {"type": int, "default": 10}),
     ("storyboard_workflow", ("--storyboard-workflow",), {"default": str(Path("workflows") / "image_t2i_startframe_v1.json")}),
     ("reference_hero_workflow", ("--reference-hero-workflow",), {"default": str(Path("workflows") / "image_t2i_startframe_krea_v1.json")}),

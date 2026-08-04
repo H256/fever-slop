@@ -84,8 +84,14 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
     )
 
 
-def build_generate_render_plan_execution_request(request: GenerateRenderPlanRequest) -> GenerateRenderPlanExecutionRequest:
+def build_generate_render_plan_execution_request(
+    request: GenerateRenderPlanRequest,
+    *,
+    resolution: tuple[int, int] | None = None,
+) -> GenerateRenderPlanExecutionRequest:
     config = ProjectConfig.load(request.project_config_path)
+    if resolution is not None:
+        config = config.apply_resolution_override(width=resolution[0], height=resolution[1])
     paths = ProjectPaths.from_config(config)
     app_config = AppConfig.load(request.app_config_path)
     video_settings = config.to_video_settings()
@@ -125,9 +131,10 @@ def execute_generate_render_plan(
     request: GenerateRenderPlanRequest,
     *,
     console: Console | None = None,
+    resolution: tuple[int, int] | None = None,
 ) -> GenerateRenderPlanResult:
     use_case = build_generate_render_plan_use_case(console=console)
-    return use_case.execute(build_generate_render_plan_execution_request(request))
+    return use_case.execute(build_generate_render_plan_execution_request(request, resolution=resolution))
 
 
 def build_rebuild_render_plan_use_case(console: Console | None = None) -> GenerateRenderPlanUseCase:

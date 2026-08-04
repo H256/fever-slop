@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import json
 
@@ -343,6 +343,21 @@ class ProjectConfig:
             fps=self.video.fps,
             width=self.video.width,
             height=self.video.height,
+        )
+
+    def apply_resolution_override(
+        self, *, width: int | None = None, height: int | None = None,
+    ) -> "ProjectConfig":
+        """Return a new ProjectConfig with overridden video resolution."""
+        if width is None and height is None:
+            return self
+        return replace(
+            self,
+            video=replace(
+                self.video,
+                width=width if width is not None else self.video.width,
+                height=height if height is not None else self.video.height,
+            ),
         )
 
     @property

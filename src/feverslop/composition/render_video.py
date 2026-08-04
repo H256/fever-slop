@@ -49,6 +49,7 @@ class RenderVideoCompositionOptions:
     allow_out_of_range_clips: bool = False
     debug_workflows_dir: str | Path | None = None
     rolling_frame_profile: str = "original"
+    resolution: tuple[int, int] | None = None
     preroll_frames: int | None = None
     tail_loss_frames: int | None = None
     postprocess: bool = True
@@ -262,6 +263,11 @@ def resolve_project_config_defaults(options: RenderVideoCompositionOptions) -> d
             project_config_path = discovered
 
     project_config = ProjectConfig.load(project_config_path) if project_config_path else None
+    if project_config is not None and options.resolution is not None:
+        project_config = project_config.apply_resolution_override(
+            width=options.resolution[0],
+            height=options.resolution[1],
+        )
     scene_generation = project_config.scene_generation if project_config else None
     lora_1 = project_config.lora_1 if project_config else None
     loras = _resolve_loras(options, project_config)
@@ -419,6 +425,7 @@ def namespace_to_options(args) -> RenderVideoCompositionOptions:
         allow_out_of_range_clips=args.allow_out_of_range_clips,
         debug_workflows_dir=args.debug_workflows_dir,
         rolling_frame_profile=args.rolling_frame_profile,
+        resolution=getattr(args, "resolution", None),
         preroll_frames=args.preroll_frames,
         tail_loss_frames=args.tail_loss_frames,
         postprocess=not args.no_postprocess,
