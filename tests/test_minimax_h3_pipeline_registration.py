@@ -14,7 +14,6 @@ from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
     build_render_video_scenes_use_case,
 )
-from feverslop.errors import FeverSlopValidationError
 from feverslop.studio.jobs import (
     FULL_PIPELINE_STEPS_BY_MODE,
     _pipeline_step_names,
@@ -26,6 +25,8 @@ from feverslop.studio.project_validation import (
     validate_pipeline_mode,
     validate_project_config,
 )
+
+RENDER_PATCH = "feverslop.composition.render_video"
 
 
 # ---------------------------------------------------------------------------
@@ -276,17 +277,9 @@ class MockProjectConfig:
 class RenderVideoBackendDispatchTests(unittest.TestCase):
     """Verify build_render_video_scenes_use_case creates the right backends."""
 
-    _PATCH = "feverslop.composition.render_video"
-
-    @patch(f"{_PATCH}.build_render_video_scenes_use_case")
-    @patch(f"{_PATCH}.AppConfig.load", return_value=MockAppConfig.__new__.__func__(MockAppConfig, "mock.json"))
-    @patch(f"{_PATCH}.ProjectConfig.load", return_value=MockProjectConfig.__new__.__func__(MockProjectConfig, "mock.json"))
-    @patch(f"{_PATCH}.ComfyUIClient")
-    def test_dispatcher_creates_minimax_backend_r2v(self, mock_client, mock_pc_load, mock_ac_load):
+    @patch(f"{RENDER_PATCH}.ComfyUIClient")
+    def test_dispatcher_creates_minimax_backend_r2v(self, mock_client):
         """Dispatcher should _not_ raise and should _not_ create an MSRS backend."""
-        from feverslop.adapters.comfyui_minimax_h3_r2v_backend import (
-            ComfyUIMiniMaxH3R2VBackend,
-        )
         mock_client.return_value = MagicMock()
         options = RenderVideoCompositionOptions(
             app_config_path="config.json",
@@ -299,24 +292,16 @@ class RenderVideoBackendDispatchTests(unittest.TestCase):
         mock_ac = MockAppConfig("x")
         mock_ac.comfyui.video_workflow_limits = []
         mock_ac.comfyui.default_max_render_duration_seconds = 30.0
-        mock_pc_load.return_value = mock_pc
-        mock_ac_load.return_value = mock_ac
 
-        # Patch ComfyUIClient
-        with patch(f"{_PATCH}.ComfyUIClient") as mock_client_cls:
-            mock_client_cls.return_value = MagicMock()
-            with patch(f"{_PATCH}.AppConfig.load", return_value=mock_ac):
-                with patch(f"{_PATCH}.ProjectConfig.load", return_value=mock_pc):
-                    use_case = build_render_video_scenes_use_case(options)
+        with patch(f"{RENDER_PATCH}.AppConfig.load", return_value=mock_ac):
+            with patch(f"{RENDER_PATCH}.ProjectConfig.load", return_value=mock_pc):
+                use_case = build_render_video_scenes_use_case(options)
 
         # Verify the backend was instantiated
         self.assertTrue(hasattr(use_case, "backend"))
 
-    @patch(f"{_PATCH}.build_render_video_scenes_use_case")
-    @patch(f"{_PATCH}.AppConfig.load", return_value=MockAppConfig.__new__.__func__(MockAppConfig, "mock.json"))
-    @patch(f"{_PATCH}.ProjectConfig.load", return_value=MockProjectConfig.__new__.__func__(MockProjectConfig, "mock.json"))
-    @patch(f"{_PATCH}.ComfyUIClient")
-    def test_dispatcher_creates_minimax_backend_t2v(self, mock_client, mock_pc_load, mock_ac_load):
+    @patch(f"{RENDER_PATCH}.ComfyUIClient")
+    def test_dispatcher_creates_minimax_backend_t2v(self, mock_client):
         """Dispatcher should create MiniMax H3 T2V backend."""
         mock_client.return_value = MagicMock()
         options = RenderVideoCompositionOptions(
@@ -330,14 +315,10 @@ class RenderVideoBackendDispatchTests(unittest.TestCase):
         mock_ac = MockAppConfig("x")
         mock_ac.comfyui.video_workflow_limits = []
         mock_ac.comfyui.default_max_render_duration_seconds = 30.0
-        mock_pc_load.return_value = mock_pc
-        mock_ac_load.return_value = mock_ac
 
-        with patch(f"{_PATCH}.ComfyUIClient") as mock_client_cls:
-            mock_client_cls.return_value = MagicMock()
-            with patch(f"{_PATCH}.AppConfig.load", return_value=mock_ac):
-                with patch(f"{_PATCH}.ProjectConfig.load", return_value=mock_pc):
-                    use_case = build_render_video_scenes_use_case(options)
+        with patch(f"{RENDER_PATCH}.AppConfig.load", return_value=mock_ac):
+            with patch(f"{RENDER_PATCH}.ProjectConfig.load", return_value=mock_pc):
+                use_case = build_render_video_scenes_use_case(options)
 
         self.assertTrue(hasattr(use_case, "backend"))
 
