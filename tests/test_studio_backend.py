@@ -20,7 +20,7 @@ from feverslop.studio.projects import (
     sanitize_audio_filename,
     slugify_project_name,
 )
-from feverslop.studio.job_service import StudioFullAutoConsole as _StudioFullAutoConsole, build_full_auto_handler
+from feverslop.studio.job_service import StudioFullAutoConsole as _StudioFullAutoConsole, build_full_auto_handler, pipeline_mode_from_config
 from tests.studio_harness import NativeStudioHarness
 
 
@@ -191,6 +191,8 @@ class StudioBackendTests(unittest.TestCase):
             "classic": "ltx_i2v",
             "msr": "ltx_msr",
             "ingredients": "ltx_ingredients",
+            "minimax_h3_r2v": "minimax-h3-r2v",
+            "minimax_h3_t2v": "minimax-h3-t2v",
         }
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
@@ -212,7 +214,7 @@ class StudioBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
 
-            with self.assertRaisesRegex(ValueError, "pipeline_mode must be classic, msr, or ingredients"):
+            with self.assertRaisesRegex(ValueError, "classic|msr|ingredients|minimax_h3_r2v|minimax_h3_t2v"):
                 store.create_project(
                     ProjectCreateRequest(
                         project_type="standard_music_video",
@@ -851,6 +853,31 @@ class StudioBackendTests(unittest.TestCase):
         self.assertNotIn("MSR references", [step["name"] for step in steps])
         self.assertNotIn("MSR enrichment", [step["name"] for step in steps])
 
+    def test_full_pipeline_steps_for_minimax_modes(self):
+        registry = JobRegistry()
+
+        r2v_steps = registry._initial_steps("full-pipeline", pipeline_mode="minimax_h3_r2v")
+        t2v_steps = registry._initial_steps("full-pipeline", pipeline_mode="minimax_h3_t2v")
+
+        for steps in (r2v_steps, t2v_steps):
+            step_names = [step["name"] for step in steps]
+            self.assertEqual(["Main pipeline", "LTX render", "Final concat"], step_names)
+            self.assertNotIn("MSR references", step_names)
+            self.assertNotIn("Storyboard", step_names)
+
+    def test_pipeline_option_builder_uses_minimax_pipeline_mode(self):
+        r2v = build_pipeline_options("full-pipeline", pipeline_mode="minimax_h3_r2v")
+        t2v = build_pipeline_options("full-pipeline", pipeline_mode="minimax_h3_t2v")
+
+        self.assertEqual("minimax-h3-r2v", r2v["video_pipeline"])
+        self.assertEqual("minimax-h3-t2v", t2v["video_pipeline"])
+        self.assertTrue(r2v["skip_msr_reference_render"])
+        self.assertTrue(r2v["skip_msr_prompt_enrichment"])
+        self.assertTrue(r2v["skip_ingredients_sheets"])
+        self.assertTrue(t2v["skip_msr_reference_render"])
+        self.assertTrue(t2v["skip_msr_prompt_enrichment"])
+        self.assertTrue(t2v["skip_ingredients_sheets"])
+
     def test_job_registry_sanitizes_rich_logs_and_tracks_acestep_step(self):
         registry = JobRegistry()
 
@@ -1285,6 +1312,20 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("rebuild-plan", processes[0]["action"])
             self.assertEqual("running", processes[0]["status"])
             self.assertIn("steps", processes[0])
+
+    def test_pipeline_mode_from_config_maps_minimax_to_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            config_r2v = base / "config_r2v.json"
+            config_r2v.write_text(json.dumps({"video_pipeline": "minimax-h3-r2v"}), encoding="utf-8")
+            config_t2v = base / "config_t2v.json"
+            config_t2v.write_text(json.dumps({"video_pipeline": "minimax-h3-t2v"}), encoding="utf-8")
+            config_empty = base / "config_empty.json"
+            config_empty.write_text(json.dumps({}), encoding="utf-8")
+
+            self.assertEqual("minimax_h3_r2v", pipeline_mode_from_config(config_r2v))
+            self.assertEqual("minimax_h3_t2v", pipeline_mode_from_config(config_t2v))
+            self.assertIsNone(pipeline_mode_from_config(config_empty))
 
 
 if __name__ == "__main__":

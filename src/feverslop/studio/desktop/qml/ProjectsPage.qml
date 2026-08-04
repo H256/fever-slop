@@ -108,7 +108,9 @@ ScrollView {
                     model: [
                         { label: "Classic I2V", value: "classic" },
                         { label: "MSR (reference-guided)", value: "msr" },
-                        { label: "Ingredients", value: "ingredients" }
+                        { label: "Ingredients", value: "ingredients" },
+                        { label: "MiniMax H3 R2V", value: "minimax_h3_r2v" },
+                        { label: "MiniMax H3 T2V", value: "minimax_h3_t2v" }
                     ]
                 }
                 Label {

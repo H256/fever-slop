@@ -38,6 +38,7 @@ from feverslop.studio.jobs import (
     build_visual_consistency_preflight_handler,
     run_with_stream_logging,
 )
+from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE
 from feverslop.studio.logging import render_log_lines
 from feverslop.studio.pipeline_actions import ensure_pipeline_action_available
 from feverslop.studio.projects import ProjectStore
@@ -514,7 +515,7 @@ def build_full_auto_handler(*, store: ProjectStore, project_id: str, payload: di
             fps=int(payload.get("fps") or 24),
             silent_mode=bool(payload.get("silent_mode", False)),
             run_video_pipeline=True,
-            runner_options={"skip_tests": True, "video_pipeline": "ltx_msr" if pipeline_mode == "msr" else "ltx_ingredients" if pipeline_mode == "ingredients" else "ltx_i2v"},
+            runner_options={"skip_tests": True, "video_pipeline": VIDEO_PIPELINE_BY_MODE.get(pipeline_mode, "ltx_i2v")},
         )
         return run_with_stream_logging(lambda: use_case.execute(request), log).project_config_path
 
@@ -532,6 +533,10 @@ def pipeline_mode_from_config(config_path: Path) -> str | None:
         return "ingredients"
     if value == "ltx_i2v":
         return "classic"
+    if value == "minimax-h3-r2v":
+        return "minimax_h3_r2v"
+    if value == "minimax-h3-t2v":
+        return "minimax_h3_t2v"
     return None
 
 
