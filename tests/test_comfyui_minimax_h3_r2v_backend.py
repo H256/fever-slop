@@ -519,23 +519,50 @@ class PatchReferenceImagesTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class PatchAudioInputsTests(unittest.TestCase):
-    def test_audio_workflow_patches(self):
-        wf = _audio_r2v_workflow()
-        patcher = WorkflowPatcher(wf)
-        ComfyUIMiniMaxH3R2VBackend._patch_audio_inputs(
-            patcher, "my_audio-abc.wav", duration_seconds=8.0
+    def _backend(self, workflow=None):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            workflow=workflow,
         )
+
+    def test_audio_workflow_patches(self):
+        backend = self._backend(workflow=_audio_r2v_workflow())
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_audio_inputs(patcher, "my_audio-abc.wav", duration_seconds=8.0)
         patched = patcher.get()
         self.assertIn("my_audio", patched["90"]["inputs"]["audio"])
         self.assertIn("my_audio", patched["90"]["inputs"]["audioUI"])
         self.assertEqual(8.0, patched["91"]["inputs"]["duration"])
 
-    def test_audio_workflow_no_duration(self):
-        wf = _audio_r2v_workflow()
+    def test_audio_workflow_patches_start_index_default(self):
+        """start_index defaults to 0.0 when scene is not provided."""
+        backend = self._backend(workflow=_audio_r2v_workflow())
+        wf = backend.load_workflow()
         patcher = WorkflowPatcher(wf)
-        ComfyUIMiniMaxH3R2VBackend._patch_audio_inputs(
-            patcher, "my_audio.wav", duration_seconds=None
-        )
+        backend._patch_audio_inputs(patcher, "audio.wav", scene=None)
+        patched = patcher.get()
+        self.assertEqual(0.0, patched["91"]["inputs"]["start_index"])
+
+    def test_audio_workflow_patches_start_index_from_scene(self):
+        """start_index is taken from scene.abs_start_seconds."""
+        backend = self._backend(workflow=_audio_r2v_workflow())
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        scene = {"scene": 3, "abs_start_seconds": 10.5}
+        backend._patch_audio_inputs(patcher, "audio.wav", scene=scene)
+        patched = patcher.get()
+        self.assertEqual(10.5, patched["91"]["inputs"]["start_index"])
+
+    def test_audio_workflow_no_duration(self):
+        backend = self._backend(workflow=_audio_r2v_workflow())
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_audio_inputs(patcher, "my_audio.wav", duration_seconds=None)
         patched = patcher.get()
         self.assertIn("my_audio", patched["90"]["inputs"]["audio"])
         # TRIM_AUDIO duration stays unchanged
@@ -543,14 +570,61 @@ class PatchAudioInputsTests(unittest.TestCase):
 
     def test_native_workflow_no_audio_anchors(self):
         """On a native workflow, the try_set_existing_input silently skips."""
-        wf = _native_r2v_workflow()
+        backend = self._backend(workflow=_native_r2v_workflow())
+        wf = backend.load_workflow()
         patcher = WorkflowPatcher(wf)
         # Should not raise, just silently not patch anything
-        ComfyUIMiniMaxH3R2VBackend._patch_audio_inputs(
-            patcher, "audio.wav", duration_seconds=5.0
-        )
+        backend._patch_audio_inputs(patcher, "audio.wav", duration_seconds=5.0)
         # Workflow unchanged
         self.assertNotIn("90", patcher.get())
+
+    def test_wires_trimmed_audio_to_r2v(self):
+        """The #TRIM_AUDIO output gets wired to ref_audios.ref_audio_0."""
+        # Build a workflow with both #TRIM_AUDIO and MiniMaxH3ReferenceToVideo
+        workflow = _audio_r2v_workflow()
+        workflow["80"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": {
+                "prompt": ["40", 0],
+                "width": ["10", 0],
+                "height": ["10", 1],
+            },
+        }
+        backend = self._backend(workflow=workflow)
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        backend._patch_audio_inputs(patcher, "audio.wav")
+        patched = patcher.get()
+        r2v_inputs = patched["80"]["inputs"]
+        self.assertIn("ref_audios.ref_audio_0", r2v_inputs)
+        self.assertEqual(["91", 0], r2v_inputs["ref_audios.ref_audio_0"])
+
+    def test_wire_no_trim_node_is_noop(self):
+        """_wire_trimmed_audio_to_r2v is safe when #TRIM_AUDIO is absent."""
+        workflow = _native_r2v_workflow()
+        workflow["80"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": {},
+        }
+        backend = self._backend(workflow=workflow)
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        # No exception
+        ComfyUIMiniMaxH3R2VBackend._wire_trimmed_audio_to_r2v(patcher)
+        patched = patcher.get()
+        self.assertNotIn("ref_audios.ref_audio_0", patched["80"]["inputs"])
+
+    def test_wire_no_r2v_node_is_noop(self):
+        """_wire_trimmed_audio_to_r2v is safe when R2V node is absent."""
+        workflow = _audio_r2v_workflow()
+        # No MiniMaxH3ReferenceToVideo node present
+        backend = self._backend(workflow=workflow)
+        wf = backend.load_workflow()
+        patcher = WorkflowPatcher(wf)
+        # No exception
+        ComfyUIMiniMaxH3R2VBackend._wire_trimmed_audio_to_r2v(patcher)
 
 
 # ---------------------------------------------------------------------------
