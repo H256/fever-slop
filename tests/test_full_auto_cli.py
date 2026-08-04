@@ -177,6 +177,7 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual(
             {
                 "app_config": "app_config.json",
+                "resolution": None,
                 "concept_batch_size": 5,
                 "storyboard_workflow": "storyboard.json",
                 "reference_hero_workflow": str(Path("workflows") / "image_t2i_startframe_krea_v1.json"),
