@@ -35,6 +35,7 @@ class GenerateRenderPlanContext:
     concept_prompts_json: Path | None = None
     scene_details_json: Path | None = None
     scene_prompts_json: Path | None = None
+    h3_prompts_json: Path | None = None
     render_plan_json: Path | None = None
 
     stem_files: dict[str, Path] | None = None
@@ -46,6 +47,7 @@ class GenerateRenderPlanContext:
     concept_prompts: dict[str, Any] | None = None
     scene_details: dict[str, Any] | None = None
     render_plan: list[dict] | None = None
+    h3_prompts: list[dict] | None = None
     order: list[str] | None = None
 
     def __getitem__(self, key: str) -> Any:

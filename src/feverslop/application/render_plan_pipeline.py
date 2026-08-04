@@ -33,6 +33,7 @@ class RenderPlanPipeline:
             output_json_file=render_plan_json,
             video_settings=context["video_settings"],
             artifact_store=artifact_store,
+            h3_prompts_json=context.get("h3_prompts_json"),
         )
         log_file("Render Plan JSON", render_plan_json)
         context["render_plan"] = artifact_store.read_json(render_plan_json)

@@ -270,6 +270,7 @@ def build_render_plan(
     video_settings: VideoSettings,
     *,
     artifact_store: ArtifactStore,
+    h3_prompts_json: str | Path | None = None,
 ) -> Path:
     """
     Combines:
@@ -288,6 +289,11 @@ def build_render_plan(
     relay_scenes = artifact_store.read_json(ltx_prompt_relay_json)
 
     relay_by_scene = {int(scene["scene"]): scene for scene in relay_scenes}
+
+    h3_by_segment: dict[str, dict] = {}
+    if h3_prompts_json is not None:
+        h3_prompts = artifact_store.read_json(h3_prompts_json)
+        h3_by_segment = {str(item.get("segment_id", "")): item for item in h3_prompts}
 
     render_plan = []
 
@@ -401,6 +407,9 @@ def build_render_plan(
         references = _scene_references(scene)
         if references:
             render_scene["references"] = references
+        h3_entry = h3_by_segment.get(scene.get("segment_id", ""))
+        if h3_entry and h3_entry.get("prompt"):
+            render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
         render_plan.append(render_scene)
 
     return artifact_store.write_json(output_json_file, render_plan)

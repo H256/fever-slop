@@ -51,6 +51,9 @@ class RenderScene:
 
     @property
     def video_prompt(self) -> str:
+        h3 = self.data.get("h3", {})
+        if h3 and h3.get("prompt"):
+            return str(h3["prompt"])
         ltx = self.data.get("ltx", {})
         return str(
             ltx.get("original_style_i2v_prompt")
