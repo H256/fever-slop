@@ -41,6 +41,8 @@ from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
 from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
+from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 from feverslop.adapters.storyboard_renderer import StoryboardRenderer
 
 
@@ -71,6 +73,10 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                 prompt_pipeline_factory=MusicVideoPromptPipeline,
                 concept_batcher_factory=ConceptPromptBatcher,
                 scene_prompt_builder_factory=ScenePromptBuilder,
+            ),
+            H3PromptPipeline(
+                llm_factory=_build_llm,
+                h3_prompt_builder_factory=H3PromptBuilder,
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
         ],
@@ -147,6 +153,10 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
                 prompt_pipeline_factory=MusicVideoPromptPipeline,
                 concept_batcher_factory=ConceptPromptBatcher,
                 scene_prompt_builder_factory=ScenePromptBuilder,
+            ),
+            H3PromptPipeline(
+                llm_factory=_build_llm,
+                h3_prompt_builder_factory=H3PromptBuilder,
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
         ],
