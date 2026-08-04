@@ -422,7 +422,7 @@ class PatchSaveVideoTests(unittest.TestCase):
         patcher = WorkflowPatcher(workflow)
         ComfyUIMiniMaxH3VideoRenderBackend._patch_save_video(patcher, 1)
         self.assertEqual(
-            "minimaxh3_raw/scene_0001",
+            "scene_0001/raw",
             patcher.get()["1"]["inputs"]["filename_prefix"],
         )
 
@@ -431,7 +431,7 @@ class PatchSaveVideoTests(unittest.TestCase):
         patcher = WorkflowPatcher(workflow)
         ComfyUIMiniMaxH3VideoRenderBackend._patch_save_video(patcher, 42)
         self.assertEqual(
-            "minimaxh3_raw/scene_0042",
+            "scene_0042/raw",
             patcher.get()["1"]["inputs"]["filename_prefix"],
         )
 

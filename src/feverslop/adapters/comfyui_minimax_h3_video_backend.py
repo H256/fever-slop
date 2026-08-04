@@ -145,11 +145,15 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         patcher: WorkflowPatcher,
         scene_number: int,
     ) -> None:
-        """Patch the #SAVE_VIDEO anchor with a deterministic filename prefix."""
+        """Patch the #SAVE_VIDEO anchor with a deterministic filename prefix.
+
+        Uses a per-scene subfolder so the ComfyUI output lands under the canonical
+        artifact layout: render/scenes/scene_NNNN/raw/00001.mp4.
+        """
         patcher.set_input_by_title(
             "#SAVE_VIDEO",
             "filename_prefix",
-            f"minimaxh3_raw/scene_{scene_number:04}",
+            f"scene_{scene_number:04}/raw",
         )
 
     @staticmethod
