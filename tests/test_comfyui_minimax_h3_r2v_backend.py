@@ -98,9 +98,9 @@ def _native_r2v_workflow() -> dict:
             "inputs": {"noise_seed": 12345},
         },
         "30": {
-            "class_type": "PrimitiveFloat",
-            "_meta": {"title": "#DURATION"},
-            "inputs": {"value": 5.0},
+            "class_type": "PrimitiveInt",
+            "_meta": {"title": "#FRAMECOUNT"},
+            "inputs": {"value": 144},
         },
         "40": {
             "class_type": "PrimitiveStringMultiline",
@@ -666,8 +666,8 @@ class BuildWorkflowTests(unittest.TestCase):
         )
         # Prompt patched
         self.assertEqual("cinematic shot", result["40"]["inputs"]["value"])
-        # Duration patched
-        self.assertEqual(5.0, result["30"]["inputs"]["value"])
+        # Frame count patched: round(5.0 * 24) = 120
+        self.assertEqual(120, result["30"]["inputs"]["value"])
         # Megapixels patched: round(1024 * 768 / 1_000_000, 1) = round(0.786432, 1) = 0.8
         expected_mp = round(1024 * 768 / 1_000_000, 1)
         self.assertEqual(expected_mp, result["10"]["inputs"]["megapixels"])
@@ -1107,7 +1107,7 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
         minimal = {
             "10": {"class_type": "ResolutionSelector", "_meta": {"title": "#MEGAPIXELS"}, "inputs": {}},
             "20": {"class_type": "RandomNoise", "_meta": {"title": "#SEED"}, "inputs": {"noise_seed": 0}},
-            "30": {"class_type": "PrimitiveFloat", "_meta": {"title": "#DURATION"}, "inputs": {}},
+            "30": {"class_type": "PrimitiveInt", "_meta": {"title": "#FRAMECOUNT"}, "inputs": {}},
             "40": {"class_type": "PrimitiveStringMultiline", "_meta": {"title": "#PROMPT"}, "inputs": {}},
             "50": {"class_type": "LoadImage", "_meta": {"title": "#REF_1"}, "inputs": {"image": ""}},
             "70": {"class_type": "VHS_VideoCombine", "_meta": {"title": "#SAVE_VIDEO"}, "inputs": {}},
