@@ -238,6 +238,72 @@ class ArtifactFingerprintTests(unittest.TestCase):
         self.assertNotEqual(fp1, fp2)
 
 
+class DependencyGraphCycleDetectionTests(unittest.TestCase):
+    """Tests for _validate_no_cycles — the standalone DFS cycle checker."""
+
+    def _import_validate(self):
+        from feverslop.domain.rebuild_policy import _validate_no_cycles
+        return _validate_no_cycles
+
+    def test_acyclic_graph_passes(self):
+        validate = self._import_validate()
+        from feverslop.domain.rebuild_policy import _ARTIFACT_DEPENDENCIES
+        validate(_ARTIFACT_DEPENDENCIES)
+
+    def test_injected_twonode_cycle_detected(self):
+        validate = self._import_validate()
+        A = ArtifactKind.AUDIO_ANALYSIS
+        B = ArtifactKind.BEAT_MARKERS
+        graph = {
+            A: frozenset({B}),
+            B: frozenset({A}),
+        }
+        with self.assertRaises(ValueError) as ctx:
+            validate(graph)
+        msg = str(ctx.exception)
+        self.assertIn("Circular dependency", msg)
+        self.assertIn("audio_analysis", msg)
+        self.assertIn("beat_markers", msg)
+        cycle_part = msg.split(": ", 1)[-1]
+        parts = cycle_part.split(" -> ")
+        # Cycle should start and end with same node, no duplicates in between
+        self.assertEqual(parts[0], parts[-1])
+        # No duplicate consecutive nodes (catches "A -> B -> A -> A" bug)
+        for i in range(len(parts) - 1):
+            self.assertNotEqual(parts[i], parts[i + 1])
+
+    def test_injected_threenode_cycle_detected(self):
+        validate = self._import_validate()
+        A = ArtifactKind.AUDIO_ANALYSIS
+        B = ArtifactKind.BEAT_MARKERS
+        C = ArtifactKind.AUDIO_TIMELINE
+        graph = {
+            A: frozenset({C}),
+            B: frozenset({A}),
+            C: frozenset({B}),
+        }
+        with self.assertRaises(ValueError) as ctx:
+            validate(graph)
+        msg = str(ctx.exception)
+        self.assertIn("Circular dependency", msg)
+        cycle_part = msg.split(": ", 1)[-1]
+        parts = cycle_part.split(" -> ")
+        self.assertEqual(parts[0], parts[-1])
+        for i in range(len(parts) - 1):
+            self.assertNotEqual(parts[i], parts[i + 1])
+
+    def test_empty_graph_passes(self):
+        validate = self._import_validate()
+        validate({})
+
+    def test_selfloop_detected(self):
+        validate = self._import_validate()
+        A = ArtifactKind.AUDIO_ANALYSIS
+        graph = {A: frozenset({A})}
+        with self.assertRaises(ValueError):
+            validate(graph)
+
+
 class DependencyGraphAcyclicTests(unittest.TestCase):
     def test_dependency_graph_has_no_cycles(self):
         from feverslop.domain.rebuild_policy import _ARTIFACT_DEPENDENCIES

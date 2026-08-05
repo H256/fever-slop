@@ -46,6 +46,42 @@ class ArtifactFingerprint:
     dimensions_hash: str | None = None
 
 
+def _validate_no_cycles(graph: dict[ArtifactKind, frozenset[ArtifactKind]]) -> None:
+    """Raise ValueError if the dependency graph contains a cycle.
+
+    Uses DFS with white/gray/black coloring. A back-edge to a gray node
+    means a cycle exists; the error message reports the full ring path.
+    """
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[ArtifactKind, int] = {node: WHITE for node in graph}
+    parent: dict[ArtifactKind, ArtifactKind | None] = {node: None for node in graph}
+
+    def _dfs(u: ArtifactKind) -> None:
+        color[u] = GRAY
+        for v in graph.get(u, frozenset()):
+            if v not in color:
+                continue
+            if color[v] == GRAY:
+                path: list[ArtifactKind] = []
+                cur = u
+                while cur is not None:
+                    path.append(cur)
+                    if cur == v:
+                        break
+                    cur = parent[cur]
+                path.reverse()
+                path_str = " -> ".join(node.value for node in path)
+                raise ValueError(f"Circular dependency detected: {path_str} -> {v.value}")
+            if color[v] == WHITE:
+                parent[v] = u
+                _dfs(v)
+        color[u] = BLACK
+
+    for node in graph:
+        if color[node] == WHITE:
+            _dfs(node)
+
+
 # Dependencies: artifact -> artifacts it depends on
 _ARTIFACT_DEPENDENCIES: dict[ArtifactKind, frozenset[ArtifactKind]] = {
     ArtifactKind.AUDIO_ANALYSIS: frozenset(),
@@ -81,6 +117,7 @@ _ARTIFACT_DEPENDENCIES: dict[ArtifactKind, frozenset[ArtifactKind]] = {
         {ArtifactKind.AUDIO_TIMELINE, ArtifactKind.REFERENCE_SHEETS}
     ),
 }
+_validate_no_cycles(_ARTIFACT_DEPENDENCIES)
 
 _GLOBAL_ARTIFACTS = frozenset({
     ArtifactKind.FINAL_VIDEO,
