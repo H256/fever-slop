@@ -223,19 +223,31 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
     )
     console.print(f"[green]Updated config.json resolution to {width}x{height}[/green]")
 
-    # 2. Patch the render plan top-level resolution field
+    # 2. Patch render plan resolution
+    #    - Music projects: list of scenes, each with width/height fields
+    #    - Movie projects: dict with top-level resolution field
+    # Update all render plans in the plans directory, not just the active one.
     render_plan_path = state.plan_for_next_step
-    if render_plan_path.is_file():
-        raw = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
-        old_res = raw.get("resolution", {})
-        raw["resolution"] = {"width": width, "height": height}
-        render_plan_path.write_text(
+    plans_dir = render_plan_path.parent if render_plan_path.parent.name == "plans" else None
+    target_paths = sorted(plans_dir.glob("*.json")) if plans_dir else [render_plan_path]
+    updated_count = 0
+    for plan_path in target_paths:
+        if not plan_path.is_file():
+            continue
+        raw = json.loads(plan_path.read_text(encoding="utf-8-sig"))
+        if isinstance(raw, list):
+            for item in raw:
+                item["width"] = width
+                item["height"] = height
+        elif isinstance(raw, dict):
+            if "resolution" in raw:
+                raw["resolution"] = {"width": width, "height": height}
+        plan_path.write_text(
             json.dumps(raw, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
-        console.print(
-            f"[green]Updated render plan resolution from {old_res} to {raw['resolution']}[/green]"
-        )
+        updated_count += 1
+    console.print(f"[green]Updated {updated_count} render plan(s) to {width}x{height}[/green]")
 
     # 3. For MSR/ingredients: re-prepare workflows with new resolution
     if state.args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
