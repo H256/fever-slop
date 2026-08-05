@@ -6,6 +6,7 @@ from pathlib import Path
 from feverslop.tools.storyboard_page import (
     generate_storyboard_page,
     parse_scene_list,
+    _render_html,
 )
 
 
@@ -191,6 +192,20 @@ class StoryboardPageTests(unittest.TestCase):
         self.assertNotIn("Scene 0001", html)
         self.assertIn("Scene 0002", html)
         self.assertNotIn("Scene 0003", html)
+
+    def test_render_html_escapes_title_and_preserves_raw_blocks(self):
+        """Jinja2 template: title auto-escaped, scenes_html not double-escaped, CSS/JS raw."""
+        html_output = _render_html(
+            title="Test & <Page>",
+            scenes_html='<article class="scene-card">Card</article>',
+            scene_count=1,
+        )
+        self.assertIn("<!doctype html>", html_output)
+        self.assertIn("<h1>Test &amp; &lt;Page&gt;</h1>", html_output)
+        self.assertIn("1 scene blocks", html_output)
+        self.assertIn('<article class="scene-card">Card</article>', html_output)
+        self.assertIn("--primary: #6366F1", html_output)
+        self.assertIn("localStorage.setItem('storyboardPageMode', mode);", html_output)
 
 
 if __name__ == "__main__":
