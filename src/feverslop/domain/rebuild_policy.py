@@ -62,13 +62,13 @@ def _validate_no_cycles(graph: dict[ArtifactKind, frozenset[ArtifactKind]]) -> N
             if v not in color:
                 continue
             if color[v] == GRAY:
-                path: list[ArtifactKind] = [v]
+                path: list[ArtifactKind] = []
                 cur = u
-                while cur is not None and cur != v:
+                while cur is not None:
                     path.append(cur)
+                    if cur == v:
+                        break
                     cur = parent[cur]
-                if cur is None:
-                    path.append(u)
                 path.reverse()
                 path_str = " -> ".join(node.value for node in path)
                 raise ValueError(f"Circular dependency detected: {path_str} -> {v.value}")

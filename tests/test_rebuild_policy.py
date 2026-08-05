@@ -260,9 +260,17 @@ class DependencyGraphCycleDetectionTests(unittest.TestCase):
         }
         with self.assertRaises(ValueError) as ctx:
             validate(graph)
-        self.assertIn("Circular dependency", str(ctx.exception))
-        self.assertIn("audio_analysis", str(ctx.exception))
-        self.assertIn("beat_markers", str(ctx.exception))
+        msg = str(ctx.exception)
+        self.assertIn("Circular dependency", msg)
+        self.assertIn("audio_analysis", msg)
+        self.assertIn("beat_markers", msg)
+        cycle_part = msg.split(": ", 1)[-1]
+        parts = cycle_part.split(" -> ")
+        # Cycle should start and end with same node, no duplicates in between
+        self.assertEqual(parts[0], parts[-1])
+        # No duplicate consecutive nodes (catches "A -> B -> A -> A" bug)
+        for i in range(len(parts) - 1):
+            self.assertNotEqual(parts[i], parts[i + 1])
 
     def test_injected_threenode_cycle_detected(self):
         validate = self._import_validate()
@@ -276,7 +284,13 @@ class DependencyGraphCycleDetectionTests(unittest.TestCase):
         }
         with self.assertRaises(ValueError) as ctx:
             validate(graph)
-        self.assertIn("Circular dependency", str(ctx.exception))
+        msg = str(ctx.exception)
+        self.assertIn("Circular dependency", msg)
+        cycle_part = msg.split(": ", 1)[-1]
+        parts = cycle_part.split(" -> ")
+        self.assertEqual(parts[0], parts[-1])
+        for i in range(len(parts) - 1):
+            self.assertNotEqual(parts[i], parts[i + 1])
 
     def test_empty_graph_passes(self):
         validate = self._import_validate()
