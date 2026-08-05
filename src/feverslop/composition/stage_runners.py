@@ -201,6 +201,54 @@ def _run_anchor_fix_stage(state: PipelineRunState) -> None:
         console.print(f"! {warning}")
 
 
+def _run_set_resolution_stage(state: PipelineRunState) -> None:
+    """Persist new resolution to config.json and render plan, then re-prepare workflows.
+
+    Does NOT render anything; purely updates prep files so a later render
+    picks up the new resolution automatically.
+    """
+    set_res = getattr(state.args, "set_resolution", None)
+    if set_res is None:
+        raise ValueError("--set-resolution WxH is required for the set_resolution stage")
+
+    width = set_res.width
+    height = set_res.height
+    console.print(f"Setting resolution to {width}x{height}...")
+
+    # 1. Patch config.json
+    ProjectConfig.set_resolution_on_disk(
+        state.context.project_config_path,
+        width=width,
+        height=height,
+    )
+    console.print(f"[green]Updated config.json resolution to {width}x{height}[/green]")
+
+    # 2. Patch the render plan top-level resolution field
+    render_plan_path = state.plan_for_next_step
+    if render_plan_path.is_file():
+        raw = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
+        old_res = raw.get("resolution", {})
+        raw["resolution"] = {"width": width, "height": height}
+        render_plan_path.write_text(
+            json.dumps(raw, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        console.print(
+            f"[green]Updated render plan resolution from {old_res} to {raw['resolution']}[/green]"
+        )
+
+    # 3. For MSR/ingredients: re-prepare workflows with new resolution
+    if state.args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
+        console.print("Re-preparing workflows with new resolution...")
+        _run_ltx_prepare_workflows_stage(state)
+        console.print("[green]Workflows re-prepared.[/green]")
+    else:
+        console.print(
+            f"[green]Resolution updated. Run '--stage ltx_render_scenes' to render at "
+            f"{width}x{height}.[/green]"
+        )
+
+
 def _run_storyboard_frames_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline == "ltx_msr":
         raise ValueError("storyboard_frames is not used by ltx_msr")
@@ -1209,6 +1257,7 @@ STAGE_RUNNERS = {
     PipelineStage.MAIN_PIPELINE: _run_main_pipeline_stage,
     PipelineStage.RELAY_COMPACT: _run_relay_compact_stage,
     PipelineStage.ANCHOR_FIX: _run_anchor_fix_stage,
+    PipelineStage.SET_RESOLUTION: _run_set_resolution_stage,
     PipelineStage.STORYBOARD_FRAMES: _run_storyboard_frames_stage,
     PipelineStage.STORYBOARD_PAGE: _run_storyboard_page_stage,
     PipelineStage.MSR_REFERENCES: _run_msr_references_stage,
@@ -1229,6 +1278,7 @@ STAGE_LABELS = {
     PipelineStage.MAIN_PIPELINE: "Main pipeline",
     PipelineStage.RELAY_COMPACT: "relay compact",
     PipelineStage.ANCHOR_FIX: "anchor fix",
+    PipelineStage.SET_RESOLUTION: "Set resolution",
     PipelineStage.STORYBOARD_FRAMES: "Storyboard frames",
     PipelineStage.STORYBOARD_PAGE: "Storyboard page",
     PipelineStage.MSR_REFERENCES: "MSR references",
@@ -1265,6 +1315,11 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
     selected = getattr(args, "stages", None)
     if selected:
         return [PipelineStage(stage) for stage in selected]
+
+    # --set-resolution is a special mode: just update config + render plan + re-prepare
+    set_res = getattr(args, "set_resolution", None)
+    if set_res is not None:
+        return [PipelineStage.SET_RESOLUTION]
 
     stages: list[PipelineStage] = []
     if not args.skip_tests:
