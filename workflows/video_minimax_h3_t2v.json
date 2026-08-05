@@ -170,8 +170,8 @@
         1
       ],
       "length": [
-        "132",
-        1
+        "133",
+        0
       ],
       "clip": [
         "128",
@@ -199,26 +199,13 @@
       "title": "#PROMPT"
     }
   },
-  "132": {
-    "inputs": {
-      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
-      "values.a": [
-        "133",
-        0
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
   "133": {
     "inputs": {
-      "value": 2
+      "value": 144
     },
-    "class_type": "PrimitiveFloat",
+    "class_type": "PrimitiveInt",
     "_meta": {
-      "title": "#DURATION"
+      "title": "#FRAMECOUNT"
     }
   },
   "134": {
@@ -232,7 +219,7 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "🎈VRAM-Cleanup"
+      "title": "\ud83c\udf88VRAM-Cleanup"
     }
   },
   "135": {

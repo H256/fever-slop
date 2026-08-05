@@ -22,7 +22,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     """MiniMax H3 reference-to-video backend using FeverSlop meta-anchors.
 
     Subclass of ComfyUIMiniMaxH3VideoRenderBackend that patches workflows by
-    meta-title anchors (#PROMPT, #SEED, #DURATION, #MEGAPIXELS, #REF_N,
+    meta-title anchors (#PROMPT, #SEED, #FRAMECOUNT, #MEGAPIXELS, #REF_N,
     #LOAD_AUDIO, #TRIM_AUDIO, #SAVE_VIDEO) instead of direct class-type
     patching.
     """
@@ -103,7 +103,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         Patches FeverSlop meta-anchors:
         - ``#PROMPT``  → ``value``
         - ``#SEED``    → ``noise_seed``
-        - ``#DURATION`` → ``value``
+        - ``#FRAMECOUNT`` → ``value``
         - ``#MEGAPIXELS`` → ``megapixels`` (computed from width × height when given)
         - ``#REF_1``, ``#REF_2``, … → ``image``
         - ``#VIDEO_1``, ``#VIDEO_2``, ``#VIDEO_3`` → ``video``
@@ -122,9 +122,11 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- seed -------------------------------------------------------------
         self._patch_seed(patcher, self._seed_for_scene(scene_number))
 
-        # -- duration ---------------------------------------------------------
+        # -- frame count ---------------------------------------------------
         if duration_seconds is not None:
-            patcher.set_input_by_title("#DURATION", "value", float(duration_seconds))
+            patcher.set_input_by_title(
+                "#FRAMECOUNT", "value", int(round(float(duration_seconds) * 24))
+            )
 
         # -- resolution (megapixels) ------------------------------------------
         if width is not None and height is not None:
@@ -227,7 +229,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             return raw_output
 
         # -- postprocess trim -------------------------------------------------
-        # use render plan frame_count for audio sync, fall back to 17N+1
+        # use render plan frame_count for audio sync, fall back to 17N+5
         scene_frame_count = request.scene.get("frame_count")
         if scene_frame_count:
             keep_frames = int(scene_frame_count)

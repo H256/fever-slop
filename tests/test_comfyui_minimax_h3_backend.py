@@ -145,16 +145,16 @@ class LoadWorkflowTests(unittest.TestCase):
 
 class FramesFromDurationTests(unittest.TestCase):
     def test_4_seconds(self):
-        self.assertEqual(103, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(4.0))
+        self.assertEqual(107, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(4.0))
 
     def test_5_seconds(self):
-        self.assertEqual(120, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(5.0))
+        self.assertEqual(124, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(5.0))
 
     def test_10_seconds(self):
-        self.assertEqual(256, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(10.0))
+        self.assertEqual(243, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(10.0))
 
     def test_15_seconds(self):
-        self.assertEqual(375, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(15.0))
+        self.assertEqual(362, ComfyUIMiniMaxH3VideoRenderBackend._frames_from_duration(15.0))
 
 
 # ---------------------------------------------------------------------------

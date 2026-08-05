@@ -88,9 +88,9 @@ def _t2v_workflow() -> dict:
             "inputs": {"noise_seed": 12345},
         },
         "133": {
-            "class_type": "PrimitiveFloat",
-            "_meta": {"title": "#DURATION"},
-            "inputs": {"value": 5.0},
+            "class_type": "PrimitiveInt",
+            "_meta": {"title": "#FRAMECOUNT"},
+            "inputs": {"value": 144},
         },
         "136": {
             "class_type": "LoadImage",
@@ -114,7 +114,7 @@ def _t2v_workflow() -> dict:
                 "prompt": "old prompt",
                 "width": ["115", 0],
                 "height": ["115", 1],
-                "length": ["132", 1],
+                "length": ["133", 0],
                 "clip": ["128", 0],
                 "vae": ["119", 0],
                 "first_frame": ["136", 0],
@@ -345,8 +345,8 @@ class BuildWorkflowTests(unittest.TestCase):
         )
         # Prompt patched
         self.assertEqual("cinematic vaporwave scene", result["131"]["inputs"]["prompt"])
-        # Duration patched
-        self.assertEqual(5.0, result["133"]["inputs"]["value"])
+        # Frame count patched: round(5.0 * 24) = 120
+        self.assertEqual(120, result["133"]["inputs"]["value"])
         # Megapixels patched: round(1024 * 768 / 1_000_000, 1) = 0.8
         expected_mp = round(1024 * 768 / 1_000_000, 1)
         self.assertEqual(expected_mp, result["115"]["inputs"]["megapixels"])
@@ -394,8 +394,8 @@ class BuildWorkflowTests(unittest.TestCase):
             {"scene": 1},
             prompt="test",
         )
-        # Duration stays as workflow default (5.0)
-        self.assertEqual(5.0, result["133"]["inputs"]["value"])
+        # Frame count stays as workflow default (144)
+        self.assertEqual(144, result["133"]["inputs"]["value"])
 
     def test_start_frame_only(self):
         backend = self._backend(workflow=_t2v_workflow())

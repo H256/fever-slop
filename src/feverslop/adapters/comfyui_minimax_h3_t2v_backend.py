@@ -20,7 +20,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     """MiniMax H3 text-to-video backend using FL2VA + FeverSlop meta-anchors.
 
     Subclass of ComfyUIMiniMaxH3VideoRenderBackend. Patches #PROMPT, #SEED,
-    #DURATION, #MEGAPIXEL, #SAVE_VIDEO, #T2V_START, #T2V_END, #T2V_TEXT.
+    #FRAMECOUNT, #MEGAPIXEL, #SAVE_VIDEO, #T2V_START, #T2V_END, #T2V_TEXT.
     """
 
     MAX_FRAMES = 2  # start + end
@@ -95,7 +95,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         Patches FeverSlop meta-anchors:
         - ``#PROMPT``  -> ``prompt``
         - ``#SEED``    -> ``noise_seed``
-        - ``#DURATION`` -> ``value``
+        - ``#FRAMECOUNT`` -> ``value``
         - ``#MEGAPIXEL`` -> ``megapixels`` (computed from width x height when given)
         - ``#T2V_START`` -> ``image``
         - ``#T2V_END`` -> ``image``
@@ -117,9 +117,11 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             megapixels = (int(width) * int(height)) / 1_000_000
             self._patch_megapixels(patcher, megapixels)
 
-        # -- optional: duration
+        # -- optional: frame count
         if duration_seconds is not None:
-            patcher.set_input_by_title("#DURATION", "value", float(duration_seconds))
+            patcher.set_input_by_title(
+                "#FRAMECOUNT", "value", int(round(float(duration_seconds) * 24))
+            )
 
         # -- optional: start/end frames
         if start_frame_path is not None:
@@ -194,7 +196,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             return raw_output
 
         # -- postprocess trim: use render plan frame_count for audio sync,
-        # fall back to 17N+1 rounding for backward compat
+        # fall back to 17N+5 rounding for backward compat
         scene_frame_count = request.scene.get("frame_count")
         if scene_frame_count:
             keep_frames = int(scene_frame_count)

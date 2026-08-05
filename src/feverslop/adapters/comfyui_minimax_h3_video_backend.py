@@ -69,7 +69,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
 
     @staticmethod
     def _frames_from_duration(seconds: float) -> int:
-        """Convert seconds to a 17N+1-constrained frame count at 24 fps."""
+        """Convert seconds to a 17N+5-constrained frame count at 24 fps."""
         return _frames_from_duration_(seconds)
 
     @staticmethod
