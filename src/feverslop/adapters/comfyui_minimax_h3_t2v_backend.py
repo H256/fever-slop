@@ -193,10 +193,15 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if not self.postprocess:
             return raw_output
 
-        # -- postprocess trim
-        keep_frames = self._frames_from_duration(
-            duration_seconds if duration_seconds else 5.0
-        )
+        # -- postprocess trim: use render plan frame_count for audio sync,
+        # fall back to 17N+1 rounding for backward compat
+        scene_frame_count = request.scene.get("frame_count")
+        if scene_frame_count:
+            keep_frames = int(scene_frame_count)
+        else:
+            keep_frames = self._frames_from_duration(
+                duration_seconds if duration_seconds else 5.0
+            )
         return self._postprocess_with_audio(
             raw_output,
             TrimSpec(
