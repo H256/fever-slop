@@ -2,17 +2,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.application.prompt_revisions import (
+    LoadPromptHistoryUseCase,
+    PatchPromptError,
+    PatchPromptUseCase,
+)
 from feverslop.domain.prompt_revisions import (
     PromptField,
     PromptHistory,
     PromptRevision,
 )
+from feverslop.infra.sqlite_adapter import SqliteRevisionStore
 from feverslop.studio.rebuild_service import (
     PromptSaveConflict,
     RebuildService,
     RevisionSaveResult,
 )
-from feverslop.infra.sqlite_adapter import SqliteRevisionStore
 
 
 class _FakeRevisionStore:
@@ -187,6 +192,165 @@ class RebuildServiceRestoreTests(unittest.TestCase):
                 field=PromptField.Z_IMAGE_PROMPT,
                 revision_id="nonexistent",
             )
+
+
+class RebuildServiceUseCaseChainTests(unittest.TestCase):
+    """Integration tests for PatchPromptUseCase → SqliteRevisionStore → LoadPromptHistoryUseCase.
+
+    Verifies the use-case layer (not the service layer) with a real SQLite store
+    so that schema initialization, serialization, and round-trip persistence are
+    validated end-to-end.
+    """
+
+    def test_patch_prompt_and_load_history_round_trip(self):
+        """PatchPromptUseCase saves revision; LoadPromptHistoryUseCase retrieves it."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "revisions.sqlite")
+            store = SqliteRevisionStore(db_path)
+
+            patch = PatchPromptUseCase(store=store)
+            load = LoadPromptHistoryUseCase(store=store)
+
+            # Patch
+            revision = patch.execute(
+                project_id="use-case-test",
+                scene_number=1,
+                field=PromptField.Z_IMAGE_PROMPT,
+                value="patched prompt",
+            )
+
+            self.assertEqual(revision.value, "patched prompt")
+            self.assertEqual(revision.project_id, "use-case-test")
+            self.assertEqual(revision.scene_number, 1)
+
+            # Load back
+            result = load.execute(
+                project_id="use-case-test",
+                scene_number=1,
+                field=PromptField.Z_IMAGE_PROMPT,
+            )
+
+            self.assertEqual(len(result.history.revisions), 1)
+            self.assertEqual(result.history.revisions[0].value, "patched prompt")
+            self.assertIn(PromptField.Z_IMAGE_PROMPT, result.available_fields)
+
+    def test_multiple_patches_create_chain_loaded_by_history(self):
+        """Multiple PatchPromptUseCase calls build a revision chain in SQLite."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "revisions.sqlite")
+            store = SqliteRevisionStore(db_path)
+
+            patch = PatchPromptUseCase(store=store)
+            load = LoadPromptHistoryUseCase(store=store)
+
+            r1 = patch.execute(
+                project_id="chain-test",
+                scene_number=2,
+                field=PromptField.I2V_PROMPT,
+                value="version 1",
+            )
+            r2 = patch.execute(
+                project_id="chain-test",
+                scene_number=2,
+                field=PromptField.I2V_PROMPT,
+                value="version 2",
+            )
+
+            # r2 should reference r1 as parent
+            self.assertEqual(r2.parent_id, r1.id)
+
+            # Load via the other use case
+            result = load.execute(
+                project_id="chain-test",
+                scene_number=2,
+                field=PromptField.I2V_PROMPT,
+            )
+
+            self.assertEqual(len(result.history.revisions), 2)
+            self.assertEqual(result.history.revisions[0].value, "version 1")
+            self.assertEqual(result.history.revisions[1].value, "version 2")
+            self.assertEqual(result.history.revisions[1].parent_id, result.history.revisions[0].id)
+
+    def test_patch_rejects_unchanged_value(self):
+        """PatchPromptUseCase raises PatchPromptError on no-op patch."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "revisions.sqlite")
+            store = SqliteRevisionStore(db_path)
+
+            patch = PatchPromptUseCase(store=store)
+
+            patch.execute(
+                project_id="reject-test",
+                scene_number=1,
+                field=PromptField.Z_IMAGE_PROMPT,
+                value="initial",
+            )
+
+            with self.assertRaises(PatchPromptError):
+                patch.execute(
+                    project_id="reject-test",
+                    scene_number=1,
+                    field=PromptField.Z_IMAGE_PROMPT,
+                    value="initial",
+                )
+
+    def test_list_fields_reports_all_patched_fields(self):
+        """LoadPromptHistoryUseCase returns all fields patched for that scene."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "revisions.sqlite")
+            store = SqliteRevisionStore(db_path)
+
+            patch = PatchPromptUseCase(store=store)
+            load = LoadPromptHistoryUseCase(store=store)
+
+            patch.execute(
+                project_id="fields-test",
+                scene_number=3,
+                field=PromptField.Z_IMAGE_PROMPT,
+                value="image",
+            )
+            patch.execute(
+                project_id="fields-test",
+                scene_number=3,
+                field=PromptField.I2V_PROMPT,
+                value="video",
+            )
+
+            result = load.execute(
+                project_id="fields-test",
+                scene_number=3,
+                field=PromptField.Z_IMAGE_PROMPT,
+            )
+
+            self.assertIn(PromptField.Z_IMAGE_PROMPT, result.available_fields)
+            self.assertIn(PromptField.I2V_PROMPT, result.available_fields)
+
+    def test_persistence_survives_store_reopen(self):
+        """Revisions survive reopening the SqliteRevisionStore (new process simulation)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "revisions.sqlite")
+
+            # First store session
+            store1 = SqliteRevisionStore(db_path)
+            patch1 = PatchPromptUseCase(store=store1)
+            patch1.execute(
+                project_id="reopen-test",
+                scene_number=1,
+                field=PromptField.Z_IMAGE_PROMPT,
+                value="persisted value",
+            )
+
+            # Second store session (fresh object, simulates restart)
+            store2 = SqliteRevisionStore(db_path)
+            load2 = LoadPromptHistoryUseCase(store=store2)
+            result = load2.execute(
+                project_id="reopen-test",
+                scene_number=1,
+                field=PromptField.Z_IMAGE_PROMPT,
+            )
+
+            self.assertEqual(len(result.history.revisions), 1)
+            self.assertEqual(result.history.revisions[0].value, "persisted value")
 
 
 class RebuildServiceSqliteIntegrationTests(unittest.TestCase):
