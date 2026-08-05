@@ -17,4 +17,5 @@ app_config.json
 !.env.example
 
 temp*
+!src/feverslop/tools/templates/
 *debug*
