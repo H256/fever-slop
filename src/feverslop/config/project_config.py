@@ -360,6 +360,25 @@ class ProjectConfig:
             ),
         )
 
+    @staticmethod
+    def set_resolution_on_disk(
+        config_path: str | Path,
+        *,
+        width: int,
+        height: int,
+    ) -> None:
+        """Patch config.json with new resolution and write it back to disk.
+
+        Operates on the raw JSON so it does not disturb other fields.
+        """
+        config_path = coerce_local_path(config_path).resolve()
+        raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        if "video" not in raw:
+            raw["video"] = {}
+        raw["video"]["width"] = width
+        raw["video"]["height"] = height
+        config_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
     @property
     def song_id(self) -> str:
         return self.input_audio.stem
