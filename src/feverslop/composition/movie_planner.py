@@ -23,5 +23,6 @@ def build_movie_planner(config: dict[str, Any] | None = None):
             model=app_config.llm.model,
             temperature=app_config.llm.temperature,
             max_tokens=app_config.llm.max_tokens,
+            request_timeout_seconds=app_config.llm.request_timeout_seconds,
         )
     )

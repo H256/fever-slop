@@ -13,6 +13,34 @@ from feverslop.errors import FeverSlopLMLError
 
 class LLMClientRetryTests(unittest.TestCase):
     @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_uses_request_timeout_from_init(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="ok"))]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        client = LocalOpenAIClient(api_key="test-key", request_timeout_seconds=42.0)
+        client.complete_prompt("test")
+
+        create_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        self.assertEqual(42.0, create_kwargs["timeout"])
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_complete_prompt_override_timeout(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="ok"))]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        client = LocalOpenAIClient(api_key="test-key", request_timeout_seconds=42.0)
+        client.complete_prompt("test", timeout=99.0)
+
+        create_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        self.assertEqual(99.0, create_kwargs["timeout"])
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
     def test_complete_prompt_with_images_builds_multimodal_user_content(self, mock_openai):
         mock_client = MagicMock()
         mock_openai.return_value = mock_client

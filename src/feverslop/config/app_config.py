@@ -17,6 +17,7 @@ class LLMConfig:
     model: str = "default"
     temperature: float = 0.7
     max_tokens: int = 4096
+    request_timeout_seconds: float = 180.0
     _local_api_key: str | None = field(default=None, repr=False)
 
     @property
@@ -180,6 +181,7 @@ class AppConfig:
                 model=llm_raw.get("model", "default"),
                 temperature=float(llm_raw.get("temperature", 0.7)),
                 max_tokens=int(llm_raw.get("max_tokens", 4096)),
+                request_timeout_seconds=float(llm_raw.get("request_timeout_seconds", 180.0)),
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),
             comfyui=ComfyUIConfig(

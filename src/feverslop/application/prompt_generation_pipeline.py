@@ -181,7 +181,11 @@ class PromptGenerationPipeline:
                 f"[cyan]Using batched concept generation: "
                 f"{request.concept_batch_size} segments per batch[/cyan]"
             )
-            concept_batcher = self.concept_batcher_factory(llm, request.concept_batch_size)
+            concept_batcher = self.concept_batcher_factory(
+                llm,
+                request.concept_batch_size,
+                request_timeout_seconds=app_config.llm.request_timeout_seconds,
+            )
             concept_prompts = run_spinner(
                 f"Generating concept prompts in batches of {request.concept_batch_size}...",
                 lambda: concept_batcher.create_concept_prompts_batched(

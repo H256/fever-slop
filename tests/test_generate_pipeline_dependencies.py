@@ -120,9 +120,10 @@ class FakePromptPipeline:
 
 
 class FakeConceptBatcher:
-    def __init__(self, llm, batch_size):
+    def __init__(self, llm, batch_size, request_timeout_seconds=None):
         self.llm = llm
         self.batch_size = batch_size
+        self.request_timeout_seconds = request_timeout_seconds
         self.used = False
 
     def create_concept_prompts_batched(self, stage1_segments, story_idea, global_context, notes=""):
@@ -274,10 +275,15 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             prompt_pipeline = FakePromptPipeline(llm)
             concept_batcher = FakeConceptBatcher(llm, 2)
             scene_prompt_builder = FakeScenePromptBuilder(llm)
+            def concept_batcher_factory(llm_arg, batch_size, request_timeout_seconds=None):
+                concept_batcher.batch_size = batch_size
+                concept_batcher.request_timeout_seconds = request_timeout_seconds
+                return concept_batcher
+
             pipeline = PromptGenerationPipeline(
                 llm_factory=lambda app_config: llm,
                 prompt_pipeline_factory=lambda llm_arg: prompt_pipeline,
-                concept_batcher_factory=lambda llm_arg, batch_size: concept_batcher,
+                concept_batcher_factory=concept_batcher_factory,
                 scene_prompt_builder_factory=lambda llm_arg: scene_prompt_builder,
             )
             context = _prompt_context(temp, concept_batch_size=2)
@@ -287,6 +293,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertFalse(prompt_pipeline.used_for_concepts)
             self.assertTrue(concept_batcher.used)
             self.assertEqual(2, concept_batcher.batch_size)
+            self.assertEqual(180.0, concept_batcher.request_timeout_seconds)
             self.assertEqual({"segment_001": "batched concept"}, result.concept_prompts)
 
 
@@ -311,7 +318,13 @@ def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanCo
             ),
             prompt_guidance=SimpleNamespace(as_prompt_context=lambda: {}),
         ),
-        app_config=SimpleNamespace(llm=SimpleNamespace(base_url="http://fake", model="fake", temperature=0, max_tokens=100)),
+        app_config=SimpleNamespace(llm=SimpleNamespace(
+            base_url="http://fake",
+            model="fake",
+            temperature=0,
+            max_tokens=100,
+            request_timeout_seconds=180.0
+        )),
         stage1_segments=[
             {
                 "segment_id": "segment_001",

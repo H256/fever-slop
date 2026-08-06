@@ -40,6 +40,7 @@ class ConceptPromptBatcher:
         llm: LLMPort,
         batch_size: int = 10,
         max_previous_concepts: int = 6,
+        request_timeout_seconds: float | None = None,
     ):
         if batch_size < 1:
             raise ValueError("batch_size must be >= 1")
@@ -47,6 +48,7 @@ class ConceptPromptBatcher:
         self.llm = llm
         self.batch_size = batch_size
         self.max_previous_concepts = max_previous_concepts
+        self.request_timeout_seconds = request_timeout_seconds
 
     def create_concept_prompts_batched(
         self,
@@ -132,6 +134,7 @@ class ConceptPromptBatcher:
                 silent_mode=bool(global_context.get("silent_mode", False)),
             ),
             prompt=json.dumps(payload, ensure_ascii=False, indent=2),
+            timeout=self.request_timeout_seconds,
         )
 
         return extract_json_object(response)
@@ -200,6 +203,7 @@ Rules:
         response = self.llm.complete_prompt(
             system_prompt=system_prompt,
             prompt=json.dumps(payload, ensure_ascii=False, indent=2),
+            timeout=self.request_timeout_seconds,
         )
 
         repair = extract_json_object(response)
@@ -256,6 +260,7 @@ Do not mention JSON or segment ids unless needed.
         return self.llm.complete_prompt(
             system_prompt=system_prompt,
             prompt=json.dumps(payload, ensure_ascii=False, indent=2),
+            timeout=self.request_timeout_seconds,
         ).strip()
 
     @staticmethod

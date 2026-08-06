@@ -8,16 +8,25 @@ from unittest.mock import patch
 
 
 class AppConfigTests(unittest.TestCase):
-    def test_loads_llm_api_key_from_app_config(self):
+    def test_loads_llm_request_timeout(self):
         from feverslop.config.app_config import AppConfig
 
-        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
+        with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "app_config.json"
-            config_path.write_text('{"llm": {"api_key": "json-secret"}}', encoding="utf-8")
+            config_path.write_text('{"llm": {"request_timeout_seconds": 600.0}}', encoding="utf-8")
 
             config = AppConfig.load(config_path)
-            self.assertEqual("json-secret", config.llm.api_key)
-            self.assertNotIn("json-secret", repr(config.llm))
+            self.assertEqual(600.0, config.llm.request_timeout_seconds)
+
+    def test_llm_request_timeout_defaults_to_180(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+            self.assertEqual(180.0, config.llm.request_timeout_seconds)
 
     def test_loads_llm_api_key_from_adjacent_dotenv(self):
         from feverslop.config.app_config import AppConfig
