@@ -316,7 +316,9 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
 
 def _run_msr_references_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v"):
-        raise ValueError("msr_references requires --video-pipeline ltx_msr or ltx_ingredients")
+        raise ValueError(
+            "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
+        )
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
@@ -335,8 +337,10 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
-        raise ValueError("msr_reference_sheets requires --video-pipeline ltx_msr or ltx_ingredients")
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v"):
+        raise ValueError(
+            "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
+        )
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
@@ -1369,15 +1373,15 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         stages.append(PipelineStage.RELAY_COMPACT)
     if not args.skip_anchor_fix:
         stages.append(PipelineStage.ANCHOR_FIX)
-    if args.video_pipeline == "ltx_msr":
+    if args.video_pipeline in ("ltx_msr", "minimax-h3-r2v"):
         if not args.skip_msr_reference_render:
             stages.append(PipelineStage.MSR_REFERENCES)
         else:
             console.print("Skipping MSR reference rendering; using existing reference manifests.")
         stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
-        if not args.skip_msr_prompt_enrichment:
+        if args.video_pipeline == "ltx_msr" and not args.skip_msr_prompt_enrichment:
             stages.append(PipelineStage.MSR_PROMPT_ENRICH)
-        else:
+        elif args.video_pipeline == "ltx_msr":
             console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
     elif args.video_pipeline == "ltx_ingredients":
         if not args.skip_msr_reference_render:

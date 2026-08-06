@@ -110,6 +110,25 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
         self.assertLess(stages.index(PipelineStage.LTX_PREPARE_WORKFLOWS), stages.index(PipelineStage.LTX_RENDER_SCENES))
         self.assertIn(PipelineStage.LTX_PREPARE_WORKFLOWS, STAGE_RUNNERS)
 
+    def test_minimax_r2v_uses_msr_reference_stages_before_render(self):
+        args = argparse.Namespace(
+            stages=None, skip_tests=True, skip_main_pipeline=True, skip_relay_compact=True,
+            skip_anchor_fix=True, video_pipeline="minimax-h3-r2v", skip_msr_reference_render=True,
+            skip_msr_prompt_enrichment=True, skip_ingredients_sheets=True, skip_ltx=False,
+            skip_final_concat=True, render_mode="single_prompt", skip_storyboard=True,
+            skip_storyboard_page=True, diagnostic_original_audio_mux=False,
+            no_original_audio_mux=False, skip_facefix=True,
+        )
+
+        stages = resolve_pipeline_stages(args)
+
+        self.assertNotIn(PipelineStage.STORYBOARD_FRAMES, stages)
+        self.assertNotIn(PipelineStage.STORYBOARD_PAGE, stages)
+        self.assertLess(
+            stages.index(PipelineStage.MSR_REFERENCE_SHEETS),
+            stages.index(PipelineStage.LTX_RENDER_SCENES),
+        )
+
     def test_prepare_uses_same_scene_selection_and_never_queues(self):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
