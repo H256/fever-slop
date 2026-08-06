@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 import subprocess
@@ -36,52 +36,26 @@ class VideoPostProcessor:
         cmd = [
             self.ffmpeg_path,
             "-y",
-        ]
-
-        # Place -ss before -i ONLY when there is an actual seek offset.
-        # An input-level -ss 0 (no-op for output) still triggers ffmpeg's
-        # internal seek logic, which shifts the decoder's GOP alignment.
-        # Combined with x264's B-frame GOP structure at the encoder tail,
-        # this produces duplicate frames in a N=N+2 oscillation pattern.
-        # When trim_front_frames > 0, input-level -ss enables fast seeking.
-        if spec.start_seconds > 0:
-            cmd.extend([
-                "-ss",
-                f"{spec.start_seconds:.9f}",
-            ])
-
-        cmd.extend([
+            "-ss",
+            f"{spec.start_seconds:.9f}",
             "-i",
             str(spec.source_file),
-        ])
+            "-t",
+            f"{spec.duration_seconds:.9f}",
+        ]
 
         if self.reencode:
-            # Use video filter for frame-count-based trimming instead of
-            # input -t.  The trim filter selects frames by index, independent
-            # of PTS/GOP structure.  Do not use -frames:v here — it forces
-            # the encoder to pad output with the last frame when GOP tail
-            # boundaries produce fewer frames than requested, creating freeze
-            # frame artifacts.  The trim filter alone guarantees exact count,
-            # and -vsync 0 prevents the muxer from inserting duplicate frames
-            # when the audio filter output is slightly longer than the video.
-            duration_a = spec.duration_seconds
             cmd.extend([
-                "-vf", f"trim=end_frame={spec.keep_frames},setpts=PTS-STARTPTS",
-                "-af", f"atrim=end={duration_a:.9f},asetpts=PTS-STARTPTS",
                 "-c:v", self.video_codec,
                 "-crf", str(self.crf),
                 "-preset", self.preset,
                 "-pix_fmt", "yuv420p",
                 "-c:a", self.audio_codec,
                 "-b:a", self.audio_bitrate,
-                "-vsync", "0",
                 "-movflags", "+faststart",
             ])
         else:
-            cmd.extend([
-                "-t", f"{spec.duration_seconds:.9f}",
-                "-c", "copy",
-            ])
+            cmd.extend(["-c", "copy"])
 
         cmd.append(str(spec.output_file))
         self._run_ffmpeg(cmd)
