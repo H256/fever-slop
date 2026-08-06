@@ -859,11 +859,14 @@ class StudioBackendTests(unittest.TestCase):
         r2v_steps = registry._initial_steps("full-pipeline", pipeline_mode="minimax_h3_r2v")
         t2v_steps = registry._initial_steps("full-pipeline", pipeline_mode="minimax_h3_t2v")
 
-        for steps in (r2v_steps, t2v_steps):
-            step_names = [step["name"] for step in steps]
-            self.assertEqual(["Main pipeline", "LTX render", "Final concat"], step_names)
-            self.assertNotIn("MSR references", step_names)
-            self.assertNotIn("Storyboard", step_names)
+        r2v_step_names = [step["name"] for step in r2v_steps]
+        self.assertEqual(["Main pipeline", "MSR references", "LTX render", "Final concat"], r2v_step_names)
+        self.assertNotIn("Storyboard", r2v_step_names)
+
+        t2v_step_names = [step["name"] for step in t2v_steps]
+        self.assertEqual(["Main pipeline", "LTX render", "Final concat"], t2v_step_names)
+        self.assertNotIn("MSR references", t2v_step_names)
+        self.assertNotIn("Storyboard", t2v_step_names)
 
     def test_pipeline_option_builder_uses_minimax_pipeline_mode(self):
         r2v = build_pipeline_options("full-pipeline", pipeline_mode="minimax_h3_r2v")
@@ -871,7 +874,7 @@ class StudioBackendTests(unittest.TestCase):
 
         self.assertEqual("minimax-h3-r2v", r2v["video_pipeline"])
         self.assertEqual("minimax-h3-t2v", t2v["video_pipeline"])
-        self.assertTrue(r2v["skip_msr_reference_render"])
+        self.assertFalse(r2v["skip_msr_reference_render"])
         self.assertTrue(r2v["skip_msr_prompt_enrichment"])
         self.assertTrue(r2v["skip_ingredients_sheets"])
         self.assertTrue(t2v["skip_msr_reference_render"])
