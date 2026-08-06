@@ -50,7 +50,6 @@ class VideoPostProcessor:
                 "-crf", str(self.crf),
                 "-preset", self.preset,
                 "-pix_fmt", "yuv420p",
-                "-frames:v", str(spec.keep_frames),
                 "-c:a", self.audio_codec,
                 "-b:a", self.audio_bitrate,
                 "-movflags", "+faststart",

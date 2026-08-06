@@ -229,8 +229,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             return raw_output
 
         # -- postprocess trim -------------------------------------------------
-        # use render plan frame_count for music sync (beat-aligned timing);
-        # fall back to 17N+5 rounding when not present (e.g. T2V)
+        # use render plan frame_count for audio sync, fall back to 17N+5
         scene_frame_count = request.scene.get("frame_count")
         if scene_frame_count:
             keep_frames = int(scene_frame_count)
