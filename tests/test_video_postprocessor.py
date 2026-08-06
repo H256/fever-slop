@@ -189,13 +189,18 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             scene=1,
         )
 
-        ffprobe_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="10\n", stderr="")
+        # Reencode flow: trim -> _pad_short_clip (frame_count) -> _pad_short_audio (audio_duration)
+        # When frame_count == keep_frames AND audio_duration >= target - 0.05,
+        # only 3 invocations: trim + 2 probes, no padding.
+        frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="10\n", stderr="")
+        audio_ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="5.000000\n", stderr="")
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
-            audio_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="5.000000\n", stderr="")
-            run.side_effect = [None, ffprobe_result, None]
+            run.side_effect = [None, frame_count_result, audio_ok]
             processor.trim_clip(spec)
 
-            cmd = run.call_args.args[0]
+            # Exactly 3 invocations (no padding triggered)
+            self.assertEqual(3, run.call_count)
+            cmd = run.call_args_list[0].args[0]
             # Video filter replaces input -t
             self.assertIn("-vf", cmd)
             self.assertIn("trim=end_frame=10", cmd)
@@ -226,13 +231,14 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             scene=1,
         )
 
-        ffprobe_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="10\n", stderr="")
+        # Same: trim succeeds, frame count OK, audio OK -> no padding
+        frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="10\n", stderr="")
+        audio_ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="5.000000\n", stderr="")
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
-            audio_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="5.000000\n", stderr="")
-            run.side_effect = [None, ffprobe_result, None]
+            run.side_effect = [None, frame_count_result, audio_ok]
             processor.trim_clip(spec)
 
-            cmd = run.call_args.args[0]
+            cmd = run.call_args_list[0].args[0]
             self.assertIn("-ss", cmd)
             # -ss must come before -i (input-level fast seek)
             ss_idx = cmd.index("-ss")
