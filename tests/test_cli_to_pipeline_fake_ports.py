@@ -193,6 +193,46 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
             self.assertEqual(2, len(rendered))
             self.assertEqual(0, len(backend.requests))
 
+    def test_skip_existing_recognises_per_scene_dir_output(self):
+        """Pre-existing per-scene dir output (Minimax R2V/T2V) skips backend call."""
+        backend = FakeVideoBackend()
+        store = JsonArtifactStore()
+        use_case = RenderVideoScenesUseCase(backend=backend, artifact_store=store)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scenes = _render_plan_scenes()
+            plan_path = temp / "render_plan.json"
+            plan_path.write_text(json.dumps(scenes), encoding="utf-8")
+
+            # Pre-create scene outputs in per-scene directory structure
+            # (pattern used by ComfyUIMiniMaxH3R2VBackend and ComfyUIMiniMaxH3T2VBackend)
+            for scene_num in (1, 2):
+                scene_output = temp / "render" / f"scene_{scene_num:04}" / "final.mp4"
+                scene_output.parent.mkdir(parents=True, exist_ok=True)
+                scene_output.write_bytes(b"existing")
+
+            rendered = use_case.execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=plan_path,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=temp / "song.mp3",
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "render",
+                    render_mode="single_prompt",
+                    skip_existing=True,
+                )
+            )
+
+            self.assertEqual(2, len(rendered))
+            self.assertEqual(0, len(backend.requests))
+            self.assertEqual(
+                temp / "render/scene_0001/final.mp4", rendered[0]
+            )
+            self.assertEqual(
+                temp / "render/scene_0002/final.mp4", rendered[1]
+            )
+
     def test_scene_selection_limits_backend_calls(self):
         """scene_numbers filters which scenes reach the backend."""
         backend = FakeVideoBackend()
