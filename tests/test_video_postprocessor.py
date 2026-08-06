@@ -201,14 +201,17 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             # Exactly 3 invocations (no padding triggered)
             self.assertEqual(3, run.call_count)
             cmd = run.call_args_list[0].args[0]
+            # Join for filter-value substring checks (values like
+            # "trim=end_frame=10,setpts=..." are single list elements)
+            cmd_joined = " ".join(cmd)
             # Video filter replaces input -t
             self.assertIn("-vf", cmd)
-            self.assertIn("trim=end_frame=10", cmd)
-            self.assertIn("setpts=PTS-STARTPTS", cmd)
+            self.assertIn("trim=end_frame=10", cmd_joined)
+            self.assertIn("setpts=PTS-STARTPTS", cmd_joined)
             # Audio filter replaces input -t for audio
             self.assertIn("-af", cmd)
-            self.assertIn("atrim=end=", cmd)
-            self.assertIn("asetpts=PTS-STARTPTS", cmd)
+            self.assertIn("atrim=end=", cmd_joined)
+            self.assertIn("asetpts=PTS-STARTPTS", cmd_joined)
             # No -frames:v in main trim (only in padding step)
             self.assertNotIn("-frames:v", cmd)
             # -vsync 0 prevents muxer frame duplication
