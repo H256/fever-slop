@@ -18,6 +18,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.project_visual_consistency import (
     ProjectReferenceManifestAdapter,
@@ -61,6 +62,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
+from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
 from feverslop.tools.reference_bible import run as render_reference_bible
 from feverslop.tools.storyboard_page import parse_scene_list
@@ -166,6 +168,24 @@ def _run_main_pipeline_stage(state: PipelineRunState) -> None:
         resolution=resolution,
     )
     state.plan_for_next_step = state.context.render_plan
+
+
+def _run_render_plan_stage(state: PipelineRunState) -> None:
+    """Build step 9 from prompt artifacts produced by the main pipeline."""
+    config = ProjectConfig.load(state.context.project_config_path)
+    paths = config.paths
+    song_id = config.song_id
+    h3_prompts = paths.prompts_dir / f"h3_prompts_{song_id}.json"
+    build_render_plan(
+        scene_prompts_json=paths.prompts_dir / f"scene_prompts_{song_id}.json",
+        ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{song_id}.json",
+        output_json_file=state.context.render_plan,
+        video_settings=config.to_video_settings(),
+        artifact_store=JsonArtifactStore(),
+        h3_prompts_json=h3_prompts if h3_prompts.is_file() else None,
+    )
+    state.plan_for_next_step = state.context.render_plan
+    console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
 
 
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
@@ -295,7 +315,7 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_references_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v"):
         raise ValueError("msr_references requires --video-pipeline ltx_msr or ltx_ingredients")
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
@@ -1270,6 +1290,7 @@ def _run_facefix_concat_stage(state: PipelineRunState) -> None:
 STAGE_RUNNERS = {
     PipelineStage.TESTS: _run_tests_stage,
     PipelineStage.MAIN_PIPELINE: _run_main_pipeline_stage,
+    PipelineStage.RENDER_PLAN: _run_render_plan_stage,
     PipelineStage.RELAY_COMPACT: _run_relay_compact_stage,
     PipelineStage.ANCHOR_FIX: _run_anchor_fix_stage,
     PipelineStage.SET_RESOLUTION: _run_set_resolution_stage,
@@ -1291,6 +1312,7 @@ STAGE_RUNNERS = {
 STAGE_LABELS = {
     PipelineStage.TESTS: "tests",
     PipelineStage.MAIN_PIPELINE: "Main pipeline",
+    PipelineStage.RENDER_PLAN: "Render plan",
     PipelineStage.RELAY_COMPACT: "relay compact",
     PipelineStage.ANCHOR_FIX: "anchor fix",
     PipelineStage.SET_RESOLUTION: "Set resolution",

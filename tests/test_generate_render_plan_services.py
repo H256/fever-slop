@@ -159,6 +159,33 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         self.assertIn("scene_prompts_json", RenderPlanPipeline.required_keys)
         self.assertIn("render_plan", RenderPlanPipeline.produced_keys)
 
+    def test_render_plan_pipeline_accepts_missing_optional_h3_prompts(self):
+        calls = []
+
+        class Store:
+            def read_json(self, path):
+                self.read_path = path
+                return [{"scene": 1}]
+
+        def build_render_plan(**kwargs):
+            calls.append(kwargs)
+
+        context = GenerateRenderPlanContext(
+            scene_prompts_json=Path("scene_prompts.json"),
+            ltx_prompt_relay_json=Path("relay.json"),
+            render_plan_json=Path("render_plan.json"),
+            video_settings=SimpleNamespace(),
+            artifact_store=Store(),
+            log_step=lambda _title: None,
+            log_file=lambda _label, _path: None,
+        )
+
+        RenderPlanPipeline(build_render_plan=build_render_plan).execute(context)
+
+        self.assertEqual(1, len(calls))
+        self.assertIsNone(calls[0]["h3_prompts_json"])
+        self.assertEqual([{"scene": 1}], context.render_plan)
+
     def test_use_case_accepts_pipeline_services_and_runs_them_in_order(self):
         services = [
             RecordingService("audio", {"timeline_json": "timeline.json"}),
