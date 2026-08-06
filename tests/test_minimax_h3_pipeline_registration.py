@@ -172,21 +172,22 @@ class VideoPipelineForModeTests(unittest.TestCase):
 class PipelineStepsTests(unittest.TestCase):
     """Verify _pipeline_step_names returns correct MiniMax H3 steps."""
 
-    EXPECTED = ["Main pipeline", "LTX render", "Final concat"]
+    EXPECTED_R2V = ["Main pipeline", "MSR references", "LTX render", "Final concat"]
+    EXPECTED_T2V = ["Main pipeline", "LTX render", "Final concat"]
 
     def test_returns_correct_full_pipeline_steps(self):
         actual = _pipeline_step_names("full-pipeline", pipeline_mode="minimax_h3_r2v")
-        self.assertEqual(self.EXPECTED, actual)
+        self.assertEqual(self.EXPECTED_R2V, actual)
 
     def test_returns_correct_full_pipeline_steps_t2v(self):
         actual = _pipeline_step_names("full-pipeline", pipeline_mode="minimax_h3_t2v")
-        self.assertEqual(self.EXPECTED, actual)
+        self.assertEqual(self.EXPECTED_T2V, actual)
 
-    def test_r2v_t2v_return_same_steps(self):
-        self.assertEqual(
-            _pipeline_step_names("full-pipeline", pipeline_mode="minimax_h3_r2v"),
-            _pipeline_step_names("full-pipeline", pipeline_mode="minimax_h3_t2v"),
-        )
+    def test_r2v_has_msr_references(self):
+        self.assertIn("MSR references", self.EXPECTED_R2V)
+
+    def test_t2v_no_msr_references(self):
+        self.assertNotIn("MSR references", self.EXPECTED_T2V)
 
     def test_non_full_pipeline_steps_fall_through(self):
         """Non full-pipeline action returns the action's own step(s)."""
@@ -208,9 +209,12 @@ class FullPipelineStepsByModeTests(unittest.TestCase):
     def test_contains_minimax_h3_t2v(self):
         self.assertIn("minimax_h3_t2v", FULL_PIPELINE_STEPS_BY_MODE)
 
-    def test_has_expected_steps(self):
-        expected = ["Main pipeline", "LTX render", "Final concat"]
+    def test_r2v_has_expected_steps(self):
+        expected = ["Main pipeline", "MSR references", "LTX render", "Final concat"]
         self.assertEqual(expected, FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_r2v"])
+
+    def test_t2v_has_expected_steps(self):
+        expected = ["Main pipeline", "LTX render", "Final concat"]
         self.assertEqual(expected, FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_t2v"])
 
 
