@@ -347,7 +347,7 @@ non_diegetic_music: Describe any non-diegetic background music or score. If none
 
 {refs_list}
 
-Use these reference labels in subject_definitions and retention_analysis. Refer to them as <Picture N>, <Video N>, or <Audio N> when specifying what visual attributes to preserve or transfer.
+MANDATORY — You MUST reference EVERY listed <Picture N>, <Video N>, and <Audio N> in both subject_definitions and retention_analysis. Omitting a reference is an error. Refer to them with their exact tag in both fields to establish retention.
 """
     else:
         ref_labels_instruction = """
@@ -371,7 +371,8 @@ IMPORTANT — PERFORMANCE MODE: For vocal segments, describe the subject singing
 ## Audio Preservation (Music Video)
 
 The reference audio is the original music track. When reference audio is available (tagged as <Audio N> in the payload):
-- List it in retention_analysis as: audio=fully_preserved
+- You MUST list EVERY <Audio N> reference in subject_definitions with a short description of what it represents
+- You MUST list EVERY <Audio N> reference in retention_analysis as <Audio N>: audio=fully_preserved
 - The video must be timed and choreographed to this exact audio track
 - Do NOT invent alternative audio — the reference audio IS the soundtrack"""
 
