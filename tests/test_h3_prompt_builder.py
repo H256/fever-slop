@@ -84,7 +84,7 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
         self.assertIsInstance(prompt, str)
 
     def test_ref_mode_with_references(self):
-        refs = [{"label": "Alice", "type": "image"}]
+        refs = {"image": ["Alice"]}
         prompt = build_h3_video_system_prompt(mode="ref", references=refs)
         self.assertIn("Alice", prompt)
         self.assertIn("<Picture 1>", prompt)
@@ -433,10 +433,12 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         }
         result = self.build_refs(segment)
         self.assertIsNotNone(result)
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]["type"], "image")
-        self.assertEqual(result[0]["label"], "actor1")
-        self.assertEqual(result[1]["label"], "loc1")
+        self.assertIn("image", result)
+        self.assertNotIn("video", result)
+        self.assertNotIn("audio", result)
+        self.assertEqual(len(result["image"]), 2)
+        self.assertEqual(result["image"][0], "actor1")
+        self.assertEqual(result["image"][1], "loc1")
 
     def test_ref_items_provide_labels(self):
         segment = {
@@ -451,8 +453,8 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         }
         result = self.build_refs(segment)
         self.assertIsNotNone(result)
-        self.assertEqual(result[0]["label"], "Jane")
-        self.assertEqual(result[1]["label"], "Studio")
+        self.assertEqual(result["image"][0], "Jane")
+        self.assertEqual(result["image"][1], "Studio")
 
     def test_video_and_audio_refs(self):
         segment = {
@@ -464,9 +466,11 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         }
         result = self.build_refs(segment)
         self.assertIsNotNone(result)
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]["type"], "video")
-        self.assertEqual(result[1]["type"], "audio")
+        self.assertIn("video", result)
+        self.assertIn("audio", result)
+        self.assertNotIn("image", result)
+        self.assertEqual(result["video"][0], "scene_vid")
+        self.assertEqual(result["audio"][0], "song")
 
     def test_mixed_refs(self):
         segment = {
@@ -481,9 +485,9 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         }
         result = self.build_refs(segment)
         self.assertIsNotNone(result)
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0], {"label": "Hero", "type": "image"})
-        self.assertEqual(result[1], {"label": "song", "type": "audio"})
+        self.assertEqual(result["image"], ["Hero"])
+        self.assertEqual(result["audio"], ["song"])
+        self.assertNotIn("video", result)
 
 
 class RefModeSystemPromptAudioPreservationTests(unittest.TestCase):
@@ -521,9 +525,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
     """Test that references produce correct <Picture N>/<Audio N> tags."""
 
     def test_audio_refs_produce_audio_tags(self):
-        references = [
-            {"label": "Song Track", "type": "audio"},
-        ]
+        references = {"audio": ["Song Track"]}
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
@@ -533,10 +535,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
         self.assertIn("<Audio 1>", prompt)
 
     def test_image_refs_produce_picture_tags(self):
-        references = [
-            {"label": "Actor Jane", "type": "image"},
-            {"label": "Studio Room", "type": "image"},
-        ]
+        references = {"image": ["Actor Jane", "Studio Room"]}
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
@@ -549,9 +548,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
         self.assertIn("Studio Room", prompt)
 
     def test_video_refs_produce_video_tags(self):
-        references = [
-            {"label": "Intro Clip", "type": "video"},
-        ]
+        references = {"video": ["Intro Clip"]}
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
@@ -561,10 +558,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
         self.assertIn("<Video 1>", prompt)
 
     def test_mixed_refs_correct_numbering(self):
-        references = [
-            {"label": "Actor", "type": "image"},
-            {"label": "Song", "type": "audio"},
-        ]
+        references = {"image": ["Actor"], "audio": ["Song"]}
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
@@ -572,7 +566,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
             references=references,
         )
         self.assertIn("<Picture 1>: Actor", prompt)
-        self.assertIn("<Audio 2>: Song", prompt)  # sequential numbering: image=1, audio=2
+        self.assertIn("<Audio 1>: Song", prompt)  # per-type numbering: audio starts at 1
 
     def test_builder_passes_references_for_ref_mode(self):
         """End-to-end: H3PromptBuilder passes references to system prompt for ref mode."""

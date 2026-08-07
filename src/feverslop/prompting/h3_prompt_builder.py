@@ -9,10 +9,11 @@ from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 
 
-def _build_references_from_segment(segment: dict) -> list[dict] | None:
+def _build_references_from_segment(segment: dict) -> dict | None:
     """Extract reference labels from segment for R2V system prompt.
 
-    Returns list of {"label": ..., "type": "image"|"video"|"audio"} dicts.
+    Returns dict with keys 'image', 'video', 'audio' each mapping to
+    a list of label strings, or None if no refs present.
     """
     refs = segment.get("references", {})
     if not refs:
@@ -22,7 +23,6 @@ def _build_references_from_segment(segment: dict) -> list[dict] | None:
     audio_paths = refs.get("reference_audio_paths", [])
     if not image_paths and not video_paths and not audio_paths:
         return None
-    result: list[dict] = []
     ref_items = segment.get("ref_items", [])
     image_labels = []
     for ref_item in ref_items:
@@ -33,14 +33,21 @@ def _build_references_from_segment(segment: dict) -> list[dict] | None:
     if len(image_labels) < len(image_paths):
         for p in image_paths[len(image_labels):]:
             image_labels.append(str(p).split("/")[-1].rsplit(".", 1)[0])
-    for label in image_labels:
-        result.append({"label": label, "type": "image"})
+    video_labels = []
     for p in video_paths:
-        label = str(p).split("/")[-1].rsplit(".", 1)[0]
-        result.append({"label": label, "type": "video"})
+        video_labels.append(str(p).split("/")[-1].rsplit(".", 1)[0])
+    audio_labels = []
     for p in audio_paths:
-        label = str(p).split("/")[-1].rsplit(".", 1)[0]
-        result.append({"label": label, "type": "audio"})
+        audio_labels.append(str(p).split("/")[-1].rsplit(".", 1)[0])
+    if not image_labels and not video_labels and not audio_labels:
+        return None
+    result: dict = {}
+    if image_labels:
+        result["image"] = image_labels
+    if video_labels:
+        result["video"] = video_labels
+    if audio_labels:
+        result["audio"] = audio_labels
     return result if result else None
 
 

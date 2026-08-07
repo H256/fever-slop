@@ -313,7 +313,7 @@ Use the scene_concept as the primary visual foundation. Incorporate camera_motio
 
 def _build_h3_ref_system_prompt(
     *,
-    references: list[dict] | None = None,
+    references: dict | None = None,
     video_type: str = "music_video",
     silent_mode: bool = False,
 ) -> str:
@@ -334,12 +334,14 @@ non_diegetic_music: Describe any non-diegetic background music or score. If none
 
     ref_labels_instruction = ""
     if references:
-        refs_list = ""
-        for i, ref in enumerate(references, start=1):
-            label = ref.get("label", f"Reference {i}")
-            ref_type = ref.get("type", "image")
-            tag = f"<Picture {i}>" if ref_type == "image" else f"<Video {i}>" if ref_type == "video" else f"<Audio {i}>"
-            refs_list += f"\n- {tag}: {label}"
+        parts = []
+        for i, label in enumerate(references.get("image", []), start=1):
+            parts.append(f"- <Picture {i}>: {label}")
+        for i, label in enumerate(references.get("video", []), start=1):
+            parts.append(f"- <Video {i}>: {label}")
+        for i, label in enumerate(references.get("audio", []), start=1):
+            parts.append(f"- <Audio {i}>: {label}")
+        refs_list = "\n".join(parts)
         ref_labels_instruction = f"""
 ## Reference Labels Used
 
