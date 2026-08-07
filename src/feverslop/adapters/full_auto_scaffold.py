@@ -61,7 +61,7 @@ class LocalProjectScaffold:
                     "video_pipeline": video_pipeline,
                     "audio": {
                         "demucs_model": "htdemucs_ft",
-                        "whisper_model": "large",
+                        "whisper_model": "large-v3",
                         "language": spec.language,
                     },
                     "scene_generation": {

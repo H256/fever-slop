@@ -18,7 +18,7 @@ class VideoConfig:
 @dataclass(frozen=True)
 class AudioConfig:
     demucs_model: str = "htdemucs_ft"
-    whisper_model: str = "large"
+    whisper_model: str = "large-v3"
     language: str = "en"
 
 
@@ -268,7 +268,7 @@ class ProjectConfig:
 
             audio=AudioConfig(
                 demucs_model=audio_raw.get("demucs_model", "htdemucs_ft"),
-                whisper_model=audio_raw.get("whisper_model", "large"),
+                whisper_model=audio_raw.get("whisper_model", "large-v3"),
                 language=audio_raw.get("language", "en"),
             ),
 

@@ -19,7 +19,7 @@ __all__ = [
 class VocalTimelineAnalyzer:
     def __init__(
         self,
-        whisper_model: str = "large",
+        whisper_model: str = "large-v3",
         language: str = "de",
         silence_threshold_db: float | None = None,  # bleibt kompatibel, wird aber als RMS-Threshold ignoriert
         merge_gap: float = 0.5,
