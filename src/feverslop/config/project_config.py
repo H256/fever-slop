@@ -207,6 +207,7 @@ class ProjectConfig:
     lora_1: LoraConfig = field(default_factory=LoraConfig)
     loras: tuple[LoraConfig, ...] = field(default_factory=tuple)
     lora_split_enabled: bool = False
+    video_pipeline: str = "ltx_i2v"
 
     @classmethod
     def load(cls, config_path: str | Path) -> "ProjectConfig":
@@ -333,6 +334,7 @@ class ProjectConfig:
                 word_count_min=int(guidance_raw.get("word_count_min", 40)),
                 word_count_max=int(guidance_raw.get("word_count_max", 50)),
             ),
+            video_pipeline=str(raw.get("video_pipeline", "ltx_i2v")).strip() or "ltx_i2v",
             lora_1=lora_1,
             loras=loras,
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),

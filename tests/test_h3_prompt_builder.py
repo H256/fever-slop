@@ -84,14 +84,14 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
         self.assertIsInstance(prompt, str)
 
     def test_ref_mode_with_references(self):
-        refs = [{"label": "Alice", "type": "image"}]
+        refs = {"image": [{"name": "Alice", "path": "path/to/alice.png", "description": "a woman"}]}
         prompt = build_h3_video_system_prompt(mode="ref", references=refs)
         self.assertIn("Alice", prompt)
         self.assertIn("<Picture 1>", prompt)
 
     def test_ref_retention_markers(self):
         prompt = build_h3_video_system_prompt(mode="ref")
-        for marker in ("fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference"):
+        for marker in ("fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference", "fully_copy", "partially_copy"):
             self.assertIn(marker, prompt)
 
 
@@ -406,5 +406,409 @@ class BuildRenderPlanH3Tests(unittest.TestCase):
         self.assertIn("ltx", output[0])
 
 
+
+class BuildReferencesFromSegmentTests(unittest.TestCase):
+    """Test _build_references_from_segment helper."""
+
+    def setUp(self):
+        from feverslop.prompting.h3_prompt_builder import (
+            _build_references_from_segment,
+        )
+        self.build_refs = _build_references_from_segment
+
+    def test_no_references_returns_none(self):
+        segment = {"segment_id": "s1"}
+        self.assertIsNone(self.build_refs(segment))
+
+    def test_empty_references_returns_none(self):
+        segment = {"segment_id": "s1", "references": {}}
+        self.assertIsNone(self.build_refs(segment))
+
+    def test_image_refs_only(self):
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_image_paths": ["output/actor1.png", "output/loc1.png"],
+            },
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        self.assertIn("image", result)
+        self.assertIn("video", result)
+        self.assertIn("audio", result)
+        self.assertEqual(len(result["image"]), 2)
+        self.assertEqual(result["image"][0].get("name"), "actor1")
+        self.assertEqual(result["image"][1].get("name"), "loc1")
+        self.assertEqual(result["image"][0].get("path"), "output/actor1.png")
+        self.assertEqual(result["image"][1].get("path"), "output/loc1.png")
+
+    def test_ref_items_provide_labels(self):
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_image_paths": ["output/actor1_msr.png", "output/loc1_msr.png"],
+            },
+            "ref_items": [
+                {"type": "actor", "name": "Jane", "visual_description": "blonde"},
+                {"type": "location", "name": "Studio", "visual_description": "dark"},
+            ],
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        # Image refs carry name from ref_items
+        self.assertEqual(result["image"][0].get("name"), "Jane")
+        self.assertEqual(result["image"][1].get("name"), "Studio")
+        self.assertEqual(result["image"][0].get("description"), "blonde")
+        self.assertEqual(result["image"][1].get("description"), "dark")
+        # Subjects list populated from ref_items
+        self.assertIn("subjects", result)
+        self.assertEqual(len(result["subjects"]), 2)
+        self.assertEqual(result["subjects"][0].get("name"), "Jane")
+        self.assertEqual(result["subjects"][1].get("name"), "Studio")
+        # Speaker IDs for actors only
+        self.assertIn("speaker_ids", result)
+        self.assertEqual(result["speaker_ids"].get("Jane"), "S1")
+
+    def test_video_and_audio_refs(self):
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_video_paths": ["output/scene_vid.mp4"],
+                "reference_audio_paths": ["music/song.wav"],
+            },
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        self.assertIn("video", result)
+        self.assertIn("audio", result)
+        self.assertIn("image", result)
+        self.assertEqual(result["video"][0].get("name"), "scene_vid")
+        self.assertEqual(result["audio"][0].get("name"), "song")
+        self.assertEqual(result["video"][0].get("path"), "output/scene_vid.mp4")
+        self.assertEqual(result["audio"][0].get("path"), "music/song.wav")
+
+    def test_mixed_refs(self):
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_image_paths": ["output/actor1.png"],
+                "reference_audio_paths": ["music/song.wav"],
+            },
+            "ref_items": [
+                {"type": "actor", "name": "Hero"},
+            ],
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["image"][0].get("name"), "Hero")
+        self.assertEqual(result["audio"][0].get("name"), "song")
+        self.assertEqual(len(result["video"]), 0)
+        assert result.get("subjects")
+        self.assertEqual(result["subjects"][0].get("name"), "Hero")
+        assert result.get("speaker_ids")
+        self.assertEqual(result["speaker_ids"].get("Hero"), "S1")
+
+    def test_build_refs_produces_subjects(self):
+        """_build_references_from_segment creates subjects list from ref_items."""
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_image_paths": ["output/person.png"],
+            },
+            "ref_items": [
+                {"type": "actor", "name": "Jane", "visual_description": "tall woman"},
+            ],
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        self.assertIn("subjects", result)
+        self.assertEqual(len(result["subjects"]), 1)
+        self.assertEqual(result["subjects"][0].get("name"), "Jane")
+        self.assertEqual(result["subjects"][0].get("description"), "tall woman")
+
+    def test_build_refs_produces_speaker_ids(self):
+        """_build_references_from_segment maps actor names to speaker IDs."""
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_image_paths": ["output/a.png", "output/b.png"],
+            },
+            "ref_items": [
+                {"type": "actor", "name": "Alice"},
+                {"type": "actor", "name": "Bob"},
+                {"type": "location", "name": "Studio"},
+            ],
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        self.assertIn("speaker_ids", result)
+        self.assertEqual(result["speaker_ids"]["Alice"], "S1")
+        self.assertEqual(result["speaker_ids"]["Bob"], "S2")
+        # Location should NOT have a speaker ID
+        self.assertNotIn("Studio", result["speaker_ids"])
+
+
+class RefModeSystemPromptAudioPreservationTests(unittest.TestCase):
+    """Test that ref-mode system prompt includes audio preservation for music videos."""
+
+    def test_music_video_has_audio_preservation_section(self):
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="music_video",
+            silent_mode=False,
+        )
+        self.assertIn("## Audio Preservation (Music Video)", prompt)
+        self.assertIn("fully_copy", prompt)
+        self.assertIn("reference audio IS the soundtrack", prompt)
+
+    def test_movie_type_has_no_audio_preservation_section(self):
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="movie",
+            silent_mode=False,
+        )
+        self.assertNotIn("## Audio Preservation (Music Video)", prompt)
+        self.assertNotIn("reference audio IS the soundtrack", prompt)
+
+    def test_base_mode_has_no_audio_preservation(self):
+        prompt = build_h3_video_system_prompt(
+            mode="base",
+            video_type="music_video",
+            silent_mode=False,
+        )
+        self.assertNotIn("## Audio Preservation (Music Video)", prompt)
+
+
+class RefModeWithReferencesLabelTests(unittest.TestCase):
+    """Test that references produce correct <Picture N>/<Audio N> tags."""
+
+    def test_audio_refs_produce_audio_tags(self):
+        references = {"audio": [{"name": "Song Track", "path": "music/song.wav"}]}
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="music_video",
+            silent_mode=False,
+            references=references,
+        )
+        self.assertIn("<Audio 1>", prompt)
+
+    def test_image_refs_produce_picture_tags(self):
+        references = {"image": [
+            {"name": "Actor Jane", "path": "img/jane.png", "description": ""},
+            {"name": "Studio Room", "path": "img/studio.png", "description": ""},
+        ]}
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="music_video",
+            silent_mode=False,
+            references=references,
+        )
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("<Picture 2>", prompt)
+        self.assertIn("Actor Jane", prompt)
+        self.assertIn("Studio Room", prompt)
+
+    def test_video_refs_produce_video_tags(self):
+        references = {"video": [{"name": "Intro Clip", "path": "vid/intro.mp4"}]}
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="music_video",
+            silent_mode=False,
+            references=references,
+        )
+        self.assertIn("<Video 1>", prompt)
+
+    def test_mixed_refs_correct_numbering(self):
+        references = {
+            "image": [{"name": "Actor", "path": "img/a.png", "description": ""}],
+            "audio": [{"name": "Song", "path": "music/song.wav"}],
+        }
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="music_video",
+            silent_mode=False,
+            references=references,
+        )
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("Song", prompt)
+        self.assertIn("<Audio 1>", prompt)  # per-type numbering: audio starts at 1
+
+    def test_builder_passes_references_for_ref_mode(self):
+        """End-to-end: H3PromptBuilder passes references to system prompt for ref mode."""
+        from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
+
+        segment_with_refs = {
+            "segment_id": "s1",
+            "type": "vocals",
+            "references": {
+                "reference_image_paths": ["output/actor.png"],
+                "reference_audio_paths": ["music/song.wav"],
+            },
+            "ref_items": [
+                {"type": "actor", "name": "Hero"},
+            ],
+        }
+        llm = FakeLLMPort(json.dumps({"prompt": "test output"}))
+        builder = H3PromptBuilder(llm)
+        builder.build_h3_prompt(
+            segment=segment_with_refs,
+            concept="A hero sings",
+            scene_details={},
+            global_context={},
+            mode="ref",
+            video_type="music_video",
+        )
+        system_prompt = llm.calls[0][0]
+        # References should be in the system prompt
+        self.assertIn("<Picture 1>", system_prompt)
+        self.assertIn("Hero", system_prompt)
+
+    def test_builder_no_references_when_no_refs(self):
+        """Builder should not inject reference labels when segment has no refs."""
+        from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
+
+        segment_no_refs = {
+            "segment_id": "s1",
+            "type": "vocals",
+        }
+        llm = FakeLLMPort(json.dumps({"prompt": "test output"}))
+        builder = H3PromptBuilder(llm)
+        builder.build_h3_prompt(
+            segment=segment_no_refs,
+            concept="Test",
+            scene_details={},
+            global_context={},
+            mode="ref",
+            video_type="music_video",
+        )
+        system_prompt = llm.calls[0][0]
+        # Should NOT contain ## Reference Labels and Subjects (only the generic instruction)
+        self.assertNotIn("## Reference Labels and Subjects", system_prompt)
+        # Generic instruction should still be present
+        self.assertIn("## Reference Labels", system_prompt)
+
+    def test_backward_compat_string_refs(self):
+        """Old-style string-format references are still accepted."""
+        references = {"image": ["OldStyleLabel"], "audio": ["OldTrack"], "subjects": []}
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="music_video",
+            silent_mode=False,
+            references=references,
+        )
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("OldStyleLabel", prompt)
+        self.assertIn("<Audio 1>", prompt)
+        self.assertIn("OldTrack", prompt)
+
+    def test_ref_prompt_contains_subject_anchor(self):
+        """Prompt instructs to anchor subjects to source references."""
+        refs = {"image": [{"name": "Hero", "path": "h.png", "description": ""}]}
+        prompt = build_h3_video_system_prompt(
+            mode="ref", references=refs, video_type="music_video",
+        )
+        self.assertIn("<Subject", prompt)
+
+    def test_ref_prompt_contains_task_prefix(self):
+        """Prompt mentions task type prefix in summary field."""
+        prompt = build_h3_video_system_prompt(mode="ref", video_type="music_video")
+        self.assertIn("[task type]", prompt)
+        self.assertIn("character_consistency", prompt)
+        self.assertIn("style_transfer", prompt)
+
+    def test_ref_prompt_contains_shot_format(self):
+        """Prompt mentions [Shot N] markers."""
+        prompt = build_h3_video_system_prompt(mode="ref", video_type="music_video")
+        self.assertIn("[Shot N]", prompt)
+
+
+class VideoPipelineModeResolutionTests(unittest.TestCase):
+    """Test that H3PromptPipeline derives mode from config.video_pipeline."""
+
+    def test_r2v_derives_ref_mode(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+        pipeline = H3PromptPipeline(
+            llm_factory=lambda c: None,
+            h3_prompt_builder_factory=lambda llm: None,
+        )
+        # Verify required_keys includes config
+        self.assertIn("config", pipeline.required_keys)
+
+        class FakeConfig:
+            video_pipeline = "minimax-h3-r2v"
+
+        class FakeArtifactStore:
+            def write_json(self, path, data): return path
+            def read_json(self, path): return []
+        build_count = {"mode": None}
+
+        class FakeBuilder:
+            def build_all_h3_prompts(self, **kwargs):
+                build_count["mode"] = kwargs.get("mode")
+                return "path"
+
+        pipeline.h3_prompt_builder_factory = lambda llm: FakeBuilder()
+        ctx = {
+            "app_config": {},
+            "config": FakeConfig(),
+            "stage1_segments": [{"segment_id": "s1"}],
+            "concept_prompts": {},
+            "scene_details": {},
+            "global_context": {},
+            "h3_prompts_json": "test.json",
+            "artifact_store": FakeArtifactStore(),
+            "log_step": lambda x: None,
+            "log_file": lambda a, b: None,
+            "run_spinner": lambda msg, fn: fn(),
+        }
+        for key in pipeline.required_keys:
+            if key not in ctx:
+                ctx[key] = None
+
+        pipeline.run(ctx)
+        self.assertEqual(build_count["mode"], "ref")
+
+    def test_base_pipeline_derives_base_mode(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        class FakeConfig:
+            video_pipeline = "ltx_i2v"
+
+        class FakeArtifactStore:
+            def write_json(self, path, data): return path
+            def read_json(self, path): return []
+        build_count = {"mode": None}
+
+        class FakeBuilder:
+            def build_all_h3_prompts(self, **kwargs):
+                build_count["mode"] = kwargs.get("mode")
+                return "path"
+
+        pipeline = H3PromptPipeline(
+            llm_factory=lambda c: None,
+            h3_prompt_builder_factory=lambda llm: FakeBuilder(),
+        )
+        ctx = {
+            "app_config": {},
+            "config": FakeConfig(),
+            "stage1_segments": [{"segment_id": "s1"}],
+            "concept_prompts": {},
+            "scene_details": {},
+            "global_context": {},
+            "h3_prompts_json": "test.json",
+            "artifact_store": FakeArtifactStore(),
+            "log_step": lambda x: None,
+            "log_file": lambda a, b: None,
+            "run_spinner": lambda msg, fn: fn(),
+        }
+        for key in pipeline.required_keys:
+            if key not in ctx:
+                ctx[key] = None
+
+        pipeline.run(ctx)
+        self.assertEqual(build_count["mode"], "base")
+
+
 if __name__ == "__main__":
     unittest.main()
+
