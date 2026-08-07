@@ -60,7 +60,7 @@ class LocalProjectScaffold:
                     },
                     "video_pipeline": video_pipeline,
                     "audio": {
-                        "demucs_model": "htdemucs_ft",
+                        "demucs_model": "htdemucs_6s",
                         "whisper_model": "large-v3",
                         "language": spec.language,
                     },
