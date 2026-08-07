@@ -17,6 +17,7 @@ class H3PromptPipeline:
         "global_context",
         "h3_prompts_json",
         "app_config",
+        "config",
     }
     produced_keys = {"h3_prompts"}
 
@@ -37,6 +38,7 @@ class H3PromptPipeline:
 
     def run(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         app_config = context["app_config"]
+        config = context["config"]
         stage1_segments = context["stage1_segments"]
         concept_prompts = context["concept_prompts"]
         scene_details = context["scene_details"]
@@ -51,6 +53,11 @@ class H3PromptPipeline:
         llm = self.llm_factory(app_config)
         builder = self.h3_prompt_builder_factory(llm)
 
+        if config.video_pipeline == "minimax-h3-r2v":
+            mode = "ref"
+        else:
+            mode = "base"
+
         run_spinner(
             "Generating H3-structured prompts per scene...",
             lambda: builder.build_all_h3_prompts(
@@ -58,7 +65,7 @@ class H3PromptPipeline:
                 concept_prompts=concept_prompts,
                 scene_details=scene_details,
                 global_context=global_context,
-                mode="base",
+                mode=mode,
                 video_type="music_video",
                 output_json_path=h3_prompts_json,
                 artifact_store=artifact_store,

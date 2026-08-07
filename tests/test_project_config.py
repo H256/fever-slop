@@ -585,5 +585,41 @@ class SlugifyProjectNameTests(unittest.TestCase):
             self.assertEqual(domain_slug(case), movie_slug(case))
 
 
+
+class VideoPipelineFieldTests(unittest.TestCase):
+    """Test ProjectConfig.video_pipeline field."""
+
+    def test_defaults_to_ltx_i2v(self):
+        """Default value is ltx_i2v."""
+        self.config = {"input_audio": "song.wav"}
+        config = ProjectConfig.load(self._mk_config())
+        self.assertEqual(config.video_pipeline, "ltx_i2v")
+
+    def test_loads_r2v_pipeline(self):
+        """Loads minimax-h3-r2v from config."""
+        self.config = {"input_audio": "song.wav", "video_pipeline": "minimax-h3-r2v"}
+        config = ProjectConfig.load(self._mk_config())
+        self.assertEqual(config.video_pipeline, "minimax-h3-r2v")
+
+    def test_loads_msr_pipeline(self):
+        self.config = {"input_audio": "song.wav", "video_pipeline": "ltx_msr"}
+        config = ProjectConfig.load(self._mk_config())
+        self.assertEqual(config.video_pipeline, "ltx_msr")
+
+    def test_empty_string_defaults_to_ltx_i2v(self):
+        """Empty string falls back to ltx_i2v."""
+        self.config = {"input_audio": "song.wav", "video_pipeline": ""}
+        config = ProjectConfig.load(self._mk_config())
+        self.assertEqual(config.video_pipeline, "ltx_i2v")
+
+    def _mk_config(self):
+        import json
+        from pathlib import Path
+        import tempfile
+        tmp = tempfile.mktemp(suffix=".json")
+        Path(tmp).write_text(json.dumps(self.config))
+        return tmp
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -362,7 +362,19 @@ IMPORTANT — SILENT MODE: The subject does NOT sing, lip-sync, or perform vocal
         vocal_constraint = """
 IMPORTANT — PERFORMANCE MODE: For vocal segments, describe the subject singing with expressive lip-sync. For instrumental segments, the subject does NOT sing."""
 
+    audio_preservation_instruction = ""
+    if is_music_video:
+        audio_preservation_instruction = """
+
+## Audio Preservation (Music Video)
+
+The reference audio is the original music track. When reference audio is available (tagged as <Audio N> in the payload):
+- List it in retention_analysis as: audio=fully_preserved
+- The video must be timed and choreographed to this exact audio track
+- Do NOT invent alternative audio — the reference audio IS the soundtrack"""
+
     return f"""You are an expert video prompt writer for the MiniMax H3 model. Your task is to transform scene metadata into a structured H3 Reference-to-Video (Ref2VA) prompt following the official six-section output format.
+{audio_preservation_instruction}
 
 ## Output Format (JSON)
 

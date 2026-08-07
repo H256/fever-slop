@@ -9,6 +9,41 @@ from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 
 
+def _build_references_from_segment(segment: dict) -> list[dict] | None:
+    """Extract reference labels from segment for R2V system prompt.
+
+    Returns list of {"label": ..., "type": "image"|"video"|"audio"} dicts.
+    """
+    refs = segment.get("references", {})
+    if not refs:
+        return None
+    image_paths = refs.get("reference_image_paths", [])
+    video_paths = refs.get("reference_video_paths", [])
+    audio_paths = refs.get("reference_audio_paths", [])
+    if not image_paths and not video_paths and not audio_paths:
+        return None
+    result: list[dict] = []
+    ref_items = segment.get("ref_items", [])
+    image_labels = []
+    for ref_item in ref_items:
+        if ref_item.get("type") in ("actor", "location"):
+            label = ref_item.get("name", "")
+            if label:
+                image_labels.append(label)
+    if len(image_labels) < len(image_paths):
+        for p in image_paths[len(image_labels):]:
+            image_labels.append(str(p).split("/")[-1].rsplit(".", 1)[0])
+    for label in image_labels:
+        result.append({"label": label, "type": "image"})
+    for p in video_paths:
+        label = str(p).split("/")[-1].rsplit(".", 1)[0]
+        result.append({"label": label, "type": "video"})
+    for p in audio_paths:
+        label = str(p).split("/")[-1].rsplit(".", 1)[0]
+        result.append({"label": label, "type": "audio"})
+    return result if result else None
+
+
 class H3PromptBuilder:
     """Builds H3-structured prompts per scene, mirroring ScenePromptBuilder pattern."""
 
@@ -32,10 +67,13 @@ class H3PromptBuilder:
         silent_mode = bool(global_context.get("silent_mode", False))
         has_audio_refs = bool(segment.get("references", {}).get("reference_audio_paths"))
 
+        # Build references dict from segment for ref mode
+        references = _build_references_from_segment(segment)
         system_prompt = build_h3_video_system_prompt(
             mode=mode,
             video_type=video_type,
             silent_mode=silent_mode,
+            references=references,
         )
 
         payload = {
