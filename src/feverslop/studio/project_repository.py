@@ -235,7 +235,7 @@ def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, widt
             "height": height,
         },
         "audio": {
-            "demucs_model": "htdemucs_ft",
+            "demucs_model": "htdemucs_6s",
             "whisper_model": "large",
             "language": "en",
         },
