@@ -319,35 +319,109 @@ def _build_h3_ref_system_prompt(
 ) -> str:
     is_music_video = video_type == "music_video"
 
-    soundscape_instruction = ""
+    soundscape_value = ""
 
     if is_music_video:
-        soundscape_instruction = """
-overall_soundscape: N/A (the music video carries its own audio track; do not invent ambient sounds)
+        soundscape_value = """overall_soundscape: N/A (the music video carries its own audio track; do not invent ambient sounds)
 
 non_diegetic_music: N/A (the reference audio already provides the song)"""
     else:
-        soundscape_instruction = """
-overall_soundscape: Describe the ambient and environmental sound layer during the scene. Keep this concise (1-2 sentences).
+        soundscape_value = """overall_soundscape: Describe the ambient and environmental sound layer during the scene. Keep this concise (1-2 sentences).
 
 non_diegetic_music: Describe any non-diegetic background music or score. If none, write N/A."""
 
+    music_value = ""
+    if is_music_video:
+        music_value = """
+### Additional Notes for Music Videos
+Music videos are timed and choreographed to the full reference audio track. The audio track provides both the song and any vocal performances. Do not invent or describe alternative audio."""
+
+    vocal_constraint = ""
+    if silent_mode:
+        vocal_constraint = """
+IMPORTANT — SILENT MODE: The subject does NOT sing, lip-sync, or perform vocally. Do NOT describe mouth movement, singing lips, or vocal performance. The subject is silent with a relaxed, still mouth. Focus the visual description on environment, composition, camera motion, and subtle body language."""
+    else:
+        vocal_constraint = """
+IMPORTANT — PERFORMANCE MODE: For vocal segments (type="vocals"), describe the subject singing with expressive lip-sync matching the vocal energy. For instrumental segments (type="instrumental"), the subject does NOT sing — mouth is relaxed and still, no lip movement."""
+
+    audio_preservation_instruction = ""
+    if is_music_video:
+        audio_preservation_instruction = """
+## Audio Preservation (Music Video)
+
+The reference audio is the original music track. When reference audio is available (tagged as <Audio N> in the payload):
+- You MUST list EVERY <Audio N> reference in subject_definitions with a short description of what it represents
+- You MUST list EVERY <Audio N> reference in retention_analysis with the marker fully_copy
+- The video must be timed and choreographed to this exact audio track
+- Do NOT invent alternative audio — the reference audio IS the soundtrack"""
+
+    # Build reference labels instruction — handles both new dict-format and old string-format
     ref_labels_instruction = ""
     if references:
-        parts = []
-        for i, label in enumerate(references.get("image", []), start=1):
-            parts.append(f"- <Picture {i}>: {label}")
-        for i, label in enumerate(references.get("video", []), start=1):
-            parts.append(f"- <Video {i}>: {label}")
-        for i, label in enumerate(references.get("audio", []), start=1):
-            parts.append(f"- <Audio {i}>: {label}")
+        parts: list[str] = []
+        subjects = references.get("subjects", [])
+        # Count visual (actor/location) subjects vs. audio/video subjects
+        visual_subjects = [s for s in subjects if isinstance(s, dict) and s.get("type") in ("actor", "location", None)]
+        audio_video_subjects = [s for s in subjects if isinstance(s, dict) and s.get("type") in ("audio", "video")]
+
+        # Build Subject list with source anchors
+        subject_counter = 0
+        # First: visual subjects anchored to <Picture N>
+        for i, img in enumerate(references.get("image", []), start=1):
+            if i - 1 < len(visual_subjects):
+                vs = visual_subjects[i - 1]
+                name = vs.get("name", f"Subject {i}") if isinstance(vs, dict) else str(vs)
+                desc = vs.get("description", "") if isinstance(vs, dict) else ""
+                line = f"<Subject {i}> is {name}"
+                if desc:
+                    line += f" — {desc}"
+                line += f" from <Picture {i}>"
+                parts.append(f"- {line}")
+                subject_counter += 1
+
+        # Any remaining visual subjects past the image list
+        for idx, vs in enumerate(visual_subjects[len(references.get("image", [])):], start=1):
+            subject_counter += 1
+            name = vs.get("name", f"Subject {subject_counter}") if isinstance(vs, dict) else str(vs)
+            line = f"- <Subject {subject_counter}>: {name}"
+            desc = vs.get("description", "") if isinstance(vs, dict) else ""
+            if desc:
+                line += f" — {desc}"
+            parts.append(line)
+
+        # Video video subjects anchored to <Video N>
+        video_count = len(references.get("video", []))
+        for i, vid in enumerate(references.get("video", []), start=1):
+            subject_counter += 1
+            name = vid if isinstance(vid, str) else vid.get("name", f"Video {i}") if isinstance(vid, dict) else str(vid)
+            parts.append(f"- <Subject {subject_counter}> is {name} from <Video {i}>")
+
+        # Audio subjects anchored to <Audio N>
+        for i, aud in enumerate(references.get("audio", []), start=1):
+            subject_counter += 1
+            name = aud if isinstance(aud, str) else aud.get("name", f"Audio {i}") if isinstance(aud, dict) else str(aud)
+            parts.append(f"- <Subject {subject_counter}> is {name} from <Audio {i}>")
+
+        # Image refs (for subjects not yet covered)
+        for i, img in enumerate(references.get("image", []), start=1):
+            name = img.get("name", f"Image {i}") if isinstance(img, dict) else str(img)
+            parts.append(f"  -- <Picture {i}>: {name}")
+
+        # Speaker ID mapping
+        speaker_ids = references.get("speaker_ids", {})
+        if speaker_ids:
+            parts.append("- Speaker IDs (for dialogue):")
+            for name, sid in speaker_ids.items():
+                parts.append(f"  - ({sid}): {name}")
+
         refs_list = "\n".join(parts)
+        total_subjects = len(parts) - len([p for p in parts if p.startswith("  -- <Picture")]) - len([p for p in parts if p.startswith("- Speaker")])
         ref_labels_instruction = f"""
-## Reference Labels Used
+## Reference Labels and Subjects
 
 {refs_list}
 
-MANDATORY — You MUST reference EVERY listed <Picture N>, <Video N>, and <Audio N> in both subject_definitions and retention_analysis. Omitting a reference is an error. Refer to them with their exact tag in both fields to establish retention.
+MANDATORY — You MUST replicate ALL {total_subjects} subjects listed above in subject_definitions with their exact anchor (<Picture N>, <Video N>, or <Audio N>). In retention_analysis, you MUST list every subject, including audio subjects (use fully_copy for music tracks). Omitting ANY subject is a critical error.
 """
     else:
         ref_labels_instruction = """
@@ -355,26 +429,6 @@ MANDATORY — You MUST reference EVERY listed <Picture N>, <Video N>, and <Audio
 
 If reference images/videos/audio are available, refer to them using the tags <Subject N>, <Picture N>, <Video N>, <Audio N> in the subject_definitions and retention_analysis fields.
 """
-
-    vocal_constraint = ""
-    if silent_mode:
-        vocal_constraint = """
-IMPORTANT — SILENT MODE: The subject does NOT sing, lip-sync, or perform vocally. Do NOT describe mouth movement, singing lips, or vocal performance. The subject is silent with a relaxed, still mouth."""
-    else:
-        vocal_constraint = """
-IMPORTANT — PERFORMANCE MODE: For vocal segments, describe the subject singing with expressive lip-sync. For instrumental segments, the subject does NOT sing."""
-
-    audio_preservation_instruction = ""
-    if is_music_video:
-        audio_preservation_instruction = """
-
-## Audio Preservation (Music Video)
-
-The reference audio is the original music track. When reference audio is available (tagged as <Audio N> in the payload):
-- You MUST list EVERY <Audio N> reference in subject_definitions with a short description of what it represents
-- You MUST list EVERY <Audio N> reference in retention_analysis as <Audio N>: audio=fully_preserved
-- The video must be timed and choreographed to this exact audio track
-- Do NOT invent alternative audio — the reference audio IS the soundtrack"""
 
     return f"""You are an expert video prompt writer for the MiniMax H3 model. Your task is to transform scene metadata into a structured H3 Reference-to-Video (Ref2VA) prompt following the official six-section output format.
 {audio_preservation_instruction}
@@ -393,34 +447,47 @@ Return ONLY valid JSON with these exact keys:
 
 ## Field Definitions
 
-subject_definitions: Describe each reference input and what it represents. For image refs: describe the subject's appearance, outfit, facial features, hairstyle. For video/audio refs: describe what they provide as context.
+### subject_definitions
+Describe each reference subject and what it represents.
+- For actor subjects: use the format <Subject N> is {{description}} from <Picture M>. Actor subjects include their speaker ID (S N).
+- For location subjects: use the format <Subject N> is {{description}} from <Picture M>.
+- For audio subjects: use the format <Subject N> is {{description}} from <Audio N>.
+- For each reference input, clearly describe appearance, outfit, facial features, and hairstyle (for actors) or spatial layout (for locations).
 
-summary: A 2-3 sentence summary of the scene — who is present, what is happening, the narrative context.
+### summary
+Must start with [task type] prefix. Valid task types:
+- [character_consistency]: Focus on maintaining subject identity across shots
+- [style_transfer]: Focus on visual style matching between references
+- [scene_continuity]: Focus on maintaining scene continuity
+- [temporal_consistency]: Focus on preserving temporal attributes
+Then provide a 2-3 sentence summary of the scene: who is present, what is happening, the narrative context.
 
-retention_analysis: Specify which visual attributes from each reference should be preserved in the output. Use one of these markers for each attribute:
-- fully_preserved: The attribute must remain exactly as in the reference
-- partially_preserved: The attribute can adapt slightly to the new context
-- attribute_transfer: Only a characteristic quality (not exact pixels) should transfer
-- weak_reference: The reference provides loose inspiration only
-Format: "<Picture 1>: outfit=fully_preserved, face=fully_preserved, hairstyle=fresh_reconstruction, expression=partially_preserved"
+### retention_analysis
+Per-subject breakdown of what visual and audio attributes to preserve.
+- Each subject on its own line.
+- State the shot scope (e.g., "Shot 1-3" or "all shots").
+- Follow with prose describing which attributes are preserved.
+- Use visual markers: fully_preserved, partially_preserved, attribute_transfer, weak_reference.
+- Use audio markers: fully_copy, partially_copy, reference, weak_reference.
+- Example: <Subject 1>: Shot 1-3, outfit=fully_preserved, face=fully_preserved, hairstyle=fresh_reconstruction, expression=partially_preserved.
 
-detailed_description: A detailed single-shot video description capturing:
-- VISUAL CONTENT: Who is visible, what they look like, their pose, the setting
-- COMPOSITION: Framing, angle, shot distance
-- CAMERA MOTION: Use the H3 camera motion vocabulary table below
-- CHARACTER MOTION: Subtle body language, posture shifts, facial expression
-- LIGHTING AND ATMOSPHERE: Time of day, weather, light quality, mood
-- CONSTRAINTS: ONE continuous shot. No fade/dissolve/crossfade. Do not introduce new characters. Keep subject visible and framed.{vocal_constraint}
-- DO NOT include dialogue text or speaker labels in the visual description.
-- Keep 150-300 words.
-
-
-{soundscape_instruction}
-
-
-### H3 Camera Motion Vocabulary
-
+### detailed_description
+Starts with a style opening that sets the visual aesthetic, then uses [Shot N] markers for each shot.
+- VISUAL CONTENT: Who is visible, what they look like, their pose, the setting.
+- COMPOSITION: Framing, angle, shot distance.
+- CAMERA MOTION: Use the camera motion vocabulary naturally in prose — not as a separate list. Describe movement type, amplitude, and speed in flowing sentences.
+- CHARACTER MOTION: Subtle body language, posture shifts, facial expression.
+- LIGHTING AND ATMOSPHERE: Time of day, weather, light quality, mood.
+- CONSTRAINTS: ONE continuous shot per [Shot N] entry. No fade/dissolve/crossfade. Do not introduce new characters. Keep subject visible and framed.
+{vocal_constraint}
+- Camera motion vocabulary:
 {_H3_CAMERA_MOTION_VOCABULARY}
+- Dialogue format (non-music-video): (S1) <d>[English]...</d>. Reference speaker IDs from the Speaker IDs mapping.
+- Music videos skip dialogue entirely since audio is provided by the track.
+- Keep 150-300 words total.
+
+{soundscape_value}
+{music_value}
 
 {ref_labels_instruction}
 

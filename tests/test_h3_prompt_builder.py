@@ -84,14 +84,14 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
         self.assertIsInstance(prompt, str)
 
     def test_ref_mode_with_references(self):
-        refs = {"image": ["Alice"]}
+        refs = {"image": [{"name": "Alice", "path": "path/to/alice.png", "description": "a woman"}]}
         prompt = build_h3_video_system_prompt(mode="ref", references=refs)
         self.assertIn("Alice", prompt)
         self.assertIn("<Picture 1>", prompt)
 
     def test_ref_retention_markers(self):
         prompt = build_h3_video_system_prompt(mode="ref")
-        for marker in ("fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference"):
+        for marker in ("fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference", "fully_copy", "partially_copy"):
             self.assertIn(marker, prompt)
 
 
@@ -434,11 +434,13 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         result = self.build_refs(segment)
         self.assertIsNotNone(result)
         self.assertIn("image", result)
-        self.assertNotIn("video", result)
-        self.assertNotIn("audio", result)
+        self.assertIn("video", result)
+        self.assertIn("audio", result)
         self.assertEqual(len(result["image"]), 2)
-        self.assertEqual(result["image"][0], "actor1")
-        self.assertEqual(result["image"][1], "loc1")
+        self.assertEqual(result["image"][0].get("name"), "actor1")
+        self.assertEqual(result["image"][1].get("name"), "loc1")
+        self.assertEqual(result["image"][0].get("path"), "output/actor1.png")
+        self.assertEqual(result["image"][1].get("path"), "output/loc1.png")
 
     def test_ref_items_provide_labels(self):
         segment = {
@@ -453,8 +455,19 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         }
         result = self.build_refs(segment)
         self.assertIsNotNone(result)
-        self.assertEqual(result["image"][0], "Jane")
-        self.assertEqual(result["image"][1], "Studio")
+        # Image refs carry name from ref_items
+        self.assertEqual(result["image"][0].get("name"), "Jane")
+        self.assertEqual(result["image"][1].get("name"), "Studio")
+        self.assertEqual(result["image"][0].get("description"), "blonde")
+        self.assertEqual(result["image"][1].get("description"), "dark")
+        # Subjects list populated from ref_items
+        self.assertIn("subjects", result)
+        self.assertEqual(len(result["subjects"]), 2)
+        self.assertEqual(result["subjects"][0].get("name"), "Jane")
+        self.assertEqual(result["subjects"][1].get("name"), "Studio")
+        # Speaker IDs for actors only
+        self.assertIn("speaker_ids", result)
+        self.assertEqual(result["speaker_ids"].get("Jane"), "S1")
 
     def test_video_and_audio_refs(self):
         segment = {
@@ -468,9 +481,11 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("video", result)
         self.assertIn("audio", result)
-        self.assertNotIn("image", result)
-        self.assertEqual(result["video"][0], "scene_vid")
-        self.assertEqual(result["audio"][0], "song")
+        self.assertIn("image", result)
+        self.assertEqual(result["video"][0].get("name"), "scene_vid")
+        self.assertEqual(result["audio"][0].get("name"), "song")
+        self.assertEqual(result["video"][0].get("path"), "output/scene_vid.mp4")
+        self.assertEqual(result["audio"][0].get("path"), "music/song.wav")
 
     def test_mixed_refs(self):
         segment = {
@@ -485,9 +500,52 @@ class BuildReferencesFromSegmentTests(unittest.TestCase):
         }
         result = self.build_refs(segment)
         self.assertIsNotNone(result)
-        self.assertEqual(result["image"], ["Hero"])
-        self.assertEqual(result["audio"], ["song"])
-        self.assertNotIn("video", result)
+        self.assertEqual(result["image"][0].get("name"), "Hero")
+        self.assertEqual(result["audio"][0].get("name"), "song")
+        self.assertEqual(len(result["video"]), 0)
+        assert result.get("subjects")
+        self.assertEqual(result["subjects"][0].get("name"), "Hero")
+        assert result.get("speaker_ids")
+        self.assertEqual(result["speaker_ids"].get("Hero"), "S1")
+
+    def test_build_refs_produces_subjects(self):
+        """_build_references_from_segment creates subjects list from ref_items."""
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_image_paths": ["output/person.png"],
+            },
+            "ref_items": [
+                {"type": "actor", "name": "Jane", "visual_description": "tall woman"},
+            ],
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        self.assertIn("subjects", result)
+        self.assertEqual(len(result["subjects"]), 1)
+        self.assertEqual(result["subjects"][0].get("name"), "Jane")
+        self.assertEqual(result["subjects"][0].get("description"), "tall woman")
+
+    def test_build_refs_produces_speaker_ids(self):
+        """_build_references_from_segment maps actor names to speaker IDs."""
+        segment = {
+            "segment_id": "s1",
+            "references": {
+                "reference_image_paths": ["output/a.png", "output/b.png"],
+            },
+            "ref_items": [
+                {"type": "actor", "name": "Alice"},
+                {"type": "actor", "name": "Bob"},
+                {"type": "location", "name": "Studio"},
+            ],
+        }
+        result = self.build_refs(segment)
+        self.assertIsNotNone(result)
+        self.assertIn("speaker_ids", result)
+        self.assertEqual(result["speaker_ids"]["Alice"], "S1")
+        self.assertEqual(result["speaker_ids"]["Bob"], "S2")
+        # Location should NOT have a speaker ID
+        self.assertNotIn("Studio", result["speaker_ids"])
 
 
 class RefModeSystemPromptAudioPreservationTests(unittest.TestCase):
@@ -500,7 +558,7 @@ class RefModeSystemPromptAudioPreservationTests(unittest.TestCase):
             silent_mode=False,
         )
         self.assertIn("## Audio Preservation (Music Video)", prompt)
-        self.assertIn("audio=fully_preserved", prompt)
+        self.assertIn("fully_copy", prompt)
         self.assertIn("reference audio IS the soundtrack", prompt)
 
     def test_movie_type_has_no_audio_preservation_section(self):
@@ -525,7 +583,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
     """Test that references produce correct <Picture N>/<Audio N> tags."""
 
     def test_audio_refs_produce_audio_tags(self):
-        references = {"audio": ["Song Track"]}
+        references = {"audio": [{"name": "Song Track", "path": "music/song.wav"}]}
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
@@ -535,7 +593,10 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
         self.assertIn("<Audio 1>", prompt)
 
     def test_image_refs_produce_picture_tags(self):
-        references = {"image": ["Actor Jane", "Studio Room"]}
+        references = {"image": [
+            {"name": "Actor Jane", "path": "img/jane.png", "description": ""},
+            {"name": "Studio Room", "path": "img/studio.png", "description": ""},
+        ]}
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
@@ -548,7 +609,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
         self.assertIn("Studio Room", prompt)
 
     def test_video_refs_produce_video_tags(self):
-        references = {"video": ["Intro Clip"]}
+        references = {"video": [{"name": "Intro Clip", "path": "vid/intro.mp4"}]}
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
@@ -558,15 +619,19 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
         self.assertIn("<Video 1>", prompt)
 
     def test_mixed_refs_correct_numbering(self):
-        references = {"image": ["Actor"], "audio": ["Song"]}
+        references = {
+            "image": [{"name": "Actor", "path": "img/a.png", "description": ""}],
+            "audio": [{"name": "Song", "path": "music/song.wav"}],
+        }
         prompt = build_h3_video_system_prompt(
             mode="ref",
             video_type="music_video",
             silent_mode=False,
             references=references,
         )
-        self.assertIn("<Picture 1>: Actor", prompt)
-        self.assertIn("<Audio 1>: Song", prompt)  # per-type numbering: audio starts at 1
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("Song", prompt)
+        self.assertIn("<Audio 1>", prompt)  # per-type numbering: audio starts at 1
 
     def test_builder_passes_references_for_ref_mode(self):
         """End-to-end: H3PromptBuilder passes references to system prompt for ref mode."""
@@ -617,10 +682,44 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
             video_type="music_video",
         )
         system_prompt = llm.calls[0][0]
-        # Should NOT contain ## Reference Labels Used (only the generic instruction)
-        self.assertNotIn("## Reference Labels Used", system_prompt)
+        # Should NOT contain ## Reference Labels and Subjects (only the generic instruction)
+        self.assertNotIn("## Reference Labels and Subjects", system_prompt)
         # Generic instruction should still be present
         self.assertIn("## Reference Labels", system_prompt)
+
+    def test_backward_compat_string_refs(self):
+        """Old-style string-format references are still accepted."""
+        references = {"image": ["OldStyleLabel"], "audio": ["OldTrack"], "subjects": []}
+        prompt = build_h3_video_system_prompt(
+            mode="ref",
+            video_type="music_video",
+            silent_mode=False,
+            references=references,
+        )
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("OldStyleLabel", prompt)
+        self.assertIn("<Audio 1>", prompt)
+        self.assertIn("OldTrack", prompt)
+
+    def test_ref_prompt_contains_subject_anchor(self):
+        """Prompt instructs to anchor subjects to source references."""
+        refs = {"image": [{"name": "Hero", "path": "h.png", "description": ""}]}
+        prompt = build_h3_video_system_prompt(
+            mode="ref", references=refs, video_type="music_video",
+        )
+        self.assertIn("<Subject", prompt)
+
+    def test_ref_prompt_contains_task_prefix(self):
+        """Prompt mentions task type prefix in summary field."""
+        prompt = build_h3_video_system_prompt(mode="ref", video_type="music_video")
+        self.assertIn("[task type]", prompt)
+        self.assertIn("character_consistency", prompt)
+        self.assertIn("style_transfer", prompt)
+
+    def test_ref_prompt_contains_shot_format(self):
+        """Prompt mentions [Shot N] markers."""
+        prompt = build_h3_video_system_prompt(mode="ref", video_type="music_video")
+        self.assertIn("[Shot N]", prompt)
 
 
 class VideoPipelineModeResolutionTests(unittest.TestCase):

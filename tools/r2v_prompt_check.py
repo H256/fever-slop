@@ -45,7 +45,7 @@ def main():
 
     # Import project modules
     from feverslop.adapters.llm_client import LocalOpenAIClient
-    from feverslop.prompting.h3_prompt_builder import _build_references_from_segment, H3PromptBuilder
+    from feverslop.prompting.h3_prompt_builder import _build_references_from_segment
     from feverslop.prompting.minimax_h3_prompt_style import build_h3_video_system_prompt
     from feverslop.domain.llm_parsing import extract_json_object
 
@@ -140,7 +140,7 @@ def main():
         print(f"   Missing: {missing}")
 
     # Audio validation (ref mode)
-    if mode == "ref" and refs and refs.get("audio"):
+    if mode == "ref" and refs and refs.get("audio", []):
         sd = parsed.get("subject_definitions", "")
         ra = parsed.get("retention_analysis", "")
         audio_in_sd = "<Audio" in sd
