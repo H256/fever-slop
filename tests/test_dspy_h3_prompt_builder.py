@@ -3,7 +3,11 @@ import tempfile
 from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
+from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, _scene_references
+from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
+from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
+from feverslop.prompting.dspy_h3_models import PromptMode, ReferenceAsset
+from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
 
 
 class FakeGeneratedPrompt:
@@ -21,6 +25,40 @@ class FakeGenerator:
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_generator_components_have_dedicated_modules(self):
+        self.assertEqual(VideoPromptGenerator.__module__, "feverslop.prompting.dspy_h3_generator")
+        self.assertEqual(LocalImageAnalyzer.__module__, "feverslop.prompting.dspy_h3_analyzer")
+        self.assertEqual(PromptMode.__module__, "feverslop.prompting.dspy_h3_models")
+        self.assertTrue(callable(build_dspy_signatures))
+        self.assertEqual(ReferenceAsset.__module__, "feverslop.prompting.dspy_h3_models")
+    def test_integrated_guides_are_bundled_with_prompting_package(self):
+        guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
+
+        base = (guides / "base.md").read_text(encoding="utf-8")
+        reference = (guides / "reference.md").read_text(encoding="utf-8")
+
+        self.assertIn("integrated_multimodal_description", base)
+        self.assertIn("subject_definitions", reference)
+        self.assertIn("retention_analysis", reference)
+
+    def test_scene_reference_roles_are_preserved_for_full_generator(self):
+        references, _ = _scene_references(
+            {
+                "references": {
+                    "actor_ids": ["actor"],
+                    "actor_msr_paths": ["actor.png"],
+                    "location_msr_path": "location.png",
+                }
+            },
+            {"vocals": Path("vocals.wav")},
+            None,
+        )
+
+        self.assertEqual(
+            [reference["role"] for reference in references],
+            ["subject", "environment", "audio_reuse"],
+        )
+
     def test_reports_progress_after_each_scene(self):
         progress = []
         builder = DspyH3PromptBuilder(FakeGenerator())

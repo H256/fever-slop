@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+
+def build_dspy_signatures():
+    import dspy
+
+    from feverslop.prompting.dspy_h3_models import (
+        BaseVideoPrompt,
+        ImageAnalysis,
+        PromptPlan,
+        RetentionAnalysis,
+    )
+
+    class AnalyzeImage(dspy.Signature):
+        """Analyze only observable information in a reference image for video generation."""
+        image: dspy.Image = dspy.InputField()
+        intended_role: str = dspy.InputField()
+        user_hint: str = dspy.InputField()
+        analysis: ImageAnalysis = dspy.OutputField()
+
+    class BuildPromptPlan(dspy.Signature):
+        """Create a strict, structured production plan using only supplied references."""
+        mode: str = dspy.InputField()
+        user_prompt: str = dspy.InputField()
+        duration_seconds: float | None = dspy.InputField()
+        references_json: str = dspy.InputField()
+        notes: str = dspy.InputField()
+        strict_fidelity: bool = dspy.InputField()
+        requested_music_intent: str = dspy.InputField()
+        plan: PromptPlan = dspy.OutputField()
+
+    class RenderBasePrompt(dspy.Signature):
+        """Render a production-ready MiniMax base prompt; the guide is authoritative."""
+        guide: str = dspy.InputField()
+        mode: str = dspy.InputField()
+        user_prompt: str = dspy.InputField()
+        plan_json: str = dspy.InputField()
+        references_json: str = dspy.InputField()
+        strict_fidelity: bool = dspy.InputField()
+        music_intent: str = dspy.InputField()
+        result: BaseVideoPrompt = dspy.OutputField()
+
+    class RenderReferencePrompt(dspy.Signature):
+        """Render all generated portions of a MiniMax full-reference prompt."""
+        guide: str = dspy.InputField()
+        user_prompt: str = dspy.InputField()
+        plan_json: str = dspy.InputField()
+        references_json: str = dspy.InputField()
+        strict_fidelity: bool = dspy.InputField()
+        music_intent: str = dspy.InputField()
+        summary: str = dspy.OutputField()
+        retention_analysis: list[RetentionAnalysis] = dspy.OutputField()
+        detailed_description: str = dspy.OutputField()
+        overall_soundscape: str = dspy.OutputField()
+        non_diegetic_music: str | None = dspy.OutputField()
+
+    return AnalyzeImage, BuildPromptPlan, RenderBasePrompt, RenderReferencePrompt

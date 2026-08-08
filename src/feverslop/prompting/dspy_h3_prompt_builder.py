@@ -12,6 +12,7 @@ def _reference(
     kind: str,
     name: str,
     description: str = "",
+    role: str = "general",
 ) -> dict[str, str]:
     source_text = str(source).replace("\\", "/")
     return {
@@ -20,6 +21,7 @@ def _reference(
         "kind": kind,
         "name": name,
         "description": description,
+        "role": role,
     }
 
 
@@ -38,7 +40,7 @@ def _scene_references(
         name = str(actor_ids[index - 1]) if index <= len(actor_ids) else f"Actor {index}"
         path = Path(source)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
-        result.append(_reference(label=f"<Picture {index}>", source=path, kind="picture", name=name))
+        result.append(_reference(label=f"<Picture {index}>", source=path, kind="picture", name=name, role="subject"))
         if image_path.is_file():
             images.append(image_path)
 
@@ -51,6 +53,7 @@ def _scene_references(
             source=path,
             kind="picture",
             name=str(references.get("location_id") or "Location"),
+            role="environment",
         ))
         if image_path.is_file():
             images.append(image_path)
@@ -62,6 +65,7 @@ def _scene_references(
             kind="audio",
             name=name,
             description="Use this synchronized stem for the scene's audio behavior.",
+            role="audio_reuse",
         ))
 
     return result, images
@@ -155,36 +159,12 @@ class DspyH3PromptBuilder:
 
 
 def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
-    """Create a DSPy generator using the same OpenAI-compatible endpoint."""
-    try:
-        import dspy
-    except ImportError as exc:
-        raise RuntimeError("DSPy H3 generation requires the 'dspy-ai' dependency") from exc
+    """Create the complete planner/analyzer/renderer generator from dspy_prompt_test."""
+    from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 
-    class ScenePrompt(dspy.Signature):
-        """Write a production-ready MiniMax H3 full-reference prompt."""
-
-        scene_context: str = dspy.InputField()
-        references_json: str = dspy.InputField()
-        images: list[Any] = dspy.InputField()
-        prompt: str = dspy.OutputField()
-
-    lm = dspy.LM(
-        f"openai/{llm.model}",
-        api_base=llm.client.base_url,
-        api_key=llm.client.api_key,
-        temperature=llm.temperature,
-        max_tokens=llm.max_tokens,
+    guides = Path(__file__).with_name("guides")
+    return VideoPromptGenerator(
+        base_guide_path=guides / "base.md",
+        reference_guide_path=guides / "reference.md",
+        llm=llm,
     )
-    predictor = dspy.Predict(ScenePrompt)
-
-    def generate(request: dict[str, Any]) -> dict[str, str]:
-        with dspy.context(lm=lm):
-            prediction = predictor(
-                scene_context=request["notes"],
-                references_json=json.dumps(request["references"], ensure_ascii=False),
-                images=[dspy.Image.from_path(str(path)) for path in request["images"]],
-            )
-        return {"prompt": prediction.prompt}
-
-    return generate
