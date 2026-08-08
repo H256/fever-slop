@@ -359,9 +359,12 @@ class VideoPromptGenerator:
         self.base_renderer = dspy.Predict(RenderBasePrompt)
         self.reference_renderer = dspy.Predict(RenderReferencePrompt)
         client = getattr(llm, "client", None)
+        api_base = getattr(client, "base_url", None)
+        if api_base is not None and not isinstance(api_base, str):
+            api_base = str(api_base)
         self.lm = dspy.LM(
             f"openai/{llm.model}",
-            api_base=getattr(client, "base_url", None),
+            api_base=api_base,
             api_key=getattr(client, "api_key", None),
             temperature=llm.temperature,
             max_tokens=llm.max_tokens,

@@ -42,9 +42,12 @@ class VideoPromptGenerator:
         self.base_renderer = dspy.Predict(RenderBasePrompt)
         self.reference_renderer = dspy.Predict(RenderReferencePrompt)
         client = getattr(llm, "client", None)
+        api_base = getattr(client, "base_url", None)
+        if api_base is not None and not isinstance(api_base, str):
+            api_base = str(api_base)
         self.lm = dspy.LM(
             f"openai/{llm.model}",
-            api_base=getattr(client, "base_url", None),
+            api_base=api_base,
             api_key=getattr(client, "api_key", None),
             temperature=llm.temperature,
             max_tokens=llm.max_tokens,
@@ -65,7 +68,12 @@ class VideoPromptGenerator:
         result = []
         for ref in refs:
             counts[ref.kind] += 1
-            if counts[ref.kind] > getattr(self.limits, f"max_{ref.kind.value}"):
+            limit_name = {
+                ReferenceKind.PICTURE: "max_pictures",
+                ReferenceKind.AUDIO: "max_audio",
+                ReferenceKind.VIDEO: "max_videos",
+            }[ref.kind]
+            if counts[ref.kind] > getattr(self.limits, limit_name):
                 raise ValueError(f"Too many {ref.kind.value} references")
             description = ref.description
             if self.image_analyzer.should_analyze(ref):
@@ -126,9 +134,14 @@ class VideoPromptGenerator:
         if request_data.get("mode") == "ref":
             request_data = {**request_data, "mode": PromptMode.R2V.value}
         request = VideoPromptRequest.model_validate(request_data)
-        refs = self._resolve_references(request.references)
-        plan = self._plan(request, refs)
-        with __import__("dspy").context(lm=self.lm):
+        dspy = __import__("dspy")
+        # Planning and optional image analysis are DSPy calls as well.  They
+        # must use the same configured LM as the final renderer; otherwise a
+        # planner failure is caught by the adapter and looks like a valid
+        # legacy/concept prompt.
+        with dspy.context(lm=self.lm):
+            refs = self._resolve_references(request.references)
+            plan = self._plan(request, refs)
             plan_json = self._json(plan)
             references_json = self._json(refs)
             if request.mode == PromptMode.R2V:

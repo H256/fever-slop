@@ -26,6 +26,10 @@ class RecordingService:
         return context
 
 
+class DeferredRecordingService(RecordingService):
+    defer_until_references = True
+
+
 class RecordingReporter:
     def __init__(self):
         self.steps = []
@@ -54,6 +58,15 @@ class RecordingReporter:
 
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
+    def test_deferred_reference_services_are_skipped_when_requested(self):
+        immediate = RecordingService("audio", {})
+        deferred = DeferredRecordingService("h3", {})
+        use_case = GenerateRenderPlanUseCase(pipeline_services=[immediate, deferred])
+
+        result = use_case.execute_services({"request": SimpleNamespace(defer_h3_until_references=True)})
+
+        self.assertEqual(["audio"], result["order"])
+        self.assertEqual([], deferred.calls)
     def test_clamp_report_uses_default_limit_label_without_selected_workflow(self):
         reporter = RecordingReporter()
         policy = ResolvedSceneDurationPolicy(

@@ -171,12 +171,15 @@ class H3PromptBuilder:
         audio_paths: dict[str, Path] | None = None,
         reference_root: Path | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        status_callback: Callable[[int, int, str], None] | None = None,
     ) -> Path:
         """Per-scene batch generation. Returns written file path."""
         results = []
         total = len(stage1_segments)
         for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
+            if status_callback is not None:
+                status_callback(current, total, "started")
             concept = concept_prompts.get(segment_id, {})
             if isinstance(concept, dict):
                 concept_text = str(concept.get("concept", ""))
@@ -196,5 +199,7 @@ class H3PromptBuilder:
             results.append(entry)
             if progress_callback is not None:
                 progress_callback(current, total)
+            if status_callback is not None:
+                status_callback(current, total, "completed")
 
         return artifact_store.write_json(output_json_path, results)

@@ -6,8 +6,27 @@ from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 
 
+def _configured_audio_paths(config: Any, stem_files: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return only the audio stems selected for the MiniMax reference workflow."""
+    if not stem_files:
+        return None
+
+    configured_stems = list(getattr(getattr(config, "minimax_h3_audio_refs", None), "stems", ()))
+    if not configured_stems:
+        return None
+
+    selected = {
+        stem_name: stem_files[stem_name]
+        for stem_name in configured_stems
+        if stem_name in stem_files
+    }
+    return selected or None
+
+
 class H3PromptPipeline:
     """Application service for H3-structured prompt generation (stage 8.5)."""
+
+    defer_until_references = True
 
     required_keys = {
         "scene_prompts_json",
@@ -62,6 +81,11 @@ class H3PromptPipeline:
         else:
             mode = "base"
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
+        audio_paths = (
+            _configured_audio_paths(config, stem_files)
+            if config.video_pipeline == "minimax-h3-r2v"
+            else stem_files
+        )
 
         builder.build_all_h3_prompts(
             stage1_segments=stage1_segments,
@@ -72,10 +96,14 @@ class H3PromptPipeline:
             video_type="music_video",
             output_json_path=h3_prompts_json,
             artifact_store=artifact_store,
-            audio_paths=stem_files,
+            audio_paths=audio_paths,
             reference_root=getattr(config, "project_dir", None),
             progress_callback=lambda current, total: context["reporter"].message(
                 f"[cyan]H3 prompts: {current}/{total} scenes[/cyan]"
+            ),
+            status_callback=lambda current, total, status: context["reporter"].message(
+                f"[cyan]H3 prompts: {current}/{total} scenes - "
+                f"{'start' if status == 'started' else 'completed'}[/cyan]"
             ),
         )
         log_file("H3 Prompts JSON", h3_prompts_json)

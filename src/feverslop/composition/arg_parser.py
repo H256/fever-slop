@@ -9,6 +9,7 @@ from feverslop.adapters.pipeline_runner_options import add_runner_options
 class PipelineStage(str, Enum):
     TESTS = "tests"
     MAIN_PIPELINE = "main_pipeline"
+    H3_PROMPTS = "h3_prompts"
     RENDER_PLAN = "render_plan"
     RELAY_COMPACT = "relay_compact"
     ANCHOR_FIX = "anchor_fix"

@@ -9,12 +9,25 @@ from rich.progress import TaskProgressColumn, TimeElapsedColumn, TimeRemainingCo
 
 import run_pipeline
 from feverslop.composition.stage_runners import (
+    _read_h3_input,
     _run_main_pipeline_stage,
     _selected_video_workflows,
 )
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_h3_prompts_is_an_atomic_cli_stage(self):
+        args = run_pipeline.build_arg_parser().parse_args(["--stage", "h3_prompts"])
+
+        self.assertEqual(["h3_prompts"], args.stages)
+
+    def test_h3_input_reports_the_upstream_artifact_required(self):
+        with TemporaryDirectory() as temp_dir:
+            missing = Path(temp_dir) / "stage1_segments.json"
+
+            with self.assertRaisesRegex(FileNotFoundError, "main_pipeline"):
+                _read_h3_input(missing, "stage 1 segments")
+
     def test_run_pipeline_defaults_do_not_embed_windows_only_relative_prefixes(self):
         args = run_pipeline.build_arg_parser().parse_args([])
 

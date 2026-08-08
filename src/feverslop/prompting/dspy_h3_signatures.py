@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 def build_dspy_signatures():
     import dspy
 
@@ -19,7 +16,14 @@ def build_dspy_signatures():
         analysis: ImageAnalysis = dspy.OutputField()
 
     class BuildPromptPlan(dspy.Signature):
-        """Create a strict, structured production plan using only supplied references."""
+        """Create a strict plan using only supplied references.
+
+        `music_intent=none` means no audience-only score and requires
+        `non_diegetic_music` to be omitted or N/A. For `generate` or
+        `reference`, provide a concrete non-diegetic music description.
+        Scene vocals, instruments, and referenced soundtrack audio belong in
+        the detailed description and audio references, not in this field.
+        """
         mode: str = dspy.InputField()
         user_prompt: str = dspy.InputField()
         duration_seconds: float | None = dspy.InputField()
