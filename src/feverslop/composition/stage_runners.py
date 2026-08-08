@@ -176,6 +176,20 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
     paths = config.paths
     song_id = config.song_id
     h3_prompts = paths.prompts_dir / f"h3_prompts_{song_id}.json"
+    # -- stem audio (MiniMax H3 R2V) --
+    stem_list: list[str] | None = list(config.minimax_h3_audio_refs.stems)
+    input_audio: Path | None = config.input_audio
+    stem_files: dict[str, Path] | None = None
+    stems_dir = paths.stems_dir
+    if stems_dir is not None and stems_dir.is_dir():
+        stem_files = {}
+        for stem_file in sorted(stems_dir.iterdir()):
+            if stem_file.is_file() and stem_file.suffix.lower() in (".wav", ".mp3", ".flac"):
+                # Extract stem name from filename: "stemname_basename.ext"
+                parts = stem_file.stem.split("_", 1)
+                if parts:
+                    stem_name = parts[0]
+                    stem_files[stem_name] = stem_file
     build_render_plan(
         scene_prompts_json=paths.prompts_dir / f"scene_prompts_{song_id}.json",
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{song_id}.json",
@@ -183,6 +197,9 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         video_settings=config.to_video_settings(),
         artifact_store=JsonArtifactStore(),
         h3_prompts_json=h3_prompts if h3_prompts.is_file() else None,
+        stem_list=stem_list,
+        input_audio=input_audio,
+        stem_files=stem_files,
     )
     state.plan_for_next_step = state.context.render_plan
     console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
