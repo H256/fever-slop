@@ -28,12 +28,12 @@ class RenderPlanPipeline:
         log_file = context["log_file"]
 
         # -- stem files (MiniMax H3 R2V) --
-        config = context.get("config", None)
+        config = context["config"]
         stem_list: list[str] | None = None
         input_audio: Path | None = None
         stem_files: dict[str, Path] | None = None
 
-        if context.get("stem_files") is not None:
+        if context["stem_files"] is not None:
             stem_files = context["stem_files"]
             if config is not None:
                 stem_list = list(config.minimax_h3_audio_refs.stems)
