@@ -30,6 +30,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     MAX_REF_IMAGES = 9
     MAX_REF_VIDEOS = 3
     MAX_REF_AUDIOS = 3
+    MAX_STEM_AUDIOS = 2  # MAX_REF_AUDIOS - 1 (main comfy audio occupies slot 0)
     FPS = 24
 
     def __init__(
@@ -55,6 +56,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         project_dir: str | Path | None = None,
         workflow: dict | None = None,
         workflow_label: str | Path | None = None,
+        audio_ref_stems: list[str] | None = None,
     ):
         super().__init__(
             client=client,
@@ -79,6 +81,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
         self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
+        self.audio_ref_stems = audio_ref_stems
 
     # -----------------------------------------------------------------------
     # High-level entry points
@@ -140,7 +143,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self._patch_reference_videos(patcher, ref_video_paths or [])
 
         # -- reference audios -------------------------------------------------
-        self._patch_reference_audios(patcher, ref_audio_paths or [])
+        self._patch_reference_audios(
+            patcher,
+            ref_audio_paths or [],
+            duration_seconds=duration_seconds,
+            abs_start_seconds=scene.get("abs_start_seconds"),
+        )
 
         # -- audio (workflow may or may not have these anchors) ----------------
         if comfy_audio_name is not None:
@@ -183,6 +191,26 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         # -- resolve reference audio paths ------------------------------------
         ref_audio_paths = self._resolve_ref_audio_paths(request.scene)
+
+        # -- resolve stem audio paths (takes priority for slots) ------------------
+        stem_audio_paths = self._resolve_stem_audio_paths(request.scene)
+
+        # Merge: stem audio takes priority, then existing scene-level audio refs
+        merged_audio: list[Path] = []
+        audio_path_set: set[str] = set()
+        for p in stem_audio_paths:
+            key = str(p)
+            if key not in audio_path_set:
+                merged_audio.append(p)
+                audio_path_set.add(key)
+        for p in ref_audio_paths:
+            key = str(p)
+            if key not in audio_path_set:
+                merged_audio.append(p)
+                audio_path_set.add(key)
+                if len(merged_audio) >= self.MAX_STEM_AUDIOS:
+                    break
+        ref_audio_paths = merged_audio[: self.MAX_STEM_AUDIOS]
 
         # -- build workflow ---------------------------------------------------
         workflow = self.build_workflow(
@@ -295,12 +323,32 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 patcher, title, "LoadVideo", "video", video_name, "ref_videos", index - 1
             )
 
+    @staticmethod
+    def _wire_ref_audio_slot(
+        patcher: WorkflowPatcher,
+        source_node_id: str,
+        index: int,
+    ) -> None:
+        """Wire a node to ref_audios.ref_audio_{index} on the core R2V node."""
+        for _, core in patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo"):
+            core.setdefault("inputs", {})[
+                f"ref_audios.ref_audio_{index}"
+            ] = [source_node_id, 0]
+
     def _patch_reference_audios(
         self,
         patcher: WorkflowPatcher,
         ref_audio_paths: list[str | Path] | None,
+        *,
+        duration_seconds: float | None = None,
+        abs_start_seconds: float | None = None,
     ) -> None:
-        """Map reference audio paths to ``#AUDIO_1``, ``#AUDIO_2``, ``#AUDIO_3`` anchors."""
+        """Map reference audio paths through LoadAudio → [TrimAudioDuration] → R2V slots.
+
+        When *duration_seconds* is given, each audio path is trimmed to the scene
+        duration before reaching the core node, keeping stem audio in sync with
+        the main (comfy_audio) reference.
+        """
         self._clear_reference_group(patcher, "ref_audios")
         if not ref_audio_paths:
             return
@@ -311,10 +359,51 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             )
         for index, path in enumerate(ref_audio_paths, start=1):
             title = f"#AUDIO_{index}"
+            trim_title = f"#TRIM_AUDIO_{index}"
             audio_name = self.asset_uploader.resolve_reference_audio_name(path)
-            self._patch_reference_asset(
-                patcher, title, "LoadAudio", "audio", audio_name, "ref_audios", index - 1
-            )
+
+            # Step 1: Update or create LoadAudio anchor
+            try:
+                loader_id, loader = patcher.find_node_by_meta_title(title)
+                loader.setdefault("inputs", {})["audio"] = audio_name
+            except KeyError:
+                numeric_ids = [int(nid) for nid in patcher.get() if nid.isdigit()]
+                loader_id = str(max(numeric_ids, default=0) + 1)
+                patcher.get()[loader_id] = {
+                    "class_type": "LoadAudio",
+                    "_meta": {"title": title},
+                    "inputs": {"audio": audio_name},
+                }
+
+            # Step 2: If trimming, wire through TrimAudioDuration
+            if duration_seconds is not None:
+                try:
+                    trim_id, trim = patcher.find_node_by_meta_title(trim_title)
+                except KeyError:
+                    numeric_ids = [int(nid) for nid in patcher.get() if nid.isdigit()]
+                    trim_id = str(max(numeric_ids, default=0) + 1)
+                    patcher.get()[trim_id] = {
+                        "class_type": "TrimAudioDuration",
+                        "_meta": {"title": trim_title},
+                        "inputs": {
+                            "start_index": 0.0,
+                            "duration": float(duration_seconds),
+                            "audio": [loader_id, 0],
+                        },
+                    }
+                    trim = patcher.get()[trim_id]
+
+                else:
+                    # Update existing trim node to point at the loader
+                    trim.setdefault("inputs", {})["audio"] = [loader_id, 0]
+
+                start = float(abs_start_seconds) if abs_start_seconds is not None else 0.0
+                trim.setdefault("inputs", {})["start_index"] = start
+                trim.setdefault("inputs", {})["duration"] = float(duration_seconds)
+
+                self._wire_ref_audio_slot(patcher, trim_id, index)
+            else:
+                self._wire_ref_audio_slot(patcher, loader_id, index)
 
     @staticmethod
     def _clear_reference_group(patcher: WorkflowPatcher, input_group: str) -> None:
@@ -324,8 +413,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 if input_name.startswith(f"{input_group}."):
                     del inputs[input_name]
 
-    @staticmethod
     def _patch_reference_asset(
+        self,
         patcher: WorkflowPatcher,
         title: str,
         class_type: str,
@@ -351,9 +440,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         core_nodes = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
         if core_nodes:
-            core_nodes[0][1].setdefault("inputs", {})[
-                f"{input_group}.{input_group[:-1]}_{index}"
-            ] = [loader_id, 0]
+            if input_group == "ref_audios":
+                self._wire_ref_audio_slot(patcher, loader_id, index)
+            else:
+                core_nodes[0][1].setdefault("inputs", {})[
+                    f"{input_group}.{input_group[:-1]}_{index}"
+                ] = [loader_id, 0]
 
     def _patch_audio_inputs(
         self,
@@ -526,6 +618,41 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     # -----------------------------------------------------------------------
     # Validation
     # -----------------------------------------------------------------------
+
+    def _resolve_stem_audio_paths(
+        self,
+        scene: dict,
+    ) -> list[Path]:
+        """Resolve stem-based audio reference paths from scene stem_audio section.
+
+        Uses instance-level audio_ref_stems if set, otherwise scene-level stem list.
+        Returns empty list if no stem audio available.
+        """
+        stem_audio = (scene.get("stem_audio") or {})
+        if not stem_audio:
+            return []
+
+        stem_names: list[str] = self.audio_ref_stems or list(stem_audio.get("stems", []))
+        paths_map: dict[str, str] = stem_audio.get("paths", {})
+        if not paths_map or not stem_names:
+            return []
+
+        # Priority ordering: lip-sync-critical stems (vocals, full_mix) first,
+        # then any additional stems in original order.
+        priority_order = ["vocals", "full_mix"]
+        ordered_names = [n for n in priority_order if n in stem_names and n in paths_map]
+        for name in stem_names:
+            if name not in ordered_names and name in paths_map:
+                ordered_names.append(name)
+
+        result: list[Path] = []
+        for stem_name in ordered_names:
+            path_str = paths_map.get(stem_name)
+            if path_str:
+                p = coerce_local_path(path_str)
+                if p.exists():
+                    result.append(p)
+        return result[: self.MAX_REF_AUDIOS]
 
     def _validate_scene(self, scene: dict) -> None:
         """Validate that the scene has at least one actor reference."""

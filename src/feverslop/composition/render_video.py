@@ -56,6 +56,7 @@ class RenderVideoCompositionOptions:
     ffmpeg_path: str = "ffmpeg"
     postprocess_reencode: bool = True
     ffmpeg_debug: bool = False
+    minimax_audio_ref_stems: str | None = None
 
 
 def build_render_video_scenes_use_case(
@@ -145,7 +146,13 @@ def build_render_video_scenes_use_case(
         )
     elif options.video_pipeline == "minimax-h3-r2v":
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
-        project_dir = ProjectConfig.load(project_config_path).project_dir if project_config_path else None
+        project_config = ProjectConfig.load(project_config_path) if project_config_path else None
+        project_dir = project_config.project_dir if project_config else None
+        stem_list: list[str] | None = None
+        if options.minimax_audio_ref_stems:
+            stem_list = [s.strip() for s in options.minimax_audio_ref_stems.split(",") if s.strip()]
+        elif project_config is not None:
+            stem_list = list(project_config.minimax_h3_audio_refs.stems)
         backend = ComfyUIMiniMaxH3R2VBackend(
             client=client,
             workflow_path=coerce_local_path(workflow_path),
@@ -162,6 +169,7 @@ def build_render_video_scenes_use_case(
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
             video_settings=video_settings,
+            audio_ref_stems=stem_list,
         )
     elif options.video_pipeline == "minimax-h3-t2v":
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
