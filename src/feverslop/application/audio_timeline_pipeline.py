@@ -77,9 +77,18 @@ class AudioTimelinePipeline:
         reference_lyrics = str(getattr(config, "lyrics", "") or "").strip()
         if reference_lyrics and self.lyric_aligner_factory is not None:
             aligner = self.lyric_aligner_factory(context)
+            vocal_segments = sum(1 for seg in timeline if seg.kind == "vocals")
+            reporter.message(
+                f"[cyan]LLM lyric alignment: correcting "
+                f"{vocal_segments} vocal segments against project lyrics...[/cyan]"
+            )
             timeline = run_spinner(
                 "Correcting Whisper lyrics against project lyrics...",
                 lambda: aligner.align(timeline, reference_lyrics),
+            )
+            reporter.message(
+                f"[green]OK[/green] LLM lyric alignment finished: "
+                f"{vocal_segments} vocal segments checked"
             )
         self.save_timeline_json(timeline, timeline_json)
         log_file("Timeline JSON", timeline_json)

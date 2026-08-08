@@ -22,6 +22,33 @@ class FakeLLM:
 
 
 class ScenePromptBuilderTests(unittest.TestCase):
+    def test_scene_prompts_report_progress_after_each_scene(self):
+        llm = FakeLLM()
+        progress = []
+        builder = ScenePromptBuilder(llm)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            builder.build_scene_prompts(
+                stage1_segments=[
+                    {"segment_id": "segment_001", "type": "vocals"},
+                    {"segment_id": "segment_002", "type": "instrumental"},
+                ],
+                concept_prompts={"segment_001": "one", "segment_002": "two"},
+                scene_details={},
+                global_context={
+                    "subject": "singer",
+                    "story_idea": "story",
+                    "style": "cinematic",
+                    "locations": ["stage"],
+                    "prompt_guidance": {},
+                },
+                output_json_path=Path(temp_dir) / "scene_prompts.json",
+                artifact_store=JsonArtifactStore(),
+                progress_callback=lambda current, total: progress.append((current, total)),
+            )
+
+        self.assertEqual([(1, 2), (2, 2)], progress)
+
     def test_scene_prompts_include_explicit_t2i_and_i2v_fields(self):
         llm = FakeLLM()
         builder = ScenePromptBuilder(llm)

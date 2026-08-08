@@ -2,7 +2,7 @@
 
 from pathlib import Path
 import json
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.prompting.music_video_prompt_style import build_concept_mapper_system_prompt
@@ -41,6 +41,7 @@ class ConceptPromptBatcher:
         batch_size: int = 10,
         max_previous_concepts: int = 6,
         request_timeout_seconds: float | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ):
         if batch_size < 1:
             raise ValueError("batch_size must be >= 1")
@@ -49,6 +50,7 @@ class ConceptPromptBatcher:
         self.batch_size = batch_size
         self.max_previous_concepts = max_previous_concepts
         self.request_timeout_seconds = request_timeout_seconds
+        self.progress_callback = progress_callback
 
     def create_concept_prompts_batched(
         self,
@@ -57,11 +59,20 @@ class ConceptPromptBatcher:
         story_idea: str,
         global_context: dict,
         notes: str = "",
+        progress_callback: Callable[[str], None] | None = None,
     ) -> dict:
         all_results: dict[str, str] = {}
         previous_summary = ""
+        batches = list(chunked(stage1_segments, self.batch_size))
+        report = progress_callback or self.progress_callback
 
-        for batch_start, batch in chunked(stage1_segments, self.batch_size):
+        for batch_number, (batch_start, batch) in enumerate(batches, start=1):
+            batch_label = f"Concept batch {batch_number}/{len(batches)}"
+            self._report(
+                f"{batch_label}: generating scenes "
+                f"{batch_start + 1}-{batch_start + len(batch)}",
+                report,
+            )
             batch_result = self._generate_batch(
                 batch_index=batch_start // self.batch_size + 1,
                 batch=batch,
@@ -71,6 +82,7 @@ class ConceptPromptBatcher:
                 previous_concepts=self._last_concepts(all_results),
                 previous_summary=previous_summary,
             )
+            self._report(f"{batch_label}: response received, validating keys", report)
 
             expected_ids = [seg["segment_id"] for seg in batch]
             batch_result = self._repair_missing_or_extra_keys(
@@ -82,6 +94,7 @@ class ConceptPromptBatcher:
                 notes=notes,
                 previous_concepts=self._last_concepts(all_results),
                 previous_summary=previous_summary,
+                progress_callback=report,
             )
 
             all_results.update(batch_result)
@@ -91,6 +104,7 @@ class ConceptPromptBatcher:
                 global_context=global_context,
                 concepts=all_results,
             )
+            self._report(f"{batch_label}: complete ({len(all_results)} scenes total)", report)
 
         missing = [
             seg["segment_id"]
@@ -106,6 +120,11 @@ class ConceptPromptBatcher:
             seg["segment_id"]: all_results[seg["segment_id"]]
             for seg in stage1_segments
         }
+
+    def _report(self, message: str, callback: Callable[[str], None] | None = None) -> None:
+        callback = callback or self.progress_callback
+        if callback is not None:
+            callback(message)
 
     def _generate_batch(
         self,
@@ -150,6 +169,7 @@ class ConceptPromptBatcher:
         notes: str,
         previous_concepts: dict,
         previous_summary: str,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> dict:
         # Drop unexpected keys.
         repaired = {
@@ -165,6 +185,12 @@ class ConceptPromptBatcher:
                 segment_id: repaired[segment_id]
                 for segment_id in expected_ids
             }
+
+        self._report(
+            f"Concept batch: repairing {len(missing)} missing scene "
+            f"{'key' if len(missing) == 1 else 'keys'}",
+            progress_callback,
+        )
 
         # One focused repair call for missing keys only.
         missing_segments = [

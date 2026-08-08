@@ -186,26 +186,35 @@ class PromptGenerationPipeline:
                 request.concept_batch_size,
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
             )
-            concept_prompts = run_spinner(
-                f"Generating concept prompts in batches of {request.concept_batch_size}...",
-                lambda: concept_batcher.create_concept_prompts_batched(
-                    stage1_segments=stage1_segments,
-                    story_idea=concept_story_input,
-                    global_context=global_context,
-                    notes=get_steering_value(config, "concepts"),
+            reporter.message(
+                f"[cyan]Concept generation started: "
+                f"{len(stage1_segments)} scenes, batches of "
+                f"{request.concept_batch_size}[/cyan]"
+            )
+            concept_prompts = call_with_supported_kwargs(
+                concept_batcher.create_concept_prompts_batched,
+                stage1_segments=stage1_segments,
+                story_idea=concept_story_input,
+                global_context=global_context,
+                notes=get_steering_value(config, "concepts"),
+                progress_callback=lambda message: reporter.message(
+                    f"[cyan]{message}[/cyan]"
                 ),
             )
+            reporter.message("[green]Concept generation finished.[/green]")
         else:
-            concept_prompts = run_spinner(
-                "Generating concept prompts for all scenes...",
-                lambda: call_with_supported_kwargs(
-                    prompt_pipeline.create_concept_prompts,
-                    stage1_segments=stage1_segments,
-                    story_idea=concept_story_input,
-                    global_context=global_context,
-                    notes=get_steering_value(config, "concepts"),
-                ),
+            reporter.message(
+                f"[cyan]Concept generation started for "
+                f"{len(stage1_segments)} scenes[/cyan]"
             )
+            concept_prompts = call_with_supported_kwargs(
+                prompt_pipeline.create_concept_prompts,
+                stage1_segments=stage1_segments,
+                story_idea=concept_story_input,
+                global_context=global_context,
+                notes=get_steering_value(config, "concepts"),
+            )
+            reporter.message("[green]Concept generation finished.[/green]")
 
         concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
         if extra_concepts:
@@ -217,15 +226,20 @@ class PromptGenerationPipeline:
         )
         log_file("Concept Prompts JSON", concept_prompts_json)
 
-        scene_details = run_spinner(
-            "Generating camera and character motion per scene...",
-            lambda: call_with_supported_kwargs(
-                prompt_pipeline.create_scene_details,
-                concept_prompts=concept_prompts,
-                stage1_segments=stage1_segments,
-                global_context=global_context,
+        reporter.message(
+            f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
+            "camera and character motion per scene[/cyan]"
+        )
+        scene_details = call_with_supported_kwargs(
+            prompt_pipeline.create_scene_details,
+            concept_prompts=concept_prompts,
+            stage1_segments=stage1_segments,
+            global_context=global_context,
+            progress_callback=lambda current, total: reporter.message(
+                f"[cyan]Scene details: {current}/{total} scenes[/cyan]"
             ),
         )
+        reporter.message("[green]Scene details finished.[/green]")
         prompt_pipeline.save_json(
             scene_details_json,
             scene_details,
@@ -235,18 +249,18 @@ class PromptGenerationPipeline:
 
         log_step("8. Z-Image + LTX Scene Prompts")
         scene_prompt_builder = self.scene_prompt_builder_factory(llm)
-        run_spinner(
-            "Generating Z-Image and LTX prompts per scene...",
-            lambda: scene_prompt_builder.build_scene_prompts(
-                stage1_segments=stage1_segments,
-                concept_prompts=concept_prompts,
-                scene_details=scene_details,
-                global_context=global_context,
-                output_json_path=scene_prompts_json,
-                zimage_instructions=get_steering_value(config, "zimage"),
-                ltx_instructions=get_steering_value(config, "ltx"),
-                trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
-                artifact_store=artifact_store,
+        scene_prompt_builder.build_scene_prompts(
+            stage1_segments=stage1_segments,
+            concept_prompts=concept_prompts,
+            scene_details=scene_details,
+            global_context=global_context,
+            output_json_path=scene_prompts_json,
+            zimage_instructions=get_steering_value(config, "zimage"),
+            ltx_instructions=get_steering_value(config, "ltx"),
+            trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
+            artifact_store=artifact_store,
+            progress_callback=lambda current, total: reporter.message(
+                f"[cyan]Scene prompts: {current}/{total} scenes[/cyan]"
             ),
         )
         log_file("Scene Prompts JSON", scene_prompts_json)

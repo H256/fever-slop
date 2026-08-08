@@ -650,13 +650,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             "other": "other stem - remaining instrument mix reference",
         }
 
-        # Build a mapping from path -> stem_name for lookup
-        # ref_audio_paths are actual Paths; stem_tags keys are string paths
-        path_to_stem_name: dict[str, str] = {}
-        stem_audio = scene.get("stem_audio") or {}
-        for stem_name, stem_path in stem_audio.get("paths", {}).items():
-            path_to_stem_name[str(stem_path)] = stem_name
-
         tags: list[str] = []
         seen: set[str] = set()
         for i, path in enumerate(ref_audio_paths[:max_count], start=1):
@@ -665,10 +658,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 continue
             seen.add(path_str)
             # Look up description: first from _stem_audio_tags, then from stem_role_map by basename
-            desc = stem_tags.get(path_str)
+            normalized_path = path_str.replace("\\", "/")
+            desc = stem_tags.get(path_str) or stem_tags.get(normalized_path)
             if not desc:
-                basename = path_str.rstrip("/").split("/")[-1]
+                basename = normalized_path.rstrip("/").split("/")[-1]
                 name_part = basename.rsplit(".", 1)[0] if "." in basename else basename
+                name_part = name_part.split("_")[0]
                 desc = stem_role_map.get(name_part, f"{name_part} audio reference")
             tags.append(f"<Audio {i}> ({desc})")
 
@@ -736,6 +731,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         existing_audio_count = subj_defs.count("<Audio")
         audio_subject_lines: list[str] = []
         retention_lines: list[str] = []
+        stem_role_map = {
+            "vocals": "audio_transfer - vocal singing lip-synced to the audio signal",
+            "full_mix": "full_mix - original song for beat and rhythm continuity",
+            "drums": "drums stem - percussion and rhythm pattern reference",
+            "bass": "bass stem - low-frequency rhythm foundation reference",
+            "other": "other stem - remaining instrument mix reference",
+        }
 
         seen: set[str] = set()
         for i, path in enumerate(ref_audio_paths, start=1):
@@ -745,7 +747,19 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             seen.add(path_str)
             # Adjust index for existing audio ref offset
             audio_idx = i + existing_audio_count
-            desc = stem_tags.get(path_str, f"{path_str} audio reference")
+            normalized_path = path_str.replace("\\", "/")
+            basename = normalized_path.rstrip("/").split("/")[-1]
+            stem_name = basename.rsplit(".", 1)[0]
+            if "_" in stem_name:
+                stem_name = stem_name.split("_", 1)[0]
+            if basename.startswith("full_mix"):
+                stem_name = "full_mix"
+            desc = (
+                stem_tags.get(path_str)
+                or stem_tags.get(normalized_path)
+                or stem_role_map.get(stem_name,
+                                      f"{path_str} audio reference")
+            )
             # Subject definitions entry
             subj_lines = audio_subject_lines
             subj_lines.append(f"<Audio {audio_idx}> is {path_str}")
@@ -779,11 +793,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         Returns empty list if no stem audio available.
         """
         stem_audio = (scene.get("stem_audio") or {})
-        if not stem_audio:
-            return []
-
         stem_names: list[str] = self.audio_ref_stems or list(stem_audio.get("stems", []))
         paths_map: dict[str, str] = stem_audio.get("paths", {})
+        if not stem_audio and self.audio_ref_stems:
+            paths_map = self._fallback_stem_paths()
         if not paths_map or not stem_names:
             return []
 
@@ -803,6 +816,20 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 if p.exists():
                     result.append(p)
         return result[: self.MAX_REF_AUDIOS]
+
+    def _fallback_stem_paths(self) -> dict[str, str]:
+        """Find generated Demucs stems when an older render plan lacks metadata."""
+        if self.project_dir is None:
+            return {}
+        stem_dir = self.project_dir / "output" / "stems"
+        result: dict[str, str] = {}
+        for stem_name in self.audio_ref_stems or []:
+            if stem_name == "full_mix":
+                continue
+            matches = sorted(stem_dir.glob(f"{stem_name}_*.wav"))
+            if matches:
+                result[stem_name] = str(matches[0])
+        return result
 
     def _validate_scene(self, scene: dict) -> None:
         """Validate that the scene has at least one actor reference."""

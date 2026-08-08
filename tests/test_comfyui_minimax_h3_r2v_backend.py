@@ -1116,6 +1116,29 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
         self.assertIn("clip2", result["62"]["inputs"]["video"])
         self.assertIn("aud789", result["64"]["inputs"]["audio"])
 
+    def test_production_audio_workflow_adds_stem_loaders_and_trims(self):
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+        backend = self._backend(workflow=workflow)
+
+        result = backend.build_workflow(
+            {"scene": 3, "abs_start_seconds": 15.01, "references": {"actor_sheet_paths": ["/tmp/a.png"]}},
+            prompt="test",
+            duration_seconds=4.44,
+            ref_audio_paths=["/tmp/vocals.wav", "/tmp/drums.wav"],
+        )
+
+        core = next(node for node in result.values() if node.get("class_type") == "MiniMaxH3ReferenceToVideo")
+        inputs = core["inputs"]
+        for slot, expected_name in ((1, "vocals"), (2, "drums")):
+            trim_id = inputs[f"ref_audios.ref_audio_{slot}"][0]
+            trim = result[trim_id]
+            loader_id = trim["inputs"]["audio"][0]
+            loader = result[loader_id]
+            self.assertEqual(loader["inputs"]["audio"], f"feverslop/references/{expected_name}-aud789.wav")
+            self.assertEqual(trim["inputs"]["start_index"], 15.01)
+            self.assertEqual(trim["inputs"]["duration"], 4.44)
+
     def test_video_and_audio_anchors_absent_in_workflow(self):
         """Workflow without video/audio anchors ignores them silently."""
         # Use a minimal workflow missing the video/audio nodes
@@ -1790,6 +1813,29 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
         backend = self._backend()
         result = backend._resolve_stem_audio_paths({"scene": 1})
         self.assertEqual(result, [])
+
+    def test_falls_back_to_project_stems_for_legacy_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            stem_dir = project_dir / "output" / "stems"
+            stem_dir.mkdir(parents=True)
+            vocal_path = stem_dir / "vocals_song.wav"
+            vocal_path.write_bytes(b"fake audio")
+
+            backend = ComfyUIMiniMaxH3R2VBackend(
+                client=FakeClient(),
+                workflow_path=Path("/tmp/wf.json"),
+                output_dir=Path("/tmp/out"),
+                asset_uploader=FakeAssetUploader(),
+                workflow=_native_r2v_workflow(),
+                project_dir=project_dir,
+                audio_ref_stems=["vocals", "full_mix"],
+            )
+
+            self.assertEqual(
+                backend._resolve_stem_audio_paths({"scene": 1}),
+                [vocal_path],
+            )
 
     def test_resolves_vocals_and_full_mix(self):
         with tempfile.TemporaryDirectory() as tmp:

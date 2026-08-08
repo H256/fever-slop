@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import re
+from typing import Callable
 
 from feverslop.prompting.music_video_prompt_style import (
     build_i2v_system_prompt,
@@ -171,10 +172,12 @@ class ScenePromptBuilder:
         ltx_instructions: str = "",
         trigger_word: str = "",
         artifact_store: ArtifactStore,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> Path:
         output = []
+        total = len(stage1_segments)
 
-        for segment in stage1_segments:
+        for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
             concept = concept_prompts[segment_id]
             references = {}
@@ -227,5 +230,7 @@ class ScenePromptBuilder:
             if references:
                 scene_output["references"] = references
             output.append(scene_output)
+            if progress_callback is not None:
+                progress_callback(current, total)
 
         return artifact_store.write_json(output_json_path, output)

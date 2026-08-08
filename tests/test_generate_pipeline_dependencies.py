@@ -16,6 +16,17 @@ class FakeConsole:
         self.messages.append(message)
 
 
+class FakeReporter:
+    def __init__(self):
+        self.messages = []
+
+    def message(self, text):
+        self.messages.append(text)
+
+    def table(self, title, columns, rows):
+        self.messages.append((title, columns, rows))
+
+
 class FakeArtifactStore:
     def __init__(self):
         self.json = {}
@@ -212,6 +223,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             beat_analyzer = FakeBeatAnalyzer(artifact_store)
             lyric_aligner = FakeLyricAligner()
             context = _audio_context(temp, artifact_store)
+            context.reporter = FakeReporter()
             context.config.lyrics = "full reference lyrics"
             pipeline = self._audio_pipeline(
                 separator,
@@ -225,6 +237,8 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertEqual(1, len(lyric_aligner.calls))
             self.assertEqual("full reference lyrics", lyric_aligner.calls[0][1])
             self.assertEqual("corrected line", result.timeline[0].text)
+            self.assertIn("LLM lyric alignment: correcting 1 vocal segments", context.reporter.messages[1])
+            self.assertIn("LLM lyric alignment finished: 1 vocal segments checked", context.reporter.messages[2])
 
     def test_audio_pipeline_skips_alignment_without_configured_lyrics(self):
         with tempfile.TemporaryDirectory() as temp_dir:

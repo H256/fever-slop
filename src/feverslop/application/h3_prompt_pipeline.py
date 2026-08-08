@@ -26,9 +26,11 @@ class H3PromptPipeline:
         *,
         llm_factory: Callable[[Any], Any],
         h3_prompt_builder_factory: H3PromptBuilderFactory,
+        dspy_prompt_builder_factory: H3PromptBuilderFactory | None = None,
     ):
         self.llm_factory = llm_factory
         self.h3_prompt_builder_factory = h3_prompt_builder_factory
+        self.dspy_prompt_builder_factory = dspy_prompt_builder_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -47,28 +49,33 @@ class H3PromptPipeline:
         artifact_store = context["artifact_store"]
         log_step = context["log_step"]
         log_file = context["log_file"]
-        run_spinner = context["run_spinner"]
 
         log_step("8.5. H3 Structured Prompts")
         llm = self.llm_factory(app_config)
-        builder = self.h3_prompt_builder_factory(llm)
+        builder_factory = self.h3_prompt_builder_factory
+        if config.video_pipeline == "minimax-h3-r2v" and self.dspy_prompt_builder_factory:
+            builder_factory = self.dspy_prompt_builder_factory
+        builder = builder_factory(llm)
 
         if config.video_pipeline == "minimax-h3-r2v":
             mode = "ref"
         else:
             mode = "base"
+        stem_files = context["stem_files"] if "stem_files" in context.keys() else None
 
-        run_spinner(
-            "Generating H3-structured prompts per scene...",
-            lambda: builder.build_all_h3_prompts(
-                stage1_segments=stage1_segments,
-                concept_prompts=concept_prompts,
-                scene_details=scene_details,
-                global_context=global_context,
-                mode=mode,
-                video_type="music_video",
-                output_json_path=h3_prompts_json,
-                artifact_store=artifact_store,
+        builder.build_all_h3_prompts(
+            stage1_segments=stage1_segments,
+            concept_prompts=concept_prompts,
+            scene_details=scene_details,
+            global_context=global_context,
+            mode=mode,
+            video_type="music_video",
+            output_json_path=h3_prompts_json,
+            artifact_store=artifact_store,
+            audio_paths=stem_files,
+            reference_root=getattr(config, "project_dir", None),
+            progress_callback=lambda current, total: context["reporter"].message(
+                f"[cyan]H3 prompts: {current}/{total} scenes[/cyan]"
             ),
         )
         log_file("H3 Prompts JSON", h3_prompts_json)

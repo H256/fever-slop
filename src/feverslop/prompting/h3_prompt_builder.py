@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+from typing import Callable
 
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.prompting.minimax_h3_prompt_style import build_h3_video_system_prompt
@@ -167,10 +168,14 @@ class H3PromptBuilder:
         video_type: str = "music_video",
         output_json_path: str | Path,
         artifact_store: ArtifactStore,
+        audio_paths: dict[str, Path] | None = None,
+        reference_root: Path | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> Path:
         """Per-scene batch generation. Returns written file path."""
         results = []
-        for segment in stage1_segments:
+        total = len(stage1_segments)
+        for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
             concept = concept_prompts.get(segment_id, {})
             if isinstance(concept, dict):
@@ -189,5 +194,7 @@ class H3PromptBuilder:
             )
             entry = {"segment_id": segment_id, **h3_data}
             results.append(entry)
+            if progress_callback is not None:
+                progress_callback(current, total)
 
         return artifact_store.write_json(output_json_path, results)
