@@ -67,6 +67,7 @@ RUNNER_ARGUMENTS = (
     ("facefix_workflow", ("--facefix-workflow",), {"default": str(Path("workflows") / "video_ltxv_facefix_v1.json")}),
     ("diagnostic_original_audio_mux", ("--diagnostic-original-audio-mux",), {"action": "store_true"}),
     ("no_original_audio_mux", ("--no-original-audio-mux",), {"action": "store_true"}),
+    ("minimax_audio_ref_stems", ("--minimax-audio-ref-stems",), {"type": str, "default": None}),
 )
 
 

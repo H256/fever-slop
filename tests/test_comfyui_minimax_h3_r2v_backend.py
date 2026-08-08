@@ -197,6 +197,21 @@ def _native_r2v_workflow() -> dict:
             "_meta": {"title": "VAE Decode Audio"},
             "inputs": {},
         },
+        "100": {
+            "class_type": "TrimAudioDuration",
+            "_meta": {"title": "#TRIM_AUDIO_1"},
+            "inputs": {"start_index": 0.0, "duration": 5.0, "audio": ["64", 0]},
+        },
+        "101": {
+            "class_type": "TrimAudioDuration",
+            "_meta": {"title": "#TRIM_AUDIO_2"},
+            "inputs": {"start_index": 0.0, "duration": 5.0, "audio": ["65", 0]},
+        },
+        "102": {
+            "class_type": "TrimAudioDuration",
+            "_meta": {"title": "#TRIM_AUDIO_3"},
+            "inputs": {"start_index": 0.0, "duration": 5.0, "audio": ["66", 0]},
+        },
     }
 
 
@@ -505,7 +520,7 @@ class PatchReferenceImagesTests(unittest.TestCase):
         expected = {
             "ref_images.ref_image_0": "LoadImage",
             "ref_videos.ref_video_0": "LoadVideo",
-            "ref_audios.ref_audio_0": "LoadAudio",
+            "ref_audios.ref_audio_1": "LoadAudio",
         }
         self.assertNotIn("ref_images.ref_image_8", core_inputs)
         self.assertNotIn("ref_videos.ref_video_2", core_inputs)
@@ -1133,10 +1148,156 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
         self.assertEqual("", result["64"]["inputs"]["audio"])
 
 
+
+# ---------------------------------------------------------------------------
+# Audio prompt suffix tests (<Audio N> tags with stem descriptions)
+# ---------------------------------------------------------------------------
+
+class AudioPromptSuffixTests(unittest.TestCase):
+    def _backend(self, workflow=None):
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=workflow or _native_r2v_workflow(),
+        )
+
+    def test_stem_audio_appends_audio_tags(self):
+        """When stem audio is present, <Audio N> tags with descriptions are appended."""
+        backend = self._backend()
+        result = backend.build_workflow(
+            {
+                "scene": 1,
+                "references": {
+                    "actor_sheet_paths": ["/tmp/a.png"],
+                    "reference_audio_paths": ["/tmp/stems/vocals.wav", "/tmp/stems/full_mix.wav"],
+                    "_stem_audio_tags": {
+                        "/tmp/stems/vocals.wav": "audio_transfer - vocal singing lip-synced to the audio signal",
+                        "/tmp/stems/full_mix.wav": "full_mix - original song for beat and rhythm continuity",
+                    },
+                },
+                "stem_audio": {
+                    "stems": ["vocals", "full_mix"],
+                    "paths": {
+                        "vocals": "/tmp/stems/vocals.wav",
+                        "full_mix": "/tmp/stems/full_mix.wav",
+                    },
+                },
+            },
+            prompt="test prompt here",
+            ref_audio_paths=[Path("/tmp/stems/vocals.wav"), Path("/tmp/stems/full_mix.wav")],
+        )
+        prompt_value = result["40"]["inputs"]["value"]
+        self.assertIn("<Audio 1> (audio_transfer - vocal singing lip-synced to the audio signal)", prompt_value)
+        self.assertIn("<Audio 2> (full_mix - original song for beat and rhythm continuity)", prompt_value)
+        self.assertIn("test prompt here", prompt_value)
+
+    def test_no_stem_audio_no_tags_in_prompt(self):
+        """Ordinary reference audio without stem audio does NOT create tags."""
+        backend = self._backend()
+        result = backend.build_workflow(
+            {
+                "scene": 1,
+                "references": {
+                    "actor_sheet_paths": ["/tmp/a.png"],
+                    "reference_audio_paths": ["/tmp/sound.wav"],
+                },
+            },
+            prompt="plain test",
+            ref_audio_paths=[Path("/tmp/sound.wav")],
+        )
+        prompt_value = result["40"]["inputs"]["value"]
+        self.assertEqual("plain test", prompt_value)
+
+    def test_build_audio_suffix_empty(self):
+        """_build_audio_prompt_suffix returns empty when no stem audio."""
+        backend = self._backend()
+        suffix = backend._build_audio_prompt_suffix(
+            scene={"scene": 1},
+            ref_audio_paths=[Path("/tmp/sound.wav")],
+        )
+        self.assertEqual("", suffix)
+
+    def test_build_audio_suffix_with_stems(self):
+        """_build_audio_prompt_suffix produces tags when stem audio present."""
+        backend = self._backend()
+        suffix = backend._build_audio_prompt_suffix(
+            scene={
+                "scene": 1,
+                "references": {
+                    "reference_audio_paths": ["/tmp/vocals.wav", "/tmp/full_mix.wav"],
+                    "_stem_audio_tags": {
+                        "/tmp/vocals.wav": "audio_transfer - vocal stem",
+                        "/tmp/full_mix.wav": "full_mix - mix reference",
+                    },
+                },
+                "stem_audio": {
+                    "paths": {
+                        "vocals": "/tmp/vocals.wav",
+                        "full_mix": "/tmp/full_mix.wav",
+                    },
+                },
+            },
+            ref_audio_paths=[Path("/tmp/vocals.wav"), Path("/tmp/full_mix.wav")],
+        )
+        self.assertIn("<Audio 1>", suffix)
+        self.assertIn("audio_transfer", suffix)
+        self.assertIn("<Audio 2>", suffix)
+        self.assertIn("full_mix", suffix)
 # ---------------------------------------------------------------------------
 # _resolve_ref_video_paths tests
 # ---------------------------------------------------------------------------
 
+
+    def test_injects_audio_subjects_into_h3_json(self):
+        """inject_audio_subjects adds audio entries to H3 JSON prompt structure."""
+        import json as _json
+        # Simulate H3 prompt JSON
+        h3_json = '{"subject_definitions": "<Subject 1> is actor\\\\n<Subject 2> is warrior", "retention_analysis": "<Subject 1>: fully_copy\\\\n<Subject 2>: partial"}'
+        scene = {
+            "scene": 1,
+            "references": {
+                "reference_audio_paths": ["/tmp/vocals.wav", "/tmp/full_mix.wav"],
+                "_stem_audio_tags": {
+                    "/tmp/vocals.wav": "audio_transfer - vocal singing lip-synced to the audio signal",
+                    "/tmp/full_mix.wav": "full_mix - original song for beat and rhythm continuity",
+                },
+            },
+            "stem_audio": {
+                "paths": {
+                    "vocals": "/tmp/vocals.wav",
+                    "full_mix": "/tmp/full_mix.wav",
+                },
+            },
+        }
+        backend = self._backend()
+        result = backend._inject_audio_subjects(
+            h3_json,
+            [Path("/tmp/vocals.wav"), Path("/tmp/full_mix.wav")],
+            scene,
+        )
+        self.assertIn("<Audio 1>", result)
+        self.assertIn("<Audio 2>", result)
+        self.assertIn("audio_transfer", result)
+        self.assertIn("fully_copy", result)
+        # Verify JSON is still valid
+        parsed = _json.loads(result.strip())
+        self.assertIn("<Audio 1>", parsed["subject_definitions"])
+        self.assertIn("<Audio 2>", parsed["subject_definitions"])
+        self.assertIn("fully_copy", parsed["retention_analysis"])
+
+    def test_skips_inject_when_no_stem_audio(self):
+        """inject_audio_subjects returns unchanged prompt when no stem audio."""
+        h3_json = '{"subject_definitions": "text"}'
+        scene = {"scene": 1}
+        backend = self._backend()
+        result = backend._inject_audio_subjects(
+            h3_json,
+            [Path("/tmp/sound.wav")],
+            scene,
+        )
+        self.assertEqual(result, h3_json)
 class ResolveRefVideoPathsTests(unittest.TestCase):
     def test_basic(self):
         backend = ComfyUIMiniMaxH3R2VBackend(
@@ -1605,6 +1766,400 @@ class BuildWorkflowDynamicWiringTests(unittest.TestCase):
         self.assertIn("ref_images.ref_image_1", core_inputs)
         # Scene refs fill slot 2 (dynamic)
         self.assertIn("ref_images.ref_image_2", core_inputs)
+
+
+# ---------------------------------------------------------------------------
+# Stem audio reference tests
+# ---------------------------------------------------------------------------
+
+class ResolveStemAudioPathsTests(unittest.TestCase):
+    """Tests for ComfyUIMiniMaxH3R2VBackend._resolve_stem_audio_paths."""
+
+    def _backend(self, audio_ref_stems=None, workflow=None):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            workflow=workflow or _native_r2v_workflow(),
+            audio_ref_stems=audio_ref_stems,
+        )
+
+    def test_empty_stem_audio_returns_empty(self):
+        backend = self._backend()
+        result = backend._resolve_stem_audio_paths({"scene": 1})
+        self.assertEqual(result, [])
+
+    def test_resolves_vocals_and_full_mix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vocal_path = tmp_path / "vocals.wav"
+            vocal_path.write_bytes(b"fake audio")
+            fullmix_path = tmp_path / "full_mix.wav"
+            fullmix_path.write_bytes(b"fake audio")
+
+            scene = {
+                "scene": 1,
+                "stem_audio": {
+                    "stems": ["vocals", "full_mix"],
+                    "paths": {
+                        "vocals": str(vocal_path),
+                        "full_mix": str(fullmix_path),
+                    }
+                }
+            }
+            backend = self._backend(audio_ref_stems=["vocals", "full_mix"])
+            result = backend._resolve_stem_audio_paths(scene)
+            self.assertEqual(len(result), 2)
+            self.assertEqual(result[0], vocal_path)
+            self.assertEqual(result[1], fullmix_path)
+
+    def test_instance_override(self):
+        """Instance audio_ref_stems overrides scene-level stems list."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vocal_path = tmp_path / "vocals.wav"
+            vocal_path.write_bytes(b"fake")
+            drums_path = tmp_path / "drums.wav"
+            drums_path.write_bytes(b"fake")
+
+            scene = {
+                "scene": 1,
+                "stem_audio": {
+                    "stems": ["vocals"],
+                    "paths": {
+                        "vocals": str(vocal_path),
+                        "drums": str(drums_path),
+                    }
+                }
+            }
+            backend = self._backend(audio_ref_stems=["drums", "vocals"])
+            result = backend._resolve_stem_audio_paths(scene)
+            # Instance override: both drums and vocals are resolved (not just vocals)
+            # Priority reordering: vocals always first, drums second
+            self.assertEqual(len(result), 2)
+            self.assertEqual(result[0], vocal_path)
+            self.assertEqual(result[1], drums_path)
+
+    def test_max_clamped_to_three(self):
+        """At most MAX_REF_AUDIOS (3) results returned."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            paths = {}
+            stems = []
+            for i in range(6):
+                name = f"stem_{i}"
+                p = tmp_path / f"{name}.wav"
+                p.write_bytes(b"fake")
+                paths[name] = str(p)
+                stems.append(name)
+
+            scene = {
+                "scene": 1,
+                "stem_audio": {
+                    "stems": stems,
+                    "paths": paths,
+                }
+            }
+            backend = self._backend(audio_ref_stems=stems)
+            result = backend._resolve_stem_audio_paths(scene)
+            self.assertEqual(len(result), 3)  # MAX_REF_AUDIOS
+
+    def test_missing_paths_skipped(self):
+        """Non-existent paths are silently skipped."""
+        scene = {
+            "scene": 1,
+            "stem_audio": {
+                "stems": ["vocals", "drums"],
+                "paths": {
+                    "vocals": "/nonexistent/vocals.wav",
+                }
+            }
+        }
+        backend = self._backend(audio_ref_stems=["vocals", "drums"])
+        result = backend._resolve_stem_audio_paths(scene)
+        self.assertEqual(result, [])  # vocals doesn't exist, drums not in paths
+
+
+    def test_vocals_and_full_mix_prioritized(self):
+        """vocals and full_mix always come first regardless of config order."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            paths = {}
+            for name in ["drums", "bass", "vocals", "other", "full_mix"]:
+                p = tmp_path / f"{name}.wav"
+                p.write_bytes(b"fake")
+                paths[name] = str(p)
+
+            scene = {
+                "scene": 1,
+                "stem_audio": {
+                    "stems": ["drums", "bass", "vocals", "other", "full_mix"],
+                    "paths": paths,
+                }
+            }
+            backend = self._backend()
+            result = backend._resolve_stem_audio_paths(scene)
+            # vocals must be first, full_mix second
+            self.assertIn(result[0].name, ["vocals.wav"])
+            self.assertIn(result[1].name, ["full_mix.wav"])
+
+
+class StemAudioRenderVideoIntegrationTests(unittest.TestCase):
+    """Integration tests for stem audio merging in render_video."""
+
+    def _backend(self, audio_ref_stems=None):
+        uploader = FakeAssetUploader()
+        queue = FakeRenderQueue()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            render_queue=queue,
+            workflow=_native_r2v_workflow(),
+            audio_ref_stems=audio_ref_stems,
+        )
+
+    def test_stem_paths_given_priority_over_ref_paths(self):
+        """Stem audio fills slots first, ref_audio_paths fill remaining."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vocal_path = tmp_path / "vocals.wav"
+            vocal_path.write_bytes(b"v")
+            drums_path = tmp_path / "drums.wav"
+            drums_path.write_bytes(b"d")
+            ref_path = tmp_path / "ref.wav"
+            ref_path.write_bytes(b"r")
+
+            backend = self._backend(audio_ref_stems=["vocals", "drums"])
+
+            # Manually call resolve methods to verify merge logic
+            scene = {
+                "scene": 1,
+                "stem_audio": {
+                    "stems": ["vocals", "drums"],
+                    "paths": {
+                        "vocals": str(vocal_path),
+                        "drums": str(drums_path),
+                    }
+                },
+                "references": {
+                    "reference_audio_paths": [str(ref_path)]
+                }
+            }
+
+            stem_paths = backend._resolve_stem_audio_paths(scene)
+            ref_paths = backend._resolve_ref_audio_paths(scene)
+
+            # Verify stem takes priority
+            self.assertEqual(len(stem_paths), 2)
+            self.assertIn(vocal_path, stem_paths)
+            self.assertIn(drums_path, stem_paths)
+            self.assertEqual(len(ref_paths), 1)
+
+
+# ---------------------------------------------------------------------------
+# Trimmed stem audio tests
+# ---------------------------------------------------------------------------
+
+class PatchReferenceAudiosTrimmedTests(unittest.TestCase):
+    """Tests for _patch_reference_audios with trimming enabled."""
+
+    def _backend(self, workflow=None):
+        uploader = FakeAssetUploader()
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=uploader,
+            workflow=workflow or _native_r2v_workflow(),
+        )
+
+    def test_trimmed_creates_trim_nodes_and_wires_to_r2v(self):
+        """With duration_seconds, stem audio goes through TrimAudioDuration."""
+        # Use a workflow that includes a MiniMaxH3ReferenceToVideo core node
+        wf = _native_r2v_workflow()
+        wf["42"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": {},
+        }
+        backend = self._backend(workflow=wf)
+        scene = {
+            "scene": 1,
+            "abs_start_seconds": 10.5,
+            "references": {"actor_sheet_paths": ["/tmp/actor.png"]},
+        }
+        patched = backend.build_workflow(
+            scene,
+            prompt="test",
+            duration_seconds=5.0,
+            ref_audio_paths=["/tmp/vocals.wav", "/tmp/drums.wav"],
+        )
+
+        # Trim nodes have correct parameters
+        found_trim_1 = False
+        found_trim_2 = False
+        for node_id, node in patched.items():
+            meta_title = node.get("_meta", {}).get("title", "")
+            if meta_title == "#TRIM_AUDIO_1":
+                found_trim_1 = True
+                self.assertAlmostEqual(node["inputs"]["start_index"], 10.5)
+                self.assertAlmostEqual(node["inputs"]["duration"], 5.0)
+            elif meta_title == "#TRIM_AUDIO_2":
+                found_trim_2 = True
+                self.assertAlmostEqual(node["inputs"]["start_index"], 10.5)
+                self.assertAlmostEqual(node["inputs"]["duration"], 5.0)
+        self.assertTrue(found_trim_1)
+        self.assertTrue(found_trim_2)
+
+        # R2V core wired to trim outputs, not LoadAudio directly
+        cores = [(nid, n) for nid, n in patched.items()
+                 if n.get("class_type") == "MiniMaxH3ReferenceToVideo"]
+        self.assertTrue(len(cores) >= 1)
+        core_inputs = cores[0][1].get("inputs", {})
+        audio_0_ref = core_inputs.get("ref_audios.ref_audio_0")
+        if audio_0_ref:
+            trim_node_id = audio_0_ref[0]
+            trim_node = patched.get(str(trim_node_id), patched.get(trim_node_id))
+            self.assertEqual(trim_node.get("class_type"), "TrimAudioDuration")
+
+    def test_no_trim_wires_loadaudio_direct(self):
+        """Without duration, LoadAudio wires directly to R2V (existing behavior)."""
+        wf = _native_r2v_workflow()
+        wf["42"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": {},
+        }
+        backend = self._backend(workflow=wf)
+        scene = {
+            "scene": 1,
+            "references": {"actor_sheet_paths": ["/tmp/actor.png"]},
+        }
+        patched = backend.build_workflow(
+            scene,
+            prompt="test",
+            ref_audio_paths=["/tmp/vocals.wav"],
+        )
+
+        cores = [(nid, n) for nid, n in patched.items()
+                 if n.get("class_type") == "MiniMaxH3ReferenceToVideo"]
+        self.assertTrue(len(cores) >= 1)
+        core_inputs = cores[0][1].get("inputs", {})
+        audio_1_ref = core_inputs.get("ref_audios.ref_audio_1")
+        self.assertIsNotNone(audio_1_ref)
+        loader_id = audio_1_ref[0]
+        loader_node = patched.get(str(loader_id), patched.get(loader_id))
+        self.assertEqual(loader_node.get("class_type"), "LoadAudio")
+
+    def test_abs_start_default_zero(self):
+        """abs_start_seconds defaults to 0.0 when not provided."""
+        wf = _native_r2v_workflow()
+        wf["42"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": {},
+        }
+        backend = self._backend(workflow=wf)
+        scene = {
+            "scene": 1,
+            "references": {"actor_sheet_paths": ["/tmp/actor.png"]},
+        }
+        patched = backend.build_workflow(
+            scene,
+            prompt="test",
+            duration_seconds=3.0,
+            ref_audio_paths=["/tmp/test.wav"],
+        )
+        for node_id, node in patched.items():
+            meta_title = node.get("_meta", {}).get("title", "")
+            if meta_title == "#TRIM_AUDIO_1":
+                self.assertAlmostEqual(node["inputs"]["start_index"], 0.0)
+                return
+        self.fail("#TRIM_AUDIO_1 not found in workflow")
+
+
+class StemAudioTrimRenderVideoIntegrationTests(unittest.TestCase):
+    """Integration tests: render_video produces trimmed stem audio in workflow JSON."""
+
+    def test_render_video_trims_stem_audio(self):
+        """Full render_video flow with stem audio produces trimmed refs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vocal_path = tmp_path / "vocals.wav"
+            vocal_path.write_bytes(b"fake audio")
+            fullmix_path = tmp_path / "full_mix.wav"
+            fullmix_path.write_bytes(b"fake audio")
+
+            workflow = _native_r2v_workflow()
+            # Add core R2V node
+            workflow["42"] = {
+                "class_type": "MiniMaxH3ReferenceToVideo",
+                "_meta": {"title": "#R2V_COMBINE"},
+                "inputs": {},
+            }
+            scene = {
+                "scene": 1,
+                "abs_start_seconds": 128.0,
+                "stem_audio": {
+                    "stems": ["vocals", "full_mix"],
+                    "paths": {
+                        "vocals": str(vocal_path),
+                        "full_mix": str(fullmix_path),
+                    }
+                },
+                "duration_seconds": 5.0,
+                "references": {"actor_sheet_paths": ["/tmp/actor.png"]},
+            }
+
+            backend = ComfyUIMiniMaxH3R2VBackend(
+                client=FakeClient(),
+                workflow_path=Path("/tmp/wf.json"),
+                output_dir=tmp_path / "output",
+                asset_uploader=FakeAssetUploader(),
+                render_queue=FakeRenderQueue(),
+                postprocessor=FakePostProcessor(),
+                workflow=workflow,
+                audio_ref_stems=["vocals", "full_mix"],
+            )
+
+            # We can't actually render, but we can build the workflow
+            build_result = backend.build_workflow(
+                scene,
+                prompt="test prompt",
+                duration_seconds=5.0,
+                ref_audio_paths=[vocal_path, fullmix_path],
+            )
+
+            # Verify trim nodes exist with correct params
+            found_trims = {}
+            for node_id, node in build_result.items():
+                title = node.get("_meta", {}).get("title", "")
+                if title.startswith("#TRIM_AUDIO_"):
+                    found_trims[title] = node
+
+            self.assertIn("#TRIM_AUDIO_1", found_trims)
+            self.assertIn("#TRIM_AUDIO_2", found_trims)
+
+            trim1 = found_trims["#TRIM_AUDIO_1"]
+            self.assertAlmostEqual(trim1["inputs"]["duration"], 5.0)
+            # Trim nodes wire to LoadAudio, not the other way around
+            self.assertIn("audio", trim1["inputs"])
+
+            # R2V core wires to trim nodes
+            cores = [(nid, n) for nid, n in build_result.items()
+                     if n.get("class_type") == "MiniMaxH3ReferenceToVideo"]
+            self.assertTrue(len(cores) >= 1)
+            core_inputs = cores[0][1].get("inputs", {})
+            for slot_key, ref_val in core_inputs.items():
+                if slot_key.startswith("ref_audios.ref_audio_"):
+                    source_id = str(ref_val[0])
+                    source_node = build_result.get(source_id, {})
+                    # Should be a TrimAudioDuration, not LoadAudio
+                    self.assertEqual(source_node.get("class_type"), "TrimAudioDuration")
 
 
 if __name__ == "__main__":

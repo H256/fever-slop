@@ -271,6 +271,9 @@ def build_render_plan(
     *,
     artifact_store: ArtifactStore,
     h3_prompts_json: str | Path | None = None,
+    stem_list: list[str] | None = None,
+    input_audio: Path | None = None,
+    stem_files: dict[str, Path] | None = None,
 ) -> Path:
     """
     Combines:
@@ -410,6 +413,49 @@ def build_render_plan(
         h3_entry = h3_by_segment.get(scene.get("segment_id", ""))
         if h3_entry and h3_entry.get("prompt"):
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
+        # -- stem audio paths (MiniMax H3 R2V) --
+        if stem_list is not None and stem_files is not None:
+            # Priority ordering: lip-sync-critical stems first, so they occupy
+            # the first audio reference slots in the workflow.
+            priority_stems = ["vocals", "full_mix"]
+            priority_first = [s for s in priority_stems if s in stem_list]
+            for s in stem_list:
+                if s not in priority_first:
+                    priority_first.append(s)
+            resolved_stem_paths: dict[str, str] = {}
+            for stem_name in priority_first:
+                if stem_name == "full_mix" and input_audio is not None:
+                    resolved_stem_paths[stem_name] = str(input_audio)
+                elif stem_name in stem_files:
+                    resolved_stem_paths[stem_name] = str(stem_files[stem_name])
+                # missing stems silently skipped
+            if resolved_stem_paths:
+                render_scene["stem_audio"] = {
+                    "stems": list(resolved_stem_paths.keys()),
+                    "paths": resolved_stem_paths,
+                }
+                # Merge stem audio into reference_audio_paths so prompt generators
+                # (H3, R2V style builder) can produce <Audio N> tags for stems.
+                refs = render_scene.setdefault("references", {})
+                existing: list[str] = list(refs.get("reference_audio_paths", []))
+                stem_tag_map = {
+                    "vocals": "audio_transfer - vocal singing lip-synced to the audio signal",
+                    "full_mix": "full_mix - original song for beat and rhythm continuity",
+                    "drums": "drums stem",
+                    "bass": "bass stem",
+                    "other": "other stem",
+                }
+                seen: set[str] = set(existing)
+                merged_audio: list[str] = list(existing)
+                for stem_name, stem_path in resolved_stem_paths.items():
+                    if stem_path not in seen:
+                        merged_audio.append(stem_path)
+                        seen.add(stem_path)
+                refs["reference_audio_paths"] = merged_audio
+                refs["_stem_audio_tags"] = {
+                    stem_path: stem_tag_map.get(stem_name, f"{stem_name} stem")
+                    for stem_name, stem_path in resolved_stem_paths.items()
+                }
         render_plan.append(render_scene)
 
     return artifact_store.write_json(output_json_file, render_plan)

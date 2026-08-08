@@ -115,6 +115,14 @@ class LoraConfig:
     strength_clip_explicit: bool = False
 
 
+VALID_AUDIO_REF_STEMS = frozenset({"vocals", "drums", "bass", "other", "full_mix"})
+
+
+@dataclass(frozen=True)
+class AudioRefsConfig:
+    stems: list[str] = field(default_factory=lambda: ["vocals", "full_mix"])
+
+
 def _load_lora_config(raw: dict) -> LoraConfig:
     return LoraConfig(
         enabled=bool(raw.get("enabled", False)),
@@ -208,6 +216,7 @@ class ProjectConfig:
     loras: tuple[LoraConfig, ...] = field(default_factory=tuple)
     lora_split_enabled: bool = False
     video_pipeline: str = "ltx_i2v"
+    minimax_h3_audio_refs: AudioRefsConfig = field(default_factory=AudioRefsConfig)
 
     @classmethod
     def load(cls, config_path: str | Path) -> "ProjectConfig":
@@ -225,6 +234,7 @@ class ProjectConfig:
         loras_raw = raw.get("loras")
         actors_raw = raw.get("actors", [])
         locations_raw = raw.get("locations", [])
+        audio_refs_raw = raw.get("minimax_h3_audio_refs", {})
 
         input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
         _validate_numeric_fields(video_raw, ("fps", "width", "height"))
@@ -338,6 +348,9 @@ class ProjectConfig:
             lora_1=lora_1,
             loras=loras,
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),
+            minimax_h3_audio_refs=AudioRefsConfig(
+                stems=list(audio_refs_raw.get("stems", ["vocals", "full_mix"]))
+            ),
         )
 
     def to_video_settings(self) -> VideoSettings:

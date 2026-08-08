@@ -30,6 +30,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     MAX_REF_IMAGES = 9
     MAX_REF_VIDEOS = 3
     MAX_REF_AUDIOS = 3
+    MAX_STEM_AUDIOS = 2  # MAX_REF_AUDIOS - 1 (main comfy audio occupies slot 0)
     FPS = 24
 
     def __init__(
@@ -55,6 +56,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         project_dir: str | Path | None = None,
         workflow: dict | None = None,
         workflow_label: str | Path | None = None,
+        audio_ref_stems: list[str] | None = None,
     ):
         super().__init__(
             client=client,
@@ -79,6 +81,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
         self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
+        self.audio_ref_stems = audio_ref_stems
 
     # -----------------------------------------------------------------------
     # High-level entry points
@@ -140,7 +143,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self._patch_reference_videos(patcher, ref_video_paths or [])
 
         # -- reference audios -------------------------------------------------
-        self._patch_reference_audios(patcher, ref_audio_paths or [])
+        self._patch_reference_audios(
+            patcher,
+            ref_audio_paths or [],
+            duration_seconds=duration_seconds,
+            abs_start_seconds=scene.get("abs_start_seconds"),
+        )
 
         # -- audio (workflow may or may not have these anchors) ----------------
         if comfy_audio_name is not None:
@@ -148,6 +156,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         # -- dynamic ref wiring: fill remaining slots from scene refs -------
         self._patch_dynamic_ref_inputs(patcher, scene)
+
+        # -- append <Audio N> tags with descriptions for stem audio refs -------
+        self._patch_prompt_with_audio_tags(patcher, scene, ref_audio_paths or [], prompt)
 
         # -- output filename --------------------------------------------------
         self._patch_save_video(patcher, scene_number)
@@ -183,6 +194,26 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         # -- resolve reference audio paths ------------------------------------
         ref_audio_paths = self._resolve_ref_audio_paths(request.scene)
+
+        # -- resolve stem audio paths (takes priority for slots) ------------------
+        stem_audio_paths = self._resolve_stem_audio_paths(request.scene)
+
+        # Merge: stem audio takes priority, then existing scene-level audio refs
+        merged_audio: list[Path] = []
+        audio_path_set: set[str] = set()
+        for p in stem_audio_paths:
+            key = str(p)
+            if key not in audio_path_set:
+                merged_audio.append(p)
+                audio_path_set.add(key)
+        for p in ref_audio_paths:
+            key = str(p)
+            if key not in audio_path_set:
+                merged_audio.append(p)
+                audio_path_set.add(key)
+                if len(merged_audio) >= self.MAX_STEM_AUDIOS:
+                    break
+        ref_audio_paths = merged_audio[: self.MAX_STEM_AUDIOS]
 
         # -- build workflow ---------------------------------------------------
         workflow = self.build_workflow(
@@ -295,12 +326,32 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 patcher, title, "LoadVideo", "video", video_name, "ref_videos", index - 1
             )
 
+    @staticmethod
+    def _wire_ref_audio_slot(
+        patcher: WorkflowPatcher,
+        source_node_id: str,
+        index: int,
+    ) -> None:
+        """Wire a node to ref_audios.ref_audio_{index} on the core R2V node."""
+        for _, core in patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo"):
+            core.setdefault("inputs", {})[
+                f"ref_audios.ref_audio_{index}"
+            ] = [source_node_id, 0]
+
     def _patch_reference_audios(
         self,
         patcher: WorkflowPatcher,
         ref_audio_paths: list[str | Path] | None,
+        *,
+        duration_seconds: float | None = None,
+        abs_start_seconds: float | None = None,
     ) -> None:
-        """Map reference audio paths to ``#AUDIO_1``, ``#AUDIO_2``, ``#AUDIO_3`` anchors."""
+        """Map reference audio paths through LoadAudio → [TrimAudioDuration] → R2V slots.
+
+        When *duration_seconds* is given, each audio path is trimmed to the scene
+        duration before reaching the core node, keeping stem audio in sync with
+        the main (comfy_audio) reference.
+        """
         self._clear_reference_group(patcher, "ref_audios")
         if not ref_audio_paths:
             return
@@ -311,10 +362,51 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             )
         for index, path in enumerate(ref_audio_paths, start=1):
             title = f"#AUDIO_{index}"
+            trim_title = f"#TRIM_AUDIO_{index}"
             audio_name = self.asset_uploader.resolve_reference_audio_name(path)
-            self._patch_reference_asset(
-                patcher, title, "LoadAudio", "audio", audio_name, "ref_audios", index - 1
-            )
+
+            # Step 1: Update or create LoadAudio anchor
+            try:
+                loader_id, loader = patcher.find_node_by_meta_title(title)
+                loader.setdefault("inputs", {})["audio"] = audio_name
+            except KeyError:
+                numeric_ids = [int(nid) for nid in patcher.get() if nid.isdigit()]
+                loader_id = str(max(numeric_ids, default=0) + 1)
+                patcher.get()[loader_id] = {
+                    "class_type": "LoadAudio",
+                    "_meta": {"title": title},
+                    "inputs": {"audio": audio_name},
+                }
+
+            # Step 2: If trimming, wire through TrimAudioDuration
+            if duration_seconds is not None:
+                try:
+                    trim_id, trim = patcher.find_node_by_meta_title(trim_title)
+                except KeyError:
+                    numeric_ids = [int(nid) for nid in patcher.get() if nid.isdigit()]
+                    trim_id = str(max(numeric_ids, default=0) + 1)
+                    patcher.get()[trim_id] = {
+                        "class_type": "TrimAudioDuration",
+                        "_meta": {"title": trim_title},
+                        "inputs": {
+                            "start_index": 0.0,
+                            "duration": float(duration_seconds),
+                            "audio": [loader_id, 0],
+                        },
+                    }
+                    trim = patcher.get()[trim_id]
+
+                else:
+                    # Update existing trim node to point at the loader
+                    trim.setdefault("inputs", {})["audio"] = [loader_id, 0]
+
+                start = float(abs_start_seconds) if abs_start_seconds is not None else 0.0
+                trim.setdefault("inputs", {})["start_index"] = start
+                trim.setdefault("inputs", {})["duration"] = float(duration_seconds)
+
+                self._wire_ref_audio_slot(patcher, trim_id, index)
+            else:
+                self._wire_ref_audio_slot(patcher, loader_id, index)
 
     @staticmethod
     def _clear_reference_group(patcher: WorkflowPatcher, input_group: str) -> None:
@@ -324,8 +416,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 if input_name.startswith(f"{input_group}."):
                     del inputs[input_name]
 
-    @staticmethod
     def _patch_reference_asset(
+        self,
         patcher: WorkflowPatcher,
         title: str,
         class_type: str,
@@ -351,9 +443,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         core_nodes = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
         if core_nodes:
-            core_nodes[0][1].setdefault("inputs", {})[
-                f"{input_group}.{input_group[:-1]}_{index}"
-            ] = [loader_id, 0]
+            if input_group == "ref_audios":
+                self._wire_ref_audio_slot(patcher, loader_id, index)
+            else:
+                core_nodes[0][1].setdefault("inputs", {})[
+                    f"{input_group}.{input_group[:-1]}_{index}"
+                ] = [loader_id, 0]
 
     def _patch_audio_inputs(
         self,
@@ -523,9 +618,191 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         return prompt_tags
 
+    @staticmethod
+    def _build_audio_prompt_suffix(
+        scene: dict,
+        ref_audio_paths: list[Path],
+        *,
+        max_count: int = 3,
+    ) -> str:
+        """Build <Audio N> tags with semantic descriptions for stem audio references.
+
+        Per MiniMax H3 spec (issue #243): each audio reference must be described
+        in the prompt with its role (audio_transfer for lip-sync, full_mix for
+        beat/rhythm, etc.).
+
+        Only produces tags when stem audio is present (scene has
+        references["_stem_audio_tags"]). This avoids polluting prompts for
+        ordinary reference audio that already has tags in the pre-built H3 prompt.
+        """
+        refs = scene.get("references") or {}
+        stem_tags: dict[str, str]
+        if not isinstance(refs, dict) or not refs.get("_stem_audio_tags"):
+            # No stem audio → skip prompt augmentation
+            return ""
+        stem_tags = {str(k): str(v) for k, v in refs.get("_stem_audio_tags", {}).items()}
+
+        stem_role_map = {
+            "vocals": "audio_transfer - vocal singing lip-synced to the audio signal",
+            "full_mix": "full_mix - original song for beat and rhythm continuity",
+            "drums": "drums stem - percussion and rhythm pattern reference",
+            "bass": "bass stem - low-frequency rhythm foundation reference",
+            "other": "other stem - remaining instrument mix reference",
+        }
+
+        # Build a mapping from path -> stem_name for lookup
+        # ref_audio_paths are actual Paths; stem_tags keys are string paths
+        path_to_stem_name: dict[str, str] = {}
+        stem_audio = scene.get("stem_audio") or {}
+        for stem_name, stem_path in stem_audio.get("paths", {}).items():
+            path_to_stem_name[str(stem_path)] = stem_name
+
+        tags: list[str] = []
+        seen: set[str] = set()
+        for i, path in enumerate(ref_audio_paths[:max_count], start=1):
+            path_str = str(path)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            # Look up description: first from _stem_audio_tags, then from stem_role_map by basename
+            desc = stem_tags.get(path_str)
+            if not desc:
+                basename = path_str.rstrip("/").split("/")[-1]
+                name_part = basename.rsplit(".", 1)[0] if "." in basename else basename
+                desc = stem_role_map.get(name_part, f"{name_part} audio reference")
+            tags.append(f"<Audio {i}> ({desc})")
+
+        if tags:
+            return "\n" + "\n".join(tags)
+        return ""
+
+    def _patch_prompt_with_audio_tags(
+        self,
+        patcher: WorkflowPatcher,
+        scene: dict,
+        ref_audio_paths: list[Path],
+        original_prompt: str,
+    ) -> None:
+        """Append <Audio N> tags with descriptions and JSON subject entries to the prompt.
+
+        Called after all audio refs are resolved so we can construct accurate
+        tags and descriptions per the MiniMax H3 specification (issue #243).
+        Injects audio subjects into H3 prompt JSON structure when present.
+        Skipped when stem audio is not configured.
+        """
+        audio_suffix = self._build_audio_prompt_suffix(scene, ref_audio_paths)
+        if audio_suffix:
+            enhanced = str(original_prompt).strip()
+            # Also inject audio subjects into H3 JSON structure
+            enhanced = self._inject_audio_subjects(enhanced, ref_audio_paths, scene)
+            enhanced += audio_suffix
+            patcher.set_input_by_title("#PROMPT", "value", enhanced)
+
+    @staticmethod
+    def _inject_audio_subjects(
+        prompt_text: str,
+        ref_audio_paths: list[Path],
+        scene: dict,
+    ) -> str:
+        """Inject audio reference subjects into H3 prompt JSON structure.
+
+        The H3 prompt is JSON with subject_definitions and retention_analysis fields.
+        Since stem audio isn't known at prompt generation time, we inject them here
+        so the model output includes proper <Audio N> handling.
+
+        Per MiniMax H3 spec (issue #243 #2053):
+        - <Audio N> must be in subject_definitions with description
+        - <Audio N> must be in retention_analysis with marker fully_copy
+        """
+        import json as _json
+        try:
+            data = _json.loads(prompt_text)
+        except (ValueError, TypeError):
+            # Not JSON — prepend inline
+            return prompt_text
+
+        stem_tags: dict[str, str] = {}
+        refs = scene.get("references") or {}
+        if isinstance(refs, dict):
+            stem_tags = {str(k): str(v) for k, v in refs.get("_stem_audio_tags", {}).items()}
+
+        if not stem_tags:
+            return prompt_text
+        if not isinstance(data, dict):
+            return prompt_text
+
+        # Count existing subjects to determine starting number
+        subj_defs = str(data.get("subject_definitions", ""))
+        existing_audio_count = subj_defs.count("<Audio")
+        audio_subject_lines: list[str] = []
+        retention_lines: list[str] = []
+
+        seen: set[str] = set()
+        for i, path in enumerate(ref_audio_paths, start=1):
+            path_str = str(path)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            # Adjust index for existing audio ref offset
+            audio_idx = i + existing_audio_count
+            desc = stem_tags.get(path_str, f"{path_str} audio reference")
+            # Subject definitions entry
+            subj_lines = audio_subject_lines
+            subj_lines.append(f"<Audio {audio_idx}> is {path_str}")
+            subj_lines.append(f"  Description: {desc}")
+            # Retention analysis entry
+            retention_lines.append(f"<Audio {audio_idx}>: fully_copy — retain this audio track as-is for sync with generated video")
+
+        if audio_subject_lines:
+            current_defs = subj_defs or ""
+            separator = "\n" if current_defs.strip() else ""
+            data["subject_definitions"] = current_defs + separator + "\n".join(audio_subject_lines)
+
+        if retention_lines:
+            current_retention = str(data.get("retention_analysis", ""))
+            separator2 = "\n" if current_retention.strip() else ""
+            data["retention_analysis"] = current_retention + separator2 + "\n".join(retention_lines)
+
+        return _json.dumps(data, ensure_ascii=False) + "\n"
+
     # -----------------------------------------------------------------------
     # Validation
     # -----------------------------------------------------------------------
+
+    def _resolve_stem_audio_paths(
+        self,
+        scene: dict,
+    ) -> list[Path]:
+        """Resolve stem-based audio reference paths from scene stem_audio section.
+
+        Uses instance-level audio_ref_stems if set, otherwise scene-level stem list.
+        Returns empty list if no stem audio available.
+        """
+        stem_audio = (scene.get("stem_audio") or {})
+        if not stem_audio:
+            return []
+
+        stem_names: list[str] = self.audio_ref_stems or list(stem_audio.get("stems", []))
+        paths_map: dict[str, str] = stem_audio.get("paths", {})
+        if not paths_map or not stem_names:
+            return []
+
+        # Priority ordering: lip-sync-critical stems (vocals, full_mix) first,
+        # then any additional stems in original order.
+        priority_order = ["vocals", "full_mix"]
+        ordered_names = [n for n in priority_order if n in stem_names and n in paths_map]
+        for name in stem_names:
+            if name not in ordered_names and name in paths_map:
+                ordered_names.append(name)
+
+        result: list[Path] = []
+        for stem_name in ordered_names:
+            path_str = paths_map.get(stem_name)
+            if path_str:
+                p = coerce_local_path(path_str)
+                if p.exists():
+                    result.append(p)
+        return result[: self.MAX_REF_AUDIOS]
 
     def _validate_scene(self, scene: dict) -> None:
         """Validate that the scene has at least one actor reference."""
