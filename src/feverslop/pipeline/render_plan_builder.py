@@ -434,6 +434,28 @@ def build_render_plan(
                     "stems": list(resolved_stem_paths.keys()),
                     "paths": resolved_stem_paths,
                 }
+                # Merge stem audio into reference_audio_paths so prompt generators
+                # (H3, R2V style builder) can produce <Audio N> tags for stems.
+                refs = render_scene.setdefault("references", {})
+                existing: list[str] = list(refs.get("reference_audio_paths", []))
+                stem_tag_map = {
+                    "vocals": "audio_transfer - vocal singing lip-synced to the audio signal",
+                    "full_mix": "full_mix - original song for beat and rhythm continuity",
+                    "drums": "drums stem",
+                    "bass": "bass stem",
+                    "other": "other stem",
+                }
+                seen: set[str] = set(existing)
+                merged_audio: list[str] = list(existing)
+                for stem_name, stem_path in resolved_stem_paths.items():
+                    if stem_path not in seen:
+                        merged_audio.append(stem_path)
+                        seen.add(stem_path)
+                refs["reference_audio_paths"] = merged_audio
+                refs["_stem_audio_tags"] = {
+                    stem_path: stem_tag_map.get(stem_name, f"{stem_name} stem")
+                    for stem_name, stem_path in resolved_stem_paths.items()
+                }
         render_plan.append(render_scene)
 
     return artifact_store.write_json(output_json_file, render_plan)

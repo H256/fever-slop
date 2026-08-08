@@ -157,6 +157,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- dynamic ref wiring: fill remaining slots from scene refs -------
         self._patch_dynamic_ref_inputs(patcher, scene)
 
+        # -- append <Audio N> tags with descriptions for stem audio refs -------
+        self._patch_prompt_with_audio_tags(patcher, scene, ref_audio_paths or [], prompt)
+
         # -- output filename --------------------------------------------------
         self._patch_save_video(patcher, scene_number)
 
@@ -614,6 +617,153 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 prompt_tags.append(tag)
 
         return prompt_tags
+
+    @staticmethod
+    def _build_audio_prompt_suffix(
+        scene: dict,
+        ref_audio_paths: list[Path],
+        *,
+        max_count: int = 3,
+    ) -> str:
+        """Build <Audio N> tags with semantic descriptions for stem audio references.
+
+        Per MiniMax H3 spec (issue #243): each audio reference must be described
+        in the prompt with its role (audio_transfer for lip-sync, full_mix for
+        beat/rhythm, etc.).
+
+        Only produces tags when stem audio is present (scene has
+        references["_stem_audio_tags"]). This avoids polluting prompts for
+        ordinary reference audio that already has tags in the pre-built H3 prompt.
+        """
+        refs = scene.get("references") or {}
+        stem_tags: dict[str, str]
+        if not isinstance(refs, dict) or not refs.get("_stem_audio_tags"):
+            # No stem audio → skip prompt augmentation
+            return ""
+        stem_tags = {str(k): str(v) for k, v in refs.get("_stem_audio_tags", {}).items()}
+
+        stem_role_map = {
+            "vocals": "audio_transfer - vocal singing lip-synced to the audio signal",
+            "full_mix": "full_mix - original song for beat and rhythm continuity",
+            "drums": "drums stem - percussion and rhythm pattern reference",
+            "bass": "bass stem - low-frequency rhythm foundation reference",
+            "other": "other stem - remaining instrument mix reference",
+        }
+
+        # Build a mapping from path -> stem_name for lookup
+        # ref_audio_paths are actual Paths; stem_tags keys are string paths
+        path_to_stem_name: dict[str, str] = {}
+        stem_audio = scene.get("stem_audio") or {}
+        for stem_name, stem_path in stem_audio.get("paths", {}).items():
+            path_to_stem_name[str(stem_path)] = stem_name
+
+        tags: list[str] = []
+        seen: set[str] = set()
+        for i, path in enumerate(ref_audio_paths[:max_count], start=1):
+            path_str = str(path)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            # Look up description: first from _stem_audio_tags, then from stem_role_map by basename
+            desc = stem_tags.get(path_str)
+            if not desc:
+                basename = path_str.rstrip("/").split("/")[-1]
+                name_part = basename.rsplit(".", 1)[0] if "." in basename else basename
+                desc = stem_role_map.get(name_part, f"{name_part} audio reference")
+            tags.append(f"<Audio {i}> ({desc})")
+
+        if tags:
+            return "\n" + "\n".join(tags)
+        return ""
+
+    def _patch_prompt_with_audio_tags(
+        self,
+        patcher: WorkflowPatcher,
+        scene: dict,
+        ref_audio_paths: list[Path],
+        original_prompt: str,
+    ) -> None:
+        """Append <Audio N> tags with descriptions and JSON subject entries to the prompt.
+
+        Called after all audio refs are resolved so we can construct accurate
+        tags and descriptions per the MiniMax H3 specification (issue #243).
+        Injects audio subjects into H3 prompt JSON structure when present.
+        Skipped when stem audio is not configured.
+        """
+        audio_suffix = self._build_audio_prompt_suffix(scene, ref_audio_paths)
+        if audio_suffix:
+            enhanced = str(original_prompt).strip()
+            # Also inject audio subjects into H3 JSON structure
+            enhanced = self._inject_audio_subjects(enhanced, ref_audio_paths, scene)
+            enhanced += audio_suffix
+            patcher.set_input_by_title("#PROMPT", "value", enhanced)
+
+    @staticmethod
+    def _inject_audio_subjects(
+        prompt_text: str,
+        ref_audio_paths: list[Path],
+        scene: dict,
+    ) -> str:
+        """Inject audio reference subjects into H3 prompt JSON structure.
+
+        The H3 prompt is JSON with subject_definitions and retention_analysis fields.
+        Since stem audio isn't known at prompt generation time, we inject them here
+        so the model output includes proper <Audio N> handling.
+
+        Per MiniMax H3 spec (issue #243 #2053):
+        - <Audio N> must be in subject_definitions with description
+        - <Audio N> must be in retention_analysis with marker fully_copy
+        """
+        import json as _json
+        try:
+            data = _json.loads(prompt_text)
+        except (ValueError, TypeError):
+            # Not JSON — prepend inline
+            return prompt_text
+
+        stem_tags: dict[str, str] = {}
+        refs = scene.get("references") or {}
+        if isinstance(refs, dict):
+            stem_tags = {str(k): str(v) for k, v in refs.get("_stem_audio_tags", {}).items()}
+
+        if not stem_tags:
+            return prompt_text
+        if not isinstance(data, dict):
+            return prompt_text
+
+        # Count existing subjects to determine starting number
+        subj_defs = str(data.get("subject_definitions", ""))
+        existing_audio_count = subj_defs.count("<Audio")
+        audio_subject_lines: list[str] = []
+        retention_lines: list[str] = []
+
+        seen: set[str] = set()
+        for i, path in enumerate(ref_audio_paths, start=1):
+            path_str = str(path)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            # Adjust index for existing audio ref offset
+            audio_idx = i + existing_audio_count
+            desc = stem_tags.get(path_str, f"{path_str} audio reference")
+            # Subject definitions entry
+            subj_lines = audio_subject_lines
+            subj_lines.append(f"<Audio {audio_idx}> is {path_str}")
+            subj_lines.append(f"  Description: {desc}")
+            # Retention analysis entry
+            retention_lines.append(f"<Audio {audio_idx}>: fully_copy — retain this audio track as-is for sync with generated video")
+
+        if audio_subject_lines:
+            current_defs = subj_defs or ""
+            separator = "\n" if current_defs.strip() else ""
+            data["subject_definitions"] = current_defs + separator + "\n".join(audio_subject_lines)
+
+        if retention_lines:
+            current_retention = str(data.get("retention_analysis", ""))
+            separator2 = "\n" if current_retention.strip() else ""
+            data["retention_analysis"] = current_retention + separator2 + "\n".join(retention_lines)
+
+        return _json.dumps(data, ensure_ascii=False) + "\n"
 
     # -----------------------------------------------------------------------
     # Validation

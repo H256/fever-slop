@@ -265,6 +265,125 @@ class BuildRenderPlanTests(unittest.TestCase):
         for banned in ("sings", "singing", "lip sync", "lip-sync"):
             self.assertNotIn(banned, combined)
 
+
+    def test_stem_audio_merged_into_reference_audio_paths(self):
+        """Stem audio paths are merged into references.reference_audio_paths.
+        This ensures prompt generators can produce <Audio N> tags for stems.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+            vocal_path = temp / "vocals.wav"
+            vocal_path.write_bytes(b"fake audio")
+            fullmix_path = temp / "full_mix.wav"
+            fullmix_path.write_bytes(b"fake audio")
+
+            scene_prompts_path.write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "segment_id": "s1",
+                        "type": "vocals",
+                        "start": 0.0,
+                        "end": 2.0,
+                        "duration": 2.0,
+                        "lyrics": "sing it",
+                        "base_concept": "warrior",
+                        "zimage_prompt": "z",
+                        "ltx_base_prompt": "The warrior sings.",
+                        "i2v_prompt_from_t2i": "I2V",
+                    }
+                ]),
+                encoding="utf-8",
+            )
+            relay_path.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                stem_list=["vocals", "full_mix"],
+                input_audio=fullmix_path,
+                stem_files={"vocals": vocal_path, "full_mix": fullmix_path},
+            )
+
+            plan = json.loads(output_path.read_text(encoding="utf-8"))
+            scene = plan[0]
+
+            self.assertIn("stem_audio", scene)
+            self.assertIn("references", scene)
+            refs = scene["references"]
+            self.assertIn("reference_audio_paths", refs)
+            audio_paths = refs["reference_audio_paths"]
+            # Both stems should be in the audio paths (vocals first, full_mix second)
+            self.assertIn(str(vocal_path), audio_paths)
+            self.assertIn(str(fullmix_path), audio_paths)
+            self.assertIn("_stem_audio_tags", refs)
+            stem_tags = refs["_stem_audio_tags"]
+            # Verify semantic descriptions exist
+            self.assertIn("vocals", scene["stem_audio"]["stems"])
+            self.assertIn("full_mix", scene["stem_audio"]["stems"])
+            # Check that vocals tag exists
+            vocals_tag_found = any("audio_transfer" in v for v in stem_tags.values())
+            self.assertTrue(vocals_tag_found, f"Expected audio_transfer in stem_tags, got {stem_tags}")
+
+    def test_stem_audio_prioritizes_vocals_and_full_mix(self):
+        """Stems list is reordered so vocals + full_mix come first."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+            stems_dir = temp / "stems"
+            stems_dir.mkdir()
+            paths = {}
+            for name in ["drums", "bass", "vocals", "full_mix"]:
+                p = stems_dir / f"{name}.wav"
+                p.write_bytes(b"fake")
+                paths[name] = p
+
+            scene_prompts_path.write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "segment_id": "s1",
+                        "type": "vocals",
+                        "start": 0.0,
+                        "end": 2.0,
+                        "duration": 2.0,
+                        "lyrics": "test",
+                        "base_concept": "beat",
+                        "zimage_prompt": "z",
+                        "ltx_base_prompt": "Test",
+                        "i2v_prompt_from_t2i": "Test",
+                    }
+                ]),
+                encoding="utf-8",
+            )
+            relay_path.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
+
+            # Config with stems in arbitrary order
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                stem_list=["drums", "bass", "vocals", "full_mix"],
+                input_audio=paths["full_mix"],
+                stem_files=paths,
+            )
+
+            plan = json.loads(output_path.read_text(encoding="utf-8"))
+            scene = plan[0]
+            # Stem list should be reordered: vocals, full_mix first
+            stems = scene["stem_audio"]["stems"]
+            self.assertEqual(stems[0], "vocals")
+            self.assertEqual(stems[1], "full_mix")
     def test_render_plan_prefers_explicit_i2v_prompt_from_t2i(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
