@@ -311,8 +311,52 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         input_audio=input_audio,
         stem_files=stem_files,
     )
+    if config.video_pipeline == "minimax-h3-r2v":
+        _preserve_enriched_reference_paths(
+            output_path=state.context.render_plan,
+            reference_plan_path=state.context.reference_plan,
+        )
     state.plan_for_next_step = state.context.render_plan
     console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
+
+
+def _preserve_enriched_reference_paths(
+    *,
+    output_path: Path,
+    reference_plan_path: Path,
+) -> None:
+    """Carry MSR paths into a rebuilt MiniMax plan without replacing new fields."""
+    if not reference_plan_path.is_file() or reference_plan_path.resolve() == output_path.resolve():
+        return
+
+    artifact_store = JsonArtifactStore()
+    rebuilt_plan = artifact_store.read_json(output_path)
+    enriched_plan = artifact_store.read_json(reference_plan_path)
+    enriched_by_scene = {
+        str(scene.get("scene")): scene.get("references") or {}
+        for scene in enriched_plan
+    }
+    reference_keys = {
+        "actor_sheet_paths",
+        "actor_msr_paths",
+        "actor_reference_descriptions",
+        "location_sheet_path",
+        "location_msr_path",
+        "location_reference_description",
+        "visual_consistency_sources",
+    }
+    changed = False
+    for scene in rebuilt_plan:
+        source_references = enriched_by_scene.get(str(scene.get("scene")))
+        if not source_references:
+            continue
+        references = scene.setdefault("references", {})
+        for key in reference_keys:
+            if key in source_references and references.get(key) != source_references[key]:
+                references[key] = source_references[key]
+                changed = True
+    if changed:
+        artifact_store.write_json(output_path, rebuilt_plan)
 
 
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
@@ -468,6 +512,11 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
         raise ValueError(
             "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
         )
+    if not state.plan_for_next_step.is_file():
+        console.print(
+            "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]"
+        )
+        _run_render_plan_stage(state)
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
@@ -1056,6 +1105,15 @@ def _music_handoff_predecessors(
 
 
 def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
+    if state.args.video_pipeline == "minimax-h3-r2v":
+        # An explicit --stage list may place rendering before
+        # msr_reference_sheets. Refresh the plan from the existing enriched
+        # plan immediately before scene validation so actor paths cannot be
+        # lost merely because the stages were listed in that order.
+        _preserve_enriched_reference_paths(
+            output_path=state.plan_for_next_step,
+            reference_plan_path=state.context.reference_plan,
+        )
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients") and state.args.render_mode != "single_prompt" and not str(state.args.relay_workflow).strip():
         raise ValueError(f"RenderMode '{state.args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
 

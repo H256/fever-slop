@@ -32,6 +32,22 @@ class ConfiguredAudioPathTests(unittest.TestCase):
 
         self.assertIsNone(_configured_audio_paths(config, {"drums": Path("drums.wav")}))
 
+    def test_adds_input_audio_as_configured_full_mix(self):
+        config = SimpleNamespace(
+            minimax_h3_audio_refs=SimpleNamespace(stems=["vocals", "full_mix"]),
+        )
+
+        selected = _configured_audio_paths(
+            config,
+            {"vocals": Path("vocals.wav")},
+            Path("song.wav"),
+        )
+
+        self.assertEqual(
+            {"vocals": Path("vocals.wav"), "full_mix": Path("song.wav")},
+            selected,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

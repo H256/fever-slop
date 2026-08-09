@@ -520,7 +520,7 @@ class PatchReferenceImagesTests(unittest.TestCase):
         expected = {
             "ref_images.ref_image_0": "LoadImage",
             "ref_videos.ref_video_0": "LoadVideo",
-            "ref_audios.ref_audio_1": "LoadAudio",
+            "ref_audios.ref_audio_0": "LoadAudio",
         }
         self.assertNotIn("ref_images.ref_image_8", core_inputs)
         self.assertNotIn("ref_videos.ref_video_2", core_inputs)
@@ -710,8 +710,8 @@ class BuildWorkflowTests(unittest.TestCase):
             comfy_audio_name="audio-xyz.wav",
             duration_seconds=10.0,
         )
-        self.assertIn("audio-xyz", result["90"]["inputs"]["audio"])
-        self.assertEqual(10.0, result["91"]["inputs"]["duration"])
+        self.assertNotIn("90", result)
+        self.assertNotIn("91", result)
 
     def test_no_audio_on_native_workflow(self):
         """Providing comfy_audio_name on a workflow without audio anchors is ok."""
@@ -1130,7 +1130,7 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
 
         core = next(node for node in result.values() if node.get("class_type") == "MiniMaxH3ReferenceToVideo")
         inputs = core["inputs"]
-        for slot, expected_name in ((1, "vocals"), (2, "drums")):
+        for slot, expected_name in ((0, "vocals"), (1, "drums")):
             trim_id = inputs[f"ref_audios.ref_audio_{slot}"][0]
             trim = result[trim_id]
             loader_id = trim["inputs"]["audio"][0]
@@ -1138,6 +1138,65 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
             self.assertEqual(loader["inputs"]["audio"], f"feverslop/references/{expected_name}-aud789.wav")
             self.assertEqual(trim["inputs"]["start_index"], 15.01)
             self.assertEqual(trim["inputs"]["duration"], 4.44)
+
+    def test_audio_wiring_does_not_mutate_generated_prompt(self):
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        backend = self._backend(workflow=json.loads(workflow_path.read_text(encoding="utf-8")))
+        generated_prompt = """subject_definitions:
+<Subject 1> (Bard): A singer.
+
+summary: A close-up.
+
+retention_analysis:
+The vocal reference is fully copied.
+
+detailed_description: The singer performs.
+
+overall_soundscape: The vocal performance is audible.
+
+non_diegetic_music: N/A"""
+
+        result = backend.build_workflow(
+            {"scene": 3, "abs_start_seconds": 1.0, "references": {"actor_sheet_paths": ["/tmp/a.png"]}},
+            prompt=generated_prompt,
+            duration_seconds=4.44,
+            ref_audio_paths=["/tmp/vocals.wav", "/tmp/full_mix.wav"],
+        )
+
+        prompt_node = next(
+            node for node in result.values() if node.get("_meta", {}).get("title") == "#PROMPT"
+        )
+        self.assertEqual(generated_prompt, prompt_node["inputs"]["value"])
+
+    def test_production_audio_workflow_maps_reference_audio_from_slot_zero(self):
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+        backend = self._backend(workflow=workflow)
+
+        result = backend.build_workflow(
+            {"scene": 3, "abs_start_seconds": 15.01, "references": {"actor_sheet_paths": ["/tmp/a.png"]}},
+            prompt="test",
+            comfy_audio_name="full_mix.mp3",
+            duration_seconds=4.44,
+            ref_audio_paths=["/tmp/vocals.wav", "/tmp/full_mix.wav"],
+        )
+
+        core = next(node for node in result.values() if node.get("class_type") == "MiniMaxH3ReferenceToVideo")
+        inputs = core["inputs"]
+        self.assertNotIn("ref_audios.ref_audio_2", inputs)
+        for slot, expected_name in ((0, "vocals"), (1, "full_mix")):
+            trim_id = inputs[f"ref_audios.ref_audio_{slot}"][0]
+            trim = result[trim_id]
+            loader_id = trim["inputs"]["audio"][0]
+            loader = result[loader_id]
+            self.assertEqual(loader["inputs"]["audio"], f"feverslop/references/{expected_name}-aud789.wav")
+            self.assertEqual(trim["inputs"]["start_index"], 15.01)
+            self.assertEqual(trim["inputs"]["duration"], 4.44)
+        self.assertFalse(any(node.get("_meta", {}).get("title") == "#LOAD_AUDIO" for node in result.values()))
+        self.assertFalse(any(node.get("_meta", {}).get("title") == "#TRIM_AUDIO" for node in result.values()))
+        self.assertFalse(any(node.get("_meta", {}).get("title") == "#AUDIO_3" for node in result.values()))
+        self.assertFalse(any(node.get("_meta", {}).get("title") == "#REF_3" for node in result.values()))
+        self.assertFalse(any(node.get("_meta", {}).get("title") == "#VIDEO_1" for node in result.values()))
 
     def test_video_and_audio_anchors_absent_in_workflow(self):
         """Workflow without video/audio anchors ignores them silently."""
@@ -1186,8 +1245,8 @@ class AudioPromptSuffixTests(unittest.TestCase):
             workflow=workflow or _native_r2v_workflow(),
         )
 
-    def test_stem_audio_appends_audio_tags(self):
-        """When stem audio is present, <Audio N> tags with descriptions are appended."""
+    def test_stem_audio_does_not_mutate_prompt(self):
+        """Stem wiring leaves the DSPy-generated prompt untouched."""
         backend = self._backend()
         result = backend.build_workflow(
             {
@@ -1212,9 +1271,7 @@ class AudioPromptSuffixTests(unittest.TestCase):
             ref_audio_paths=[Path("/tmp/stems/vocals.wav"), Path("/tmp/stems/full_mix.wav")],
         )
         prompt_value = result["40"]["inputs"]["value"]
-        self.assertIn("<Audio 1> (audio_transfer - vocal singing lip-synced to the audio signal)", prompt_value)
-        self.assertIn("<Audio 2> (full_mix - original song for beat and rhythm continuity)", prompt_value)
-        self.assertIn("test prompt here", prompt_value)
+        self.assertEqual("test prompt here", prompt_value)
 
     def test_no_stem_audio_no_tags_in_prompt(self):
         """Ordinary reference audio without stem audio does NOT create tags."""
@@ -1232,6 +1289,32 @@ class AudioPromptSuffixTests(unittest.TestCase):
         )
         prompt_value = result["40"]["inputs"]["value"]
         self.assertEqual("plain test", prompt_value)
+
+    def test_does_not_append_audio_tags_when_generator_already_rendered_them(self):
+        backend = self._backend()
+        prompt = (
+            "non_diegetic_music: N/A\n"
+            "<Audio 1> (audio_transfer - vocal singing lip-synced to the audio signal)\n"
+            "<Audio 2> (full_mix - original song for beat and rhythm continuity)"
+        )
+        result = backend.build_workflow(
+            {
+                "scene": 1,
+                "references": {
+                    "actor_sheet_paths": ["/tmp/a.png"],
+                    "reference_audio_paths": ["/tmp/vocals.wav", "/tmp/full_mix.wav"],
+                    "_stem_audio_tags": {
+                        "/tmp/vocals.wav": "audio_transfer - vocal singing lip-synced to the audio signal",
+                        "/tmp/full_mix.wav": "full_mix - original song for beat and rhythm continuity",
+                    },
+                },
+                "stem_audio": {"stems": ["vocals", "full_mix"]},
+            },
+            prompt=prompt,
+            ref_audio_paths=[Path("/tmp/vocals.wav"), Path("/tmp/full_mix.wav")],
+        )
+
+        self.assertEqual(prompt, result["40"]["inputs"]["value"])
 
     def test_build_audio_suffix_empty(self):
         """_build_audio_prompt_suffix returns empty when no stem audio."""
@@ -2095,7 +2178,7 @@ class PatchReferenceAudiosTrimmedTests(unittest.TestCase):
                  if n.get("class_type") == "MiniMaxH3ReferenceToVideo"]
         self.assertTrue(len(cores) >= 1)
         core_inputs = cores[0][1].get("inputs", {})
-        audio_1_ref = core_inputs.get("ref_audios.ref_audio_1")
+        audio_1_ref = core_inputs.get("ref_audios.ref_audio_0")
         self.assertIsNotNone(audio_1_ref)
         loader_id = audio_1_ref[0]
         loader_node = patched.get(str(loader_id), patched.get(loader_id))

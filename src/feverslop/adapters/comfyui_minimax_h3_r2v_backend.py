@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import re
 import random
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -30,7 +31,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     MAX_REF_IMAGES = 9
     MAX_REF_VIDEOS = 3
     MAX_REF_AUDIOS = 3
-    MAX_STEM_AUDIOS = 2  # MAX_REF_AUDIOS - 1 (main comfy audio occupies slot 0)
+    MAX_STEM_AUDIOS = MAX_REF_AUDIOS
     FPS = 24
 
     def __init__(
@@ -119,6 +120,11 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         patcher = WorkflowPatcher(self.load_workflow())
 
+        # MiniMax R2V uses the explicitly numbered reference-audio anchors.
+        # The legacy main-audio chain would otherwise occupy ref_audio_0 with
+        # a duplicate full mix and shift all prompt references by one slot.
+        self._remove_legacy_main_audio_chain(patcher)
+
         # -- prompt -----------------------------------------------------------
         patcher.set_input_by_title("#PROMPT", "value", str(prompt).strip())
 
@@ -150,18 +156,15 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             abs_start_seconds=scene.get("abs_start_seconds"),
         )
 
-        # -- audio (workflow may or may not have these anchors) ----------------
-        if comfy_audio_name is not None:
-            self._patch_audio_inputs(patcher, comfy_audio_name, duration_seconds, scene)
-
         # -- dynamic ref wiring: fill remaining slots from scene refs -------
         self._patch_dynamic_ref_inputs(patcher, scene)
 
-        # -- append <Audio N> tags with descriptions for stem audio refs -------
-        self._patch_prompt_with_audio_tags(patcher, scene, ref_audio_paths or [], prompt)
-
         # -- output filename --------------------------------------------------
         self._patch_save_video(patcher, scene_number)
+
+        # Remove unused template anchors and their disconnected branches so
+        # ComfyUI does not validate stale paths from the original workflow.
+        patcher.prune_unreachable_nodes(root_titles=("#SAVE_VIDEO",))
 
         return patcher.get()
 
@@ -360,9 +363,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 f"At most {self.MAX_REF_AUDIOS} reference audio clips allowed, "
                 f"got {len(ref_audio_paths)}"
             )
-        for index, path in enumerate(ref_audio_paths, start=1):
-            title = f"#AUDIO_{index}"
-            trim_title = f"#TRIM_AUDIO_{index}"
+        for slot_index, path in enumerate(ref_audio_paths):
+            title = f"#AUDIO_{slot_index + 1}"
+            trim_title = f"#TRIM_AUDIO_{slot_index + 1}"
             audio_name = self.asset_uploader.resolve_reference_audio_name(path)
 
             # Step 1: Update or create LoadAudio anchor
@@ -404,9 +407,31 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 trim.setdefault("inputs", {})["start_index"] = start
                 trim.setdefault("inputs", {})["duration"] = float(duration_seconds)
 
-                self._wire_ref_audio_slot(patcher, trim_id, index)
+                self._wire_ref_audio_slot(patcher, trim_id, slot_index)
             else:
-                self._wire_ref_audio_slot(patcher, loader_id, index)
+                self._wire_ref_audio_slot(patcher, loader_id, slot_index)
+
+    @staticmethod
+    def _remove_legacy_main_audio_chain(patcher: WorkflowPatcher) -> None:
+        """Remove the template's duplicate full-mix reference-audio chain."""
+        removed_ids: set[str] = set()
+        for title in ("#LOAD_AUDIO", "#TRIM_AUDIO"):
+            for node_id, _ in patcher.find_nodes_by_meta_title(title):
+                removed_ids.add(node_id)
+                del patcher.get()[node_id]
+
+        if not removed_ids:
+            return
+        for _, core in patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo"):
+            inputs = core.setdefault("inputs", {})
+            for input_name, value in list(inputs.items()):
+                if (
+                    input_name.startswith("ref_audios.")
+                    and isinstance(value, list)
+                    and value
+                    and str(value[0]) in removed_ids
+                ):
+                    del inputs[input_name]
 
     @staticmethod
     def _clear_reference_group(patcher: WorkflowPatcher, input_group: str) -> None:
@@ -685,6 +710,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         Injects audio subjects into H3 prompt JSON structure when present.
         Skipped when stem audio is not configured.
         """
+        unique_audio_paths = list(dict.fromkeys(str(path) for path in ref_audio_paths))
+        existing_audio_count = len(set(re.findall(r"<Audio\s+\d+>", str(original_prompt))))
+        if unique_audio_paths and existing_audio_count >= len(unique_audio_paths):
+            # DSPy already rendered the complete audio-reference section. Do
+            # not append a second, out-of-structure suffix to the H3 prompt.
+            return
+
         audio_suffix = self._build_audio_prompt_suffix(scene, ref_audio_paths)
         if audio_suffix:
             enhanced = str(original_prompt).strip()

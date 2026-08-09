@@ -56,6 +56,12 @@ def build_dspy_signatures():
         retention_analysis: list[RetentionAnalysis] = dspy.OutputField()
         detailed_description: str = dspy.OutputField()
         overall_soundscape: str = dspy.OutputField()
-        non_diegetic_music: str | None = dspy.OutputField()
+        non_diegetic_music: str | None = dspy.OutputField(
+            desc=(
+                "Audience-only background music prose, or null/N/A. "
+                "Never include <Audio N> labels or audio-reference definitions here; "
+                "put those in detailed_description and retention_analysis."
+            )
+        )
 
     return AnalyzeImage, BuildPromptPlan, RenderBasePrompt, RenderReferencePrompt

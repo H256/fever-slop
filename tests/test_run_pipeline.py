@@ -11,11 +11,92 @@ import run_pipeline
 from feverslop.composition.stage_runners import (
     _read_h3_input,
     _run_main_pipeline_stage,
+    _run_msr_reference_sheets_stage,
+    _preserve_enriched_reference_paths,
     _selected_video_workflows,
 )
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    @patch("feverslop.composition.stage_runners._run_render_plan_stage")
+    @patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets")
+    def test_reference_sheets_create_missing_intermediate_render_plan(
+        self,
+        enrich_render_plan,
+        run_render_plan,
+    ):
+        with TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan = temp / "render" / "plans" / "base.json"
+            plan.parent.mkdir(parents=True)
+            references_dir = temp / "references"
+            references_dir.mkdir()
+            reference_plan = temp / "render" / "plans" / "references.json"
+            reference_plan.write_text("[]", encoding="utf-8")
+            plan.write_text("[]", encoding="utf-8")
+
+            state = Namespace(
+                args=Namespace(video_pipeline="minimax-h3-r2v"),
+                plan_for_next_step=plan,
+                context=Namespace(
+                    artifact_layout=Namespace(plans_dir=plan.parent),
+                    references_dir=references_dir,
+                    reference_plan=reference_plan,
+                ),
+            )
+
+            plan.unlink()
+            run_render_plan.side_effect = lambda current_state: plan.write_text("[]", encoding="utf-8")
+            _run_msr_reference_sheets_stage(state)
+
+        run_render_plan.assert_called_once_with(state)
+        enrich_render_plan.assert_called_once()
+
+    def test_rebuilt_minimax_plan_preserves_existing_reference_paths(self):
+        with TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            rebuilt = temp / "base.json"
+            enriched = temp / "render_plan_refs.json"
+            rebuilt.write_text(
+                json.dumps([{
+                    "scene": 3,
+                    "references": {
+                        "actor_ids": ["medieval_bard"],
+                        "location_id": "tavern",
+                        "reference_audio_paths": ["vocals.wav"],
+                    },
+                }]),
+                encoding="utf-8",
+            )
+            enriched.write_text(
+                json.dumps([{
+                    "scene": 3,
+                    "references": {
+                        "actor_ids": ["medieval_bard"],
+                        "actor_msr_paths": ["output/references/actors/medieval_bard/views/msr_sheet.png"],
+                        "location_msr_path": "output/references/locations/tavern/views/hero.png",
+                    },
+                }]),
+                encoding="utf-8",
+            )
+
+            _preserve_enriched_reference_paths(
+                output_path=rebuilt,
+                reference_plan_path=enriched,
+            )
+
+            result = json.loads(rebuilt.read_text(encoding="utf-8"))[0]
+
+        self.assertEqual(
+            ["output/references/actors/medieval_bard/views/msr_sheet.png"],
+            result["references"]["actor_msr_paths"],
+        )
+        self.assertEqual(
+            "output/references/locations/tavern/views/hero.png",
+            result["references"]["location_msr_path"],
+        )
+        self.assertEqual(["vocals.wav"], result["references"]["reference_audio_paths"])
+
     def test_h3_prompts_is_an_atomic_cli_stage(self):
         args = run_pipeline.build_arg_parser().parse_args(["--stage", "h3_prompts"])
 

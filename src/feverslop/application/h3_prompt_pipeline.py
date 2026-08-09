@@ -6,19 +6,26 @@ from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 
 
-def _configured_audio_paths(config: Any, stem_files: dict[str, Any] | None) -> dict[str, Any] | None:
+def _configured_audio_paths(
+    config: Any,
+    stem_files: dict[str, Any] | None,
+    input_audio: Any | None = None,
+) -> dict[str, Any] | None:
     """Return only the audio stems selected for the MiniMax reference workflow."""
-    if not stem_files:
+    if not stem_files and input_audio is None:
         return None
 
     configured_stems = list(getattr(getattr(config, "minimax_h3_audio_refs", None), "stems", ()))
     if not configured_stems:
         return None
 
+    available = dict(stem_files or {})
+    if input_audio is not None:
+        available.setdefault("full_mix", input_audio)
     selected = {
-        stem_name: stem_files[stem_name]
+        stem_name: available[stem_name]
         for stem_name in configured_stems
-        if stem_name in stem_files
+        if stem_name in available
     }
     return selected or None
 
@@ -82,7 +89,7 @@ class H3PromptPipeline:
             mode = "base"
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
         audio_paths = (
-            _configured_audio_paths(config, stem_files)
+            _configured_audio_paths(config, stem_files, getattr(config, "input_audio", None))
             if config.video_pipeline == "minimax-h3-r2v"
             else stem_files
         )
