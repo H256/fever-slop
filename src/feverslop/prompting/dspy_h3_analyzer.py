@@ -12,6 +12,7 @@ class LocalImageAnalyzer:
     def __init__(self, predictor: Any, mode: ImageAnalysisMode = ImageAnalysisMode.MISSING_ONLY):
         self.predictor = predictor
         self.mode = mode
+        self._analysis_cache: dict[tuple[Path, int, int], str] = {}
 
     def should_analyze(self, reference: ReferenceAsset) -> bool:
         return (
@@ -30,12 +31,17 @@ class LocalImageAnalyzer:
         path = self._local_file(reference.source)
         if path is None:
             raise ValueError(f"Image is not a local file: {reference.source}")
+        stat = path.stat()
+        cache_key = (path, stat.st_mtime_ns, stat.st_size)
+        cached = self._analysis_cache.get(cache_key)
+        if cached is not None:
+            return cached
         analysis = self.predictor(
             image=__import__("dspy").Image.from_path(str(path)),
             intended_role=reference.role.value,
             user_hint=reference.description or "",
         ).analysis
-        return "\n".join(filter(None, [
+        result = "\n".join(filter(None, [
             analysis.objective_description,
             "Visible subjects: " + "; ".join(analysis.visible_subjects) if analysis.visible_subjects else "",
             f"Environment: {analysis.environment}" if analysis.environment else "",
@@ -44,3 +50,5 @@ class LocalImageAnalyzer:
             f"Lighting: {analysis.lighting}" if analysis.lighting else "",
             "Visible text: " + "; ".join(analysis.visible_text) if analysis.visible_text else "",
         ]))
+        self._analysis_cache[cache_key] = result
+        return result

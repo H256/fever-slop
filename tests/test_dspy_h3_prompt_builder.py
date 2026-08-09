@@ -32,6 +32,39 @@ class FakeGenerator:
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_image_analysis_is_cached_for_repeated_reference(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "reference.png"
+            image_path.write_bytes(b"image")
+            calls = []
+
+            class Analysis:
+                objective_description = "A reference image"
+                visible_subjects = []
+                environment = ""
+                visual_style = ""
+                composition = ""
+                lighting = ""
+                visible_text = []
+
+            def predictor(**kwargs):
+                calls.append(kwargs)
+                return type("Prediction", (), {"analysis": Analysis()})()
+
+            reference = ReferenceAsset(
+                kind=ReferenceKind.PICTURE,
+                source=str(image_path),
+                role="subject",
+            )
+            analyzer = LocalImageAnalyzer(predictor)
+
+            first = analyzer.analyze(reference)
+            second = analyzer.analyze(reference)
+
+        self.assertEqual("A reference image", first)
+        self.assertEqual(first, second)
+        self.assertEqual(1, len(calls))
+
     def test_generator_converts_openai_url_object_for_dspy(self):
         class UrlObject:
             def __str__(self):
