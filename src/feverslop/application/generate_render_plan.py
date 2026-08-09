@@ -21,6 +21,7 @@ class GenerateRenderPlanRequest:
     zimage_workflow_path: Path | None = None
     video_workflow_paths: tuple[Path, ...] = ()
     rolling_frame_profile: str = "original"
+    defer_h3_until_references: bool = False
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,11 @@ class GenerateRenderPlanUseCase:
         return list(self.pipeline_services)
 
     def execute_services(self, context: GenerateRenderPlanContext | dict[str, Any]) -> GenerateRenderPlanContext | dict[str, Any]:
+        request = context["request"]
+        defer_h3 = getattr(request, "defer_h3_until_references", False)
         for service in self.pipeline_services:
+            if defer_h3 and getattr(service, "defer_until_references", False):
+                continue
             context = service.execute(context)
         return context
 

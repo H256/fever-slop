@@ -65,6 +65,23 @@ uv run python run_pipeline.py ./projects/my-song \
   --video-pipeline ltx_ingredients --skip-tests
 ```
 
+For MiniMax H3 R2V, the default pipeline generates MSR references and reference
+sheets before stage 8.5. DSPy can then analyze the actual actor/location images
+before the final render plan is written. Stage 8.5 can also be rerun without
+repeating the earlier LLM stages, but it requires the reference-enriched plan
+from `msr_reference_sheets`; run `render_plan` afterward to copy the new prompts
+into `base.json`:
+
+```bash
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline minimax-h3-r2v \
+  --stage h3_prompts --skip-tests
+
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline minimax-h3-r2v \
+  --stage render_plan --skip-tests
+```
+
 MSR and Ingredients runs materialize each selected scene before rendering. To
 inspect the exact ComfyUI workflows without queueing a render, run the prepare
 stage explicitly; use the same `--scenes` filter for the later render stage:

@@ -26,6 +26,10 @@ class RecordingService:
         return context
 
 
+class DeferredRecordingService(RecordingService):
+    defer_until_references = True
+
+
 class RecordingReporter:
     def __init__(self):
         self.steps = []
@@ -54,6 +58,15 @@ class RecordingReporter:
 
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
+    def test_deferred_reference_services_are_skipped_when_requested(self):
+        immediate = RecordingService("audio", {})
+        deferred = DeferredRecordingService("h3", {})
+        use_case = GenerateRenderPlanUseCase(pipeline_services=[immediate, deferred])
+
+        result = use_case.execute_services({"request": SimpleNamespace(defer_h3_until_references=True)})
+
+        self.assertEqual(["audio"], result["order"])
+        self.assertEqual([], deferred.calls)
     def test_clamp_report_uses_default_limit_label_without_selected_workflow(self):
         reporter = RecordingReporter()
         policy = ResolvedSceneDurationPolicy(
@@ -185,6 +198,33 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
         self.assertIsNone(calls[0]["h3_prompts_json"])
         self.assertEqual([{"scene": 1}], context.render_plan)
+
+    def test_deferred_h3_prompts_are_skipped_until_reference_stages_finish(self):
+        calls = []
+
+        class Store:
+            def read_json(self, path):
+                return [{"scene": 1}]
+
+        def build_render_plan(**kwargs):
+            calls.append(kwargs)
+
+        context = GenerateRenderPlanContext(
+            request=SimpleNamespace(defer_h3_until_references=True),
+            h3_prompts_json=Path("missing-h3-prompts.json"),
+            scene_prompts_json=Path("scene_prompts.json"),
+            ltx_prompt_relay_json=Path("relay.json"),
+            render_plan_json=Path("render_plan.json"),
+            video_settings=SimpleNamespace(),
+            artifact_store=Store(),
+            log_step=lambda _title: None,
+            log_file=lambda _label, _path: None,
+        )
+
+        RenderPlanPipeline(build_render_plan=build_render_plan).execute(context)
+
+        self.assertEqual(1, len(calls))
+        self.assertIsNone(calls[0]["h3_prompts_json"])
 
     def test_use_case_accepts_pipeline_services_and_runs_them_in_order(self):
         services = [

@@ -94,6 +94,7 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
     def test_scene_details_receive_selected_scene_cast(self):
         llm = FakeConceptLLM()
         pipeline = MusicVideoPromptPipeline(llm)
+        progress = []
 
         pipeline.create_scene_details(
             concept_prompts={
@@ -108,12 +109,15 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
                 "subject_mode": "multi",
                 "max_scene_actors": 4,
             },
+            progress_callback=lambda current, total: progress.append((current, total)),
         )
 
         for call in llm.calls:
             payload = json.loads(call["prompt"])
             self.assertEqual(["warrior", "mage"], payload["scene_cast"]["visible_actor_ids"])
             self.assertTrue(payload["scene_cast"]["requires_group_staging"])
+
+        self.assertEqual([(1, 1)], progress)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import re
+from typing import Callable
 
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.prompting.music_video_prompt_style import (
@@ -187,6 +188,7 @@ Rules for locations:
         concept_prompts: dict,
         stage1_segments: list[dict] | None = None,
         global_context: dict | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> dict:
         details = {}
         segment_types = {
@@ -194,7 +196,8 @@ Rules for locations:
             for segment in (stage1_segments or [])
         }
 
-        for segment_id, concept in concept_prompts.items():
+        total = len(concept_prompts)
+        for current, (segment_id, concept) in enumerate(concept_prompts.items(), start=1):
             segment_type = segment_types.get(str(segment_id), "")
             references = {}
             if isinstance(concept, dict):
@@ -249,6 +252,8 @@ Rules for locations:
                 "camera_motion": camera_motion,
                 "character_motion": character_motion,
             }
+            if progress_callback is not None:
+                progress_callback(current, total)
 
         return details
 

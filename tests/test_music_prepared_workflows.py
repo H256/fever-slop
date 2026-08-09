@@ -11,6 +11,7 @@ from feverslop.composition.config_loader import PipelineRunState, build_run_cont
 from feverslop.composition.stage_runners import (
     STAGE_RUNNERS,
     _load_continuity_dirty,
+    _merge_reference_paths_into_h3_segments,
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
     _run_visual_consistency_preflight,
@@ -28,6 +29,30 @@ from feverslop.application.visual_consistency_preflight import (
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
+    def test_h3_segments_receive_reference_paths_from_enriched_plan(self):
+        with TemporaryDirectory() as tmp:
+            plan_path = Path(tmp) / "reference_plan.json"
+            plan_path.write_text(json.dumps([{
+                "scene": 1,
+                "references": {
+                    "actor_msr_paths": ["output/references/actors/bard.png"],
+                    "location_msr_path": "output/references/locations/tavern.png",
+                },
+            }]), encoding="utf-8")
+
+            enriched = _merge_reference_paths_into_h3_segments(
+                [{"segment_id": "segment_001", "scene": 1, "references": {"actor_ids": ["bard"]}}],
+                plan_path,
+            )
+
+        self.assertEqual(
+            "output/references/actors/bard.png",
+            enriched[0]["references"]["actor_msr_paths"][0],
+        )
+        self.assertEqual(
+            "output/references/locations/tavern.png",
+            enriched[0]["references"]["location_msr_path"],
+        )
     def test_stage_resolves_selected_profile_continuous_capability(self):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
@@ -112,7 +137,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
 
     def test_minimax_r2v_uses_msr_reference_stages_before_render(self):
         args = argparse.Namespace(
-            stages=None, skip_tests=True, skip_main_pipeline=True, skip_relay_compact=True,
+            stages=None, skip_tests=True, skip_main_pipeline=False, skip_relay_compact=True,
             skip_anchor_fix=True, video_pipeline="minimax-h3-r2v", skip_msr_reference_render=True,
             skip_msr_prompt_enrichment=True, skip_ingredients_sheets=True, skip_ltx=False,
             skip_final_concat=True, render_mode="single_prompt", skip_storyboard=True,
@@ -127,6 +152,14 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
         self.assertLess(
             stages.index(PipelineStage.MSR_REFERENCE_SHEETS),
             stages.index(PipelineStage.LTX_RENDER_SCENES),
+        )
+        self.assertLess(
+            stages.index(PipelineStage.MSR_REFERENCE_SHEETS),
+            stages.index(PipelineStage.H3_PROMPTS),
+        )
+        self.assertLess(
+            stages.index(PipelineStage.H3_PROMPTS),
+            stages.index(PipelineStage.RENDER_PLAN),
         )
 
     def test_prepare_uses_same_scene_selection_and_never_queues(self):

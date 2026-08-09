@@ -43,6 +43,7 @@ from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
 from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
 from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
+from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator
 from feverslop.adapters.storyboard_renderer import StoryboardRenderer
 
 
@@ -77,6 +78,7 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
             H3PromptPipeline(
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
+                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(build_dspy_generator(llm)),
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
         ],
@@ -164,6 +166,7 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
             H3PromptPipeline(
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
+                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(build_dspy_generator(llm)),
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
         ],

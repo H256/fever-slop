@@ -34,7 +34,9 @@ from feverslop.adapters.postprocessor_frame_extractor import (
 )
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
+from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
+from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
@@ -60,7 +62,10 @@ from feverslop.composition.render_storyboard import build_render_storyboard_use_
 from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
 from feverslop.config.app_config import AppConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
+from feverslop.ports.reporting import ConsoleReporter
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
+from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator
+from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
@@ -163,11 +168,116 @@ def _run_main_pipeline_stage(state: PipelineRunState) -> None:
             concept_batch_size=int(state.args.concept_batch_size),
             video_workflow_paths=_selected_video_workflows(state),
             rolling_frame_profile=state.args.rolling_frame_profile,
+            defer_h3_until_references=state.args.video_pipeline == "minimax-h3-r2v",
         ),
         console=console,
         resolution=resolution,
     )
     state.plan_for_next_step = state.context.render_plan
+
+
+def _read_h3_input(path: Path, label: str):
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Cannot run h3_prompts: missing {label} artifact {path}. "
+            "Run the main_pipeline once to create the upstream prompt artifacts."
+        )
+    return JsonArtifactStore().read_json(path)
+
+
+def _discover_stem_files(stems_dir: Path) -> dict[str, Path] | None:
+    if not stems_dir.is_dir():
+        return None
+    stem_files = {}
+    for stem_file in sorted(stems_dir.iterdir()):
+        if stem_file.is_file() and stem_file.suffix.lower() in (".wav", ".mp3", ".flac"):
+            stem_files[stem_file.stem.split("_", 1)[0]] = stem_file
+    return stem_files or None
+
+
+def _merge_reference_paths_into_h3_segments(
+    stage1_segments: list[dict],
+    reference_plan_path: Path,
+) -> list[dict]:
+    if not reference_plan_path.is_file():
+        raise FileNotFoundError(
+            f"Cannot run h3_prompts: missing reference-enriched render plan {reference_plan_path}. "
+            "Run --stage msr_reference_sheets first."
+        )
+    reference_plan = JsonArtifactStore().read_json(reference_plan_path)
+    by_scene = {
+        int(scene.get("scene")): scene.get("references", {})
+        for scene in reference_plan
+        if scene.get("scene") is not None
+    }
+    enriched = []
+    for index, segment in enumerate(stage1_segments, start=1):
+        scene_number = segment.get("scene") or segment.get("scene_number") or index
+        references = by_scene.get(int(scene_number))
+        if references is None:
+            raise ValueError(f"No reference-enriched scene found for H3 segment {segment.get('segment_id', index)}")
+        enriched.append({**segment, "references": {**(segment.get("references") or {}), **references}})
+    return enriched
+
+
+def _run_h3_prompts_stage(state: PipelineRunState) -> None:
+    """Regenerate only stage 8.5 from the existing stage 7/8 artifacts."""
+    config = ProjectConfig.load(state.context.project_config_path)
+    if state.args.video_pipeline == "minimax-h3-r2v" and config.video_pipeline != state.args.video_pipeline:
+        from dataclasses import replace
+        config = replace(config, video_pipeline=state.args.video_pipeline)
+    app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
+    artifact_store = JsonArtifactStore()
+    paths = config.paths
+    stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
+    stage1_segments = _merge_reference_paths_into_h3_segments(
+        stage1_segments,
+        state.plan_for_next_step,
+    )
+    concept_prompts = _read_h3_input(state.context.concept_prompts, "concept prompts")
+    scene_details = _read_h3_input(state.context.scene_details, "scene details")
+    global_context = _read_h3_input(state.context.resolved_context, "resolved context")
+    h3_prompts_json = paths.prompts_dir / f"h3_prompts_{config.song_id}.json"
+    paths.prompts_dir.mkdir(parents=True, exist_ok=True)
+    reporter = ConsoleReporter(console)
+    context = GenerateRenderPlanContext(
+        request=state.args,
+        config=config,
+        paths=paths,
+        app_config=app_config,
+        song_id=config.song_id,
+        artifact_store=artifact_store,
+        reporter=reporter,
+        console=console,
+        log_step=reporter.step,
+        log_file=reporter.file,
+        stage1_segments=stage1_segments,
+        global_context=global_context,
+        concept_prompts=concept_prompts,
+        scene_details=scene_details,
+        scene_prompts_json=state.context.scene_prompts,
+        h3_prompts_json=h3_prompts_json,
+        stem_files=_discover_stem_files(paths.stems_dir),
+    )
+    pipeline = H3PromptPipeline(
+        llm_factory=lambda current_config: OpenAICompatibleLLMClient(
+            base_url=current_config.llm.base_url,
+            api_key=current_config.llm.api_key,
+            model=current_config.llm.model,
+            temperature=current_config.llm.temperature,
+            max_tokens=current_config.llm.max_tokens,
+            request_timeout_seconds=current_config.llm.request_timeout_seconds,
+        ),
+        h3_prompt_builder_factory=H3PromptBuilder,
+        dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
+            build_dspy_generator(llm),
+            reference_root=paths.project_dir,
+            allow_fallback=False,
+        ),
+    )
+    pipeline.execute(context)
+    state.plan_for_next_step = state.context.render_plan
+    console.print(f"[green]OK H3 Prompts JSON: {h3_prompts_json}[/green]")
 
 
 def _run_render_plan_stage(state: PipelineRunState) -> None:
@@ -201,8 +311,52 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         input_audio=input_audio,
         stem_files=stem_files,
     )
+    if config.video_pipeline == "minimax-h3-r2v":
+        _preserve_enriched_reference_paths(
+            output_path=state.context.render_plan,
+            reference_plan_path=state.context.reference_plan,
+        )
     state.plan_for_next_step = state.context.render_plan
     console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
+
+
+def _preserve_enriched_reference_paths(
+    *,
+    output_path: Path,
+    reference_plan_path: Path,
+) -> None:
+    """Carry MSR paths into a rebuilt MiniMax plan without replacing new fields."""
+    if not reference_plan_path.is_file() or reference_plan_path.resolve() == output_path.resolve():
+        return
+
+    artifact_store = JsonArtifactStore()
+    rebuilt_plan = artifact_store.read_json(output_path)
+    enriched_plan = artifact_store.read_json(reference_plan_path)
+    enriched_by_scene = {
+        str(scene.get("scene")): scene.get("references") or {}
+        for scene in enriched_plan
+    }
+    reference_keys = {
+        "actor_sheet_paths",
+        "actor_msr_paths",
+        "actor_reference_descriptions",
+        "location_sheet_path",
+        "location_msr_path",
+        "location_reference_description",
+        "visual_consistency_sources",
+    }
+    changed = False
+    for scene in rebuilt_plan:
+        source_references = enriched_by_scene.get(str(scene.get("scene")))
+        if not source_references:
+            continue
+        references = scene.setdefault("references", {})
+        for key in reference_keys:
+            if key in source_references and references.get(key) != source_references[key]:
+                references[key] = source_references[key]
+                changed = True
+    if changed:
+        artifact_store.write_json(output_path, rebuilt_plan)
 
 
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
@@ -358,6 +512,11 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
         raise ValueError(
             "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
         )
+    if not state.plan_for_next_step.is_file():
+        console.print(
+            "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]"
+        )
+        _run_render_plan_stage(state)
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
@@ -946,6 +1105,15 @@ def _music_handoff_predecessors(
 
 
 def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
+    if state.args.video_pipeline == "minimax-h3-r2v":
+        # An explicit --stage list may place rendering before
+        # msr_reference_sheets. Refresh the plan from the existing enriched
+        # plan immediately before scene validation so actor paths cannot be
+        # lost merely because the stages were listed in that order.
+        _preserve_enriched_reference_paths(
+            output_path=state.plan_for_next_step,
+            reference_plan_path=state.context.reference_plan,
+        )
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients") and state.args.render_mode != "single_prompt" and not str(state.args.relay_workflow).strip():
         raise ValueError(f"RenderMode '{state.args.render_mode}' requires --relay-workflow pointing to a workflow with #PROMPT_RELAY.")
 
@@ -1311,6 +1479,7 @@ def _run_facefix_concat_stage(state: PipelineRunState) -> None:
 STAGE_RUNNERS = {
     PipelineStage.TESTS: _run_tests_stage,
     PipelineStage.MAIN_PIPELINE: _run_main_pipeline_stage,
+    PipelineStage.H3_PROMPTS: _run_h3_prompts_stage,
     PipelineStage.RENDER_PLAN: _run_render_plan_stage,
     PipelineStage.RELAY_COMPACT: _run_relay_compact_stage,
     PipelineStage.ANCHOR_FIX: _run_anchor_fix_stage,
@@ -1333,6 +1502,7 @@ STAGE_RUNNERS = {
 STAGE_LABELS = {
     PipelineStage.TESTS: "tests",
     PipelineStage.MAIN_PIPELINE: "Main pipeline",
+    PipelineStage.H3_PROMPTS: "H3 prompts",
     PipelineStage.RENDER_PLAN: "Render plan",
     PipelineStage.RELAY_COMPACT: "relay compact",
     PipelineStage.ANCHOR_FIX: "anchor fix",
@@ -1396,6 +1566,9 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         else:
             console.print("Skipping MSR reference rendering; using existing reference manifests.")
         stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
+        if args.video_pipeline == "minimax-h3-r2v" and not args.skip_main_pipeline:
+            stages.append(PipelineStage.H3_PROMPTS)
+            stages.append(PipelineStage.RENDER_PLAN)
         if args.video_pipeline == "ltx_msr" and not args.skip_msr_prompt_enrichment:
             stages.append(PipelineStage.MSR_PROMPT_ENRICH)
         elif args.video_pipeline == "ltx_msr":

@@ -325,6 +325,52 @@ class WorkflowPatcher:
 
         return patched
 
+    def prune_unreachable_nodes(
+        self,
+        *,
+        root_titles: tuple[str, ...] = (),
+        root_class_types: tuple[str, ...] = (),
+    ) -> set[str]:
+        """Remove nodes that cannot contribute to any selected output node.
+
+        ComfyUI API workflows may contain template anchors and entire branches
+        that are no longer connected after dynamic inputs are patched. Walking
+        backwards from the output nodes keeps only nodes referenced by an
+        actual input link and avoids submitting stale paths to ComfyUI.
+        """
+        roots = {
+            node_id
+            for node_id, node in self.workflow.items()
+            if node.get("_meta", {}).get("title") in root_titles
+            or node.get("class_type") in root_class_types
+        }
+        if not roots:
+            return set()
+        if not any(
+            dependency
+            for node_id in roots
+            for input_value in self.workflow[node_id].get("inputs", {}).values()
+            for dependency in _workflow_dependency_ids(input_value)
+        ):
+            return set()
+
+        reachable: set[str] = set()
+        pending = list(roots)
+        while pending:
+            node_id = str(pending.pop())
+            if node_id in reachable or node_id not in self.workflow:
+                continue
+            reachable.add(node_id)
+            for input_value in self.workflow[node_id].get("inputs", {}).values():
+                for dependency_id in _workflow_dependency_ids(input_value):
+                    if dependency_id not in reachable:
+                        pending.append(dependency_id)
+
+        removed = set(self.workflow) - reachable
+        for node_id in removed:
+            del self.workflow[node_id]
+        return removed
+
     def remove_node_by_title(self, title: str) -> str:
         """Remove a node by title, return its node id."""
         node_id, _ = self.find_node_by_meta_title(title)
@@ -348,6 +394,18 @@ class WorkflowPatcher:
 
 
 _PATH_PART_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)])?")
+
+
+def _workflow_dependency_ids(value: Any) -> set[str]:
+    """Return node ids from nested ComfyUI input-link values."""
+    dependencies: set[str] = set()
+    if isinstance(value, list):
+        if len(value) >= 2 and str(value[0]).strip() and isinstance(value[1], int):
+            dependencies.add(str(value[0]))
+        else:
+            for item in value:
+                dependencies.update(_workflow_dependency_ids(item))
+    return dependencies
 
 
 def resolve_dotted_path(context: dict, path: str) -> Any:
