@@ -227,7 +227,7 @@ def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
 
     guides = Path(__file__).with_name("guides")
     return VideoPromptGenerator(
-        base_guide_path=guides / "base.md",
-        reference_guide_path=guides / "reference.md",
+        base_guide_path=guides / "minimax-h3-base.md",
+        reference_guide_path=guides / "minimax-h3-references.md",
         llm=llm,
     )

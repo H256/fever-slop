@@ -21,6 +21,7 @@ from feverslop.adapters.movie_planning_prompts import (
     _movie_screenplay_prompt,
     _movie_story_design_prompt,
     _refine_actor_prompts_prompt,
+    _krea_reference_guides,
     _refine_location_prompts_prompt,
     _sanitize_location_image_prompt,
     _shot_plan_from_bible_prompt,
@@ -30,8 +31,9 @@ from feverslop.adapters.movie_planning_prompts import (
 
 
 class LLMMoviePlanner:
-    def __init__(self, llm):
+    def __init__(self, llm, *, reference_hero_workflow: str | None = None):
         self.llm = llm
+        self.reference_hero_workflow = reference_hero_workflow
 
     def generate_story_arch(self, *, title: str, source_type: str, story_text: str, desired_length: float) -> StoryArch:
         raw = self.llm.complete_prompt(
@@ -70,9 +72,10 @@ class LLMMoviePlanner:
         return bible
 
     def refine_locations(self, locations: tuple[MovieLocation, ...], *, source_text: str) -> list[MovieLocation]:
+        location_guide, _ = _krea_reference_guides(self.reference_hero_workflow)
         try:
             raw = self.llm.complete_prompt(
-                _refine_location_prompts_prompt(locations, source_text),
+                _refine_location_prompts_prompt(locations, source_text, guide=location_guide),
                 system_prompt="You are a production designer. Return ONLY valid JSON.",
             )
             data = extract_json_object(raw)
@@ -101,9 +104,10 @@ class LLMMoviePlanner:
         return result
 
     def refine_actors(self, actors: tuple[MovieActor, ...], *, source_text: str, premise: str) -> list[MovieActor]:
+        _, actor_guide = _krea_reference_guides(self.reference_hero_workflow)
         try:
             raw = self.llm.complete_prompt(
-                _refine_actor_prompts_prompt(actors, source_text, premise),
+                _refine_actor_prompts_prompt(actors, source_text, premise, guide=actor_guide),
                 system_prompt="You are a character designer. Return ONLY valid JSON.",
             )
             data = extract_json_object(raw)

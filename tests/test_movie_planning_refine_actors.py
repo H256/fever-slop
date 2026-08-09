@@ -30,6 +30,14 @@ class TestRefineActorPromptsPrompt(unittest.TestCase):
         self.assertIn("stature", prompt.lower())
         self.assertIn("image_prompt", prompt)
 
+    def test_krea_guide_is_selected_only_for_krea_workflow(self):
+        from feverslop.adapters.movie_planning_prompts import _krea_reference_guides
+
+        location_guide, actor_guide = _krea_reference_guides("workflows/image_t2i_startframe_krea_v1.json")
+        self.assertIn("Krea Location", location_guide)
+        self.assertIn("Krea Actor", actor_guide)
+        self.assertEqual(("", ""), _krea_reference_guides("workflows/image_t2i_startframe_v1.json"))
+
 
 class TestLLMMoviePlannerRefineActors(unittest.TestCase):
     def test_refine_actors_calls_llm_and_returns_enriched_actors(self):
@@ -67,6 +75,27 @@ class TestLLMMoviePlannerRefineActors(unittest.TestCase):
         self.assertIn("M1916", result[0].visual_description)
         self.assertEqual(result[1].id, "karl")
         self.assertIn("blond", result[1].visual_description)
+
+    def test_refine_actors_includes_krea_guide_for_krea_workflow(self):
+        from feverslop.adapters.movie_planning import LLMMoviePlanner
+
+        class FakeLLM:
+            def __init__(self):
+                self.prompt = ""
+
+            def complete_prompt(self, prompt, *, system_prompt):
+                self.prompt = prompt
+                return json.dumps({"actors": []})
+
+        llm = FakeLLM()
+        planner = LLMMoviePlanner(llm, reference_hero_workflow="image_t2i_startframe_krea_v1.json")
+        planner.refine_actors(
+            (MovieActor(id="hans", name="Hans", role="soldier", visual_description="soldier"),),
+            source_text="soldier",
+            premise="war",
+        )
+
+        self.assertIn("Krea Actor Reference Prompt Guide", llm.prompt)
 
     def test_refine_actors_falls_back_on_parse_error(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
