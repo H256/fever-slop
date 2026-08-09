@@ -3,8 +3,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from feverslop.application.h3_prompt_pipeline import _configured_audio_paths
-from feverslop.composition.arg_parser import build_arg_parser
-from feverslop.adapters.pipeline_runner_options import runner_options_from_args
 
 
 class ConfiguredAudioPathTests(unittest.TestCase):
@@ -52,7 +50,7 @@ class ConfiguredAudioPathTests(unittest.TestCase):
 
 
 class DspyPromptPipelineSelectionTests(unittest.TestCase):
-    def _run_pipeline(self, video_pipeline, *, use_dspy_prompts=False):
+    def _run_pipeline(self, video_pipeline):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 
         calls = []
@@ -83,7 +81,6 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         context = {
             "app_config": {},
             "config": config,
-            "request": SimpleNamespace(use_dspy_prompts=use_dspy_prompts),
             "stage1_segments": [{"segment_id": "s1"}],
             "concept_prompts": {},
             "scene_details": {},
@@ -96,7 +93,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         pipeline.run(context)
         return calls
 
-    def test_explicit_option_selects_dspy_for_all_minimax_h3_modes(self):
+    def test_minimax_uses_dspy_for_all_h3_modes(self):
         for video_pipeline in (
             "minimax-h3-t2v",
             "minimax-h3-i2v",
@@ -105,7 +102,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
             "minimax-h3-r2v",
         ):
             with self.subTest(video_pipeline=video_pipeline):
-                calls = self._run_pipeline(video_pipeline, use_dspy_prompts=True)
+                calls = self._run_pipeline(video_pipeline)
                 self.assertEqual(1, len(calls))
                 expected_mode = "ref" if video_pipeline.endswith("-r2v") else "base"
                 self.assertEqual("dspy", calls[0][0])
@@ -118,18 +115,5 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
                 self.assertEqual(1, len(calls))
                 expected_builder = "legacy" if video_pipeline == "ltx_i2v" else "dspy"
                 self.assertEqual(expected_builder, calls[0][0])
-
-
-class DspyPromptArgumentTests(unittest.TestCase):
-    def test_use_dspy_prompts_flag_maps_to_runner_options(self):
-        args = build_arg_parser().parse_args(["--use-dspy-prompts"])
-        self.assertTrue(args.use_dspy_prompts)
-        self.assertTrue(runner_options_from_args(args)["use_dspy_prompts"])
-
-    def test_use_dspy_prompts_defaults_to_false(self):
-        args = build_arg_parser().parse_args([])
-        self.assertFalse(args.use_dspy_prompts)
-
-
 if __name__ == "__main__":
     unittest.main()

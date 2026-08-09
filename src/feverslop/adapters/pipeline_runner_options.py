@@ -35,7 +35,6 @@ RUNNER_ARGUMENTS = (
     ("relay_workflow", ("--relay-workflow",), {"default": ""}),
     ("single_prompt_workflow", ("--single-prompt-workflow",), {"default": str(Path("workflows") / "video_ltxv_i2v_v2.json")}),
     ("video_pipeline", ("--video-pipeline",), {"choices": ["ltx_i2v", "ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v", "minimax-h3-fl2v", "minimax-h3-l2v"], "default": "ltx_i2v"}),
-    ("use_dspy_prompts", ("--use-dspy-prompts",), {"action": "store_true", "default": False}),
     ("render_mode", ("--render-mode",), {"choices": ["auto", "relay", "single_prompt"], "default": "single_prompt"}),
     ("single_prompt_title", ("--single-prompt-title",), {"default": "#PROMPT"}),
     ("single_prompt_input", ("--single-prompt-input",), {"default": "text"}),

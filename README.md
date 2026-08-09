@@ -84,14 +84,12 @@ uv run python run_pipeline.py ./projects/my-song \
 
 #### DSPy prompt generation for MiniMax H3
 
-MiniMax H3 prompt generation remains on the existing pipeline by default. Add
-`--use-dspy-prompts` to explicitly use the DSPy generator for the supported
-MiniMax H3 modes:
+MiniMax H3 prompt generation uses the DSPy generator automatically for the
+supported MiniMax H3 modes:
 
 ```bash
 uv run python run_pipeline.py ./projects/my-song \
-  --video-pipeline minimax-h3-t2v \
-  --use-dspy-prompts --skip-tests
+  --video-pipeline minimax-h3-t2v --skip-tests
 ```
 
 The standalone tool prints the generated prompt to stdout. It does not write
