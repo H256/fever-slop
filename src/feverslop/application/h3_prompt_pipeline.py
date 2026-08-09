@@ -81,13 +81,11 @@ class H3PromptPipeline:
         log_step("8.5. H3 Structured Prompts")
         llm = self.llm_factory(app_config)
         builder_factory = self.h3_prompt_builder_factory
-        request = context["request"] if "request" in context.keys() else None
         try:
             model_spec = resolve_model_type(config.video_pipeline)
         except ValueError:
             model_spec = None
-        use_dspy_prompts = getattr(request, "use_dspy_prompts", False)
-        if use_dspy_prompts and model_spec and model_spec.is_minimax_h3 and self.dspy_prompt_builder_factory:
+        if model_spec and model_spec.is_minimax_h3 and self.dspy_prompt_builder_factory:
             builder_factory = self.dspy_prompt_builder_factory
         builder = builder_factory(llm)
 

@@ -111,12 +111,13 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
                 self.assertEqual("dspy", calls[0][0])
                 self.assertEqual(expected_mode, calls[0][1]["mode"])
 
-    def test_default_option_keeps_legacy_builder_for_minimax_and_non_minimax(self):
+    def test_minimax_always_uses_dspy_and_non_minimax_keeps_legacy_builder(self):
         for video_pipeline in ("minimax-h3-r2v", "minimax-h3-t2v", "ltx_i2v"):
             with self.subTest(video_pipeline=video_pipeline):
                 calls = self._run_pipeline(video_pipeline)
                 self.assertEqual(1, len(calls))
-                self.assertEqual("legacy", calls[0][0])
+                expected_builder = "legacy" if video_pipeline == "ltx_i2v" else "dspy"
+                self.assertEqual(expected_builder, calls[0][0])
 
 
 class DspyPromptArgumentTests(unittest.TestCase):
