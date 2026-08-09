@@ -82,6 +82,52 @@ uv run python run_pipeline.py ./projects/my-song \
   --stage render_plan --skip-tests
 ```
 
+#### DSPy prompt generation for MiniMax H3
+
+MiniMax H3 prompt generation uses the DSPy generator automatically for the
+supported MiniMax H3 modes:
+
+```bash
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline minimax-h3-t2v --skip-tests
+```
+
+The standalone tool prints the generated prompt to stdout. It does not write
+project artifacts; an output option may be added in a future version.
+
+```bash
+# T2V: text only; no reference is required
+uv run python tools/generate_prompt.py \
+  --model-type minimax-h3-t2v \
+  --description "A singer walks through a neon-lit city at night."
+
+# I2V: exactly one picture with the first_frame role is required
+uv run python tools/generate_prompt.py \
+  --model-type minimax-h3-i2v \
+  --description "The singer looks toward the camera and starts walking." \
+  --reference '{"kind":"picture","source":"start.png","role":"first_frame"}'
+
+# R2V: supply the reference assets that should guide the shot
+uv run python tools/generate_prompt.py \
+  --model-type minimax-h3-r2v \
+  --description "The singer performs in the same neon-lit city." \
+  --reference '{"kind":"picture","source":"singer.png","role":"subject"}' \
+  --reference '{"kind":"picture","source":"city.png","role":"environment"}'
+```
+
+Reference roles describe how each asset is used: `subject` identifies a
+person or object, `style` transfers visual treatment, `environment` anchors a
+place, and `motion` or `camera` guides movement or framing. Mode-specific
+requirements are strict: I2V needs exactly one picture with `first_frame`,
+FL2V needs one each with `first_frame` and `last_frame`, and L2V needs exactly
+one picture with `last_frame`. T2V has no required reference role. R2V uses
+the reference-aware guide and accepts roles such as `subject`, `environment`,
+`style`, `motion`, and `camera` for the assets supplied.
+
+The bundled `minimax-h3-base.md` guide defines prompt construction for T2V,
+I2V, FL2V, and L2V. The `minimax-h3-references.md` guide is reserved for R2V
+and explains how multiple reference assets and their roles are incorporated.
+
 MSR and Ingredients runs materialize each selected scene before rendering. To
 inspect the exact ComfyUI workflows without queueing a render, run the prepare
 stage explicitly; use the same `--scenes` filter for the later render stage:

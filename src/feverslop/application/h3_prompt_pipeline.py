@@ -4,6 +4,8 @@ from typing import Any, Callable
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
+from feverslop.prompting.dspy_h3_models import PromptMode
+from feverslop.prompting.model_types import resolve_model_type
 
 
 def _configured_audio_paths(
@@ -79,18 +81,22 @@ class H3PromptPipeline:
         log_step("8.5. H3 Structured Prompts")
         llm = self.llm_factory(app_config)
         builder_factory = self.h3_prompt_builder_factory
-        if config.video_pipeline == "minimax-h3-r2v" and self.dspy_prompt_builder_factory:
+        try:
+            model_spec = resolve_model_type(config.video_pipeline)
+        except ValueError:
+            model_spec = None
+        if model_spec and model_spec.is_minimax_h3 and self.dspy_prompt_builder_factory:
             builder_factory = self.dspy_prompt_builder_factory
         builder = builder_factory(llm)
 
-        if config.video_pipeline == "minimax-h3-r2v":
+        if model_spec and model_spec.prompt_mode is PromptMode.R2V:
             mode = "ref"
         else:
             mode = "base"
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
         audio_paths = (
             _configured_audio_paths(config, stem_files, getattr(config, "input_audio", None))
-            if config.video_pipeline == "minimax-h3-r2v"
+            if model_spec and model_spec.prompt_mode is PromptMode.R2V
             else stem_files
         )
 

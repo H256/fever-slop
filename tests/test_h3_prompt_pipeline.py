@@ -49,5 +49,71 @@ class ConfiguredAudioPathTests(unittest.TestCase):
         )
 
 
+class DspyPromptPipelineSelectionTests(unittest.TestCase):
+    def _run_pipeline(self, video_pipeline):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        calls = []
+
+        class FakeBuilder:
+            def __init__(self, name):
+                self.name = name
+
+            def build_all_h3_prompts(self, **kwargs):
+                calls.append((self.name, kwargs))
+
+        class FakeArtifactStore:
+            def read_json(self, path):
+                return []
+
+        config = SimpleNamespace(
+            video_pipeline=video_pipeline,
+            minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+        )
+        pipeline = H3PromptPipeline(
+            llm_factory=lambda config: None,
+            h3_prompt_builder_factory=lambda llm: "legacy",
+            dspy_prompt_builder_factory=lambda llm: "dspy",
+        )
+        builders = {"legacy": FakeBuilder("legacy"), "dspy": FakeBuilder("dspy")}
+        pipeline.h3_prompt_builder_factory = lambda llm: builders["legacy"]
+        pipeline.dspy_prompt_builder_factory = lambda llm: builders["dspy"]
+        context = {
+            "app_config": {},
+            "config": config,
+            "stage1_segments": [{"segment_id": "s1"}],
+            "concept_prompts": {},
+            "scene_details": {},
+            "global_context": {},
+            "h3_prompts_json": "test.json",
+            "artifact_store": FakeArtifactStore(),
+            "log_step": lambda message: None,
+            "log_file": lambda label, path: None,
+        }
+        pipeline.run(context)
+        return calls
+
+    def test_minimax_uses_dspy_for_all_h3_modes(self):
+        for video_pipeline in (
+            "minimax-h3-t2v",
+            "minimax-h3-i2v",
+            "minimax-h3-fl2v",
+            "minimax-h3-l2v",
+            "minimax-h3-r2v",
+        ):
+            with self.subTest(video_pipeline=video_pipeline):
+                calls = self._run_pipeline(video_pipeline)
+                self.assertEqual(1, len(calls))
+                expected_mode = "ref" if video_pipeline.endswith("-r2v") else "base"
+                self.assertEqual("dspy", calls[0][0])
+                self.assertEqual(expected_mode, calls[0][1]["mode"])
+
+    def test_minimax_always_uses_dspy_and_non_minimax_keeps_legacy_builder(self):
+        for video_pipeline in ("minimax-h3-r2v", "minimax-h3-t2v", "ltx_i2v"):
+            with self.subTest(video_pipeline=video_pipeline):
+                calls = self._run_pipeline(video_pipeline)
+                self.assertEqual(1, len(calls))
+                expected_builder = "legacy" if video_pipeline == "ltx_i2v" else "dspy"
+                self.assertEqual(expected_builder, calls[0][0])
 if __name__ == "__main__":
     unittest.main()
