@@ -4,7 +4,7 @@ import json
 import re
 from math import ceil
 
-from feverslop.adapters.prompts import load_template
+from feverslop.adapters.prompts import load_prompt_guide, load_template
 from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, StoryArch
 
 
@@ -49,7 +49,7 @@ def _movie_bible_prompt(*, title: str, source_type: str, story_text: str, desire
     ).strip()
 
 
-def _refine_location_prompts_prompt(locations: tuple[MovieLocation, ...], source_text: str) -> str:
+def _refine_location_prompts_prompt(locations: tuple[MovieLocation, ...], source_text: str, *, guide: str = "") -> str:
     loc_data = [
         {"id": loc.id, "name": loc.name, "visual_description": loc.visual_description}
         for loc in locations
@@ -58,6 +58,7 @@ def _refine_location_prompts_prompt(locations: tuple[MovieLocation, ...], source
     return template.render(
         locations_json=json.dumps(loc_data, ensure_ascii=False),
         source_text=source_text,
+        guide=guide,
     ).strip()
 
 
@@ -67,7 +68,7 @@ def _sanitize_location_image_prompt(value: str) -> str:
     return " ".join(text.split()).strip(" .,-")
 
 
-def _refine_actor_prompts_prompt(actors: tuple[MovieActor, ...], source_text: str, premise: str) -> str:
+def _refine_actor_prompts_prompt(actors: tuple[MovieActor, ...], source_text: str, premise: str, *, guide: str = "") -> str:
     actor_data = [
         {"id": actor.id, "name": actor.name, "role": actor.role, "visual_description": actor.visual_description}
         for actor in actors
@@ -77,7 +78,16 @@ def _refine_actor_prompts_prompt(actors: tuple[MovieActor, ...], source_text: st
         actors_json=json.dumps(actor_data, ensure_ascii=False),
         source_text=source_text,
         premise=premise,
+        guide=guide,
     ).strip()
+
+
+def _krea_reference_guides(reference_hero_workflow: str | None) -> tuple[str, str]:
+    """Return Krea guides only for a Krea reference-image workflow."""
+    workflow = str(reference_hero_workflow or "").casefold()
+    if "krea" not in workflow:
+        return "", ""
+    return load_prompt_guide("krea-location"), load_prompt_guide("krea-actor")
 
 
 def _shot_plan_from_bible_prompt(*, bible: MovieBible, screenplay, desired_length: float, width: int, height: int, min_duration: float, max_duration: float) -> str:

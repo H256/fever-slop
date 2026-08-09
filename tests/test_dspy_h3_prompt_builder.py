@@ -101,8 +101,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
         with patch("dspy.LM") as lm_factory:
             VideoPromptGenerator(
-                base_guide_path=guides / "base.md",
-                reference_guide_path=guides / "reference.md",
+                base_guide_path=guides / "minimax-h3-base.md",
+                reference_guide_path=guides / "minimax-h3-references.md",
                 llm=LLM(),
             )
 
@@ -136,12 +136,15 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
     def test_integrated_guides_are_bundled_with_prompting_package(self):
         guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
 
-        base = (guides / "base.md").read_text(encoding="utf-8")
-        reference = (guides / "reference.md").read_text(encoding="utf-8")
+        base = (guides / "minimax-h3-base.md").read_text(encoding="utf-8")
+        reference = (guides / "minimax-h3-references.md").read_text(encoding="utf-8")
 
         self.assertIn("integrated_multimodal_description", base)
         self.assertIn("subject_definitions", reference)
         self.assertIn("retention_analysis", reference)
+
+        self.assertTrue((guides / "krea-actor.md").is_file())
+        self.assertTrue((guides / "krea-location.md").is_file())
 
     def test_scene_reference_roles_are_preserved_for_full_generator(self):
         references, _ = _scene_references(

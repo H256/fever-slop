@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Final
 from jinja2 import Template
 
+from feverslop.prompting.guides import load_guide
+
 _PROMPTS_DIR: Final[Path] = Path(__file__).parent
 
 
@@ -13,3 +15,8 @@ def load_template(name: str) -> Template:
     template_path = _PROMPTS_DIR / f"{name}.j2"
     source = template_path.read_text(encoding="utf-8")
     return Template(source)
+
+
+def load_prompt_guide(name: str) -> str:
+    """Load a reusable guide from the prompting package."""
+    return load_guide(name)
