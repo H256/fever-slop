@@ -66,6 +66,7 @@ from feverslop.ports.reporting import ConsoleReporter
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator
 from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
+from feverslop.prompting.model_types import resolve_model_type
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
@@ -223,17 +224,23 @@ def _merge_reference_paths_into_h3_segments(
 def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     """Regenerate only stage 8.5 from the existing stage 7/8 artifacts."""
     config = ProjectConfig.load(state.context.project_config_path)
-    if state.args.video_pipeline == "minimax-h3-r2v" and config.video_pipeline != state.args.video_pipeline:
+    if state.args.video_pipeline != config.video_pipeline:
         from dataclasses import replace
-        config = replace(config, video_pipeline=state.args.video_pipeline)
+        try:
+            resolve_model_type(state.args.video_pipeline)
+        except ValueError:
+            pass
+        else:
+            config = replace(config, video_pipeline=state.args.video_pipeline)
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     artifact_store = JsonArtifactStore()
     paths = config.paths
     stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
-    stage1_segments = _merge_reference_paths_into_h3_segments(
-        stage1_segments,
-        state.plan_for_next_step,
-    )
+    if state.args.video_pipeline == "minimax-h3-r2v":
+        stage1_segments = _merge_reference_paths_into_h3_segments(
+            stage1_segments,
+            state.plan_for_next_step,
+        )
     concept_prompts = _read_h3_input(state.context.concept_prompts, "concept prompts")
     scene_details = _read_h3_input(state.context.scene_details, "scene details")
     global_context = _read_h3_input(state.context.resolved_context, "resolved context")
