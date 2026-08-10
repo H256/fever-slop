@@ -49,7 +49,7 @@ class VideoPromptGenerator:
             f"openai/{llm.model}",
             api_base=api_base,
             api_key=getattr(client, "api_key", None),
-            temperature=llm.temperature,
+            temperature=getattr(llm, "dspy_temperature", 0.4),
             max_tokens=llm.max_tokens,
             cache=getattr(llm, "dspy_cache", False),
         )

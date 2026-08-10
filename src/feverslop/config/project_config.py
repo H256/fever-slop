@@ -16,6 +16,18 @@ class VideoConfig:
 
 
 @dataclass(frozen=True)
+class ReferenceImagesConfig:
+    width: int | None = None
+    height: int | None = None
+
+    def resolve(self, video: VideoConfig) -> tuple[int, int]:
+        return (
+            self.width if self.width is not None else video.width,
+            self.height if self.height is not None else video.height,
+        )
+
+
+@dataclass(frozen=True)
 class AudioConfig:
     demucs_model: str = "htdemucs_6s"
     whisper_model: str = "large-v3"
@@ -197,6 +209,7 @@ class ProjectConfig:
     lyrics: str = ""
 
     video: VideoConfig = field(default_factory=VideoConfig)
+    reference_images: ReferenceImagesConfig = field(default_factory=ReferenceImagesConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     scene_generation: SceneGenerationConfig = field(default_factory=SceneGenerationConfig)
     vocal_detection: VocalDetectionConfig = field(default_factory=VocalDetectionConfig)
@@ -225,6 +238,7 @@ class ProjectConfig:
 
         project_dir = config_path.parent
         video_raw = raw.get("video", {})
+        reference_images_raw = raw.get("reference_images", {})
         audio_raw = raw.get("audio", {})
         scene_raw = raw.get("scene_generation", {})
         vocal_raw = raw.get("vocal_detection", {})
@@ -238,6 +252,7 @@ class ProjectConfig:
 
         input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
         _validate_numeric_fields(video_raw, ("fps", "width", "height"))
+        _validate_numeric_fields(reference_images_raw, ("width", "height"))
         silent_mode = raw.get("silent_mode", False)
         if silent_mode is None:
             silent_mode = False
@@ -274,6 +289,10 @@ class ProjectConfig:
                 fps=int(video_raw.get("fps", 24)),
                 width=int(video_raw.get("width", 1280)),
                 height=int(video_raw.get("height", 704)),
+            ),
+            reference_images=ReferenceImagesConfig(
+                width=(int(reference_images_raw["width"]) if "width" in reference_images_raw else None),
+                height=(int(reference_images_raw["height"]) if "height" in reference_images_raw else None),
             ),
 
             audio=AudioConfig(

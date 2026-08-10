@@ -10,6 +10,11 @@
     "height": 704
   },
 
+  "reference_images": {
+    "width": 2048,
+    "height": 1152
+  },
+
   "audio": {
     "demucs_model": "htdemucs_ft",
     "whisper_model": "large",
