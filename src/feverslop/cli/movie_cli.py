@@ -36,6 +36,8 @@ def build_movie_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--msr-workflow", default=None)
     parser.add_argument("--msr-i2v-workflow", default=None)
     parser.add_argument("--i2v-workflow", default=None)
+    parser.add_argument("--r2v-workflow", default=None)
+    parser.add_argument("--t2v-workflow", default=None)
     parser.add_argument("--ingredients-workflow", default=None)
     parser.add_argument("--skip-movie-bible", action="store_true", help="Reuse existing movie/bible.json.")
     parser.add_argument("--force-movie-bible", action="store_true", help="Regenerate movie/bible.json from the configured movie planner.")
@@ -55,7 +57,7 @@ def build_movie_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-movie-render", action="store_true", help="Stop after syncing/rendering movie references.")
     parser.add_argument("--force-movie-references", action="store_true", help="Render movie references even when manifest paths already exist.")
     parser.add_argument("--keyframe-mode", choices=["none", "start", "start-end"], default="none")
-    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"], default="msr")
+    parser.add_argument("--movie-video-workflow", choices=["msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"], default="msr")
     parser.add_argument("--continuity-keyframes", choices=["none", "last-to-start"], default="none")
     parser.add_argument("--scenes", type=_parse_scene_numbers, default=[], help="Comma-separated scene numbers to prepare or render.")
     parser.add_argument(
@@ -90,6 +92,8 @@ def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "msr_workflow",
         "msr_i2v_workflow",
         "i2v_workflow",
+        "r2v_workflow",
+        "t2v_workflow",
         "ingredients_workflow",
         "movie_video_workflow",
         "keyframe_mode",
