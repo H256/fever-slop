@@ -8,6 +8,28 @@ from unittest.mock import patch
 
 
 class AppConfigTests(unittest.TestCase):
+    def test_dspy_temperature_defaults_to_conservative_value(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(0.4, config.llm.dspy_temperature)
+
+    def test_loads_dspy_temperature_setting(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {"dspy_temperature": 0.25}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(0.25, config.llm.dspy_temperature)
+
     def test_dspy_cache_defaults_to_false(self):
         from feverslop.config.app_config import AppConfig
 
