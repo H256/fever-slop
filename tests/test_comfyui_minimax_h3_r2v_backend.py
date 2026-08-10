@@ -1273,6 +1273,13 @@ class AudioPromptSuffixTests(unittest.TestCase):
             workflow=workflow or _native_r2v_workflow(),
         )
 
+    def test_has_no_dead_audio_prompt_enhancement_api(self):
+        backend = self._backend()
+
+        self.assertFalse(hasattr(backend, "_build_audio_prompt_suffix"))
+        self.assertFalse(hasattr(backend, "_patch_prompt_with_audio_tags"))
+        self.assertFalse(hasattr(backend, "_inject_audio_subjects"))
+
     def test_stem_audio_does_not_mutate_prompt(self):
         """Stem wiring leaves the DSPy-generated prompt untouched."""
         backend = self._backend()
@@ -1344,116 +1351,11 @@ class AudioPromptSuffixTests(unittest.TestCase):
 
         self.assertEqual(prompt, result["40"]["inputs"]["value"])
 
-    def test_build_audio_suffix_empty(self):
-        """_build_audio_prompt_suffix returns empty when no stem audio."""
-        backend = self._backend()
-        suffix = backend._build_audio_prompt_suffix(
-            scene={"scene": 1},
-            ref_audio_paths=[Path("/tmp/sound.wav")],
-        )
-        self.assertEqual("", suffix)
-
-    def test_build_audio_suffix_with_stems(self):
-        """_build_audio_prompt_suffix produces tags when stem audio present."""
-        backend = self._backend()
-        suffix = backend._build_audio_prompt_suffix(
-            scene={
-                "scene": 1,
-                "references": {
-                    "reference_audio_paths": ["/tmp/vocals.wav", "/tmp/full_mix.wav"],
-                    "_stem_audio_tags": {
-                        "/tmp/vocals.wav": "audio_transfer - vocal stem",
-                        "/tmp/full_mix.wav": "full_mix - mix reference",
-                    },
-                },
-                "stem_audio": {
-                    "paths": {
-                        "vocals": "/tmp/vocals.wav",
-                        "full_mix": "/tmp/full_mix.wav",
-                    },
-                },
-            },
-            ref_audio_paths=[Path("/tmp/vocals.wav"), Path("/tmp/full_mix.wav")],
-        )
-        self.assertIn("<Audio 1>", suffix)
-        self.assertIn("audio_transfer", suffix)
-        self.assertIn("<Audio 2>", suffix)
-        self.assertIn("full_mix", suffix)
-
-    def test_build_audio_suffix_matches_project_relative_stem_tags(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            full_mix = project_dir / "input" / "full_mix.wav"
-            backend = ComfyUIMiniMaxH3R2VBackend(
-                client=FakeClient(),
-                workflow_path=Path("/tmp/wf.json"),
-                output_dir=Path("/tmp/out"),
-                asset_uploader=FakeAssetUploader(),
-                workflow=_native_r2v_workflow(),
-                project_dir=project_dir,
-            )
-
-            suffix = backend._build_audio_prompt_suffix(
-                scene={"references": {"_stem_audio_tags": {
-                    "input/full_mix.wav": "full_mix - original song",
-                }}},
-                ref_audio_paths=[full_mix],
-            )
-
-            self.assertIn("full_mix - original song", suffix)
 # ---------------------------------------------------------------------------
 # _resolve_ref_video_paths tests
 # ---------------------------------------------------------------------------
 
 
-    def test_injects_audio_subjects_into_h3_json(self):
-        """inject_audio_subjects adds audio entries to H3 JSON prompt structure."""
-        import json as _json
-        # Simulate H3 prompt JSON
-        h3_json = '{"subject_definitions": "<Subject 1> is actor\\\\n<Subject 2> is warrior", "retention_analysis": "<Subject 1>: fully_copy\\\\n<Subject 2>: partial"}'
-        scene = {
-            "scene": 1,
-            "references": {
-                "reference_audio_paths": ["/tmp/vocals.wav", "/tmp/full_mix.wav"],
-                "_stem_audio_tags": {
-                    "/tmp/vocals.wav": "audio_transfer - vocal singing lip-synced to the audio signal",
-                    "/tmp/full_mix.wav": "full_mix - original song for beat and rhythm continuity",
-                },
-            },
-            "stem_audio": {
-                "paths": {
-                    "vocals": "/tmp/vocals.wav",
-                    "full_mix": "/tmp/full_mix.wav",
-                },
-            },
-        }
-        backend = self._backend()
-        result = backend._inject_audio_subjects(
-            h3_json,
-            [Path("/tmp/vocals.wav"), Path("/tmp/full_mix.wav")],
-            scene,
-        )
-        self.assertIn("<Audio 1>", result)
-        self.assertIn("<Audio 2>", result)
-        self.assertIn("audio_transfer", result)
-        self.assertIn("fully_copy", result)
-        # Verify JSON is still valid
-        parsed = _json.loads(result.strip())
-        self.assertIn("<Audio 1>", parsed["subject_definitions"])
-        self.assertIn("<Audio 2>", parsed["subject_definitions"])
-        self.assertIn("fully_copy", parsed["retention_analysis"])
-
-    def test_skips_inject_when_no_stem_audio(self):
-        """inject_audio_subjects returns unchanged prompt when no stem audio."""
-        h3_json = '{"subject_definitions": "text"}'
-        scene = {"scene": 1}
-        backend = self._backend()
-        result = backend._inject_audio_subjects(
-            h3_json,
-            [Path("/tmp/sound.wav")],
-            scene,
-        )
-        self.assertEqual(result, h3_json)
 class ResolveRefVideoPathsTests(unittest.TestCase):
     def test_basic(self):
         backend = ComfyUIMiniMaxH3R2VBackend(
