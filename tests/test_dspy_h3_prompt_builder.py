@@ -3,8 +3,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from pydantic import ValidationError
-
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, _scene_references
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
@@ -35,20 +33,21 @@ class FakeGenerator:
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
-    def test_reference_prompt_rejects_audio_tags_in_non_diegetic_music(self):
-        with self.assertRaises(ValidationError):
-            ReferenceVideoPrompt(
-                subject_definitions=[],
-                summary="A scene.",
-                retention_analysis=[],
-                detailed_description="A detailed scene.",
-                overall_soundscape="The song is audible.",
-                non_diegetic_music=(
-                    "N/A\n"
-                    "<Audio 1> (audio_transfer - vocal singing lip-synced to the audio signal)\n"
-                    "<Audio 2> (full_mix - original song for beat and rhythm continuity)"
-                ),
-            )
+    def test_reference_prompt_accepts_audio_tags_in_non_diegetic_music(self):
+        prompt = ReferenceVideoPrompt(
+            subject_definitions=[],
+            summary="A scene.",
+            retention_analysis=[],
+            detailed_description="A detailed scene.",
+            overall_soundscape="The song is audible.",
+            non_diegetic_music=(
+                "N/A\n"
+                "<Audio 1> (audio_transfer - vocal singing lip-synced to the audio signal)\n"
+                "<Audio 2> (full_mix - original song for beat and rhythm continuity)"
+            ),
+        )
+
+        self.assertIn("<Audio 1>", prompt.non_diegetic_music)
 
     def test_image_analysis_is_cached_for_repeated_reference(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
@@ -221,15 +220,6 @@ class ReferenceVideoPrompt(BaseModel):
     detailed_description: str
     overall_soundscape: str
     non_diegetic_music: str | None = None
-
-    @model_validator(mode="after")
-    def validate_music_field(self) -> "ReferenceVideoPrompt":
-        if self.non_diegetic_music and re.search(r"(?m)^\s*<Audio\s+\d+>", self.non_diegetic_music):
-            raise ValueError(
-                "non_diegetic_music must contain only audience-only music prose; "
-                "audio references belong in the structured audio sections"
-            )
-        return self
 
     def render(self) -> str:
         subjects = "\n".join(item.render() for item in self.subject_definitions)
