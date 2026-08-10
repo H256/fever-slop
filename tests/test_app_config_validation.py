@@ -188,6 +188,108 @@ class AppConfigValidationTests(unittest.TestCase):
             self.assertIn("comfyui", str(ctx.exception))
 
 
+    def test_storyboard_prompt_transform_rejects_missing_workflow(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "storyboard_prompt_transforms": [{}]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "workflow"):
+                AppConfig.load(config_path)
+
+    def test_storyboard_prompt_transform_requires_workflow_as_string(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "storyboard_prompt_transforms": [
+                    {"workflow": null}
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "workflow"):
+                AppConfig.load(config_path)
+
+    def test_comfyui_model_override_rejects_missing_fields(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "comfyui": {
+                    "model_overrides": [{}]
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "workflow"):
+                AppConfig.load(config_path)
+
+    def test_comfyui_model_override_requires_all_six_fields(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "comfyui": {
+                    "model_overrides": [
+                      {
+                        "workflow": "test.json"
+                      }
+                    ]
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "node_id"):
+                AppConfig.load(config_path)
+
+    def test_comfyui_model_override_requires_string_fields(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                """
+                {
+                  "comfyui": {
+                    "model_overrides": [
+                      {
+                        "workflow": null
+                      }
+                    ]
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "workflow"):
+                AppConfig.load(config_path)
+
+
 class AppConfigBackwardCompatTests(unittest.TestCase):
     def test_no_required_keys_allows_missing_file(self):
         from feverslop.config.app_config import AppConfig

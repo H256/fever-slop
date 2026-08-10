@@ -67,8 +67,14 @@ class StoryboardPromptTransformConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> "StoryboardPromptTransformConfig":
+        raw_workflow = raw.get("workflow")
+        if not isinstance(raw_workflow, str):
+            raise ValueError("StoryboardPromptTransformConfig requires a non-empty workflow")
+        raw_workflow = raw_workflow.strip()
+        if not raw_workflow:
+            raise ValueError("StoryboardPromptTransformConfig requires a non-empty workflow")
         return cls(
-            workflow=str(raw["workflow"]),
+            workflow=raw_workflow,
             kind=str(raw.get("kind", "template")),
             template=str(raw.get("template", "")),
             positive_prompt_input=str(raw.get("positive_prompt_input", "text")),
