@@ -4,15 +4,28 @@ import json
 from pathlib import Path
 from typing import Any
 
+from feverslop.config.project_config import ProjectConfig
 
-def build_startframe_director_prompts(*, project_dir: Path, candidate_count: int = 4, director_backend: str = "krea2") -> Path:
+
+def build_startframe_director_prompts(
+    *,
+    project_dir: Path,
+    candidate_count: int = 4,
+    director_backend: str = "krea2",
+    reference_image_size: tuple[int, int] | None = None,
+) -> Path:
     project_dir = Path(project_dir)
+    if reference_image_size is None and (project_dir / "config.json").is_file():
+        project_config = ProjectConfig.load(project_dir / "config.json")
+        reference_image_size = project_config.reference_images.resolve(project_config.video)
     movie_dir = project_dir / "movie"
     plan = json.loads((movie_dir / "startframe_plan.json").read_text(encoding="utf-8"))
     identity = json.loads((movie_dir / "identity_ledger.json").read_text(encoding="utf-8"))
     backend = _director_backend(director_backend)
     shots = []
     for shot in plan.get("shots", []):
+        reference_width = int(reference_image_size[0]) if reference_image_size else int(shot.get("width") or 1280)
+        reference_height = int(reference_image_size[1]) if reference_image_size else int(shot.get("height") or 704)
         positive_prompt = _positive_prompt(shot, identity, backend=backend)
         shots.append(
             {
@@ -27,8 +40,8 @@ def build_startframe_director_prompts(*, project_dir: Path, candidate_count: int
                     "captions, malformed hands, wrong wardrobe, wrong location, split screen, "
                     "contact sheet, comic panels, multiple panels, storyboard sheet, reference sheet"
                 ),
-                "width": int(shot.get("width") or 1280),
-                "height": int(shot.get("height") or 704),
+                "width": reference_width,
+                "height": reference_height,
             }
         )
     output_path = movie_dir / "startframe_director_prompts.json"

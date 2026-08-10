@@ -16,6 +16,7 @@ class LLMConfig:
     base_url: str = "http://localhost:8080/v1"
     model: str = "default"
     temperature: float = 0.7
+    dspy_temperature: float = 0.4
     max_tokens: int = 4096
     request_timeout_seconds: float = 180.0
     dspy_cache: bool = False
@@ -67,8 +68,14 @@ class StoryboardPromptTransformConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> "StoryboardPromptTransformConfig":
+        raw_workflow = raw.get("workflow")
+        if not isinstance(raw_workflow, str):
+            raise ValueError("StoryboardPromptTransformConfig requires a non-empty workflow")
+        raw_workflow = raw_workflow.strip()
+        if not raw_workflow:
+            raise ValueError("StoryboardPromptTransformConfig requires a non-empty workflow")
         return cls(
-            workflow=str(raw["workflow"]),
+            workflow=raw_workflow,
             kind=str(raw.get("kind", "template")),
             template=str(raw.get("template", "")),
             positive_prompt_input=str(raw.get("positive_prompt_input", "text")),
@@ -181,6 +188,7 @@ class AppConfig:
                 base_url=llm_raw.get("base_url", "http://localhost:8080/v1"),
                 model=llm_raw.get("model", "default"),
                 temperature=float(llm_raw.get("temperature", 0.7)),
+                dspy_temperature=float(llm_raw.get("dspy_temperature", 0.4)),
                 max_tokens=int(llm_raw.get("max_tokens", 4096)),
                 request_timeout_seconds=float(llm_raw.get("request_timeout_seconds", 180.0)),
                 dspy_cache=_parse_bool(llm_raw.get("dspy_cache", False), "llm.dspy_cache"),

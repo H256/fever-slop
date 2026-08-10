@@ -4,6 +4,14 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def _require_str(raw: dict, key: str) -> str:
+    """Extract a required string config field; raises ValueError if missing or non-string."""
+    value = raw.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"ComfyUIModelOverride requires '{key}' field")
+    return value
+
+
 @dataclass(frozen=True)
 class ComfyUIModelOverride:
     workflow: str
@@ -16,10 +24,10 @@ class ComfyUIModelOverride:
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ComfyUIModelOverride":
         return cls(
-            workflow=str(raw["workflow"]),
-            node_id=str(raw["node_id"]),
-            node_title=str(raw["node_title"]),
-            input=str(raw["input"]),
-            expected_value=str(raw["expected_value"]),
-            replacement=str(raw["replacement"]),
+            workflow=_require_str(raw, "workflow"),
+            node_id=_require_str(raw, "node_id"),
+            node_title=_require_str(raw, "node_title"),
+            input=_require_str(raw, "input"),
+            expected_value=_require_str(raw, "expected_value"),
+            replacement=_require_str(raw, "replacement"),
         )

@@ -114,7 +114,7 @@ class ComfyUIModelResolver:
         reports = []
         from pathlib import Path
 
-        for workflow_path in sorted(Path(str(workflows_dir)).glob("*.json")):
+        for workflow_path in sorted(Path(str(workflows_dir)).rglob("*.json")):
             workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
             try:
                 self.resolve_workflow_models(workflow, workflow_path=workflow_path)
