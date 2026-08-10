@@ -50,6 +50,7 @@ class FakeTimelineSegment:
 class FakeSeparator:
     def __init__(self):
         self.calls = []
+        self.closed = False
 
     def separate(self, input_audio, output_dir):
         self.calls.append((input_audio, output_dir))
@@ -60,10 +61,14 @@ class FakeSeparator:
             "other": output_dir / "other.wav",
         }
 
+    def close(self):
+        self.closed = True
+
 
 class FakeVocalAnalyzer:
     def __init__(self):
         self.calls = []
+        self.closed = False
 
     def analyze(self, vocals_path):
         self.calls.append(vocals_path)
@@ -71,6 +76,9 @@ class FakeVocalAnalyzer:
             FakeTimelineSegment("vocals", 0.0, 1.0, "line"),
             FakeTimelineSegment("instrumental", 1.0, 2.0),
         ]
+
+    def close(self):
+        self.closed = True
 
 
 class FakeBeatAnalyzer:
@@ -205,14 +213,110 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             vocal_analyzer = FakeVocalAnalyzer()
             beat_analyzer = FakeBeatAnalyzer(artifact_store)
             pipeline = self._audio_pipeline(separator, vocal_analyzer, beat_analyzer)
+            input_context = _audio_context(temp, artifact_store)
+            input_context.reporter = FakeReporter()
 
-            context = pipeline.execute(_audio_context(temp, artifact_store))
+            context = pipeline.execute(input_context)
 
             self.assertEqual([(temp / "song.wav", temp / "stems")], separator.calls)
             self.assertEqual([temp / "stems" / "vocals.wav"], vocal_analyzer.calls)
+            self.assertTrue(separator.closed)
+            self.assertTrue(vocal_analyzer.closed)
             self.assertEqual(temp / "beat.json", beat_analyzer.calls[0]["output_json_path"])
             self.assertEqual(120, context.beat_data["bpm"])
             self.assertIn("stem_files", context.keys())
+            messages = str(context.reporter.messages)
+            self.assertIn("Demucs model unloaded", messages)
+            self.assertIn("Whisper model unloaded", messages)
+
+    def test_audio_pipeline_accepts_legacy_dependencies_without_close(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            artifact_store = FakeArtifactStore()
+            separator = FakeSeparator()
+            vocal_analyzer = FakeVocalAnalyzer()
+            separator.close = None
+            vocal_analyzer.close = None
+            pipeline = self._audio_pipeline(
+                separator,
+                vocal_analyzer,
+                FakeBeatAnalyzer(artifact_store),
+            )
+
+            try:
+                context = pipeline.execute(_audio_context(temp, artifact_store))
+            except Exception as exc:  # noqa: BLE001 - assertion reports compatibility regressions
+                self.fail(f"Legacy dependency without close() must remain supported: {exc}")
+
+            self.assertEqual(120, context.beat_data["bpm"])
+
+    def test_audio_pipeline_preserves_separation_error_when_cleanup_fails(self):
+        class FailingSeparator(FakeSeparator):
+            def separate(self, input_audio, output_dir):
+                raise ValueError("separation failed")
+
+            def close(self):
+                self.closed = True
+                raise RuntimeError("cleanup failed")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            artifact_store = FakeArtifactStore()
+            separator = FailingSeparator()
+            pipeline = self._audio_pipeline(
+                separator,
+                FakeVocalAnalyzer(),
+                FakeBeatAnalyzer(artifact_store),
+            )
+
+            with self.assertLogs(
+                "feverslop.application.audio_timeline_pipeline",
+                level="WARNING",
+            ) as logs:
+                try:
+                    pipeline.execute(_audio_context(temp, artifact_store))
+                except Exception as exc:  # noqa: BLE001 - assert the preserved exception below
+                    self.assertIsInstance(exc, ValueError)
+                    self.assertEqual("separation failed", str(exc))
+                else:
+                    self.fail("Expected separation failure")
+
+            self.assertTrue(separator.closed)
+            self.assertIn("Demucs model cleanup failed", logs.output[0])
+
+    def test_audio_pipeline_preserves_analysis_error_when_cleanup_fails(self):
+        class FailingAnalyzer(FakeVocalAnalyzer):
+            def analyze(self, vocals_path):
+                raise ValueError("analysis failed")
+
+            def close(self):
+                self.closed = True
+                raise RuntimeError("cleanup failed")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            artifact_store = FakeArtifactStore()
+            analyzer = FailingAnalyzer()
+            pipeline = self._audio_pipeline(
+                FakeSeparator(),
+                analyzer,
+                FakeBeatAnalyzer(artifact_store),
+            )
+
+            with self.assertLogs(
+                "feverslop.application.audio_timeline_pipeline",
+                level="WARNING",
+            ) as logs:
+                try:
+                    pipeline.execute(_audio_context(temp, artifact_store))
+                except Exception as exc:  # noqa: BLE001 - assert the preserved exception below
+                    self.assertIsInstance(exc, ValueError)
+                    self.assertEqual("analysis failed", str(exc))
+                else:
+                    self.fail("Expected analysis failure")
+
+            self.assertTrue(analyzer.closed)
+            self.assertIn("Whisper model cleanup failed", logs.output[0])
 
     def test_audio_pipeline_aligns_lyrics_when_configured(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -237,8 +341,9 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertEqual(1, len(lyric_aligner.calls))
             self.assertEqual("full reference lyrics", lyric_aligner.calls[0][1])
             self.assertEqual("corrected line", result.timeline[0].text)
-            self.assertIn("LLM lyric alignment: correcting 1 vocal segments", context.reporter.messages[1])
-            self.assertIn("LLM lyric alignment finished: 1 vocal segments checked", context.reporter.messages[2])
+            messages = str(context.reporter.messages)
+            self.assertIn("LLM lyric alignment: correcting 1 vocal segments", messages)
+            self.assertIn("LLM lyric alignment finished: 1 vocal segments checked", messages)
 
     def test_audio_pipeline_skips_alignment_without_configured_lyrics(self):
         with tempfile.TemporaryDirectory() as temp_dir:

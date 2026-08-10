@@ -1,3 +1,4 @@
+import gc
 from pathlib import Path
 
 import torch
@@ -23,6 +24,17 @@ class DemucsSeparator:
         self.model = pretrained.get_model(model_name)
         self.model.to(device)
         self.model.eval()
+
+    def close(self) -> None:
+        model = getattr(self, "model", None)
+        if model is None:
+            return
+
+        self.model = None
+        del model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def separate(
         self,
