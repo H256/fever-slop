@@ -21,7 +21,9 @@ def _lock_for_path(path: Path) -> threading.RLock:
 
 _MAIN_PIPELINE_DOWNSTREAM_STAGES = frozenset({
     "full-pipeline",
+    "full_pipeline",
     "main_pipeline",
+    "main-pipeline",
     "relay_compact",
     "anchor_fix",
     "storyboard_frames",
@@ -105,6 +107,7 @@ class PipelineStateStore:
                     encoding="utf-8",
                 )
                 temporary_path.replace(path)
-            finally:
+            except BaseException:
                 temporary_path.unlink(missing_ok=True)
+                raise
             return state
