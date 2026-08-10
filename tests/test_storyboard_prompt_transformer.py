@@ -8,7 +8,7 @@ class FakeLLM:
         self.response = response
         self.calls = []
 
-    def complete_prompt(self, prompt: str, system_prompt: str | None = None) -> str:
+    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
         self.calls.append({"prompt": prompt, "system_prompt": system_prompt})
         return self.response
 

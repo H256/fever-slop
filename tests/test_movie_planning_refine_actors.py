@@ -47,7 +47,7 @@ class TestLLMMoviePlannerRefineActors(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append((prompt, system_prompt))
                 return json.dumps({
                     "actors": [
@@ -83,7 +83,7 @@ class TestLLMMoviePlannerRefineActors(unittest.TestCase):
             def __init__(self):
                 self.prompt = ""
 
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 self.prompt = prompt
                 return json.dumps({"actors": []})
 
@@ -101,7 +101,7 @@ class TestLLMMoviePlannerRefineActors(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
 
         class BrokenLLM:
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 raise RuntimeError("LLM error")
 
         actors = (
@@ -128,7 +128,7 @@ class TestGenerateMovieBibleRefineActors(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append((prompt, system_prompt))
                 if "film development producer" in system_prompt:
                     return json.dumps({
@@ -172,7 +172,7 @@ class TestGenerateMovieBibleRefineActors(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append((prompt, system_prompt))
                 return json.dumps({
                     "title": "Test",

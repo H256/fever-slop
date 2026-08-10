@@ -118,7 +118,7 @@ def main():
 
     # ─── Call LLM ──────────────────────────────────────────────────
     print("\n🤖 Calling LLM...")
-    result = llm.complete_prompt(json.dumps(user_payload), system_prompt=prompt)
+    result = llm.complete_prompt(system_prompt=prompt, prompt=json.dumps(user_payload))
 
     # ─── Parse and validate ────────────────────────────────────────
     try:
