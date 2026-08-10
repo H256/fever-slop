@@ -60,3 +60,89 @@ class WorkflowPatchSpecTests(unittest.TestCase):
 
         self.assertEqual(["1", 0], patcher.get()["2"]["inputs"]["model"])
         self.assertEqual(["2", 0], patcher.get()["3"]["inputs"]["model"])
+
+    def test_remove_node_raises_on_dangling_wire_ref(self):
+        """Removing a node that feeds an unbridged consumer raises."""
+        workflow = {
+            "1": {
+                "class_type": "LoadImage",
+                "inputs": {"image": "test.png"},
+            },
+            "2": {
+                "class_type": "KSampler",
+                "inputs": {"image": ["1", 0], "steps": 20},
+            },
+        }
+        patcher = WorkflowPatcher(workflow)
+        spec = [
+            {
+                "op": "remove_node",
+                "target": {"node_id": "1"},
+                # no bridge entries — node 2 still references node 1
+            },
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            patcher.apply_patch_spec(spec)
+        error_msg = str(ctx.exception)
+        self.assertIn("dangling", error_msg.lower())
+        self.assertIn("2", error_msg)
+        # Node should still exist
+        self.assertIn("1", patcher.workflow)
+
+    def test_remove_node_all_consumers_bridged_succeeds(self):
+        """Removal succeeds when bridge covers all downstream references."""
+        workflow = {
+            "1": {
+                "class_type": "LoadImage",
+                "inputs": {"image": "test.png"},
+            },
+            "2": {
+                "class_type": "KSampler",
+                "inputs": {"image": ["1", 0], "steps": 20},
+            },
+            "3": {
+                "class_type": "LoadImage",
+                "inputs": {"image": "other.png"},
+            },
+        }
+        patcher = WorkflowPatcher(workflow)
+        spec = [
+            {
+                "op": "remove_node",
+                "target": {"node_id": "1"},
+                "bridge": [
+                    {
+                        "from_input": "image",  # from LoadImage's input
+                        "to": {"node_id": "2", "input": "image"},
+                    },
+                ],
+            },
+        ]
+        patcher.apply_patch_spec(spec)
+        self.assertNotIn("1", patcher.workflow)
+
+    def test_remove_leaf_node_no_consumers(self):
+        """Removing a leaf node with no downstream references succeeds."""
+        workflow = {
+            "1": {
+                "class_type": "LoadImage",
+                "inputs": {"image": "test.png"},
+            },
+            "2": {
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": "output"},
+            },
+        }
+        patcher = WorkflowPatcher(workflow)
+        spec = [
+            {
+                "op": "remove_node",
+                "target": {"node_id": "1"},
+            },
+        ]
+        patcher.apply_patch_spec(spec)
+        self.assertNotIn("1", patcher.workflow)
+        self.assertIn("2", patcher.workflow)
+
+if __name__ == "__main__":
+    unittest.main()

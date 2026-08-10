@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -446,7 +447,7 @@ class PreparedWorkflowRenderer:
                         )
                 replacements[stored_name] = current_name.replace("\\", "/")
         if replacements:
-            workflow = _replace_workflow_strings(workflow, replacements)
+            workflow = _replace_asset_names_in_workflow(workflow, replacements)
         if self.model_resolver is not None:
             workflow = self.model_resolver.resolve_workflow_models(
                 workflow,
@@ -461,16 +462,54 @@ def _rolling_value(rolling: Any, key: str) -> Any:
     return getattr(rolling, key, None)
 
 
-def _replace_workflow_strings(value: Any, replacements: dict[str, str]) -> Any:
-    if isinstance(value, dict):
-        return {
-            key: _replace_workflow_strings(item, replacements)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_replace_workflow_strings(item, replacements) for item in value]
+def _replace_asset_names_in_workflow(
+    workflow: dict[str, Any],
+    replacements: dict[str, str],
+) -> dict[str, Any]:
+    """Replace asset file names only in ComfyUI node input values.
+
+    Only leaf string values inside each node's ``"inputs"`` dict are
+    candidates for replacement.  Structural fields (``class_type``,
+    ``_meta``) and wire references (lists like ``["node_id", 0]``) are
+    left untouched.
+    """
+    result: dict[str, Any] = {}
+    for node_id, node in workflow.items():
+        if not isinstance(node, dict):
+            result[node_id] = node
+            continue
+        new_node: dict[str, Any] = {}
+        for key, value in node.items():
+            if key == "inputs" and isinstance(value, dict):
+                new_node[key] = _replace_in_inputs(value, replacements)
+            else:
+                new_node[key] = deepcopy(value)
+        result[node_id] = new_node
+    return result
+
+
+def _replace_in_inputs(
+    inputs: dict[str, Any],
+    replacements: dict[str, str],
+) -> dict[str, Any]:
+    """Recursively replace asset names inside node input values."""
+    result: dict[str, Any] = {}
+    for key, value in inputs.items():
+        result[key] = _replace_value(value, replacements)
+    return result
+
+
+def _replace_value(value: Any, replacements: dict[str, str]) -> Any:
+    """Replace asset name in a single input value, skipping wire refs."""
     if isinstance(value, str):
         return replacements.get(value, value)
+    if isinstance(value, list):
+        # Skip ComfyUI wire references [node_id, output_index]
+        if len(value) == 2 and isinstance(value[0], str) and isinstance(value[1], int):
+            return list(value)
+        return [_replace_value(item, replacements) for item in value]
+    if isinstance(value, dict):
+        return {k: _replace_value(v, replacements) for k, v in value.items()}
     return value
 
 
