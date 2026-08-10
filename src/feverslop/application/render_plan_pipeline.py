@@ -62,6 +62,7 @@ class RenderPlanPipeline:
             stem_list=stem_list,
             input_audio=input_audio,
             stem_files=stem_files,
+            project_dir=config.project_dir if config is not None else None,
         )
         log_file("Render Plan JSON", render_plan_json)
         context["render_plan"] = artifact_store.read_json(render_plan_json)

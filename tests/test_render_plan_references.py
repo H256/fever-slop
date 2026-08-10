@@ -79,3 +79,37 @@ class RenderPlanReferencesTests(unittest.TestCase):
                     VideoSettings(fps=24, width=1280, height=704),
                     artifact_store=JsonArtifactStore(),
                 )
+
+    def test_audio_references_are_project_relative_without_generated_stems(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            audio = project / "input" / "reference.wav"
+            audio.parent.mkdir()
+            audio.write_bytes(b"audio")
+            absolute = str(audio)
+            scene_prompts, relay = self._base_files(project, {
+                "scene": 1,
+                "segment_id": "segment_001",
+                "start": 0.0,
+                "end": 1.0,
+                "duration": 1.0,
+                "type": "vocals",
+                "zimage_prompt": "image",
+                "references": {
+                    "reference_audio_paths": [absolute],
+                    "_stem_audio_tags": {absolute: "audio_transfer"},
+                },
+            })
+
+            output = build_render_plan(
+                scene_prompts,
+                relay,
+                project / "render_plan.json",
+                VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                project_dir=project,
+            )
+
+            references = json.loads(output.read_text(encoding="utf-8"))[0]["references"]
+            self.assertEqual(["input/reference.wav"], references["reference_audio_paths"])
+            self.assertEqual({"input/reference.wav": "audio_transfer"}, references["_stem_audio_tags"])

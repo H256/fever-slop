@@ -5,6 +5,7 @@ import random
 
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
+from feverslop.path_utils import coerce_local_path
 
 
 CAMERA_MOTION_DETAILS = [
@@ -188,6 +189,28 @@ def _scene_references(scene: dict) -> dict:
     return references
 
 
+def _project_relative_path(path: str | Path, project_dir: Path) -> str:
+    return (
+        coerce_local_path(path, base_dir=project_dir, containment_root=project_dir)
+        .resolve()
+        .relative_to(project_dir.resolve())
+        .as_posix()
+    )
+
+
+def _portable_audio_references(references: dict, project_dir: Path) -> None:
+    if "reference_audio_paths" in references:
+        references["reference_audio_paths"] = [
+            _project_relative_path(path, project_dir)
+            for path in references["reference_audio_paths"]
+        ]
+    if "_stem_audio_tags" in references:
+        references["_stem_audio_tags"] = {
+            _project_relative_path(path, project_dir): description
+            for path, description in references["_stem_audio_tags"].items()
+        }
+
+
 def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     scene_number = int(scene["scene"])
     scene_type = str(scene.get("type", "")).strip().lower()
@@ -274,6 +297,7 @@ def build_render_plan(
     stem_list: list[str] | None = None,
     input_audio: Path | None = None,
     stem_files: dict[str, Path] | None = None,
+    project_dir: Path | None = None,
 ) -> Path:
     """
     Combines:
@@ -408,6 +432,8 @@ def build_render_plan(
             },
         }
         references = _scene_references(scene)
+        if references and project_dir is not None:
+            _portable_audio_references(references, project_dir)
         if references:
             render_scene["references"] = references
         h3_entry = h3_by_segment.get(scene.get("segment_id", ""))
@@ -425,9 +451,15 @@ def build_render_plan(
             resolved_stem_paths: dict[str, str] = {}
             for stem_name in priority_first:
                 if stem_name == "full_mix" and input_audio is not None:
-                    resolved_stem_paths[stem_name] = str(input_audio)
+                    stem_path = input_audio
                 elif stem_name in stem_files:
-                    resolved_stem_paths[stem_name] = str(stem_files[stem_name])
+                    stem_path = stem_files[stem_name]
+                else:
+                    continue
+                if project_dir is not None:
+                    resolved_stem_paths[stem_name] = _project_relative_path(stem_path, project_dir)
+                else:
+                    resolved_stem_paths[stem_name] = stem_path.as_posix()
                 # missing stems silently skipped
             if resolved_stem_paths:
                 render_scene["stem_audio"] = {

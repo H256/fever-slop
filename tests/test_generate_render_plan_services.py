@@ -184,6 +184,7 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
             calls.append(kwargs)
 
         context = GenerateRenderPlanContext(
+            config=SimpleNamespace(project_dir=Path("/portable/project")),
             scene_prompts_json=Path("scene_prompts.json"),
             ltx_prompt_relay_json=Path("relay.json"),
             render_plan_json=Path("render_plan.json"),
@@ -197,6 +198,7 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
 
         self.assertEqual(1, len(calls))
         self.assertIsNone(calls[0]["h3_prompts_json"])
+        self.assertEqual(Path("/portable/project"), calls[0]["project_dir"])
         self.assertEqual([{"scene": 1}], context.render_plan)
 
     def test_deferred_h3_prompts_are_skipped_until_reference_stages_finish(self):
