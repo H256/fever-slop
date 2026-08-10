@@ -643,8 +643,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         return prompt_tags
 
-    @staticmethod
     def _build_audio_prompt_suffix(
+        self,
         scene: dict,
         ref_audio_paths: list[Path],
         *,
@@ -684,7 +684,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             seen.add(path_str)
             # Look up description: first from _stem_audio_tags, then from stem_role_map by basename
             normalized_path = path_str.replace("\\", "/")
-            desc = stem_tags.get(path_str) or stem_tags.get(normalized_path)
+            desc = self._stem_audio_tag(stem_tags, path)
             if not desc:
                 basename = normalized_path.rstrip("/").split("/")[-1]
                 name_part = basename.rsplit(".", 1)[0] if "." in basename else basename
@@ -725,8 +725,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             enhanced += audio_suffix
             patcher.set_input_by_title("#PROMPT", "value", enhanced)
 
-    @staticmethod
     def _inject_audio_subjects(
+        self,
         prompt_text: str,
         ref_audio_paths: list[Path],
         scene: dict,
@@ -787,8 +787,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             if basename.startswith("full_mix"):
                 stem_name = "full_mix"
             desc = (
-                stem_tags.get(path_str)
-                or stem_tags.get(normalized_path)
+                self._stem_audio_tag(stem_tags, path)
                 or stem_role_map.get(stem_name,
                                       f"{path_str} audio reference")
             )
@@ -810,6 +809,18 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             data["retention_analysis"] = current_retention + separator2 + "\n".join(retention_lines)
 
         return _json.dumps(data, ensure_ascii=False) + "\n"
+
+    def _stem_audio_tag(self, stem_tags: dict[str, str], path: str | Path) -> str | None:
+        normalized = str(path).replace("\\", "/")
+        if description := stem_tags.get(str(path)) or stem_tags.get(normalized):
+            return description
+        if self.project_dir is None:
+            return None
+        try:
+            relative = coerce_local_path(path).resolve().relative_to(self.project_dir.resolve()).as_posix()
+        except ValueError:
+            return None
+        return stem_tags.get(relative)
 
     # -----------------------------------------------------------------------
     # Validation
@@ -844,7 +855,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         for stem_name in ordered_names:
             path_str = paths_map.get(stem_name)
             if path_str:
-                p = coerce_local_path(path_str)
+                p = self._resolve_project_path(path_str)
                 if p.exists():
                     result.append(p)
         return result[: self.MAX_REF_AUDIOS]

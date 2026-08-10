@@ -279,6 +279,9 @@ class BuildRenderPlanTests(unittest.TestCase):
             vocal_path.write_bytes(b"fake audio")
             fullmix_path = temp / "full_mix.wav"
             fullmix_path.write_bytes(b"fake audio")
+            existing_path = temp / "input" / "reference.wav"
+            existing_path.parent.mkdir()
+            existing_path.write_bytes(b"fake audio")
 
             scene_prompts_path.write_text(
                 json.dumps([
@@ -294,6 +297,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                         "zimage_prompt": "z",
                         "ltx_base_prompt": "The warrior sings.",
                         "i2v_prompt_from_t2i": "I2V",
+                        "references": {"reference_audio_paths": [str(existing_path)]},
                     }
                 ]),
                 encoding="utf-8",
@@ -309,6 +313,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                 stem_list=["vocals", "full_mix"],
                 input_audio=fullmix_path,
                 stem_files={"vocals": vocal_path, "full_mix": fullmix_path},
+                project_dir=temp,
             )
 
             plan = json.loads(output_path.read_text(encoding="utf-8"))
@@ -320,10 +325,17 @@ class BuildRenderPlanTests(unittest.TestCase):
             self.assertIn("reference_audio_paths", refs)
             audio_paths = refs["reference_audio_paths"]
             # Both stems should be in the audio paths (vocals first, full_mix second)
-            self.assertIn(str(vocal_path), audio_paths)
-            self.assertIn(str(fullmix_path), audio_paths)
+            self.assertEqual(
+                ["input/reference.wav", "vocals.wav", "full_mix.wav"],
+                audio_paths,
+            )
             self.assertIn("_stem_audio_tags", refs)
             stem_tags = refs["_stem_audio_tags"]
+            self.assertEqual({"vocals.wav", "full_mix.wav"}, set(stem_tags))
+            self.assertEqual(
+                {"vocals": "vocals.wav", "full_mix": "full_mix.wav"},
+                scene["stem_audio"]["paths"],
+            )
             # Verify semantic descriptions exist
             self.assertIn("vocals", scene["stem_audio"]["stems"])
             self.assertIn("full_mix", scene["stem_audio"]["stems"])
