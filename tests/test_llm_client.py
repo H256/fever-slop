@@ -21,7 +21,7 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_client.chat.completions.create.return_value = mock_resp
 
         client = LocalOpenAIClient(api_key="test-key", request_timeout_seconds=42.0)
-        client.complete_prompt("test")
+        client.complete_prompt(system_prompt="system", prompt="test")
 
         create_kwargs = mock_client.chat.completions.create.call_args.kwargs
         self.assertEqual(42.0, create_kwargs["timeout"])
@@ -35,7 +35,7 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_client.chat.completions.create.return_value = mock_resp
 
         client = LocalOpenAIClient(api_key="test-key", request_timeout_seconds=42.0)
-        client.complete_prompt("test", timeout=99.0)
+        client.complete_prompt(system_prompt="system", prompt="test", timeout=99.0)
 
         create_kwargs = mock_client.chat.completions.create.call_args.kwargs
         self.assertEqual(99.0, create_kwargs["timeout"])
@@ -126,7 +126,7 @@ class LLMClientRetryTests(unittest.TestCase):
 
         client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.01)
         client.client = mock_client
-        result = client.complete_prompt("test")
+        result = client.complete_prompt(system_prompt="system", prompt="test")
         self.assertEqual(result, "ok")
         self.assertEqual(call_count, 3)
 
@@ -143,7 +143,7 @@ class LLMClientRetryTests(unittest.TestCase):
         client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.01)
         client.client = mock_client
         with self.assertRaises(FeverSlopLMLError) as ctx:
-            client.complete_prompt("test")
+            client.complete_prompt(system_prompt="system", prompt="test")
         self.assertIn("3 attempts", str(ctx.exception))
 
     @patch("time.sleep", return_value=None)
@@ -165,7 +165,7 @@ class LLMClientRetryTests(unittest.TestCase):
         client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.5)
         client.client = mock_client
         with self.assertRaises(FeverSlopLMLError):
-            client.complete_prompt("test")
+            client.complete_prompt(system_prompt="system", prompt="test")
 
         sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
         self.assertGreaterEqual(sleep_calls[0], 0.5)
@@ -192,7 +192,7 @@ class LLMClientRetryTests(unittest.TestCase):
         client = LocalOpenAIClient(api_key="test-key", max_retries=5, retry_base_delay=0.1)
         client.client = mock_client
         with self.assertRaises(FeverSlopLMLError):
-            client.complete_prompt("test")
+            client.complete_prompt(system_prompt="system", prompt="test")
 
         sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
         self.assertEqual(len(sleep_calls), 4)
@@ -209,7 +209,7 @@ class LLMClientRetryTests(unittest.TestCase):
 
         client = LocalOpenAIClient(api_key="test-key")
         client.client = mock_client
-        client.complete_prompt("test", timeout=60.0)
+        client.complete_prompt(system_prompt="system", prompt="test", timeout=60.0)
 
         mock_client.chat.completions.create.assert_called_once()
         call_kwargs = mock_client.chat.completions.create.call_args[1]
@@ -226,7 +226,7 @@ class LLMClientRetryTests(unittest.TestCase):
 
         client = LocalOpenAIClient(api_key="test-key", request_timeout_seconds=45.0)
         client.client = mock_client
-        client.complete_prompt("test")
+        client.complete_prompt(system_prompt="system", prompt="test")
 
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         self.assertEqual(45.0, call_kwargs["timeout"])
@@ -246,7 +246,7 @@ class LLMClientRetryTests(unittest.TestCase):
 
         client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.01)
         client.client = mock_client
-        result = client.complete_prompt("hi")
+        result = client.complete_prompt(system_prompt="system", prompt="hi")
         self.assertEqual(result, "hello")
         self.assertEqual(mock_client.chat.completions.create.call_count, 1)
 

@@ -3851,7 +3851,7 @@ class MovieProjectTests(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, system_prompt=None):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append((system_prompt, prompt))
                 if "shot plan" in prompt.lower():
                     return json.dumps({
@@ -3897,7 +3897,7 @@ class MovieProjectTests(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, system_prompt=None):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append(prompt)
                 if "movie bible" in prompt.lower():
                     return json.dumps({"actors": [], "locations": []})
@@ -3964,7 +3964,7 @@ class MovieProjectTests(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, system_prompt=None):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append(prompt)
                 return json.dumps({
                     "shots": [{
@@ -4027,7 +4027,7 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
 
         class OneActorLLM:
-            def complete_prompt(self, prompt, system_prompt=None):
+            def complete_prompt(self, system_prompt, prompt):
                 if "shot plan" in prompt.lower():
                     return json.dumps({
                         "shots": [
@@ -4526,7 +4526,7 @@ class MovieProjectTests(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, system_prompt=None):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append(prompt)
                 return json.dumps({
                     "title": "Test",
@@ -4905,7 +4905,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.domain.movie import MovieLocation
 
         class FakeLLM:
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 return '{"locations": [{"id": "garden", "visual_description": "Overgrown herb garden with stone paths", "image_prompt": "Overgrown herb garden with stone paths. Wide establishing view, production design, lighting, atmosphere, no people, no text."}]}'
 
         planner = LLMMoviePlanner(FakeLLM())
@@ -4924,7 +4924,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.domain.movie import MovieLocation
 
         class FakeLLM:
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 return '{"locations": [{"id": "garden", "visual_description": "Overgrown garden", "image_prompt": "Cinematic environment reference sheet for Garden. Wide establishing view."}]}'
 
         result = LLMMoviePlanner(FakeLLM()).refine_locations(
@@ -4940,7 +4940,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.domain.movie import MovieLocation
 
         class FakeLLM:
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 raise ConnectionError("llm down")
 
         planner = LLMMoviePlanner(FakeLLM())
@@ -4958,7 +4958,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.domain.movie import MovieLocation
 
         class FakeLLM:
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 return "not json at all"
 
         planner = LLMMoviePlanner(FakeLLM())
@@ -4976,7 +4976,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.domain.movie import MovieLocation
 
         class FakeLLM:
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 return '{"locations": [{"id": "other", "visual_description": "Something", "image_prompt": "Something"}]}'
 
         planner = LLMMoviePlanner(FakeLLM())
@@ -4998,7 +4998,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append(system_prompt)
                 if "film development producer" in system_prompt:
                     return '{"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]}'
@@ -5030,7 +5030,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
             def __init__(self):
                 self.calls = []
 
-            def complete_prompt(self, prompt, *, system_prompt):
+            def complete_prompt(self, system_prompt, prompt):
                 self.calls.append(system_prompt)
                 return '{"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]}'
 
