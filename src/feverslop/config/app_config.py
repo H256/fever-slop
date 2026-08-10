@@ -83,6 +83,26 @@ class StoryboardPromptTransformConfig:
         )
 
 
+
+def _check_required_keys(raw: dict, required_keys: list[str]) -> None:
+    """Validate required keys with dot-notation nested path support."""
+    missing = []
+    for key_path in required_keys:
+        parts = key_path.split(".")
+        node = raw
+        found = True
+        for part in parts:
+            if not isinstance(node, dict) or part not in node:
+                found = False
+                break
+            node = node[part]
+        if not found or node is None:
+            missing.append(key_path)
+    if missing:
+        details = "; ".join(f"'{key}'" for key in missing)
+        raise ValueError(f"Missing required config keys: {details}")
+
+
 @dataclass
 class AppConfig:
     llm: LLMConfig
@@ -146,10 +166,7 @@ class AppConfig:
         raw = json.loads(path.read_text(encoding="utf-8"))
 
         if required_keys:
-            missing = [key for key in required_keys if key not in raw or raw[key] is None]
-            if missing:
-                details = "; ".join(f"'{key}'" for key in missing)
-                raise ValueError(f"Missing required config keys: {details}")
+            _check_required_keys(raw, required_keys)
 
         return cls._build_config(raw, dotenv_api_key=dotenv_api_key)
 
@@ -183,13 +200,19 @@ class AppConfig:
             _parse_video_workflow_profiles(raw.get("video_workflow_profiles", []))
         )
 
+        llm_temperature = float(llm_raw.get("temperature", 0.7))
+        llm_max_tokens = int(llm_raw.get("max_tokens", 4096))
+        if llm_temperature < 0:
+            raise ValueError(f"llm.temperature must be >= 0, got {llm_temperature}")
+        if llm_max_tokens <= 0:
+            raise ValueError(f"llm.max_tokens must be > 0, got {llm_max_tokens}")
         return cls(
             llm=LLMConfig(
                 base_url=llm_raw.get("base_url", "http://localhost:8080/v1"),
                 model=llm_raw.get("model", "default"),
-                temperature=float(llm_raw.get("temperature", 0.7)),
+                temperature=llm_temperature,
                 dspy_temperature=float(llm_raw.get("dspy_temperature", 0.4)),
-                max_tokens=int(llm_raw.get("max_tokens", 4096)),
+                max_tokens=llm_max_tokens,
                 request_timeout_seconds=float(llm_raw.get("request_timeout_seconds", 180.0)),
                 dspy_cache=_parse_bool(llm_raw.get("dspy_cache", False), "llm.dspy_cache"),
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,

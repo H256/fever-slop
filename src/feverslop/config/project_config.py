@@ -368,9 +368,20 @@ class ProjectConfig:
             loras=loras,
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),
             minimax_h3_audio_refs=AudioRefsConfig(
-                stems=list(audio_refs_raw.get("stems", ["vocals", "full_mix"]))
+                stems=cls._validate_stems(list(audio_refs_raw.get("stems", ["vocals", "full_mix"])))
             ),
         )
+
+    @staticmethod
+    def _validate_stems(stems_list: list[str]) -> list[str]:
+        """Validate audio ref stems against allowed set."""
+        invalid = [s for s in stems_list if s not in VALID_AUDIO_REF_STEMS]
+        if invalid:
+            raise ValueError(
+                f"Invalid audio ref stem(s): {', '.join(repr(s) for s in invalid)}. "
+                f"Valid options: {', '.join(sorted(VALID_AUDIO_REF_STEMS))}"
+            )
+        return stems_list
 
     def to_video_settings(self) -> VideoSettings:
         return VideoSettings(
