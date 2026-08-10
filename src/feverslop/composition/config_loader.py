@@ -89,6 +89,28 @@ def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> P
     return concat_file
 
 
+def _validate_render_plan_entries(render_plan: list) -> None:
+    """Validate that a render plan is a list of dicts with numeric 'scene' keys."""
+    if not isinstance(render_plan, list):
+        raise ValueError(
+            f"Render plan must be a JSON array, got {type(render_plan).__name__}"
+        )
+    for i, entry in enumerate(render_plan):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"Render plan entry {i} must be a dict, got {type(entry).__name__}"
+            )
+        scene = entry.get("scene")
+        if scene is None:
+            raise ValueError(f"Render plan entry {i} missing required 'scene' key")
+        try:
+            int(scene)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Render plan entry {i} 'scene' value is not numeric: {scene!r}"
+            ) from None
+
+
 def collect_render_plan_scene_clips(
     render_plan_path: str | Path,
     output_dir: str | Path,
@@ -98,6 +120,7 @@ def collect_render_plan_scene_clips(
 ) -> list[Path]:
     output_dir = Path(output_dir)
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    _validate_render_plan_entries(render_plan)
     clips: list[Path] = []
     missing: list[Path] = []
     for scene in render_plan:
@@ -127,6 +150,7 @@ def collect_render_plan_scene_clips(
 
 def count_render_plan_items(render_plan_path: str | Path, scene_numbers: set[int] | None = None, limit: int | None = None) -> int:
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    _validate_render_plan_entries(render_plan)
     if scene_numbers is not None:
         render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
     if limit is not None:
