@@ -44,26 +44,36 @@ class _MovieScopedReporter:
         inner = object.__getattribute__(self, "_inner")
         if inner is not None and hasattr(inner, name):
             attr = getattr(inner, name)
-            if callable(attr):
-                def wrapper(*args, **kwargs):
-                    result = attr(*args, **kwargs)
-                    return result
-                return wrapper
+            self.__dict__[name] = attr
             return attr
         # Method not on inner — create stubs for Reporter protocol
+        # Cache in __dict__ so repeated lookups skip this method entirely.
         bridge = object.__getattribute__(self, "_bridge")
+        d = self.__dict__
         if name == "step":
-            return lambda title: bridge.progress.emit(title)
+            if name not in d:
+                d[name] = (lambda b: lambda title: b.progress.emit(title))(bridge)
+            return d[name]
         if name == "message":
-            return lambda text: None
+            if name not in d:
+                d[name] = lambda text: None
+            return d[name]
         if name == "file":
-            return lambda label, path: None
+            if name not in d:
+                d[name] = lambda label, path: None
+            return d[name]
         if name == "panel":
-            return lambda text, *, title=None: None
+            if name not in d:
+                d[name] = lambda text, *, title=None: None
+            return d[name]
         if name == "table":
-            return lambda title, columns, rows: None
+            if name not in d:
+                d[name] = lambda title, columns, rows: None
+            return d[name]
         if name == "run_progress":
-            return lambda description, func: func()
+            if name not in d:
+                d[name] = lambda description, func: func()
+            return d[name]
         raise AttributeError(name)
 
 
