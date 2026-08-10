@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
+from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
 
@@ -28,6 +29,11 @@ class MovieReferenceSheetGenerator:
         manifest_path = project_dir / "movie" / "references" / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         output_dir = project_dir / "movie" / "references"
+        project_config_path = project_dir / "config.json"
+        reference_image_size = None
+        if project_config_path.is_file():
+            project_config = ProjectConfig.load(project_config_path)
+            reference_image_size = project_config.reference_images.resolve(project_config.video)
         generator = ReferenceBibleGenerator(
             backend=self.backend,
             edit_backend=self.edit_backend,
@@ -37,6 +43,7 @@ class MovieReferenceSheetGenerator:
             actor_view_names=ReferenceBibleGenerator.direct_msr_actor_view_names,
             location_view_names=("hero",),
             msr_sheet_size=_movie_reference_size(project_dir),
+            reference_image_size=reference_image_size,
             direct_msr_sheet_prompt_builder=build_movie_direct_msr_sheet_prompt,
         )
 
