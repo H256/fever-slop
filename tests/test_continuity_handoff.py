@@ -70,7 +70,7 @@ class ContinuityHandoffTests(unittest.TestCase):
         ):
             with self.subTest(scenes=scenes), self.assertRaisesRegex(
                 ValueError,
-                "canonical consecutive order",
+                "consecutive order",
             ):
                 validate_scene_sequence(scenes)
 

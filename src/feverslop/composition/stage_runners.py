@@ -48,7 +48,7 @@ from feverslop.application.visual_consistency_preflight import (
 )
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
-from feverslop.domain.render_plan import RenderPlan
+from feverslop.domain.render_plan import RenderPlan, RenderScene
 from feverslop.domain.visual_consistency import (
     PreflightMode,
     SceneConsistencyContract,
@@ -622,22 +622,22 @@ def _specialized_video_use_case(state: PipelineRunState):
     )
 
 
-def _selected_render_scenes(state: PipelineRunState) -> list:
+def _selected_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
     return _select_render_scenes(state, _all_render_scenes(state))
 
 
-def _all_render_scenes(state: PipelineRunState) -> list:
+def _all_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
     payload = json.loads(state.plan_for_next_step.read_text(encoding="utf-8-sig"))
     validate_scene_sequence(payload)
     return RenderPlan.from_dicts(payload).scenes
 
 
-def _select_render_scenes(state: PipelineRunState, scenes: list) -> list:
+def _select_render_scenes(state: PipelineRunState, scenes: tuple[RenderScene, ...]) -> tuple[RenderScene, ...]:
     selected = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
-    return RenderPlan(list(scenes)).select(scene_numbers=selected).scenes
+    return RenderPlan(scenes).select(scene_numbers=selected).scenes
 
 
-def _missing_prepare_inputs(state: PipelineRunState, scenes: list) -> list[str]:
+def _missing_prepare_inputs(state: PipelineRunState, scenes: tuple[RenderScene, ...]) -> list[str]:
     missing: list[str] = []
     for path, label in ((state.plan_for_next_step, "render plan"), (state.context.input_audio, "audio")):
         if not path.is_file():
@@ -733,7 +733,7 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
             ],
             {scene.scene_number for scene in scenes},
         )
-        scenes = RenderPlan(list(all_scenes)).select(
+        scenes = RenderPlan(all_scenes).select(
             scene_numbers=selected_numbers,
         ).scenes
     missing = _missing_prepare_inputs(state, scenes)
@@ -1154,7 +1154,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                 contracts,
                 {scene.scene_number for scene in scenes},
             )
-            scenes = RenderPlan(list(all_scenes)).select(
+            scenes = RenderPlan(all_scenes).select(
                 scene_numbers=selected_numbers
             ).scenes
         missing: list[Path] = []

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import types
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
@@ -50,6 +51,25 @@ class MovieSceneContinuityPacket:
     characters: dict[str, MovieContinuityCharacterState] | None = None
     location: MovieContinuityLocationState | None = None
 
+    def __post_init__(self) -> None:
+        if self.characters is not None:
+            object.__setattr__(self, "characters", types.MappingProxyType(self.characters))
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (
+                self.shot_id,
+                self.location_id,
+                self.incoming,
+                self.required_carryovers,
+                self.allowed_changes,
+                self.outgoing,
+                dict(self.characters) if self.characters is not None else None,
+                self.location,
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class MovieNarrativeBeat:
@@ -70,12 +90,40 @@ class MovieContinuityLedger:
     locations: dict[str, MovieContinuityLocationState]
     scene_order: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "characters", types.MappingProxyType(self.characters))
+        object.__setattr__(self, "locations", types.MappingProxyType(self.locations))
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (
+                self.style_bible,
+                dict(self.characters),
+                dict(self.locations),
+                self.scene_order,
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class MovieContinuityPlan:
     continuity_ledger: MovieContinuityLedger
     scene_continuity: dict[str, MovieSceneContinuityPacket]
     narrative_chain: tuple[MovieNarrativeBeat, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "scene_continuity", types.MappingProxyType(self.scene_continuity))
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (
+                self.continuity_ledger,
+                dict(self.scene_continuity),
+                self.narrative_chain,
+            ),
+        )
 
     @classmethod
     def fallback(cls, bible: "MovieBible", shots: tuple["CinematicShot", ...]) -> "MovieContinuityPlan":
