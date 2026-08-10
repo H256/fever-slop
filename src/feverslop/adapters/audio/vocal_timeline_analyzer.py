@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import gc
 from pathlib import Path
 
 import librosa
 import numpy as np
+import torch
 import whisper
 
 from feverslop.domain.timeline import TimelineSegment
@@ -43,6 +45,17 @@ class VocalTimelineAnalyzer:
         self.rms_high_percentile = rms_high_percentile
         self.rms_ratio = rms_ratio
         self.smooth_frames = smooth_frames
+
+    def close(self) -> None:
+        model = getattr(self, "model", None)
+        if model is None:
+            return
+
+        self.model = None
+        del model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def analyze(self, vocals_file: str | Path) -> list[TimelineSegment]:
         vocals_file = Path(vocals_file)

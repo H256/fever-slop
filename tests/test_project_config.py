@@ -7,6 +7,43 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
+    def test_reference_images_resolution_defaults_to_video_resolution(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "project_name": "test",
+                    "input_audio": "song.mp3",
+                    "video": {"width": 1920, "height": 1080},
+                }),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual((1920, 1080), config.reference_images.resolve(config.video))
+
+    def test_reference_images_resolution_can_override_video_resolution(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "project_name": "test",
+                    "input_audio": "song.mp3",
+                    "video": {"width": 1920, "height": 1080},
+                    "reference_images": {"width": 2048, "height": 1152},
+                }),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual((2048, 1152), config.reference_images.resolve(config.video))
+
     def test_silent_mode_defaults_to_false(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

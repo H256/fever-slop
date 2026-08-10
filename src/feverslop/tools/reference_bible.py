@@ -199,6 +199,7 @@ def run(args: argparse.Namespace) -> list[Path]:
             actor_view_names=actor_view_names,
             location_view_names=location_view_names,
             msr_sheet_size=(project_config.video.width, project_config.video.height),
+            reference_image_size=project_config.reference_images.resolve(project_config.video),
         )
 
         for subject in subjects:

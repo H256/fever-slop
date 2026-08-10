@@ -12,6 +12,7 @@ from feverslop.application.movie_artifacts import (
 )
 from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 from feverslop.studio.projects import ProjectStore
+from feverslop.config.project_config import ProjectConfig
 
 
 JobHandler = Callable[[Callable[[str], None]], Any]
@@ -77,9 +78,11 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
             startframe_plan_path = build_startframe_plan(project_dir=project_dir)
             log(f"[MoviePipeline] Stage: Movie startframe plan ready: {startframe_plan_path}")
             log(f"[MoviePipeline] Stage: Movie director prompts ({config['startframe_director_backend']})")
+            project_config = ProjectConfig.load(project_dir / "config.json")
             prompts_path = build_startframe_director_prompts(
                 project_dir=project_dir,
                 director_backend=config["startframe_director_backend"],
+                reference_image_size=project_config.reference_images.resolve(project_config.video),
             )
             log(f"[MoviePipeline] Stage: Movie director prompts ready: {prompts_path}")
             render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)

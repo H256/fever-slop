@@ -77,6 +77,7 @@ class ReferenceBibleGenerator:
         actor_view_names: tuple[str, ...] | None = None,
         location_view_names: tuple[str, ...] | None = None,
         msr_sheet_size: tuple[int, int] = (1280, 704),
+        reference_image_size: tuple[int, int] | None = None,
         direct_msr_sheet_prompt_builder: Callable[[ReferenceSubject], str] | None = None,
     ):
         self.backend = backend
@@ -90,6 +91,11 @@ class ReferenceBibleGenerator:
         self.actor_view_names = tuple(actor_view_names or view_names or self.view_names)
         self.location_view_names = tuple(location_view_names or view_names or self.view_names)
         self.msr_sheet_size = (int(msr_sheet_size[0]), int(msr_sheet_size[1]))
+        reference_width, reference_height = reference_image_size or (1920, 1088)
+        if reference_width <= 0 or reference_height <= 0:
+            raise ValueError("reference_image_size must contain positive dimensions")
+        self.actor_hero_size = (int(reference_height), int(reference_width))
+        self.location_hero_size = (int(reference_width), int(reference_height))
         self.direct_msr_sheet_prompt_builder = direct_msr_sheet_prompt_builder
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
@@ -314,9 +320,8 @@ class ReferenceBibleGenerator:
             "the panel background is white"
         )
 
-    @classmethod
-    def _actor_view_size(cls, view_name: str) -> tuple[int, int]:
-        return cls.actor_hero_size
+    def _actor_view_size(self, view_name: str) -> tuple[int, int]:
+        return self.actor_hero_size
 
     @staticmethod
     def _location_view_prompt(location: ReferenceLocation, view_name: str) -> str:
