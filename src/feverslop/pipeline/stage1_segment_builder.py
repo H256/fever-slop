@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.pipeline.prompt_relay_builder import lyrics_for_time_range, parse_scene_srt, overlap
+from feverslop.pipeline.prompt_relay_builder import lyrics_for_time_range, parse_scene_dicts, overlap
 
 
 def build_stage1_segment_json(
@@ -15,7 +15,7 @@ def build_stage1_segment_json(
     *,
     artifact_store: ArtifactStore,
 ) -> Path:
-    scenes = parse_scene_srt(scene_srt_file)
+    scenes = parse_scene_dicts(scene_srt_file)
     timeline = artifact_store.read_json(vocal_timeline_json)
 
     result = []
