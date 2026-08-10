@@ -72,6 +72,29 @@ repeating the earlier LLM stages, but it requires the reference-enriched plan
 from `msr_reference_sheets`; run `render_plan` afterward to copy the new prompts
 into `base.json`:
 
+To generate the MSR sheets with a custom image workflow and stop after preparing
+the final MiniMax R2V render plan, select the stages explicitly:
+
+```bash
+uv run python run_pipeline.py ./projects/my-song \
+  --video-pipeline minimax-h3-r2v \
+  --reference-hero-workflow workflows/my_custom_reference_workflow.json \
+  --stage main_pipeline \
+  --stage anchor_fix \
+  --stage msr_references \
+  --stage msr_reference_sheets \
+  --stage h3_prompts \
+  --stage render_plan \
+  --skip-tests
+```
+
+Add `--reference-edit-workflow workflows/my_custom_edit_workflow.json` when the
+reference workflow also uses a separate edit pass. This command renders the MSR
+reference images, but does not render any video. It stops after writing the
+reference-aware MiniMax prompts and final render plan. MiniMax does not currently
+support the `ltx_prepare_workflows` stage, so per-scene `workflow.json` and
+`manifest.json` files are created only when the video render stage runs.
+
 ```bash
 uv run python run_pipeline.py ./projects/my-song \
   --video-pipeline minimax-h3-r2v \
