@@ -37,6 +37,17 @@ class FakeVideoBackend:
         return output
 
 
+class ManifestBackfillBackend(FakeVideoBackend):
+    def __init__(self):
+        super().__init__()
+        self.backfilled: list[int] = []
+
+    def ensure_scene_manifest(self, request: VideoRenderRequest) -> None:
+        self.backfilled.append(request.scene_number)
+        manifest = request.output_dir / f"scene_{request.scene_number:04}" / "manifest.json"
+        manifest.write_text("{}", encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Test data helpers
 # ---------------------------------------------------------------------------
@@ -232,6 +243,30 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
             self.assertEqual(
                 temp / "render/scene_0002/final.mp4", rendered[1]
             )
+
+    def test_skip_existing_backfills_minimax_scene_manifests(self):
+        backend = ManifestBackfillBackend()
+        use_case = RenderVideoScenesUseCase(backend=backend, artifact_store=JsonArtifactStore())
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "render_plan.json"
+            plan_path.write_text(json.dumps(_render_plan_scenes()[:1]), encoding="utf-8")
+            scene_dir = temp / "render" / "scene_0001"
+            scene_dir.mkdir(parents=True)
+            (scene_dir / "final.mp4").write_bytes(b"existing")
+            (scene_dir / "workflow.json").write_text("{}", encoding="utf-8")
+
+            use_case.execute(RenderVideoScenesRequest(
+                render_plan_path=plan_path,
+                workflow_path=temp / "workflow.json",
+                audio_file=temp / "song.mp3",
+                storyboard_dir=temp / "storyboard",
+                output_dir=temp / "render",
+            ))
+
+            self.assertEqual([1], backend.backfilled)
+            self.assertTrue((scene_dir / "manifest.json").is_file())
+            self.assertEqual([], backend.requests)
 
     def test_scene_selection_limits_backend_calls(self):
         """scene_numbers filters which scenes reach the backend."""

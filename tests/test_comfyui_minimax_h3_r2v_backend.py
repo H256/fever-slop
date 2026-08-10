@@ -4,6 +4,7 @@ import unittest
 import tempfile
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.adapters.comfyui_minimax_h3_r2v_backend import (
     ComfyUIMiniMaxH3R2VBackend,
@@ -772,7 +773,7 @@ class RenderVideoTests(unittest.TestCase):
             )
             result = backend.render_video(request)
             # Audio was resolved
-            self.assertEqual(1, len(uploader.resolve_audio_calls))
+            self.assertEqual(0, len(uploader.resolve_audio_calls))
             # Queue was called
             self.assertEqual(1, len(queue.calls))
             self.assertEqual(2, queue.calls[0]["scene_number"])
@@ -878,12 +879,27 @@ class RenderVideoTests(unittest.TestCase):
         """workflow.json is written to the per-scene directory."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            project = tmp_path / "project"
+            output = project / "output" / "render" / "scenes"
+            plan = project / "output" / "render" / "plans" / "references.json"
+            plan.parent.mkdir(parents=True)
+            plan.write_text("[]", encoding="utf-8")
+            template = project / "workflows" / "r2v.json"
+            template.parent.mkdir()
+            template.write_text("{}", encoding="utf-8")
+            actor = project / "input" / "actor.png"
+            actor.parent.mkdir()
+            actor.write_bytes(b"actor")
+            song = project / "input" / "song.wav"
+            song.write_bytes(b"song")
             uploader = FakeAssetUploader()
             queue = FakeRenderQueue()
             backend = ComfyUIMiniMaxH3R2VBackend(
                 client=FakeClient(),
-                workflow_path=tmp_path / "wf.json",
-                output_dir=tmp_path / "output",
+                workflow_path=template,
+                output_dir=output,
+                project_dir=project,
+                randomize_seed=True,
                 asset_uploader=uploader,
                 render_queue=queue,
                 postprocess=False,
@@ -894,21 +910,33 @@ class RenderVideoTests(unittest.TestCase):
                 scene={
                     "scene": 5,
                     "description": "Test",
-                    "references": {"actor_sheet_paths": [tmp_path / "a.png"]},
+                    "references": {"actor_sheet_paths": [actor]},
                 },
                 scene_number=5,
                 prompt="Test prompt",
-                workflow_path=tmp_path / "wf.json",
-                output_dir=tmp_path / "output",
-                audio_file=tmp_path / "song.wav",
+                workflow_path=template,
+                render_plan_path=plan,
+                output_dir=output,
+                audio_file=song,
                 storyboard_dir=tmp_path / "storyboard",
-                upload_audio=False,
             )
-            backend.render_video(request)
-            scene_workflow = tmp_path / "output" / "scene_0005" / "workflow.json"
+            with patch(
+                "feverslop.adapters.comfyui_minimax_h3_r2v_backend.random.randint",
+                side_effect=[111, 222],
+            ):
+                backend.render_video(request)
+            scene_dir = output / "scene_0005"
+            scene_workflow = scene_dir / "workflow.json"
             self.assertTrue(scene_workflow.exists())
             data = json.loads(scene_workflow.read_text())
             self.assertIsInstance(data, dict)
+            manifest = json.loads((scene_dir / "manifest.json").read_text())
+            self.assertEqual("minimax-h3-r2v", manifest["pipeline"])
+            self.assertEqual("output/render/scenes/scene_0005/workflow.json", manifest["workflow"]["path"])
+            self.assertEqual(111, manifest["seed"])
+            self.assertEqual(["reference_image"], [asset["role"] for asset in manifest["assets"]])
+            self.assertEqual("input/actor.png", manifest["assets"][0]["path"])
+            self.assertEqual([], uploader.resolve_audio_calls)
 
 
 # ---------------------------------------------------------------------------

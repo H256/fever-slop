@@ -33,6 +33,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     MAX_REF_AUDIOS = 3
     MAX_STEM_AUDIOS = MAX_REF_AUDIOS
     FPS = 24
+    pipeline_name = "minimax-h3-r2v"
 
     def __init__(
         self,
@@ -180,15 +181,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             duration_seconds = float(raw_duration)
         frame_count: int | None = None
 
-        # -- resolve audio name -----------------------------------------------
-        comfy_audio_name: str | None = None
-        if request.upload_audio or request.uploaded_audio_name:
-            comfy_audio_name = self.asset_uploader.resolve_audio_name(
-                request.audio_file,
-                upload_audio=request.upload_audio,
-                uploaded_audio_name=request.uploaded_audio_name,
-            )
-
         # -- resolve reference image paths ------------------------------------
         ref_image_paths = self._resolve_ref_image_paths(request.scene)
 
@@ -222,7 +214,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         workflow = self.build_workflow(
             request.scene,
             prompt=request.prompt,
-            comfy_audio_name=comfy_audio_name,
             duration_seconds=duration_seconds,
             frame_count=frame_count,
             width=int(request.scene.get("width", 0) or 0) or None,
@@ -247,6 +238,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         workflow_path.write_text(
             json.dumps(workflow, ensure_ascii=False, indent=2),
             encoding="utf-8",
+        )
+        self._write_scene_manifest(
+            request,
+            workflow_path,
+            pipeline=self.pipeline_name,
+            workflow=workflow,
+            assets=self._manifest_assets(request),
         )
 
         # -- debug write ------------------------------------------------------
@@ -848,6 +846,26 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 if p.exists():
                     result.append(p)
         return result[: self.MAX_REF_AUDIOS]
+
+    def _manifest_assets(self, request: VideoRenderRequest) -> list[tuple]:
+        assets = [
+            self._reference_asset("reference_image", path)
+            for path in self._resolve_ref_image_paths(request.scene)
+        ]
+        assets.extend(
+            self._reference_asset("reference_video", path)
+            for path in self._resolve_ref_video_paths(request.scene)
+        )
+        audio_paths = [
+            *self._resolve_stem_audio_paths(request.scene),
+            *self._resolve_ref_audio_paths(request.scene),
+        ]
+        unique_audio = list(dict.fromkeys(audio_paths))[: self.MAX_REF_AUDIOS]
+        assets.extend(
+            self._reference_asset("reference_audio", path)
+            for path in unique_audio
+        )
+        return assets
 
     def _fallback_stem_paths(self) -> dict[str, str]:
         """Find generated Demucs stems when an older render plan lacks metadata."""

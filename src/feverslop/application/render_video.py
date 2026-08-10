@@ -52,6 +52,23 @@ class RenderVideoScenesUseCase:
         rendered: list[Path] = []
         total = len(plan.scenes)
         for scene in plan.scenes:
+            video_request = VideoRenderRequest(
+                scene=scene.to_dict(),
+                scene_number=scene.scene_number,
+                prompt=scene.video_prompt,
+                workflow_path=request.workflow_path,
+                output_dir=request.output_dir,
+                audio_file=request.audio_file,
+                storyboard_dir=request.storyboard_dir,
+                render_mode=request.render_mode,
+                single_prompt_workflow_path=request.single_prompt_workflow_path,
+                skip_existing=request.skip_existing,
+                uploaded_audio_name=request.uploaded_audio_name,
+                upload_audio=request.upload_audio,
+                upload_startframes=request.upload_startframes,
+                anchors=request.anchors,
+                render_plan_path=request.render_plan_path,
+            )
             final_path = request.output_dir / "final" / f"scene_{scene.scene_number:04}.mp4"
             direct_path = request.output_dir / f"scene_{scene.scene_number:04}.mp4"
             per_scene_path = request.output_dir / f"scene_{scene.scene_number:04}" / "final.mp4"
@@ -61,30 +78,16 @@ class RenderVideoScenesUseCase:
                       else (per_scene_path if per_scene_path.exists() else None))
             )
             if request.skip_existing and existing_path:
+                ensure_manifest = getattr(self.backend, "ensure_scene_manifest", None)
+                if ensure_manifest is not None:
+                    ensure_manifest(video_request)
                 rendered.append(existing_path)
                 self._log_scene_available(existing_path, len(rendered), total, skipped=True)
                 if request.on_scene_complete:
                     request.on_scene_complete(existing_path, len(rendered), total)
                 continue
 
-            output_path = self.backend.render_video(
-                VideoRenderRequest(
-                    scene=scene.to_dict(),
-                    scene_number=scene.scene_number,
-                    prompt=scene.video_prompt,
-                    workflow_path=request.workflow_path,
-                    output_dir=request.output_dir,
-                    audio_file=request.audio_file,
-                    storyboard_dir=request.storyboard_dir,
-                    render_mode=request.render_mode,
-                    single_prompt_workflow_path=request.single_prompt_workflow_path,
-                    skip_existing=request.skip_existing,
-                    uploaded_audio_name=request.uploaded_audio_name,
-                    upload_audio=request.upload_audio,
-                    upload_startframes=request.upload_startframes,
-                    anchors=request.anchors,
-                )
-            )
+            output_path = self.backend.render_video(video_request)
             rendered.append(output_path)
             self._log_scene_available(output_path, len(rendered), total, skipped=False)
             if request.on_scene_complete:
