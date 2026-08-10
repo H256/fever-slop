@@ -1640,6 +1640,10 @@ def _initial_render_plan(context: PipelineRunContext, args: argparse.Namespace, 
     # MiniMax R2V needs reference paths (actor_msr_paths, location_msr_path) from
     # an existing MSR/ingredients plan so it can patch them into its workflow.
     if args.video_pipeline == "minimax-h3-r2v":
+        if context.render_plan.is_file():
+            scenes = JsonArtifactStore().read_json(context.render_plan)
+            if scenes and all((scene.get("h3") or {}).get("prompt") for scene in scenes):
+                return context.render_plan
         for plan_path, legacy_paths in (
             (context.ingredients_plan, [legacy_ingredients]),
             (context.reference_plan, [legacy_references]),

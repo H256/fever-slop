@@ -9,15 +9,44 @@ from rich.progress import TaskProgressColumn, TimeElapsedColumn, TimeRemainingCo
 
 import run_pipeline
 from feverslop.composition.stage_runners import (
+    _initial_render_plan,
     _read_h3_input,
     _run_main_pipeline_stage,
     _run_msr_reference_sheets_stage,
     _preserve_enriched_reference_paths,
     _selected_video_workflows,
 )
+from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_minimax_r2v_prefers_base_plan_with_h3_prompts(self):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.plans_dir.mkdir(parents=True)
+            layout.references_plan.write_text(
+                json.dumps([{"scene": 1, "references": {"actor_msr_paths": ["actor.png"]}}]),
+                encoding="utf-8",
+            )
+            layout.base_plan.write_text(
+                json.dumps([{"scene": 1, "h3": {"prompt": "H3 prompt"}}]),
+                encoding="utf-8",
+            )
+            context = Namespace(
+                artifact_layout=layout,
+                render_dir=layout.render_dir,
+                song_id="song",
+                reference_plan=layout.references_plan,
+                ingredients_plan=layout.ingredients_plan,
+                render_plan=layout.base_plan,
+            )
+            args = Namespace(video_pipeline="minimax-h3-r2v")
+
+            selected = _initial_render_plan(context, args, [])
+
+        self.assertEqual(layout.base_plan, selected)
+
     @patch("feverslop.composition.stage_runners._run_render_plan_stage")
     @patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets")
     def test_reference_sheets_create_missing_intermediate_render_plan(
