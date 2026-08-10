@@ -28,7 +28,7 @@ class TemplateStoryboardPromptTransformer:
             .replace("{{original_prompt}}", original_prompt)
             .strip()
         )
-        response = self.llm.complete_prompt(prompt=user_prompt, system_prompt=system_prompt).strip()
+        response = self.llm.complete_prompt(system_prompt=system_prompt, prompt=user_prompt).strip()
         self._write_debug(scene_number, system_prompt, user_prompt, response)
         return response
 
