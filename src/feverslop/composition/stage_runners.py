@@ -274,6 +274,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             temperature=current_config.llm.temperature,
             max_tokens=current_config.llm.max_tokens,
             request_timeout_seconds=current_config.llm.request_timeout_seconds,
+            dspy_cache=getattr(current_config.llm, "dspy_cache", False),
         ),
         h3_prompt_builder_factory=H3PromptBuilder,
         dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(

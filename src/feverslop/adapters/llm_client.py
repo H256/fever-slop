@@ -55,6 +55,7 @@ class LocalOpenAIClient:
         max_retries: int = 3,
         retry_base_delay: float = 0.5,
         request_timeout_seconds: float = 180.0,
+        dspy_cache: bool = False,
     ):
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be greater than zero")
@@ -69,6 +70,7 @@ class LocalOpenAIClient:
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.request_timeout_seconds = float(request_timeout_seconds)
+        self.dspy_cache = dspy_cache
 
     def complete_prompt(
         self,

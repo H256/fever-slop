@@ -8,6 +8,28 @@ from unittest.mock import patch
 
 
 class AppConfigTests(unittest.TestCase):
+    def test_dspy_cache_defaults_to_false(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+
+        self.assertFalse(config.llm.dspy_cache)
+
+    def test_loads_dspy_cache_setting(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {"dspy_cache": true}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+
+        self.assertTrue(config.llm.dspy_cache)
+
     def test_loads_llm_request_timeout(self):
         from feverslop.config.app_config import AppConfig
 

@@ -18,6 +18,7 @@ class LLMConfig:
     temperature: float = 0.7
     max_tokens: int = 4096
     request_timeout_seconds: float = 180.0
+    dspy_cache: bool = False
     _local_api_key: str | None = field(default=None, repr=False)
 
     @property
@@ -182,6 +183,7 @@ class AppConfig:
                 temperature=float(llm_raw.get("temperature", 0.7)),
                 max_tokens=int(llm_raw.get("max_tokens", 4096)),
                 request_timeout_seconds=float(llm_raw.get("request_timeout_seconds", 180.0)),
+                dspy_cache=_parse_bool(llm_raw.get("dspy_cache", False), "llm.dspy_cache"),
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),
             comfyui=ComfyUIConfig(
@@ -209,6 +211,12 @@ def _optional_secret(value: object) -> str | None:
     if not isinstance(value, str):
         raise ValueError("llm.api_key must be a string")
     return value.strip() or None
+
+
+def _parse_bool(value: object, name: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(f"{name} must be a boolean")
+    return value
 
 
 def _read_dotenv_value(path: Path, name: str) -> str | None:

@@ -207,6 +207,7 @@ def _build_llm(app_config):
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
+        dspy_cache=app_config.llm.dspy_cache,
     )
 
 

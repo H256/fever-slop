@@ -51,6 +51,7 @@ class VideoPromptGenerator:
             api_key=getattr(client, "api_key", None),
             temperature=llm.temperature,
             max_tokens=llm.max_tokens,
+            cache=getattr(llm, "dspy_cache", False),
         )
 
     @staticmethod

@@ -4,6 +4,16 @@ from pathlib import Path
 
 
 class AppConfigValidationTests(unittest.TestCase):
+    def test_rejects_nonboolean_dspy_cache(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {"dspy_cache": "true"}}', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "llm.dspy_cache must be a boolean"):
+                AppConfig.load(config_path)
+
     def test_rejects_nonfinite_default_max_render_duration(self):
         from feverslop.config.app_config import AppConfig
 
