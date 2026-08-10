@@ -13,12 +13,7 @@
     "prompt_timeout_seconds": 1800,
     "model_overrides": [],
     "default_max_render_duration_seconds": 18.0,
-    "video_workflow_limits": [
-      {
-        "workflow": "video_ltxv_ingredients_audio_2stage_v4.json",
-        "max_render_duration_seconds": 18.0
-      }
-    ]
+    "video_workflow_limits": []
   },
   "video_workflow_profiles": [
     {
@@ -29,6 +24,8 @@
       "stages": 2,
       "output_scale": 1.0,
       "supports_per_pass_loras": true,
+      "supports_start_frame": false,
+      "satisfies_final_output": true,
       "default": true
     }
   ],
