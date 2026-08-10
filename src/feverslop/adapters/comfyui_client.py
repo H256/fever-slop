@@ -69,7 +69,7 @@ class ComfyUIClient:
                 "prompt": workflow,
                 "client_id": self.client_id,
             },
-            timeout=60,
+            timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "queue prompt")
         return response.json()["prompt_id"]
@@ -77,7 +77,7 @@ class ComfyUIClient:
     def get_history(self, prompt_id: str) -> dict:
         response = self._ensure_session().get(
             f"{self.base_url}/history/{prompt_id}",
-            timeout=60,
+            timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "get history")
         return response.json()
@@ -85,7 +85,7 @@ class ComfyUIClient:
     def get_object_info(self) -> dict:
         response = self._ensure_session().get(
             f"{self.base_url}/object_info",
-            timeout=60,
+            timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "get object info")
         return response.json()
