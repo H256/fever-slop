@@ -38,7 +38,7 @@ class PipelineRunContext:
     storyboard_dir: Path
     storyboard_page: Path
     ltx_dir: Path
-    ltx_debug_dir: Path
+    ltx_debug_dir: Path | None
     facefix_dir: Path
     final_concat_video: Path
     final_concat: Path
@@ -181,10 +181,10 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         ltx_debug_dir = render_dir / "ltx_ingredients_debug"
     elif vp == "minimax-h3-r2v":
         ltx_dir = artifact_layout.scenes_dir
-        ltx_debug_dir = render_dir / "h3_r2v_debug"
+        ltx_debug_dir = None
     elif vp == "minimax-h3-t2v":
         ltx_dir = artifact_layout.scenes_dir
-        ltx_debug_dir = render_dir / "h3_t2v_debug"
+        ltx_debug_dir = None
     else:
         ltx_dir = render_dir / f"ltx_{args.render_mode}"
         ltx_debug_dir = render_dir / f"ltx_{args.render_mode}_debug"

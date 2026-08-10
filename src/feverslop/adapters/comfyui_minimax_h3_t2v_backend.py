@@ -25,6 +25,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     MAX_FRAMES = 2  # start + end
     FPS = 24
+    pipeline_name = "minimax-h3-t2v"
 
     def __init__(
         self,
@@ -181,6 +182,13 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             json.dumps(workflow, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        self._write_scene_manifest(
+            request,
+            workflow_path,
+            pipeline=self.pipeline_name,
+            workflow=workflow,
+            assets=self._manifest_assets(request),
+        )
 
         # -- debug write
         self._write_debug_workflow(scene_number, workflow)
@@ -284,3 +292,11 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if self.project_dir is not None:
             return self._resolve_project_path(path, self.project_dir)
         return coerce_local_path(path)
+
+    def _manifest_assets(self, request: VideoRenderRequest) -> list[tuple]:
+        assets: list[tuple] = []
+        if start := self._resolve_start_frame(request.scene):
+            assets.append(self._reference_asset("startframe", start))
+        if end := self._resolve_end_frame(request.scene):
+            assets.append(self._reference_asset("endframe", end))
+        return assets

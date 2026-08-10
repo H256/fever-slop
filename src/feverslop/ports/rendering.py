@@ -60,6 +60,7 @@ class VideoRenderRequest:
     upload_audio: bool = True
     upload_startframes: bool = True
     anchors: WorkflowAnchorConfig = WorkflowAnchorConfig()
+    render_plan_path: Path | None = None
 
 
 class ImageRenderBackend(Protocol):

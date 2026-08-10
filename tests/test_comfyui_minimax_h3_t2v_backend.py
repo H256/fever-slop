@@ -567,12 +567,26 @@ class RenderVideoTests(unittest.TestCase):
         """workflow.json is written to the per-scene directory."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            project = tmp_path / "project"
+            output = project / "output" / "render" / "scenes"
+            plan = project / "output" / "render" / "plans" / "references.json"
+            plan.parent.mkdir(parents=True)
+            plan.write_text("[]", encoding="utf-8")
+            template = project / "workflows" / "t2v.json"
+            template.parent.mkdir()
+            template.write_text("{}", encoding="utf-8")
+            start = project / "input" / "start.png"
+            end = project / "input" / "end.png"
+            start.parent.mkdir()
+            start.write_bytes(b"start")
+            end.write_bytes(b"end")
             uploader = FakeAssetUploader()
             queue = FakeRenderQueue()
             backend = ComfyUIMiniMaxH3T2VBackend(
                 client=FakeClient(),
-                workflow_path=tmp_path / "wf.json",
-                output_dir=tmp_path / "output",
+                workflow_path=template,
+                output_dir=output,
+                project_dir=project,
                 asset_uploader=uploader,
                 render_queue=queue,
                 postprocess=False,
@@ -580,20 +594,36 @@ class RenderVideoTests(unittest.TestCase):
                 workflow=_t2v_workflow(),
             )
             request = VideoRenderRequest(
-                scene={"scene": 3, "description": "Test"},
+                scene={
+                    "scene": 3,
+                    "description": "Test",
+                    "keyframes": {
+                        "startframe_path": start,
+                        "endframe_path": end,
+                    },
+                },
                 scene_number=3,
                 prompt="Test prompt",
-                workflow_path=tmp_path / "wf.json",
-                output_dir=tmp_path / "output",
+                workflow_path=template,
+                render_plan_path=plan,
+                output_dir=output,
                 audio_file=tmp_path / "song.wav",
                 storyboard_dir=tmp_path / "storyboard",
                 upload_audio=False,
             )
             backend.render_video(request)
-            scene_workflow = tmp_path / "output" / "scene_0003" / "workflow.json"
+            scene_dir = output / "scene_0003"
+            scene_workflow = scene_dir / "workflow.json"
             self.assertTrue(scene_workflow.exists())
             data = json.loads(scene_workflow.read_text())
             self.assertIsInstance(data, dict)
+            manifest = json.loads((scene_dir / "manifest.json").read_text())
+            self.assertEqual("minimax-h3-t2v", manifest["pipeline"])
+            self.assertEqual("output/render/scenes/scene_0003/workflow.json", manifest["workflow"]["path"])
+            self.assertEqual(
+                ["startframe", "endframe"],
+                [asset["role"] for asset in manifest["assets"]],
+            )
 
 
 # ---------------------------------------------------------------------------

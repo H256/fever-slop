@@ -29,6 +29,16 @@ from feverslop.application.visual_consistency_preflight import (
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
+    def test_minimax_uses_canonical_scene_artifacts_without_debug_directory(self):
+        with TemporaryDirectory() as tmp:
+            for pipeline in ("minimax-h3-r2v", "minimax-h3-t2v"):
+                project = Path(tmp) / pipeline
+                project.mkdir()
+                state = self._state(project, pipeline=pipeline)
+
+                self.assertEqual(state.context.artifact_layout.scenes_dir, state.context.ltx_dir)
+                self.assertIsNone(state.context.ltx_debug_dir)
+
     def test_h3_segments_receive_reference_paths_from_enriched_plan(self):
         with TemporaryDirectory() as tmp:
             plan_path = Path(tmp) / "reference_plan.json"

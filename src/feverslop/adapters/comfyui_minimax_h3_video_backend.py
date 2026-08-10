@@ -10,9 +10,11 @@ from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.minimax_h3_frames import _frames_from_duration as _frames_from_duration_
+from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.config.video_settings import VideoSettings
+from feverslop.ports.rendering import VideoRenderRequest
 
 
 class ComfyUIMiniMaxH3VideoRenderBackend:
@@ -175,6 +177,69 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         H3 output is a single MP4 with synced audio+video; ffmpeg trims both streams.
         """
         return self.postprocessor.trim_clip(spec)
+
+    def _write_scene_manifest(
+        self,
+        request: VideoRenderRequest,
+        workflow_path: Path,
+        *,
+        pipeline: str,
+        workflow: dict,
+        assets: list[tuple],
+    ) -> None:
+        if self.project_dir is None or request.render_plan_path is None:
+            return
+        scene = request.scene
+        SceneWorkflowManifest.create(
+            project_dir=self.project_dir,
+            scene=request.scene_number,
+            pipeline=pipeline,
+            workflow_path=workflow_path,
+            template_path=self.workflow_path,
+            render_plan_path=request.render_plan_path,
+            assets=assets,
+            seed=self._workflow_seed(workflow),
+            fps=int(scene.get("fps") or 24),
+            frame_count=int(scene.get("frame_count") or 0),
+            width=int(scene.get("width") or 0),
+            height=int(scene.get("height") or 0),
+        ).write(workflow_path.with_name("manifest.json"))
+
+    def ensure_scene_manifest(self, request: VideoRenderRequest) -> None:
+        scene_dir = self.output_dir / f"scene_{request.scene_number:04}"
+        workflow_path = scene_dir / "workflow.json"
+        manifest_path = scene_dir / "manifest.json"
+        if manifest_path.is_file() or not workflow_path.is_file():
+            return
+        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+        self._write_scene_manifest(
+            request,
+            workflow_path,
+            pipeline=self.pipeline_name,
+            workflow=workflow,
+            assets=self._manifest_assets(request),
+        )
+
+    def _manifest_assets(self, request: VideoRenderRequest) -> list[tuple]:
+        return []
+
+    @staticmethod
+    def _workflow_seed(workflow: dict) -> int:
+        _, seed_node = WorkflowPatcher(workflow).find_node_by_meta_title("#SEED")
+        inputs = seed_node.get("inputs", {})
+        for name in ("noise_seed", "seed", "value"):
+            if name in inputs:
+                return int(inputs[name])
+        raise ValueError("MiniMax workflow #SEED node has no seed input")
+
+    @staticmethod
+    def _reference_asset(role: str, path: str | Path) -> tuple:
+        source = Path(path)
+        comfy_name = (
+            "feverslop/references/"
+            + ComfyUIVideoAssetUploader.content_addressed_name(source)
+        )
+        return role, source, comfy_name
 
     def build_workflow(self, scene: dict, **kwargs) -> dict:
         """Build a patched workflow dict for rendering.
