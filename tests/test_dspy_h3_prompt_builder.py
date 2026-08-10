@@ -106,6 +106,30 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             )
 
         self.assertEqual("http://llm.elysium.lan/v1", lm_factory.call_args.kwargs["api_base"])
+        self.assertFalse(lm_factory.call_args.kwargs["cache"])
+
+    def test_generator_passes_dspy_cache_setting_to_lm(self):
+        class Client:
+            base_url = "http://llm.elysium.lan/v1"
+            api_key = "none-needed"
+
+        class LLM:
+            client = Client()
+            model = "gemma4-26b-a4b"
+            temperature = 0.75
+            max_tokens = 16384
+            dspy_cache = True
+
+        guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
+        with patch("dspy.LM") as lm_factory:
+            VideoPromptGenerator(
+                base_guide_path=guides / "minimax-h3-base.md",
+                reference_guide_path=guides / "minimax-h3-references.md",
+                llm=LLM(),
+            )
+
+        self.assertTrue(lm_factory.call_args.kwargs["cache"])
+
     def test_reference_limits_use_plural_picture_field(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         generator.limits = ReferenceLimits()
