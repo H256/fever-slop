@@ -3,6 +3,7 @@ import unittest
 from feverslop.errors import (
     FeverSlopAdaptationError,
     FeverSlopConfigError,
+    FeverSlopDataError,
     FeverSlopError,
     FeverSlopLMLError,
     FeverSlopRenderError,
@@ -20,6 +21,7 @@ class FeverSlopErrorHierarchyTests(unittest.TestCase):
             FeverSlopWorkflowError,
             FeverSlopValidationError,
             FeverSlopAdaptationError,
+            FeverSlopDataError,
         ]
         for cls in subclasses:
             with self.subTest(cls=cls.__name__):
@@ -36,6 +38,7 @@ class FeverSlopErrorHierarchyTests(unittest.TestCase):
             FeverSlopWorkflowError,
             FeverSlopValidationError,
             FeverSlopAdaptationError,
+            FeverSlopDataError,
         ]:
             with self.subTest(cls=cls.__name__):
                 try:

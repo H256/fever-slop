@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.errors import FeverSlopDataError
 from feverslop.pipeline.render_plan_builder import (
     DetailListPicker,
     build_original_style_i2v_prompt,
@@ -538,6 +539,195 @@ class BuildRenderPlanTests(unittest.TestCase):
             plan = json.loads(output_path.read_text(encoding="utf-8"))
 
             self.assertEqual([60, 60, 59], [scene["frame_count"] for scene in plan])
+
+
+class TestFeverSlopDataError(unittest.TestCase):
+    def test_is_fever_slop_subclass(self):
+        from feverslop.errors import FeverSlopError
+        self.assertTrue(issubclass(FeverSlopDataError, FeverSlopError))
+
+
+def _minimal_scene(scene_num=1, **overrides):
+    """Build a minimal valid scene dict. Override kwargs to remove keys for testing."""
+    base = {
+        "scene": scene_num,
+        "duration": 2.0,
+        "start": 0.0,
+        "end": 2.0,
+        "zimage_prompt": "a test scene",
+        "segment_id": f"seg_{scene_num}",
+        "type": "vocals",
+        "lyrics": "",
+        "base_concept": "",
+        "camera_motion": "",
+        "character_motion": "",
+    }
+    base.update(overrides)
+    return base
+
+
+def _minimal_relay(scene_num=1, **overrides):
+    """Build a minimal relay scene dict."""
+    base = {
+        "scene": scene_num,
+        "prompt_relay": [
+            {
+                "frame_start": 0,
+                "frame_end": 60,
+                "state": "singing",
+                "lyrics": "",
+                "text": "",
+            }
+        ],
+    }
+    if overrides:
+        base.update(overrides)
+    return base
+
+
+class TestDefensiveGuardsSceneKeys(unittest.TestCase):
+    """Verify that missing scene keys raise FeverSlopDataError with context."""
+
+    def _run_with_scenes(self, scenes, relays=None):
+        """Run build_render_plan with given scenes and relay data, return or raise."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            store = JsonArtifactStore()
+            settings = VideoSettings(width=1280, height=720, fps=30)
+
+            scenes_file = tmp / "scenes.json"
+            scenes_file.write_text(json.dumps(scenes))
+
+            if relays is None:
+                relays = [_minimal_relay(s.get("scene", 1)) for s in scenes]
+            relay_file = tmp / "relay.json"
+            relay_file.write_text(json.dumps(relays))
+
+            output = tmp / "render_plan.json"
+            return build_render_plan(
+                scenes_file, relay_file, output, settings, artifact_store=store
+            )
+
+    def test_missing_scene_key_raises_data_error(self):
+        scene = _minimal_scene()
+        del scene["scene"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_scenes([scene], [])
+        self.assertIn("'scene'", str(ctx.exception))
+
+    def test_missing_duration_raises_data_error(self):
+        scene = _minimal_scene()
+        del scene["duration"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_scenes([scene])
+        self.assertIn("'duration'", str(ctx.exception))
+
+    def test_missing_start_raises_data_error(self):
+        scene = _minimal_scene()
+        del scene["start"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_scenes([scene])
+        self.assertIn("'start'", str(ctx.exception))
+
+    def test_missing_end_raises_data_error(self):
+        scene = _minimal_scene()
+        del scene["end"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_scenes([scene])
+        self.assertIn("'end'", str(ctx.exception))
+
+    def test_missing_zimage_prompt_raises_data_error(self):
+        scene = _minimal_scene()
+        del scene["zimage_prompt"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_scenes([scene])
+        self.assertIn("'zimage_prompt'", str(ctx.exception))
+
+    def test_missing_segment_id_raises_data_error(self):
+        scene = _minimal_scene()
+        del scene["segment_id"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_scenes([scene])
+        self.assertIn("'segment_id'", str(ctx.exception))
+
+    def test_missing_type_raises_data_error(self):
+        scene = _minimal_scene()
+        del scene["type"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_scenes([scene])
+        self.assertIn("'type'", str(ctx.exception))
+
+
+class TestDefensiveGuardsRelayKeys(unittest.TestCase):
+    """Verify that missing relay keys raise FeverSlopDataError with context."""
+
+    def _run_with_relay(self, scenes, relays):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            store = JsonArtifactStore()
+            settings = VideoSettings(width=1280, height=720, fps=30)
+
+            (tmp / "scenes.json").write_text(json.dumps(scenes))
+            (tmp / "relay.json").write_text(json.dumps(relays))
+            output = tmp / "render_plan.json"
+            return build_render_plan(
+                tmp / "scenes.json", tmp / "relay.json", output, settings,
+                artifact_store=store,
+            )
+
+    def test_missing_relay_frame_start_raises_data_error(self):
+        relay = _minimal_relay()
+        del relay["prompt_relay"][0]["frame_start"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_relay([_minimal_scene()], [relay])
+        self.assertIn("'frame_start'", str(ctx.exception))
+
+    def test_missing_relay_frame_end_raises_data_error(self):
+        relay = _minimal_relay()
+        del relay["prompt_relay"][0]["frame_end"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_relay([_minimal_scene()], [relay])
+        self.assertIn("'frame_end'", str(ctx.exception))
+
+    def test_missing_relay_state_raises_data_error(self):
+        relay = _minimal_relay()
+        del relay["prompt_relay"][0]["state"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_relay([_minimal_scene()], [relay])
+        self.assertIn("'state'", str(ctx.exception))
+
+    def test_missing_relay_scene_key_in_relay_by_scene(self):
+        """When relay scene data has no 'scene' key, FeverSlopDataError at relay_by_scene."""
+        relay = _minimal_relay()
+        del relay["scene"]
+        with self.assertRaises(FeverSlopDataError) as ctx:
+            self._run_with_relay([_minimal_scene()], [relay])
+        self.assertIn("'scene'", str(ctx.exception))
+
+
+class TestDefensiveGuardsValidInput(unittest.TestCase):
+    """Verify valid input produces render plan without errors."""
+
+    def test_valid_input_produces_plan(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            store = JsonArtifactStore()
+            settings = VideoSettings(width=1280, height=720, fps=30)
+
+            scenes = [_minimal_scene(1)]
+            relays = [_minimal_relay(1)]
+            (tmp / "scenes.json").write_text(json.dumps(scenes))
+            (tmp / "relay.json").write_text(json.dumps(relays))
+            output = tmp / "render_plan.json"
+
+            result = build_render_plan(
+                tmp / "scenes.json", tmp / "relay.json", output, settings,
+                artifact_store=store,
+            )
+            self.assertTrue(result.exists())
+            data = json.loads(result.read_text())
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["scene"], 1)
 
 
 if __name__ == "__main__":
