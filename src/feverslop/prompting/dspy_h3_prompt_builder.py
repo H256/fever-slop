@@ -94,6 +94,94 @@ def _safe_error_message(error: BaseException) -> str:
     return message[:1000]
 
 
+_H3_PROMPT_SECTIONS = (
+    "subject_definitions",
+    "summary",
+    "retention_analysis",
+    "detailed_description",
+    "overall_soundscape",
+    "non_diegetic_music",
+)
+_H3_SECTION_PATTERN = re.compile(
+    r"^(subject_definitions|summary|retention_analysis|detailed_description|"
+    r"overall_soundscape|non_diegetic_music):",
+    re.MULTILINE,
+)
+
+
+def _repair_audio_references(prompt: str, references: list[dict[str, str]]) -> str:
+    """Restore audio_reuse semantics omitted by a sectioned DSPy H3 prompt."""
+    audio_references = [
+        reference
+        for reference in references
+        if reference["kind"] == "audio" and reference["role"] == "audio_reuse"
+    ]
+    if not audio_references:
+        return prompt
+
+    matches = list(_H3_SECTION_PATTERN.finditer(prompt))
+    if [match.group(1) for match in matches] != list(_H3_PROMPT_SECTIONS):
+        return prompt
+
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(prompt)
+        sections[match.group(1)] = prompt[match.end():next_start]
+    labels = [reference["label"] for reference in audio_references]
+    label_text = " and ".join(labels)
+
+    def append(section: str, text: str, *, inline: bool = False) -> None:
+        if text not in sections[section]:
+            separator = " " if inline else "\n"
+            sections[section] = f"{sections[section].rstrip()}{separator}{text}\n\n"
+
+    for reference in audio_references:
+        label = reference["label"]
+        definition = f"{label} is the synchronized {reference['name']} audio reference and is reused for the scene."
+        definition_pattern = re.compile(rf"(?m)^{re.escape(label)}[^\n]*(?:\n|$)")
+        definition_lines = definition_pattern.findall(sections["subject_definitions"])
+        if not any("reused" in line.lower() for line in definition_lines):
+            sections["subject_definitions"] = definition_pattern.sub("", sections["subject_definitions"])
+            append(
+                "subject_definitions",
+                definition,
+            )
+        retention_pattern = re.compile(rf"(?m)^{re.escape(label)}:[^\n]*(?:\n|$)")
+        retention_lines = retention_pattern.findall(sections["retention_analysis"])
+        if not any("partially_copy" in line for line in retention_lines):
+            sections["retention_analysis"] = retention_pattern.sub("", sections["retention_analysis"])
+            append(
+                "retention_analysis",
+                f"{label}: partially_copy - the synchronized {reference['name']} audio is reused for this scene.",
+            )
+
+    if "audio reuse" not in sections["summary"].lower():
+        summary = sections["summary"]
+        task_type = re.search(r"\[([^\]]+)\]", summary)
+        if task_type:
+            sections["summary"] = (
+                f"{summary[:task_type.start()]}[{task_type.group(1)} + audio reuse]"
+                f"{summary[task_type.end():]}"
+            )
+        else:
+            sections["summary"] = f"\n[audio reuse]{summary}"
+    if not all(label in sections["summary"] for label in labels):
+        append("summary", f"Audio reuse follows {label_text}.", inline=True)
+
+    behavior = f"The synchronized audio behavior follows {label_text}."
+    for section in ("detailed_description", "overall_soundscape"):
+        if not all(label in sections[section] for label in labels):
+            append(section, behavior, inline=True)
+
+    non_diegetic = f"The synchronized audio references are scene inputs, not non-diegetic music: {label_text}."
+    if non_diegetic not in sections["non_diegetic_music"]:
+        if sections["non_diegetic_music"].strip() == "N/A":
+            sections["non_diegetic_music"] = "\n"
+        append("non_diegetic_music", non_diegetic, inline=True)
+
+    return "".join(f"{section}:{sections[section]}" for section in _H3_PROMPT_SECTIONS).strip()
+
+
 class DspyH3PromptBuilder:
     """Adapter around the DSPy scene generator used by the H3 R2V pipeline."""
 
@@ -173,7 +261,10 @@ class DspyH3PromptBuilder:
                 generated.setdefault("dspy_error", safe_error)
             else:
                 generated = {"dspy_error": safe_error}
-        result = {"prompt": str(prompt).strip(), "references": references}
+        result = {
+            "prompt": _repair_audio_references(str(prompt).strip(), references),
+            "references": references,
+        }
         if isinstance(generated, dict) and generated.get("dspy_error"):
             result["dspy_error"] = generated["dspy_error"]
         return result

@@ -74,6 +74,25 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual(4, len(edit_backend.requests))
             self.assertTrue(all(request.reference_image.name == "hero.png" for request in edit_backend.requests))
 
+    def test_generator_uses_configured_reference_image_resolution(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=backend,
+                output_dir=Path(temp_dir),
+                reference_image_size=(2048, 1152),
+            )
+
+            generator.generate_subject_bible(
+                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara")
+            )
+            generator.generate_location_bible(
+                ReferenceLocation(id="station", name="Station", image_prompt="abandoned station")
+            )
+
+        self.assertEqual((1152, 2048), (backend.requests[0].width, backend.requests[0].height))
+        self.assertEqual((2048, 1152), (backend.requests[5].width, backend.requests[5].height))
+
     def test_generator_uses_short_reference_based_prompts_for_actor_edit_views(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
