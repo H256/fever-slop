@@ -74,8 +74,8 @@ class LocalOpenAIClient:
 
     def complete_prompt(
         self,
+        system_prompt: str,
         prompt: str,
-        system_prompt: str | None = None,
         timeout: float | None = None,
     ) -> str:
         messages = []

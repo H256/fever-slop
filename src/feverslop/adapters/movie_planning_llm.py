@@ -37,8 +37,8 @@ class LLMMoviePlanner:
 
     def generate_story_arch(self, *, title: str, source_type: str, story_text: str, desired_length: float) -> StoryArch:
         raw = self.llm.complete_prompt(
-            _story_arch_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length),
             system_prompt="You are a film writer. Return ONLY valid JSON.",
+            prompt=_story_arch_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length),
         )
         data = extract_json_object(raw)
         beats = data.get("beats") or []
@@ -50,8 +50,8 @@ class LLMMoviePlanner:
 
     def generate_movie_bible(self, *, title: str, source_type: str, story_text: str, desired_length: float, story_arch: StoryArch, config: dict) -> MovieBible:
         raw = self.llm.complete_prompt(
-            _movie_bible_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, story_arch=story_arch, config=config),
             system_prompt="You are a film development producer. Return ONLY valid JSON.",
+            prompt=_movie_bible_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, story_arch=story_arch, config=config),
         )
         data = extract_json_object(raw)
         bible = _movie_bible_from_data(
@@ -75,8 +75,8 @@ class LLMMoviePlanner:
         location_guide, _ = _krea_reference_guides(self.reference_hero_workflow)
         try:
             raw = self.llm.complete_prompt(
-                _refine_location_prompts_prompt(locations, source_text, guide=location_guide),
                 system_prompt="You are a production designer. Return ONLY valid JSON.",
+                prompt=_refine_location_prompts_prompt(locations, source_text, guide=location_guide),
             )
             data = extract_json_object(raw)
         except Exception:
@@ -107,8 +107,8 @@ class LLMMoviePlanner:
         _, actor_guide = _krea_reference_guides(self.reference_hero_workflow)
         try:
             raw = self.llm.complete_prompt(
-                _refine_actor_prompts_prompt(actors, source_text, premise, guide=actor_guide),
                 system_prompt="You are a character designer. Return ONLY valid JSON.",
+                prompt=_refine_actor_prompts_prompt(actors, source_text, premise, guide=actor_guide),
             )
             data = extract_json_object(raw)
         except Exception:
@@ -135,21 +135,22 @@ class LLMMoviePlanner:
 
     def generate_movie_continuity_plan(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, shots: tuple[CinematicShot, ...], config: dict) -> dict:
         raw = self.llm.complete_prompt(
-            _movie_continuity_plan_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, shots=shots, config=config),
             system_prompt="You are a film continuity supervisor. Return ONLY valid JSON.",
+            prompt=_movie_continuity_plan_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, shots=shots, config=config),
         )
         return extract_json_object(raw)
 
     def generate_movie_story_design(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, config: dict) -> dict:
         raw = self.llm.complete_prompt(
-            _movie_story_design_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, story_arch=story_arch, config=config),
             system_prompt="You are a dramaturg and story editor. Return ONLY valid JSON.",
+            prompt=_movie_story_design_prompt(title=title, source_type=source_type, story_text=story_text, desired_length=desired_length, bible=bible, story_arch=story_arch, config=config),
         )
         return extract_json_object(raw)
 
     def generate_movie_screenplay(self, *, title: str, source_type: str, story_text: str, desired_length: float, bible: MovieBible, story_arch: StoryArch, story_design, config: dict) -> dict:
         raw = self.llm.complete_prompt(
-            _movie_screenplay_prompt(
+            system_prompt="You are a film screenwriter. Return ONLY valid JSON.",
+            prompt=_movie_screenplay_prompt(
                 title=title,
                 source_type=source_type,
                 story_text=story_text,
@@ -159,14 +160,13 @@ class LLMMoviePlanner:
                 story_design=story_design,
                 config=config,
             ),
-            system_prompt="You are a film screenwriter. Return ONLY valid JSON.",
         )
         return extract_json_object(raw)
 
     def generate_movie_narrative_plan(self, *, title: str, source_type: str, desired_length: float, bible: MovieBible, screenplay, config: dict) -> dict:
         raw = self.llm.complete_prompt(
-            _movie_narrative_plan_prompt(title=title, source_type=source_type, desired_length=desired_length, bible=bible, screenplay=screenplay, config=config),
             system_prompt="You are a film story editor. Return ONLY valid JSON.",
+            prompt=_movie_narrative_plan_prompt(title=title, source_type=source_type, desired_length=desired_length, bible=bible, screenplay=screenplay, config=config),
         )
         return extract_json_object(raw)
 
@@ -182,7 +182,8 @@ class LLMMoviePlanner:
         max_duration: float = 20.0,
     ) -> tuple[CinematicShot, ...]:
         raw = self.llm.complete_prompt(
-            _shot_plan_from_bible_prompt(
+            system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
+            prompt=_shot_plan_from_bible_prompt(
                 bible=bible,
                 screenplay=screenplay,
                 desired_length=desired_length,
@@ -191,7 +192,6 @@ class LLMMoviePlanner:
                 min_duration=min_duration,
                 max_duration=max_duration,
             ),
-            system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
         )
         data = extract_json_object(raw)
         shots = data.get("shots") or []
@@ -224,7 +224,8 @@ class LLMMoviePlanner:
         max_duration: float = 20.0,
     ) -> tuple[CinematicShot, ...]:
         raw = self.llm.complete_prompt(
-            _shot_plan_prompt(
+            system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
+            prompt=_shot_plan_prompt(
                 story_arch=story_arch,
                 desired_length=desired_length,
                 width=width,
@@ -232,7 +233,6 @@ class LLMMoviePlanner:
                 min_duration=min_duration,
                 max_duration=max_duration,
             ),
-            system_prompt="You are a film director and shot planner. Return ONLY valid JSON.",
         )
         data = extract_json_object(raw)
         shots = data.get("shots") or []
