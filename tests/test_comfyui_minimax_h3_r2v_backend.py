@@ -1379,6 +1379,28 @@ class AudioPromptSuffixTests(unittest.TestCase):
         self.assertIn("audio_transfer", suffix)
         self.assertIn("<Audio 2>", suffix)
         self.assertIn("full_mix", suffix)
+
+    def test_build_audio_suffix_matches_project_relative_stem_tags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            full_mix = project_dir / "input" / "full_mix.wav"
+            backend = ComfyUIMiniMaxH3R2VBackend(
+                client=FakeClient(),
+                workflow_path=Path("/tmp/wf.json"),
+                output_dir=Path("/tmp/out"),
+                asset_uploader=FakeAssetUploader(),
+                workflow=_native_r2v_workflow(),
+                project_dir=project_dir,
+            )
+
+            suffix = backend._build_audio_prompt_suffix(
+                scene={"references": {"_stem_audio_tags": {
+                    "input/full_mix.wav": "full_mix - original song",
+                }}},
+                ref_audio_paths=[full_mix],
+            )
+
+            self.assertIn("full_mix - original song", suffix)
 # ---------------------------------------------------------------------------
 # _resolve_ref_video_paths tests
 # ---------------------------------------------------------------------------
@@ -1971,6 +1993,30 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
             self.assertEqual(len(result), 2)
             self.assertEqual(result[0], vocal_path)
             self.assertEqual(result[1], fullmix_path)
+
+    def test_resolves_project_relative_stem_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            vocal_path = project_dir / "output" / "stems" / "vocals.wav"
+            vocal_path.parent.mkdir(parents=True)
+            vocal_path.write_bytes(b"fake audio")
+            backend = ComfyUIMiniMaxH3R2VBackend(
+                client=FakeClient(),
+                workflow_path=Path("/tmp/wf.json"),
+                output_dir=Path("/tmp/out"),
+                asset_uploader=FakeAssetUploader(),
+                workflow=_native_r2v_workflow(),
+                project_dir=project_dir,
+            )
+
+            result = backend._resolve_stem_audio_paths({
+                "stem_audio": {
+                    "stems": ["vocals"],
+                    "paths": {"vocals": "output/stems/vocals.wav"},
+                },
+            })
+
+            self.assertEqual([vocal_path], result)
 
     def test_instance_override(self):
         """Instance audio_ref_stems overrides scene-level stems list."""

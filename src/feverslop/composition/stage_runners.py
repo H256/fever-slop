@@ -317,6 +317,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         stem_list=stem_list,
         input_audio=input_audio,
         stem_files=stem_files,
+        project_dir=config.project_dir,
     )
     if config.video_pipeline == "minimax-h3-r2v":
         _preserve_enriched_reference_paths(
