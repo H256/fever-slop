@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import sys
 from typing import Any, Callable
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
@@ -9,6 +11,34 @@ from feverslop.ports.generate_pipeline import (
     StemSeparatorFactory,
     VocalTimelineAnalyzerFactory,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _close_audio_component(component: Any, model_name: str, reporter: Any) -> None:
+    close = getattr(component, "close", None)
+    if not callable(close):
+        return
+
+    active_error = sys.exception()
+    try:
+        close()
+    except Exception as exc:
+        logger.warning("%s model cleanup failed: %s", model_name, exc)
+        if active_error is None:
+            raise
+        try:
+            reporter.message(
+                f"[yellow]WARNING[/yellow] {model_name} model cleanup failed: {exc}"
+            )
+        except Exception:  # noqa: BLE001 - reporting must not replace the pipeline error
+            logger.debug("Failed to report %s cleanup warning", model_name, exc_info=True)
+        return
+
+    try:
+        reporter.message(f"[green]OK[/green] {model_name} model unloaded from memory")
+    except Exception:  # noqa: BLE001 - reporting is secondary to resource cleanup
+        logger.debug("Failed to report %s model cleanup", model_name, exc_info=True)
 
 
 class AudioTimelinePipeline:
@@ -54,10 +84,13 @@ class AudioTimelinePipeline:
 
         log_step("1. Demucs Stem Separation")
         separator = self.separator_factory(config)
-        files = run_spinner(
-            "Separating audio into vocals/drums/bass/other...",
-            lambda: separator.separate(config.input_audio, paths.stems_dir),
-        )
+        try:
+            files = run_spinner(
+                "Separating audio into vocals/drums/bass/other...",
+                lambda: separator.separate(config.input_audio, paths.stems_dir),
+            )
+        finally:
+            _close_audio_component(separator, "Demucs", reporter)
 
         reporter.table(
             "Generated Stems",
@@ -68,10 +101,13 @@ class AudioTimelinePipeline:
         log_step("2. Vocal Timeline Analysis")
         vocal_cfg = config.vocal_detection
         analyzer = self.vocal_analyzer_factory(config)
-        timeline = run_spinner(
-            "Detecting vocal activity and transcribing lyrics...",
-            lambda: analyzer.analyze(files["vocals"]),
-        )
+        try:
+            timeline = run_spinner(
+                "Detecting vocal activity and transcribing lyrics...",
+                lambda: analyzer.analyze(files["vocals"]),
+            )
+        finally:
+            _close_audio_component(analyzer, "Whisper", reporter)
         timeline = self.normalize_empty_vocals(timeline)
         timeline = self.merge_same_kind_segments(timeline, merge_gap=vocal_cfg.merge_gap)
         reference_lyrics = str(getattr(config, "lyrics", "") or "").strip()

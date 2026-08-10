@@ -32,7 +32,110 @@ class FakeGenerator:
         return self.result
 
 
+class IncompleteAudioPrompt:
+    rendered_prompt = """subject_definitions:
+<Subject 1> is a singer.
+
+summary: [reference generation] A singer performs.
+
+retention_analysis:
+<Subject 1>: fully_preserved - The singer remains recognizable.
+
+detailed_description: <Subject 1> sings in a close-up.
+
+overall_soundscape: A quiet room tone.
+
+non_diegetic_music: N/A"""
+
+
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_repairs_missing_audio_reuse_references_in_all_required_sections(self):
+        builder = DspyH3PromptBuilder(FakeGenerator(IncompleteAudioPrompt()))
+
+        result = builder.build_h3_prompt(
+            segment={"segment_id": "seg-1", "type": "vocals"},
+            concept="A singer performs.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+            audio_paths={
+                "vocals": Path("output/stems/vocals.wav"),
+                "full_mix": Path("input/song.mp3"),
+            },
+        )
+
+        prompt = result["prompt"]
+        self.assertIn("<Audio 1> is the synchronized vocals audio reference and is reused for the scene.", prompt)
+        self.assertIn("<Audio 2> is the synchronized full_mix audio reference and is reused for the scene.", prompt)
+        self.assertIn("[reference generation + audio reuse]", prompt)
+        self.assertIn("<Audio 1>: partially_copy", prompt)
+        self.assertIn("<Audio 2>: partially_copy", prompt)
+        self.assertIn("<Audio 1> and <Audio 2>", prompt)
+        self.assertIn("overall_soundscape: A quiet room tone. The synchronized audio behavior follows <Audio 1> and <Audio 2>.", prompt)
+        self.assertIn("non_diegetic_music: The synchronized audio references are scene inputs, not non-diegetic music: <Audio 1> and <Audio 2>.", prompt)
+
+    def test_repairs_existing_audio_labels_with_wrong_role(self):
+        weak = IncompleteAudioPrompt.rendered_prompt.replace(
+            "<Subject 1> is a singer.",
+            "<Subject 1> is a singer.\n<Audio 1> is a reference track.\n<Audio 2> is a reference track.",
+        ).replace(
+            "[reference generation]",
+            "[reference generation + audio reuse]",
+        ).replace(
+            "<Subject 1>: fully_preserved - The singer remains recognizable.",
+            "<Subject 1>: fully_preserved - The singer remains recognizable.\n<Audio 1>: reference - do not copy.\n<Audio 2>: reference - do not copy.",
+        )
+        generated = type("Generated", (), {"rendered_prompt": weak})()
+        builder = DspyH3PromptBuilder(FakeGenerator(generated))
+
+        result = builder.build_h3_prompt(
+            segment={"segment_id": "seg-1", "type": "instrumental"},
+            concept="A singer performs.",
+            scene_details={},
+            global_context={},
+            audio_paths={"vocals": Path("output/stems/vocals.wav"), "full_mix": Path("input/song.mp3")},
+        )
+
+        prompt = result["prompt"]
+        self.assertIn("<Audio 1> is the synchronized vocals audio reference and is reused for the scene.", prompt)
+        self.assertIn("<Audio 2>: partially_copy - the synchronized full_mix audio is reused for this scene.", prompt)
+        self.assertNotIn("is a reference track.", prompt)
+        self.assertNotIn("do not copy.", prompt)
+
+    def test_keeps_complete_audio_references_unchanged(self):
+        complete = IncompleteAudioPrompt.rendered_prompt.replace(
+            "<Subject 1> is a singer.",
+            "<Subject 1> is a singer.\n<Audio 1> is the synchronized vocals audio reference and is reused for the scene.\n<Audio 2> is the synchronized full_mix audio reference and is reused for the scene.",
+        ).replace(
+            "[reference generation]",
+            "[reference generation + audio reuse] A singer performs using <Audio 1> and <Audio 2>",
+        ).replace(
+            "<Subject 1>: fully_preserved - The singer remains recognizable.",
+            "<Subject 1>: fully_preserved - The singer remains recognizable.\n<Audio 1>: partially_copy - retained.\n<Audio 2>: partially_copy - retained.",
+        ).replace(
+            "<Subject 1> sings in a close-up.",
+            "<Subject 1> sings in a close-up with <Audio 1> and <Audio 2>.",
+        ).replace(
+            "A quiet room tone.",
+            "A quiet room tone with <Audio 1> and <Audio 2>. The synchronized audio behavior follows <Audio 1> and <Audio 2>.",
+        ).replace(
+            "non_diegetic_music: N/A",
+            "non_diegetic_music: The synchronized audio references are scene inputs, not non-diegetic music: <Audio 1> and <Audio 2>.",
+        )
+        generated = type("Generated", (), {"rendered_prompt": complete})()
+        builder = DspyH3PromptBuilder(FakeGenerator(generated))
+
+        result = builder.build_h3_prompt(
+            segment={"segment_id": "seg-1", "type": "vocals"},
+            concept="A singer performs.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+            audio_paths={"vocals": Path("output/stems/vocals.wav"), "full_mix": Path("input/song.mp3")},
+        )
+
+        self.assertEqual(complete, result["prompt"])
+
     def test_reference_prompt_accepts_audio_tags_in_non_diegetic_music(self):
         prompt = ReferenceVideoPrompt(
             subject_definitions=[],
@@ -129,6 +232,29 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             )
 
         self.assertTrue(lm_factory.call_args.kwargs["cache"])
+
+    def test_generator_passes_dspy_temperature_to_lm(self):
+        class Client:
+            base_url = "http://llm.elysium.lan/v1"
+            api_key = "none-needed"
+
+        class LLM:
+            client = Client()
+            model = "gemma4-26b-a4b"
+            temperature = 0.75
+            dspy_temperature = 0.25
+            max_tokens = 16384
+            dspy_cache = False
+
+        guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
+        with patch("dspy.LM") as lm_factory:
+            VideoPromptGenerator(
+                base_guide_path=guides / "minimax-h3-base.md",
+                reference_guide_path=guides / "minimax-h3-references.md",
+                llm=LLM(),
+            )
+
+        self.assertEqual(0.25, lm_factory.call_args.kwargs["temperature"])
 
     def test_reference_limits_use_plural_picture_field(self):
         generator = object.__new__(CoreVideoPromptGenerator)
