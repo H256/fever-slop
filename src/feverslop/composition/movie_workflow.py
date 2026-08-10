@@ -13,5 +13,5 @@ def patch_movie_msr_workflow(
 
     if not template_path.exists():
         raise FileNotFoundError(f"Movie MSR workflow template not found: {template_path}")
-    workflow = json.loads(template_path.read_text(encoding="utf-8"))
+    workflow = json.loads(template_path.read_text(encoding="utf-8-sig"))
     return MovieWorkflowPatcher().strip_audio_inputs(workflow)

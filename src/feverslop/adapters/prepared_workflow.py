@@ -381,7 +381,7 @@ class PreparedWorkflowRenderer:
             max_render_duration_seconds=self.max_render_duration_seconds,
             round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
-        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+        workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
         workflow = self._prepare_for_current_server(workflow, manifest)
         layout = SceneArtifactLayout(self.project_dir)
         raw_path = layout.scene_raw_video(manifest.scene)
