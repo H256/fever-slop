@@ -378,6 +378,34 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                 workflow_path=Path("workflows/test.json"),
             )
 
+    def test_validate_workflow_directory_recurses_into_subdirectories(self):
+        """validate_workflow_directory should find workflows in subdirectories."""
+        from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
+
+        resolver = ComfyUIModelResolver(
+            FakeObjectInfoClient(object_info_for(values=["folder/foo.safetensors"])),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflows = Path(temp_dir) / "workflows"
+            workflows.mkdir()
+            subdir = workflows / "old"
+            subdir.mkdir()
+            # File in root
+            (workflows / "a.json").write_text(
+                json.dumps(workflow_with("foo.safetensors")),
+                encoding="utf-8",
+            )
+            # File in subdirectory
+            (subdir / "b.json").write_text(
+                json.dumps(workflow_with("foo.safetensors")),
+                encoding="utf-8",
+            )
+
+            reports = resolver.validate_workflow_directory(workflows)
+
+        self.assertEqual(2, len(reports))
+        self.assertEqual(["a.json", "b.json"], [r["workflow"] for r in reports])
+
     def test_validate_workflow_directory_reports_resolved_files(self):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
