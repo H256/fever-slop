@@ -44,6 +44,28 @@ class ComfyUIClientTests(unittest.TestCase):
 
         self.assertEqual(12, client.prompt_timeout_seconds)
 
+    def test_http_requests_use_configured_prompt_timeout(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        with patch("requests.Session") as session_class:
+            session = MagicMock()
+            session.post.return_value.json.return_value = {"prompt_id": "prompt-1"}
+            session.get.return_value.json.return_value = {}
+            session_class.return_value = session
+
+            client = ComfyUIClient(base_url="http://comfy.example", prompt_timeout_seconds=900)
+            client.queue_prompt({})
+            client.get_history("prompt-1")
+            client.get_object_info()
+
+        session.post.assert_called_once_with(
+            "http://comfy.example/prompt",
+            json={"prompt": {}, "client_id": client.client_id},
+            timeout=900,
+        )
+        session.get.assert_any_call("http://comfy.example/history/prompt-1", timeout=900)
+        session.get.assert_any_call("http://comfy.example/object_info", timeout=900)
+
     def test_http_error_includes_response_body(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient, ComfyUIHTTPError
 
