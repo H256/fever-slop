@@ -12,6 +12,7 @@ from feverslop.composition.stage_runners import (
     _initial_render_plan,
     _read_h3_input,
     _run_main_pipeline_stage,
+    _run_mux_original_audio_stage,
     _run_msr_reference_sheets_stage,
     _preserve_enriched_reference_paths,
     _selected_video_workflows,
@@ -20,6 +21,35 @@ from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    @patch("feverslop.composition.stage_runners.VideoPostProcessor")
+    def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
+        with TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            video_only = temp / "video_only.mp4"
+            video_audio = temp / "video_audio.mp4"
+            final = temp / "movie.mp4"
+            input_audio = temp / "song.mp3"
+            video_only.touch()
+            video_audio.touch()
+
+            state = Namespace(
+                video_only_path=video_only,
+                context=Namespace(
+                    final_concat_video=video_only,
+                    final_concat_video_audio=video_audio,
+                    final_concat=final,
+                    input_audio=input_audio,
+                ),
+            )
+
+            _run_mux_original_audio_stage(state)
+
+        postprocessor_class.return_value.mux_original_audio.assert_called_once_with(
+            video_file=video_only,
+            audio_file=input_audio,
+            output_file=final,
+        )
+
     def test_minimax_r2v_prefers_base_plan_with_h3_prompts(self):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)

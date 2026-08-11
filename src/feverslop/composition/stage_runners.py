@@ -1382,20 +1382,42 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
 
 
 def _run_concat_video_only_stage(state: PipelineRunState) -> None:
-    from .config_loader import rewrite_concat_list, collect_render_plan_scene_clips
-    rewrite_concat_list(
-        collect_render_plan_scene_clips(
+    from .config_loader import (
+        collect_render_plan_scene_clips,
+        collect_render_plan_scene_raw_clips,
+        rewrite_concat_list,
+        write_concat_list,
+    )
+    clips = collect_render_plan_scene_clips(
             state.plan_for_next_step,
             state.context.ltx_dir,
             layout=state.context.artifact_layout,
-        ),
-        state.context.artifact_layout.final_dir,
     )
+    rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
         output_file=state.context.final_concat_video,
         video_only=True,
+    )
+    try:
+        raw_clips = collect_render_plan_scene_raw_clips(
+            state.plan_for_next_step,
+            state.context.ltx_dir,
+            layout=state.context.artifact_layout,
+        )
+    except FileNotFoundError:
+        raw_clips = clips
+    if raw_clips is not clips:
+        write_concat_list(raw_clips, state.context.artifact_layout.final_dir, "concat_raw.txt")
+    else:
+        state.context.concat_raw.write_text(
+            state.context.concat_list.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    postprocessor.concat_clips(
+        concat_list=state.context.concat_raw,
+        output_file=state.context.final_concat_video_audio,
+        video_only=False,
     )
 
 
