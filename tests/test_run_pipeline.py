@@ -15,12 +15,41 @@ from feverslop.composition.stage_runners import (
     _run_mux_original_audio_stage,
     _run_msr_reference_sheets_stage,
     _preserve_enriched_reference_paths,
+    _seed_reference_bindings,
     _selected_video_workflows,
 )
+from feverslop.config.project_config import ActorConfig, ProjectConfig, StructuredLocationConfig
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_seed_reference_bindings_assigns_actor_and_prompt_location(self):
+        with TemporaryDirectory() as temp_dir:
+            plan_path = Path(temp_dir) / "base.json"
+            plan_path.write_text(
+                json.dumps([{
+                    "scene": 1,
+                    "z_image": {"prompt": "A singer in the Necromantic Cathedral."},
+                }]),
+                encoding="utf-8",
+            )
+            config = ProjectConfig(
+                project_dir=Path(temp_dir),
+                project_name="test",
+                input_audio=Path(temp_dir) / "song.wav",
+                actors=(ActorConfig(id="singer", name="Singer"),),
+                structured_locations=(
+                    StructuredLocationConfig(id="mountain", name="Storm Mountain"),
+                    StructuredLocationConfig(id="cathedral", name="Necromantic Cathedral"),
+                ),
+            )
+
+            _seed_reference_bindings(plan_path, config)
+            scene = json.loads(plan_path.read_text(encoding="utf-8"))[0]
+
+        self.assertEqual(["singer"], scene["references"]["actor_ids"])
+        self.assertEqual("cathedral", scene["references"]["location_id"])
+
     @patch("feverslop.composition.stage_runners.VideoPostProcessor")
     def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:

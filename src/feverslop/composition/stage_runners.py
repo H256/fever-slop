@@ -186,6 +186,46 @@ def _read_h3_input(path: Path, label: str):
     return JsonArtifactStore().read_json(path)
 
 
+def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
+    """Ensure reference stages have actor/location IDs to resolve from config."""
+    if not plan_path.is_file():
+        return
+    store = JsonArtifactStore()
+    plan = store.read_json(plan_path)
+    actors = list(config.actors)
+    locations = list(config.structured_locations)
+    if not actors or not locations:
+        return
+    changed = False
+    for scene in plan:
+        references = scene.setdefault("references", {})
+        if not references.get("actor_ids"):
+            references["actor_ids"] = [actor.id for actor in actors[: config.max_scene_actors]]
+            changed = True
+        if not references.get("location_id"):
+            text = " ".join(
+                str(value)
+                for value in (
+                    scene.get("z_image", {}).get("prompt"),
+                    scene.get("ltx", {}).get("base_prompt"),
+                    scene.get("metadata", {}).get("base_concept"),
+                )
+                if value
+            ).lower()
+            matching = next(
+                (
+                    location
+                    for location in locations
+                    if location.id.lower() in text or location.name.lower() in text
+                ),
+                locations[0],
+            )
+            references["location_id"] = matching.id
+            changed = True
+    if changed:
+        store.write_json(plan_path, plan)
+
+
 def _discover_stem_files(stems_dir: Path) -> dict[str, Path] | None:
     if not stems_dir.is_dir():
         return None
@@ -237,6 +277,12 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     paths = config.paths
     stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
     if state.args.video_pipeline == "minimax-h3-r2v":
+        _seed_reference_bindings(state.plan_for_next_step, config)
+        state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
+            state.plan_for_next_step,
+            state.context.references_dir,
+            state.context.reference_plan,
+        )
         stage1_segments = _merge_reference_paths_into_h3_segments(
             stage1_segments,
             state.plan_for_next_step,
@@ -499,6 +545,12 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         raise ValueError(
             "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
         )
+    project_config_path = getattr(state.context, "project_config_path", None)
+    if project_config_path is not None:
+        _seed_reference_bindings(
+            state.plan_for_next_step,
+            ProjectConfig.load(project_config_path),
+        )
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
@@ -526,6 +578,12 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
             "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]"
         )
         _run_render_plan_stage(state)
+    project_config_path = getattr(state.context, "project_config_path", None)
+    if project_config_path is not None:
+        _seed_reference_bindings(
+            state.plan_for_next_step,
+            ProjectConfig.load(project_config_path),
+        )
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:

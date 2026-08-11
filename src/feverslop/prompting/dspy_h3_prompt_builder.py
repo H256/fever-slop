@@ -126,13 +126,17 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             end = min(end, duration)
         if end <= start:
             continue
-        shots.append({
+        shot = {
             "shot": index,
             "start_seconds": start,
             "end_seconds": end,
             "state": str(item.get("state") or "").strip(),
             "prompt": str(item.get("prompt") or "").strip(),
-        })
+        }
+        source_prompt = str(item.get("source_prompt") or "").strip()
+        if source_prompt:
+            shot["source_prompt"] = source_prompt
+        shots.append(shot)
     return shots
 
 
@@ -146,6 +150,9 @@ def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
             f"[Shot {shot['shot']}, {shot['start_seconds']:.2f}-{shot['end_seconds']:.2f}sec]"
             f"{state} {shot['prompt']}"
         )
+        source_prompt = shot.get("source_prompt")
+        if source_prompt and source_prompt != shot.get("prompt"):
+            lines.append(f"Required action and props to preserve: {source_prompt}")
     return "\n".join(lines)
 
 
@@ -306,8 +313,9 @@ class DspyH3PromptBuilder:
                 generated = {"dspy_error": safe_error}
         rendered_prompt = _repair_audio_references(str(prompt).strip(), references)
         relay_prompt = _format_relay_shots(relay_segments)
+        prompt_parts = [rendered_prompt, relay_prompt]
         result = {
-            "prompt": f"{rendered_prompt}\n\n{relay_prompt}" if relay_prompt else rendered_prompt,
+            "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
         if isinstance(generated, dict) and generated.get("dspy_error"):

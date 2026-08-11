@@ -55,6 +55,26 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_passes_general_steering_and_prompt_guidance_to_generator(self):
+        generator = FakeGenerator()
+        DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={"segment_id": "seg-1", "duration_seconds": 2, "fps": 24},
+            concept="A singer performs.",
+            scene_details={},
+            global_context={
+                "story_idea": "A singer crosses a mountain.",
+                "style": "Cinematic dark fantasy.",
+                "subject": "The same singer throughout.",
+                "steering": {"global": "Use only the configured locations."},
+                "prompt_guidance": {"camera_motion": "Use deliberate tracking shots."},
+            },
+            mode="base",
+        )
+
+        notes = generator.requests[0]["notes"]
+        self.assertIn("Use only the configured locations.", notes)
+        self.assertIn("Use deliberate tracking shots.", notes)
+        self.assertIn("A singer crosses a mountain.", notes)
     def test_minimax_movie_prompt_preserves_r2v_prompt_and_adds_relay_shots(self):
         prompt = _h3_movie_prompt({
             "h3": {"prompt": "Use <Picture 1> for the actor."},
@@ -90,13 +110,33 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
     def test_formats_relay_shots_with_minimax_syntax(self):
         shots = [
-            {"shot": 1, "start_seconds": 1.5, "end_seconds": 6.4, "state": "vocals", "prompt": "The singer turns."},
+            {
+                "shot": 1,
+                "start_seconds": 1.5,
+                "end_seconds": 6.4,
+                "state": "vocals",
+                "prompt": "The singer turns.",
+                "source_prompt": "The singer cooks a rabbit over the fire.",
+            },
         ]
 
-        self.assertEqual(
-            "Temporal shot directions:\n[Shot 1, 1.50-6.40sec] (vocals) The singer turns.",
-            _format_relay_shots(shots),
-        )
+        formatted = _format_relay_shots(shots)
+        self.assertIn("[Shot 1, 1.50-6.40sec] (vocals) The singer turns.", formatted)
+        self.assertIn("Required action and props to preserve: The singer cooks a rabbit over the fire.", formatted)
+
+    def test_normalizes_image_like_relay_without_losing_source_action(self):
+        shots = _normalize_relay_segments({
+            "duration_seconds": 4,
+            "fps": 24,
+            "ltx": {"prompt_relay": [{
+                "frame_start": 0,
+                "frame_end": 96,
+                "prompt": "Cinematic close-up, warm firelight, the singer cooks a rabbit over the fire.",
+                "source_prompt": "Cinematic close-up, warm firelight, the singer cooks a rabbit over the fire.",
+            }]},
+        })
+
+        self.assertIn("cooks a rabbit", _format_relay_shots(shots))
 
     def test_passes_relay_segments_to_generator_and_appends_timed_shots(self):
         generator = FakeGenerator()
@@ -355,6 +395,15 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             analyze_image.output_fields["analysis"].annotation,
             __import__("feverslop.prompting.dspy_h3_models", fromlist=["ImageAnalysis"]).ImageAnalysis,
         )
+
+    def test_relay_signature_inputs_are_optional_with_empty_array_default(self):
+        _, build_plan, render_base, render_reference = build_dspy_signatures()
+
+        for signature in (build_plan, render_base, render_reference):
+            field = signature.input_fields["relay_segments_json"]
+            self.assertFalse(field.is_required())
+            self.assertEqual(field.default, "[]")
+
     def test_integrated_guides_are_bundled_with_prompting_package(self):
         guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
 

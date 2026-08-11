@@ -31,7 +31,7 @@ def build_dspy_signatures():
         notes: str = dspy.InputField()
         strict_fidelity: bool = dspy.InputField()
         requested_music_intent: str = dspy.InputField()
-        relay_segments_json: str = dspy.InputField()
+        relay_segments_json: str = dspy.InputField(default="[]")
         plan: PromptPlan = dspy.OutputField()
 
     class RenderBasePrompt(dspy.Signature):
@@ -41,9 +41,10 @@ def build_dspy_signatures():
         user_prompt: str = dspy.InputField()
         plan_json: str = dspy.InputField()
         references_json: str = dspy.InputField()
+        notes: str = dspy.InputField()
         strict_fidelity: bool = dspy.InputField()
         music_intent: str = dspy.InputField()
-        relay_segments_json: str = dspy.InputField()
+        relay_segments_json: str = dspy.InputField(default="[]")
         result: BaseVideoPrompt = dspy.OutputField()
 
     class RenderReferencePrompt(dspy.Signature):
@@ -52,9 +53,10 @@ def build_dspy_signatures():
         user_prompt: str = dspy.InputField()
         plan_json: str = dspy.InputField()
         references_json: str = dspy.InputField()
+        notes: str = dspy.InputField()
         strict_fidelity: bool = dspy.InputField()
         music_intent: str = dspy.InputField()
-        relay_segments_json: str = dspy.InputField()
+        relay_segments_json: str = dspy.InputField(default="[]")
         summary: str = dspy.OutputField()
         retention_analysis: list[RetentionAnalysis] = dspy.OutputField()
         detailed_description: str = dspy.OutputField()
