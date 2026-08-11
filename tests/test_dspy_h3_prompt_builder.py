@@ -4,7 +4,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, _scene_references
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    _format_relay_shots,
+    _normalize_relay_segments,
+    _scene_references,
+)
+from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_models import (
@@ -49,6 +55,73 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_minimax_movie_prompt_preserves_r2v_prompt_and_adds_relay_shots(self):
+        prompt = _h3_movie_prompt({
+            "h3": {"prompt": "Use <Picture 1> for the actor."},
+            "duration_seconds": 6.4,
+            "fps": 24,
+            "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 154, "prompt": "The actor looks left."}]},
+            "references": {"actor_msr_paths": ["actors/bard_woman/views/msr_sheet.png"]},
+        })
+
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("actors/bard_woman/views/msr_sheet.png", prompt)
+        self.assertIn("[Shot 1, 0.00-6.40sec]", prompt)
+
+    def test_normalizes_relay_frames_to_timed_shots(self):
+        segment = {
+            "duration_seconds": 6.4,
+            "fps": 24,
+            "ltx": {
+                "prompt_relay": [
+                    {"frame_start": 36, "frame_end": 153, "state": "vocals", "prompt": "The singer turns."},
+                    {"frame_start": 153, "frame_end": 240, "state": "instrumental", "prompt": "The camera pulls back."},
+                ]
+            },
+        }
+
+        self.assertEqual(
+            [
+                {"shot": 1, "start_seconds": 1.5, "end_seconds": 6.375, "state": "vocals", "prompt": "The singer turns."},
+                {"shot": 2, "start_seconds": 6.375, "end_seconds": 6.4, "state": "instrumental", "prompt": "The camera pulls back."},
+            ],
+            _normalize_relay_segments(segment),
+        )
+
+    def test_formats_relay_shots_with_minimax_syntax(self):
+        shots = [
+            {"shot": 1, "start_seconds": 1.5, "end_seconds": 6.4, "state": "vocals", "prompt": "The singer turns."},
+        ]
+
+        self.assertEqual(
+            "Temporal shot directions:\n[Shot 1, 1.50-6.40sec] (vocals) The singer turns.",
+            _format_relay_shots(shots),
+        )
+
+    def test_passes_relay_segments_to_generator_and_appends_timed_shots(self):
+        generator = FakeGenerator()
+        builder = DspyH3PromptBuilder(generator)
+
+        result = builder.build_h3_prompt(
+            segment={
+                "segment_id": "seg-1",
+                "type": "vocals",
+                "duration_seconds": 6.4,
+                "fps": 24,
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 154, "prompt": "The singer turns."}]},
+                "references": {"actor_sheet_paths": ["actor.png"]},
+            },
+            concept="A singer performs.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertIn("relay_segments_json", generator.requests[0])
+        self.assertIn('"start_seconds": 0.0', generator.requests[0]["relay_segments_json"])
+        self.assertIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
+        self.assertIn("actor.png", " ".join(reference["source"] for reference in result["references"]))
+
     def test_repairs_missing_audio_reuse_references_in_all_required_sections(self):
         builder = DspyH3PromptBuilder(FakeGenerator(IncompleteAudioPrompt()))
 
