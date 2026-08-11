@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.config.project_config import ProjectConfig, ProjectPaths
+from feverslop.composition.config_loader import collect_render_plan_scene_raw_clips, write_concat_list
 
 
 class SceneArtifactLayoutTests(unittest.TestCase):
@@ -37,6 +38,8 @@ class SceneArtifactLayoutTests(unittest.TestCase):
         self.assertEqual(layout.scene_dir(5) / "final.mp4", layout.scene_final_video(5))
         self.assertEqual(project / "output" / "render" / "storyboard", layout.storyboard_dir)
         self.assertEqual(project / "output" / "render" / "final" / "video_only.mp4", layout.video_only)
+        self.assertEqual(project / "output" / "render" / "final" / "video_audio.mp4", layout.video_audio)
+        self.assertEqual(project / "output" / "render" / "final" / "concat_raw.txt", layout.concat_raw)
         self.assertEqual(project / "output" / "render" / "final" / "movie.mp4", layout.movie)
 
         with self.assertRaises(FrozenInstanceError):
@@ -57,6 +60,32 @@ class SceneArtifactLayoutTests(unittest.TestCase):
             new_clip.parent.mkdir(parents=True)
             new_clip.touch()
             self.assertEqual(new_clip, layout.find_scene_final_video(5, legacy_dirs=[legacy]))
+
+    def test_collects_raw_scene_clips_in_render_plan_order(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            layout = SceneArtifactLayout(project)
+            plan = layout.plans_dir / "base.json"
+            plan.parent.mkdir(parents=True)
+            plan.write_text('[{"scene": 2}, {"scene": 1}]', encoding="utf-8")
+            raw_2 = layout.scene_raw_video(2)
+            raw_1 = layout.scene_raw_video(1)
+            raw_2.parent.mkdir(parents=True)
+            raw_1.parent.mkdir(parents=True)
+            raw_2.touch()
+            raw_1.touch()
+
+            clips = collect_render_plan_scene_raw_clips(plan, layout.scenes_dir, layout=layout)
+            concat = write_concat_list(clips, layout.final_dir, "concat_raw.txt")
+
+            self.assertEqual([raw_2, raw_1], clips)
+            self.assertEqual(
+                [
+                    f"file '{raw_2.resolve().as_posix()}'",
+                    f"file '{raw_1.resolve().as_posix()}'",
+                ],
+                concat.read_text(encoding="utf-8").splitlines(),
+            )
 
     def test_legacy_fallback_supports_final_subdirectory(self):
         with TemporaryDirectory() as tmp:
