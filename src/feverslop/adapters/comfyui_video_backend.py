@@ -13,6 +13,7 @@ from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkf
 from feverslop.config.video_settings import VideoSettings
 from feverslop.errors import FeverSlopRenderError, FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
+from feverslop.utils.io import file_is_valid
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     build_audio_window_spec,
@@ -365,7 +366,7 @@ class ComfyUIVideoRenderBackend:
             scene_number = int(scene["scene"])
             final_output_path = self.final_output_dir / f"scene_{scene_number:04}.mp4"
 
-            if skip_existing and final_output_path.exists():
+            if skip_existing and file_is_valid(final_output_path):
                 rendered_files.append(final_output_path)
                 continue
 

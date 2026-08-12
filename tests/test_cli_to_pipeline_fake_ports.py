@@ -297,6 +297,33 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
             self.assertTrue((scene_dir / "manifest.json").is_file())
             self.assertEqual([], backend.requests)
 
+    def test_skip_existing_rejects_zero_byte_file(self):
+        """Zero-byte pre-existing files are NOT skipped; they trigger re-render."""
+        backend = FakeVideoBackend()
+        store = JsonArtifactStore()
+        use_case = RenderVideoScenesUseCase(backend=backend, artifact_store=store)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "render_plan.json"
+            plan_path.write_text(json.dumps(_render_plan_scenes()[:1]), encoding="utf-8")
+            # Pre-create a 0-byte output
+            bad_output = temp / "render/final/scene_0001.mp4"
+            bad_output.parent.mkdir(parents=True, exist_ok=True)
+            bad_output.write_bytes(b"")
+
+            use_case.execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=plan_path,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=temp / "song.mp3",
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "render",
+                    render_mode="single_prompt",
+                    skip_existing=True,
+                )
+            )
+            self.assertEqual(1, len(backend.requests))
+
     def test_scene_selection_limits_backend_calls(self):
         """scene_numbers filters which scenes reach the backend."""
         backend = FakeVideoBackend()

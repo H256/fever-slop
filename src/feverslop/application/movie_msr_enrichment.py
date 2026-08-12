@@ -21,6 +21,7 @@ from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import VisionLLMPort
+from feverslop.utils.io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def enrich_movie_render_plan_with_msr_prompts(
     ]
 
     output_path = movie_dir / "render_plan_msr.json"
-    output_path.write_text(json.dumps(enriched, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_json(output_path, enriched)
     return output_path
 
 

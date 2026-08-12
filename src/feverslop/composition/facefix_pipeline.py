@@ -30,6 +30,7 @@ from feverslop.domain.face_detection import (
 from feverslop.domain.facefix_rendering import FaceFixConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.reporting import ConsoleReporter
+from feverslop.utils.io import file_is_valid
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +246,7 @@ def _run_crop_facefix(
             continue
 
         final_facefix = scene_dir / "final_facefix.mp4"
-        if options.skip_existing and final_facefix.exists():
+        if options.skip_existing and file_is_valid(final_facefix):
             results.append(final_facefix)
             if reporter:
                 reporter.message(
