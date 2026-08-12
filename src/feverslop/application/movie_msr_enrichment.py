@@ -21,6 +21,7 @@ from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import VisionLLMPort
+from feverslop.errors import FeverSlopDataError
 from feverslop.utils.io import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -598,7 +599,14 @@ def _fps(bible: dict) -> int:
 def _read_json(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Movie pipeline artifact not found: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise FeverSlopDataError(f"Cannot read movie pipeline artifact: {path}: {exc}") from exc
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise FeverSlopDataError(f"Movie pipeline artifact contains invalid JSON: {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError(f"Movie pipeline artifact must be a JSON object: {path}")
     return data
