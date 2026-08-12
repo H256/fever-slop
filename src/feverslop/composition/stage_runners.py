@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import subprocess
 from tempfile import NamedTemporaryFile
 
@@ -1316,6 +1317,24 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     else not state.args.no_skip_existing
                 )
                 if not (skip_existing and final_path.is_file()):
+                    randomize_seed = bool(getattr(backend, "randomize_seed", False))
+                    if randomize_seed:
+                        scene_payload = scene.to_dict()
+                        scene_payload["seed"] = random.SystemRandom().randint(0, 2**63 - 1)
+                        plan_data = JsonArtifactStore().read_render_plan(state.plan_for_next_step)
+                        plan_data = [
+                            (
+                                scene_payload
+                                if int(item["scene"]) == scene.scene_number
+                                else item
+                            )
+                            for item in plan_data
+                        ]
+                        JsonArtifactStore().write_render_plan(
+                            state.plan_for_next_step,
+                            plan_data,
+                        )
+                        scene = RenderPlan.from_dicts([scene_payload]).scenes[0]
                     downstream = _continuity_downstream(
                         scene.scene_number,
                         handoff_predecessors,
@@ -1340,17 +1359,23 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                         selected_scenes=[scene],
                         backend=backend,
                     )
-                    if render_scene.to_dict() != scene.to_dict():
-                        materializer.prepare(
-                            WorkflowMaterializationRequest(
-                                scene=render_scene.to_dict(),
-                                prompt=render_scene.video_prompt,
-                                audio_file=state.context.input_audio,
-                                render_plan_path=state.plan_for_next_step,
-                                pipeline=state.args.video_pipeline,
+                    original_randomize_seed = backend.randomize_seed
+                    if randomize_seed:
+                        backend.randomize_seed = False
+                    try:
+                        if randomize_seed or render_scene.to_dict() != scene.to_dict():
+                            materializer.prepare(
+                                WorkflowMaterializationRequest(
+                                    scene=render_scene.to_dict(),
+                                    prompt=render_scene.video_prompt,
+                                    audio_file=state.context.input_audio,
+                                    render_plan_path=state.plan_for_next_step,
+                                    pipeline=state.args.video_pipeline,
+                                )
                             )
-                        )
-                    final_path = renderer.render(workflow)
+                        final_path = renderer.render(workflow)
+                    finally:
+                        backend.randomize_seed = original_randomize_seed
                     rendered_this_run.add(scene.scene_number)
                     if downstream:
                         _write_continuity_dirty(

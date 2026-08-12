@@ -843,6 +843,34 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             self.assertIsInstance(seed_node["inputs"]["noise_seed"], int)
             self.assertGreater(seed_node["inputs"]["noise_seed"], 100000)
 
+    def test_persisted_scene_seed_is_used(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "sheet.png").write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_minimal_ingredients_workflow()), encoding="utf-8")
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                seed_offset=50000,
+                postprocess=False,
+            )
+            workflow = backend.build_workflow(
+                {
+                    "scene": 1,
+                    "seed": 424242,
+                    "fps": 24,
+                    "frame_count": 49,
+                    "ingredients_scene_sheet": "sheet.png",
+                    "ltx": {},
+                },
+                prompt="prompt",
+            )
+
+            self.assertEqual(424242, workflow["4"]["inputs"]["noise_seed"])
+
     def test_render_video_flow(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

@@ -703,6 +703,15 @@ class BuildWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(50007, result["20"]["inputs"]["noise_seed"])
 
+    def test_persisted_scene_seed_overrides_legacy_offset(self):
+        backend = self._backend(workflow=_native_r2v_workflow())
+        backend.seed_offset = 50000
+        result = backend.build_workflow(
+            {"scene": 7, "seed": 424242, "references": {"actor_sheet_paths": ["/tmp/a.png"]}},
+            prompt="test",
+        )
+        self.assertEqual(424242, result["20"]["inputs"]["noise_seed"])
+
     def test_audio_included(self):
         backend = self._backend(workflow=_audio_r2v_workflow())
         result = backend.build_workflow(
