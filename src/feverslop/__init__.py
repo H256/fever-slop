@@ -2,187 +2,136 @@
 
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# Use cases (application layer)
-# ---------------------------------------------------------------------------
+import importlib.metadata
+import warnings
 
-from feverslop.application.movie import (
-    AutoProduceMovieUseCase,
-    ScaffoldMovieUseCase,
-)
+__version__: str = importlib.metadata.version(__name__)
 
-# ---------------------------------------------------------------------------
-# Application types
-# ---------------------------------------------------------------------------
+_LAZY_MAP: dict[str, tuple[str, str]] = {
+    # -- Use cases & application types (feverslop.application.movie) --
+    "AutoProduceMovieUseCase": ("feverslop.application.movie", "AutoProduceMovieUseCase"),
+    "ScaffoldMovieUseCase": ("feverslop.application.movie", "ScaffoldMovieUseCase"),
+    "MovieInput": ("feverslop.application.movie", "MovieInput"),
+    "MovieProductionResult": ("feverslop.application.movie", "MovieProductionResult"),
+    "MovieScaffoldResult": ("feverslop.application.movie", "MovieScaffoldResult"),
+    # -- Domain models (feverslop.domain.movie) --
+    "CinematicShot": ("feverslop.domain.movie", "CinematicShot"),
+    "MovieActor": ("feverslop.domain.movie", "MovieActor"),
+    "MovieAct": ("feverslop.domain.movie", "MovieAct"),
+    "MovieBible": ("feverslop.domain.movie", "MovieBible"),
+    "MovieCharacterArc": ("feverslop.domain.movie", "MovieCharacterArc"),
+    "MovieContinuityCharacterState": ("feverslop.domain.movie", "MovieContinuityCharacterState"),
+    "MovieContinuityLedger": ("feverslop.domain.movie", "MovieContinuityLedger"),
+    "MovieContinuityLocationState": ("feverslop.domain.movie", "MovieContinuityLocationState"),
+    "MovieContinuityPlan": ("feverslop.domain.movie", "MovieContinuityPlan"),
+    "MovieContinuityRule": ("feverslop.domain.movie", "MovieContinuityRule"),
+    "MovieContinuityStyleBible": ("feverslop.domain.movie", "MovieContinuityStyleBible"),
+    "MovieLocation": ("feverslop.domain.movie", "MovieLocation"),
+    "MovieNarrativeBeat": ("feverslop.domain.movie", "MovieNarrativeBeat"),
+    "MovieNarrativePlan": ("feverslop.domain.movie", "MovieNarrativePlan"),
+    "MovieProject": ("feverslop.domain.movie", "MovieProject"),
+    "MovieSceneBlueprint": ("feverslop.domain.movie", "MovieSceneBlueprint"),
+    "MovieSceneCard": ("feverslop.domain.movie", "MovieSceneCard"),
+    "MovieSceneContinuityPacket": ("feverslop.domain.movie", "MovieSceneContinuityPacket"),
+    "MovieScreenplayArtifact": ("feverslop.domain.movie", "MovieScreenplayArtifact"),
+    "MovieScreenplayScene": ("feverslop.domain.movie", "MovieScreenplayScene"),
+    "MovieSetupPayoff": ("feverslop.domain.movie", "MovieSetupPayoff"),
+    "MovieShotCard": ("feverslop.domain.movie", "MovieShotCard"),
+    "MovieStoryDesign": ("feverslop.domain.movie", "MovieStoryDesign"),
+    "MovieTurningPoint": ("feverslop.domain.movie", "MovieTurningPoint"),
+    "Screenplay": ("feverslop.domain.movie", "Screenplay"),
+    "StoryArch": ("feverslop.domain.movie", "StoryArch"),
+    # -- Reporter (feverslop.ports.reporting) --
+    "ConsoleReporter": ("feverslop.ports.reporting", "ConsoleReporter"),
+    "NullReporter": ("feverslop.ports.reporting", "NullReporter"),
+    "Reporter": ("feverslop.ports.reporting", "Reporter"),
+    # -- LLM ports (feverslop.ports.llm) --
+    "LLMPort": ("feverslop.ports.llm", "LLMPort"),
+    "StoryboardPromptTransformerPort": ("feverslop.ports.llm", "StoryboardPromptTransformerPort"),
+    "VisionLLMPort": ("feverslop.ports.llm", "VisionLLMPort"),
+    # -- Movie pipeline ports (feverslop.ports.movie) --
+    "MovieArtifactWriter": ("feverslop.ports.movie", "MovieArtifactWriter"),
+    "ReferenceGenerationPort": ("feverslop.ports.movie", "ReferenceGenerationPort"),
+    "ScenePlanningPort": ("feverslop.ports.movie", "ScenePlanningPort"),
+    "StoryGenerationPort": ("feverslop.ports.movie", "StoryGenerationPort"),
+    "VisualGenerationPort": ("feverslop.ports.movie", "VisualGenerationPort"),
+    # -- Artifact ports (feverslop.ports.artifacts) --
+    "ArtifactStore": ("feverslop.ports.artifacts", "ArtifactStore"),
+    "JsonArtifactStore": ("feverslop.ports.artifacts", "JsonArtifactStore"),
+    "RenderPlanStore": ("feverslop.ports.artifacts", "RenderPlanStore"),
+    "TextArtifactReaderWriter": ("feverslop.ports.artifacts", "TextArtifactReaderWriter"),
+    # -- Audio ports (feverslop.ports.audio) --
+    "AudioAnalyzerPort": ("feverslop.ports.audio", "AudioAnalyzerPort"),
+    # -- Full-auto ports (feverslop.ports.full_auto) --
+    "PipelineRunnerPort": ("feverslop.ports.full_auto", "PipelineRunnerPort"),
+    "ProjectScaffoldPort": ("feverslop.ports.full_auto", "ProjectScaffoldPort"),
+    "SongAudioGeneratorPort": ("feverslop.ports.full_auto", "SongAudioGeneratorPort"),
+    "SongBriefGeneratorPort": ("feverslop.ports.full_auto", "SongBriefGeneratorPort"),
+    # -- Generate-pipeline ports (feverslop.ports.generate_pipeline) --
+    "BeatImpactAnalyzerPort": ("feverslop.ports.generate_pipeline", "BeatImpactAnalyzerPort"),
+    "LyricAlignerPort": ("feverslop.ports.generate_pipeline", "LyricAlignerPort"),
+    "StemSeparatorPort": ("feverslop.ports.generate_pipeline", "StemSeparatorPort"),
+    "VocalTimelineAnalyzerPort": ("feverslop.ports.generate_pipeline", "VocalTimelineAnalyzerPort"),
+    # -- Post-processing ports (feverslop.ports.postprocessing) --
+    "PostProcessorPort": ("feverslop.ports.postprocessing", "PostProcessorPort"),
+    # -- Rendering ports (feverslop.ports.rendering) --
+    "ImageRenderBackend": ("feverslop.ports.rendering", "ImageRenderBackend"),
+    "ImageRenderRequest": ("feverslop.ports.rendering", "ImageRenderRequest"),
+    "RenderBackendConfig": ("feverslop.ports.rendering", "RenderBackendConfig"),
+    "VideoRenderBackend": ("feverslop.ports.rendering", "VideoRenderBackend"),
+    "VideoRenderRequest": ("feverslop.ports.rendering", "VideoRenderRequest"),
+    "WorkflowAnchorConfig": ("feverslop.ports.rendering", "WorkflowAnchorConfig"),
+    # -- Scene-document ports (feverslop.ports.scene_documents) --
+    "SceneDocumentConflict": ("feverslop.ports.scene_documents", "SceneDocumentConflict"),
+    "SceneDocumentPort": ("feverslop.ports.scene_documents", "SceneDocumentPort"),
+    "SceneDocumentSnapshot": ("feverslop.ports.scene_documents", "SceneDocumentSnapshot"),
+    "SceneLtxPromptField": ("feverslop.ports.scene_documents", "SceneLtxPromptField"),
+    "SceneMediaPort": ("feverslop.ports.scene_documents", "SceneMediaPort"),
+    # -- Workflow ports (feverslop.ports.workflow) --
+    "PreparedWorkflowRendererPort": ("feverslop.ports.workflow", "PreparedWorkflowRendererPort"),
+    "WorkflowBackendPort": ("feverslop.ports.workflow", "WorkflowBackendPort"),
+    "WorkflowMaterializationRequest": ("feverslop.ports.workflow", "WorkflowMaterializationRequest"),
+    "WorkflowMaterializerPort": ("feverslop.ports.workflow", "WorkflowMaterializerPort"),
+    # -- Domain utilities (feverslop.domain.movie_utils and slug_utils) --
+    "clean_visual_description": ("feverslop.domain.movie_utils", "clean_visual_description"),
+    "configured_actors": ("feverslop.domain.movie_utils", "configured_actors"),
+    "configured_locations": ("feverslop.domain.movie_utils", "configured_locations"),
+    "display_name": ("feverslop.domain.movie_utils", "display_name"),
+    "safe_id": ("feverslop.domain.movie_utils", "safe_id"),
+    "safe_id_list": ("feverslop.domain.movie_utils", "safe_id_list"),
+    "string_list": ("feverslop.domain.movie_utils", "string_list"),
+    "transition_from_previous": ("feverslop.domain.movie_utils", "transition_from_previous"),
+    "slugify_project_name": ("feverslop.domain.slug_utils", "slugify_project_name"),
+}
 
-from feverslop.application.movie import (
-    MovieInput,
-    MovieProductionResult,
-    MovieScaffoldResult,
-)
+_DEPRECATED: dict[str, str] = {}  # name -> deprecation message (populated when symbols are deprecated)
 
-# ---------------------------------------------------------------------------
-# Domain models
-# ---------------------------------------------------------------------------
 
-from feverslop.domain.movie import (
-    CinematicShot,
-    MovieActor,
-    MovieAct,
-    MovieBible,
-    MovieCharacterArc,
-    MovieContinuityCharacterState,
-    MovieContinuityLedger,
-    MovieContinuityLocationState,
-    MovieContinuityPlan,
-    MovieContinuityRule,
-    MovieContinuityStyleBible,
-    MovieLocation,
-    MovieNarrativeBeat,
-    MovieNarrativePlan,
-    MovieProject,
-    MovieSceneBlueprint,
-    MovieSceneCard,
-    MovieSceneContinuityPacket,
-    MovieScreenplayArtifact,
-    MovieScreenplayScene,
-    MovieSetupPayoff,
-    MovieShotCard,
-    MovieStoryDesign,
-    MovieTurningPoint,
-    Screenplay,
-    StoryArch,
-)
+def __getattr__(name: str):
+    """PEP 562 lazy loading of public API symbols."""
+    if name in _LAZY_MAP:
+        import importlib as _importlib
 
-# ---------------------------------------------------------------------------
-# Port protocols — reporting
-# ---------------------------------------------------------------------------
+        mod_name, attr_name = _LAZY_MAP[name]
+        mod = _importlib.import_module(mod_name)
+        val = getattr(mod, attr_name)
+        globals()[name] = val  # cache for subsequent access
 
-from feverslop.ports.reporting import (
-    ConsoleReporter,
-    NullReporter,
-    Reporter,
-)
+        if name in _DEPRECATED:
+            warnings.warn(_DEPRECATED[name], DeprecationWarning, stacklevel=2)
 
-# ---------------------------------------------------------------------------
-# Port protocols — LLM
-# ---------------------------------------------------------------------------
+        return val
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-from feverslop.ports.llm import (
-    LLMPort,
-    StoryboardPromptTransformerPort,
-    VisionLLMPort,
-)
 
-# ---------------------------------------------------------------------------
-# Port protocols — movie pipeline
-# ---------------------------------------------------------------------------
+def __dir__():
+    """Return all public API symbols."""
+    return list(_LAZY_MAP.keys()) + [
+        "__version__",
+        "__all__",
+        "__doc__",
+    ] + [k for k in globals() if not k.startswith("_") or k == "__version__"]
 
-from feverslop.ports.movie import (
-    MovieArtifactWriter,
-    ReferenceGenerationPort,
-    ScenePlanningPort,
-    StoryGenerationPort,
-    VisualGenerationPort,
-)
-
-# ---------------------------------------------------------------------------
-# Port protocols — artifacts
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.artifacts import (
-    ArtifactStore,
-    JsonArtifactStore,
-    RenderPlanStore,
-    TextArtifactReaderWriter,
-)
-
-# ---------------------------------------------------------------------------
-# Port protocols — audio
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.audio import AudioAnalyzerPort
-
-# ---------------------------------------------------------------------------
-# Port protocols — full auto
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.full_auto import (
-    PipelineRunnerPort,
-    ProjectScaffoldPort,
-    SongAudioGeneratorPort,
-    SongBriefGeneratorPort,
-)
-
-# ---------------------------------------------------------------------------
-# Port protocols — generate pipeline
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.generate_pipeline import (
-    BeatImpactAnalyzerPort,
-    LyricAlignerPort,
-    StemSeparatorPort,
-    VocalTimelineAnalyzerPort,
-)
-
-# ---------------------------------------------------------------------------
-# Port protocols — postprocessing
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.postprocessing import PostProcessorPort
-
-# ---------------------------------------------------------------------------
-# Port protocols — rendering
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.rendering import (
-    ImageRenderBackend,
-    ImageRenderRequest,
-    RenderBackendConfig,
-    VideoRenderBackend,
-    VideoRenderRequest,
-    WorkflowAnchorConfig,
-)
-
-# ---------------------------------------------------------------------------
-# Port protocols — scene documents
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.scene_documents import (
-    SceneDocumentConflict,
-    SceneDocumentPort,
-    SceneDocumentSnapshot,
-    SceneLtxPromptField,
-    SceneMediaPort,
-)
-
-# ---------------------------------------------------------------------------
-# Port protocols — workflow
-# ---------------------------------------------------------------------------
-
-from feverslop.ports.workflow import (
-    PreparedWorkflowRendererPort,
-    WorkflowBackendPort,
-    WorkflowMaterializationRequest,
-    WorkflowMaterializerPort,
-)
-
-# ---------------------------------------------------------------------------
-# Domain utilities
-# ---------------------------------------------------------------------------
-
-from feverslop.domain.movie_utils import (
-    clean_visual_description,
-    configured_actors,
-    configured_locations,
-    display_name,
-    safe_id,
-    safe_id_list,
-    string_list,
-    transition_from_previous,
-)
-
-from feverslop.domain.slug_utils import slugify_project_name
 
 # ---------------------------------------------------------------------------
 # Public API surface
