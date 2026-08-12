@@ -65,11 +65,11 @@ class RenderScene:
 
 @dataclass(frozen=True)
 class RenderPlan:
-    scenes: list[RenderScene]
+    scenes: tuple[RenderScene, ...]
 
     @classmethod
     def from_dicts(cls, scenes: list[dict]) -> "RenderPlan":
-        return cls([RenderScene.from_dict(scene) for scene in scenes])
+        return cls(tuple(RenderScene.from_dict(scene) for scene in scenes))
 
     def to_dicts(self) -> list[dict]:
         return [scene.to_dict() for scene in self.scenes]
@@ -82,7 +82,7 @@ class RenderPlan:
     ) -> "RenderPlan":
         scenes = self.scenes
         if scene_numbers is not None:
-            scenes = [scene for scene in scenes if scene.scene_number in scene_numbers]
+            scenes = tuple(scene for scene in scenes if scene.scene_number in scene_numbers)
         if limit is not None:
             scenes = scenes[:limit]
-        return RenderPlan(list(scenes))
+        return RenderPlan(scenes)

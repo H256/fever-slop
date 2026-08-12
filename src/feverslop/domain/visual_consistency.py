@@ -123,7 +123,7 @@ class SceneConsistencyContract:
             raise ValueError("mode must be ingredients, msr, or i2v")
         _required(self.workflow_profile, "workflow profile")
         if not isinstance(self.actors, tuple):
-            raise ValueError("actors must be a tuple")
+            object.__setattr__(self, "actors", tuple(self.actors))
         seen_actor_ids: set[str] = set()
         for anchor in self.actors:
             if not isinstance(anchor, ReferenceAnchor) or anchor.kind != "actor":
@@ -276,15 +276,20 @@ def can_handoff(
 def validate_scene_sequence(
     scenes: Iterable[Mapping[str, Any]],
 ) -> tuple[Mapping[str, Any], ...]:
+    """Validate that scene numbers are positive integers in consecutive order.
+
+    Consecutive order is relative to the first scene number (e.g., [5, 6, 7] is valid).
+    Does not enforce a specific start number (1-based or otherwise).
+    """
     items = tuple(scenes)
     numbers = [scene.get("scene") for scene in items]
     if any(type(number) is not int or number <= 0 for number in numbers):
         raise ValueError(
-            "Scenes must use canonical consecutive order with positive integers"
+            "Scenes must use positive integers in consecutive order"
         )
     if numbers and numbers != list(range(numbers[0], numbers[0] + len(numbers))):
         raise ValueError(
-            "Scenes must use canonical consecutive order without duplicates or gaps"
+            "Scenes must be in consecutive order without duplicates or gaps"
         )
     return items
 
