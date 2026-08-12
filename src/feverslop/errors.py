@@ -27,3 +27,7 @@ class FeverSlopValidationError(FeverSlopError):
 
 class FeverSlopAdaptationError(FeverSlopError):
     """Error from adapter layer (third-party exception wrapper)."""
+
+
+class FeverSlopDataError(FeverSlopError):
+    """Error from missing or invalid data in pipeline input artifacts."""
