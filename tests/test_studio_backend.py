@@ -699,6 +699,25 @@ class StudioBackendTests(unittest.TestCase):
             with self.assertRaises(StudioPathError):
                 store.write_media_data_url("demo", "../bad.png", "data:image/png;base64,cG5n")
 
+    def test_write_media_data_url_rejects_oversized_payload(self):
+        def _project_store_with_limit(root, max_upload_size):
+            project = root / "demo"
+            (project / "output").mkdir(parents=True, exist_ok=True)
+            (project / "input").mkdir(exist_ok=True)
+            (project / "config.json").write_text('{"project_name": "Demo"}', encoding="utf-8")
+            return ProjectStore(root, max_upload_size=max_upload_size)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # 2-byte limit; payload decodes to 3 bytes ("png")
+            store = _project_store_with_limit(Path(temp_dir), max_upload_size=2)
+            with self.assertRaisesRegex(StudioPathError, "exceeds size limit"):
+                store.write_media_data_url("demo", "output/big.png", "data:image/png;base64,cG5n")
+
+            # 3-byte limit is exactly the decoded size; should succeed
+            store2 = _project_store_with_limit(Path(temp_dir), max_upload_size=3)
+            result = store2.write_media_data_url("demo", "output/exact.png", "data:image/png;base64,cG5n")
+            self.assertEqual("output/exact.png", result["path"])
+
     def test_audio_upload_endpoint_stores_file_in_input_and_updates_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectStore(temp_dir)
