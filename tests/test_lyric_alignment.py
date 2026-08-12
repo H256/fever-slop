@@ -2,16 +2,7 @@ import unittest
 
 from feverslop.domain.timeline import TimelineSegment
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
-
-
-class FakeLLM:
-    def __init__(self, response):
-        self.response = response
-        self.calls = []
-
-    def complete_prompt(self, system_prompt, prompt):
-        self.calls.append((system_prompt, prompt))
-        return self.response
+from tests.fakellm import FakeLLM
 
 
 class LyricTimelineAlignerTests(unittest.TestCase):
@@ -30,8 +21,8 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         self.assertEqual("hello world", corrected[1].text)
         self.assertEqual("second line", corrected[2].text)
         self.assertEqual((1.5, 3.0, "vocals"), (corrected[1].start, corrected[1].end, corrected[1].kind))
-        self.assertIn("REFERENCE_LYRICS", llm.calls[0][1])
-        self.assertIn("segment1", llm.calls[0][1])
+        self.assertIn("REFERENCE_LYRICS", llm.calls[0].prompt)
+        self.assertIn("segment1", llm.calls[0].prompt)
 
     def test_raises_when_llm_returns_wrong_segment_count(self):
         timeline = [

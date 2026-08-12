@@ -5,25 +5,24 @@ from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
+from tests.fakellm import FakeLLM
 
 
-class FakeLLM:
-    def __init__(self):
-        self.calls = []
+def _dynamic_response(system_prompt: str, _prompt: str) -> str:
+    lower = system_prompt.lower()
+    if "text-to-image prompt" in lower:
+        return "T2I RESULT"
+    if "image-to-video prompt" in lower:
+        return "I2V RESULT"
+    return "DETAIL RESULT"
 
-    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
-        self.calls.append({"system_prompt": system_prompt, "prompt": prompt})
-        lower = system_prompt.lower()
-        if "text-to-image prompt" in lower:
-            return "T2I RESULT"
-        if "image-to-video prompt" in lower:
-            return "I2V RESULT"
-        return "DETAIL RESULT"
+
+DYNAMIC_LLM = FakeLLM(side_effect=_dynamic_response)
 
 
 class ScenePromptBuilderTests(unittest.TestCase):
     def test_scene_prompts_report_progress_after_each_scene(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         progress = []
         builder = ScenePromptBuilder(llm)
 
@@ -50,7 +49,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual([(1, 2), (2, 2)], progress)
 
     def test_scene_prompts_include_explicit_t2i_and_i2v_fields(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         builder = ScenePromptBuilder(llm)
         stage1_segments = [
             {
@@ -88,10 +87,10 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual("I2V RESULT", data[0]["i2v_prompt_from_t2i"])
         self.assertEqual("I2V RESULT", data[0]["original_style_i2v_prompt"])
         self.assertGreaterEqual(len(llm.calls), 2)
-        self.assertIn("T2I RESULT", llm.calls[-1]["prompt"])
+        self.assertIn("T2I RESULT", llm.calls[-1].prompt)
 
     def test_silent_mode_uses_dialogue_free_i2v_policy_for_vocal_segments(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         builder = ScenePromptBuilder(llm)
 
         builder.build_i2v_prompt_from_t2i(
@@ -109,8 +108,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
             t2i_prompt="Mara stands under a spotlight.",
         )
 
-        system_prompt = llm.calls[0]["system_prompt"].lower()
-        payload = json.loads(llm.calls[0]["prompt"])
+        system_prompt = llm.calls[0].system_prompt.lower()
+        payload = json.loads(llm.calls[0].prompt)
 
         self.assertNotIn("singing with passion", system_prompt)
         self.assertNotIn("lip sync only during vocal intervals", system_prompt)
@@ -120,7 +119,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertNotIn("singing with passion", payload["performance_policy"].lower())
 
     def test_scene_prompts_persist_silent_mode_for_render_plan(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         builder = ScenePromptBuilder(llm)
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -155,7 +154,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertTrue(data[0]["silent_mode"])
 
     def test_zimage_prompt_payload_includes_location_constraint(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         builder = ScenePromptBuilder(llm)
 
         builder.build_zimage_prompt(
@@ -171,12 +170,12 @@ class ScenePromptBuilderTests(unittest.TestCase):
             },
         )
 
-        payload = json.loads(llm.calls[0]["prompt"])
+        payload = json.loads(llm.calls[0].prompt)
 
         self.assertEqual("Allowed locations: ancient forest, secluded spring", payload["location_constraint"])
 
     def test_build_scene_prompts_carries_reference_metadata_from_concept_dict(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         builder = ScenePromptBuilder(llm)
         stage1_segments = [
             {
@@ -217,7 +216,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual({"actor_ids": ["singer"], "location_id": "stage"}, data[0]["references"])
 
     def test_build_scene_prompts_passes_selected_cast_to_t2i_and_i2v(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         builder = ScenePromptBuilder(llm)
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -251,8 +250,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
                 artifact_store=JsonArtifactStore(),
             )
 
-        t2i_payload = json.loads(llm.calls[0]["prompt"])
-        i2v_payload = json.loads(llm.calls[1]["prompt"])
+        t2i_payload = json.loads(llm.calls[0].prompt)
+        i2v_payload = json.loads(llm.calls[1].prompt)
         expected_ids = ["warrior_lead", "mage_lead", "rogue_lead"]
         self.assertEqual(expected_ids, t2i_payload["scene_cast"]["visible_actor_ids"])
         self.assertEqual("warrior_lead", t2i_payload["scene_cast"]["primary_actor_id"])
@@ -260,7 +259,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual(expected_ids, i2v_payload["scene_cast"]["visible_actor_ids"])
 
     def test_single_subject_mode_forces_first_actor_reference(self):
-        llm = FakeLLM()
+        llm = FakeLLM(side_effect=_dynamic_response)
         builder = ScenePromptBuilder(llm)
 
         with tempfile.TemporaryDirectory() as temp_dir:

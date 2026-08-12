@@ -6,34 +6,7 @@ from pathlib import Path
 
 from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
 from feverslop.domain.vision_references import ReferenceImage
-
-
-class FakeVisionLLM:
-    def __init__(self, response: object = None, *, error: Exception | None = None):
-        self.response = response
-        self.error = error
-        self.calls: list[dict[str, object]] = []
-
-    def complete_prompt_with_images(
-        self,
-        system_prompt: str,
-        prompt: str,
-        image_paths: list[Path],
-        timeout: float | None = None,
-    ) -> str:
-        self.calls.append(
-            {
-                "system_prompt": system_prompt,
-                "prompt": prompt,
-                "image_paths": image_paths,
-                "timeout": timeout,
-            }
-        )
-        if self.error:
-            raise self.error
-        if isinstance(self.response, str):
-            return self.response
-        return json.dumps(self.response)
+from tests.fakellm import FakeVisionLLM, FailingVisionLLM
 
 
 class IngredientsVisionPromptTests(unittest.TestCase):
@@ -73,7 +46,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
     def shot_invariants() -> str:
         return " ".join(f"invariant{i}" for i in range(80))
 
-    def build(self, llm: FakeVisionLLM | None):
+    def build(self, llm):
         return build_ingredients_vision_prompt(
             llm=llm,
             references=self.references,
@@ -85,24 +58,24 @@ class IngredientsVisionPromptTests(unittest.TestCase):
 
     def test_builds_grounded_prompt_and_attaches_references_in_source_order(self):
         llm = FakeVisionLLM(
-            {
+            json.dumps({
                 "references": [
                     {"id": "mara", "type": "actor", "description": "Cropped black hair, silver ear cuff, charcoal coat."},
                     {"id": "archive", "type": "location", "description": "Narrow stone archive with dusty shelves."},
                 ],
                 "shot_invariants": self.shot_invariants(),
-            }
+            })
         )
 
         result = self.build(llm)
 
         call = llm.calls[0]
-        self.assertEqual([self.actor, self.location], call["image_paths"])
-        payload = json.loads(call["prompt"])
+        self.assertEqual([self.actor, self.location], call.image_paths)
+        payload = json.loads(call.prompt)
         self.assertEqual(self.reference_metadata, payload["references"])
         for key, value in self.target_context.items():
             self.assertEqual(value, payload["target_context"][key])
-        system_prompt = str(call["system_prompt"])
+        system_prompt = str(call.system_prompt)
         self.assertIn("60-160 words", system_prompt)
         self.assertIn("non-temporal", system_prompt)
         self.assertIn("Do not schedule", system_prompt)
@@ -151,7 +124,8 @@ class IngredientsVisionPromptTests(unittest.TestCase):
         }
         for label, response in invalid_responses.items():
             with self.subTest(label):
-                result = self.build(FakeVisionLLM(response))
+                canned = json.dumps(response) if isinstance(response, dict) else response
+                result = self.build(FakeVisionLLM(canned))
                 self.assertEqual(self.fallback_reference, result.reference_description)
                 self.assertEqual(self.fallback_invariants, result.shot_invariants)
                 self.assertEqual("invalid response", result.fallback_reason)
@@ -161,7 +135,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                 )
 
     def test_model_exception_preserves_vision_unavailable_reason(self):
-        for llm in (FakeVisionLLM(error=RuntimeError("offline")), None):
+        for llm in (FailingVisionLLM(), None):
             with self.subTest(llm=llm):
                 result = self.build(llm)
                 self.assertEqual(self.fallback_reference, result.reference_description)

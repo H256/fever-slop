@@ -4,37 +4,13 @@ import unittest
 from pathlib import Path
 
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
-
-
-class FakeLLM:
-    def __init__(self, response: str):
-        self.response = response
-        self.calls = []
-
-    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
-        self.calls.append({"system_prompt": system_prompt, "prompt": prompt})
-        return self.response
-
-
-class FakeVisionLLM(FakeLLM):
-    def complete_prompt_with_images(self, system_prompt: str, prompt: str, image_paths: list[Path]) -> str:
-        self.calls.append({"system_prompt": system_prompt, "prompt": prompt, "image_paths": image_paths})
-        return self.response
-
-
-class FailingVisionLLM(FakeLLM):
-    def complete_prompt_with_images(self, system_prompt: str, prompt: str, image_paths: list[Path]) -> str:
-        raise RuntimeError("transport failed")
-
-
-class FailingVisionAndTextLLM(FailingVisionLLM):
-    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
-        raise RuntimeError("text transport failed")
-
-
-class VisionOnlyLLM:
-    def complete_prompt_with_images(self, system_prompt: str, prompt: str, image_paths: list[Path]) -> str:
-        raise RuntimeError("vision transport failed")
+from tests.fakellm import (
+    FakeLLM,
+    FakeVisionLLM,
+    FailingVisionLLM,
+    FailingVisionAndTextLLM,
+    VisionOnlyLLM,
+)
 
 
 class MSRPromptEnrichmentTests(unittest.TestCase):
@@ -103,7 +79,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             for relay in ltx["msr_prompt_relay"]:
                 for forbidden in ("Reference Sheet Description", "Target Description", "left panel", "sharp black bob"):
                     self.assertNotIn(forbidden, relay["prompt"])
-            self.assertEqual([temp / "mara.png", temp / "stage.png"], llm.calls[0]["image_paths"])
+            self.assertEqual([temp / "mara.png", temp / "stage.png"], llm.calls[0].image_paths)
             self.assertEqual([(4, [{"id": "mara", "type": "actor"}, {"id": "stage", "type": "location"}])], statuses)
 
     def test_invalid_vision_response_falls_back_to_text_completion(self):
@@ -123,7 +99,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             relay = json.loads(output.read_text(encoding="utf-8"))[0]["ltx"]["msr_prompt_relay"][0]["prompt"]
             self.assertIn("mouth closed", relay)
             self.assertEqual(2, len(llm.calls))
-            self.assertNotIn("image_paths", llm.calls[1])
+            self.assertIsNone(llm.calls[1].image_paths)
 
     def test_missing_images_do_not_attempt_multimodal_completion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -139,7 +115,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm)
 
             self.assertEqual(1, len(llm.calls))
-            self.assertNotIn("image_paths", llm.calls[0])
+            self.assertIsNone(llm.calls[0].image_paths)
 
     def test_partial_missing_images_keep_full_deterministic_fallback(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -168,7 +144,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             self.assertIn("Reference image 1: Mara", global_prompt)
             self.assertIn("Reference image 2: Ivo", global_prompt)
             self.assertIn("Reference image 3 (scene): Archive", global_prompt)
-            self.assertTrue(all("image_paths" not in call for call in llm.calls))
+            self.assertTrue(all(call.image_paths is None for call in llm.calls))
 
     def test_transport_exception_is_logged_as_vision_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -305,7 +281,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             self.assertNotIn("preserve same shot", ltx["msr_prompt_relay"][1]["prompt"].lower())
             self.assertNotIn("Start frame", ltx["msr_prompt_relay"][1]["prompt"])
             self.assertEqual(1, len(llm.calls))
-            self.assertIn("Return ONLY valid JSON array", llm.calls[0]["system_prompt"])
+            self.assertIn("Return ONLY valid JSON array", llm.calls[0].system_prompt)
 
     def test_falls_back_to_deterministic_direction_when_llm_output_is_invalid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
