@@ -1167,6 +1167,26 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
             self.assertEqual(trim["inputs"]["start_index"], 15.01)
             self.assertEqual(trim["inputs"]["duration"], 4.44)
 
+    def test_audio_filter_skips_source_that_ends_before_scene_window(self):
+        backend = self._backend()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            vocals = Path(temp_dir) / "vocals.mp3"
+            full_mix = Path(temp_dir) / "full_mix.mp3"
+            vocals.write_bytes(b"vocals")
+            full_mix.write_bytes(b"full mix")
+            with patch(
+                "feverslop.adapters.comfyui_minimax_h3_r2v_backend.subprocess.run",
+                side_effect=[
+                    type("Result", (), {"stdout": "120.0\n"})(),
+                    type("Result", (), {"stdout": "142.6\n"})(),
+                ],
+            ):
+                result = backend._filter_audio_paths_for_window(
+                    [vocals, full_mix], start_seconds=122.45, duration_seconds=3.25
+                )
+
+        self.assertEqual([full_mix], result)
+
     def test_audio_wiring_does_not_mutate_generated_prompt(self):
         workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
         backend = self._backend(workflow=json.loads(workflow_path.read_text(encoding="utf-8")))

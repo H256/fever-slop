@@ -226,13 +226,34 @@ def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
         store.write_json(plan_path, plan)
 
 
-def _discover_stem_files(stems_dir: Path) -> dict[str, Path] | None:
+def _discover_stem_files(
+    stems_dir: Path,
+    input_audio: Path | None = None,
+) -> dict[str, Path] | None:
     if not stems_dir.is_dir():
         return None
     stem_files = {}
-    for stem_file in sorted(stems_dir.iterdir()):
-        if stem_file.is_file() and stem_file.suffix.lower() in (".wav", ".mp3", ".flac"):
-            stem_files[stem_file.stem.split("_", 1)[0]] = stem_file
+    supported_suffixes = (".wav", ".mp3", ".flac")
+    if input_audio is not None:
+        input_stem = Path(input_audio).stem
+        for stem_name in ("vocals", "drums", "bass", "other"):
+            expected_stem = f"{stem_name}_{input_stem}"
+            matches = sorted(
+                path
+                for path in stems_dir.iterdir()
+                if path.is_file()
+                and path.suffix.lower() in supported_suffixes
+                and path.stem == expected_stem
+            )
+            if matches:
+                stem_files[stem_name] = next(
+                    (path for path in matches if path.suffix.lower() == ".wav"),
+                    matches[0],
+                )
+    else:
+        for stem_file in sorted(stems_dir.iterdir()):
+            if stem_file.is_file() and stem_file.suffix.lower() in supported_suffixes:
+                stem_files[stem_file.stem.split("_", 1)[0]] = stem_file
     return stem_files or None
 
 
@@ -310,7 +331,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         scene_details=scene_details,
         scene_prompts_json=state.context.scene_prompts,
         h3_prompts_json=h3_prompts_json,
-        stem_files=_discover_stem_files(paths.stems_dir),
+        stem_files=_discover_stem_files(paths.stems_dir, config.input_audio),
     )
     pipeline = H3PromptPipeline(
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(
@@ -343,17 +364,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
     # -- stem audio (MiniMax H3 R2V) --
     stem_list: list[str] | None = list(config.minimax_h3_audio_refs.stems)
     input_audio: Path | None = config.input_audio
-    stem_files: dict[str, Path] | None = None
-    stems_dir = paths.stems_dir
-    if stems_dir is not None and stems_dir.is_dir():
-        stem_files = {}
-        for stem_file in sorted(stems_dir.iterdir()):
-            if stem_file.is_file() and stem_file.suffix.lower() in (".wav", ".mp3", ".flac"):
-                # Extract stem name from filename: "stemname_basename.ext"
-                parts = stem_file.stem.split("_", 1)
-                if parts:
-                    stem_name = parts[0]
-                    stem_files[stem_name] = stem_file
+    stem_files = _discover_stem_files(paths.stems_dir, input_audio)
     build_render_plan(
         scene_prompts_json=paths.prompts_dir / f"scene_prompts_{song_id}.json",
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{song_id}.json",

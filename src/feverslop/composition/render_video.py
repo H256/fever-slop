@@ -171,6 +171,7 @@ def build_render_video_scenes_use_case(
             model_resolver=model_resolver,
             video_settings=video_settings,
             audio_ref_stems=stem_list,
+            input_audio=project_config.input_audio if project_config is not None else None,
         )
     elif options.video_pipeline in {"minimax-h3-t2v", "minimax-h3-i2v"}:
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")

@@ -15,6 +15,7 @@ from feverslop.composition.stage_runners import (
     _run_mux_original_audio_stage,
     _run_msr_reference_sheets_stage,
     _preserve_enriched_reference_paths,
+    _discover_stem_files,
     _seed_reference_bindings,
     _selected_video_workflows,
 )
@@ -23,6 +24,22 @@ from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_stem_discovery_requires_exact_input_audio_basename(self):
+        with TemporaryDirectory() as temp_dir:
+            stems_dir = Path(temp_dir) / "stems"
+            stems_dir.mkdir()
+            wrong = stems_dir / "vocals_midnight_stars.mp3"
+            correct = stems_dir / "vocals_midnight_stars (4).wav"
+            wrong.write_bytes(b"wrong")
+            correct.write_bytes(b"correct")
+
+            result = _discover_stem_files(
+                stems_dir,
+                Path(temp_dir) / "midnight_stars (4).mp3",
+            )
+
+        self.assertEqual(correct, result["vocals"])
+
     def test_seed_reference_bindings_assigns_actor_and_prompt_location(self):
         with TemporaryDirectory() as temp_dir:
             plan_path = Path(temp_dir) / "base.json"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import random
+import subprocess
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_minimax_h3_video_backend import ComfyUIMiniMaxH3VideoRenderBackend
@@ -58,6 +59,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         workflow: dict | None = None,
         workflow_label: str | Path | None = None,
         audio_ref_stems: list[str] | None = None,
+        input_audio: str | Path | None = None,
     ):
         super().__init__(
             client=client,
@@ -83,6 +85,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.audio_ref_stems = audio_ref_stems
+        self.input_audio = Path(input_audio) if input_audio is not None else None
 
     # -----------------------------------------------------------------------
     # High-level entry points
@@ -207,7 +210,11 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 audio_path_set.add(key)
                 if len(merged_audio) >= self.MAX_STEM_AUDIOS:
                     break
-        ref_audio_paths = merged_audio[: self.MAX_STEM_AUDIOS]
+        ref_audio_paths = self._filter_audio_paths_for_window(
+            merged_audio[: self.MAX_STEM_AUDIOS],
+            start_seconds=float(request.scene.get("abs_start_seconds", 0.0) or 0.0),
+            duration_seconds=duration_seconds,
+        )
 
         # -- build workflow ---------------------------------------------------
         workflow = self.build_workflow(
@@ -644,6 +651,48 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     # Validation
     # -----------------------------------------------------------------------
 
+    @staticmethod
+    def _audio_duration(path: Path) -> float | None:
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            return float(result.stdout.strip())
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
+
+    @classmethod
+    def _filter_audio_paths_for_window(
+        cls,
+        paths: list[Path],
+        *,
+        start_seconds: float,
+        duration_seconds: float | None,
+    ) -> list[Path]:
+        if duration_seconds is None:
+            return paths
+
+        window_end = float(start_seconds) + float(duration_seconds)
+        valid_paths: list[Path] = []
+        for path in paths:
+            source_duration = cls._audio_duration(path)
+            if source_duration is None or source_duration + 0.05 >= window_end:
+                valid_paths.append(path)
+        return valid_paths
+
     def _resolve_stem_audio_paths(
         self,
         scene: dict,
@@ -707,7 +756,11 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         for stem_name in self.audio_ref_stems or []:
             if stem_name == "full_mix":
                 continue
-            matches = sorted(stem_dir.glob(f"{stem_name}_*.wav"))
+            if self.input_audio is None:
+                matches = sorted(stem_dir.glob(f"{stem_name}_*.wav"))
+            else:
+                matches = [stem_dir / f"{stem_name}_{self.input_audio.stem}.wav"]
+                matches = [path for path in matches if path.is_file()]
             if matches:
                 result[stem_name] = str(matches[0])
         return result
