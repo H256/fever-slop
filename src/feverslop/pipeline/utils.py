@@ -10,6 +10,7 @@ def save_timeline_json(timeline, output_file: str | Path):
             "end": round(seg.end, 2),
             "type": seg.kind,
             **({"lyrics": seg.text} if seg.text else {}),
+            **({"word_timestamps": list(seg.word_timestamps)} if seg.word_timestamps else {}),
         }
         for seg in timeline
     ]

@@ -98,7 +98,7 @@ class H3PromptPipeline:
         log_step = context["log_step"]
         log_file = context["log_file"]
 
-        relay_path = context.get("ltx_prompt_relay_json")
+        relay_path = context.setdefault("ltx_prompt_relay_json", None)
         if relay_path is not None:
             stage1_segments = _attach_relay_segments(
                 stage1_segments,
