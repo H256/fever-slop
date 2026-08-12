@@ -658,5 +658,48 @@ class VideoPipelineFieldTests(unittest.TestCase):
         return tmp
 
 
+class AudioRefsStemValidationTests(unittest.TestCase):
+    """Test ProjectConfig stem validation for minimax_h3_audio_refs."""
+
+    def _mk_config(self, config_dict):
+        import json
+        from pathlib import Path
+        import tempfile
+        tmp = tempfile.mktemp(suffix=".json")
+        Path(tmp).write_text(json.dumps(config_dict))
+        return tmp
+
+    def test_rejects_invalid_audio_ref_stem(self):
+        """Invalid stem values raise ValueError."""
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "minimax_h3_audio_refs": {
+                "stems": ["vocals", "piano"],
+            },
+        })
+        with self.assertRaises(ValueError) as ctx:
+            ProjectConfig.load(config_path)
+        self.assertIn("piano", str(ctx.exception))
+
+    def test_accepts_valid_audio_ref_stems(self):
+        """Valid stem values load successfully."""
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "minimax_h3_audio_refs": {
+                "stems": ["bass", "drums"],
+            },
+        })
+        config = ProjectConfig.load(config_path)
+        self.assertEqual(["bass", "drums"], config.minimax_h3_audio_refs.stems)
+
+    def test_audio_ref_stems_defaults_when_missing(self):
+        """Missing minimax_h3_audio_refs defaults to ['vocals', 'full_mix']."""
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+        })
+        config = ProjectConfig.load(config_path)
+        self.assertEqual(["vocals", "full_mix"], config.minimax_h3_audio_refs.stems)
+
+
 if __name__ == "__main__":
     unittest.main()

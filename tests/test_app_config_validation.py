@@ -299,5 +299,87 @@ class AppConfigBackwardCompatTests(unittest.TestCase):
         self.assertEqual("http://localhost:8080/v1", config.llm.base_url)
 
 
+class LLMConfigValidationTests(unittest.TestCase):
+    """Test LLMConfig temperature and max_tokens validation."""
+
+    def test_rejects_negative_temperature(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"temperature": -0.5}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "llm.temperature must be >= 0"):
+                AppConfig.load(config_path)
+
+    def test_rejects_zero_max_tokens(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"max_tokens": 0}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "llm.max_tokens must be > 0"):
+                AppConfig.load(config_path)
+
+    def test_rejects_negative_max_tokens(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"max_tokens": -1}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "llm.max_tokens must be > 0"):
+                AppConfig.load(config_path)
+
+
+class RecursiveRequiredKeysTests(unittest.TestCase):
+    """Test recursive required_keys validation with dot-notation paths."""
+
+    def test_required_keys_catches_nested_null(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"base_url": null}, "comfyui": {}}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                AppConfig.load(config_path, required_keys=["llm.base_url"])
+            self.assertIn("base_url", str(ctx.exception))
+
+    def test_required_keys_accepts_nested_present(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"base_url": "http://example.com"}, "comfyui": {}}',
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path, required_keys=["llm.base_url"])
+            self.assertEqual("http://example.com", config.llm.base_url)
+
+    def test_required_keys_toplevel_still_works(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"base_url": "http://example.com"}}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                AppConfig.load(config_path, required_keys=["llm", "comfyui"])
+            self.assertIn("comfyui", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
