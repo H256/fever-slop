@@ -374,11 +374,18 @@ class ProjectStore:
     def _read_json_file(path: Path, *, default: Any) -> Any:
         if not path.exists():
             return default
-        return json.loads(path.read_text(encoding="utf-8-sig"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError:
+            return default
 
 
 def _artifact_revision(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
+    """Compute SHA-256 of artifact payload, normalizing UTF-8 BOM."""
+    normalized = payload
+    if normalized.startswith(b"\xef\xbb\xbf"):
+        normalized = normalized[3:]
+    return hashlib.sha256(normalized).hexdigest()
 
 
 def _path_revision(path: Path) -> str | None:
