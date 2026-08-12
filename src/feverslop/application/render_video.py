@@ -9,6 +9,7 @@ from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import ConsoleReporter, Reporter
 from feverslop.ports.rendering import VideoRenderBackend, VideoRenderRequest, WorkflowAnchorConfig
+from feverslop.utils.io import file_is_valid
 
 
 @dataclass(frozen=True)
@@ -76,9 +77,9 @@ class RenderVideoScenesUseCase:
             direct_path = request.output_dir / f"scene_{scene.scene_number:04}.mp4"
             per_scene_path = request.output_dir / f"scene_{scene.scene_number:04}" / "final.mp4"
             existing_path = (
-                final_path if final_path.exists()
-                else (direct_path if direct_path.exists()
-                      else (per_scene_path if per_scene_path.exists() else None))
+                final_path if file_is_valid(final_path)
+                else (direct_path if file_is_valid(direct_path)
+                      else (per_scene_path if file_is_valid(per_scene_path) else None))
             )
             if request.skip_existing and existing_path:
                 ensure_manifest = getattr(self.backend, "ensure_scene_manifest", None)

@@ -65,6 +65,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.ports.reporting import ConsoleReporter
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
+from feverslop.utils.io import file_is_valid
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator
 from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 from feverslop.prompting.model_types import resolve_model_type
@@ -1338,7 +1339,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     )
                     else not state.args.no_skip_existing
                 )
-                if not (skip_existing and final_path.is_file()):
+                if not (skip_existing and file_is_valid(final_path)):
                     randomize_seed = bool(getattr(backend, "randomize_seed", False))
                     if randomize_seed:
                         scene_payload = scene.to_dict()

@@ -10,6 +10,7 @@ import re
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import LLMPort, VisionLLMPort
+from feverslop.utils.io import atomic_write_json
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ def enrich_render_plan_with_msr_prompts(
             on_scene_complete(int(scene.get("scene", index)), index, total)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(enriched, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(output_path, enriched)
     return output_path
 
 

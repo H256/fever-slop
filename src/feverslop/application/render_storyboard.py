@@ -8,6 +8,7 @@ from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import StoryboardPromptTransformerPort
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
+from feverslop.utils.io import file_is_valid
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,7 @@ class RenderStoryboardUseCase:
         total = len(plan.scenes)
         for scene in plan.scenes:
             output_path = request.output_dir / f"scene_{scene.scene_number:04}.png"
-            if request.skip_existing and output_path.exists():
+            if request.skip_existing and file_is_valid(output_path):
                 rendered.append(output_path)
                 if request.on_frame_complete:
                     request.on_frame_complete(output_path, len(rendered), total)
