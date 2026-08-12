@@ -76,7 +76,7 @@ from feverslop.tools.storyboard_page import parse_scene_list
 from feverslop.tools.storyboard_page import generate_storyboard_page
 
 from .arg_parser import PipelineStage
-from .config_loader import PipelineRunContext, PipelineRunState, count_render_plan_items
+from .config_loader import PipelineRunContext, PipelineRunState, count_render_plan_items, runner_root
 
 _REFERENCE_BIBLE_PARSER = None
 
@@ -158,7 +158,27 @@ def _selected_video_workflows(state: PipelineRunState) -> tuple[Path, ...]:
         candidates = (state.relay_workflow,)
     else:
         candidates = (state.relay_workflow, state.single_prompt_workflow)
-    return tuple(path for path in candidates if str(path).strip() not in {"", "."})
+    result = tuple(path for path in candidates if str(path).strip() not in {"", "."})
+    if not result:
+        checked: list[str] = []
+        vp = getattr(state.args, "video_pipeline", None)
+        rm = getattr(state.args, "render_mode", None)
+        if vp == "ltx_msr":
+            checked.append(f"msr_workflow={state.msr_workflow!r}")
+        elif vp == "ltx_ingredients":
+            checked.append(f"ingredients_workflow={state.ingredients_workflow!r}")
+        elif rm == "single_prompt":
+            checked.append(f"single_prompt_workflow={state.single_prompt_workflow!r}")
+        elif rm == "relay":
+            checked.append(f"relay_workflow={state.relay_workflow!r}")
+        else:
+            checked.append(f"relay_workflow={state.relay_workflow!r}")
+            checked.append(f"single_prompt_workflow={state.single_prompt_workflow!r}")
+        raise ValueError(
+            f"No valid video workflows found for pipeline {vp!r} "
+            f"(render_mode={rm!r}); checked: {', '.join(checked)}"
+        )
+    return result
 
 
 def _run_main_pipeline_stage(state: PipelineRunState) -> None:
@@ -987,6 +1007,8 @@ def _continuity_downstream(
         )
         if dependent is None:
             return downstream
+        if dependent in downstream:  # cycle detection
+            return downstream
         downstream.add(dependent)
         current = dependent
 
@@ -1649,7 +1671,7 @@ STAGE_LABELS = {
 
 
 def run_unittest_suite() -> None:
-    subprocess.run(["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"], check=True)
+    subprocess.run(["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"], check=True, cwd=runner_root())
 
 
 def _scene_progress_callback(progress: RenderProgressReporter):
