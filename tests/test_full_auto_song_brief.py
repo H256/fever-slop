@@ -1,14 +1,6 @@
 import unittest
 
-
-class FakeLLM:
-    def __init__(self, response):
-        self.response = response
-        self.calls = []
-
-    def complete_prompt(self, system_prompt, prompt):
-        self.calls.append((system_prompt, prompt))
-        return self.response
+from tests.fakellm import FakeLLM
 
 
 class SongBriefGeneratorTests(unittest.TestCase):

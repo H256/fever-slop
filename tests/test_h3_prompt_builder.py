@@ -8,15 +8,7 @@ from feverslop.prompting.minimax_h3_prompt_style import (
 )
 
 
-class FakeLLMPort:
-    """Minimal LLM mock for testing."""
-    def __init__(self, response: str):
-        self.response = response
-        self.calls = []
-
-    def complete_prompt(self, system_prompt: str, prompt: str) -> str:
-        self.calls.append((system_prompt, prompt))
-        return self.response
+from tests.fakellm import FakeLLM
 
 
 class FakeArtifactStore:
@@ -100,7 +92,7 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
 class H3PromptBuilderTests(unittest.TestCase):
     def _get_builder(self, response: str):
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
-        builder = H3PromptBuilder(FakeLLMPort(response))
+        builder = H3PromptBuilder(FakeLLM(response))
         return builder
 
     def test_produces_structured_output(self):
@@ -134,7 +126,7 @@ class H3PromptBuilderTests(unittest.TestCase):
             "overall_soundscape": "N/A",
             "non_diegetic_music": "N/A",
         })
-        llm = FakeLLMPort(llm_response)
+        llm = FakeLLM(llm_response)
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
         builder = H3PromptBuilder(llm)
         builder.build_h3_prompt(
@@ -151,7 +143,9 @@ class H3PromptBuilderTests(unittest.TestCase):
             },
         )
         self.assertEqual(len(llm.calls), 1)
-        system_prompt, payload = llm.calls[0]
+        call = llm.calls[0]
+        system_prompt = call.system_prompt
+        payload = call.prompt
         self.assertIn("integrated_multimodal_description", system_prompt)
         parsed = json.loads(payload)
         self.assertEqual(parsed["scene_concept"], "test")
@@ -214,7 +208,7 @@ class H3PromptBuilderBatchTests(unittest.TestCase):
         })
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
         store = FakeArtifactStore()
-        builder = H3PromptBuilder(FakeLLMPort(llm_response))
+        builder = H3PromptBuilder(FakeLLM(llm_response))
         builder.build_all_h3_prompts(
             stage1_segments=[
                 {"segment_id": "seg1", "type": "vocals"},
@@ -648,7 +642,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
                 {"type": "actor", "name": "Hero"},
             ],
         }
-        llm = FakeLLMPort(json.dumps({"prompt": "test output"}))
+        llm = FakeLLM(json.dumps({"prompt": "test output"}))
         builder = H3PromptBuilder(llm)
         builder.build_h3_prompt(
             segment=segment_with_refs,
@@ -658,7 +652,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
             mode="ref",
             video_type="music_video",
         )
-        system_prompt = llm.calls[0][0]
+        system_prompt = llm.calls[0].system_prompt
         # References should be in the system prompt
         self.assertIn("<Picture 1>", system_prompt)
         self.assertIn("Hero", system_prompt)
@@ -671,7 +665,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
             "segment_id": "s1",
             "type": "vocals",
         }
-        llm = FakeLLMPort(json.dumps({"prompt": "test output"}))
+        llm = FakeLLM(json.dumps({"prompt": "test output"}))
         builder = H3PromptBuilder(llm)
         builder.build_h3_prompt(
             segment=segment_no_refs,
@@ -681,7 +675,7 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
             mode="ref",
             video_type="music_video",
         )
-        system_prompt = llm.calls[0][0]
+        system_prompt = llm.calls[0].system_prompt
         # Should NOT contain ## Reference Labels and Subjects (only the generic instruction)
         self.assertNotIn("## Reference Labels and Subjects", system_prompt)
         # Generic instruction should still be present

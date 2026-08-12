@@ -16,22 +16,7 @@ from feverslop.adapters.llm_song_brief_generator import LLMSongBriefGenerator
 from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
 from feverslop.domain.full_auto import GeneratedSong, SongSpec
 
-
-# ---------------------------------------------------------------------------
-# Fake ports (reused patterns from test_full_auto_song_brief / test_full_auto)
-# ---------------------------------------------------------------------------
-
-
-class FakeLLM:
-    """Minimal LLM that records prompts and returns a canned response."""
-
-    def __init__(self, response: str):
-        self.response = response
-        self.calls: list[tuple[str, str]] = []
-
-    def complete_prompt(self, system_prompt: str, prompt: str, timeout: float | None = None) -> str:
-        self.calls.append((system_prompt, prompt))
-        return self.response
+from tests.fakellm import FakeLLM
 
 
 class FakeSongGenerator:
@@ -94,11 +79,11 @@ class FullAutoLLMChainTests(unittest.TestCase):
         spec = generator.generate(request)
 
         self.assertEqual(len(llm.calls), 1)
-        system_prompt, prompt = llm.calls[0]
-        self.assertIn("ACE-Step", system_prompt)
-        self.assertIn("Return ONLY valid JSON", system_prompt)
+        call = llm.calls[0]
+        self.assertIn("ACE-Step", call.system_prompt)
+        self.assertIn("Return ONLY valid JSON", call.system_prompt)
 
-        payload = json.loads(prompt)
+        payload = json.loads(call.prompt)
         self.assertEqual(payload["idea"], "friendship")
         self.assertEqual(payload["style"], "bright pop")
         self.assertEqual(payload["duration_seconds"], 90.0)
