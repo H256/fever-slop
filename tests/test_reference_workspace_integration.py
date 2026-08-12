@@ -253,6 +253,40 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
         self.assertEqual(ReferenceKind.ACTOR.value, model.data(idx, model.KindRole))
         self.assertEqual("Hero", model.data(idx, model.LabelRole))
 
+    def test_viewmodel_collect_assignments_multiple_rows(self) -> None:
+        """collect_assignments returns correct data for all rows in assignments model."""
+        proj_dir = self._make_test_project("collect")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
+        vm = ReferenceWorkspaceViewModel(service=service)
+        vm.set_project("collect")
+
+        # Populate assignments model with 3 scenes
+        from feverslop.domain.reference_workspace import SceneReferenceAssignment
+        vm._assignments_model.replace((
+            SceneReferenceAssignment(scene_number=1, actor_ids=("hero",), location_ids=("lab",)),
+            SceneReferenceAssignment(scene_number=2, actor_ids=("hero", "sidekick"), location_ids=()),
+            SceneReferenceAssignment(scene_number=3, actor_ids=(), location_ids=(), background_ids=("bg1",)),
+        ))
+
+        assignments = vm.collect_assignments()
+        self.assertEqual(3, len(assignments))
+        self.assertEqual(1, assignments[0]["scene_number"])
+        self.assertIn("hero", assignments[0]["actor_ids"])
+        self.assertIn("lab", assignments[0]["location_ids"])
+        self.assertEqual(2, assignments[1]["scene_number"])
+        self.assertEqual(["hero", "sidekick"], assignments[1]["actor_ids"])
+        self.assertEqual(3, assignments[2]["scene_number"])
+        self.assertIn("bg1", assignments[2]["background_ids"])
+
+    def test_viewmodel_collect_assignments_empty(self) -> None:
+        """collect_assignments returns empty list when model has no rows."""
+        proj_dir = self._make_test_project("empty_collect")
+        service = ReferenceWorkspaceService(project_root=proj_dir)
+        vm = ReferenceWorkspaceViewModel(service=service)
+        vm.set_project("empty_collect")
+        assignments = vm.collect_assignments()
+        self.assertEqual([], assignments)
+
 
 class TestReferenceWorkspaceServiceFull(unittest.TestCase):
     """Full service lifecycle tests (no PySide6 required)."""
