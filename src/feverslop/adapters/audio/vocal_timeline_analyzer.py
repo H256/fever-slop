@@ -84,6 +84,7 @@ class VocalTimelineAnalyzer:
             logprob_threshold=-0.5,
             compression_ratio_threshold=2.0,
             temperature=0,
+            word_timestamps=True,
         )
 
         segments = []
@@ -192,6 +193,7 @@ class VocalTimelineAnalyzer:
 
         for start, end in vocal_ranges:
             texts = []
+            word_timestamps = []
 
             for ws in whisper_segments:
                 ws_start = float(ws["start"])
@@ -199,6 +201,17 @@ class VocalTimelineAnalyzer:
 
                 if ws_start < end and ws_end > start:
                     texts.append(ws["text"].strip())
+                    word_timestamps.extend(
+                        {
+                            "word": str(word.get("word", "")).strip(),
+                            "start": round(float(word["start"]), 3),
+                            "end": round(float(word["end"]), 3),
+                        }
+                        for word in (ws.get("words") or [])
+                        if word.get("word", "").strip()
+                        and float(word.get("end", 0)) > start
+                        and float(word.get("start", 0)) < end
+                    )
 
             result.append(
                 TimelineSegment(
@@ -206,6 +219,7 @@ class VocalTimelineAnalyzer:
                     end=round(float(end), 2),
                     kind="vocals",
                     text=" ".join(texts).strip(),
+                    word_timestamps=tuple(word_timestamps),
                 )
             )
 

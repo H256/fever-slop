@@ -115,6 +115,32 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
         self.assertIsInstance(generator.seed, int)
         self.assertNotEqual(-1, generator.seed)
 
+    def test_execution_request_preserves_seed_minus_one_for_per_scene_render_seeds(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            project_config_path = temp / "config.json"
+            project_config_path.write_text(
+                json.dumps(
+                    {
+                        "project_name": "demo",
+                        "input_audio": "song.wav",
+                        "scene_generation": {"seed": -1},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            app_config_path = temp / "app_config.json"
+            app_config_path.write_text(json.dumps({}), encoding="utf-8")
+
+            execution_request = build_generate_render_plan_execution_request(
+                GenerateRenderPlanRequest(
+                    project_config_path=project_config_path,
+                    app_config_path=app_config_path,
+                )
+            )
+
+        self.assertEqual(-1, execution_request.config.scene_generation.seed)
+
 
 if __name__ == "__main__":
     unittest.main()

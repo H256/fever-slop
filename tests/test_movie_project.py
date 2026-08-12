@@ -3754,6 +3754,74 @@ class MovieProjectTests(unittest.TestCase):
             config["ingredients_workflow"],
         )
 
+    def test_movie_runtime_config_supports_minimax_h3_video_modes(self):
+        from feverslop.studio.job_service import movie_runtime_config
+
+        for mode in ("minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"):
+            with self.subTest(mode=mode):
+                config = movie_runtime_config({"movie_video_workflow": mode})
+
+                self.assertEqual(mode, config["movie_video_workflow"])
+                self.assertEqual("workflows/video_minimax_h3_r2v.json", config["r2v_workflow"])
+                self.assertEqual("workflows/video_minimax_h3_t2v.json", config["t2v_workflow"])
+                self.assertEqual("workflows/video_minimax_h3_t2v.json", config["i2v_workflow"])
+
+    def test_movie_visual_factory_selects_minimax_adapter(self):
+        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.studio.job_service import build_movie_visual_adapter
+
+        adapter = build_movie_visual_adapter(
+            Path("project"),
+            Path("unused.json"),
+            movie_config={"movie_video_workflow": "minimax-h3-i2v"},
+        )
+
+        self.assertIsInstance(adapter, ComfyUIMiniMaxMovieVisualAdapter)
+        self.assertEqual("minimax-h3-i2v", adapter.video_pipeline)
+
+    def test_minimax_movie_adapter_materializes_h3_prompt_and_msr_references(self):
+        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir)
+            actor_path = project_dir / "movie" / "references" / "actors" / "bard" / "msr_sheet.png"
+            location_path = project_dir / "movie" / "references" / "locations" / "tavern" / "hero.png"
+            actor_path.parent.mkdir(parents=True)
+            location_path.parent.mkdir(parents=True)
+            actor_path.write_bytes(b"actor")
+            location_path.write_bytes(b"location")
+            manifest_path = project_dir / "movie" / "references" / "manifest.json"
+            manifest_path.write_text(json.dumps({
+                "actors": [{
+                    "id": "bard", "name": "Bard", "look_id": "default",
+                    "msr_sheet_path": "movie/references/actors/bard/msr_sheet.png",
+                    "visual_description": "an elderly bard",
+                }],
+                "locations": [{
+                    "id": "tavern", "name": "Tavern", "look_id": "default",
+                    "sheet_path": "movie/references/locations/tavern/hero.png",
+                    "visual_description": "a dim tavern",
+                }],
+            }), encoding="utf-8")
+            source = project_dir / "movie" / "render_plan.json"
+            source.write_text(json.dumps({"shots": [{
+                "scene": 1, "reference_ids": {"actors": ["bard"], "location": "tavern"},
+                "description": "The bard raises his lute.",
+            }]}), encoding="utf-8")
+
+            adapter = ComfyUIMiniMaxMovieVisualAdapter(
+                project_dir=project_dir,
+                workflow_path="workflow.json",
+                video_pipeline="minimax-h3-r2v",
+            )
+            prepared = json.loads(adapter._prepare_render_plan(source, project_dir).read_text(encoding="utf-8"))
+            scene = prepared["shots"][0]
+
+        self.assertEqual(["movie/references/actors/bard/msr_sheet.png"], scene["references"]["actor_msr_paths"])
+        self.assertEqual("movie/references/locations/tavern/hero.png", scene["references"]["location_msr_path"])
+        self.assertIn("<Picture 1>", scene["h3"]["prompt"])
+        self.assertIn("The bard raises his lute", scene["h3"]["prompt"])
+
     def test_movie_planner_factory_is_available_without_studio_repository(self):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
         from feverslop.composition.movie_planner import build_movie_planner

@@ -61,8 +61,104 @@ def normalize_movie_continuity_plan(plan: MovieContinuityPlan, *, bible: MovieBi
 
 
 def movie_continuity_plan_to_dict(plan: MovieContinuityPlan) -> dict:
-    from dataclasses import asdict
-    return asdict(plan)
+    return {
+        "continuity_ledger": _ledger_to_dict(plan.continuity_ledger),
+        "scene_continuity": {
+            shot_id: _packet_to_dict(packet)
+            for shot_id, packet in plan.scene_continuity.items()
+        },
+        "narrative_chain": [_beat_to_dict(beat) for beat in plan.narrative_chain],
+    }
+
+
+def _ledger_to_dict(ledger: MovieContinuityLedger) -> dict:
+    return {
+        "style_bible": {
+            "visual_style": ledger.style_bible.visual_style,
+            "palette": ledger.style_bible.palette,
+            "lighting": ledger.style_bible.lighting,
+            "camera": ledger.style_bible.camera,
+            "negative_constraints": ledger.style_bible.negative_constraints,
+        },
+        "characters": {
+            cid: {
+                "character_id": state.character_id,
+                "base_identity": state.base_identity,
+                "wardrobe": state.wardrobe,
+                "carried_props": state.carried_props,
+                "physical_state": state.physical_state,
+                "emotional_state": state.emotional_state,
+                "last_location": state.last_location,
+                "last_action": state.last_action,
+            }
+            for cid, state in ledger.characters.items()
+        },
+        "locations": {
+            lid: {
+                "location_id": loc.location_id,
+                "name": loc.name,
+                "time_of_day": loc.time_of_day,
+                "lighting": loc.lighting,
+                "props": loc.props,
+                "environmental_state": loc.environmental_state,
+            }
+            for lid, loc in ledger.locations.items()
+        },
+        "scene_order": ledger.scene_order,
+    }
+
+
+def _packet_to_dict(packet: MovieSceneContinuityPacket) -> dict:
+    return {
+        "shot_id": packet.shot_id,
+        "location_id": packet.location_id,
+        "incoming": packet.incoming,
+        "required_carryovers": packet.required_carryovers,
+        "allowed_changes": packet.allowed_changes,
+        "outgoing": packet.outgoing,
+        "characters": (
+            {
+                cid: {
+                    "character_id": state.character_id,
+                    "base_identity": state.base_identity,
+                    "wardrobe": state.wardrobe,
+                    "carried_props": state.carried_props,
+                    "physical_state": state.physical_state,
+                    "emotional_state": state.emotional_state,
+                    "last_location": state.last_location,
+                    "last_action": state.last_action,
+                }
+                for cid, state in packet.characters.items()
+            }
+            if packet.characters is not None
+            else None
+        ),
+        "location": (
+            {
+                "location_id": packet.location.location_id,
+                "name": packet.location.name,
+                "time_of_day": packet.location.time_of_day,
+                "lighting": packet.location.lighting,
+                "props": packet.location.props,
+                "environmental_state": packet.location.environmental_state,
+            }
+            if packet.location is not None
+            else None
+        ),
+    }
+
+
+def _beat_to_dict(beat: MovieNarrativeBeat) -> dict:
+    return {
+        "shot_id": beat.shot_id,
+        "story_state_before": beat.story_state_before,
+        "story_state_after": beat.story_state_after,
+        "cause_from_previous": beat.cause_from_previous,
+        "narrative_purpose": beat.narrative_purpose,
+        "conflict_or_tension": beat.conflict_or_tension,
+        "turning_point": beat.turning_point,
+        "sets_up_next": beat.sets_up_next,
+    }
 
 
 def movie_continuity_plan_from_dict(data: dict, *, bible: MovieBible, shots: tuple[CinematicShot, ...]) -> MovieContinuityPlan:

@@ -90,6 +90,14 @@ class SceneArtifactLayout:
         return self.final_dir / "video_only.mp4"
 
     @property
+    def video_audio(self) -> Path:
+        return self.final_dir / "video_audio.mp4"
+
+    @property
+    def concat_raw(self) -> Path:
+        return self.final_dir / "concat_raw.txt"
+
+    @property
     def movie(self) -> Path:
         return self.final_dir / "movie.mp4"
 

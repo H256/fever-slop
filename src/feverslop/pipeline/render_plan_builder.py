@@ -6,6 +6,7 @@ import random
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
+from feverslop.errors import FeverSlopDataError
 
 
 CAMERA_MOTION_DETAILS = [
@@ -139,6 +140,11 @@ class DetailListPicker:
 
 
 def _clamp_relay_segment(frame_start: int, frame_end: int, frame_count: int) -> tuple[int, int] | None:
+    """Clamp a relay segment to valid frame range.
+
+    frame_end is EXCLUSIVE (Python slice convention). Returned range covers
+    frames [frame_start, frame_end), covering (frame_end - frame_start) frames.
+    """
     frame_start = max(0, min(frame_start, frame_count - 1))
     frame_end = max(frame_start + 1, min(frame_end, frame_count))
 
@@ -209,6 +215,13 @@ def _portable_audio_references(references: dict, project_dir: Path) -> None:
             _project_relative_path(path, project_dir): description
             for path, description in references["_stem_audio_tags"].items()
         }
+
+
+def _require_key(d: dict[str, object], key: str, context: str) -> object:
+    """Return d[key], raising FeverSlopDataError with full context if missing."""
+    if key not in d:
+        raise FeverSlopDataError(f"Missing key {key!r} in {context}")
+    return d[key]
 
 
 def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
@@ -298,6 +311,7 @@ def build_render_plan(
     input_audio: Path | None = None,
     stem_files: dict[str, Path] | None = None,
     project_dir: Path | None = None,
+    seed: int = 0,
 ) -> Path:
     """
     Combines:
@@ -315,7 +329,7 @@ def build_render_plan(
     scene_prompts = artifact_store.read_json(scene_prompts_json)
     relay_scenes = artifact_store.read_json(ltx_prompt_relay_json)
 
-    relay_by_scene = {int(scene["scene"]): scene for scene in relay_scenes}
+    relay_by_scene = {int(_require_key(scene, "scene", "relay scene data")): scene for scene in relay_scenes}
 
     h3_by_segment: dict[str, dict] = {}
     if h3_prompts_json is not None:
@@ -325,22 +339,27 @@ def build_render_plan(
     render_plan = []
 
     for scene in scene_prompts:
-        scene_number = int(scene["scene"])
+        scene_number = int(_require_key(scene, "scene", "scene prompts"))
+        scene_seed = (
+            random.SystemRandom().randint(0, 2**63 - 1)
+            if int(seed) == -1
+            else int(seed)
+        )
         relay_scene = relay_by_scene.get(scene_number)
 
         if relay_scene is None:
             raise ValueError(f"No relay data found for scene {scene_number}")
 
-        duration_seconds = float(scene["duration"])
+        duration_seconds = float(_require_key(scene, "duration", f"scene prompts, scene {scene_number}"))
         frame_count = video_settings.scene_frame_count_between(
-            float(scene["start"]),
-            float(scene["end"]),
+            float(_require_key(scene, "start", f"scene prompts, scene {scene_number}")),
+            float(_require_key(scene, "end", f"scene prompts, scene {scene_number}")),
         )
 
-        zimage_prompt = scene["zimage_prompt"]
+        zimage_prompt = _require_key(scene, "zimage_prompt", f"scene prompts, scene {scene_number}")
         t2i_prompt = str(scene.get("t2i_prompt") or scene.get("zimage_prompt") or scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
         ltx_base_prompt = t2i_prompt
-        original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=video_settings.fps)
+        original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=scene_seed)
         i2v_prompt_from_t2i = original_style_i2v_prompt if _scene_silent_mode(scene) else str(
             scene.get("i2v_prompt_from_t2i")
             or scene.get("original_style_i2v_prompt")
@@ -351,15 +370,15 @@ def build_render_plan(
 
         for relay in relay_scene.get("prompt_relay", []):
             clamped = _clamp_relay_segment(
-                int(relay["frame_start"]),
-                int(relay["frame_end"]),
+                int(_require_key(relay, "frame_start", f"relay data, scene {scene_number}")),
+                int(_require_key(relay, "frame_end", f"relay data, scene {scene_number}")),
                 frame_count,
             )
             if clamped is None:
                 continue
 
             frame_start, frame_end = clamped
-            state = _effective_relay_state(relay["state"], scene)
+            state = _effective_relay_state(_require_key(relay, "state", f"relay data, scene {scene_number}"), scene)
 
             if state == "singing":
                 state_prompt = (
@@ -397,16 +416,17 @@ def build_render_plan(
 
             prompt_relay.append({
                 "frame_start": 0,
-                "frame_end": frame_count - 1,
+                "frame_end": frame_count,
                 "state": state,
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
             })
 
         render_scene = {
             "scene": scene_number,
+            "seed": scene_seed,
             "cut": True,
-            "abs_start_seconds": scene["start"],
-            "abs_end_seconds": scene["end"],
+            "abs_start_seconds": _require_key(scene, "start", f"scene prompts, scene {scene_number}"),
+            "abs_end_seconds": _require_key(scene, "end", f"scene prompts, scene {scene_number}"),
             "duration_seconds": round(duration_seconds, 3),
             "fps": video_settings.fps,
             "width": video_settings.width,
@@ -422,8 +442,8 @@ def build_render_plan(
                 "render_mode_hint": _render_mode_hint(str(scene.get("type", "")), prompt_relay),
             },
             "metadata": {
-                "segment_id": scene["segment_id"],
-                "type": scene["type"],
+                "segment_id": _require_key(scene, "segment_id", f"scene prompts, scene {scene_number}"),
+                "type": _require_key(scene, "type", f"scene prompts, scene {scene_number}"),
                 "silent_mode": _scene_silent_mode(scene),
                 "lyrics": scene.get("lyrics", ""),
                 "base_concept": scene.get("base_concept", ""),
