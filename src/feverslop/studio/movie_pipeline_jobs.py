@@ -694,7 +694,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "startframe_comfyui_base_url": str(raw.get("startframe_comfyui_base_url") or "http://localhost:8188").rstrip("/"),
         "startframe_write_debug_workflows": bool(raw.get("startframe_write_debug_workflows", False)),
         "startframe_debug_workflows_dir": str(raw.get("startframe_debug_workflows_dir") or ""),
-        "startframe_validator_base_url": str(raw.get("startframe_validator_base_url") or "http://llm.elysium.lan/v1").rstrip("/"),
+        "startframe_validator_base_url": str(raw.get("startframe_validator_base_url") or "http://your-llm-server.local/v1").rstrip("/"),
         "startframe_validator_model": str(raw.get("startframe_validator_model") or "gemma4-26b-a4b:vision"),
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v4.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",

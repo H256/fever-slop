@@ -319,7 +319,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", config["mask_workflow"])
         self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", config["identity_repair_workflow"])
         self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", config["detail_workflow"])
-        self.assertEqual("http://llm.elysium.lan/v1", config["startframe_validator_base_url"])
+        self.assertEqual("http://your-llm-server.local/v1", config["startframe_validator_base_url"])
         self.assertEqual("gemma4-26b-a4b:vision", config["startframe_validator_model"])
         self.assertFalse(config["startframe_write_debug_workflows"])
         self.assertEqual("workflows/video_ltxv_i2v_native_audio_v2.json", config["i2v_workflow"])
@@ -333,7 +333,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "--startframe-comfyui-base-url",
                 "http://localhost:8188/",
                 "--startframe-validator-base-url",
-                "http://llm.elysium.lan/v1/",
+                "http://your-llm-server.local/v1/",
                 "--startframe-validator-model",
                 "gemma4-26b-a4b",
             ]
@@ -342,7 +342,7 @@ class RunnerScriptTests(unittest.TestCase):
         config = movie_pipeline.config_from_args(args)
 
         self.assertEqual("http://localhost:8188", config["startframe_comfyui_base_url"])
-        self.assertEqual("http://llm.elysium.lan/v1", config["startframe_validator_base_url"])
+        self.assertEqual("http://your-llm-server.local/v1", config["startframe_validator_base_url"])
         self.assertEqual("gemma4-26b-a4b", config["startframe_validator_model"])
 
     def test_movie_pipeline_accepts_ideogram_startframe_director_backend(self):
