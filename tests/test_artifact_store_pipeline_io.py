@@ -97,6 +97,53 @@ class ArtifactStorePipelineIoTests(unittest.TestCase):
             self.assertIn(str(render_plan_path), store.json_writes)
             self.assertEqual(48, store.json_writes[str(render_plan_path)][0]["frame_count"])
 
+    def test_splits_lyrics_at_scene_boundary_in_stage1_and_relay(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_srt = temp / "scenes.srt"
+            scene_srt.write_text(
+                "1\n00:00:00,000 --> 00:00:08,000\nScene 1\n\n"
+                "2\n00:00:08,000 --> 00:00:10,000\nScene 2\n",
+                encoding="utf-8",
+            )
+            timeline_path = temp / "timeline.json"
+            stage1_path = temp / "stage1.json"
+            relay_path = temp / "relay.json"
+            store = FakeArtifactStore()
+            store.json_reads[str(timeline_path)] = [
+                {
+                    "kind": "vocals",
+                    "start": 0.0,
+                    "end": 10.0,
+                    "lyrics": "one two three four five",
+                    "word_timestamps": [
+                        {"word": "one", "start": 0.0, "end": 0.5},
+                        {"word": "two", "start": 0.5, "end": 1.0},
+                        {"word": "three", "start": 1.0, "end": 1.5},
+                        {"word": "four", "start": 7.5, "end": 9.5},
+                        {"word": "five", "start": 9.5, "end": 10.0},
+                    ],
+                }
+            ]
+
+            build_stage1_segment_json(scene_srt, timeline_path, stage1_path, artifact_store=store)
+            build_scene_prompt_relay(
+                scene_srt,
+                timeline_path,
+                relay_path,
+                VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=store,
+            )
+
+            stage1 = store.json_writes[str(stage1_path)]
+            relay = store.json_writes[str(relay_path)]
+            self.assertEqual("one two three", stage1[0]["lyrics"])
+            self.assertEqual("four five", stage1[1]["lyrics"])
+            self.assertIn("one two three", relay[0]["prompt_relay"][0]["prompt"])
+            self.assertNotIn("four", relay[0]["prompt_relay"][0]["prompt"])
+            self.assertIn("four five", relay[1]["prompt_relay"][0]["prompt"])
+            self.assertNotIn("one two three", relay[1]["prompt_relay"][0]["prompt"])
+
     def test_scene_srt_writer_uses_artifact_store_for_text(self):
         store = FakeArtifactStore()
 

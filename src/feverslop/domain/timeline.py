@@ -10,3 +10,4 @@ class TimelineSegment:
     end: float
     kind: str  # "vocals" or "instrumental"
     text: str = ""
+    word_timestamps: tuple[dict[str, object], ...] = ()

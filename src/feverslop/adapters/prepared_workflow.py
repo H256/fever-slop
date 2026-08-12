@@ -42,7 +42,12 @@ class WorkflowMaterializer:
         scene_number = int(scene["scene"])
         consistency = self._consistency_contract(scene, scene_number)
         manifest_path = self.layout.scene_manifest(scene_number)
-        seed = int(request.seed) if request.seed is not None else int(self.backend._seed_for_scene(scene_number))
+        if request.seed is not None:
+            seed = int(request.seed)
+        elif scene.get("seed") is not None and not getattr(self.backend, "randomize_seed", False):
+            seed = int(scene["seed"])
+        else:
+            seed = int(self.backend._seed_for_scene(scene_number))
         original_uploader = self.backend.asset_uploader
         recording_uploader = _RecordingUploader(original_uploader, self.layout.project_dir)
         self.backend.asset_uploader = recording_uploader

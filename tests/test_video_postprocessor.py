@@ -26,6 +26,21 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertIn("-c:v", cmd)
         self.assertIn("copy", cmd)
 
+    def test_concat_clips_can_retain_audio_in_named_output(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            output = processor.concat_clips(
+                concat_list=Path("concat_raw.txt"),
+                output_file=Path("video_audio.mp4"),
+            )
+
+        cmd = run.call_args.args[0]
+        self.assertEqual(Path("video_audio.mp4"), output)
+        self.assertNotIn("-an", cmd)
+        self.assertIn("-c", cmd)
+        self.assertIn("copy", cmd)
+
     def test_original_audio_mux_maps_video_and_full_audio(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
 
