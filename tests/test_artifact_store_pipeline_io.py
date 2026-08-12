@@ -3,9 +3,10 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.domain.srt import SrtScene
 from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
 from feverslop.pipeline.render_plan_builder import build_render_plan
-from feverslop.pipeline.scene_duration_enforcer import SrtScene, write_scene_srt
+from feverslop.pipeline.scene_duration_enforcer import write_scene_srt
 from feverslop.pipeline.stage1_segment_builder import build_stage1_segment_json
 from feverslop.config.video_settings import VideoSettings
 
