@@ -16,6 +16,7 @@ def normalize_empty_vocals(
                     end=seg.end,
                     kind="instrumental",
                     text="",
+                    word_timestamps=(),
                 )
             )
         else:
@@ -40,6 +41,7 @@ def merge_same_kind_segments(
         if same_kind and close_enough:
             new_end = max(current.end, seg.end)
             new_text = current.text
+            new_word_timestamps = current.word_timestamps + seg.word_timestamps
             if seg.text.strip():
                 if new_text:
                     new_text = (new_text + " " + seg.text).strip()
@@ -50,6 +52,7 @@ def merge_same_kind_segments(
                 end=new_end,
                 kind=current.kind,
                 text=new_text,
+                word_timestamps=new_word_timestamps,
             )
         else:
             merged.append(current)

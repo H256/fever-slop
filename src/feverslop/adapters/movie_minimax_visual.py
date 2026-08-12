@@ -12,6 +12,7 @@ from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
 from feverslop.config.project_config import ProjectConfig
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.prompting.dspy_h3_prompt_builder import _format_relay_shots, _normalize_relay_segments
 
 
 class ComfyUIMiniMaxMovieVisualAdapter:
@@ -139,9 +140,18 @@ def _load_movie_manifest(project_dir: Path) -> dict:
 def _h3_movie_prompt(scene: dict) -> str:
     """Build a compact H3 prompt while preserving existing enriched prompts."""
     existing = str((scene.get("h3") or {}).get("prompt") or "").strip()
-    if existing:
-        return existing
+    relay_prompt = _format_relay_shots(_normalize_relay_segments(scene))
     references = scene.get("references") or {}
+    reference_paths = list(references.get("actor_msr_paths") or references.get("actor_sheet_paths") or [])
+    location_path = references.get("location_msr_path") or references.get("location_sheet_path")
+    if location_path:
+        reference_paths.append(location_path)
+    reference_prompt = (
+        "Reference files:\n" + "\n".join(f"<Picture {index}>: {path}" for index, path in enumerate(reference_paths, start=1))
+        if reference_paths else ""
+    )
+    if existing:
+        return "\n\n".join(part for part in (existing, reference_prompt, relay_prompt) if part)
     descriptions = list(references.get("actor_reference_descriptions") or [])
     location = references.get("location_reference_description") or {}
     definitions = []
@@ -158,4 +168,5 @@ def _h3_movie_prompt(scene: dict) -> str:
     prompt = re.sub(r"Reference image (\d+)", r"<Picture \1>", prompt, flags=re.IGNORECASE)
     action = _movie_video_prompt(scene, bible={}, manifest={})
     parts = ["subject_definitions:", "\n".join(definitions), f"summary: {action}", prompt]
+    parts.extend(part for part in (reference_prompt, relay_prompt) if part)
     return "\n\n".join(part for part in parts if part.strip())
