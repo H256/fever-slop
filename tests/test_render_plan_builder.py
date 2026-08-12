@@ -1,4 +1,4 @@
-﻿import json
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +8,7 @@ from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.errors import FeverSlopDataError
 from feverslop.pipeline.render_plan_builder import (
     DetailListPicker,
+    _clamp_relay_segment,
     build_original_style_i2v_prompt,
     build_render_plan,
 )
@@ -323,9 +324,7 @@ class BuildRenderPlanTests(unittest.TestCase):
 
 
     def test_stem_audio_merged_into_reference_audio_paths(self):
-        """Stem audio paths are merged into references.reference_audio_paths.
-        This ensures prompt generators can produce <Audio N> tags for stems.
-        """
+        """Stem audio paths are merged into references.reference_audio_paths."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             scene_prompts_path = temp / "scene_prompts.json"
@@ -380,7 +379,6 @@ class BuildRenderPlanTests(unittest.TestCase):
             refs = scene["references"]
             self.assertIn("reference_audio_paths", refs)
             audio_paths = refs["reference_audio_paths"]
-            # Both stems should be in the audio paths (vocals first, full_mix second)
             self.assertEqual(
                 ["input/reference.wav", "vocals.wav", "full_mix.wav"],
                 audio_paths,
@@ -392,10 +390,8 @@ class BuildRenderPlanTests(unittest.TestCase):
                 {"vocals": "vocals.wav", "full_mix": "full_mix.wav"},
                 scene["stem_audio"]["paths"],
             )
-            # Verify semantic descriptions exist
             self.assertIn("vocals", scene["stem_audio"]["stems"])
             self.assertIn("full_mix", scene["stem_audio"]["stems"])
-            # Check that vocals tag exists
             vocals_tag_found = any("audio_transfer" in v for v in stem_tags.values())
             self.assertTrue(vocals_tag_found, f"Expected audio_transfer in stem_tags, got {stem_tags}")
 
@@ -434,7 +430,6 @@ class BuildRenderPlanTests(unittest.TestCase):
             )
             relay_path.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
 
-            # Config with stems in arbitrary order
             build_render_plan(
                 scene_prompts_json=scene_prompts_path,
                 ltx_prompt_relay_json=relay_path,
@@ -448,7 +443,6 @@ class BuildRenderPlanTests(unittest.TestCase):
 
             plan = json.loads(output_path.read_text(encoding="utf-8"))
             scene = plan[0]
-            # Stem list should be reordered: vocals, full_mix first
             stems = scene["stem_audio"]["stems"]
             self.assertEqual(stems[0], "vocals")
             self.assertEqual(stems[1], "full_mix")
@@ -541,6 +535,58 @@ class BuildRenderPlanTests(unittest.TestCase):
             self.assertEqual([60, 60, 59], [scene["frame_count"] for scene in plan])
 
 
+class FrameBoundaryTests(unittest.TestCase):
+    def test_clamp_relay_segment_exclusive_frame_end(self):
+        result = _clamp_relay_segment(0, 48, 48)
+        self.assertEqual((0, 48), result)
+
+    def test_clamp_relay_segment_clamps_end_to_frame_count(self):
+        result = _clamp_relay_segment(0, 100, 48)
+        self.assertEqual((0, 48), result)
+
+    def test_fallback_relay_uses_frame_count_not_minus_one(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+
+            scene_prompts_path.write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "segment_id": "s1",
+                        "type": "instrumental",
+                        "start": 0.0,
+                        "end": 2.0,
+                        "duration": 2.0,
+                        "lyrics": "",
+                        "base_concept": "test",
+                        "zimage_prompt": "z",
+                        "ltx_base_prompt": "A test prompt.",
+                    }
+                ]),
+                encoding="utf-8",
+            )
+            relay_path.write_text(
+                json.dumps([{"scene": 1, "prompt_relay": []}]),
+                encoding="utf-8",
+            )
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+            )
+
+            plan = json.loads(output_path.read_text(encoding="utf-8"))
+            frame_count = plan[0]["frame_count"]
+            fb_end = plan[0]["ltx"]["prompt_relay"][0]["frame_end"]
+            self.assertEqual(frame_count, fb_end)
+
+
 class TestFeverSlopDataError(unittest.TestCase):
     def test_is_fever_slop_subclass(self):
         from feverslop.errors import FeverSlopError
@@ -548,7 +594,7 @@ class TestFeverSlopDataError(unittest.TestCase):
 
 
 def _minimal_scene(scene_num=1, **overrides):
-    """Build a minimal valid scene dict. Override kwargs to remove keys for testing."""
+    """Build a minimal valid scene dict."""
     base = {
         "scene": scene_num,
         "duration": 2.0,
@@ -570,15 +616,13 @@ def _minimal_relay(scene_num=1, **overrides):
     """Build a minimal relay scene dict."""
     base = {
         "scene": scene_num,
-        "prompt_relay": [
-            {
-                "frame_start": 0,
-                "frame_end": 60,
-                "state": "singing",
-                "lyrics": "",
-                "text": "",
-            }
-        ],
+        "prompt_relay": [{
+            "frame_start": 0,
+            "frame_end": 60,
+            "state": "singing",
+            "lyrics": "",
+            "text": "",
+        }],
     }
     if overrides:
         base.update(overrides)
@@ -589,7 +633,6 @@ class TestDefensiveGuardsSceneKeys(unittest.TestCase):
     """Verify that missing scene keys raise FeverSlopDataError with context."""
 
     def _run_with_scenes(self, scenes, relays=None):
-        """Run build_render_plan with given scenes and relay data, return or raise."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             store = JsonArtifactStore()
@@ -697,7 +740,6 @@ class TestDefensiveGuardsRelayKeys(unittest.TestCase):
         self.assertIn("'state'", str(ctx.exception))
 
     def test_missing_relay_scene_key_in_relay_by_scene(self):
-        """When relay scene data has no 'scene' key, FeverSlopDataError at relay_by_scene."""
         relay = _minimal_relay()
         del relay["scene"]
         with self.assertRaises(FeverSlopDataError) as ctx:

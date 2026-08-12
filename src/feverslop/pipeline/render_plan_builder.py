@@ -140,6 +140,11 @@ class DetailListPicker:
 
 
 def _clamp_relay_segment(frame_start: int, frame_end: int, frame_count: int) -> tuple[int, int] | None:
+    """Clamp a relay segment to valid frame range.
+
+    frame_end is EXCLUSIVE (Python slice convention). Returned range covers
+    frames [frame_start, frame_end), covering (frame_end - frame_start) frames.
+    """
     frame_start = max(0, min(frame_start, frame_count - 1))
     frame_end = max(frame_start + 1, min(frame_end, frame_count))
 
@@ -411,7 +416,7 @@ def build_render_plan(
 
             prompt_relay.append({
                 "frame_start": 0,
-                "frame_end": frame_count - 1,
+                "frame_end": frame_count,
                 "state": state,
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
             })
