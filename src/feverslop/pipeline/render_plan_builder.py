@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import random
+import re
 
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
@@ -174,7 +175,10 @@ def _scene_silent_mode(scene: dict) -> bool:
 
 def _contains_vocal_performance_prompt(value: str) -> bool:
     lower = str(value or "").lower()
-    return any(token in lower for token in ("sings", "singing", "lip sync", "lip-sync", "lip-syncing", "belts out"))
+    for token in ("sings", "singing", "lip sync", "lip-sync", "lip-syncing", "belts out"):
+        if re.search(rf"\b({re.escape(token)})\b", lower):
+            return True
+    return False
 
 
 def _effective_relay_state(state: object, scene: dict) -> str:

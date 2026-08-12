@@ -119,8 +119,8 @@ def merge_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_durat
 
 def merge_remaining_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_duration: float) -> list[SrtScene]:
     merged = list(scenes)
-    stable = False
-    while not stable:
+    prev_short_count = len(scenes) + 1  # ensure first iteration runs
+    for _ in range(100):  # hard safety cap
         stable = True
         for i, scene in enumerate(list(merged)):
             if scene.duration >= min_duration or len(merged) == 1:
@@ -138,6 +138,13 @@ def merge_remaining_short_scenes(scenes: list[SrtScene], *, min_duration: float,
                 del merged[i - 1:i + 1]
                 merged[i - 1:i - 1] = _split_scene_to_max(combined, max_duration)
                 break
+        if stable:
+            break
+        short_count = sum(1 for s in merged if s.duration < min_duration)
+        if short_count >= prev_short_count:
+            # No progress — merging+splitting is cycling without helping
+            break
+        prev_short_count = short_count
     return merged
 
 
@@ -203,22 +210,22 @@ def validate_scene_durations(
     allow_single_short_tail: bool = True,
 ) -> list[str]:
     errors = []
-    min_duration_millis = round(float(min_duration) * 1000)
-    max_duration_millis = round(float(max_duration) * 1000)
+    # Tolerance for IEEE-754 subtraction artifacts (nanoseconds, not meaningful ms)
+    epsilon = 1e-9
 
     for index, scene in enumerate(scenes):
         is_last = index == len(scenes) - 1
-        scene_duration_millis = round(scene.end * 1000) - round(scene.start * 1000)
+        duration = scene.end - scene.start
 
-        if scene_duration_millis < min_duration_millis:
+        if duration < min_duration - epsilon:
             if not (allow_single_short_tail and is_last and len(scenes) == 1):
                 errors.append(
-                    f"Scene {index + 1} too short: {scene.duration:.3f}s < {min_duration:.3f}s"
+                    f"Scene {index + 1} too short: {duration:.3f}s < {min_duration:.3f}s"
                 )
 
-        if scene_duration_millis > max_duration_millis:
+        if duration > max_duration + epsilon:
             errors.append(
-                f"Scene {index + 1} too long: {scene.duration:.3f}s > {max_duration:.3f}s"
+                f"Scene {index + 1} too long: {duration:.3f}s > {max_duration:.3f}s"
             )
 
     return errors

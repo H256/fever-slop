@@ -2,8 +2,9 @@ import os
 import tempfile
 import unittest
 
+from feverslop.domain.srt import SrtScene
 from feverslop.pipeline.scene_duration_enforcer import (
-    SrtScene,
+    merge_remaining_short_scenes,
     merge_short_scenes,
     renumber_scenes,
     split_long_scenes,
@@ -35,6 +36,35 @@ class SceneDurationHelperTests(unittest.TestCase):
 
         self.assertEqual(1, result[0].scene)
         self.assertEqual("Scene 1", result[0].text)
+
+
+class MergeRemainingShortScenesTests(unittest.TestCase):
+    def test_merge_remaining_short_scenes_terminates_when_max_below_twice_min(self):
+        """Terminates when min_duration=2, max_duration=3 and scenes are 1.5s each."""
+        scenes = [
+            SrtScene(scene=1, start=0.0, end=1.5, text="A"),
+            SrtScene(scene=2, start=1.5, end=3.0, text="B"),
+            SrtScene(scene=3, start=3.0, end=4.5, text="C"),
+            SrtScene(scene=4, start=4.5, end=6.0, text="D"),
+        ]
+        # This should terminate quickly and return a result without hanging
+        result = merge_remaining_short_scenes(
+            scenes, min_duration=2.0, max_duration=3.0
+        )
+        self.assertIsInstance(result, list)
+        self.assertTrue(len(result) >= 1)
+
+    def test_merge_remaining_short_scenes_normal_still_converges(self):
+        """Normal inputs where merging fixes short scenes still work."""
+        scenes = [
+            SrtScene(scene=1, start=0.0, end=3.0, text="A"),
+            SrtScene(scene=2, start=3.0, end=3.5, text="B"),
+            SrtScene(scene=3, start=3.5, end=6.0, text="C"),
+        ]
+        result = merge_remaining_short_scenes(
+            scenes, min_duration=2.0, max_duration=4.0
+        )
+        self.assertTrue(all(s.duration >= 2.0 for s in result[:-1]))
 
 
 class SrtDomainTests(unittest.TestCase):

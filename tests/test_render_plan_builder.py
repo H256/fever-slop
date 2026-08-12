@@ -14,6 +14,9 @@ from feverslop.pipeline.render_plan_builder import (
 )
 from feverslop.config.video_settings import VideoSettings
 
+# Access the private helper for direct unit testing
+from feverslop.pipeline import render_plan_builder as rpb_module
+
 
 class DetailListPickerTests(unittest.TestCase):
     def test_random_pick_is_deterministic_for_scene_and_seed(self):
@@ -770,6 +773,30 @@ class TestDefensiveGuardsValidInput(unittest.TestCase):
             data = json.loads(result.read_text())
             self.assertEqual(len(data), 1)
             self.assertEqual(data[0]["scene"], 1)
+
+class VocalPromptWordBoundaryTests(unittest.TestCase):
+    """Test that _contains_vocal_performance_prompt uses word boundaries."""
+
+    def test_contains_vocal_performance_prompt_word_boundary(self):
+        func = rpb_module._contains_vocal_performance_prompt
+        # "things" should NOT match "sings"
+        self.assertFalse(func("the singer shows things"))
+        # "resigns" should NOT match "sings"
+        self.assertFalse(func("the minister resigns today"))
+        # "sings" should match
+        self.assertTrue(func("she sings beautifully"))
+        self.assertTrue(func("he sings"))
+        # "singing" should match
+        self.assertTrue(func("they are singing along"))
+
+    def test_contains_vocal_performance_prompt_all_tokens_match(self):
+        func = rpb_module._contains_vocal_performance_prompt
+        self.assertTrue(func("she sings"))
+        self.assertTrue(func("singing loud"))
+        self.assertTrue(func("perfect lip sync"))
+        self.assertTrue(func("a lip-sync performance"))
+        self.assertTrue(func("lip-syncing is fun"))
+        self.assertTrue(func("she belts out the chorus"))
 
 
 if __name__ == "__main__":

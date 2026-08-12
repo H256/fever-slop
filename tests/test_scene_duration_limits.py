@@ -245,6 +245,17 @@ class SceneDurationLimitTests(unittest.TestCase):
             max_render_duration_seconds=18.0,
         )
 
+    def test_validate_scene_durations_float_consistency(self):
+        """No ms rounding mismatch: boundary durations pass with float comparison."""
+        min_duration = 2.0
+        scene = SrtScene(scene=1, start=0.0005, end=min_duration + 0.0005)
+        errors = validate_scene_durations(
+            [scene],
+            min_duration=min_duration,
+            max_duration=30.0,
+        )
+        self.assertEqual([], errors)
+
     def test_render_frame_guard_rejects_over_budget_with_actionable_message(self):
         with self.assertRaises(FeverSlopValidationError) as raised:
             validate_render_frame_budget(
