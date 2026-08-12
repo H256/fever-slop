@@ -298,6 +298,7 @@ def build_render_plan(
     input_audio: Path | None = None,
     stem_files: dict[str, Path] | None = None,
     project_dir: Path | None = None,
+    seed: int = 0,
 ) -> Path:
     """
     Combines:
@@ -326,6 +327,11 @@ def build_render_plan(
 
     for scene in scene_prompts:
         scene_number = int(scene["scene"])
+        scene_seed = (
+            random.SystemRandom().randint(0, 2**63 - 1)
+            if int(seed) == -1
+            else int(seed)
+        )
         relay_scene = relay_by_scene.get(scene_number)
 
         if relay_scene is None:
@@ -340,7 +346,7 @@ def build_render_plan(
         zimage_prompt = scene["zimage_prompt"]
         t2i_prompt = str(scene.get("t2i_prompt") or scene.get("zimage_prompt") or scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
         ltx_base_prompt = t2i_prompt
-        original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=video_settings.fps)
+        original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=scene_seed)
         i2v_prompt_from_t2i = original_style_i2v_prompt if _scene_silent_mode(scene) else str(
             scene.get("i2v_prompt_from_t2i")
             or scene.get("original_style_i2v_prompt")
@@ -404,6 +410,7 @@ def build_render_plan(
 
         render_scene = {
             "scene": scene_number,
+            "seed": scene_seed,
             "cut": True,
             "abs_start_seconds": scene["start"],
             "abs_end_seconds": scene["end"],

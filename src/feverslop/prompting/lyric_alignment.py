@@ -71,6 +71,7 @@ class LyricTimelineAligner:
                 end=segment.end,
                 kind=segment.kind,
                 text=str(corrected[key]).strip(),
+                word_timestamps=segment.word_timestamps,
             )
 
         return [
