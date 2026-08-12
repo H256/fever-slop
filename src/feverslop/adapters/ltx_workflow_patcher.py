@@ -148,9 +148,12 @@ class LTXWorkflowPatcher:
             return "single_prompt"
         return "relay"
 
-    def seed_for_scene(self, scene_number: int) -> int:
+    def seed_for_scene(self, scene: int | dict) -> int:
         if self.settings.randomize_seed:
             return random.randint(0, 2**63 - 1)
+        if isinstance(scene, dict) and scene.get("seed") is not None:
+            return int(scene["seed"])
+        scene_number = int(scene.get("scene", 0)) if isinstance(scene, dict) else int(scene)
         return self.settings.seed_offset + scene_number
 
     def build_workflow(
@@ -175,7 +178,7 @@ class LTXWorkflowPatcher:
         patcher.set_input_by_title(self.settings.height_node_title, "value", height)
         patcher.set_input_by_title(self.settings.frames_node_title, "value", render_frame_count)
         patcher.set_input_by_title(self.settings.framerate_node_title, "value", fps)
-        patcher.set_input_by_title(self.settings.seed_node_title, "noise_seed", self.seed_for_scene(scene_number))
+        patcher.set_input_by_title(self.settings.seed_node_title, "noise_seed", self.seed_for_scene(scene))
 
         if self.has_node_title(patcher, self.settings.load_audio_node_title):
             patcher.set_input_by_title(self.settings.load_audio_node_title, "audio", comfy_audio_name)

@@ -99,6 +99,7 @@ class VideoPromptGenerator:
             mode=request.mode.value, user_prompt=request.user_prompt, duration_seconds=request.duration_seconds,
             references_json=self._json(refs), notes=request.notes or "", strict_fidelity=request.strict_fidelity,
             requested_music_intent=request.music_intent.value if request.music_intent else "",
+            relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
         )
         plan = prediction.plan
         if request.music_intent is not None:
@@ -149,7 +150,9 @@ class VideoPromptGenerator:
                 output = self.reference_renderer(
                     guide=self._read(self.reference_guide_path), user_prompt=request.user_prompt,
                     plan_json=plan_json, references_json=references_json,
+                    notes=request.notes or "",
                     strict_fidelity=request.strict_fidelity, music_intent=plan.music_intent.value,
+                    relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
                 )
                 prompt = ReferenceVideoPrompt(
                     subject_definitions=plan.subjects, summary=output.summary,
@@ -162,8 +165,10 @@ class VideoPromptGenerator:
                 output = self.base_renderer(
                     guide=self._read(self.base_guide_path), mode=request.mode.value,
                     user_prompt=request.user_prompt, plan_json=plan_json,
-                    references_json=references_json, strict_fidelity=request.strict_fidelity,
+                    references_json=references_json, notes=request.notes or "",
+                    strict_fidelity=request.strict_fidelity,
                     music_intent=plan.music_intent.value,
+                    relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
                 )
                 prompt = output.result
         if plan.music_intent == MusicIntent.NONE:

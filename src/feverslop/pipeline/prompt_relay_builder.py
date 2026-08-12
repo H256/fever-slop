@@ -36,6 +36,44 @@ def overlap(
     return start, end
 
 
+def lyrics_for_time_range(
+    lyrics: str,
+    source_start: float,
+    source_end: float,
+    range_start: float,
+    range_end: float,
+    word_timestamps: list[dict] | tuple[dict, ...] | None = None,
+) -> str:
+    """Return words assigned to a subrange using Whisper timestamps when available."""
+    words_with_timestamps = word_timestamps or ()
+    if words_with_timestamps:
+        selected = []
+        for item in words_with_timestamps:
+            try:
+                word_start = float(item["start"])
+                word_end = float(item["end"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            midpoint = (word_start + word_end) / 2
+            if range_start <= midpoint < range_end:
+                word = str(item.get("word", "")).strip()
+                if word:
+                    selected.append(word)
+        return " ".join(selected)
+
+    # Legacy timeline files do not contain word timestamps.
+    words = str(lyrics or "").split()
+    source_duration = float(source_end) - float(source_start)
+    if not words or source_duration <= 0 or range_end <= range_start:
+        return ""
+
+    start_ratio = max(0.0, min(1.0, (float(range_start) - float(source_start)) / source_duration))
+    end_ratio = max(0.0, min(1.0, (float(range_end) - float(source_start)) / source_duration))
+    start_index = min(len(words), max(0, round(start_ratio * len(words))))
+    end_index = min(len(words), max(start_index, round(end_ratio * len(words))))
+    return " ".join(words[start_index:end_index])
+
+
 def build_scene_prompt_relay(
     scene_srt_file: str | Path,
     vocal_timeline_json: str | Path,
@@ -88,6 +126,9 @@ def build_scene_prompt_relay(
             relevant_vocals.append({
                 "start": ov_start,
                 "end": ov_end,
+                "source_start": float(seg["start"]),
+                "source_end": float(seg["end"]),
+                "word_timestamps": seg.get("word_timestamps") or (),
                 "lyrics": lyrics.strip(),
             })
 
@@ -102,7 +143,16 @@ def build_scene_prompt_relay(
 
             for vocal in relevant_vocals:
                 if overlap(abs_start, abs_end, vocal["start"], vocal["end"]):
-                    lyrics_here.append(vocal["lyrics"])
+                    lyric_text = lyrics_for_time_range(
+                        vocal["lyrics"],
+                        vocal["source_start"],
+                        vocal["source_end"],
+                        abs_start,
+                        abs_end,
+                        vocal["word_timestamps"],
+                    )
+                    if lyric_text:
+                        lyrics_here.append(lyric_text)
 
             rel_start = abs_start - scene_start
             rel_end = abs_end - scene_start
