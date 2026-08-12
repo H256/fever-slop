@@ -1,7 +1,7 @@
 {
   "llm": {
     "api_key": "",
-    "base_url": "http://llm.elysium.lan/v1",
+    "base_url": "http://your-llm-server.local/v1",
     "model": "gemma4-26b-a4b:instruct",
     "temperature": 0.7,
     "dspy_temperature": 0.4,

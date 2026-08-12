@@ -77,7 +77,7 @@ class ProjectCreateRequest:
     movie_startframe_comfyui_base_url: str = "http://localhost:8188"
     movie_startframe_write_debug_workflows: bool = False
     movie_startframe_debug_workflows_dir: str = ""
-    movie_startframe_validator_base_url: str = "http://llm.elysium.lan/v1"
+    movie_startframe_validator_base_url: str = "http://your-llm-server.local/v1"
     movie_startframe_validator_model: str = "gemma4-26b-a4b:vision"
     movie_msr_workflow: str = "workflows/video_default_ltxv_msr_1actor_1background_v4.json"
     movie_msr_i2v_workflow: str = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json"

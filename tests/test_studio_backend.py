@@ -1141,7 +1141,7 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", metadata["movie"]["detail_workflow"])
             self.assertEqual("http://localhost:8188", metadata["movie"]["startframe_comfyui_base_url"])
             self.assertFalse(metadata["movie"]["startframe_write_debug_workflows"])
-            self.assertEqual("http://llm.elysium.lan/v1", metadata["movie"]["startframe_validator_base_url"])
+            self.assertEqual("http://your-llm-server.local/v1", metadata["movie"]["startframe_validator_base_url"])
             self.assertEqual("gemma4-26b-a4b:vision", metadata["movie"]["startframe_validator_model"])
 
     def test_create_movie_project_uses_ideogram_workflow_for_ideogram_director_backend(self):

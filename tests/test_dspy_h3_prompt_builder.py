@@ -301,7 +301,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
     def test_generator_converts_openai_url_object_for_dspy(self):
         class UrlObject:
             def __str__(self):
-                return "http://llm.elysium.lan/v1"
+                return "http://your-llm-server.local/v1"
 
         class Client:
             base_url = UrlObject()
@@ -321,12 +321,12 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 llm=LLM(),
             )
 
-        self.assertEqual("http://llm.elysium.lan/v1", lm_factory.call_args.kwargs["api_base"])
+        self.assertEqual("http://your-llm-server.local/v1", lm_factory.call_args.kwargs["api_base"])
         self.assertFalse(lm_factory.call_args.kwargs["cache"])
 
     def test_generator_passes_dspy_cache_setting_to_lm(self):
         class Client:
-            base_url = "http://llm.elysium.lan/v1"
+            base_url = "http://your-llm-server.local/v1"
             api_key = "none-needed"
 
         class LLM:
@@ -348,7 +348,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
     def test_generator_passes_dspy_temperature_to_lm(self):
         class Client:
-            base_url = "http://llm.elysium.lan/v1"
+            base_url = "http://your-llm-server.local/v1"
             api_key = "none-needed"
 
         class LLM:

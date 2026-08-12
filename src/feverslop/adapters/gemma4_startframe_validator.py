@@ -18,7 +18,7 @@ class Gemma4StartframeValidator:
     def __init__(
         self,
         *,
-        base_url: str = "http://llm.elysium.lan/v1",
+        base_url: str = "http://your-llm-server.local/v1",
         model: str = "gemma4-26b-a4b:vision",
         timeout_seconds: float = 180.0,
     ):

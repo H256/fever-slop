@@ -40,7 +40,7 @@ def main():
     # Load runtime config
     cfg = json.loads(cfg_path.read_text())
     llm_cfg = cfg.get("llm", {})
-    base_url = args.base_url or llm_cfg.get("base_url", "http://llm.elysium.lan/v1")
+    base_url = args.base_url or llm_cfg.get("base_url", "http://your-llm-server.local/v1")
     model = args.model or llm_cfg.get("model", "gemma4-26b-a4b")
 
     # Import project modules
