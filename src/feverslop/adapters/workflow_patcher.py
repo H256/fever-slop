@@ -89,7 +89,29 @@ class WorkflowPatcher:
                 raise KeyError(f"Bridge input '{from_input}' not found on removed node {node_id}")
             _, target_node = self._resolve_target(bridge["to"])
             target_node.setdefault("inputs", {})[str(bridge["to"]["input"])] = deepcopy(inputs[from_input])
+
+        # Detect dangling wire references
+        dangling = self._find_dangling_references(node_id)
+        if dangling:
+            lines = [f"Removing node '{node_id}' leaves dangling wire reference(s):"]
+            for ref_id, inp_name, inp_val in dangling:
+                lines.append(f"  - node {ref_id}, input '{inp_name}' -> {inp_val}")
+            lines.append("Specify bridge entries in the remove_node operation to resolve these references.")
+            raise ValueError("\n".join(lines))
+
         del self.workflow[node_id]
+
+    def _find_dangling_references(self, removed_node_id: str) -> list[tuple[str, str, Any]]:
+        """Find inputs in remaining nodes that reference the removed node."""
+        dangling: list[tuple[str, str, Any]] = []
+        for other_id, other_node in self.workflow.items():
+            if other_id == removed_node_id:
+                continue
+            for input_name, input_value in other_node.get("inputs", {}).items():
+                for dep_id in _workflow_dependency_ids(input_value):
+                    if dep_id == removed_node_id:
+                        dangling.append((other_id, input_name, input_value))
+        return dangling
 
     def _apply_insert_node_between(self, operation: dict) -> None:
         new_node_id = str(operation["new_node_id"])
@@ -110,8 +132,9 @@ class WorkflowPatcher:
         ]
 
     def _resolve_target(self, target: dict) -> tuple[str, dict]:
-        if "id" in target:
-            node_id = str(target["id"])
+        node_id_key = target.get("id") or target.get("node_id")
+        if node_id_key is not None:
+            node_id = str(node_id_key)
             return node_id, self.find_node_by_id(node_id)
         if "title" in target:
             return self.find_node_by_meta_title(str(target["title"]))

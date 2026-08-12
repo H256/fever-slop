@@ -476,8 +476,8 @@ class ComfyUIVideoRenderBackend:
     def _round_up_8n1(frame_count: int) -> int:
         return round_up_8n1(frame_count)
 
-    def _seed_for_scene(self, scene_number: int) -> int:
-        return self.workflow_patcher.seed_for_scene(scene_number)
+    def _seed_for_scene(self, scene: int | dict) -> int:
+        return self.workflow_patcher.seed_for_scene(scene)
 
     @staticmethod
     def _comfy_path_from_upload(upload_response: dict) -> str:

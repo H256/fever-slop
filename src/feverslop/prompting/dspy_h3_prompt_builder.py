@@ -109,6 +109,53 @@ _H3_SECTION_PATTERN = re.compile(
 )
 
 
+def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convert LTX frame relays into bounded, model-neutral timed shots."""
+    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    if not relay:
+        return []
+    fps = float(segment.get("fps") or 24)
+    duration_value = segment.get("duration_seconds") or segment.get("duration")
+    duration = float(duration_value) if duration_value is not None else None
+    shots = []
+    for index, item in enumerate(relay, start=1):
+        start = float(item["frame_start"]) / fps
+        end = float(item["frame_end"]) / fps
+        if duration is not None:
+            start = min(start, duration)
+            end = min(end, duration)
+        if end <= start:
+            continue
+        shot = {
+            "shot": index,
+            "start_seconds": start,
+            "end_seconds": end,
+            "state": str(item.get("state") or "").strip(),
+            "prompt": str(item.get("prompt") or "").strip(),
+        }
+        source_prompt = str(item.get("source_prompt") or "").strip()
+        if source_prompt:
+            shot["source_prompt"] = source_prompt
+        shots.append(shot)
+    return shots
+
+
+def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
+    if not shots:
+        return ""
+    lines = ["Temporal shot directions:"]
+    for shot in shots:
+        state = f" ({shot['state']})" if shot.get("state") else ""
+        lines.append(
+            f"[Shot {shot['shot']}, {shot['start_seconds']:.2f}-{shot['end_seconds']:.2f}sec]"
+            f"{state} {shot['prompt']}"
+        )
+        source_prompt = shot.get("source_prompt")
+        if source_prompt and source_prompt != shot.get("prompt"):
+            lines.append(f"Required action and props to preserve: {source_prompt}")
+    return "\n".join(lines)
+
+
 def _repair_audio_references(prompt: str, references: list[dict[str, str]]) -> str:
     """Restore audio_reuse semantics omitted by a sectioned DSPy H3 prompt."""
     audio_references = [
@@ -213,6 +260,7 @@ class DspyH3PromptBuilder:
             audio_paths,
             reference_root or self.reference_root,
         )
+        relay_segments = _normalize_relay_segments(segment)
         generator_references = [dict(reference) for reference in references]
         resolved_root = reference_root or self.reference_root
         if resolved_root is not None:
@@ -235,6 +283,8 @@ class DspyH3PromptBuilder:
             }, ensure_ascii=False),
             "references": generator_references,
             "images": images,
+            "relay_segments": relay_segments,
+            "relay_segments_json": json.dumps(relay_segments, ensure_ascii=False),
             "strict_fidelity": True,
         }
         if audio_paths:
@@ -261,8 +311,11 @@ class DspyH3PromptBuilder:
                 generated.setdefault("dspy_error", safe_error)
             else:
                 generated = {"dspy_error": safe_error}
+        rendered_prompt = _repair_audio_references(str(prompt).strip(), references)
+        relay_prompt = _format_relay_shots(relay_segments)
+        prompt_parts = [rendered_prompt, relay_prompt]
         result = {
-            "prompt": _repair_audio_references(str(prompt).strip(), references),
+            "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
         if isinstance(generated, dict) and generated.get("dspy_error"):

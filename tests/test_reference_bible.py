@@ -93,6 +93,23 @@ class ReferenceBibleTests(unittest.TestCase):
         self.assertEqual((1152, 2048), (backend.requests[0].width, backend.requests[0].height))
         self.assertEqual((2048, 1152), (backend.requests[5].width, backend.requests[5].height))
 
+    def test_direct_msr_subject_uses_configured_reference_image_resolution(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend = FakeImageBackend()
+            generator = ReferenceBibleGenerator(
+                backend=backend,
+                output_dir=Path(temp_dir),
+                actor_view_names=ReferenceBibleGenerator.direct_msr_actor_view_names,
+                msr_sheet_size=(1152, 640),
+                reference_image_size=(2560, 1440),
+            )
+
+            generator.generate_subject_bible(
+                ReferenceSubject(id="bard", name="Bard", image_prompt="portrait of Bard")
+            )
+
+        self.assertEqual((2560, 1440), (backend.requests[0].width, backend.requests[0].height))
+
     def test_generator_uses_short_reference_based_prompts_for_actor_edit_views(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)

@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import subprocess
 from tempfile import NamedTemporaryFile
 
@@ -75,7 +76,7 @@ from feverslop.tools.storyboard_page import parse_scene_list
 from feverslop.tools.storyboard_page import generate_storyboard_page
 
 from .arg_parser import PipelineStage
-from .config_loader import PipelineRunContext, PipelineRunState, count_render_plan_items
+from .config_loader import PipelineRunContext, PipelineRunState, count_render_plan_items, runner_root
 
 _REFERENCE_BIBLE_PARSER = None
 
@@ -157,7 +158,27 @@ def _selected_video_workflows(state: PipelineRunState) -> tuple[Path, ...]:
         candidates = (state.relay_workflow,)
     else:
         candidates = (state.relay_workflow, state.single_prompt_workflow)
-    return tuple(path for path in candidates if str(path).strip() not in {"", "."})
+    result = tuple(path for path in candidates if str(path).strip() not in {"", "."})
+    if not result:
+        checked: list[str] = []
+        vp = getattr(state.args, "video_pipeline", None)
+        rm = getattr(state.args, "render_mode", None)
+        if vp == "ltx_msr":
+            checked.append(f"msr_workflow={state.msr_workflow!r}")
+        elif vp == "ltx_ingredients":
+            checked.append(f"ingredients_workflow={state.ingredients_workflow!r}")
+        elif rm == "single_prompt":
+            checked.append(f"single_prompt_workflow={state.single_prompt_workflow!r}")
+        elif rm == "relay":
+            checked.append(f"relay_workflow={state.relay_workflow!r}")
+        else:
+            checked.append(f"relay_workflow={state.relay_workflow!r}")
+            checked.append(f"single_prompt_workflow={state.single_prompt_workflow!r}")
+        raise ValueError(
+            f"No valid video workflows found for pipeline {vp!r} "
+            f"(render_mode={rm!r}); checked: {', '.join(checked)}"
+        )
+    return result
 
 
 def _run_main_pipeline_stage(state: PipelineRunState) -> None:
@@ -186,13 +207,74 @@ def _read_h3_input(path: Path, label: str):
     return JsonArtifactStore().read_json(path)
 
 
-def _discover_stem_files(stems_dir: Path) -> dict[str, Path] | None:
+def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
+    """Ensure reference stages have actor/location IDs to resolve from config."""
+    if not plan_path.is_file():
+        return
+    store = JsonArtifactStore()
+    plan = store.read_json(plan_path)
+    actors = list(config.actors)
+    locations = list(config.structured_locations)
+    if not actors or not locations:
+        return
+    changed = False
+    for scene in plan:
+        references = scene.setdefault("references", {})
+        if not references.get("actor_ids"):
+            references["actor_ids"] = [actor.id for actor in actors[: config.max_scene_actors]]
+            changed = True
+        if not references.get("location_id"):
+            text = " ".join(
+                str(value)
+                for value in (
+                    scene.get("z_image", {}).get("prompt"),
+                    scene.get("ltx", {}).get("base_prompt"),
+                    scene.get("metadata", {}).get("base_concept"),
+                )
+                if value
+            ).lower()
+            matching = next(
+                (
+                    location
+                    for location in locations
+                    if location.id.lower() in text or location.name.lower() in text
+                ),
+                locations[0],
+            )
+            references["location_id"] = matching.id
+            changed = True
+    if changed:
+        store.write_json(plan_path, plan)
+
+
+def _discover_stem_files(
+    stems_dir: Path,
+    input_audio: Path | None = None,
+) -> dict[str, Path] | None:
     if not stems_dir.is_dir():
         return None
     stem_files = {}
-    for stem_file in sorted(stems_dir.iterdir()):
-        if stem_file.is_file() and stem_file.suffix.lower() in (".wav", ".mp3", ".flac"):
-            stem_files[stem_file.stem.split("_", 1)[0]] = stem_file
+    supported_suffixes = (".wav", ".mp3", ".flac")
+    if input_audio is not None:
+        input_stem = Path(input_audio).stem
+        for stem_name in ("vocals", "drums", "bass", "other"):
+            expected_stem = f"{stem_name}_{input_stem}"
+            matches = sorted(
+                path
+                for path in stems_dir.iterdir()
+                if path.is_file()
+                and path.suffix.lower() in supported_suffixes
+                and path.stem == expected_stem
+            )
+            if matches:
+                stem_files[stem_name] = next(
+                    (path for path in matches if path.suffix.lower() == ".wav"),
+                    matches[0],
+                )
+    else:
+        for stem_file in sorted(stems_dir.iterdir()):
+            if stem_file.is_file() and stem_file.suffix.lower() in supported_suffixes:
+                stem_files[stem_file.stem.split("_", 1)[0]] = stem_file
     return stem_files or None
 
 
@@ -237,6 +319,12 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     paths = config.paths
     stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
     if state.args.video_pipeline == "minimax-h3-r2v":
+        _seed_reference_bindings(state.plan_for_next_step, config)
+        state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
+            state.plan_for_next_step,
+            state.context.references_dir,
+            state.context.reference_plan,
+        )
         stage1_segments = _merge_reference_paths_into_h3_segments(
             stage1_segments,
             state.plan_for_next_step,
@@ -264,7 +352,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         scene_details=scene_details,
         scene_prompts_json=state.context.scene_prompts,
         h3_prompts_json=h3_prompts_json,
-        stem_files=_discover_stem_files(paths.stems_dir),
+        stem_files=_discover_stem_files(paths.stems_dir, config.input_audio),
     )
     pipeline = H3PromptPipeline(
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(
@@ -297,17 +385,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
     # -- stem audio (MiniMax H3 R2V) --
     stem_list: list[str] | None = list(config.minimax_h3_audio_refs.stems)
     input_audio: Path | None = config.input_audio
-    stem_files: dict[str, Path] | None = None
-    stems_dir = paths.stems_dir
-    if stems_dir is not None and stems_dir.is_dir():
-        stem_files = {}
-        for stem_file in sorted(stems_dir.iterdir()):
-            if stem_file.is_file() and stem_file.suffix.lower() in (".wav", ".mp3", ".flac"):
-                # Extract stem name from filename: "stemname_basename.ext"
-                parts = stem_file.stem.split("_", 1)
-                if parts:
-                    stem_name = parts[0]
-                    stem_files[stem_name] = stem_file
+    stem_files = _discover_stem_files(paths.stems_dir, input_audio)
     build_render_plan(
         scene_prompts_json=paths.prompts_dir / f"scene_prompts_{song_id}.json",
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{song_id}.json",
@@ -499,6 +577,12 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         raise ValueError(
             "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
         )
+    project_config_path = getattr(state.context, "project_config_path", None)
+    if project_config_path is not None:
+        _seed_reference_bindings(
+            state.plan_for_next_step,
+            ProjectConfig.load(project_config_path),
+        )
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
@@ -526,6 +610,12 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
             "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]"
         )
         _run_render_plan_stage(state)
+    project_config_path = getattr(state.context, "project_config_path", None)
+    if project_config_path is not None:
+        _seed_reference_bindings(
+            state.plan_for_next_step,
+            ProjectConfig.load(project_config_path),
+        )
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
@@ -917,6 +1007,8 @@ def _continuity_downstream(
         )
         if dependent is None:
             return downstream
+        if dependent in downstream:  # cycle detection
+            return downstream
         downstream.add(dependent)
         current = dependent
 
@@ -1247,6 +1339,24 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     else not state.args.no_skip_existing
                 )
                 if not (skip_existing and final_path.is_file()):
+                    randomize_seed = bool(getattr(backend, "randomize_seed", False))
+                    if randomize_seed:
+                        scene_payload = scene.to_dict()
+                        scene_payload["seed"] = random.SystemRandom().randint(0, 2**63 - 1)
+                        plan_data = JsonArtifactStore().read_render_plan(state.plan_for_next_step)
+                        plan_data = [
+                            (
+                                scene_payload
+                                if int(item["scene"]) == scene.scene_number
+                                else item
+                            )
+                            for item in plan_data
+                        ]
+                        JsonArtifactStore().write_render_plan(
+                            state.plan_for_next_step,
+                            plan_data,
+                        )
+                        scene = RenderPlan.from_dicts([scene_payload]).scenes[0]
                     downstream = _continuity_downstream(
                         scene.scene_number,
                         handoff_predecessors,
@@ -1271,17 +1381,23 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                         selected_scenes=[scene],
                         backend=backend,
                     )
-                    if render_scene.to_dict() != scene.to_dict():
-                        materializer.prepare(
-                            WorkflowMaterializationRequest(
-                                scene=render_scene.to_dict(),
-                                prompt=render_scene.video_prompt,
-                                audio_file=state.context.input_audio,
-                                render_plan_path=state.plan_for_next_step,
-                                pipeline=state.args.video_pipeline,
+                    original_randomize_seed = backend.randomize_seed
+                    if randomize_seed:
+                        backend.randomize_seed = False
+                    try:
+                        if randomize_seed or render_scene.to_dict() != scene.to_dict():
+                            materializer.prepare(
+                                WorkflowMaterializationRequest(
+                                    scene=render_scene.to_dict(),
+                                    prompt=render_scene.video_prompt,
+                                    audio_file=state.context.input_audio,
+                                    render_plan_path=state.plan_for_next_step,
+                                    pipeline=state.args.video_pipeline,
+                                )
                             )
-                        )
-                    final_path = renderer.render(workflow)
+                        final_path = renderer.render(workflow)
+                    finally:
+                        backend.randomize_seed = original_randomize_seed
                     rendered_this_run.add(scene.scene_number)
                     if downstream:
                         _write_continuity_dirty(
@@ -1382,20 +1498,42 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
 
 
 def _run_concat_video_only_stage(state: PipelineRunState) -> None:
-    from .config_loader import rewrite_concat_list, collect_render_plan_scene_clips
-    rewrite_concat_list(
-        collect_render_plan_scene_clips(
+    from .config_loader import (
+        collect_render_plan_scene_clips,
+        collect_render_plan_scene_raw_clips,
+        rewrite_concat_list,
+        write_concat_list,
+    )
+    clips = collect_render_plan_scene_clips(
             state.plan_for_next_step,
             state.context.ltx_dir,
             layout=state.context.artifact_layout,
-        ),
-        state.context.artifact_layout.final_dir,
     )
+    rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
         output_file=state.context.final_concat_video,
         video_only=True,
+    )
+    try:
+        raw_clips = collect_render_plan_scene_raw_clips(
+            state.plan_for_next_step,
+            state.context.ltx_dir,
+            layout=state.context.artifact_layout,
+        )
+    except FileNotFoundError:
+        raw_clips = clips
+    if raw_clips is not clips:
+        write_concat_list(raw_clips, state.context.artifact_layout.final_dir, "concat_raw.txt")
+    else:
+        state.context.concat_raw.write_text(
+            state.context.concat_list.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    postprocessor.concat_clips(
+        concat_list=state.context.concat_raw,
+        output_file=state.context.final_concat_video_audio,
+        video_only=False,
     )
 
 
@@ -1533,7 +1671,7 @@ STAGE_LABELS = {
 
 
 def run_unittest_suite() -> None:
-    subprocess.run(["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"], check=True)
+    subprocess.run(["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"], check=True, cwd=runner_root())
 
 
 def _scene_progress_callback(progress: RenderProgressReporter):

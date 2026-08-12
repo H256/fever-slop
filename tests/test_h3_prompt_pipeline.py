@@ -2,10 +2,24 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from feverslop.application.h3_prompt_pipeline import _configured_audio_paths
+from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.application.h3_prompt_pipeline import _attach_relay_segments, _configured_audio_paths
 
 
 class ConfiguredAudioPathTests(unittest.TestCase):
+    def test_attaches_relay_scene_to_matching_stage1_segment(self):
+        result = _attach_relay_segments(
+            [{"segment_id": "segment_002", "type": "instrumental"}],
+            [{
+                "metadata": {"segment_id": "segment_002"},
+                "fps": 24,
+                "duration_seconds": 3.16,
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 76}]},
+            }],
+        )
+
+        self.assertEqual(24, result[0]["fps"])
+        self.assertEqual(76, result[0]["ltx"]["prompt_relay"][0]["frame_end"])
     def test_selects_configured_stems_in_configured_order(self):
         config = SimpleNamespace(
             minimax_h3_audio_refs=SimpleNamespace(stems=["vocals", "full_mix"]),
@@ -50,6 +64,53 @@ class ConfiguredAudioPathTests(unittest.TestCase):
 
 
 class DspyPromptPipelineSelectionTests(unittest.TestCase):
+    def test_run_accepts_typed_context_when_relay_path_is_optional(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        captured = []
+
+        class FakeBuilder:
+            def build_all_h3_prompts(self, **kwargs):
+                captured.append(kwargs["stage1_segments"])
+
+        class FakeArtifactStore:
+            def read_json(self, path):
+                if path == Path("relay.json"):
+                    return [{
+                        "metadata": {"segment_id": "s1"},
+                        "fps": 24,
+                        "ltx": {"prompt_relay": [{"frame_start": 0}]},
+                    }]
+                return []
+
+        config = SimpleNamespace(
+            video_pipeline="minimax-h3-t2v",
+            minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+            project_dir=None,
+        )
+        context = GenerateRenderPlanContext(
+            app_config={},
+            config=config,
+            stage1_segments=[{"segment_id": "s1"}],
+            concept_prompts={},
+            scene_details={},
+            global_context={},
+            h3_prompts_json=Path("h3.json"),
+            artifact_store=FakeArtifactStore(),
+            log_step=lambda message: None,
+            log_file=lambda label, path: None,
+            ltx_prompt_relay_json=Path("relay.json"),
+        )
+        pipeline = H3PromptPipeline(
+            llm_factory=lambda current_config: None,
+            h3_prompt_builder_factory=lambda llm: FakeBuilder(),
+            dspy_prompt_builder_factory=None,
+        )
+
+        pipeline.run(context)
+
+        self.assertEqual(24, captured[0][0]["fps"])
+
     def _run_pipeline(self, video_pipeline):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 

@@ -12,6 +12,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
@@ -28,6 +29,7 @@ class FakeVideoBackend:
 
     def __init__(self):
         self.requests: list[VideoRenderRequest] = []
+        self.randomize_seed = False
 
     def render_video(self, request: VideoRenderRequest) -> Path:
         self.requests.append(request)
@@ -139,6 +141,33 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
             self.assertEqual("video prompt scene 2", backend.requests[1].prompt)
             self.assertEqual(1, backend.requests[0].scene_number)
             self.assertEqual(2, backend.requests[1].scene_number)
+
+    def test_randomize_seed_updates_plan_before_each_render(self):
+        backend = FakeVideoBackend()
+        backend.randomize_seed = True
+        store = JsonArtifactStore()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "render_plan.json"
+            plan_path.write_text(json.dumps(_render_plan_scenes()), encoding="utf-8")
+
+            with patch("feverslop.application.render_video.random.SystemRandom") as system_random:
+                system_random.return_value.randint.side_effect = [7001, 7002]
+                RenderVideoScenesUseCase(backend=backend, artifact_store=store).execute(
+                    RenderVideoScenesRequest(
+                        render_plan_path=plan_path,
+                        workflow_path=temp / "workflow.json",
+                        audio_file=temp / "song.mp3",
+                        storyboard_dir=temp / "storyboard",
+                        output_dir=temp / "render",
+                        render_mode="single_prompt",
+                    )
+                )
+
+            self.assertEqual([7001, 7002], [request.scene["seed"] for request in backend.requests])
+            self.assertEqual([7001, 7002], [scene["seed"] for scene in json.loads(plan_path.read_text(encoding="utf-8"))])
+            self.assertTrue(backend.randomize_seed)
 
     def test_backend_receives_scene_number_and_output_dir(self):
         """Each VideoRenderRequest contains the correct scene number and output dir."""

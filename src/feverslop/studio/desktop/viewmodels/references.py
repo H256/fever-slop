@@ -6,7 +6,6 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QModelIndex,
     QObject,
-    QPoint,
     Property,
     Qt,
     Signal,
@@ -332,6 +331,7 @@ class ReferenceWorkspaceViewModel(QObject):
     def collect_assignments(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for row in range(self._assignments_model.rowCount()):
+            idx = self._assignments_model.index(row)
             item = {"scene_number": 0, "actor_ids": [], "location_ids": [], "background_ids": [], "style_ids": [], "actor_look_ids": {}}
             for role, key in [
                 (self._assignments_model.SceneNumberRole, "scene_number"),
@@ -341,7 +341,7 @@ class ReferenceWorkspaceViewModel(QObject):
                 (self._assignments_model.StyleIdsRole, "style_ids"),
                 (self._assignments_model.ActorLookIdsRole, "actor_look_ids"),
             ]:
-                val = self._assignments_model.data(self._assignments_model.indexAt(QPoint(0, row)), role)
+                val = self._assignments_model.data(idx, role)
                 if val is not None:
                     item[key] = val
             result.append(item)

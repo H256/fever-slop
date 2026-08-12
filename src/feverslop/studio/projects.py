@@ -111,7 +111,12 @@ def sanitize_audio_filename(value: str) -> str:
 
 
 class ProjectStore:
-    def __init__(self, projects_root: str | Path = "projects", reporter: Reporter | None = None):
+    def __init__(
+        self,
+        projects_root: str | Path = "projects",
+        reporter: Reporter | None = None,
+        max_upload_size: int = 100 * 1024 * 1024,
+    ):
         self.projects_root = Path(projects_root).resolve()
         from feverslop.studio.artifact_catalog import ArtifactCatalog
         from feverslop.studio.media_store import MediaStore
@@ -129,6 +134,7 @@ class ProjectStore:
             self.project_root,
             self.resolve_project_path,
             lambda path: self._read_json_file(path, default={}),
+            max_upload_size=max_upload_size,
         )
         self.pipeline_state_store = PipelineStateStore(
             self.project_root,
@@ -368,11 +374,18 @@ class ProjectStore:
     def _read_json_file(path: Path, *, default: Any) -> Any:
         if not path.exists():
             return default
-        return json.loads(path.read_text(encoding="utf-8-sig"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError:
+            return default
 
 
 def _artifact_revision(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
+    """Compute SHA-256 of artifact payload, normalizing UTF-8 BOM."""
+    normalized = payload
+    if normalized.startswith(b"\xef\xbb\xbf"):
+        normalized = normalized[3:]
+    return hashlib.sha256(normalized).hexdigest()
 
 
 def _path_revision(path: Path) -> str | None:
