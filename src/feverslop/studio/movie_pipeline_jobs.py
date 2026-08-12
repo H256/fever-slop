@@ -35,6 +35,27 @@ def build_movie_full_auto_handler(*, store: ProjectStore, project_id: str, rende
         log(f"[Krea2_Adapter] Preparing visual consistency references via {config['reference_backend']}")
         manifest_path = ensure_movie_references(project_dir, movie_config=config)
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
+        if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
+            workflow_key = {
+                "minimax-h3-r2v": "r2v_workflow",
+                "minimax-h3-t2v": "t2v_workflow",
+                "minimax-h3-i2v": "i2v_workflow",
+            }[config["movie_video_workflow"]]
+            log(f"[MoviePipeline] Stage: MiniMax {config['movie_video_workflow']} render")
+            adapter = build_movie_visual_adapter(
+                project_dir,
+                Path(config[workflow_key]),
+                movie_config=config,
+            )
+            final_video = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=planning.render_plan_path,
+                on_clip_rendered=lambda completed, total, scene_number: log(
+                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}"
+                ),
+            )
+            log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+            return final_video
         if config["movie_video_workflow"] == "i2v-edit":
             from feverslop.adapters.movie_i2v_visual import LocalMovieI2VEditVisualAdapter
             from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
@@ -143,6 +164,28 @@ def build_movie_render_handler(
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Stage: Existing Movie MSR plan: {render_plan_path}")
+        if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
+            workflow_key = {
+                "minimax-h3-r2v": "r2v_workflow",
+                "minimax-h3-t2v": "t2v_workflow",
+                "minimax-h3-i2v": "i2v_workflow",
+            }[config["movie_video_workflow"]]
+            adapter = build_movie_visual_adapter(
+                project_dir,
+                Path(config[workflow_key]),
+                movie_config=config,
+            )
+            final_video = adapter.render_movie(
+                project_dir=project_dir,
+                render_plan_path=render_plan_path,
+                selected_scenes=selected_scenes,
+                concat_only=concat_only,
+                on_clip_rendered=lambda completed, total, scene_number: log(
+                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}"
+                ),
+            )
+            log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
+            return final_video
         patched_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
         patched_i2v_workflow = patch_movie_msr_workflow(template_path=Path(config["msr_i2v_workflow"])) if config.get("msr_i2v_workflow") else None
         log(f"[WorkflowPatcher] Movie MSR workflow patched in memory for LTX native audio from: {config['msr_workflow']}")
@@ -451,6 +494,19 @@ def build_movie_visual_adapter(
     i2v_workflow: dict | None = None,
 ):
     config = movie_runtime_config(movie_config)
+    if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
+        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+
+        workflow_key = {
+            "minimax-h3-r2v": "r2v_workflow",
+            "minimax-h3-t2v": "t2v_workflow",
+            "minimax-h3-i2v": "i2v_workflow",
+        }[config["movie_video_workflow"]]
+        return ComfyUIMiniMaxMovieVisualAdapter(
+            project_dir=project_dir,
+            workflow_path=config[workflow_key],
+            video_pipeline=config["movie_video_workflow"],
+        )
     backend = config["render_backend"]
     if backend == "local":
         from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
@@ -614,9 +670,11 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     planner_backend = _movie_backend(raw.get("planner_backend"), default="llm", supported={"llm", "deterministic", "local"})
     if planner_backend == "local":
         planner_backend = "deterministic"
-    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"})
+    movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"})
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json" if movie_video_workflow == "msr-i2v-startframe" else ""
     i2v_default = "workflows/video_ltxv_i2v_native_audio_v2.json" if movie_video_workflow == "startframe-director" else "workflows/video_ltxv_i2v_v2.json"
+    if movie_video_workflow in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
+        i2v_default = "workflows/video_minimax_h3_t2v.json"
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
     ingredients_default = "workflows/video_ltxv_ingredients_2stage_v6.json" if movie_video_workflow == "ingredients" else ""
     return {
@@ -641,6 +699,8 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v4.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
         "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), i2v_default),
+        "r2v_workflow": _movie_workflow_path(raw.get("r2v_workflow"), "workflows/video_minimax_h3_r2v.json"),
+        "t2v_workflow": _movie_workflow_path(raw.get("t2v_workflow"), "workflows/video_minimax_h3_t2v.json"),
         "ingredients_workflow": _movie_workflow_path(raw.get("ingredients_workflow"), ingredients_default) if ingredients_default or raw.get("ingredients_workflow") else "",
         "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),
@@ -651,7 +711,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
 
 def _movie_continuity_keyframes(value: object, *, movie_video_workflow: object = None) -> str:
     mode = _movie_backend(value, default="none", supported={"none", "last-to-start"})
-    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients"})
+    workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"})
     if mode == "last-to-start" and workflow != "msr-i2v-startframe":
         raise ValueError("continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
     return mode

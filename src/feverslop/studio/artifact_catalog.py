@@ -33,7 +33,10 @@ class ArtifactCatalog:
         }
         totals = {key: 0 for key in ["configs", "render_plans", "references", "generated_json", "videos", "images", "audio", "other"]}
         for path in files:
-            totals[self._artifact_size_group(path, layout)] += path.stat().st_size
+            try:
+                totals[self._artifact_size_group(path, layout)] += path.stat().st_size
+            except OSError:
+                pass  # broken symlink or permission denied — default to 0 bytes
         return {"artifacts": artifacts, "artifact_sizes": {"total_bytes": sum(totals.values()), "by_type": totals}}
 
     @staticmethod

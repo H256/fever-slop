@@ -180,7 +180,7 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "frame_count", self.msr_frame_count)
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
         self._patch_msr_continuity_handoff_inputs(patcher, scene)
-        self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
+        self._patch_seed_inputs(patcher, self._seed_for_scene(scene))
         if self.video_settings:
             width = self.video_settings.width
             height = self.video_settings.height
@@ -410,9 +410,12 @@ class ComfyUIMSRVideoRenderBackend:
             round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
 
-    def _seed_for_scene(self, scene_number: int) -> int:
+    def _seed_for_scene(self, scene: int | dict) -> int:
         if self.randomize_seed:
             return random.randint(0, 2**63 - 1)
+        if isinstance(scene, dict) and scene.get("seed") is not None:
+            return int(scene["seed"])
+        scene_number = int(scene.get("scene", 0)) if isinstance(scene, dict) else int(scene)
         return self.seed_offset + int(scene_number)
 
     def _resolve_project_path(self, path: str | Path) -> Path:

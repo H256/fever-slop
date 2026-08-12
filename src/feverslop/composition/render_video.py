@@ -8,6 +8,7 @@ from rich.console import Console
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_minimax_h3_r2v_backend import ComfyUIMiniMaxH3R2VBackend
 from feverslop.adapters.comfyui_minimax_h3_t2v_backend import ComfyUIMiniMaxH3T2VBackend
+from feverslop.adapters.comfyui_minimax_h3_i2v_backend import ComfyUIMiniMaxH3I2VBackend
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
@@ -170,11 +171,17 @@ def build_render_video_scenes_use_case(
             model_resolver=model_resolver,
             video_settings=video_settings,
             audio_ref_stems=stem_list,
+            input_audio=project_config.input_audio if project_config is not None else None,
         )
-    elif options.video_pipeline == "minimax-h3-t2v":
+    elif options.video_pipeline in {"minimax-h3-t2v", "minimax-h3-i2v"}:
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
         project_dir = ProjectConfig.load(project_config_path).project_dir if project_config_path else None
-        backend = ComfyUIMiniMaxH3T2VBackend(
+        backend_class = (
+            ComfyUIMiniMaxH3I2VBackend
+            if options.video_pipeline == "minimax-h3-i2v"
+            else ComfyUIMiniMaxH3T2VBackend
+        )
+        backend = backend_class(
             client=client,
             workflow_path=coerce_local_path(workflow_path),
             output_dir=coerce_local_path(options.output_dir),

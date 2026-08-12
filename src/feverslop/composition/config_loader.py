@@ -41,9 +41,11 @@ class PipelineRunContext:
     ltx_debug_dir: Path | None
     facefix_dir: Path
     final_concat_video: Path
+    final_concat_video_audio: Path
     final_concat: Path
     final_concat_scene_audio_debug: Path
     concat_list: Path
+    concat_raw: Path
 
 
 @dataclass(frozen=True)
@@ -80,8 +82,12 @@ def convert_to_safe_file_stem(value, fallback: str) -> str:
 
 
 def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:
+    return write_concat_list(rendered_files, output_dir, "concat_list.txt")
+
+
+def write_concat_list(rendered_files: list[Path], output_dir: str | Path, filename: str) -> Path:
     output_dir = Path(output_dir)
-    concat_file = output_dir / "concat_list.txt"
+    concat_file = output_dir / filename
     output_dir.mkdir(parents=True, exist_ok=True)
     with concat_file.open("w", encoding="utf-8") as f:
         for path in rendered_files:
@@ -143,6 +149,39 @@ def collect_render_plan_scene_clips(
     if missing:
         raise FileNotFoundError(
             "Cannot build final concat; missing rendered scene clips: "
+            + ", ".join(str(path) for path in missing[:10])
+        )
+    return clips
+
+
+def collect_render_plan_scene_raw_clips(
+    render_plan_path: str | Path,
+    output_dir: str | Path,
+    *,
+    layout: SceneArtifactLayout | None = None,
+) -> list[Path]:
+    output_dir = Path(output_dir)
+    render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    clips: list[Path] = []
+    missing: list[Path] = []
+    for scene in render_plan:
+        scene_number = int(scene["scene"])
+        candidates = []
+        if layout:
+            candidates.append(layout.scene_raw_video(scene_number))
+        candidates.extend((
+            output_dir / f"scene_{scene_number:04}_raw.mp4",
+            output_dir / f"scene_{scene_number:04}.mp4",
+        ))
+        clip = next((candidate for candidate in candidates if candidate.exists()), None)
+        if clip is None:
+            missing.append(candidates[0])
+            continue
+        clips.append(clip)
+
+    if missing:
+        raise FileNotFoundError(
+            "Cannot build raw concat; missing raw scene clips: "
             + ", ".join(str(path) for path in missing[:10])
         )
     return clips
@@ -244,7 +283,9 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
         ltx_debug_dir=ltx_debug_dir,
         facefix_dir=facefix_dir,
         final_concat_video=artifact_layout.video_only,
+        final_concat_video_audio=artifact_layout.video_audio,
         final_concat=artifact_layout.movie,
         final_concat_scene_audio_debug=artifact_layout.final_dir / "scene_audio_debug.mp4",
         concat_list=artifact_layout.final_dir / "concat_list.txt",
+        concat_raw=artifact_layout.concat_raw,
     )

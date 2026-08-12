@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from feverslop.adapters.audio.vocal_timeline_analyzer import (
     TimelineSegment,
@@ -8,6 +9,25 @@ from feverslop.adapters.audio.vocal_timeline_analyzer import (
 
 
 class TimelineSegmentImmutabilityTests(unittest.TestCase):
+    def test_whisper_transcription_requests_word_timestamps(self):
+        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+
+        class FakeWhisper:
+            def __init__(self):
+                self.kwargs = None
+
+            def transcribe(self, _path, **kwargs):
+                self.kwargs = kwargs
+                return {"segments": [{"start": 0.0, "end": 1.0, "text": "hello"}]}
+
+        analyzer = VocalTimelineAnalyzer.__new__(VocalTimelineAnalyzer)
+        analyzer.model = FakeWhisper()
+        analyzer.language = "de"
+
+        analyzer._transcribe(Path("vocals.wav"))
+
+        self.assertTrue(analyzer.model.kwargs["word_timestamps"])
+
     def test_timeline_segment_is_frozen(self):
         seg = TimelineSegment(start=0.0, end=1.0, kind="vocals", text="hello")
         with self.assertRaises(Exception):
@@ -51,6 +71,31 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
         self.assertEqual(1, len(result))
         self.assertEqual("first second", result[0].text)
         self.assertAlmostEqual(2.0, result[0].end)
+
+    def test_merge_same_kind_segments_preserves_word_timestamps(self):
+        timeline = [
+            TimelineSegment(
+                start=0.0,
+                end=1.0,
+                kind="vocals",
+                text="first",
+                word_timestamps=({"word": "first", "start": 0.0, "end": 1.0},),
+            ),
+            TimelineSegment(
+                start=1.1,
+                end=2.0,
+                kind="vocals",
+                text="second",
+                word_timestamps=({"word": "second", "start": 1.1, "end": 2.0},),
+            ),
+        ]
+
+        result = merge_same_kind_segments(timeline, merge_gap=0.5)
+
+        self.assertEqual(
+            ("first", "second"),
+            tuple(item["word"] for item in result[0].word_timestamps),
+        )
 
     def test_merge_same_kind_segments_idempotent(self):
         timeline = [

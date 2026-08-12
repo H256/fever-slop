@@ -12,10 +12,17 @@ from feverslop.studio.projects import AUDIO_EXTENSIONS, AUDIO_MIME_TYPES, Studio
 
 
 class MediaStore:
-    def __init__(self, project_root: Callable[[str], Path], resolve_project_path: Callable[[str, str], Path], read_json_file: Callable[[Path], Any]):
+    def __init__(
+        self,
+        project_root: Callable[[str], Path],
+        resolve_project_path: Callable[[str, str], Path],
+        read_json_file: Callable[[Path], Any],
+        max_upload_size: int = 100 * 1024 * 1024,
+    ):
         self.project_root = project_root
         self.resolve_project_path = resolve_project_path
         self.read_json_file = read_json_file
+        self.max_upload_size = max_upload_size
 
     def write_media_data_url(self, project_id: str, path: str, data_url: str) -> dict[str, str]:
         media_path = self.resolve_project_path(project_id, path)
@@ -25,7 +32,12 @@ class MediaStore:
         if not separator or not header.startswith("data:image/"):
             raise StudioPathError("Expected an image data URL")
         media_path.parent.mkdir(parents=True, exist_ok=True)
-        media_path.write_bytes(base64.b64decode(encoded))
+        raw = base64.b64decode(encoded)
+        if len(raw) > self.max_upload_size:
+            raise StudioPathError(
+                f"Media upload exceeds size limit ({len(raw)} bytes > {self.max_upload_size} bytes)"
+            )
+        media_path.write_bytes(raw)
         return {"path": path}
 
     def store_audio_upload(self, project_id: str, filename: str, content_type: str, source) -> dict[str, str]:
