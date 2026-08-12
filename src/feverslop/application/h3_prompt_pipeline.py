@@ -8,6 +8,26 @@ from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
 
 
+def _attach_relay_segments(stage1_segments: list[dict], relay_scenes: list[dict]) -> list[dict]:
+    """Join the frame relay artifact to the segment records consumed by H3."""
+    relay_by_segment = {
+        str(scene.get("metadata", {}).get("segment_id") or scene.get("segment_id")): scene
+        for scene in relay_scenes
+        if scene.get("metadata", {}).get("segment_id") or scene.get("segment_id")
+    }
+    enriched = []
+    for segment in stage1_segments:
+        result = dict(segment)
+        relay_scene = relay_by_segment.get(str(segment.get("segment_id")))
+        if relay_scene:
+            result.setdefault("fps", relay_scene.get("fps"))
+            result.setdefault("duration_seconds", relay_scene.get("duration_seconds"))
+            if "ltx" not in result and relay_scene.get("ltx"):
+                result["ltx"] = relay_scene["ltx"]
+        enriched.append(result)
+    return enriched
+
+
 def _configured_audio_paths(
     config: Any,
     stem_files: dict[str, Any] | None,
@@ -77,6 +97,13 @@ class H3PromptPipeline:
         artifact_store = context["artifact_store"]
         log_step = context["log_step"]
         log_file = context["log_file"]
+
+        relay_path = context.setdefault("ltx_prompt_relay_json", None)
+        if relay_path is not None:
+            stage1_segments = _attach_relay_segments(
+                stage1_segments,
+                artifact_store.read_json(relay_path),
+            )
 
         log_step("8.5. H3 Structured Prompts")
         llm = self.llm_factory(app_config)

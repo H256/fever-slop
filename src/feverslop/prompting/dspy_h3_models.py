@@ -87,6 +87,7 @@ class VideoPromptRequest(BaseModel):
     notes: str | None = None
     strict_fidelity: bool = True
     music_intent: MusicIntent | None = None
+    relay_segments: list[dict] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_mode(self) -> "VideoPromptRequest":

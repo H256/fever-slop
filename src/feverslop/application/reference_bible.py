@@ -182,8 +182,8 @@ class ReferenceBibleGenerator:
                 ),
                 workflow_path=Path(""),
                 output_dir=view_dir,
-                width=self.msr_sheet_size[0],
-                height=self.msr_sheet_size[1],
+                width=self.location_hero_size[0],
+                height=self.location_hero_size[1],
                 reference_image=None,
                 anchors=self.hero_anchors,
             )

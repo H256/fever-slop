@@ -12,14 +12,90 @@ from feverslop.composition.stage_runners import (
     _initial_render_plan,
     _read_h3_input,
     _run_main_pipeline_stage,
+    _run_mux_original_audio_stage,
     _run_msr_reference_sheets_stage,
     _preserve_enriched_reference_paths,
+    _discover_stem_files,
+    _seed_reference_bindings,
     _selected_video_workflows,
 )
+from feverslop.config.project_config import ActorConfig, ProjectConfig, StructuredLocationConfig
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_stem_discovery_requires_exact_input_audio_basename(self):
+        with TemporaryDirectory() as temp_dir:
+            stems_dir = Path(temp_dir) / "stems"
+            stems_dir.mkdir()
+            wrong = stems_dir / "vocals_midnight_stars.mp3"
+            correct = stems_dir / "vocals_midnight_stars (4).wav"
+            wrong.write_bytes(b"wrong")
+            correct.write_bytes(b"correct")
+
+            result = _discover_stem_files(
+                stems_dir,
+                Path(temp_dir) / "midnight_stars (4).mp3",
+            )
+
+        self.assertEqual(correct, result["vocals"])
+
+    def test_seed_reference_bindings_assigns_actor_and_prompt_location(self):
+        with TemporaryDirectory() as temp_dir:
+            plan_path = Path(temp_dir) / "base.json"
+            plan_path.write_text(
+                json.dumps([{
+                    "scene": 1,
+                    "z_image": {"prompt": "A singer in the Necromantic Cathedral."},
+                }]),
+                encoding="utf-8",
+            )
+            config = ProjectConfig(
+                project_dir=Path(temp_dir),
+                project_name="test",
+                input_audio=Path(temp_dir) / "song.wav",
+                actors=(ActorConfig(id="singer", name="Singer"),),
+                structured_locations=(
+                    StructuredLocationConfig(id="mountain", name="Storm Mountain"),
+                    StructuredLocationConfig(id="cathedral", name="Necromantic Cathedral"),
+                ),
+            )
+
+            _seed_reference_bindings(plan_path, config)
+            scene = json.loads(plan_path.read_text(encoding="utf-8"))[0]
+
+        self.assertEqual(["singer"], scene["references"]["actor_ids"])
+        self.assertEqual("cathedral", scene["references"]["location_id"])
+
+    @patch("feverslop.composition.stage_runners.VideoPostProcessor")
+    def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
+        with TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            video_only = temp / "video_only.mp4"
+            video_audio = temp / "video_audio.mp4"
+            final = temp / "movie.mp4"
+            input_audio = temp / "song.mp3"
+            video_only.touch()
+            video_audio.touch()
+
+            state = Namespace(
+                video_only_path=video_only,
+                context=Namespace(
+                    final_concat_video=video_only,
+                    final_concat_video_audio=video_audio,
+                    final_concat=final,
+                    input_audio=input_audio,
+                ),
+            )
+
+            _run_mux_original_audio_stage(state)
+
+        postprocessor_class.return_value.mux_original_audio.assert_called_once_with(
+            video_file=video_only,
+            audio_file=input_audio,
+            output_file=final,
+        )
+
     def test_minimax_r2v_prefers_base_plan_with_h3_prompts(self):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)

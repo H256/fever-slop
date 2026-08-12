@@ -366,6 +366,56 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             self.assertEqual(1024, client.queued_workflow["9"]["inputs"]["value"])
             self.assertEqual(576, client.queued_workflow["10"]["inputs"]["value"])
 
+    def test_backend_uses_persisted_scene_seed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor = temp / "actor.png"
+            location = temp / "location.png"
+            actor.write_bytes(b"actor")
+            location.write_bytes(b"location")
+            workflow = temp / "workflow.json"
+            workflow.write_text(
+                json.dumps({
+                    "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},
+                    "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
+                    "3": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
+                    "4": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                    "5": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                }),
+                encoding="utf-8",
+            )
+            client = FakeClient()
+            backend = ComfyUIMSRVideoRenderBackend(
+                client=client,
+                workflow_path=workflow,
+                output_dir=temp / "out",
+                postprocess=False,
+            )
+
+            backend.render_video(
+                VideoRenderRequest(
+                    scene={
+                        "scene": 7,
+                        "seed": 424242,
+                        "fps": 24,
+                        "frame_count": 25,
+                        "ltx": {"original_style_i2v_prompt": "video prompt"},
+                        "references": {
+                            "actor_sheet_paths": [str(actor)],
+                            "location_sheet_path": str(location),
+                        },
+                    },
+                    scene_number=7,
+                    prompt="video prompt",
+                    workflow_path=workflow,
+                    output_dir=temp / "out",
+                    audio_file=temp / "song.mp3",
+                    storyboard_dir=temp,
+                )
+            )
+
+            self.assertEqual(424242, client.queued_workflow["4"]["inputs"]["noise_seed"])
+
     def test_backend_resolves_project_relative_msr_reference_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir) / "project"

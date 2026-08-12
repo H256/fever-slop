@@ -151,7 +151,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         self._patch_ingredients_input(patcher, scene)
         self._patch_prompt_inputs(patcher, scene, prompt=prompt, rolling=rolling)
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_ingredients_raw/scene_{scene_number:04}")
-        self._patch_seed_inputs(patcher, self._seed_for_scene(scene_number))
+        self._patch_seed_inputs(patcher, self._seed_for_scene(scene))
         if self.video_settings:
             width = self.video_settings.width
             height = self.video_settings.height
@@ -349,9 +349,12 @@ class ComfyUIIngredientsVideoRenderBackend:
             round_render_frames_to_8n1=self.round_render_frames_to_8n1,
         )
 
-    def _seed_for_scene(self, scene_number: int) -> int:
+    def _seed_for_scene(self, scene: int | dict) -> int:
         if self.randomize_seed:
             return random.randint(0, 2**63 - 1)
+        if isinstance(scene, dict) and scene.get("seed") is not None:
+            return int(scene["seed"])
+        scene_number = int(scene.get("scene", 0)) if isinstance(scene, dict) else int(scene)
         return self.seed_offset + int(scene_number)
 
     def _resolve_project_path(self, path: str | Path) -> Path:

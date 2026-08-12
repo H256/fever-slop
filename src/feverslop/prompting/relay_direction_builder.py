@@ -137,6 +137,11 @@ Return ONLY valid JSON array with exactly one object per relay segment:
 
 Hard rules:
 - Keep each prompt under {self.max_words} words.
+- Preserve every concrete action, manipulated object, and required prop from
+  current_prompt (for example, cooking a rabbit); do not replace it with only
+  atmosphere, composition, or camera language.
+- current_prompt may be image-like, but treat its concrete action and object
+  details as binding source material and translate them into observable motion.
 - For state "singing": the main subject must remain clearly visible and must sing/lip-sync.
 - Main subject: {self.subject_anchor}
 - Never write: "no subject visible", "no visible subject", "tree sings", "bark sings", "shadows sing", "ropes sing".
@@ -166,6 +171,9 @@ Hard rules:
 
         for idx, relay in enumerate(relays):
             new_relay = dict(relay)
+            source_prompt = _clean_direction(relay.get("prompt", ""), max_chars=500)
+            if source_prompt:
+                new_relay["source_prompt"] = source_prompt
             fallback = self._fallback_direction(scene, relay, has_vocals)
             prompt = by_index.get(idx, fallback)
             prompt = self._safety_fix_prompt(scene, relay, prompt, has_vocals)

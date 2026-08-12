@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.pipeline.render_plan_builder import (
@@ -121,6 +122,58 @@ class OriginalStylePromptTests(unittest.TestCase):
 
 
 class BuildRenderPlanTests(unittest.TestCase):
+    def test_seed_minus_one_generates_and_persists_a_different_seed_per_scene(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+            scene_prompts_path.write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "segment_id": "s1",
+                        "type": "instrumental",
+                        "start": 0.0,
+                        "end": 2.0,
+                        "duration": 2.0,
+                        "zimage_prompt": "z1",
+                        "ltx_base_prompt": "scene one",
+                    },
+                    {
+                        "scene": 2,
+                        "segment_id": "s2",
+                        "type": "instrumental",
+                        "start": 2.0,
+                        "end": 4.0,
+                        "duration": 2.0,
+                        "zimage_prompt": "z2",
+                        "ltx_base_prompt": "scene two",
+                    },
+                ]),
+                encoding="utf-8",
+            )
+            relay_path.write_text(
+                json.dumps([
+                    {"scene": 1, "prompt_relay": []},
+                    {"scene": 2, "prompt_relay": []},
+                ]),
+                encoding="utf-8",
+            )
+
+            with patch("feverslop.pipeline.render_plan_builder.random.SystemRandom") as system_random:
+                system_random.return_value.randint.side_effect = [111, 222]
+                build_render_plan(
+                    scene_prompts_json=scene_prompts_path,
+                    ltx_prompt_relay_json=relay_path,
+                    output_json_file=output_path,
+                    video_settings=VideoSettings(fps=24, width=1280, height=704),
+                    artifact_store=JsonArtifactStore(),
+                    seed=-1,
+                )
+
+            self.assertEqual([111, 222], [scene["seed"] for scene in json.loads(output_path.read_text(encoding="utf-8"))])
+
     def test_render_plan_includes_original_style_prompt_and_mode_hints(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -195,12 +248,14 @@ class BuildRenderPlanTests(unittest.TestCase):
                 output_json_file=output_path,
                 video_settings=VideoSettings(fps=24, width=1280, height=704),
                 artifact_store=JsonArtifactStore(),
+                seed=4242,
             )
 
             plan = json.loads(output_path.read_text(encoding="utf-8"))
             by_scene = {item["scene"]: item for item in plan}
 
             self.assertTrue(all(item["ltx"].get("original_style_i2v_prompt") for item in plan))
+            self.assertEqual({4242}, {item["seed"] for item in plan})
             self.assertEqual("single_prompt", by_scene[1]["ltx"]["render_mode_hint"])
             self.assertEqual("relay", by_scene[16]["ltx"]["render_mode_hint"])
             self.assertEqual("single_prompt", by_scene[3]["ltx"]["render_mode_hint"])
