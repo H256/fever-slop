@@ -112,6 +112,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
         *,
         prompt_builder: DspyH3PromptBuilder | None = None,
         force: bool = False,
+        on_scene_started: Callable[[int, int, int], None] | None = None,
         on_scene_prepared: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         output = self.output_dir / "render_plan_h3.json"
@@ -127,6 +128,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             source,
             project_dir,
             prompt_builder=builder,
+            on_scene_started=on_scene_started,
             on_scene_prepared=on_scene_prepared,
         )
 
@@ -136,6 +138,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
         project_dir: Path,
         *,
         prompt_builder: DspyH3PromptBuilder | None = None,
+        on_scene_started: Callable[[int, int, int], None] | None = None,
         on_scene_prepared: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         """Materialize MiniMax scenes with H3 prompts and reference paths."""
@@ -151,6 +154,8 @@ class ComfyUIMiniMaxMovieVisualAdapter:
         for index, raw_scene in enumerate(raw_scenes, start=1):
             scene = dict(raw_scene)
             scene["scene"] = int(scene.get("scene") or scene.get("scene_number") or index)
+            if on_scene_started is not None:
+                on_scene_started(index, total, scene["scene"])
             scene["references"] = scene.get("references") or _references_from_ids(scene, manifest, project_dir)
             if self.video_pipeline == "minimax-h3-r2v" and not scene["references"].get("actor_msr_paths"):
                 raise ValueError(f"Movie scene {scene['scene']} is missing actor MSR references")

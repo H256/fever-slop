@@ -96,6 +96,35 @@ class TestMovieH3Preparation(unittest.TestCase):
 
             self.assertEqual([(1, 2, 1), (2, 2, 2)], progress)
 
+    def test_preparation_reports_scene_before_building_prompt(self):
+        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            source = project / "movie" / "render_plan.json"
+            source.parent.mkdir(parents=True)
+            source.write_text(json.dumps([{"scene": 1, "description": "A witch watches."}]), encoding="utf-8")
+            adapter = ComfyUIMiniMaxMovieVisualAdapter(
+                project_dir=project,
+                workflow_path="workflow.json",
+                video_pipeline="minimax-h3-t2v",
+            )
+            events = []
+
+            class Builder:
+                def build_h3_prompt(self, **_kwargs):
+                    events.append("built")
+                    return {"prompt": "six sections"}
+
+            adapter.prepare_render_plan(
+                source,
+                project,
+                prompt_builder=Builder(),
+                on_scene_started=lambda index, total, scene: events.append((index, total, scene)),
+            )
+
+            self.assertEqual([(1, 1, 1), "built"], events)
+
 
 if __name__ == "__main__":
     unittest.main()
