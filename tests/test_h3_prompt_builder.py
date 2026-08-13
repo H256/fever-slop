@@ -150,6 +150,22 @@ class H3PromptBuilderTests(unittest.TestCase):
         parsed = json.loads(payload)
         self.assertEqual(parsed["scene_concept"], "test")
 
+    def test_silent_mode_removes_vocal_stem_from_h3_payload(self):
+        builder = self._get_builder(json.dumps({"prompt": "silent journey"}))
+        builder.build_h3_prompt(
+            segment={
+                "segment_id": "s1",
+                "type": "vocals",
+                "stem_audio": {"paths": {"vocals": "vocals.wav", "full_mix": "full_mix.wav"}},
+                "references": {"reference_audio_paths": ["vocals.wav", "full_mix.wav"]},
+            },
+            concept="three travelers cross a valley",
+            scene_details={},
+            global_context={"subject": "three travelers", "story_idea": "journey", "style": "cinematic", "locations": [], "silent_mode": True},
+        )
+        payload = json.loads(builder.llm.calls[0].prompt)
+        self.assertEqual(["full_mix.wav"], payload["segment"]["references"]["reference_audio_paths"])
+
     def test_fallback_on_parse_failure(self):
         response = "not valid json at all"
         builder = self._get_builder(response)
@@ -805,4 +821,3 @@ class VideoPipelineModeResolutionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

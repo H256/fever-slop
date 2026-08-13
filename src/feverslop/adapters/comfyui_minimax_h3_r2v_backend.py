@@ -714,6 +714,11 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # Priority ordering: lip-sync-critical stems (vocals, full_mix) first,
         # then any additional stems in original order.
         priority_order = ["vocals", "full_mix"]
+        silent_mode = bool(
+            scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode")
+        )
+        if silent_mode:
+            stem_names = [name for name in stem_names if name != "vocals"]
         ordered_names = [n for n in priority_order if n in stem_names and n in paths_map]
         for name in stem_names:
             if name not in ordered_names and name in paths_map:
@@ -826,7 +831,16 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     def _resolve_ref_audio_paths(self, scene: dict) -> list[Path]:
         """Extract and resolve reference audio paths from a scene dict."""
         references = scene.get("references") or {}
-        audio_paths = references.get("reference_audio_paths", [])[:self.MAX_REF_AUDIOS]
+        audio_paths = list(references.get("reference_audio_paths", []))
+        silent_mode = bool(
+            scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode")
+        )
+        vocal_path = str(
+            ((scene.get("stem_audio") or {}).get("paths") or {}).get("vocals") or ""
+        )
+        if silent_mode and vocal_path:
+            audio_paths = [path for path in audio_paths if str(path) != vocal_path]
+        audio_paths = audio_paths[:self.MAX_REF_AUDIOS]
         if self.project_dir is not None:
             audio_paths = [self._resolve_project_path(p) for p in audio_paths]
         return list(audio_paths)

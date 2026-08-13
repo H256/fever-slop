@@ -1925,6 +1925,28 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
             self.assertEqual(result[0], vocal_path)
             self.assertEqual(result[1], fullmix_path)
 
+    def test_silent_mode_excludes_vocal_stem(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vocal_path = tmp_path / "vocals.wav"
+            vocal_path.write_bytes(b"fake audio")
+            fullmix_path = tmp_path / "full_mix.wav"
+            fullmix_path.write_bytes(b"fake audio")
+            scene = {
+                "scene": 1,
+                "silent_mode": True,
+                "stem_audio": {
+                    "stems": ["vocals", "full_mix"],
+                    "paths": {"vocals": str(vocal_path), "full_mix": str(fullmix_path)},
+                },
+                "references": {
+                    "reference_audio_paths": [str(vocal_path), str(fullmix_path)],
+                },
+            }
+            backend = self._backend(audio_ref_stems=["vocals", "full_mix"])
+            self.assertEqual([fullmix_path], backend._resolve_stem_audio_paths(scene))
+            self.assertEqual([str(fullmix_path)], backend._resolve_ref_audio_paths(scene))
+
     def test_resolves_project_relative_stem_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
