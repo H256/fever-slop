@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from feverslop.path_utils import coerce_local_path
 from feverslop.studio.project_repository import build_movie_planner
 
@@ -130,6 +131,7 @@ def main() -> None:
     use_case = ScaffoldMovieUseCase(
         planner=planner,
         projects_root=projects_root,
+        artifact_writer=LocalMovieArtifactWriter(),
     )
 
     result = use_case.execute(
@@ -145,6 +147,23 @@ def main() -> None:
             max_scene_duration=args.max_duration,
             config={
                 "project_name": name,
+                "input_audio": "",
+                "silent_mode": False,
+                "lyrics": "",
+                "dialogue_language": "en",
+                "video": {
+                    "fps": 24,
+                    "width": args.width,
+                    "height": args.height,
+                },
+                "video_pipeline": "ltx_msr",
+                "scene_generation": {
+                    "min_duration": args.min_duration,
+                    "max_duration": args.max_duration,
+                    "bias": 0.7,
+                    "duration_preset": "impact_weighted",
+                    "seed": -1,
+                },
                 "planner_backend": args.planner_backend,
                 "refine_actor_prompts": args.refine_actors,
             },
