@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
 from tests.fakellm import (
@@ -14,6 +15,24 @@ from tests.fakellm import (
 
 
 class MSRPromptEnrichmentTests(unittest.TestCase):
+    def test_rejects_invalid_render_plan_after_write(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan = temp / "render_plan.json"
+            output = temp / "out.json"
+            plan.write_text(json.dumps([{
+                "scene": 1,
+                "ltx": {"prompt_relay": []},
+            }]), encoding="utf-8")
+
+            def write_invalid(path, _data):
+                Path(path).write_text("not json", encoding="utf-8")
+                return Path(path)
+
+            with patch("feverslop.application.msr_prompt_enrichment.atomic_write_json", side_effect=write_invalid):
+                with self.assertRaisesRegex(ValueError, "invalid JSON"):
+                    enrich_render_plan_with_msr_prompts(plan, output)
+
     def test_vision_failure_uses_deterministic_fallback_when_text_completion_is_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
