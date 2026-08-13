@@ -73,3 +73,23 @@ class FeverSlopErrorHierarchyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class InternalSubmoduleBlockingTests(unittest.TestCase):
+    """Verify internal submodules cannot be imported from package root."""
+
+    def test_internal_submodules_raise_import_error(self):
+        """Internal submodules must raise ImportError, not leak via Python fallback."""
+        import feverslop
+
+        for name in ["config", "application", "path_utils", "domain", "ports", "errors"]:
+            with self.subTest(name=name):
+                with self.assertRaises(ImportError):
+                    feverslop.__getattr__(name)
+
+    def test_direct_submodule_imports_still_work(self):
+        """Direct submodule imports must still work for internal code."""
+        from feverslop.errors import FeverSlopError
+        from feverslop.config.app_config import AppConfig
+
+        self.assertTrue(issubclass(FeverSlopError, Exception))
+        self.assertTrue(callable(AppConfig))

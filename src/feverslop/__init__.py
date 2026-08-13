@@ -105,8 +105,17 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
 _DEPRECATED: dict[str, str] = {}  # name -> deprecation message (populated when symbols are deprecated)
 
 
+_INTERNAL_SUBMODULES = frozenset(["config", "application", "path_utils", "domain", "ports", "errors"])
+
+
 def __getattr__(name: str):
     """PEP 562 lazy loading of public API symbols."""
+    if name in _INTERNAL_SUBMODULES:
+        raise ImportError(
+            f"cannot import name {name!r} from {__name__!r} "
+            f"(internal submodule; use from feverslop.{name} if needed)",
+            name=__name__ + "." + name,
+        )
     if name in _LAZY_MAP:
         import importlib as _importlib
 
