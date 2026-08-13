@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieScreenplayArtifact, StoryArch
 from feverslop.adapters.movie_planning_helpers import (
     _beat_text,
@@ -28,6 +29,10 @@ from feverslop.adapters.movie_planning_prompts import (
     _shot_plan_prompt,
     _story_arch_prompt,
 )
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class LLMMoviePlanner:
@@ -79,7 +84,8 @@ class LLMMoviePlanner:
                 prompt=_refine_location_prompts_prompt(locations, source_text, guide=location_guide),
             )
             data = extract_json_object(raw)
-        except Exception:
+        except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            logger.warning("Location prompt refinement failed; using original locations", exc_info=exc)
             return list(locations)
         refined_by_id: dict[str, dict] = {}
         for item in data.get("locations") or []:
@@ -111,7 +117,8 @@ class LLMMoviePlanner:
                 prompt=_refine_actor_prompts_prompt(actors, source_text, premise, guide=actor_guide),
             )
             data = extract_json_object(raw)
-        except Exception:
+        except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            logger.warning("Actor prompt refinement failed; using original actors", exc_info=exc)
             return list(actors)
         refined_by_id: dict[str, dict] = {}
         for item in data.get("actors") or []:
