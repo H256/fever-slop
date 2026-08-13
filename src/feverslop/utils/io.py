@@ -13,6 +13,17 @@ def read_json(path: str | Path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
 
+def read_json_document(path: str | Path) -> Any:
+    """Read JSON and translate parse/I/O failures into a contextual data error."""
+    candidate = Path(path)
+    try:
+        return read_json(candidate)
+    except (FileNotFoundError, IsADirectoryError):
+        raise
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FeverSlopDataError(f"Cannot read JSON document: {candidate}: {exc}") from exc
+
+
 def read_json_or_none(path: str | Path) -> Any | None:
     """Read a JSON document, returning None only when it is absent."""
     candidate = Path(path)
@@ -55,6 +66,11 @@ def atomic_write_json(path: Path, data: Any, **json_kwargs) -> Path:
         os.fsync(f.fileno())
     os.replace(tmp, path)
     return path
+
+
+def write_json_document(path: str | Path, data: Any, **json_kwargs) -> Path:
+    """Persist a JSON document through the shared atomic writer."""
+    return atomic_write_json(Path(path), data, **json_kwargs)
 
 
 def atomic_write_text(path: Path, text: str) -> Path:
