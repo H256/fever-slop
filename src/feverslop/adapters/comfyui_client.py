@@ -9,6 +9,7 @@ import requests
 
 from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopWorkflowError
+from feverslop.security.url_validation import validate_api_url
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class ComfyUIClient:
         prompt_timeout_seconds: float = 1800.0,
         metrics: APIMetrics | None = None,
     ):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = validate_api_url(base_url).rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
         self.metrics = metrics or default_api_metrics

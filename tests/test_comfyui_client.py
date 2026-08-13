@@ -7,6 +7,13 @@ from feverslop.errors import FeverSlopWorkflowError
 
 
 class ComfyUIClientTests(unittest.TestCase):
+    def test_rejects_private_non_loopback_endpoint(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+        from feverslop.security.url_validation import APIURLValidationError
+
+        with self.assertRaises(APIURLValidationError):
+            ComfyUIClient(base_url="http://192.168.1.10:8188")
+
     def test_wait_for_completion_raises_comfyui_execution_error_details(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient
 

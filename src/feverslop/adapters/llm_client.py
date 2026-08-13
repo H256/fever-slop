@@ -12,6 +12,7 @@ import time
 from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopLMLError
 from feverslop.prompting.vision_references import prepare_vision_image
+from feverslop.security.url_validation import validate_api_url
 
 
 RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
@@ -64,6 +65,7 @@ class LocalOpenAIClient:
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be greater than zero")
         resolved_key = _resolve_api_key(api_key)
+        validate_api_url(base_url)
         self.client = OpenAI(
             base_url=base_url,
             api_key=resolved_key,

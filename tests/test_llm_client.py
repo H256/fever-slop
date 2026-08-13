@@ -13,6 +13,14 @@ from feverslop.errors import FeverSlopLMLError
 
 class LLMClientRetryTests(unittest.TestCase):
     @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_rejects_private_non_loopback_endpoint(self, mock_openai):
+        from feverslop.security.url_validation import APIURLValidationError
+
+        with self.assertRaises(APIURLValidationError):
+            LocalOpenAIClient(base_url="http://10.0.0.8:8080/v1", api_key="test-key")
+        mock_openai.assert_not_called()
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
     def test_uses_request_timeout_from_init(self, mock_openai):
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
