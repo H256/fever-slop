@@ -1814,6 +1814,18 @@ def _initial_render_plan(context: PipelineRunContext, args: argparse.Namespace, 
     legacy_base = render_dir / f"render_plan_{context.song_id}.json"
     legacy_references = render_dir / f"render_plan_{context.song_id}_refs.json"
     legacy_ingredients = render_dir / f"render_plan_{context.song_id}_ingredients.json"
+    if stages == [PipelineStage.OPENSHOT_EXPORT]:
+        for plan_path, legacy_paths in (
+            (context.render_plan, [legacy_base]),
+            (context.reference_plan, [legacy_references]),
+            (context.ingredients_plan, [legacy_ingredients]),
+            (context.anchored_plan, []),
+            (context.compact_plan, []),
+        ):
+            existing = context.artifact_layout.find_plan(plan_path, legacy_paths=legacy_paths)
+            if existing:
+                return existing
+        return context.render_plan
     if args.video_pipeline == "ltx_msr" and not upstream_stages.intersection(stages):
         existing = context.artifact_layout.find_plan(context.reference_plan, legacy_paths=[legacy_references])
         if existing:

@@ -19,6 +19,7 @@ from feverslop.composition.stage_runners import (
     _seed_reference_bindings,
     _selected_video_workflows,
 )
+from feverslop.composition.arg_parser import PipelineStage
 from feverslop.config.project_config import ActorConfig, ProjectConfig, StructuredLocationConfig
 from feverslop.scene_artifacts import SceneArtifactLayout
 
@@ -122,6 +123,28 @@ class RunPipelinePathTests(unittest.TestCase):
             selected = _initial_render_plan(context, args, [])
 
         self.assertEqual(layout.base_plan, selected)
+
+    def test_openshot_export_stage_reuses_existing_plan_without_upstream_stages(self):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.plans_dir.mkdir(parents=True)
+            layout.references_plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            context = Namespace(
+                artifact_layout=layout,
+                render_dir=layout.render_dir,
+                song_id="song",
+                reference_plan=layout.references_plan,
+                ingredients_plan=layout.ingredients_plan,
+                render_plan=layout.base_plan,
+                anchored_plan=layout.anchored_plan,
+                compact_plan=layout.compact_plan,
+            )
+            args = Namespace(video_pipeline="ltx_i2v")
+
+            selected = _initial_render_plan(context, args, [PipelineStage.OPENSHOT_EXPORT])
+
+        self.assertEqual(layout.references_plan, selected)
 
     @patch("feverslop.composition.stage_runners._run_render_plan_stage")
     @patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets")
