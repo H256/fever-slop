@@ -7,6 +7,17 @@ from feverslop.errors import FeverSlopWorkflowError
 
 
 class ComfyUIClientTests(unittest.TestCase):
+    @patch("requests.Session")
+    def test_optional_auth_header_is_forwarded(self, session_class):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        session = MagicMock()
+        session.post.return_value.ok = True
+        session.post.return_value.json.return_value = {"prompt_id": "p1"}
+        session_class.return_value = session
+        ComfyUIClient(api_key="secret").queue_prompt({})
+        self.assertEqual("Bearer secret", session.post.call_args.kwargs["headers"]["Authorization"])
+
     def test_rejects_private_non_loopback_endpoint(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient
         from feverslop.security.url_validation import APIURLValidationError

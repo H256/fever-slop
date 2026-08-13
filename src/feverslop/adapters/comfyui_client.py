@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 import json
 import time
 import uuid
 import requests
 
-from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, default_api_metrics, record_api_call, redact_secrets
+from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets
 from feverslop.errors import FeverSlopWorkflowError
 from feverslop.security.url_validation import validate_api_url
 
@@ -43,13 +44,15 @@ class ComfyUIClient:
         client_id: str | None = None,
         prompt_timeout_seconds: float = 1800.0,
         metrics: APIMetrics | None = None,
-        rate_limit_interval_seconds: float = 0.0,
+        api_key: str | None = None,
+        auth_header: str = "Authorization",
     ):
         self.base_url = validate_api_url(base_url).rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
         self.metrics = metrics or default_api_metrics
-        self.rate_limiter = RequestRateLimiter(rate_limit_interval_seconds)
+        token = api_key or os.environ.get("COMFYUI_API_KEY")
+        self.auth_headers = ({auth_header: f"Bearer {token}"} if token else {})
         self._session: requests.Session | None = None
 
     def _ensure_session(self) -> requests.Session:
@@ -59,7 +62,8 @@ class ComfyUIClient:
 
     def _request(self, method: str, url: str, operation: str, **kwargs):
         emit_log = kwargs.pop("_emit_log", True)
-        self.rate_limiter.wait()
+        if self.auth_headers:
+            kwargs.setdefault("headers", {}).update(self.auth_headers)
         started_at = time.perf_counter()
         try:
             response = getattr(self._ensure_session(), method)(url, **kwargs)
