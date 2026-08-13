@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.render_video import RenderVideoScenesRequest
@@ -12,16 +12,22 @@ from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
 from feverslop.config.project_config import ProjectConfig
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.prompting.dspy_h3_prompt_builder import _format_relay_shots, _normalize_relay_segments
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    _format_relay_shots,
+    _normalize_relay_segments,
+    build_dspy_generator,
+)
 
 
 class ComfyUIMiniMaxMovieVisualAdapter:
     """Render and concatenate Movie scenes through a MiniMax H3 pipeline."""
 
-    def __init__(self, *, project_dir: Path, workflow_path: str | Path, video_pipeline: str):
+    def __init__(self, *, project_dir: Path, workflow_path: str | Path, video_pipeline: str, app_config_path: str | Path = "app_config.json"):
         self.project_dir = Path(project_dir)
         self.workflow_path = Path(workflow_path)
         self.video_pipeline = video_pipeline
+        self.app_config_path = Path(app_config_path)
         self.output_dir = self.project_dir / "output" / "movie" / video_pipeline
         self.postprocessor = VideoPostProcessor()
 
@@ -37,13 +43,13 @@ class ComfyUIMiniMaxMovieVisualAdapter:
     ) -> Path:
         del continuity_keyframes
         project_config = ProjectConfig.load(Path(project_dir) / "config.json")
-        minimax_plan_path = self._prepare_render_plan(render_plan_path, project_dir)
+        minimax_plan_path = self.prepare_render_plan(render_plan_path, project_dir)
         if concat_only:
             rendered = self._existing_clips(minimax_plan_path, selected_scenes)
         else:
             use_case = build_render_video_scenes_use_case(
                 RenderVideoCompositionOptions(
-                    app_config_path="app_config.json",
+                    app_config_path=self.app_config_path,
                     project_config_path=project_dir / "config.json",
                     render_plan_path=minimax_plan_path,
                     workflow_path=self.workflow_path,
@@ -79,7 +85,56 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             reencode=True,
         )
 
-    def _prepare_render_plan(self, render_plan_path: Path, project_dir: Path) -> Path:
+    def _build_prompt_builder(self) -> DspyH3PromptBuilder:
+        from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+        from feverslop.config.app_config import AppConfig
+
+        app_config = AppConfig.load(self.app_config_path, required_keys=["llm"])
+        llm = OpenAICompatibleLLMClient(
+            base_url=app_config.llm.base_url,
+            api_key=app_config.llm.api_key,
+            model=app_config.llm.model,
+            temperature=app_config.llm.temperature,
+            max_tokens=app_config.llm.max_tokens,
+            request_timeout_seconds=app_config.llm.request_timeout_seconds,
+            dspy_cache=app_config.llm.dspy_cache,
+        )
+        return DspyH3PromptBuilder(
+            build_dspy_generator(llm),
+            reference_root=self.project_dir,
+            allow_fallback=False,
+        )
+
+    def prepare_render_plan(
+        self,
+        render_plan_path: Path,
+        project_dir: Path,
+        *,
+        prompt_builder: DspyH3PromptBuilder | None = None,
+        force: bool = False,
+    ) -> Path:
+        output = self.output_dir / "render_plan_h3.json"
+        source = Path(render_plan_path)
+        if (
+            not force
+            and output.is_file()
+            and output.stat().st_mtime_ns >= source.stat().st_mtime_ns
+        ):
+            return output
+        builder = prompt_builder or self._build_prompt_builder()
+        return self._prepare_render_plan(
+            source,
+            project_dir,
+            prompt_builder=builder,
+        )
+
+    def _prepare_render_plan(
+        self,
+        render_plan_path: Path,
+        project_dir: Path,
+        *,
+        prompt_builder: DspyH3PromptBuilder | None = None,
+    ) -> Path:
         """Materialize MiniMax scenes with H3 prompts and reference paths."""
         source = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
         if isinstance(source, list):
@@ -96,10 +151,15 @@ class ComfyUIMiniMaxMovieVisualAdapter:
                 raise ValueError(f"Movie scene {scene['scene']} is missing actor MSR references")
             scene["h3"] = {
                 **dict(scene.get("h3") or {}),
-                "prompt": _h3_movie_prompt(scene),
+                "prompt": _build_movie_h3_prompt(
+                    scene,
+                    builder=prompt_builder,
+                    reference_root=project_dir,
+                ),
             }
             scenes.append(scene)
-        plan["shots"] = scenes
+        # RenderVideoUseCase consumes the canonical scene-list format.
+        plan = scenes
         output = self.output_dir / "render_plan_h3.json"
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -135,6 +195,38 @@ def _load_movie_manifest(project_dir: Path) -> dict:
     if not path.is_file():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _build_movie_h3_prompt(
+    scene: dict[str, Any],
+    *,
+    builder: DspyH3PromptBuilder | None = None,
+    reference_root: Path | None = None,
+) -> str:
+    if builder is None:
+        return _h3_movie_prompt(scene)
+    concept_parts = [
+        scene.get("description"),
+        scene.get("action"),
+        scene.get("camera"),
+        scene.get("acting"),
+        scene.get("dialogue"),
+    ]
+    concept = "\n".join(str(part).strip() for part in concept_parts if str(part or "").strip())
+    result = builder.build_h3_prompt(
+        segment=scene,
+        concept=concept,
+        scene_details={},
+        global_context={},
+        mode="ref",
+        video_type="movie",
+        reference_root=reference_root,
+        append_relay_prompt=False,
+    )
+    prompt = str(result.get("prompt") or "").strip()
+    if not prompt:
+        raise ValueError(f"MiniMax H3 DSPy prompt generation returned an empty prompt for scene {scene.get('scene')}")
+    return prompt
 
 
 def _h3_movie_prompt(scene: dict) -> str:

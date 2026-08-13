@@ -60,6 +60,7 @@ MOVIE_INGREDIENTS_STAGE_TITLES = {
 
 MOVIE_MINIMAX_STAGE_TITLES = {
     *MOVIE_BASE_STAGE_TITLES,
+    "Movie MiniMax H3 prompts",
     "Movie MiniMax H3 render",
     "Movie complete",
 }
@@ -74,6 +75,10 @@ MOVIE_MSR_STAGE_TITLES = {
 def _movie_uses_msr_reference_enrichment(movie_video_workflow: str) -> bool:
     """Return whether the selected movie mode needs LTX MSR enrichment."""
     return movie_video_workflow in {"msr", "msr-i2v-startframe"}
+
+
+def _is_minimax_movie_workflow(movie_video_workflow: str) -> bool:
+    return movie_video_workflow in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}
 
 
 class MovieStageProgressReporter:
@@ -155,7 +160,7 @@ def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
         return MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES
     if config["movie_video_workflow"] == "ingredients":
         return MOVIE_INGREDIENTS_STAGE_TITLES
-    if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
+    if _is_minimax_movie_workflow(config["movie_video_workflow"]):
         return MOVIE_MINIMAX_STAGE_TITLES
     return MOVIE_MSR_STAGE_TITLES
 
@@ -588,6 +593,14 @@ def _run_msr_workflow(
             raise ValueError("Movie debug workflow export requires ready movie references; run without --skip-movie-references first")
 
     final_video_path: Path | None = None
+    prepared_minimax_plan_path: Path | None = None
+    if _is_minimax_movie_workflow(config["movie_video_workflow"]):
+        _log_stage("Movie MiniMax H3 prompts", "preparing DSPy prompts")
+        prompt_adapter = _build_visual_adapter(project_dir, config, workflow=None)
+        prepared_minimax_plan_path = prompt_adapter.prepare_render_plan(
+            render_plan_path,
+            project_dir,
+        )
     render_stage_title = (
         "Movie MiniMax H3 render"
         if config["movie_video_workflow"].startswith("minimax-h3-")
@@ -601,7 +614,7 @@ def _run_msr_workflow(
         adapter = _build_visual_adapter(project_dir, config, workflow)
         if config["render_backend"] == "local" or config["movie_video_workflow"] != "msr":
             final_video_path = adapter.render_movie(
-                project_dir=project_dir, render_plan_path=render_plan_msr_path or render_plan_path,
+                project_dir=project_dir, render_plan_path=prepared_minimax_plan_path or render_plan_msr_path or render_plan_path,
                 selected_scenes=args.scenes, continuity_keyframes=config["continuity_keyframes"],
                 on_clip_rendered=lambda completed, total, scene_number: print(
                     f"Rendered movie clip {completed}/{total}: scene {scene_number}"

@@ -55,6 +55,38 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_movie_minimax_adapter_uses_structured_dspy_r2v_prompt(self):
+        from feverslop.adapters.movie_minimax_visual import _build_movie_h3_prompt
+
+        class Builder:
+            def build_h3_prompt(self, **kwargs):
+                self.request = kwargs
+                return {"prompt": "subject_definitions:\n<Subject 1> Leo\n\nsummary: Leo runs."}
+
+        builder = Builder()
+        prompt = _build_movie_h3_prompt(
+            {
+                "scene": 1,
+                "description": "Leo runs through the forest.",
+                "action": "Leo runs.",
+                "camera": "Handheld tracking shot.",
+                "references": {
+                    "actor_msr_paths": ["movie/references/leo.png"],
+                    "location_msr_path": "movie/references/forest.png",
+                    "actor_ids": ["leo"],
+                    "location_id": "forest",
+                },
+            },
+            builder=builder,
+            reference_root=Path("project"),
+        )
+
+        self.assertIn("subject_definitions:", prompt)
+        self.assertEqual("ref", builder.request["mode"])
+        self.assertEqual("movie", builder.request["video_type"])
+        self.assertFalse(builder.request["append_relay_prompt"])
+        self.assertIn("Leo runs through the forest", builder.request["concept"])
+
     def test_passes_general_steering_and_prompt_guidance_to_generator(self):
         generator = FakeGenerator()
         DspyH3PromptBuilder(generator).build_h3_prompt(
