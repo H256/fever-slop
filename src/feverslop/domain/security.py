@@ -45,10 +45,11 @@ def sanitize_path_component(value: str) -> str:
     Intended for user-supplied slugs, identifiers, and filename stems where
     *any* path-like input must be reduced to a safe single-component name.
     """
-    # Remove all directory separators and traversal patterns
+    # Remove all directory separators and traversal patterns while preserving
+    # meaningful leading dots in names such as ``.env`` and ``.gitignore``.
     cleaned = re.sub(r'[\\/]', "", value)
     cleaned = re.sub(r"\.{2,}", "", cleaned)  # collapse ".." and longer
-    cleaned = cleaned.rstrip("./")
+    cleaned = cleaned.rstrip("/")
     return cleaned
 
 

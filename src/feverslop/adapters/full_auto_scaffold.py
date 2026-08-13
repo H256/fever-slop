@@ -5,6 +5,7 @@ import json
 import shutil
 
 from feverslop.domain.full_auto import GeneratedSong, ProjectScaffoldResult, SongSpec
+from feverslop.domain.security import guard_path_under_root, is_safe_identifier, sanitize_path_component
 
 
 class LocalProjectScaffold:
@@ -21,7 +22,9 @@ class LocalProjectScaffold:
         video_pipeline: str = "ltx_i2v",
         silent_mode: bool = False,
     ) -> ProjectScaffoldResult:
-        project_dir = Path(projects_dir) / project_slug
+        if not is_safe_identifier(project_slug) or sanitize_path_component(project_slug) != project_slug:
+            raise ValueError(f"Unsafe project slug: {project_slug!r}")
+        project_dir = guard_path_under_root(Path(projects_dir) / project_slug, projects_dir)
         input_dir = project_dir / "input"
         input_dir.mkdir(parents=True, exist_ok=True)
 
