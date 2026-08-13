@@ -722,6 +722,10 @@ def _patch_movie_msr_workflow(template_path: Path):
     return patch_movie_msr_workflow(template_path=template_path)
 
 
+def _movie_app_config_path(config: dict[str, Any]) -> str:
+    return str(config.get("app_config_path") or "app_config.json")
+
+
 def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, debug_workflows_dir: Path | None = None):
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
@@ -729,7 +733,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
     from feverslop.adapters.movie_ingredients_visual import ComfyUIMovieIngredientsVisualAdapter
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(_movie_app_config_path(config))
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -765,7 +769,7 @@ def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
     from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(_movie_app_config_path(config))
     client = ComfyUIClient(
         base_url=str(config.get("startframe_comfyui_base_url") or app_config.comfyui.base_url),
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -809,7 +813,7 @@ def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[st
     from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(_movie_app_config_path(config))
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
