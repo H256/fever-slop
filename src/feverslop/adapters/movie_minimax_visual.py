@@ -43,14 +43,13 @@ class ComfyUIMiniMaxMovieVisualAdapter:
     ) -> Path:
         del continuity_keyframes
         project_config = ProjectConfig.load(Path(project_dir) / "config.json")
-        prompt_builder = self._build_prompt_builder()
-        minimax_plan_path = self._prepare_render_plan(render_plan_path, project_dir, prompt_builder=prompt_builder)
+        minimax_plan_path = self.prepare_render_plan(render_plan_path, project_dir)
         if concat_only:
             rendered = self._existing_clips(minimax_plan_path, selected_scenes)
         else:
             use_case = build_render_video_scenes_use_case(
                 RenderVideoCompositionOptions(
-                    app_config_path="app_config.json",
+                    app_config_path=self.app_config_path,
                     project_config_path=project_dir / "config.json",
                     render_plan_path=minimax_plan_path,
                     workflow_path=self.workflow_path,
@@ -104,6 +103,29 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             build_dspy_generator(llm),
             reference_root=self.project_dir,
             allow_fallback=False,
+        )
+
+    def prepare_render_plan(
+        self,
+        render_plan_path: Path,
+        project_dir: Path,
+        *,
+        prompt_builder: DspyH3PromptBuilder | None = None,
+        force: bool = False,
+    ) -> Path:
+        output = self.output_dir / "render_plan_h3.json"
+        source = Path(render_plan_path)
+        if (
+            not force
+            and output.is_file()
+            and output.stat().st_mtime_ns >= source.stat().st_mtime_ns
+        ):
+            return output
+        builder = prompt_builder or self._build_prompt_builder()
+        return self._prepare_render_plan(
+            source,
+            project_dir,
+            prompt_builder=builder,
         )
 
     def _prepare_render_plan(

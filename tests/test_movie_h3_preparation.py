@@ -1,0 +1,67 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+
+class TestMovieH3Preparation(unittest.TestCase):
+    def test_minimax_stage_titles_include_prompt_preparation(self):
+        from feverslop.composition.movie_pipeline import _movie_stage_titles
+
+        titles = _movie_stage_titles({"movie_video_workflow": "minimax-h3-r2v"})
+        self.assertIn("Movie MiniMax H3 prompts", titles)
+        self.assertIn("Movie MiniMax H3 render", titles)
+
+    def test_preparation_reuses_current_plan_without_building_dspy(self):
+        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            source = project / "movie" / "render_plan.json"
+            source.parent.mkdir(parents=True)
+            source.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            adapter = ComfyUIMiniMaxMovieVisualAdapter(
+                project_dir=project,
+                workflow_path="workflow.json",
+                video_pipeline="minimax-h3-r2v",
+            )
+            prepared = adapter.output_dir / "render_plan_h3.json"
+            prepared.parent.mkdir(parents=True)
+            prepared.write_text(json.dumps([{"scene": 1, "h3": {"prompt": "ready"}}]), encoding="utf-8")
+
+            class FailingBuilder:
+                def build_h3_prompt(self, **_kwargs):
+                    raise AssertionError("DSPy should not run for a current prepared plan")
+
+            result = adapter.prepare_render_plan(source, project, prompt_builder=FailingBuilder())
+
+            self.assertEqual(prepared, result)
+            self.assertIn("ready", result.read_text(encoding="utf-8"))
+
+    def test_preparation_writes_h3_scene_list_when_missing(self):
+        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            source = project / "movie" / "render_plan.json"
+            source.parent.mkdir(parents=True)
+            source.write_text(json.dumps([{"scene": 1, "description": "A witch watches."}]), encoding="utf-8")
+            adapter = ComfyUIMiniMaxMovieVisualAdapter(
+                project_dir=project,
+                workflow_path="workflow.json",
+                video_pipeline="minimax-h3-t2v",
+            )
+
+            class Builder:
+                def build_h3_prompt(self, **_kwargs):
+                    return {"prompt": "six sections"}
+
+            result = adapter.prepare_render_plan(source, project, prompt_builder=Builder())
+            payload = json.loads(result.read_text(encoding="utf-8"))
+
+            self.assertIsInstance(payload, list)
+            self.assertEqual("six sections", payload[0]["h3"]["prompt"])
+
+
+if __name__ == "__main__":
+    unittest.main()
