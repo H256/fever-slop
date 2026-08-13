@@ -73,7 +73,7 @@ def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
 
     This is wiring logic that bridges CLI args to the movie pipeline config.
     """
-    from feverslop.studio.job_service import movie_runtime_config
+    from feverslop.composition.movie_pipeline_jobs import movie_runtime_config
 
     config: dict[str, Any] = {}
     for key in (
