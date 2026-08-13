@@ -463,6 +463,28 @@ def _extract_json_array(text: str) -> list[dict[str, Any]]:
         text = re.sub(r"```$", "", text).strip()
     start = text.find("[")
     end = text.rfind("]")
-    if start == -1 or end == -1 or end < start:
-        raise ValueError(f"No JSON array found in LLM response:\n{original}")
-    return json.loads(text[start:end + 1])
+    if start == -1 or end < start:
+        if end == -1:
+            candidate = text[start:].strip().rstrip(",") + "]"
+        else:
+            candidate = text[start:end + 1]
+    else:
+        candidate = text[start:end + 1]
+    candidate = re.sub(r",\s*]", "]", candidate)
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        object_texts = re.findall(r"\{[^{}]*\}", candidate, flags=re.DOTALL)
+        objects = []
+        for obj_text in object_texts:
+            try:
+                objects.append(json.loads(obj_text))
+            except json.JSONDecodeError:
+                continue
+        if objects:
+            return objects
+        raise ValueError(
+            "Could not parse JSON array from LLM response.\n"
+            f"Original response:\n{original}\n\n"
+            f"Candidate:\n{candidate}"
+        )
