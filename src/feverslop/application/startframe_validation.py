@@ -6,7 +6,10 @@ from pathlib import Path
 
 def write_local_startframe_validation(*, project_dir: Path) -> Path:
     project_dir = Path(project_dir)
-    plan = json.loads((project_dir / "movie" / "startframe_plan.json").read_text(encoding="utf-8"))
+    plan_path = project_dir / "movie" / "startframe_plan.json"
+    if not plan_path.is_file():
+        raise FileNotFoundError(f"Startframe plan not found: {plan_path}")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
     shots = []
     for shot in plan.get("shots", []):
         scene_number = int(shot.get("scene") or len(shots) + 1)
@@ -15,7 +18,7 @@ def write_local_startframe_validation(*, project_dir: Path) -> Path:
                 "scene": scene_number,
                 "shot_id": str(shot.get("shot_id") or ""),
                 "final_path": f"output/movie/storyboard/final/scene_{scene_number:04}.png",
-                "pass": True,
+                "pass": False,
                 "scores": {
                     "character_presence": 1.0,
                     "action_state": 1.0,
