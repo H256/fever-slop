@@ -269,7 +269,13 @@ class SceneWorkflowManifest:
 
     @classmethod
     def read(cls, path: str | Path) -> SceneWorkflowManifest:
+        """Compatibility reader; filesystem access belongs at the adapter boundary."""
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls.from_dict(payload)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> SceneWorkflowManifest:
+        """Reconstruct a manifest from in-memory JSON data."""
         schema = payload.get("schema")
         if schema not in {SCHEMA_V1, SCHEMA_V2}:
             raise ValueError(f"Unsupported scene workflow schema: {payload.get('schema')}")

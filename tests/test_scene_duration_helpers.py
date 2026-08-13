@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from feverslop.domain.srt import SrtScene
+from feverslop.domain.srt import SrtScene, parse_srt_text
 from feverslop.pipeline.scene_duration_enforcer import (
     merge_remaining_short_scenes,
     merge_short_scenes,
@@ -12,6 +12,10 @@ from feverslop.pipeline.scene_duration_enforcer import (
 
 
 class SceneDurationHelperTests(unittest.TestCase):
+    def test_parse_srt_text_is_filesystem_independent(self):
+        blocks = parse_srt_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n")
+        self.assertEqual([(1, "Hello")], [(block.index, block.text) for block in blocks])
+
     def test_split_long_scenes_returns_legal_chunks(self):
         result = split_long_scenes([SrtScene(scene=7, start=0.0, end=9.0, text="A")], max_duration=4.0)
 
