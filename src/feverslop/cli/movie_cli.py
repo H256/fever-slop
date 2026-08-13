@@ -76,6 +76,7 @@ def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
     from feverslop.composition.movie_pipeline_jobs import movie_runtime_config
 
     config: dict[str, Any] = {}
+    config["app_config_path"] = args.app_config
     for key in (
         "reference_backend",
         "render_backend",

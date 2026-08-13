@@ -511,6 +511,7 @@ def build_movie_visual_adapter(
             project_dir=project_dir,
             workflow_path=config[workflow_key],
             video_pipeline=config["movie_video_workflow"],
+            app_config_path=config.get("app_config_path", "app_config.json"),
         )
     backend = config["render_backend"]
     if backend == "local":

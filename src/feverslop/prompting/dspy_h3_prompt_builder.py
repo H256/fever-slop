@@ -254,6 +254,7 @@ class DspyH3PromptBuilder:
         video_type: str = "music_video",
         audio_paths: dict[str, Path] | None = None,
         reference_root: Path | None = None,
+        append_relay_prompt: bool = True,
     ) -> dict[str, Any]:
         references, images = _scene_references(
             segment,
@@ -312,7 +313,7 @@ class DspyH3PromptBuilder:
             else:
                 generated = {"dspy_error": safe_error}
         rendered_prompt = _repair_audio_references(str(prompt).strip(), references)
-        relay_prompt = _format_relay_shots(relay_segments)
+        relay_prompt = _format_relay_shots(relay_segments) if append_relay_prompt else ""
         prompt_parts = [rendered_prompt, relay_prompt]
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
