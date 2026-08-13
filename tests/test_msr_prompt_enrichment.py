@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
 from tests.fakellm import (
@@ -14,6 +15,24 @@ from tests.fakellm import (
 
 
 class MSRPromptEnrichmentTests(unittest.TestCase):
+    def test_rejects_invalid_render_plan_after_write(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan = temp / "render_plan.json"
+            output = temp / "out.json"
+            plan.write_text(json.dumps([{
+                "scene": 1,
+                "ltx": {"prompt_relay": []},
+            }]), encoding="utf-8")
+
+            def write_invalid(path, _data):
+                Path(path).write_text("not json", encoding="utf-8")
+                return Path(path)
+
+            with patch("feverslop.application.msr_prompt_enrichment.atomic_write_json", side_effect=write_invalid):
+                with self.assertRaisesRegex(ValueError, "invalid JSON"):
+                    enrich_render_plan_with_msr_prompts(plan, output)
+
     def test_vision_failure_uses_deterministic_fallback_when_text_completion_is_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -411,6 +430,39 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             )
 
             self.assertEqual([(1, 1, 2), (2, 2, 2)], events)
+
+
+
+    def test_extract_json_array_rejects_malformed_json_with_context(self):
+        from feverslop.application.msr_prompt_enrichment import _extract_json_array
+
+        # Well-formed array still works
+        result = _extract_json_array("[{\"index\": 0, \"prompt\": \"test\"}]")
+        self.assertEqual(len(result), 1)
+
+        # Trailing comma is handled
+        result = _extract_json_array("[{\"index\": 0, \"prompt\": \"test\"},]")
+        self.assertEqual(len(result), 1)
+
+        # Bracketed but invalid JSON raises ValueError with context
+        malformed = "[{\"index\": 0, \"prompt\": unquoted}]"
+        with self.assertRaisesRegex(ValueError, "Could not parse JSON array"):
+            _extract_json_array(malformed)
+        # Also verify the error includes the original text
+        try:
+            _extract_json_array(malformed)
+        except ValueError as exc:
+            self.assertIn("unquoted", str(exc))
+
+    def test_extract_json_array_falls_back_to_individual_objects(self):
+        from feverslop.application.msr_prompt_enrichment import _extract_json_array
+
+        # Non-JSON in between bracketed objects still extracts valid objects
+        mixed = "[{\"index\": 0, \"prompt\": \"alpha\"}, not-json, {\"index\": 1, \"prompt\": \"beta\"}]"
+        result = _extract_json_array(mixed)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["prompt"], "alpha")
+        self.assertEqual(result[1]["prompt"], "beta")
 
 
 if __name__ == "__main__":
