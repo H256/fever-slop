@@ -412,10 +412,29 @@ class PreparedWorkflowRenderer:
                 trim_front_frames=manifest.trim_front_frames,
                 keep_frames=manifest.frame_count,
                 scene=manifest.scene,
+                extract_boundary_frames=True,
             ))
             os.replace(temporary_final, final_path)
         finally:
             temporary_final.unlink(missing_ok=True)
+        manifest_path = final_path.with_name("manifest.json")
+        manifest = SceneWorkflowManifest.read(manifest_path)
+        first_frame_path = layout.scene_dir(manifest.scene) / "firstframe.png"
+        last_frame_path = layout.scene_dir(manifest.scene) / "lastframe.png"
+        if not first_frame_path.is_file() or not last_frame_path.is_file():
+            return final_path
+        manifest = replace(
+            manifest,
+            first_frame_path=StoredArtifact.from_path(
+                first_frame_path,
+                project_dir=self.project_dir,
+            ),
+            last_frame_path=StoredArtifact.from_path(
+                last_frame_path,
+                project_dir=self.project_dir,
+            ),
+        )
+        manifest.write(manifest_path)
         return final_path
 
     def _prepare_for_current_server(

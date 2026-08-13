@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -46,10 +47,15 @@ class PostprocessorFrameExtractor:
             # The project tree is trusted against concurrent hostile mutation.
             # These checks protect accidental/static escapes; path-based APIs
             # cannot eliminate replacement by a privileged concurrent process.
-            extracted = self.postprocessor.extract_last_frame(
-                video_path,
-                temporary,
-            )
+            cached = video_path.with_name("lastframe.png")
+            if self._regular_file(cached):
+                shutil.copyfile(cached, temporary)
+                extracted = temporary
+            else:
+                extracted = self.postprocessor.extract_last_frame(
+                    video_path,
+                    temporary,
+                )
             self._require_regular_input(video_path)
             extracted = self._contained(extracted, "extracted frame")
             if extracted != temporary.resolve():
