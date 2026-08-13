@@ -12,6 +12,7 @@ from feverslop.application.movie import (
     movie_continuity_plan_to_dict,
 )
 from feverslop.domain.movie import MovieContinuityPlan
+from feverslop.utils.io import read_json_object
 from feverslop.application.movie_memory import (
     build_movie_narrative_plan_fallback,
     build_movie_scene_cards,
@@ -30,7 +31,6 @@ from feverslop.application.movie_memory import (
 )
 from feverslop.domain.movie import CinematicShot
 from feverslop.domain.movie_utils import transition_from_previous
-from feverslop.errors import FeverSlopValidationError
 
 
 @dataclass(frozen=True)
@@ -383,8 +383,4 @@ def _legacy_bible_from_render_plan(render_plan: dict, manifest: dict, *, project
     return bible
 
 
-def _read_json(path: Path) -> dict:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise FeverSlopValidationError(f"Movie artifact must be a JSON object: {path}")
-    return data
+_read_json = read_json_object

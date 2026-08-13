@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from feverslop.errors import FeverSlopDataError
+
 
 def read_json(path: str | Path) -> Any:
     """Read a UTF-8 JSON document."""
@@ -17,6 +19,28 @@ def read_json_or_none(path: str | Path) -> Any | None:
     if not candidate.exists():
         return None
     return read_json(candidate)
+
+
+def read_json_object(path: str | Path) -> dict[str, Any]:
+    """Read a JSON object used as a pipeline artifact.
+
+    Missing files and directories are deliberately allowed to propagate so
+    callers can keep their existing EAFP fallbacks. Parse and I/O failures
+    get the same domain error, while a valid non-object JSON document remains
+    a validation error.
+    """
+    candidate = Path(path)
+    try:
+        data = read_json(candidate)
+    except (FileNotFoundError, IsADirectoryError):
+        raise
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FeverSlopDataError(
+            f"Cannot read movie pipeline artifact: {candidate}: {exc}"
+        ) from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"Movie pipeline artifact must be a JSON object: {candidate}")
+    return data
 
 
 def atomic_write_json(path: Path, data: Any, **json_kwargs) -> Path:
