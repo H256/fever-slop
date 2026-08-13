@@ -48,7 +48,7 @@ def sanitize_path_component(value: str) -> str:
     # Remove all directory separators and traversal patterns
     cleaned = re.sub(r'[\\/]', "", value)
     cleaned = re.sub(r"\.{2,}", "", cleaned)  # collapse ".." and longer
-    cleaned = cleaned.strip("./")
+    cleaned = cleaned.rstrip("./")
     return cleaned
 
 
