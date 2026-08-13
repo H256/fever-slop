@@ -225,6 +225,28 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertIn("-frames:v", cmd)
         self.assertIn("1", cmd)
 
+    def test_extract_first_frame_selects_frame_zero(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            run.return_value = None
+            output = processor.extract_first_frame("scene.mp4", "firstframe.png")
+
+        self.assertEqual(Path("firstframe.png"), output)
+        self.assertIn("select=eq(n\\,0)", run.call_args.args[0])
+
+    def test_extract_first_and_last_frames_writes_both_outputs(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="3\n", stderr="")
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            run.side_effect = [None, frame_count_result, None]
+            outputs = processor.extract_first_and_last_frames(
+                "scene.mp4", "firstframe.png", "lastframe.png"
+            )
+
+        self.assertEqual((Path("firstframe.png"), Path("lastframe.png")), outputs)
+        self.assertIn("select=eq(n\\,0)", run.call_args_list[0].args[0])
+        self.assertIn("select=eq(n\\,2)", run.call_args_list[2].args[0])
+
 
 if __name__ == "__main__":
     unittest.main()
