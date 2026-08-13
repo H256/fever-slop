@@ -137,6 +137,7 @@ class ReferenceWorkspaceService:
         project_id: str,
         assignments: tuple[dict, ...],
         expected_revision: str,
+        old_snapshot: ReferenceWorkspaceSnapshot | None = None,
     ) -> CommandResult:
         try:
             parsed = tuple(
@@ -146,7 +147,7 @@ class ReferenceWorkspaceService:
             return CommandResult(success=False, error=CommandError("invalid_assignment", str(e)))
 
         try:
-            result = self._save.save(project_id, parsed, expected_revision)
+            result = self._save.save(project_id, parsed, expected_revision, old_snapshot=old_snapshot)
         except ValueError as e:
             return CommandResult(success=False, error=CommandError("revision_mismatch", str(e)))
 
