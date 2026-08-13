@@ -112,6 +112,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
         *,
         prompt_builder: DspyH3PromptBuilder | None = None,
         force: bool = False,
+        on_scene_prepared: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         output = self.output_dir / "render_plan_h3.json"
         source = Path(render_plan_path)
@@ -126,6 +127,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             source,
             project_dir,
             prompt_builder=builder,
+            on_scene_prepared=on_scene_prepared,
         )
 
     def _prepare_render_plan(
@@ -134,6 +136,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
         project_dir: Path,
         *,
         prompt_builder: DspyH3PromptBuilder | None = None,
+        on_scene_prepared: Callable[[int, int, int], None] | None = None,
     ) -> Path:
         """Materialize MiniMax scenes with H3 prompts and reference paths."""
         source = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
@@ -143,7 +146,9 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             plan = dict(source)
         manifest = _load_movie_manifest(project_dir)
         scenes = []
-        for index, raw_scene in enumerate(plan.get("shots") or plan.get("scenes") or [], start=1):
+        raw_scenes = plan.get("shots") or plan.get("scenes") or []
+        total = len(raw_scenes)
+        for index, raw_scene in enumerate(raw_scenes, start=1):
             scene = dict(raw_scene)
             scene["scene"] = int(scene.get("scene") or scene.get("scene_number") or index)
             scene["references"] = scene.get("references") or _references_from_ids(scene, manifest, project_dir)
@@ -158,6 +163,8 @@ class ComfyUIMiniMaxMovieVisualAdapter:
                 ),
             }
             scenes.append(scene)
+            if on_scene_prepared is not None:
+                on_scene_prepared(index, total, scene["scene"])
         # RenderVideoUseCase consumes the canonical scene-list format.
         plan = scenes
         output = self.output_dir / "render_plan_h3.json"

@@ -62,6 +62,40 @@ class TestMovieH3Preparation(unittest.TestCase):
             self.assertIsInstance(payload, list)
             self.assertEqual("six sections", payload[0]["h3"]["prompt"])
 
+    def test_preparation_reports_each_completed_scene(self):
+        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            source = project / "movie" / "render_plan.json"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                json.dumps([
+                    {"scene": 1, "description": "A witch watches."},
+                    {"scene": 2, "description": "The witch walks."},
+                ]),
+                encoding="utf-8",
+            )
+            adapter = ComfyUIMiniMaxMovieVisualAdapter(
+                project_dir=project,
+                workflow_path="workflow.json",
+                video_pipeline="minimax-h3-t2v",
+            )
+
+            class Builder:
+                def build_h3_prompt(self, **_kwargs):
+                    return {"prompt": "six sections"}
+
+            progress = []
+            adapter.prepare_render_plan(
+                source,
+                project,
+                prompt_builder=Builder(),
+                on_scene_prepared=lambda completed, total, scene: progress.append((completed, total, scene)),
+            )
+
+            self.assertEqual([(1, 2, 1), (2, 2, 2)], progress)
+
 
 if __name__ == "__main__":
     unittest.main()
