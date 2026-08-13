@@ -26,4 +26,5 @@ class SubStepProgress:
         self._last = current
         elapsed = int(monotonic() - self.started)
         suffix = f" {detail.strip()}" if detail.strip() else ""
-        self.reporter.message(f"[cyan]{self.title}: {current}/{self.total} [{elapsed // 60:02d}:{elapsed % 60:02d}]{suffix}[/cyan]")
+        if self.reporter is not None:
+            self.reporter.message(f"[cyan]{self.title}: {current}/{self.total} [{elapsed // 60:02d}:{elapsed % 60:02d}]{suffix}[/cyan]")

@@ -128,7 +128,8 @@ class H3PromptPipeline:
             else stem_files
         )
 
-        progress = SubStepProgress(context["reporter"], "H3 prompts", len(stage1_segments))
+        reporter = context["reporter"] if "reporter" in context.keys() else None
+        progress = SubStepProgress(reporter, "H3 prompts", len(stage1_segments))
         builder.build_all_h3_prompts(
             stage1_segments=stage1_segments,
             concept_prompts=concept_prompts,
@@ -141,9 +142,13 @@ class H3PromptPipeline:
             audio_paths=audio_paths,
             reference_root=getattr(config, "project_dir", None),
             progress_callback=lambda current, total: progress.update(current),
-            status_callback=lambda current, total, status: context["reporter"].message(
-                f"[cyan]H3 prompts: {current}/{total} scenes - "
-                f"{'start' if status == 'started' else 'completed'}[/cyan]"
+            status_callback=lambda current, total, status: (
+                reporter.message(
+                    f"[cyan]H3 prompts: {current}/{total} scenes - "
+                    f"{'start' if status == 'started' else 'completed'}[/cyan]"
+                )
+                if reporter is not None
+                else None
             ),
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
