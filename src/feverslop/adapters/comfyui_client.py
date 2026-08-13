@@ -7,6 +7,7 @@ import time
 import uuid
 import requests
 
+from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopWorkflowError
 from feverslop.security.url_validation import validate_api_url
 
@@ -41,16 +42,29 @@ class ComfyUIClient:
         base_url: str = "http://127.0.0.1:8188",
         client_id: str | None = None,
         prompt_timeout_seconds: float = 1800.0,
+        metrics: APIMetrics | None = None,
     ):
         self.base_url = validate_api_url(base_url).rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
+        self.metrics = metrics or default_api_metrics
         self._session: requests.Session | None = None
 
     def _ensure_session(self) -> requests.Session:
         if self._session is None:
             self._session = requests.Session()
         return self._session
+
+    def _request(self, method: str, url: str, operation: str, **kwargs):
+        emit_log = kwargs.pop("_emit_log", True)
+        started_at = time.perf_counter()
+        try:
+            response = getattr(self._ensure_session(), method)(url, **kwargs)
+        except Exception:
+            record_api_call(self.metrics, logger if emit_log else None, "comfyui", operation, started_at, success=False)
+            raise
+        record_api_call(self.metrics, logger if emit_log else None, "comfyui", operation, started_at, success=response.ok)
+        return response
 
     def close(self) -> None:
         if self._session is not None:
@@ -64,8 +78,7 @@ class ComfyUIClient:
         self.close()
 
     def queue_prompt(self, workflow: dict) -> str:
-        response = self._ensure_session().post(
-            f"{self.base_url}/prompt",
+        response = self._request("post", f"{self.base_url}/prompt", "queue_prompt",
             json={
                 "prompt": workflow,
                 "client_id": self.client_id,
@@ -76,16 +89,14 @@ class ComfyUIClient:
         return response.json()["prompt_id"]
 
     def get_history(self, prompt_id: str) -> dict:
-        response = self._ensure_session().get(
-            f"{self.base_url}/history/{prompt_id}",
+        response = self._request("get", f"{self.base_url}/history/{prompt_id}", "get_history",
             timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "get history")
         return response.json()
 
     def get_object_info(self) -> dict:
-        response = self._ensure_session().get(
-            f"{self.base_url}/object_info",
+        response = self._request("get", f"{self.base_url}/object_info", "get_object_info",
             timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "get object info")
@@ -168,8 +179,7 @@ class ComfyUIClient:
         file_path = Path(file_path)
 
         with file_path.open("rb") as f:
-            response = self._ensure_session().post(
-                f"{self.base_url}/upload/image",
+            response = self._request("post", f"{self.base_url}/upload/image", "upload_image",
                 files={"image": (upload_name or file_path.name, f)},
                 data={
                     "type": file_type,
@@ -210,8 +220,7 @@ class ComfyUIClient:
             subfolder = ""
         if not filename:
             return False
-        response = self._ensure_session().get(
-            f"{self.base_url}/view",
+        response = self._request("get", f"{self.base_url}/view", "input_file_exists",
             params={"filename": filename, "subfolder": subfolder, "type": "input"},
             timeout=60,
             stream=True,
@@ -234,8 +243,7 @@ class ComfyUIClient:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        response = self._ensure_session().get(
-            f"{self.base_url}/view",
+        response = self._request("get", f"{self.base_url}/view", "download_view_file",
             params={
                 "filename": filename,
                 "subfolder": subfolder,
@@ -251,8 +259,7 @@ class ComfyUIClient:
     def free_cache_and_vram(self) -> None:
         """Best-effort unload of ComfyUI models and cached CUDA memory."""
         try:
-            response = self._ensure_session().post(
-                f"{self.base_url}/free",
+            response = self._request("post", f"{self.base_url}/free", "free_cache_and_vram", _emit_log=False,
                 json={"unload_models": True, "free_memory": True},
                 timeout=30,
             )

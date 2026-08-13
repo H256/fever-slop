@@ -31,6 +31,7 @@ from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
 from feverslop.domain.vision_references import ReferenceImage
+from feverslop.utils.io import read_json_object
 
 
 logger = logging.getLogger(__name__)
@@ -430,10 +431,4 @@ def _item_for_id(items: list[dict], item_id: str) -> dict | None:
     return None
 
 
-def _read_json(path: Path) -> dict:
-    if not path.exists():
-        raise FileNotFoundError(f"Movie pipeline artifact not found: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"Movie pipeline artifact must be a JSON object: {path}")
-    return data
+_read_json = read_json_object

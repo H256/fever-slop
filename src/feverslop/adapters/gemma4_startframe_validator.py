@@ -3,15 +3,20 @@ from __future__ import annotations
 import base64
 import ast
 import json
+import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 import requests
 
+from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopLMLError
 
 from feverslop.domain.llm_parsing import extract_json_object
+
+logger = logging.getLogger(__name__)
 
 
 class Gemma4StartframeValidator:
@@ -21,10 +26,12 @@ class Gemma4StartframeValidator:
         base_url: str = "http://your-llm-server.local/v1",
         model: str = "gemma4-26b-a4b:vision",
         timeout_seconds: float = 180.0,
+        metrics: APIMetrics | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout_seconds = float(timeout_seconds)
+        self.metrics = metrics or default_api_metrics
 
     def validate_startframe(
         self,
@@ -72,7 +79,13 @@ class Gemma4StartframeValidator:
                 },
             ],
         }
-        response = requests.post(f"{self.base_url}/chat/completions", json=payload, timeout=self.timeout_seconds)
+        started_at = time.perf_counter()
+        try:
+            response = requests.post(f"{self.base_url}/chat/completions", json=payload, timeout=self.timeout_seconds)
+        except Exception:
+            record_api_call(self.metrics, logger, "llm", "startframe_validation", started_at, success=False)
+            raise
+        record_api_call(self.metrics, logger, "llm", "startframe_validation", started_at, success=response.ok)
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
         return normalize_validation_response(content)
