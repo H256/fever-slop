@@ -13,7 +13,8 @@ from feverslop.ports.full_auto import (
     SongAudioGeneratorPort,
     SongBriefGeneratorPort,
 )
-from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
+from feverslop.ports.reporting import Reporter
+from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 
 
 @dataclass(frozen=True)

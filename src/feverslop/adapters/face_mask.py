@@ -22,7 +22,6 @@ class FaceMaskAdapter(FaceMaskPort):
         box: BoundingBox,
         landmarks: FaceLandmarks | None = None,
         feather_radius: int = 16,
-        min_nonzero_ratio: float = 0.01,
     ) -> np.ndarray:
         """Generate a radial feather mask for face compositing.
 

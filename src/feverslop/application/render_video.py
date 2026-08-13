@@ -7,7 +7,8 @@ from typing import Any, Callable
 
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.ports.reporting import ConsoleReporter, Reporter
+from feverslop.ports.reporting import Reporter
+from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.ports.rendering import VideoRenderBackend, VideoRenderRequest, WorkflowAnchorConfig
 from feverslop.utils.io import file_is_valid
 

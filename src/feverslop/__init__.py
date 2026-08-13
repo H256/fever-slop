@@ -42,8 +42,8 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "Screenplay": ("feverslop.domain.movie", "Screenplay"),
     "StoryArch": ("feverslop.domain.movie", "StoryArch"),
     # -- Reporter (feverslop.ports.reporting) --
-    "ConsoleReporter": ("feverslop.ports.reporting", "ConsoleReporter"),
-    "NullReporter": ("feverslop.ports.reporting", "NullReporter"),
+    "ConsoleReporter": ("feverslop.adapters.reporting", "ConsoleReporter"),
+    "NullReporter": ("feverslop.adapters.reporting", "NullReporter"),
     "Reporter": ("feverslop.ports.reporting", "Reporter"),
     # -- LLM ports (feverslop.ports.llm) --
     "LLMPort": ("feverslop.ports.llm", "LLMPort"),
@@ -60,8 +60,6 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "JsonArtifactStore": ("feverslop.ports.artifacts", "JsonArtifactStore"),
     "RenderPlanStore": ("feverslop.ports.artifacts", "RenderPlanStore"),
     "TextArtifactReaderWriter": ("feverslop.ports.artifacts", "TextArtifactReaderWriter"),
-    # -- Audio ports (feverslop.ports.audio) --
-    "AudioAnalyzerPort": ("feverslop.ports.audio", "AudioAnalyzerPort"),
     # -- Full-auto ports (feverslop.ports.full_auto) --
     "PipelineRunnerPort": ("feverslop.ports.full_auto", "PipelineRunnerPort"),
     "ProjectScaffoldPort": ("feverslop.ports.full_auto", "ProjectScaffoldPort"),
@@ -191,8 +189,6 @@ __all__ = [
     "JsonArtifactStore",
     "RenderPlanStore",
     "TextArtifactReaderWriter",
-    # -- Audio ports --
-    "AudioAnalyzerPort",
     # -- Full-auto ports --
     "PipelineRunnerPort",
     "ProjectScaffoldPort",

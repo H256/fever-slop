@@ -9,7 +9,8 @@ from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
+from feverslop.ports.reporting import Reporter
+from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 
 
 @dataclass(frozen=True)
