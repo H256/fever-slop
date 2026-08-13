@@ -28,8 +28,10 @@ class FakeLibrary(ReferenceLibraryPort):
     def __init__(self):
         self._snapshots: dict[str, ReferenceWorkspaceSnapshot] = {}
         self._asset_counter = 0
+        self.load_count = 0
 
     def load(self, project_id: str) -> ReferenceWorkspaceSnapshot:
+        self.load_count += 1
         return self._snapshots.get(project_id, ReferenceWorkspaceSnapshot(assets=(), assignments=()))
 
     def save_assignments(
@@ -318,6 +320,45 @@ class SaveSceneAssignmentsUseCaseTests(unittest.TestCase):
         new_assignments = (SceneReferenceAssignment(scene_number=3, actor_ids=("hero",), location_ids=("lab",)),)
         result = uc.save("proj", new_assignments, "r1")
         self.assertIn("msr_sheets", result.invalidated_artifacts)
+
+    def test_save_with_old_snapshot_skips_load(self):
+        lib = FakeLibrary()
+        old_assignments = (SceneReferenceAssignment(scene_number=3, actor_ids=("hero",)),)
+        old_snap = ReferenceWorkspaceSnapshot(
+            assets=(), assignments=old_assignments, revision="r1", project_id="proj",
+        )
+        lib._snapshots["proj"] = old_snap
+        lib.load_count = 0
+        uc = self._use_case(
+            library=lib,
+            bible=FakeBible(actors=["hero"], locations=["lab"]),
+            scene_cast=FakeSceneCast(4),
+            invalidation=FakeInvalidation(),
+        )
+        new_assignments = (SceneReferenceAssignment(scene_number=3, actor_ids=("hero",), location_ids=("lab",)),)
+        result = uc.save("proj", new_assignments, "r1", old_snapshot=old_snap)
+        self.assertEqual("r2", result.new_revision)
+        self.assertIn(3, result.affected_scenes)
+        self.assertEqual(0, lib.load_count)
+
+    def test_save_without_old_snapshot_loads_library(self):
+        lib = FakeLibrary()
+        old_assignments = (SceneReferenceAssignment(scene_number=3, actor_ids=("hero",)),)
+        lib._snapshots["proj"] = ReferenceWorkspaceSnapshot(
+            assets=(), assignments=old_assignments, revision="r1", project_id="proj",
+        )
+        uc = self._use_case(
+            library=lib,
+            bible=FakeBible(actors=["hero"], locations=["lab"]),
+            scene_cast=FakeSceneCast(4),
+            invalidation=FakeInvalidation(),
+        )
+        lib.load_count = 0
+        new_assignments = (SceneReferenceAssignment(scene_number=3, actor_ids=("hero",), location_ids=("lab",)),)
+        result = uc.save("proj", new_assignments, "r1")
+        self.assertEqual("r2", result.new_revision)
+        self.assertIn(3, result.affected_scenes)
+        self.assertEqual(1, lib.load_count)
 
 
 class ImportReferenceUseCaseTests(unittest.TestCase):

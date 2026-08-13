@@ -119,6 +119,7 @@ class SaveSceneAssignmentsUseCase:
         project_id: str,
         assignments: tuple[SceneReferenceAssignment, ...],
         expected_revision: str,
+        old_snapshot: ReferenceWorkspaceSnapshot | None = None,
     ) -> SaveAssignmentsResult:
         all_issues: list[str] = []
         for a in assignments:
@@ -136,7 +137,10 @@ class SaveSceneAssignmentsUseCase:
                 issues=tuple(all_issues),
             )
 
-        old_snap = self._library.load(project_id)
+        if old_snapshot is not None:
+            old_snap = old_snapshot
+        else:
+            old_snap = self._library.load(project_id)
         old_assignments = old_snap.assignments
 
         new_revision: str

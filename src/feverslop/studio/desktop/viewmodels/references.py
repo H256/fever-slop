@@ -312,11 +312,12 @@ class ReferenceWorkspaceViewModel(QObject):
     def save_assignments(self, assignments_data: list) -> str:
         if not self._current_project:
             return ""
-        old_revision = self._service.load_library(self._current_project).revision
+        old_snap = self._service.load_library(self._current_project)
         result = self._service.save_assignments(
             self._current_project,
             tuple(assignments_data),
-            old_revision,
+            old_snap.revision,
+            old_snapshot=old_snap,
         )
         if result.success:
             self._refresh_assignments()
