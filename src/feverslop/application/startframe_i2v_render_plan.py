@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+from feverslop.utils.io import read_json_document, write_json_document
 
 
 def write_startframe_i2v_render_plan(*, project_dir: Path, fps: int = 24) -> Path:
     project_dir = Path(project_dir)
-    plan = json.loads((project_dir / "movie" / "startframe_plan.json").read_text(encoding="utf-8"))
+    plan = read_json_document(project_dir / "movie" / "startframe_plan.json")
     scenes = []
     cursor = 0.0
     for shot in plan.get("shots", []):
@@ -36,6 +37,5 @@ def write_startframe_i2v_render_plan(*, project_dir: Path, fps: int = 24) -> Pat
         )
         cursor += duration
     output_path = project_dir / "movie" / "render_plan_i2v.json"
-    output_path.write_text(json.dumps(scenes, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_document(output_path, scenes)
     return output_path
-
