@@ -139,7 +139,13 @@ class LocalOpenAIClient:
                     stream=False,
                     timeout=request_timeout,
                 )
-                result = response.choices[0].message.content.strip()
+                choices = getattr(response, "choices", None)
+                if not isinstance(choices, list) or not choices:
+                    raise FeverSlopLMLError("LLM response missing choices")
+                message = getattr(choices[0], "message", None)
+                result = str(getattr(message, "content", "") or "").strip()
+                if not result:
+                    raise FeverSlopLMLError("LLM response contains empty content")
                 record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=True)
                 return result
             except RETRYABLE_ERRORS as exc:

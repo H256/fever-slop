@@ -8,7 +8,7 @@ import time
 import uuid
 import requests
 
-from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets
+from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets, require_json_object
 from feverslop.errors import FeverSlopWorkflowError
 from feverslop.security.url_validation import validate_api_url
 
@@ -93,14 +93,18 @@ class ComfyUIClient:
             timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "queue prompt")
-        return response.json()["prompt_id"]
+        payload = require_json_object(response.json(), context="queue_prompt")
+        prompt_id = payload.get("prompt_id")
+        if not isinstance(prompt_id, str) or not prompt_id.strip():
+            raise ComfyUIHTTPError("queue_prompt response missing prompt_id")
+        return prompt_id
 
     def get_history(self, prompt_id: str) -> dict:
         response = self._request("get", f"{self.base_url}/history/{prompt_id}", "get_history",
             timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "get history")
-        return response.json()
+        return require_json_object(response.json(), context="get_history")
 
     def get_object_info(self) -> dict:
         response = self._request("get", f"{self.base_url}/object_info", "get_object_info",
