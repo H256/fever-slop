@@ -12,6 +12,7 @@ class TrimSpec:
     trim_front_frames: int
     keep_frames: int
     scene: int
+    extract_boundary_frames: bool = False
 
     @property
     def start_seconds(self) -> float:

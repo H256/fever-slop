@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from copy import deepcopy
+from dataclasses import replace
 import json
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -10,7 +11,7 @@ from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.minimax_h3_frames import _frames_from_duration as _frames_from_duration_
-from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.config.video_settings import VideoSettings
@@ -176,7 +177,33 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
 
         H3 output is a single MP4 with synced audio+video; ffmpeg trims both streams.
         """
-        return self.postprocessor.trim_clip(spec)
+        output = self.postprocessor.trim_clip(spec)
+        if spec.extract_boundary_frames and self.project_dir is not None:
+            self._persist_boundary_frames(spec.scene)
+        return output
+
+    def _persist_boundary_frames(self, scene_number: int) -> None:
+        manifest_path = self.output_dir / f"scene_{scene_number:04}" / "manifest.json"
+        if not manifest_path.is_file() or self.project_dir is None:
+            return
+        scene_dir = self.output_dir / f"scene_{scene_number:04}"
+        first_frame_path = scene_dir / "firstframe.png"
+        last_frame_path = scene_dir / "lastframe.png"
+        if not first_frame_path.is_file() or not last_frame_path.is_file():
+            return
+        manifest = SceneWorkflowManifest.read(manifest_path)
+        manifest = replace(
+            manifest,
+            first_frame_path=(
+                StoredArtifact.from_path(first_frame_path, project_dir=self.project_dir)
+                if manifest.first_frame_path is None else manifest.first_frame_path
+            ),
+            last_frame_path=(
+                StoredArtifact.from_path(last_frame_path, project_dir=self.project_dir)
+                if manifest.last_frame_path is None else manifest.last_frame_path
+            ),
+        )
+        manifest.write(manifest_path)
 
     def _write_scene_manifest(
         self,

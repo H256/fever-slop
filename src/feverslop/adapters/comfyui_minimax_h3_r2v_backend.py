@@ -284,6 +284,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 trim_front_frames=int(self.preroll_frames),
                 keep_frames=keep_frames,
                 scene=scene_number,
+                extract_boundary_frames=True,
             ),
         )
 
