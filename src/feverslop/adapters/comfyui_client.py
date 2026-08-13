@@ -7,7 +7,7 @@ import time
 import uuid
 import requests
 
-from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
+from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets
 from feverslop.errors import FeverSlopWorkflowError
 from feverslop.security.url_validation import validate_api_url
 
@@ -274,7 +274,7 @@ class ComfyUIClient:
         detail = self._response_detail(response)
         raise ComfyUIHTTPError(
             f"ComfyUI {operation} failed with HTTP {response.status_code} for "
-            f"{response.url}: {detail}"
+            f"{redact_secrets(response.url)}: {redact_secrets(detail)}"
         ) from None
 
     @staticmethod
