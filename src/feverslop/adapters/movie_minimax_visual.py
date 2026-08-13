@@ -199,6 +199,7 @@ def _build_movie_h3_prompt(
         mode="ref",
         video_type="movie",
         reference_root=reference_root,
+        append_relay_prompt=False,
     )
     prompt = str(result.get("prompt") or "").strip()
     if not prompt:

@@ -84,6 +84,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("subject_definitions:", prompt)
         self.assertEqual("ref", builder.request["mode"])
         self.assertEqual("movie", builder.request["video_type"])
+        self.assertFalse(builder.request["append_relay_prompt"])
         self.assertIn("Leo runs through the forest", builder.request["concept"])
 
     def test_passes_general_steering_and_prompt_guidance_to_generator(self):
