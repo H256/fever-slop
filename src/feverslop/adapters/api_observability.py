@@ -9,6 +9,7 @@ from threading import Lock
 from time import perf_counter
 import time
 import re
+from typing import Any
 
 
 _SENSITIVE_URL_PART = re.compile(
@@ -30,6 +31,12 @@ def redact_secrets(value: object) -> str:
     text = _BEARER_TOKEN.sub("Bearer [REDACTED]", text)
     text = _SENSITIVE_QUERY_PART.sub(lambda match: f"{match.group('key')}=[REDACTED]", text)
     return _SENSITIVE_URL_PART.sub(lambda match: f"{match.group('key')}{match.group('sep')}[REDACTED]", text)
+
+
+def require_json_object(payload: Any, *, context: str) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError(f"{context} response must be a JSON object")
+    return payload
 
 
 @dataclass(frozen=True)
