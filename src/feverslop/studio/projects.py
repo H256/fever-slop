@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -13,6 +14,9 @@ from typing import Any
 from feverslop.domain.slug_utils import slugify_project_name  # noqa: F401 -- re-exported for backward compatibility
 from feverslop.ports.reporting import Reporter
 from feverslop.studio.artifact_locking import artifact_write_lock
+
+
+_logger = logging.getLogger(__name__)
 
 
 class StudioPathError(ValueError):
@@ -376,7 +380,8 @@ class ProjectStore:
             return default
         try:
             return json.loads(path.read_text(encoding="utf-8-sig"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            _logger.warning("Could not parse JSON artifact %s; using default: invalid JSON (%s)", path, exc)
             return default
 
 
