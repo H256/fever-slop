@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+import json
 import logging
 from threading import Lock
 from time import perf_counter
@@ -72,6 +73,25 @@ class APIMetrics:
                 key: APICallStats(int(values[0]), int(values[1]), int(values[2]), values[3], values[4], values[5])
                 for key, values in self._stats.items()
             }
+
+    def export_snapshot(self) -> dict:
+        """Return a stable, JSON-serializable observability snapshot."""
+        rows = []
+        for (service, operation), stats in sorted(self.snapshot().items()):
+            rows.append({
+                "service": service,
+                "operation": operation,
+                "calls": stats.calls,
+                "successes": stats.successes,
+                "failures": stats.failures,
+                "total_duration_ms": stats.total_duration_ms,
+                "usage_units": stats.usage_units,
+                "estimated_cost": stats.estimated_cost,
+            })
+        return {"version": 1, "entries": rows}
+
+    def export_json(self) -> str:
+        return json.dumps(self.export_snapshot(), ensure_ascii=False, sort_keys=True)
 
 
 class RequestRateLimiter:
