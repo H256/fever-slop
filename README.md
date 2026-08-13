@@ -47,6 +47,31 @@ CLI equivalent for an existing project:
 uv run python run_pipeline.py ./projects/my-song --skip-tests
 ```
 
+#### Reusing audio analysis artifacts
+
+The main pipeline can reuse individual audio-analysis artifacts instead of
+running every expensive sub-step again. The corresponding files must already
+exist under `output/`:
+
+```bash
+uv run python run_pipeline.py ./projects/my-song \
+  --skip-stem-separation \
+  --skip-whisper \
+  --skip-beat-analysis
+```
+
+These flags can be combined or used independently:
+
+- `--skip-stem-separation` reuses the four existing Demucs stem files.
+- `--skip-whisper` reuses `output/timeline/timeline_<song>.json`.
+- `--skip-beat-analysis` reuses `output/timeline/beat_data_<song>.json`.
+
+If a requested artifact is missing, the pipeline stops with the exact path it
+needs instead of silently rerunning that step. For explicit stage selection,
+`prepare_workflows` and `render_scenes` are the backend-agnostic names; the
+legacy spellings `ltx_prepare_workflows` and `ltx_render_scenes` remain
+supported.
+
 ### Video Pipeline Modes
 
 Three rendering pipelines control how the video is generated:
