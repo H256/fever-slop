@@ -44,8 +44,14 @@ def enrich_movie_render_plan_with_msr_prompts(
     shot_cards_path = movie_dir / "shot_cards.json"
     render_plan = _read_json(render_plan_path)
     manifest = _read_json(reference_manifest_path)
-    continuity_plan = _read_json(continuity_plan_path) if continuity_plan_path.exists() else {}
-    shot_cards = _read_json(shot_cards_path) if shot_cards_path.exists() else {}
+    try:
+        continuity_plan = _read_json(continuity_plan_path)
+    except (FileNotFoundError, IsADirectoryError):
+        continuity_plan = {}
+    try:
+        shot_cards = _read_json(shot_cards_path)
+    except (FileNotFoundError, IsADirectoryError):
+        shot_cards = {}
 
     enriched = deepcopy(render_plan)
     enriched["movie_bible_path"] = "movie/bible.json"
