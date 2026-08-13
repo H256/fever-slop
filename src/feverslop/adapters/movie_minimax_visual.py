@@ -123,6 +123,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             not force
             and output.is_file()
             and output.stat().st_mtime_ns >= source.stat().st_mtime_ns
+            and self._is_current_prompt_plan(output)
         ):
             return output
         builder = prompt_builder or self._build_prompt_builder()
@@ -133,6 +134,34 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             on_scene_started=on_scene_started,
             on_scene_prepared=on_scene_prepared,
         )
+
+    def _is_current_prompt_plan(self, path: Path) -> bool:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(payload, list) or not payload:
+            return False
+        required = (
+            "subject_definitions:",
+            "summary:",
+            "retention_analysis:",
+            "detailed_description:",
+            "overall_soundscape:",
+            "non_diegetic_music:",
+        )
+        for scene in payload:
+            if not isinstance(scene, dict):
+                return False
+            h3 = scene.get("h3")
+            if not isinstance(h3, dict):
+                return False
+            prompt = str(h3.get("prompt") or "")
+            if any(section not in prompt for section in required):
+                return False
+            if "Reference files:" in prompt or "Continuity anchors" in prompt:
+                return False
+        return True
 
     def _prepare_render_plan(
         self,
