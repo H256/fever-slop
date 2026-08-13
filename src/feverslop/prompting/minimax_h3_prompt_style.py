@@ -362,7 +362,6 @@ The reference audio is the original music track. When reference audio is availab
         subjects = references.get("subjects", [])
         # Count visual (actor/location) subjects vs. audio/video subjects
         visual_subjects = [s for s in subjects if isinstance(s, dict) and s.get("type") in ("actor", "location", None)]
-        audio_video_subjects = [s for s in subjects if isinstance(s, dict) and s.get("type") in ("audio", "video")]
 
         # Build Subject list with source anchors
         subject_counter = 0
@@ -390,7 +389,6 @@ The reference audio is the original music track. When reference audio is availab
             parts.append(line)
 
         # Video video subjects anchored to <Video N>
-        video_count = len(references.get("video", []))
         for i, vid in enumerate(references.get("video", []), start=1):
             subject_counter += 1
             name = vid if isinstance(vid, str) else vid.get("name", f"Video {i}") if isinstance(vid, dict) else str(vid)

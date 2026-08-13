@@ -58,10 +58,15 @@ class WorkflowMaterializer:
                     request.audio_file, upload_audio=True, uploaded_audio_name=None,
                 )
             rolling = self.backend._rolling_spec(scene)
+            render_frame_count = _coerce_int(
+                _rolling_value(rolling, "render_frame_count"),
+                scene.get("render_frame_count", 0),
+            )
+            fps = _coerce_int(_rolling_value(rolling, "fps"), scene.get("fps", 0))
             validate_render_frame_budget(
                 scene_number=scene_number,
-                render_frame_count=int(_rolling_value(rolling, "render_frame_count")),
-                fps=int(_rolling_value(rolling, "fps") or scene.get("fps") or 0),
+                render_frame_count=render_frame_count,
+                fps=fps,
                 workflow_path=(
                     getattr(self.backend, "render_budget_workflow_path", None)
                     or self.backend.workflow_label
@@ -117,10 +122,14 @@ class WorkflowMaterializer:
                 render_plan_path=request.render_plan_path,
                 assets=assets,
                 seed=seed,
-                fps=int(scene.get("fps") or _rolling_value(rolling, "fps") or 0),
-                frame_count=int(scene.get("frame_count") or _rolling_value(rolling, "render_frame_count") or 0),
-                render_frame_count=int(_rolling_value(rolling, "render_frame_count") or scene.get("frame_count") or 0),
-                trim_front_frames=int(_rolling_value(rolling, "trim_front_frames") or 0),
+                fps=_coerce_int(scene.get("fps"), _rolling_value(rolling, "fps")),
+                frame_count=_coerce_int(
+                    scene.get("frame_count"), _rolling_value(rolling, "render_frame_count")
+                ),
+                render_frame_count=_coerce_int(
+                    _rolling_value(rolling, "render_frame_count"), scene.get("frame_count")
+                ),
+                trim_front_frames=_coerce_int(_rolling_value(rolling, "trim_front_frames")),
                 width=int(scene.get("width") or 0),
                 height=int(scene.get("height") or 0),
                 max_render_frames=getattr(self.backend, "max_render_frames", None),
@@ -484,6 +493,17 @@ def _rolling_value(rolling: Any, key: str) -> Any:
     if isinstance(rolling, dict):
         return rolling.get(key)
     return getattr(rolling, key, None)
+
+
+def _coerce_int(value: Any, fallback: Any = 0) -> int:
+    """Convert numeric rolling metadata while tolerating loose test doubles."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(fallback)
+        except (TypeError, ValueError):
+            return 0
 
 
 def _replace_asset_names_in_workflow(

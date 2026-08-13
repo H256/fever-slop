@@ -392,6 +392,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--skip-tests",
                     "--skip-main-pipeline",
                     "--skip-relay-compact",
@@ -450,6 +452,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--skip-tests",
                     "--skip-main-pipeline",
                     "--skip-relay-compact",
@@ -490,6 +494,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--skip-tests",
                     "--skip-main-pipeline",
                     "--skip-relay-compact",
@@ -564,6 +570,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--video-pipeline",
                     "ltx_msr",
                     "--stage",
@@ -609,6 +617,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--video-pipeline",
                     "ltx_msr",
                     "--skip-tests",
@@ -637,7 +647,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
-            with patch("feverslop.composition.stage_runners.build_render_storyboard_use_case") as storyboard_builder, \
+            with patch.dict("os.environ", {"LLM_API_KEY": "test-key"}), patch("feverslop.composition.stage_runners.build_render_storyboard_use_case") as storyboard_builder, \
                 patch("feverslop.composition.stage_runners.generate_storyboard_page") as storyboard_page, \
                 patch("feverslop.composition.stage_runners.render_reference_bible") as reference_bible, \
                 patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets", side_effect=enrich) as enrich_refs, \
@@ -680,6 +690,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--video-pipeline",
                     "ltx_msr",
                     "--skip-tests",
@@ -735,6 +747,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--skip-tests",
                     "--skip-main-pipeline",
                     "--skip-relay-compact",
@@ -791,6 +805,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args = run_pipeline.build_arg_parser().parse_args(
                 [
                     str(config_path),
+                    "--app-config",
+                    "app_config.example.json",
                     "--video-pipeline",
                     "ltx_msr",
                     "--skip-tests",
@@ -816,7 +832,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             postprocessor = Mock()
             postprocessor.concat_clips.return_value = render_dir / "ltx_msr" / "Song_video_only.mp4"
             postprocessor.mux_original_audio.return_value = render_dir / "ltx_msr" / "Song.mp4"
-            with patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets", side_effect=enrich), \
+            with patch.dict("os.environ", {"LLM_API_KEY": "test-key"}), patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets", side_effect=enrich), \
                 patch("feverslop.composition.stage_runners.VideoPostProcessor", return_value=postprocessor):
                 run_pipeline.run(args)
 
