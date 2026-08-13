@@ -47,6 +47,25 @@ class TestInsightFaceTracker(unittest.TestCase):
             self.assertIsInstance(result, FaceCropResult)
             self.assertEqual(len(result.entries), 0)
 
+    def test_track_video_releases_capture_when_processing_fails(self):
+        extractor = MagicMock()
+        extractor.detect_all.side_effect = RuntimeError("detector failed")
+        tracker = InsightFaceTracker(extractor)
+
+        with patch("feverslop.adapters.insightface_tracker.cv2") as mock_cv2:
+            mock_cap = MagicMock()
+            mock_cap.isOpened.return_value = True
+            mock_cap.get.return_value = 24.0
+            mock_cap.read.return_value = (True, np.zeros((10, 10, 3), dtype=np.uint8))
+            mock_cv2.VideoCapture.return_value = mock_cap
+            mock_cv2.CAP_PROP_FPS = 5
+            mock_cv2.CAP_PROP_FRAME_COUNT = 7
+
+            with self.assertRaisesRegex(RuntimeError, "detector failed"):
+                tracker.track_video(Path("/tmp/video.mp4"), {})
+
+            mock_cap.release.assert_called_once_with()
+
 
 class TestInsightFaceTrackerAnchorSelection(unittest.TestCase):
     def test_anchor_interval(self):
