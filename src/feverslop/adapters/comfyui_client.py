@@ -7,6 +7,8 @@ import json
 import time
 import uuid
 import requests
+from requests.adapters import HTTPAdapter
+from threading import Event
 
 from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets, require_json_object
 from feverslop.errors import FeverSlopWorkflowError
@@ -58,6 +60,9 @@ class ComfyUIClient:
     def _ensure_session(self) -> requests.Session:
         if self._session is None:
             self._session = requests.Session()
+            adapter = HTTPAdapter(pool_connections=20, pool_maxsize=50, pool_block=True)
+            self._session.mount("http://", adapter)
+            self._session.mount("https://", adapter)
         return self._session
 
     def _request(self, method: str, url: str, operation: str, **kwargs):
@@ -118,11 +123,14 @@ class ComfyUIClient:
         prompt_id: str,
         poll_interval: float = 1.0,
         timeout_seconds: float | None = None,
+        cancel_event: Event | None = None,
     ) -> dict:
         started_at = time.time()
         timeout_seconds = self.prompt_timeout_seconds if timeout_seconds is None else timeout_seconds
 
         while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise InterruptedError(f"ComfyUI prompt cancelled: {prompt_id}")
             history = self.get_history(prompt_id)
 
             if prompt_id in history:
@@ -133,7 +141,15 @@ class ComfyUIClient:
             if time.time() - started_at > timeout_seconds:
                 raise TimeoutError(f"ComfyUI prompt timed out: {prompt_id}")
 
-            time.sleep(poll_interval)
+            if cancel_event is None:
+                time.sleep(poll_interval)
+            else:
+                remaining = max(0.0, poll_interval)
+                while remaining > 0:
+                    wait_for = min(0.1, remaining)
+                    if cancel_event.wait(wait_for):
+                        raise InterruptedError(f"ComfyUI prompt cancelled: {prompt_id}")
+                    remaining -= wait_for
 
     @staticmethod
     def _raise_for_execution_error(prompt_id: str, history_entry: dict) -> None:

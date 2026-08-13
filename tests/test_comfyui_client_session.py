@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from threading import Event
 from unittest.mock import MagicMock, patch
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -57,6 +58,16 @@ class ComfyUIClientSessionTest(unittest.TestCase):
 
             mock_session_cls.assert_called_once()
             self.assertEqual(mock_session.post.call_count, 2)
+            self.assertEqual(2, mock_session.mount.call_count)
+            mock_session.mount.assert_any_call("http://", unittest.mock.ANY)
+            mock_session.mount.assert_any_call("https://", unittest.mock.ANY)
+
+    def test_wait_for_completion_honors_cancellation_event(self):
+        client = ComfyUIClient(base_url="http://test:8188")
+        cancel_event = Event()
+        cancel_event.set()
+        with self.assertRaisesRegex(InterruptedError, "cancelled"):
+            client.wait_for_completion("prompt", cancel_event=cancel_event)
 
     def test_session_created_on_first_request(self):
         """Session should be created lazily on first request."""

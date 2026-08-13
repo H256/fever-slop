@@ -108,20 +108,20 @@ class InsightFaceExtractor:
     def _extract_adaface_embedding(self, img_bgr: np.ndarray, landmarks) -> np.ndarray | None:
         """Extract AdaFace embedding from 5-point aligned face."""
         if landmarks is None:
-            print("[DIAG] AdaFace: landmarks is None, cannot align")
+            logger.debug("AdaFace: landmarks is None, cannot align")
             return None
         try:
             aligned = _align_face(img_bgr, landmarks, size=112)
-        except Exception as e:
-            print(f"[DIAG] AdaFace alignment failed: {e}")
+        except Exception as exc:
+            logger.warning("AdaFace alignment failed: %s", exc, exc_info=True)
             return None
 
         try:
             feat = self.adaface.get_feat(aligned)
             if feat is not None:
                 return feat.flatten()
-        except Exception as e:
-            print(f"[DIAG] AdaFace embedding failed: {e}")
+        except Exception as exc:
+            logger.warning("AdaFace embedding failed: %s", exc, exc_info=True)
             return None
         return None
 
@@ -133,15 +133,15 @@ class InsightFaceExtractor:
 
         img = cv2.imread(str(image_path))
         if img is None:
-            print(f"[DIAG] Cannot read image: {image_path}")
+            logger.warning("Cannot read image: %s", image_path)
             return None
 
-        print(f"[DIAG] FaceAnalysis on {image_path} (shape {img.shape})")
+        logger.debug("FaceAnalysis on %s (shape %s)", image_path, img.shape)
         faces = self.analyzer.get(img)
-        print(f"[DIAG] Faces detected: {len(faces)}")
+        logger.debug("Faces detected: %d", len(faces))
 
         if not faces:
-            print(f"[DIAG] No faces found in: {image_path}")
+            logger.info("No faces found in: %s", image_path)
             return None
 
         for i, f in enumerate(faces):
@@ -149,9 +149,9 @@ class InsightFaceExtractor:
             area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
             lm_type = type(f.landmark).__name__ if f.landmark is not None else "None"
             lm_shape = f.landmark.shape if f.landmark is not None else "N/A"
-            print(
-                f"[DIAG] Face {i}: bbox=({bbox[0]:.0f},{bbox[1]:.0f},{bbox[2]:.0f},{bbox[3]:.0f}) "
-                f"area={area:.0f} score={f.det_score:.3f} landmark={lm_type}({lm_shape})"
+            logger.debug(
+                "Face %d: bbox=(%.0f,%.0f,%.0f,%.0f) area=%.0f score=%.3f landmark=%s(%s)",
+                i, bbox[0], bbox[1], bbox[2], bbox[3], area, f.det_score, lm_type, lm_shape,
             )
 
         largest = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
@@ -160,44 +160,44 @@ class InsightFaceExtractor:
 
         face_img = _crop_square(img, x1, y1, x2, y2, padding=0.25)
         cv2.imwrite(str(face_ref), face_img)
-        print(f"[DIAG] Extracted face_ref: {image_path} -> {face_ref} (crop shape {face_img.shape})")
+        logger.info("Extracted face_ref: %s -> %s (crop shape %s)", image_path, face_ref, face_img.shape)
         return face_ref
 
     def extract_embedding(self, face_ref_path: Path) -> np.ndarray | None:
         """Extract recognition embedding from a face reference image using AdaFace."""
         if not face_ref_path.exists():
-            print(f"[DIAG] face_ref missing: {face_ref_path}")
+            logger.warning("face_ref missing: %s", face_ref_path)
             return None
 
         img = cv2.imread(str(face_ref_path))
         if img is None:
-            print(f"[DIAG] Cannot read face_ref: {face_ref_path}")
+            logger.warning("Cannot read face_ref: %s", face_ref_path)
             return None
 
-        print(f"[DIAG] Embedding extraction on {face_ref_path} (shape {img.shape})")
+        logger.debug("Embedding extraction on %s (shape %s)", face_ref_path, img.shape)
         faces = self.analyzer.get(img)
-        print(f"[DIAG] Faces in face_ref: {len(faces)}")
+        logger.debug("Faces in face_ref: %d", len(faces))
 
         if not faces:
-            print(f"[DIAG] No faces found in face_ref: {face_ref_path}")
+            logger.info("No faces found in face_ref: %s", face_ref_path)
             return None
 
         face = faces[0]
         bbox = face.bbox
         lm_type = type(face.landmark).__name__ if face.landmark is not None else "None"
         lm_shape = face.landmark.shape if face.landmark is not None else "N/A"
-        print(
-            f"[DIAG] face_ref face: bbox=({bbox[0]:.0f},{bbox[1]:.0f},{bbox[2]:.0f},{bbox[3]:.0f}) "
-            f"score={face.det_score:.3f} landmark={lm_type}({lm_shape})"
+        logger.debug(
+            "face_ref face: bbox=(%.0f,%.0f,%.0f,%.0f) score=%.3f landmark=%s(%s)",
+            bbox[0], bbox[1], bbox[2], bbox[3], face.det_score, lm_type, lm_shape,
         )
 
         embedding = self._extract_adaface_embedding(img, face.landmark)
         if embedding is not None:
             norm = np.linalg.norm(embedding)
-            print(f"[DIAG] AdaFace embedding OK, shape={embedding.shape} norm={norm:.4f}")
+            logger.debug("AdaFace embedding OK, shape=%s norm=%.4f", embedding.shape, norm)
             return embedding
 
-        print("[DIAG] AdaFace embedding failed, falling back to buffalo_l ArcFace")
+        logger.warning("AdaFace embedding failed, falling back to buffalo_l ArcFace")
         return face.embedding.copy()
 
     def detect_all(
