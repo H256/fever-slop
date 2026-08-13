@@ -87,6 +87,30 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertFalse(builder.request["append_relay_prompt"])
         self.assertIn("Leo runs through the forest", builder.request["concept"])
 
+    def test_scene_references_pass_existing_visual_descriptions_to_dspy(self):
+        references, _images = _scene_references(
+            {
+                "references": {
+                    "actor_msr_paths": ["actor.png"],
+                    "actor_ids": ["leo"],
+                    "actor_reference_descriptions": [
+                        {"id": "leo", "visual_description": "A weathered hiker."},
+                    ],
+                    "location_msr_path": "forest.png",
+                    "location_id": "forest",
+                    "location_reference_description": {
+                        "id": "forest",
+                        "visual_description": "A dark ancient forest.",
+                    },
+                }
+            },
+            None,
+            None,
+        )
+
+        self.assertEqual("A weathered hiker.", references[0]["description"])
+        self.assertEqual("A dark ancient forest.", references[1]["description"])
+
     def test_passes_general_steering_and_prompt_guidance_to_generator(self):
         generator = FakeGenerator()
         DspyH3PromptBuilder(generator).build_h3_prompt(
