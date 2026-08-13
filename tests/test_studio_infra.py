@@ -100,8 +100,11 @@ class TestReadJsonFileHandlesBadJson(unittest.TestCase):
             path = Path(f.name)
 
         try:
-            result = ProjectStore._read_json_file(path, default="fallback_value")
+            with self.assertLogs("feverslop.studio.projects", level="WARNING") as logs:
+                result = ProjectStore._read_json_file(path, default="fallback_value")
             self.assertEqual("fallback_value", result)
+            self.assertIn(str(path), "\n".join(logs.output))
+            self.assertIn("invalid JSON", "\n".join(logs.output))
         finally:
             path.unlink()
 
