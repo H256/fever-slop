@@ -316,9 +316,13 @@ def _run_startframe_director_workflow(
     from feverslop.application.startframe_identity import build_startframe_identity_ledger
     from feverslop.application.startframe_plan import build_startframe_plan
     from feverslop.application.startframe_validation import write_local_startframe_validation
-    from feverslop.config.project_config import ProjectConfig
+    project_config_path = project_dir / "config.json"
+    reference_image_size = None
+    if project_config_path.is_file():
+        from feverslop.config.project_config import ProjectConfig
 
-    project_config = ProjectConfig.load(project_dir / "config.json")
+        project_config = ProjectConfig.load(project_config_path)
+        reference_image_size = project_config.reference_images.resolve(project_config.video)
 
     _log_stage("Movie identity ledger", "deriving face, body, wardrobe, and reference contracts")
     identity_ledger_path = build_startframe_identity_ledger(project_dir=project_dir)
@@ -328,7 +332,7 @@ def _run_startframe_director_workflow(
     startframe_director_prompts_path = build_startframe_director_prompts(
         project_dir=project_dir,
         director_backend=config["startframe_director_backend"],
-        reference_image_size=project_config.reference_images.resolve(project_config.video),
+        reference_image_size=reference_image_size,
     )
     _log_stage("Movie I2V render plan", "writing classic I2V handoff plan")
     render_plan_i2v_path = write_startframe_i2v_render_plan(project_dir=project_dir)
