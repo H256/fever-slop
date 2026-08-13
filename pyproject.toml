@@ -1,7 +1,7 @@
 [project]
 name = "feverslop"
 version = "0.1.0"
-description = "Local music-video generation pipeline and Studio UI"
+description = "Local music-video generation pipeline"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -18,11 +18,10 @@ keywords = [
     "image-generation",
     "pytorch",
     "comfyui",
-    "pyside6",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: End Users/Pre-Production",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -48,7 +47,6 @@ dependencies = [
     "openai-whisper>=20250625",
     "pillow>=12.0.0",
     "pydantic>=2.13.4",
-    "pyside6>=6.10,<7",
     "rich>=15.0.0",
     "soundfile>=0.14.0",
     "torch>=2.12.0",

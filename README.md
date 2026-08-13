@@ -1,11 +1,13 @@
 # FeverSlop
 
-FeverSlop is a local music-video generation pipeline and Studio UI. It turns an audio track, lyrics, and visual direction into project artifacts, render plans, ComfyUI image/video jobs, reviewable clips, and a final muxed video.
+FeverSlop is a local, CLI-first music-video generation pipeline. It turns an
+audio track, lyrics, and visual direction into project artifacts, render plans,
+ComfyUI image/video jobs, reviewable clips, and a final muxed video.
 
-The repository contains two operator surfaces:
-
-- **CLI pipeline**: `run_pipeline.py` and `full_auto.py`.
-- **FeverSlop Studio**: native PySide6/QML application for project creation, config editing, pipeline jobs, logs, references, review, and final video playback.
+The supported operator surface is the command line: `run_pipeline.py` and
+`full_auto.py`. Projects are ordinary directories containing JSON artifacts,
+media, and configuration, so they can be inspected and automated with standard
+shell tools.
 
 Core Python packages live under `src/feverslop`. Composition code such as
 `feverslop.composition.generate_render_plan` is kept separate from adapters
@@ -19,29 +21,16 @@ Install Python dependencies from the repository root:
 uv sync
 ```
 
-Start the native Studio:
-
-```bash
-uv run python -m feverslop.studio.desktop --projects-root ./projects
-```
-
 ## Basic Workflows
 
 ### Standard Music Video Project
 
-1. Open Studio.
-2. Click **Create Project**.
-3. Choose **Standard - Music Video Project**.
-4. Enter a project name. Studio slugifies it into the project folder name under `projects/`.
-5. Open **Project Settings** and fill `config.json` fields, especially `input_audio`.
-6. Choose `video_pipeline`:
+1. Create a project directory under `projects/` and add its `config.json`.
+2. Set `input_audio` and choose `video_pipeline`:
    - `ltx_msr`: MSR/reference-guided mode.
    - `ltx_i2v`: classic storyboard/start-frame mode.
    - `ltx_ingredients`: per-scene ingredients sheets with audio latent injection.
-7. Open **Pipeline**, start a job, and monitor progress/logs.
-8. Open **Review** or **Final Video** to inspect outputs.
-
-CLI equivalent for an existing project:
+3. Run the pipeline and inspect the generated artifacts:
 
 ```bash
 uv run python run_pipeline.py ./projects/my-song --skip-tests
@@ -315,7 +304,7 @@ Three pipeline modes are available:
 - **MSR** (`ltx_msr`): reference-sheet driven rendering with actor/location identity.
 - **Ingredients** (`ltx_ingredients`): per-scene ingredients sheets with audio latent injection.
 
-Studio asks for:
+Full-Auto asks for:
 
 - project name
 - idea
@@ -379,7 +368,7 @@ Most useful runs require:
 
 - [App configuration reference](docs/app_config.md): complete `app_config.json` field reference and defaults.
 - [Setup](docs/setup.md): prerequisites, dependencies, ComfyUI/ACE-Step, local config.
-- [Running](docs/running.md): CLI and native Studio startup.
+- [Running](docs/running.md): CLI startup and pipeline operation.
 - [Pipelines](docs/pipelines.md): standard, Full-Auto, MSR/classic, progress and logs.
 - [Projects](docs/projects.md): folder structure, `config.json`, Project Settings, artifacts.
 - [Examples](docs/examples.md): standard and Full-Auto workflows and troubleshooting.
@@ -388,7 +377,7 @@ Most useful runs require:
 
 ## Verification Commands
 
-Python and native Studio tests:
+Python tests and linting:
 
 ```bash
 uv run ruff check .

@@ -5,8 +5,7 @@ Thin orchestration layer: reads via ports, applies domain logic, writes via port
 Public API
 ----------
 The four symbols below constitute the application-layer use-case API surface.
-They are wired into ``TimelineStudioService`` at runtime (see
-``feverslop.studio.desktop.viewmodels.timeline``) and validated by the
+They are wired into ``TimelineStudioService`` at runtime and validated by the
 dedicated test suite (``tests/test_edit_audio_timeline_app.py``).
 
 Keep this file and its tests: the tests exercise the port protocols and domain

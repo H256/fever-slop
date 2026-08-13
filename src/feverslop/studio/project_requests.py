@@ -1,3 +1,5 @@
+"""Validated request mappings shared by CLI-facing project services."""
+
 from __future__ import annotations
 
 from dataclasses import fields
@@ -7,6 +9,7 @@ from feverslop.studio.projects import ProjectCreateRequest
 
 
 def project_create_request(payload: Mapping[str, Any]) -> ProjectCreateRequest:
+    """Build a project request while ignoring unknown transport fields."""
     values = dict(payload)
     silent_mode = values.get("silent_mode", False)
     if not isinstance(silent_mode, bool):
