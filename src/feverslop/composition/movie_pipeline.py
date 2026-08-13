@@ -16,7 +16,7 @@ from feverslop.cli.movie_cli import build_movie_arg_parser, config_from_args
 from feverslop.path_utils import coerce_local_path
 from feverslop.config.app_config import AppConfig
 from feverslop.scene_artifacts import SceneArtifactLayout
-from feverslop.studio.job_service import (
+from feverslop.composition.movie_pipeline_jobs import (
     build_movie_reference_generator,
     build_movie_visual_adapter,
     mark_movie_reference_backend,
