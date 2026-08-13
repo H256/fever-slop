@@ -600,6 +600,9 @@ def _run_msr_workflow(
         prepared_minimax_plan_path = prompt_adapter.prepare_render_plan(
             render_plan_path,
             project_dir,
+            on_scene_started=lambda index, total, scene: console.print(
+                f"[cyan]H3 prompts: processing scene {index}/{total} - scene {scene}[/cyan]"
+            ),
             on_scene_prepared=lambda completed, total, scene: console.print(
                 f"[cyan]H3 prompts: {completed}/{total} scenes - scene {scene}[/cyan]"
             ),
