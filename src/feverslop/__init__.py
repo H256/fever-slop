@@ -8,6 +8,15 @@ import warnings
 __version__: str = importlib.metadata.version(__name__)
 
 _LAZY_MAP: dict[str, tuple[str, str]] = {
+    # -- Errors (feverslop.errors) --
+    "FeverSlopAdaptationError": ("feverslop.errors", "FeverSlopAdaptationError"),
+    "FeverSlopConfigError": ("feverslop.errors", "FeverSlopConfigError"),
+    "FeverSlopDataError": ("feverslop.errors", "FeverSlopDataError"),
+    "FeverSlopError": ("feverslop.errors", "FeverSlopError"),
+    "FeverSlopLMLError": ("feverslop.errors", "FeverSlopLMLError"),
+    "FeverSlopRenderError": ("feverslop.errors", "FeverSlopRenderError"),
+    "FeverSlopValidationError": ("feverslop.errors", "FeverSlopValidationError"),
+    "FeverSlopWorkflowError": ("feverslop.errors", "FeverSlopWorkflowError"),
     # -- Use cases & application types (feverslop.application.movie) --
     "AutoProduceMovieUseCase": ("feverslop.application.movie", "AutoProduceMovieUseCase"),
     "ScaffoldMovieUseCase": ("feverslop.application.movie", "ScaffoldMovieUseCase"),
@@ -105,8 +114,17 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
 _DEPRECATED: dict[str, str] = {}  # name -> deprecation message (populated when symbols are deprecated)
 
 
+_INTERNAL_SUBMODULES = frozenset(["config", "application", "path_utils", "domain", "ports", "errors"])
+
+
 def __getattr__(name: str):
     """PEP 562 lazy loading of public API symbols."""
+    if name in _INTERNAL_SUBMODULES:
+        raise ImportError(
+            f"cannot import name {name!r} from {__name__!r} "
+            f"(internal submodule; use from feverslop.{name} if needed)",
+            name=__name__ + "." + name,
+        )
     if name in _LAZY_MAP:
         import importlib as _importlib
 
@@ -136,6 +154,15 @@ def __dir__():
 # ---------------------------------------------------------------------------
 
 __all__ = [
+    # -- Errors --
+    "FeverSlopAdaptationError",
+    "FeverSlopConfigError",
+    "FeverSlopDataError",
+    "FeverSlopError",
+    "FeverSlopLMLError",
+    "FeverSlopRenderError",
+    "FeverSlopValidationError",
+    "FeverSlopWorkflowError",
     # -- Use cases --
     "AutoProduceMovieUseCase",
     "ScaffoldMovieUseCase",
