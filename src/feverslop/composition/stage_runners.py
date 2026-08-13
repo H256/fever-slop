@@ -1800,7 +1800,10 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
             stages.append(PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT)
         elif args.no_original_audio_mux:
             console.print("--no-original-audio-mux is deprecated; original-audio muxing is now always used for final concat.")
-        stages.append(PipelineStage.OPENSHOT_EXPORT)
+        if not getattr(args, "skip_openshot_export", False):
+            stages.append(PipelineStage.OPENSHOT_EXPORT)
+        else:
+            console.print("Skipping OpenShot project export.")
     elif not args.skip_facefix:
         stages.append(PipelineStage.FACEFIX)
     else:

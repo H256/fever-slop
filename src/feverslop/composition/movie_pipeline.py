@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -139,18 +139,32 @@ class MoviePipelineResult:
     startframe_validation_path: Path | None = None
     reference_manifest_path: Path | None = None
     final_video_path: Path | None = None
+    openshot_project_path: Path | None = None
     debug_workflows_dir: Path | None = None
 
 
 def run(args: argparse.Namespace) -> MoviePipelineResult:
     config = config_from_args(args)
-    stage_titles = {"Movie OpenShot export"} if getattr(args, "stage", None) == "openshot_export" else _movie_stage_titles(config)
+    if getattr(args, "stage", None) == "openshot_export":
+        stage_titles = {"Movie OpenShot export"}
+    else:
+        stage_titles = _movie_stage_titles(config)
+        if not getattr(args, "skip_openshot_export", False) and not getattr(args, "skip_movie_render", False):
+            stage_titles.add("Movie OpenShot export")
     with MovieStageProgressReporter(stage_titles=stage_titles, console=console) as progress:
         global _stage_progress
         previous_progress = _stage_progress
         _stage_progress = progress
         try:
-            return _run(args, config)
+            result = _run(args, config)
+            if (
+                getattr(args, "stage", None) != "openshot_export"
+                and not getattr(args, "skip_openshot_export", False)
+                and not getattr(args, "skip_movie_render", False)
+            ):
+                export_result = _run_movie_openshot_export_stage(args, result.project_dir)
+                result = replace(result, openshot_project_path=export_result.openshot_project_path)
+            return result
         finally:
             _stage_progress = previous_progress
 
@@ -333,7 +347,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
 def _run_movie_openshot_export_stage(args: argparse.Namespace, project_dir: Path) -> MoviePipelineResult:
     """Regenerate an OpenShot project from existing movie plans and rendered clips."""
     config_path = project_dir / "config.json"
-    raw_config = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    raw_config = json.loads(config_path.read_text(encoding="utf-8-sig")) if config_path.is_file() else {}
     plan_path = _find_existing_movie_export_plan(project_dir)
     entries = _movie_plan_entries(plan_path)
     clips = _find_existing_movie_render_clips(
@@ -367,6 +381,7 @@ def _run_movie_openshot_export_stage(args: argparse.Namespace, project_dir: Path
     return MoviePipelineResult(
         project_dir=project_dir,
         render_plan_path=plan_path,
+        openshot_project_path=output_path,
     )
 
 
