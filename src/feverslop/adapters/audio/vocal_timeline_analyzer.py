@@ -34,7 +34,8 @@ class VocalTimelineAnalyzer:
         rms_ratio: float = 0.35,
         smooth_frames: int = 10,
     ):
-        self.model = whisper.load_model(whisper_model)
+        self.whisper_model = whisper_model
+        self.model = None
         self.language = language
         self.merge_gap = merge_gap
         self.min_vocal_duration = min_vocal_duration
@@ -74,6 +75,8 @@ class VocalTimelineAnalyzer:
         )
 
     def _transcribe(self, vocals_file: Path) -> list[dict]:
+        if self.model is None:
+            self.model = whisper.load_model(self.whisper_model)
         result = self.model.transcribe(
             str(vocals_file),
             language=self.language,

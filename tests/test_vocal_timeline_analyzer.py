@@ -9,6 +9,15 @@ from feverslop.adapters.audio.vocal_timeline_analyzer import (
 
 
 class TimelineSegmentImmutabilityTests(unittest.TestCase):
+    def test_whisper_model_load_is_deferred_until_transcription(self):
+        from unittest.mock import patch
+        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+
+        with patch("feverslop.adapters.audio.vocal_timeline_analyzer.whisper.load_model") as load_model:
+            analyzer = VocalTimelineAnalyzer()
+            load_model.assert_not_called()
+            self.assertIsNone(analyzer.model)
+
     def test_whisper_transcription_requests_word_timestamps(self):
         from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
 
