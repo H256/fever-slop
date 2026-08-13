@@ -63,6 +63,12 @@ class VideoPostProcessor:
         self._pad_short_clip(spec)
         if self.reencode:
             self._pad_short_audio(spec.output_file, spec.duration_seconds)
+        if spec.extract_boundary_frames:
+            self.extract_first_and_last_frames(
+                spec.output_file,
+                spec.output_file.with_name("firstframe.png"),
+                spec.output_file.with_name("lastframe.png"),
+            )
         return spec.output_file
 
     @staticmethod
@@ -218,17 +224,41 @@ class VideoPostProcessor:
         return output_file
 
     def extract_last_frame(self, source_file: str | Path, output_file: str | Path) -> Path:
+        return self._extract_frame(source_file, output_file, "last")
+
+    def extract_first_frame(self, source_file: str | Path, output_file: str | Path) -> Path:
+        return self._extract_frame(source_file, output_file, "first")
+
+    def extract_first_and_last_frames(
+        self,
+        source_file: str | Path,
+        first_output_file: str | Path,
+        last_output_file: str | Path,
+    ) -> tuple[Path, Path]:
+        return (
+            self.extract_first_frame(source_file, first_output_file),
+            self.extract_last_frame(source_file, last_output_file),
+        )
+
+    def _extract_frame(
+        self,
+        source_file: str | Path,
+        output_file: str | Path,
+        position: str,
+    ) -> Path:
         source_file = Path(source_file)
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        last_frame_index = max(0, self._frame_count(source_file) - 1)
+        frame_index = 0
+        if position == "last":
+            frame_index = max(0, self._frame_count(source_file) - 1)
         cmd = [
             self.ffmpeg_path,
             "-y",
             "-i",
             str(source_file),
             "-vf",
-            f"select=eq(n\\,{last_frame_index})",
+            f"select=eq(n\\,{frame_index})",
             "-vsync",
             "0",
             "-frames:v",
