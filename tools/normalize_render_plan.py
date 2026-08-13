@@ -28,8 +28,7 @@ def main():
 
     input_render_plan = coerce_local_path(args.input_render_plan)
     output_render_plan = coerce_local_path(args.output_render_plan)
-    input_plan = json.loads(input_render_plan.read_text(encoding="utf-8"))
-    before = len(input_plan)
+    before = len(json.loads(input_render_plan.read_text(encoding="utf-8")))
 
     output = normalize_render_plan_file(
         input_render_plan=input_render_plan,
