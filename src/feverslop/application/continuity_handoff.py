@@ -38,11 +38,16 @@ class ContinuityHandoffUseCase:
                 f"Scene {current.scene} does not support continuity handoff"
             )
 
-        project_dir = getattr(self.frame_extractor, "project_dir", None)
+        project_dir_raw = getattr(self.frame_extractor, "project_dir", None)
         raw_source_clip = Path(previous_clip)
+        resolved_project_dir = (
+            Path(project_dir_raw).resolve()
+            if project_dir_raw is not None
+            else None
+        )
         source_clip = (
-            (Path(project_dir).resolve() / raw_source_clip).resolve()
-            if project_dir is not None and not raw_source_clip.is_absolute()
+            (resolved_project_dir / raw_source_clip).resolve()
+            if resolved_project_dir is not None and not raw_source_clip.is_absolute()
             else raw_source_clip.resolve()
         )
         extracted = self.frame_extractor.extract_last_frame(
@@ -50,9 +55,9 @@ class ContinuityHandoffUseCase:
             Path(output_frame),
         )
         stored_source_clip = (
-            source_clip.relative_to(Path(project_dir).resolve()).as_posix()
-            if project_dir is not None
-            and source_clip.is_relative_to(Path(project_dir).resolve())
+            source_clip.relative_to(resolved_project_dir).as_posix()
+            if resolved_project_dir is not None
+            and source_clip.is_relative_to(resolved_project_dir)
             else source_clip.as_posix()
         )
         scene = deepcopy(dict(current_scene))

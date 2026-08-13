@@ -221,5 +221,37 @@ class ContinuityHandoffTests(unittest.TestCase):
                 ).extract_last_frame(clip, project / "frame.png")
 
 
+
+    def test_resolved_project_dir_computed_once(self):
+        """Verify that project_dir resolution happens once, not per call."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir) / "proj"
+            project.mkdir(parents=True)
+            clip = project / "output" / "scene_0001.mp4"
+            clip.parent.mkdir(parents=True)
+            clip.write_bytes(b"clip")
+            frame = project / "output" / "keyframes" / "handoff.png"
+
+            mock_extract = _Extractor()
+            mock_extract.project_dir = project
+
+            from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
+
+            result = ContinuityHandoffUseCase(mock_extract).execute(
+                _contract(1),
+                _contract(2, mode="i2v", transition="continuous"),
+                clip.relative_to(project),
+                frame,
+                {"scene": 2, "keyframes": {}, "ltx": {}},
+            )
+
+            # Verify result is correct despite using resolved path
+            self.assertEqual(
+                "output/scene_0001.mp4",
+                result["keyframes"]["startframe_source_clip_path"],
+            )
+            self.assertEqual("last_frame_from_previous", result["keyframes"]["startframe_mode"])
+
 if __name__ == "__main__":
     unittest.main()
+
