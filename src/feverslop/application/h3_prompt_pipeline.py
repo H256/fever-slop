@@ -6,6 +6,7 @@ from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
+from feverslop.utils.sub_step_progress import SubStepProgress
 
 
 def _attach_relay_segments(stage1_segments: list[dict], relay_scenes: list[dict]) -> list[dict]:
@@ -127,6 +128,7 @@ class H3PromptPipeline:
             else stem_files
         )
 
+        progress = SubStepProgress(context["reporter"], "H3 prompts", len(stage1_segments))
         builder.build_all_h3_prompts(
             stage1_segments=stage1_segments,
             concept_prompts=concept_prompts,
@@ -138,9 +140,7 @@ class H3PromptPipeline:
             artifact_store=artifact_store,
             audio_paths=audio_paths,
             reference_root=getattr(config, "project_dir", None),
-            progress_callback=lambda current, total: context["reporter"].message(
-                f"[cyan]H3 prompts: {current}/{total} scenes[/cyan]"
-            ),
+            progress_callback=lambda current, total: progress.update(current),
             status_callback=lambda current, total, status: context["reporter"].message(
                 f"[cyan]H3 prompts: {current}/{total} scenes - "
                 f"{'start' if status == 'started' else 'completed'}[/cyan]"

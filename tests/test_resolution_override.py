@@ -1,6 +1,7 @@
 """Tests for --resolution CLI override (Issue #211) and --set-resolution (Issue #220)."""
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,6 +61,7 @@ class TestProjectConfigResolutionOverride(unittest.TestCase):
             },
         }
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         config_path = tmpdir / "config.json"
         config_path.write_text(json.dumps(config_data), encoding="utf-8")
         # Also create dummy audio file
@@ -130,6 +132,7 @@ class TestSetResolutionOnDisk(unittest.TestCase):
             "custom_field": "preserve_me",
         }
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         config_path = tmpdir / "config.json"
         config_path.write_text(json.dumps(config_data), encoding="utf-8")
         (tmpdir / "test_audio.mp3").touch()
@@ -150,6 +153,7 @@ class TestSetResolutionOnDisk(unittest.TestCase):
             "project_name": "test_project",
         }
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         config_path = tmpdir / "config.json"
         config_path.write_text(json.dumps(config_data), encoding="utf-8")
         (tmpdir / "test_audio.mp3").touch()
@@ -173,6 +177,7 @@ class TestSetResolutionOnDisk(unittest.TestCase):
             },
         }
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         config_path = tmpdir / "config.json"
         config_path.write_text(json.dumps(config_data), encoding="utf-8")
         (tmpdir / "test_audio.mp3").touch()

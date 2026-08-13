@@ -135,6 +135,8 @@ class SceneWorkflowManifest:
     startframe_source_clip: StoredArtifact | None = None
     startframe_extractor: str | None = None
     startframe_sha256: str | None = None
+    first_frame_path: StoredArtifact | None = None
+    last_frame_path: StoredArtifact | None = None
     max_render_frames: int | None = None
     max_render_duration_seconds: float | None = None
     render_budget_workflow_path: str | None = None
@@ -158,6 +160,8 @@ class SceneWorkflowManifest:
         startframe_source_clip_path: str | Path | None = None,
         startframe_extractor: str | None = None,
         startframe_sha256: str | None = None,
+        first_frame_path: str | Path | None = None,
+        last_frame_path: str | Path | None = None,
     ) -> SceneWorkflowManifest:
         return cls(
             schema=SCHEMA_V2,
@@ -203,6 +207,12 @@ class SceneWorkflowManifest:
             startframe_sha256=(
                 None if startframe_sha256 is None else str(startframe_sha256)
             ),
+            first_frame_path=(
+                None if first_frame_path is None else StoredArtifact.from_path(first_frame_path, project_dir=project_dir)
+            ),
+            last_frame_path=(
+                None if last_frame_path is None else StoredArtifact.from_path(last_frame_path, project_dir=project_dir)
+            ),
             max_render_frames=(None if max_render_frames is None else int(max_render_frames)),
             max_render_duration_seconds=(
                 None
@@ -239,6 +249,8 @@ class SceneWorkflowManifest:
             ),
             "startframe_extractor": self.startframe_extractor,
             "startframe_sha256": self.startframe_sha256,
+            "first_frame_path": None if self.first_frame_path is None else self.first_frame_path.to_dict(),
+            "last_frame_path": None if self.last_frame_path is None else self.last_frame_path.to_dict(),
             "max_render_frames": self.max_render_frames,
             "max_render_duration_seconds": self.max_render_duration_seconds,
             "render_budget_workflow_path": self.render_budget_workflow_path,
@@ -322,6 +334,12 @@ class SceneWorkflowManifest:
                 or payload.get("startframe_sha256") is None
                 else str(payload["startframe_sha256"])
             ),
+            first_frame_path=(
+                None if payload.get("first_frame_path") is None else StoredArtifact.from_dict(payload["first_frame_path"])
+            ),
+            last_frame_path=(
+                None if payload.get("last_frame_path") is None else StoredArtifact.from_dict(payload["last_frame_path"])
+            ),
             max_render_frames=(
                 None
                 if payload.get("max_render_frames") is None
@@ -342,6 +360,10 @@ class SceneWorkflowManifest:
         artifacts.extend((f"asset[{asset.role}]", asset) for asset in self.assets)
         if self.startframe_source_clip is not None:
             artifacts.append(("startframe source clip", self.startframe_source_clip))
+        if self.first_frame_path is not None:
+            artifacts.append(("first frame", self.first_frame_path))
+        if self.last_frame_path is not None:
+            artifacts.append(("last frame", self.last_frame_path))
         for label, artifact in artifacts:
             path = artifact.resolve(project_dir)
             if not path.is_file():

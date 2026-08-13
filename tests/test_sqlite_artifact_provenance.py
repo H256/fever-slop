@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import shutil
 import tempfile
 import unittest
 from uuid import uuid4
@@ -14,15 +15,10 @@ from feverslop.infra.sqlite_adapter import SqliteArtifactProvenance
 class TestSqliteArtifactProvenance(unittest.TestCase):
     def setUp(self) -> None:
         self._dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self._dir, ignore_errors=True)
         self._db_path = os.path.join(self._dir, "provenance.db")
         self.store = SqliteArtifactProvenance(self._db_path)
         self.project_id = uuid4().hex[:12]
-
-    def tearDown(self) -> None:
-        for path in [self._db_path, self._db_path + "-wal", self._db_path + "-shm"]:
-            if os.path.exists(path):
-                os.remove(path)
-        os.rmdir(self._dir)
 
     def test_record_and_load_fingerprint(self) -> None:
         fp = ArtifactFingerprint(

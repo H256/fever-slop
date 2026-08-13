@@ -13,6 +13,7 @@ from feverslop.ports.generate_pipeline import (
     ScenePromptBuilderFactory,
 )
 from feverslop.domain.prompt_constraints import build_location_constraint
+from feverslop.utils.sub_step_progress import SubStepProgress
 
 
 def join_notes(*parts: str) -> str:
@@ -230,14 +231,13 @@ class PromptGenerationPipeline:
             f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
             "camera and character motion per scene[/cyan]"
         )
+        scene_details_progress = SubStepProgress(reporter, "Scene details", len(stage1_segments))
         scene_details = call_with_supported_kwargs(
             prompt_pipeline.create_scene_details,
             concept_prompts=concept_prompts,
             stage1_segments=stage1_segments,
             global_context=global_context,
-            progress_callback=lambda current, total: reporter.message(
-                f"[cyan]Scene details: {current}/{total} scenes[/cyan]"
-            ),
+            progress_callback=lambda current, total: scene_details_progress.update(current),
         )
         reporter.message("[green]Scene details finished.[/green]")
         prompt_pipeline.save_json(
@@ -249,6 +249,7 @@ class PromptGenerationPipeline:
 
         log_step("8. Z-Image + LTX Scene Prompts")
         scene_prompt_builder = self.scene_prompt_builder_factory(llm)
+        scene_prompts_progress = SubStepProgress(reporter, "Scene prompts", len(stage1_segments))
         scene_prompt_builder.build_scene_prompts(
             stage1_segments=stage1_segments,
             concept_prompts=concept_prompts,
@@ -259,9 +260,7 @@ class PromptGenerationPipeline:
             ltx_instructions=get_steering_value(config, "ltx"),
             trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
             artifact_store=artifact_store,
-            progress_callback=lambda current, total: reporter.message(
-                f"[cyan]Scene prompts: {current}/{total} scenes[/cyan]"
-            ),
+            progress_callback=lambda current, total: scene_prompts_progress.update(current),
         )
         log_file("Scene Prompts JSON", scene_prompts_json)
 

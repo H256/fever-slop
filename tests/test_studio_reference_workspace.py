@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -93,7 +95,8 @@ class AssetDictTests(unittest.TestCase):
 
 class ReferenceWorkspaceServiceTests(unittest.TestCase):
     def setUp(self):
-        self._tmp = Path(__file__).parent / "tmp_test_service"
+        self._tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
         self._mock = _MockLibrary()
         hero = ReferenceAsset(id="hero", kind=ReferenceKind.ACTOR, label="Hero")
         lab = ReferenceAsset(id="lab", kind=ReferenceKind.LOCATION, label="Lab")
@@ -103,13 +106,6 @@ class ReferenceWorkspaceServiceTests(unittest.TestCase):
             revision="r1",
             project_id="proj",
         )
-
-    def tearDown(self):
-        import shutil
-        try:
-            shutil.rmtree(self._tmp)
-        except FileNotFoundError:
-            pass
 
     def _service_with_mock(self):
         with patch(

@@ -1,5 +1,6 @@
 """Tests for composition defensive guards (Issue #279)."""
 
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +18,7 @@ class TestValidateRenderPlanEntries(unittest.TestCase):
             import json
             content = json.dumps(plan)
         tmp = Path(tempfile.mkdtemp()) / filename
+        self.addCleanup(shutil.rmtree, tmp.parent, ignore_errors=True)
         tmp.write_text(content)
         return tmp
 
