@@ -9,7 +9,6 @@ import numpy as np
 from rich.console import Console
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
-from feverslop.adapters.comfyui_facefix_backend import ComfyUIFaceFixRenderBackend
 from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.face_compositor import FaceCompositor
@@ -68,26 +67,11 @@ def build_facefix_step(
     *,
     console: Console | None = None,
 ) -> FaceFixPipelineStep:
-    app_config = AppConfig.load(options.app_config_path)
-    client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
-        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
-    )
-    model_resolver = ComfyUIModelResolver(
-        client,
-        overrides=app_config.comfyui.model_overrides,
-    )
+    # Keep the deprecated full-resolution backend out of normal imports. It
+    # remains available only for the explicit legacy opt-in path.
+    from feverslop.adapters.comfyui_facefix_backend import ComfyUIFaceFixRenderBackend
 
-    config = FaceFixConfig(
-        keyframe_indices=options.keyframe_indices,
-        guiding_strength=options.guiding_strength,
-        cond_image_strength=options.cond_image_strength,
-        temporal_tile_size=options.temporal_tile_size,
-        temporal_overlap=options.temporal_overlap,
-        temporal_overlap_cond_strength=options.temporal_overlap_cond_strength,
-        postprocess=options.postprocess,
-        ffmpeg_path=options.ffmpeg_path,
-    )
+    client, model_resolver, config = _facefix_runtime(options)
 
     backend = ComfyUIFaceFixRenderBackend(
         client=client,
@@ -147,17 +131,9 @@ def _run_crop_facefix(
     *,
     console: Console | None = None,
 ) -> list[Path]:
-    app_config = AppConfig.load(options.app_config_path)
-    client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
-        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
-    )
-    model_resolver = ComfyUIModelResolver(
-        client,
-        overrides=app_config.comfyui.model_overrides,
-    )
+    client, model_resolver, config = _facefix_runtime(options)
 
-    config = FaceFixConfig(
+    crop_config = FaceFixConfig(
         keyframe_indices=options.keyframe_indices,
         guiding_strength=options.guiding_strength,
         cond_image_strength=options.cond_image_strength,
@@ -172,7 +148,7 @@ def _run_crop_facefix(
         client=client,
         workflow_path=coerce_local_path(options.workflow_path),
         project_dir=coerce_local_path(options.project_dir) if options.project_dir else None,
-        config=config,
+        config=crop_config,
         postprocess=options.postprocess,
         ffmpeg_path=options.ffmpeg_path,
         postprocess_reencode=options.postprocess_reencode,
@@ -506,6 +482,29 @@ def _run_crop_facefix(
             results.append(final_facefix)
 
     return results
+
+
+def _facefix_runtime(
+    options: FaceFixCompositionOptions,
+) -> tuple[ComfyUIClient, ComfyUIModelResolver, FaceFixConfig]:
+    """Build the shared FaceFix runtime once for either backend."""
+    app_config = AppConfig.load(options.app_config_path)
+    client = ComfyUIClient(
+        base_url=app_config.comfyui.base_url,
+        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
+    )
+    resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
+    config = FaceFixConfig(
+        keyframe_indices=options.keyframe_indices,
+        guiding_strength=options.guiding_strength,
+        cond_image_strength=options.cond_image_strength,
+        temporal_tile_size=options.temporal_tile_size,
+        temporal_overlap=options.temporal_overlap,
+        temporal_overlap_cond_strength=options.temporal_overlap_cond_strength,
+        postprocess=options.postprocess,
+        ffmpeg_path=options.ffmpeg_path,
+    )
+    return client, resolver, config
 
 
 def _extract_face_crop(
