@@ -23,6 +23,9 @@ class GenerateRenderPlanRequest:
     video_workflow_paths: tuple[Path, ...] = ()
     rolling_frame_profile: str = "original"
     defer_h3_until_references: bool = False
+    skip_stem_separation: bool = False
+    skip_whisper: bool = False
+    skip_beat_analysis: bool = False
 
 
 @dataclass(frozen=True)

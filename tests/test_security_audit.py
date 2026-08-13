@@ -161,6 +161,11 @@ class PathContainmentTests(unittest.TestCase):
         self.assertEqual("ab", sanitize_path_component("a/..b"))
         self.assertEqual("", sanitize_path_component("../../../.."))
 
+    def test_sanitize_path_component_preserves_hidden_files(self):
+        self.assertEqual(".hidden", sanitize_path_component(".hidden"))
+        self.assertEqual(".env", sanitize_path_component(".env"))
+        self.assertEqual(".gitignore", sanitize_path_component(".gitignore"))
+
     # --- is_safe_identifier ---
 
     def test_is_safe_identifier_rejects_parent_dir(self):
