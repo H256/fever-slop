@@ -43,7 +43,24 @@ def enrich_render_plan_with_msr_prompts(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(output_path, enriched)
+    _validate_written_render_plan(output_path, enriched)
     return output_path
+
+
+def _validate_written_render_plan(output_path: Path, expected: list[dict]) -> None:
+    """Verify the persisted enrichment artifact before downstream consumers use it."""
+    if not output_path.is_file() or output_path.stat().st_size <= 0:
+        raise OSError(f"Enriched render plan was not written: {output_path}")
+    try:
+        persisted = json.loads(output_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Enriched render plan contains invalid JSON: {output_path}") from exc
+    if not isinstance(persisted, list) or len(persisted) != len(expected):
+        raise ValueError(f"Enriched render plan has an unexpected scene structure: {output_path}")
+    if [scene.get("scene") for scene in persisted] != [scene.get("scene") for scene in expected]:
+        raise ValueError(f"Enriched render plan scene structure does not match input: {output_path}")
+    if persisted != expected:
+        raise ValueError(f"Enriched render plan content does not match written data: {output_path}")
 
 
 def enrich_scene_with_msr_prompts(
