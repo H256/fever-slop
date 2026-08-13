@@ -24,6 +24,13 @@ class APIMetricsTests(unittest.TestCase):
         self.assertEqual(1, stats.failures)
         self.assertEqual(20.0, stats.total_duration_ms)
 
+    def test_records_usage_and_cost(self):
+        metrics = APIMetrics()
+        metrics.record("llm", "chat", 1, success=True, usage_units=100, estimated_cost=0.02)
+        stats = metrics.snapshot()[("llm", "chat")]
+        self.assertEqual(100, stats.usage_units)
+        self.assertEqual(0.02, stats.estimated_cost)
+
     @patch("requests.Session")
     def test_comfyui_client_records_http_call_and_structured_log(self, session_class):
         from feverslop.adapters.comfyui_client import ComfyUIClient
