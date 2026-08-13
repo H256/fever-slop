@@ -21,6 +21,18 @@ Install Python dependencies from the repository root:
 uv sync
 ```
 
+The default `uv` configuration selects the PyTorch CUDA 13.0 index for the
+Linux/Windows GPU workflow. That index does not publish macOS wheels. On
+macOS, install the CPU/Metal-compatible packages from the normal Python
+indexes by ignoring the project-specific source overrides:
+
+```bash
+uv sync --no-sources
+```
+
+Do not use the CUDA-specific ComfyUI/PyTorch workflow on macOS unless you have
+provided a separate, compatible local setup.
+
 ## Basic Workflows
 
 ### Standard Music Video Project
