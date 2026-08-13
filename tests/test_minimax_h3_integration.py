@@ -1,114 +1,165 @@
-"""MiniMax H3 integration tests (skipped without ComfyUI).
-
-Requires a running ComfyUI instance with MiniMax H3 models.
-Tests are automatically skipped when the ComfyUI endpoint is unreachable.
-"""
+"""MiniMax H3 render-contract tests without a live ComfyUI instance."""
 from __future__ import annotations
 
-import shutil
+import json
+import tempfile
 import unittest
-import urllib.request
 from pathlib import Path
 
-DEFAULT_COMFYUI_URL = "http://localhost:8181"
+from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
+from feverslop.composition.render_video import (
+    RenderVideoCompositionOptions,
+    build_render_video_scenes_use_case,
+)
 
 
-def _resolve_comfyui_url() -> str:
-    """Read ComfyUI base_url from app_config.json, falling back to DEFAULT."""
-    config_path = Path("app_config.json")
-    if config_path.exists():
-        import json
-        try:
-            data = json.loads(config_path.read_text(encoding="utf-8"))
-            return data.get("comfyui", {}).get("base_url", DEFAULT_COMFYUI_URL)
-        except Exception:
-            pass
-    return DEFAULT_COMFYUI_URL
+class FakeMiniMaxBackend:
+    def __init__(self) -> None:
+        self.requests = []
+
+    def render_video(self, request):
+        self.requests.append(request)
+        output = request.output_dir / "final" / f"scene_{request.scene_number:04}.mp4"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"fake rendered clip")
+        return output
 
 
-def _comfyui_available(url: str) -> bool:
-    """Return True if ComfyUI object_info endpoint is reachable."""
-    try:
-        urllib.request.urlopen(url.rstrip("/") + "/object_info", timeout=2)
-        return True
-    except Exception:
-        return False
+def _render_plan() -> list[dict]:
+    return [
+        {
+            "scene": 1,
+            "duration_seconds": 2.0,
+            "fps": 24,
+            "width": 672,
+            "height": 1216,
+            "frame_count": 48,
+            "h3": {"prompt": "subject_definitions: Leo\nsummary: Leo runs."},
+        },
+        {
+            "scene": 2,
+            "duration_seconds": 3.0,
+            "fps": 24,
+            "width": 672,
+            "height": 1216,
+            "frame_count": 72,
+            "h3": {"prompt": "subject_definitions: Leo\nsummary: Leo stops."},
+        },
+    ]
 
 
-@unittest.skipUnless(_comfyui_available(_resolve_comfyui_url()), "ComfyUI unreachable")
-class MiniMaxH3IntegrationSmoke(unittest.TestCase):
-    """End-to-end MiniMax H3 smoke tests.
-
-    Requires:
-    - ComfyUI running with MiniMax H3 custom nodes
-    - Models in ComfyUI models/ directory
-    - A project folder with input audio and rendered plan
-
-    Each test uses the production render-video composition pipeline
-    against a minimal scene and outputs to a temporary directory.
-    """
-
-    def _run_backend(
-        self,
-        pipeline: str,
-        workflow: str,
-        *,
-        pipeline_mode: str = "minimax_h3_r2v",
-    ) -> Path:
-        """Build the use-case and validate config.
-
-        Returns the output directory; actual dispatch verified by unit tests.
-        """
-        from feverslop.composition.render_video import (
-            RenderVideoCompositionOptions,
-            build_render_video_scenes_use_case,
-        )
-
-        tmp = Path(__import__("tempfile").mkdtemp())
-        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
-
+class MiniMaxH3RenderContractTests(unittest.TestCase):
+    def test_r2v_composition_builds_the_production_use_case(self):
         options = RenderVideoCompositionOptions(
-            app_config_path="./app_config.json",
-            workflow_path=str(Path("workflows") / workflow),
-            output_dir=str(tmp),
-            video_pipeline=pipeline,
-            ffmpeg_path="ffmpeg",
+            app_config_path="app_config.json",
+            workflow_path="workflows/video_minimax_h3_r2v_audio_v1.json",
+            output_dir="test-output",
+            video_pipeline="minimax-h3-r2v",
         )
 
-        # Build validates config; actual dispatch verified by backends
-        _ = build_render_video_scenes_use_case(options)
-        return tmp
+        use_case = build_render_video_scenes_use_case(options)
 
-    def test_r2v_config_validates(self):
-        """Verify that R2V pipeline config is valid."""
-        output = self._run_backend(
-            pipeline="minimax-h3-r2v",
-            workflow="video_minimax_h3_r2v_audio_v1.json",
+        self.assertIsInstance(use_case, RenderVideoScenesUseCase)
+        self.assertEqual("ComfyUIMiniMaxH3R2VBackend", type(use_case.backend).__name__)
+
+    def test_t2v_composition_builds_the_production_use_case(self):
+        options = RenderVideoCompositionOptions(
+            app_config_path="app_config.json",
+            workflow_path="workflows/video_minimax_h3_t2v.json",
+            output_dir="test-output",
+            video_pipeline="minimax-h3-t2v",
         )
-        assert output.exists()
 
-    @unittest.skip("requires full scene render + input audio file")
-    def test_r2v_output_has_audio_track(self):
-        """Verify that an R2V render produces a file with an audio stream."""
-        pass
+        use_case = build_render_video_scenes_use_case(options)
 
-    @unittest.skip("requires full scene render + audio file")
-    def test_r2v_audio_video_duration_sync(self):
-        """Compare audio duration to video duration in output."""
-        pass
+        self.assertIsInstance(use_case, RenderVideoScenesUseCase)
+        self.assertEqual("ComfyUIMiniMaxH3T2VBackend", type(use_case.backend).__name__)
 
-    def test_t2v_output_video_exists(self):
-        """Verify that a T2V render produces a video file."""
-        output = self._run_backend(
-            pipeline="minimax-h3-t2v",
-            workflow="video_minimax_h3_t2v.json",
-        )
-        assert output.exists(), f"T2V output file not created: {output}"
+    def test_r2v_render_delegates_each_scene_with_prompt_and_audio(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(_render_plan()), encoding="utf-8")
+            audio = temp / "song.wav"
+            audio.write_bytes(b"audio fixture")
+            backend = FakeMiniMaxBackend()
 
-    @unittest.skip("requires full scene render + postprocessing pipeline")
-    def test_postprocessed_clips_timing(self):
-        """Verify post-processed clips maintain correct frame bounds."""
-        pass
+            rendered = RenderVideoScenesUseCase(
+                backend=backend,
+                artifact_store=JsonArtifactStore(),
+            ).execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=audio,
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "rendered",
+                    upload_audio=False,
+                )
+            )
+
+            self.assertEqual(2, len(rendered))
+            self.assertEqual(2, len(backend.requests))
+            self.assertEqual(audio, backend.requests[0].audio_file)
+            self.assertIn("Leo runs", backend.requests[0].prompt)
+            self.assertEqual(2, backend.requests[1].scene_number)
+
+    def test_render_reports_progress_after_each_completed_scene(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(_render_plan()), encoding="utf-8")
+            progress = []
+
+            RenderVideoScenesUseCase(
+                backend=FakeMiniMaxBackend(),
+                artifact_store=JsonArtifactStore(),
+            ).execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=temp / "song.wav",
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "rendered",
+                    upload_audio=False,
+                    on_scene_complete=lambda output, completed, total: progress.append(
+                        (output.name, completed, total)
+                    ),
+                )
+            )
+
+            self.assertEqual(
+                [("scene_0001.mp4", 1, 2), ("scene_0002.mp4", 2, 2)],
+                progress,
+            )
+
+    def test_render_reuses_existing_valid_clip_without_backend_call(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan = temp / "render_plan.json"
+            render_plan.write_text(json.dumps(_render_plan()[:1]), encoding="utf-8")
+            existing = temp / "rendered" / "final" / "scene_0001.mp4"
+            existing.parent.mkdir(parents=True)
+            existing.write_bytes(b"existing rendered clip")
+            backend = FakeMiniMaxBackend()
+
+            rendered = RenderVideoScenesUseCase(
+                backend=backend,
+                artifact_store=JsonArtifactStore(),
+            ).execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=render_plan,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=temp / "song.wav",
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "rendered",
+                    upload_audio=False,
+                )
+            )
+
+            self.assertEqual([existing], rendered)
+            self.assertEqual([], backend.requests)
 
 
 if __name__ == "__main__":
