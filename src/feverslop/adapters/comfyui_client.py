@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 import json
 import time
 import uuid
 import requests
 
-from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets
+from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets, require_json_object
 from feverslop.errors import FeverSlopWorkflowError
 from feverslop.security.url_validation import validate_api_url
 
@@ -43,11 +44,15 @@ class ComfyUIClient:
         client_id: str | None = None,
         prompt_timeout_seconds: float = 1800.0,
         metrics: APIMetrics | None = None,
+        api_key: str | None = None,
+        auth_header: str = "Authorization",
     ):
         self.base_url = validate_api_url(base_url).rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
         self.metrics = metrics or default_api_metrics
+        token = api_key or os.environ.get("COMFYUI_API_KEY")
+        self.auth_headers = ({auth_header: f"Bearer {token}"} if token else {})
         self._session: requests.Session | None = None
 
     def _ensure_session(self) -> requests.Session:
@@ -57,6 +62,8 @@ class ComfyUIClient:
 
     def _request(self, method: str, url: str, operation: str, **kwargs):
         emit_log = kwargs.pop("_emit_log", True)
+        if self.auth_headers:
+            kwargs.setdefault("headers", {}).update(self.auth_headers)
         started_at = time.perf_counter()
         try:
             response = getattr(self._ensure_session(), method)(url, **kwargs)
@@ -86,14 +93,18 @@ class ComfyUIClient:
             timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "queue prompt")
-        return response.json()["prompt_id"]
+        payload = require_json_object(response.json(), context="queue_prompt")
+        prompt_id = payload.get("prompt_id")
+        if not isinstance(prompt_id, str) or not prompt_id.strip():
+            raise ComfyUIHTTPError("queue_prompt response missing prompt_id")
+        return prompt_id
 
     def get_history(self, prompt_id: str) -> dict:
         response = self._request("get", f"{self.base_url}/history/{prompt_id}", "get_history",
             timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "get history")
-        return response.json()
+        return require_json_object(response.json(), context="get_history")
 
     def get_object_info(self) -> dict:
         response = self._request("get", f"{self.base_url}/object_info", "get_object_info",

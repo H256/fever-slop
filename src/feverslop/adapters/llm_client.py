@@ -61,14 +61,17 @@ class LocalOpenAIClient:
         request_timeout_seconds: float = 180.0,
         dspy_cache: bool = False,
         metrics: APIMetrics | None = None,
+        auth_headers: dict[str, str] | None = None,
     ):
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be greater than zero")
         resolved_key = _resolve_api_key(api_key)
+        self.auth_headers = dict(auth_headers or {})
         validate_api_url(base_url)
         self.client = OpenAI(
             base_url=base_url,
             api_key=resolved_key,
+            default_headers=self.auth_headers or None,
         )
         self.model = model
         self.temperature = temperature
@@ -136,7 +139,13 @@ class LocalOpenAIClient:
                     stream=False,
                     timeout=request_timeout,
                 )
-                result = response.choices[0].message.content.strip()
+                choices = getattr(response, "choices", None)
+                if not isinstance(choices, list) or not choices:
+                    raise FeverSlopLMLError("LLM response missing choices")
+                message = getattr(choices[0], "message", None)
+                result = str(getattr(message, "content", "") or "").strip()
+                if not result:
+                    raise FeverSlopLMLError("LLM response contains empty content")
                 record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=True)
                 return result
             except RETRYABLE_ERRORS as exc:
