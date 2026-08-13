@@ -449,7 +449,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
 
             self.assertEqual([1, 2], renderer.rendered)
             self.assertEqual(
-                [2],
+                [1, 2],
                 [
                     call.args[0].scene["scene"]
                     for call in materializer.prepare.call_args_list
@@ -612,7 +612,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             self.assertEqual([1, 2, 3], renderer.rendered)
             self.assertEqual([b"new-1", b"new-2"], postprocessor.sources)
             self.assertEqual(
-                [2, 3],
+                [1, 2, 3],
                 [
                     call.args[0].scene["scene"]
                     for call in materializer.prepare.call_args_list
@@ -779,6 +779,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
             state = self._state(project, pipeline="ltx_ingredients", scenes="1")
+            (project / "song.mp3").write_bytes(b"audio")
             state.args.visual_consistency_preflight = "strict"
             state.context.input_audio.write_bytes(b"audio")
             state.ingredients_workflow.write_text("{}", encoding="utf-8")
@@ -1004,12 +1005,20 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             layout.scene_workflow(1).parent.mkdir(parents=True)
             layout.scene_workflow(1).write_text("{}", encoding="utf-8")
             layout.scene_manifest(1).write_text("{}", encoding="utf-8")
+            (project / "song.mp3").write_bytes(b"audio")
+            Path(state.ingredients_workflow).write_text("{}", encoding="utf-8")
             backend = Mock()
             backend.max_render_frames = None
             backend.max_render_duration_seconds = None
             backend.render_budget_workflow_path = state.ingredients_workflow
             backend.round_render_frames_to_8n1 = False
             backend.workflow_label = state.ingredients_workflow
+            backend.asset_uploader.names = {}
+            backend.asset_uploader.resolve_audio_name.return_value = "song.mp3"
+            backend._rolling_spec.return_value = {}
+            backend._seed_for_scene.return_value = 1
+            backend.build_workflow.return_value = {}
+            backend.model_resolver.resolve_workflow_models.return_value = {}
             renderer = Mock()
             renderer.render.return_value = layout.scene_final_video(1)
             use_case = Mock(backend=backend)

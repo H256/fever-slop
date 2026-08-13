@@ -64,6 +64,7 @@ class PromptGenerationServiceTests(unittest.TestCase):
                 "notes": "Keep the camera low.",
                 "duration_seconds": 6.0,
                 "music_intent": "none",
+                "relay_segments": [],
                 "strict_fidelity": False,
             },
             generator.requests[0],

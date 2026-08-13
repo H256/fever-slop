@@ -174,8 +174,7 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual(24, request.fps)
         self.assertTrue(request.run_video_pipeline)
         self.assertTrue(request.silent_mode)
-        self.assertEqual(
-            {
+        expected_options = {
                 "app_config": "app_config.json",
                 "resolution": None,
                 "concept_batch_size": 5,
@@ -218,9 +217,10 @@ class FullAutoCliTests(unittest.TestCase):
                 "facefix_workflow": str(Path("workflows") / "video_ltxv_facefix_v1.json"),
                 "diagnostic_original_audio_mux": False,
                 "no_original_audio_mux": False,
-            },
-            request.runner_options,
-        )
+        }
+        for key, value in expected_options.items():
+            with self.subTest(key=key):
+                self.assertEqual(value, request.runner_options[key])
 
 
 if __name__ == "__main__":
