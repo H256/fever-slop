@@ -84,11 +84,14 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
         console.print(f"Final video: {state.final_video_path}")
     elif state.video_only_path:
         console.print(f"Video-only concat: {state.video_only_path}")
+    if state.openshot_project_path:
+        console.print(f"OpenShot project: {state.openshot_project_path}")
 
     return PipelineRunResult(
         render_plan_path=state.plan_for_next_step,
         final_video_path=state.final_video_path,
         video_only_path=state.video_only_path,
+        openshot_project_path=state.openshot_project_path,
     )
 
 

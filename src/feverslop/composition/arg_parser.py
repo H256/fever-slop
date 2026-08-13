@@ -29,6 +29,7 @@ class PipelineStage(str, Enum):
     DIAGNOSTIC_SCENE_AUDIO_CONCAT = "diagnostic_scene_audio_concat"
     FACEFIX = "facefix"
     FACEFIX_CONCAT = "facefix_concat"
+    OPENSHOT_EXPORT = "openshot_export"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

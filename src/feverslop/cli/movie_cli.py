@@ -20,6 +20,17 @@ def build_movie_arg_parser() -> argparse.ArgumentParser:
         description="Run movie pipeline stages for an existing FeverSlop movie project.",
     )
     parser.add_argument("project_dir", help="Movie project directory, for example projects/tm3")
+    parser.add_argument(
+        "--stage",
+        choices=["openshot_export"],
+        default=None,
+        help="Run only the selected movie pipeline stage using existing project artifacts.",
+    )
+    parser.add_argument(
+        "--skip-openshot-export",
+        action="store_true",
+        help="Skip automatic OpenShot project export after movie rendering.",
+    )
     parser.add_argument("--app-config", default="app_config.json")
     parser.add_argument("--reference-backend", choices=["comfyui", "local"], default=None)
     parser.add_argument("--render-backend", choices=["comfyui", "local"], default=None)

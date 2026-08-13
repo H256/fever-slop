@@ -65,6 +65,7 @@ RUNNER_ARGUMENTS = (
     ("skip_ingredients_sheets", ("--skip-ingredients-sheets",), {"action": "store_true"}),
     ("skip_ltx", ("--skip-ltx",), {"action": "store_true"}),
     ("skip_final_concat", ("--skip-final-concat",), {"action": "store_true"}),
+    ("skip_openshot_export", ("--skip-openshot-export",), {"action": "store_true"}),
     ("skip_facefix", ("--skip-facefix",), {"action": "store_true", "default": True}),
     ("facefix_debug", ("--facefix-debug",), {"action": "store_true", "default": False}),
     ("facefix_workflow", ("--facefix-workflow",), {"default": str(Path("workflows") / "video_ltxv_facefix_v1.json")}),
