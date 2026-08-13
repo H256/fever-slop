@@ -8,6 +8,7 @@ import logging
 import re
 
 from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import LLMPort, VisionLLMPort
 from feverslop.utils.io import atomic_write_json
@@ -144,8 +145,12 @@ def _build_vision_msr_prompts(
             json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=True),
             [reference.path for reference in references],
         )
-    except Exception:
-        logger.warning("MSR image analysis fallback: scene=%s reason=vision unavailable", scene_number)
+    except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
+        logger.warning(
+            "MSR image analysis fallback: scene=%s reason=vision unavailable",
+            scene_number,
+            exc_info=exc,
+        )
         return None
     try:
         data = extract_json_object(response)
@@ -174,8 +179,12 @@ def _build_vision_msr_prompts(
             prompts[index] = prompt
         if set(prompts) != set(range(len(relays))):
             raise ValueError("missing relay index")
-    except Exception:
-        logger.warning("MSR image analysis fallback: scene=%s reason=invalid response", scene_number)
+    except (FeverSlopLMLError, ValueError, TypeError, KeyError, IndexError) as exc:
+        logger.warning(
+            "MSR image analysis fallback: scene=%s reason=invalid response",
+            scene_number,
+            exc_info=exc,
+        )
         return None
 
     parts = []
@@ -257,7 +266,8 @@ def _build_llm_segment_prompts(scene: dict, relays: list[dict], *, llm: LLMPort 
             prompt=json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=False, indent=2),
         )
         items = _extract_json_array(response)
-    except Exception:
+    except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError) as exc:
+        logger.warning("MSR segment prompt generation failed; using deterministic fallback", exc_info=exc)
         return {}
 
     prompts: dict[int, str] = {}
