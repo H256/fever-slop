@@ -39,6 +39,7 @@ from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
+from feverslop.application.openshot_exporter import export_render_plan_to_openshot
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
@@ -1562,6 +1563,36 @@ def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
     )
 
 
+def _run_openshot_export_stage(state: PipelineRunState) -> None:
+    from .config_loader import collect_render_plan_scene_clips
+
+    config = ProjectConfig.load(state.context.project_config_path)
+    video = config.to_video_settings()
+    clips = collect_render_plan_scene_clips(
+        state.plan_for_next_step,
+        state.context.ltx_dir,
+        layout=state.context.artifact_layout,
+        prefer_facefix=not state.args.skip_facefix,
+    )
+    output_path = state.context.project_output_dir / "openshot" / f"{state.context.project_file_stem}.osp"
+    console.print(f"OpenShot export: writing {len(clips)} rendered clips")
+
+    def report(completed: int, total: int, label: str) -> None:
+        console.print(f"[dim]OpenShot export: {completed}/{total} ({label})[/dim]")
+
+    state.openshot_project_path = export_render_plan_to_openshot(
+        render_plan_path=state.plan_for_next_step,
+        clip_paths=clips,
+        audio_path=state.context.input_audio,
+        output_path=output_path,
+        width=video.width,
+        height=video.height,
+        fps=video.fps,
+        on_progress=report,
+    )
+    console.print(f"[green]OpenShot project written: {state.openshot_project_path}[/green]")
+
+
 def _run_facefix_stage(state: PipelineRunState) -> None:
     from feverslop.composition.facefix_pipeline import FaceFixCompositionOptions, run_facefix
 
@@ -1650,6 +1681,7 @@ STAGE_RUNNERS = {
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: _run_diagnostic_scene_audio_concat_stage,
     PipelineStage.FACEFIX: _run_facefix_stage,
     PipelineStage.FACEFIX_CONCAT: _run_facefix_concat_stage,
+    PipelineStage.OPENSHOT_EXPORT: _run_openshot_export_stage,
 }
 
 STAGE_LABELS = {
@@ -1675,6 +1707,7 @@ STAGE_LABELS = {
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: "Diagnostic scene-audio concat",
     PipelineStage.FACEFIX: "FaceFix postprocessing",
     PipelineStage.FACEFIX_CONCAT: "FaceFix final concat",
+    PipelineStage.OPENSHOT_EXPORT: "OpenShot project export",
 }
 
 
@@ -1767,6 +1800,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
             stages.append(PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT)
         elif args.no_original_audio_mux:
             console.print("--no-original-audio-mux is deprecated; original-audio muxing is now always used for final concat.")
+        stages.append(PipelineStage.OPENSHOT_EXPORT)
     elif not args.skip_facefix:
         stages.append(PipelineStage.FACEFIX)
     else:
