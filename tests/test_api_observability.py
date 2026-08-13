@@ -1,10 +1,18 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from feverslop.adapters.api_observability import APIMetrics
+from feverslop.adapters.api_observability import APIMetrics, redact_secrets
 
 
 class APIMetricsTests(unittest.TestCase):
+    def test_redact_secrets_removes_query_and_header_style_credentials(self):
+        value = "https://llm.example/v1?api_key=secret123&model=x Authorization: Bearer abc123"
+        redacted = redact_secrets(value)
+        self.assertNotIn("secret123", redacted)
+        self.assertNotIn("abc123", redacted)
+        self.assertIn("api_key=[REDACTED]", redacted)
+        self.assertIn("[REDACTED]", redacted)
+
     def test_records_success_and_failure_by_service_and_operation(self):
         metrics = APIMetrics()
         metrics.record("comfyui", "queue_prompt", 12.5, success=True)
