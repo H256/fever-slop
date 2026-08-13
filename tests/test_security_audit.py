@@ -191,6 +191,21 @@ class PathContainmentTests(unittest.TestCase):
 
     # --- ProjectStore path traversal ---
 
+    def test_full_auto_scaffold_rejects_unsafe_project_slug(self):
+        from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
+        from feverslop.domain.full_auto import GeneratedSong, SongSpec
+
+        spec = SongSpec(
+            title="Test", tags="", lyrics="", bpm=120, duration_seconds=10,
+            language="en", keyscale="C", visual_story_idea="", visual_style="",
+        )
+        song = GeneratedSong(audio_path=Path("/tmp/song.mp3"), manifest={})
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                LocalProjectScaffold().create_project(
+                    projects_dir=Path(tmp), project_slug="../escape", spec=spec, generated_song=song,
+                )
+
     def test_project_store_project_root_rejects_traversal(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = ProjectStore(Path(tmp))
