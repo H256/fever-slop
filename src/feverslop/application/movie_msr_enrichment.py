@@ -18,6 +18,7 @@ from feverslop.domain.visual_consistency_runtime import (
 )
 from feverslop.application.msr_prompt_enrichment import _clean_segment_prompt, _is_valid_segment_prompt, _msr_vision_system_prompt
 from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import VisionLLMPort
@@ -222,8 +223,12 @@ def _movie_vision_prompts(
             json.dumps({"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}, ensure_ascii=True),
             [reference.path for reference in references],
         )
-    except Exception:
-        logger.warning("MSR image analysis fallback: shot=%s reason=vision unavailable", shot_id)
+    except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
+        logger.warning(
+            "MSR image analysis fallback: shot=%s reason=vision unavailable",
+            shot_id,
+            exc_info=exc,
+        )
         return None
     try:
         data = extract_json_object(response)
@@ -245,8 +250,12 @@ def _movie_vision_prompts(
         relay_prompt = _clean_segment_prompt(str(relays[0].get("prompt") or ""))
         if not _is_valid_segment_prompt(relay_prompt, relay):
             raise ValueError("invalid relay")
-    except Exception:
-        logger.warning("MSR image analysis fallback: shot=%s reason=invalid response", shot_id)
+    except (FeverSlopLMLError, ValueError, TypeError, KeyError, IndexError) as exc:
+        logger.warning(
+            "MSR image analysis fallback: shot=%s reason=invalid response",
+            shot_id,
+            exc_info=exc,
+        )
         return None
 
     parts = []
