@@ -1,9 +1,43 @@
 [project]
 name = "feverslop"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local music-video generation pipeline and Studio UI"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "H256" },
+]
+keywords = [
+    "fever",
+    "music-video",
+    "generation",
+    "pipeline",
+    "audio",
+    "video",
+    "image-generation",
+    "pytorch",
+    "comfyui",
+    "pyside6",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Non-Linear Editor",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.12"
+Historical internal tracker reference removed for the public history.
+Historical internal tracker reference removed for the public history.
+Historical internal tracker reference removed for the public history.
 dependencies = [
     "audioread>=3.1.0",
     "demucs>=4.0.1",
