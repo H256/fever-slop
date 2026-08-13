@@ -58,6 +58,23 @@ MOVIE_INGREDIENTS_STAGE_TITLES = {
     "Movie complete",
 }
 
+MOVIE_MINIMAX_STAGE_TITLES = {
+    *MOVIE_BASE_STAGE_TITLES,
+    "Movie MiniMax H3 render",
+    "Movie complete",
+}
+
+MOVIE_MSR_STAGE_TITLES = {
+    *MOVIE_BASE_STAGE_TITLES,
+    "Movie MSR render",
+    "Movie complete",
+}
+
+
+def _movie_uses_msr_reference_enrichment(movie_video_workflow: str) -> bool:
+    """Return whether the selected movie mode needs LTX MSR enrichment."""
+    return movie_video_workflow in {"msr", "msr-i2v-startframe"}
+
 
 class MovieStageProgressReporter:
     def __init__(self, stage_titles: set[str], *, console: Console = console):
@@ -138,7 +155,9 @@ def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
         return MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES
     if config["movie_video_workflow"] == "ingredients":
         return MOVIE_INGREDIENTS_STAGE_TITLES
-    return MOVIE_BASE_STAGE_TITLES
+    if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
+        return MOVIE_MINIMAX_STAGE_TITLES
+    return MOVIE_MSR_STAGE_TITLES
 
 
 def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResult:
@@ -530,7 +549,7 @@ def _run_msr_workflow(
     continuity_plan_path, render_plan_msr_path, reference_manifest_path,
     ingredients_llm, report_msr_analysis, report_ingredients_analysis, manifest_path,
 ) -> MoviePipelineResult:
-    if not args.skip_movie_msr_enrich:
+    if _movie_uses_msr_reference_enrichment(config["movie_video_workflow"]) and not args.skip_movie_msr_enrich:
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(
             project_dir=project_dir,
@@ -542,7 +561,7 @@ def _run_msr_workflow(
     elif not render_plan_msr_path.exists():
         render_plan_msr_path = None
 
-    if not args.skip_movie_ingredients_sheets:
+    if _movie_uses_msr_reference_enrichment(config["movie_video_workflow"]) and not args.skip_movie_ingredients_sheets:
         from feverslop.application.movie_ingredients_sheets import enrich_movie_render_plan_with_ingredients_sheets
         _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
         enrich_movie_render_plan_with_ingredients_sheets(
@@ -569,7 +588,13 @@ def _run_msr_workflow(
             raise ValueError("Movie debug workflow export requires ready movie references; run without --skip-movie-references first")
 
     final_video_path: Path | None = None
+    render_stage_title = (
+        "Movie MiniMax H3 render"
+        if config["movie_video_workflow"].startswith("minimax-h3-")
+        else "Movie MSR render"
+    )
     if not args.skip_movie_render:
+        _log_stage(render_stage_title, f"rendering via {config['render_backend']}")
         if not movie_references_ready(manifest_path, backend=config["reference_backend"]):
             raise ValueError("Movie references are not ready; run without --skip-movie-references first")
         workflow = _patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
@@ -591,6 +616,7 @@ def _run_msr_workflow(
                 render=render,
             )
     elif args.write_debug_workflows:
+        _log_stage(render_stage_title, "preparing workflows; render skipped")
         workflow = _patch_movie_msr_workflow(template_path=Path(config["msr_workflow"]))
         adapter = _build_visual_adapter(project_dir, config, workflow)
         _, debug_workflows_dir = _prepare_and_render_msr_movie(
@@ -598,6 +624,10 @@ def _run_msr_workflow(
             render_plan_path=render_plan_msr_path or render_plan_path,
             selected_scenes=args.scenes, prepare=True, render=False,
         )
+    else:
+        _log_stage(render_stage_title, "skipped")
+
+    _log_stage("Movie complete", str(final_video_path or render_plan_path))
 
     return MoviePipelineResult(
         project_dir=project_dir,
