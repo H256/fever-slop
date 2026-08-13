@@ -5,7 +5,6 @@ Tests are automatically skipped when the ComfyUI endpoint is unreachable.
 """
 from __future__ import annotations
 
-import subprocess
 import shutil
 import unittest
 import urllib.request
@@ -27,10 +26,6 @@ def _resolve_comfyui_url() -> str:
     return DEFAULT_COMFYUI_URL
 
 
-def _ffmpeg_available() -> bool:
-    return subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=2).returncode == 0
-
-
 def _comfyui_available(url: str) -> bool:
     """Return True if ComfyUI object_info endpoint is reachable."""
     try:
@@ -38,15 +33,6 @@ def _comfyui_available(url: str) -> bool:
         return True
     except Exception:
         return False
-
-
-def _has_input_assets(project_dir: Path) -> bool:
-    """Return True if project_dir has input audio and rendered scenes."""
-    return (
-        project_dir.exists() and
-        (project_dir / "input_audio.wav").exists() and
-        (project_dir / "render_output").exists()
-    )
 
 
 @unittest.skipUnless(_comfyui_available(_resolve_comfyui_url()), "ComfyUI unreachable")
@@ -101,15 +87,15 @@ class MiniMaxH3IntegrationSmoke(unittest.TestCase):
         )
         assert output.exists()
 
-    @unittest.skipUnless(_ffmpeg_available(), "not ffmpeg")
+    @unittest.skip("requires full scene render + input audio file")
     def test_r2v_output_has_audio_track(self):
         """Verify that an R2V render produces a file with an audio stream."""
-        self.skipTest("requires full scene render + input audio file")
+        pass
 
-    @unittest.skipUnless(_ffmpeg_available(), "not ffmpeg")
+    @unittest.skip("requires full scene render + audio file")
     def test_r2v_audio_video_duration_sync(self):
         """Compare audio duration to video duration in output."""
-        self.skipTest("requires full scene render + audio file")
+        pass
 
     def test_t2v_output_video_exists(self):
         """Verify that a T2V render produces a video file."""
@@ -119,9 +105,10 @@ class MiniMaxH3IntegrationSmoke(unittest.TestCase):
         )
         assert output.exists(), f"T2V output file not created: {output}"
 
+    @unittest.skip("requires full scene render + postprocessing pipeline")
     def test_postprocessed_clips_timing(self):
         """Verify post-processed clips maintain correct frame bounds."""
-        self.skipTest("requires full scene render + postprocessing pipeline")
+        pass
 
 
 if __name__ == "__main__":
