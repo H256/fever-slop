@@ -12,7 +12,10 @@ def write_movie_i2v_render_plan(
     height: int = 704,
 ) -> Path:
     project_dir = Path(project_dir)
-    visual_plan = json.loads((project_dir / "movie" / "visual_plan.json").read_text(encoding="utf-8"))
+    visual_plan_path = project_dir / "movie" / "visual_plan.json"
+    if not visual_plan_path.is_file():
+        raise FileNotFoundError(f"Movie visual plan not found: {visual_plan_path}")
+    visual_plan = json.loads(visual_plan_path.read_text(encoding="utf-8"))
     scenes = []
     cursor = 0.0
     for shot in visual_plan.get("shots", []):
