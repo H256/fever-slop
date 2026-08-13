@@ -1,6 +1,7 @@
 ﻿import unittest
 from pathlib import Path
 import subprocess
+import tempfile
 from unittest.mock import patch
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
@@ -8,10 +9,46 @@ from feverslop.domain.postprocessing import TrimSpec
 
 
 class VideoPostProcessorConcatTests(unittest.TestCase):
+    def test_ffmpeg_failure_includes_stderr(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        failure = subprocess.CalledProcessError(1, ["ffmpeg"], stderr="moov atom not found")
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run", side_effect=failure):
+            with self.assertRaisesRegex(Exception, "moov atom not found"):
+                processor._run_ffmpeg(["ffmpeg", "-i", "broken.mp4"])
+
+    def test_trim_clip_rejects_tiny_output(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "scene_0001.mp4"
+            output.write_bytes(b"x" * 48)
+            spec = TrimSpec(
+                source_file=Path(temp_dir) / "raw.mp4",
+                output_file=output,
+                fps=24,
+                trim_front_frames=0,
+                keep_frames=24,
+                scene=1,
+            )
+            with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+                run.return_value = subprocess.CompletedProcess([], 0, stdout='{"format":{"duration":"1"},"streams":[{"codec_type":"video"}]}', stderr="")
+                with self.assertRaisesRegex(Exception, "too small"):
+                    processor.trim_clip(spec)
+
+    def test_trim_clip_rejects_unprobeable_output_even_when_large(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "scene_0001.mp4"
+            output.write_bytes(b"x" * 4096)
+            spec = TrimSpec(Path(temp_dir) / "raw.mp4", output, 24, 0, 24, 1)
+            with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+                run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+                with self.assertRaisesRegex(Exception, "invalid video"):
+                    processor.trim_clip(spec)
+
     def test_concat_clips_can_write_video_only_concat(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
 
-        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(VideoPostProcessor, "_validate_video_output"):
             output = processor.concat_clips(
                 concat_list=Path("concat_list.txt"),
                 output_file=Path("final_concat_video_only.mp4"),
@@ -29,7 +66,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
     def test_concat_clips_can_retain_audio_in_named_output(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
 
-        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(VideoPostProcessor, "_validate_video_output"):
             output = processor.concat_clips(
                 concat_list=Path("concat_raw.txt"),
                 output_file=Path("video_audio.mp4"),
@@ -44,7 +81,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
     def test_original_audio_mux_maps_video_and_full_audio(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
 
-        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(VideoPostProcessor, "_validate_video_output"):
             output = processor.mux_original_audio(
                 video_file=Path("final_concat_video_only.mp4"),
                 audio_file=Path("song.mp3"),
@@ -61,7 +98,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
     def test_ffmpeg_output_is_suppressed_by_default(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
 
-        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(VideoPostProcessor, "_validate_video_output"):
             processor.concat_clips(
                 concat_list=Path("concat_list.txt"),
                 output_file=Path("final_concat.mp4"),
@@ -71,7 +108,8 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             {
                 "check": True,
                 "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL,
+                "stderr": subprocess.PIPE,
+                "text": True,
             },
             run.call_args.kwargs,
         )
@@ -79,7 +117,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
     def test_concat_clips_can_reencode_for_native_audio_segments(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
 
-        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(VideoPostProcessor, "_validate_video_output"):
             processor.concat_clips(
                 concat_list=Path("concat_list.txt"),
                 output_file=Path("final_concat.mp4"),
@@ -96,7 +134,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
     def test_ffmpeg_output_is_visible_in_debug_mode(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg", debug=True)
 
-        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(VideoPostProcessor, "_validate_video_output"):
             processor.concat_clips(
                 concat_list=Path("concat_list.txt"),
                 output_file=Path("final_concat.mp4"),
@@ -124,6 +162,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         with (
             patch("feverslop.adapters.video_postprocessor.subprocess.run") as run,
             patch("feverslop.adapters.video_postprocessor.os.replace") as replace,
+            patch.object(VideoPostProcessor, "_validate_video_output"),
         ):
             audio_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="10.000000\n", stderr="")
             run.side_effect = [None, ffprobe_result, None, audio_result]
@@ -153,6 +192,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         with (
             patch("feverslop.adapters.video_postprocessor.subprocess.run") as run,
             patch("feverslop.adapters.video_postprocessor.os.replace") as replace,
+            patch.object(VideoPostProcessor, "_validate_video_output"),
         ):
             run.side_effect = [None, frame_count_result, short_audio_result, None]
             output = processor.trim_clip(spec)

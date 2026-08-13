@@ -59,6 +59,7 @@ class VideoPostProcessor:
 
         cmd.append(str(spec.output_file))
         self._run_ffmpeg(cmd)
+        self._validate_video_output(spec.output_file, spec.duration_seconds, "trim_clip")
         self._pad_short_clip(spec)
         if self.reencode:
             self._pad_short_audio(spec.output_file, spec.duration_seconds)
@@ -69,6 +70,41 @@ class VideoPostProcessor:
                 spec.output_file.with_name("lastframe.png"),
             )
         return spec.output_file
+
+    @staticmethod
+    def _validate_video_output(video_file: Path, expected_duration: float, operation: str) -> None:
+        if not video_file.is_file():
+            raise FeverSlopAdaptationError(
+                f"{operation} did not produce an output file: {video_file}"
+            )
+        size = video_file.stat().st_size
+        if size < 1024:
+            raise FeverSlopAdaptationError(
+                f"{operation} produced a file that is too small ({size} bytes): {video_file}"
+            )
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error", "-show_entries",
+                    "format=duration:stream=codec_type", "-of", "json", str(video_file),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            probe = json.loads(result.stdout)
+            duration = float(probe["format"]["duration"])
+            stream_types = {stream.get("codec_type") for stream in probe.get("streams", [])}
+            if "video" not in stream_types:
+                duration = None
+        except (subprocess.CalledProcessError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            duration = None
+        if duration is None or duration < expected_duration * 0.5:
+            raise FeverSlopAdaptationError(
+                f"{operation} produced an invalid video: expected about "
+                f"{expected_duration:.3f}s, got {duration!r}: {video_file}"
+            )
 
     def _pad_short_clip(self, spec: TrimSpec) -> None:
         frame_count = self._frame_count(spec.output_file)
@@ -184,6 +220,7 @@ class VideoPostProcessor:
             cmd.extend(["-c", "copy"])
         cmd.append(str(output_file))
         self._run_ffmpeg(cmd)
+        self._validate_video_output(output_file, 0.1, "concat_clips")
         return output_file
 
     def extract_last_frame(self, source_file: str | Path, output_file: str | Path) -> Path:
@@ -297,9 +334,12 @@ class VideoPostProcessor:
                 cmd,
                 check=True,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
             )
         except subprocess.CalledProcessError as exc:
+            details = str(exc.stderr or "").strip()
             raise FeverSlopAdaptationError(
                 f"FFmpeg failed: {exc.returncode} for command: {' '.join(cmd)}"
+                + (f"\n{details}" if details else "")
             ) from exc

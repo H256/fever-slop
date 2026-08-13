@@ -26,7 +26,12 @@ def enrich_render_plan_with_msr_prompts(
 ) -> Path:
     render_plan_path = Path(render_plan_path)
     output_path = Path(output_path)
-    render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
+    try:
+        render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"Render plan contains invalid JSON: {render_plan_path}\n{e}"
+        ) from e
 
     enriched = []
     total = len(render_plan)
