@@ -8,6 +8,7 @@ import uuid
 import requests
 
 from feverslop.errors import FeverSlopWorkflowError
+from feverslop.security.url_validation import validate_api_url
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class ComfyUIClient:
         client_id: str | None = None,
         prompt_timeout_seconds: float = 1800.0,
     ):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = validate_api_url(base_url).rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
         self._session: requests.Session | None = None
