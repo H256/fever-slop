@@ -192,6 +192,9 @@ def _run_main_pipeline_stage(state: PipelineRunState) -> None:
             video_workflow_paths=_selected_video_workflows(state),
             rolling_frame_profile=state.args.rolling_frame_profile,
             defer_h3_until_references=state.args.video_pipeline == "minimax-h3-r2v",
+            skip_stem_separation=state.args.skip_stem_separation,
+            skip_whisper=state.args.skip_whisper,
+            skip_beat_analysis=state.args.skip_beat_analysis,
         ),
         console=console,
         resolution=resolution,
@@ -1640,6 +1643,8 @@ STAGE_RUNNERS = {
     PipelineStage.INGREDIENTS_SHEETS: _run_ingredients_sheets_stage,
     PipelineStage.LTX_PREPARE_WORKFLOWS: _run_ltx_prepare_workflows_stage,
     PipelineStage.LTX_RENDER_SCENES: _run_ltx_render_scenes_stage,
+    PipelineStage.PREPARE_WORKFLOWS: _run_ltx_prepare_workflows_stage,
+    PipelineStage.RENDER_SCENES: _run_ltx_render_scenes_stage,
     PipelineStage.CONCAT_VIDEO_ONLY: _run_concat_video_only_stage,
     PipelineStage.MUX_ORIGINAL_AUDIO: _run_mux_original_audio_stage,
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: _run_diagnostic_scene_audio_concat_stage,
@@ -1663,6 +1668,8 @@ STAGE_LABELS = {
     PipelineStage.INGREDIENTS_SHEETS: "Ingredients scene sheets",
     PipelineStage.LTX_PREPARE_WORKFLOWS: "Prepare LTX workflows",
     PipelineStage.LTX_RENDER_SCENES: "LTX render",
+    PipelineStage.PREPARE_WORKFLOWS: "Prepare workflows",
+    PipelineStage.RENDER_SCENES: "Render scenes",
     PipelineStage.CONCAT_VIDEO_ONLY: "Final concat video-only",
     PipelineStage.MUX_ORIGINAL_AUDIO: "Mux original audio",
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: "Diagnostic scene-audio concat",
@@ -1690,7 +1697,11 @@ def write_step(message: str) -> None:
 def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
     selected = getattr(args, "stages", None)
     if selected:
-        return [PipelineStage(stage) for stage in selected]
+        aliases = {
+            PipelineStage.PREPARE_WORKFLOWS.value: PipelineStage.LTX_PREPARE_WORKFLOWS,
+            PipelineStage.RENDER_SCENES.value: PipelineStage.LTX_RENDER_SCENES,
+        }
+        return [aliases.get(stage, PipelineStage(stage)) for stage in selected]
 
     # --set-resolution is a special mode: just update config + render plan + re-prepare
     set_res = getattr(args, "set_resolution", None)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 from pathlib import Path
 
@@ -8,11 +9,14 @@ from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 import random
 import time
 
+from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopLMLError
 from feverslop.prompting.vision_references import prepare_vision_image
+from feverslop.security.url_validation import validate_api_url
 
 
 RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
+logger = logging.getLogger(__name__)
 
 
 def _resolve_api_key(api_key: str | None) -> str:
@@ -56,10 +60,12 @@ class LocalOpenAIClient:
         retry_base_delay: float = 0.5,
         request_timeout_seconds: float = 180.0,
         dspy_cache: bool = False,
+        metrics: APIMetrics | None = None,
     ):
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be greater than zero")
         resolved_key = _resolve_api_key(api_key)
+        validate_api_url(base_url)
         self.client = OpenAI(
             base_url=base_url,
             api_key=resolved_key,
@@ -71,6 +77,7 @@ class LocalOpenAIClient:
         self.retry_base_delay = retry_base_delay
         self.request_timeout_seconds = float(request_timeout_seconds)
         self.dspy_cache = dspy_cache
+        self.metrics = metrics or default_api_metrics
 
     def complete_prompt(
         self,
@@ -119,6 +126,7 @@ class LocalOpenAIClient:
         last_error = None
         request_timeout = self.request_timeout_seconds if timeout is None else timeout
         for attempt in range(self.max_retries):
+            started_at = time.perf_counter()
             try:
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -128,13 +136,19 @@ class LocalOpenAIClient:
                     stream=False,
                     timeout=request_timeout,
                 )
-                return response.choices[0].message.content.strip()
+                result = response.choices[0].message.content.strip()
+                record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=True)
+                return result
             except RETRYABLE_ERRORS as exc:
+                record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
                 last_error = exc
                 if attempt < self.max_retries - 1:
                     base_delay = self.retry_base_delay * (2 ** attempt)
                     jitter = random.uniform(0, base_delay)
                     time.sleep(base_delay + jitter)
+            except Exception:
+                record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
+                raise
 
         raise FeverSlopLMLError(
             f"LLM API error after {self.max_retries} attempts: {last_error}"
