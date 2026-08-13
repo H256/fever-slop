@@ -35,7 +35,7 @@ def parse_srt_timestamp(value: str) -> float:
     """
     value = value.strip()
     hours, minutes, rest = value.split(":")
-    seconds, millis = rest.split(",")
+    seconds, millis = re.split(r"[,;]", rest, maxsplit=1)
     return (
         int(hours) * 3600
         + int(minutes) * 60

@@ -1,4 +1,5 @@
 import unittest
+from importlib.resources import files
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -369,7 +370,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             temperature = 0.75
             max_tokens = 16384
 
-        guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
+        guides = files("feverslop.prompting.guides")
         with patch("dspy.LM") as lm_factory:
             VideoPromptGenerator(
                 base_guide_path=guides / "minimax-h3-base.md",
@@ -392,7 +393,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             max_tokens = 16384
             dspy_cache = True
 
-        guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
+        guides = files("feverslop.prompting.guides")
         with patch("dspy.LM") as lm_factory:
             VideoPromptGenerator(
                 base_guide_path=guides / "minimax-h3-base.md",
@@ -415,7 +416,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             max_tokens = 16384
             dspy_cache = False
 
-        guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
+        guides = files("feverslop.prompting.guides")
         with patch("dspy.LM") as lm_factory:
             VideoPromptGenerator(
                 base_guide_path=guides / "minimax-h3-base.md",
@@ -461,7 +462,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             self.assertEqual(field.default, "[]")
 
     def test_integrated_guides_are_bundled_with_prompting_package(self):
-        guides = Path(__file__).parents[1] / "src" / "feverslop" / "prompting" / "guides"
+        guides = files("feverslop.prompting.guides")
 
         base = (guides / "minimax-h3-base.md").read_text(encoding="utf-8")
         reference = (guides / "minimax-h3-references.md").read_text(encoding="utf-8")

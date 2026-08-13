@@ -16,9 +16,15 @@ app_config.json
 .env.*
 !.env.example
 
-temp*
+temp/
+temp-*/
+tmp/
+tmp-*/
 !src/feverslop/tools/templates/
-*debug*
+**/debug/
+
+# Local agent state and audit artifacts
+Historical internal branch reference removed for the public history.
 
 # Generated codebase graph
 graphify-out/
