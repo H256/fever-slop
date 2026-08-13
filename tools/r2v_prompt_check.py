@@ -45,7 +45,7 @@ def main():
 
     # Import project modules
     from feverslop.adapters.llm_client import LocalOpenAIClient
-    from feverslop.prompting.h3_prompt_builder import _build_references_from_segment
+    from feverslop.prompting.h3_prompt_builder import build_references_from_segment
     from feverslop.prompting.minimax_h3_prompt_style import build_h3_video_system_prompt
     from feverslop.domain.llm_parsing import extract_json_object
 
@@ -79,7 +79,7 @@ def main():
     }
 
     # ─── Resolve references ────────────────────────────────────────
-    refs = _build_references_from_segment(segment)
+    refs = build_references_from_segment(segment)
     print(f"\n📋 References: {json.dumps(refs, indent=2)}")
 
     # ─── Resolve mode from pipeline ────────────────────────────────
