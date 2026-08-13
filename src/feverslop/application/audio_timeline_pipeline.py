@@ -11,6 +11,7 @@ from feverslop.ports.generate_pipeline import (
     StemSeparatorFactory,
     VocalTimelineAnalyzerFactory,
 )
+from feverslop.domain.timeline import TimelineSegment
 
 logger = logging.getLogger(__name__)
 
@@ -81,16 +82,24 @@ class AudioTimelinePipeline:
         log_file = context["log_file"]
         run_spinner = context["run_spinner"]
         reporter = context["reporter"]
+        request = context["request"]
+        skip_stems = bool(getattr(request, "skip_stem_separation", False))
+        skip_whisper = bool(getattr(request, "skip_whisper", False))
+        skip_beats = bool(getattr(request, "skip_beat_analysis", False))
 
         log_step("1. Demucs Stem Separation")
-        separator = self.separator_factory(config)
-        try:
-            files = run_spinner(
-                "Separating audio into vocals/drums/bass/other...",
-                lambda: separator.separate(config.input_audio, paths.stems_dir),
-            )
-        finally:
-            _close_audio_component(separator, "Demucs", reporter)
+        if skip_stems:
+            files = self._load_existing_stems(paths.stems_dir, config.input_audio)
+            reporter.message("[yellow]Skipping stem separation; using existing stems.[/yellow]")
+        else:
+            separator = self.separator_factory(config)
+            try:
+                files = run_spinner(
+                    "Separating audio into vocals/drums/bass/other...",
+                    lambda: separator.separate(config.input_audio, paths.stems_dir),
+                )
+            finally:
+                _close_audio_component(separator, "Demucs", reporter)
 
         reporter.table(
             "Generated Stems",
@@ -100,14 +109,18 @@ class AudioTimelinePipeline:
 
         log_step("2. Vocal Timeline Analysis")
         vocal_cfg = config.vocal_detection
-        analyzer = self.vocal_analyzer_factory(config)
-        try:
-            timeline = run_spinner(
-                "Detecting vocal activity and transcribing lyrics...",
-                lambda: analyzer.analyze(files["vocals"]),
-            )
-        finally:
-            _close_audio_component(analyzer, "Whisper", reporter)
+        if skip_whisper:
+            timeline = self._load_existing_timeline(timeline_json, context["artifact_store"])
+            reporter.message("[yellow]Skipping Whisper analysis; using existing timeline.[/yellow]")
+        else:
+            analyzer = self.vocal_analyzer_factory(config)
+            try:
+                timeline = run_spinner(
+                    "Detecting vocal activity and transcribing lyrics...",
+                    lambda: analyzer.analyze(files["vocals"]),
+                )
+            finally:
+                _close_audio_component(analyzer, "Whisper", reporter)
         timeline = self.normalize_empty_vocals(timeline)
         timeline = self.merge_same_kind_segments(timeline, merge_gap=vocal_cfg.merge_gap)
         reference_lyrics = str(getattr(config, "lyrics", "") or "").strip()
@@ -139,18 +152,23 @@ class AudioTimelinePipeline:
         )
 
         log_step("3. Beat / Impact Analysis")
-        beat_analyzer = self.beat_analyzer_factory()
-        run_spinner(
-            "Analyzing beats and impact values...",
-            lambda: beat_analyzer.analyze_to_json_file(
-                final_mix_path=config.input_audio,
-                output_json_path=beat_json,
-                drums_path=files["drums"],
-                bass_path=files["bass"],
-                vocals_path=files["vocals"],
-                other_path=files["other"],
-            ),
-        )
+        if skip_beats:
+            if not beat_json.is_file():
+                raise FileNotFoundError(f"Cannot skip beat analysis; missing existing beat data: {beat_json}")
+            reporter.message("[yellow]Skipping beat analysis; using existing beat data.[/yellow]")
+        else:
+            beat_analyzer = self.beat_analyzer_factory()
+            run_spinner(
+                "Analyzing beats and impact values...",
+                lambda: beat_analyzer.analyze_to_json_file(
+                    final_mix_path=config.input_audio,
+                    output_json_path=beat_json,
+                    drums_path=files["drums"],
+                    bass_path=files["bass"],
+                    vocals_path=files["vocals"],
+                    other_path=files["other"],
+                ),
+            )
         log_file("Beat Data JSON", beat_json)
         beat_data = context["artifact_store"].read_json(beat_json)
         reporter.message(
@@ -167,3 +185,35 @@ class AudioTimelinePipeline:
             }
         )
         return context
+
+    @staticmethod
+    def _load_existing_stems(stems_dir, input_audio):
+        suffixes = {".wav", ".mp3", ".flac"}
+        stem_prefix = input_audio.stem
+        files = {}
+        for name in ("vocals", "drums", "bass", "other"):
+            matches = sorted(
+                path for path in stems_dir.glob(f"{name}_{stem_prefix}.*")
+                if path.is_file() and path.suffix.lower() in suffixes
+            )
+            if matches:
+                files[name] = next((path for path in matches if path.suffix.lower() == ".wav"), matches[0])
+        missing = sorted({"vocals", "drums", "bass", "other"} - files.keys())
+        if missing:
+            raise FileNotFoundError(f"Cannot skip stem separation; missing stems: {', '.join(missing)} in {stems_dir}")
+        return files
+
+    @staticmethod
+    def _load_existing_timeline(path, artifact_store):
+        if not path.is_file():
+            raise FileNotFoundError(f"Cannot skip Whisper analysis; missing existing timeline: {path}")
+        return [
+            TimelineSegment(
+                start=float(item["start"]),
+                end=float(item["end"]),
+                kind=str(item.get("type") or item.get("kind") or "instrumental"),
+                text=str(item.get("lyrics") or item.get("text") or ""),
+                word_timestamps=tuple(item.get("word_timestamps") or ()),
+            )
+            for item in artifact_store.read_json(path)
+        ]

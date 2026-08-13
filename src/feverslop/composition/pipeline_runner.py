@@ -27,6 +27,7 @@ COMFYUI_RENDERING_STAGES = frozenset({
     PipelineStage.STORYBOARD_FRAMES,
     PipelineStage.MSR_REFERENCES,
     PipelineStage.LTX_RENDER_SCENES,
+    PipelineStage.RENDER_SCENES,
     PipelineStage.FACEFIX,
 })
 
