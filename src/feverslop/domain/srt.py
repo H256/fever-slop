@@ -57,13 +57,13 @@ def format_srt_timestamp(seconds: float) -> str:
     return f"{hour:02}:{minute:02}:{sec:02},{millis:03}"
 
 
-def parse_srt_blocks(path: str | Path) -> list[SrtBlock]:
-    """Parse an SRT file into a list of blocks.
+def parse_srt_text(text: str) -> list[SrtBlock]:
+    """Parse SRT text into blocks without filesystem access.
 
     Handles empty files, malformed index lines, and missing timestamps.
     Returns empty list for empty/invalid files.
     """
-    text = Path(path).read_text(encoding="utf-8").strip()
+    text = str(text).strip()
     if not text:
         return []
 
@@ -91,3 +91,8 @@ def parse_srt_blocks(path: str | Path) -> list[SrtBlock]:
         result.append(SrtBlock(index=index, start=start, end=end, text=body))
 
     return result
+
+
+def parse_srt_blocks(path: str | Path) -> list[SrtBlock]:
+    """Compatibility file reader; callers at the adapter boundary should use ``parse_srt_text``."""
+    return parse_srt_text(Path(path).read_text(encoding="utf-8"))

@@ -3,6 +3,11 @@ from pathlib import Path
 import hashlib
 
 
+def sha256_bytes(data: bytes) -> str:
+    """Hash already-loaded content without performing filesystem I/O."""
+    return hashlib.sha256(data).hexdigest()
+
+
 def sha256_file(path: str | Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:

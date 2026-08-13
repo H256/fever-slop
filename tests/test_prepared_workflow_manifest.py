@@ -16,6 +16,23 @@ SCHEMA_V2 = "feverslop.scene-workflow/v2"
 
 
 class PreparedWorkflowManifestTests(unittest.TestCase):
+    def test_manifest_round_trips_from_in_memory_dict(self):
+        payload = {
+            "schema": SCHEMA_V2,
+            "scene": 1,
+            "pipeline": "ltx_i2v",
+            "workflow": {"path": "workflow.json", "sha256": "a" * 64},
+            "template": {"path": "template.json", "sha256": "b" * 64, "external": True},
+            "render_plan": {"path": "plan.json", "sha256": "c" * 64},
+            "assets": [], "seed": 1, "fps": 24, "frame_count": 25,
+            "width": 1280, "height": 704,
+        }
+        manifest = SceneWorkflowManifest.from_dict(payload)
+        restored = manifest.to_dict()
+        self.assertEqual(1, restored["scene"])
+        self.assertEqual("ltx_i2v", restored["pipeline"])
+        self.assertEqual("workflow.json", restored["workflow"]["path"])
+
     @staticmethod
     def _contract(
         scene: int,
