@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sys
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -55,6 +56,7 @@ class TestReferenceWorkspaceIntegration(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
         self._project_root = Path(self._tmp)
 
     def tearDown(self) -> None:
@@ -293,6 +295,7 @@ class TestReferenceWorkspaceServiceFull(unittest.TestCase):
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self._tmp, ignore_errors=True)
         self._project_root = Path(self._tmp)
 
     def tearDown(self) -> None:

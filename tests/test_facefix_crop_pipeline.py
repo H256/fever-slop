@@ -282,6 +282,7 @@ class TestFaceDebugAdapter(unittest.TestCase):
         import shutil
 
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         try:
             adapter = FaceDebugAdapter(tmpdir)
             image = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -298,6 +299,7 @@ class TestFaceDebugAdapter(unittest.TestCase):
         import shutil
 
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         try:
             adapter = FaceDebugAdapter(tmpdir)
             frame = np.zeros((200, 300, 3), dtype=np.uint8)
@@ -318,6 +320,7 @@ class TestFaceDebugAdapter(unittest.TestCase):
         import shutil
 
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         try:
             adapter = FaceDebugAdapter(tmpdir)
             crop = np.zeros((768, 768, 3), dtype=np.uint8)
@@ -332,6 +335,7 @@ class TestFaceDebugAdapter(unittest.TestCase):
         import shutil
 
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         try:
             adapter = FaceDebugAdapter(tmpdir)
             mask = np.zeros((1080, 1920), dtype=np.uint8)
@@ -346,6 +350,7 @@ class TestFaceDebugAdapter(unittest.TestCase):
         import shutil
 
         tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
         try:
             adapter = FaceDebugAdapter(tmpdir)
             original = np.zeros((100, 100, 3), dtype=np.uint8)
