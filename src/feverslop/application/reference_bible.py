@@ -7,8 +7,10 @@ import hashlib
 import json
 import math
 import os
+import shutil
 from tempfile import NamedTemporaryFile
 import time
+import uuid
 from typing import Callable, Any
 
 from PIL import Image, ImageDraw, ImageOps
@@ -99,7 +101,15 @@ class ReferenceBibleGenerator:
         self.direct_msr_sheet_prompt_builder = direct_msr_sheet_prompt_builder
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
-        subject_dir = self.output_dir / "actors" / subject.id
+        final_dir = self.output_dir / "actors" / subject.id
+        staging_dir = self.output_dir / ".staging" / f"actor-{subject.id}-{uuid.uuid4().hex}"
+        try:
+            manifest_path = self._generate_subject_bible(subject, staging_dir)
+            return _commit_staged_reference(staging_dir, final_dir, manifest_path.name)
+        finally:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _generate_subject_bible(self, subject: ReferenceSubject, subject_dir: Path) -> Path:
         subject_dir.mkdir(parents=True, exist_ok=True)
 
         if self.actor_view_names == self.direct_msr_actor_view_names:
@@ -211,7 +221,15 @@ class ReferenceBibleGenerator:
         return manifest_path
 
     def generate_location_bible(self, location: ReferenceLocation) -> Path:
-        location_dir = self.output_dir / "locations" / location.id
+        final_dir = self.output_dir / "locations" / location.id
+        staging_dir = self.output_dir / ".staging" / f"location-{location.id}-{uuid.uuid4().hex}"
+        try:
+            manifest_path = self._generate_location_bible(location, staging_dir)
+            return _commit_staged_reference(staging_dir, final_dir, manifest_path.name)
+        finally:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _generate_location_bible(self, location: ReferenceLocation, location_dir: Path) -> Path:
         location_dir.mkdir(parents=True, exist_ok=True)
 
         views = []
@@ -916,6 +934,43 @@ def _infer_reference_artifact_base_dir(output_dir: Path) -> Path:
     if output_dir.name == "references" and output_dir.parent.name == "output":
         return output_dir.parent.parent
     return output_dir
+
+
+def _commit_staged_reference(staging_dir: Path, final_dir: Path, manifest_name: str) -> Path:
+    """Atomically publish a completed reference directory."""
+    manifest_path = staging_dir / manifest_name
+    if manifest_path.is_file():
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        root = staging_dir.parent.parent
+        staging_token = staging_dir.relative_to(root).as_posix()
+        final_token = final_dir.relative_to(root).as_posix()
+
+        def rewrite(value):
+            if isinstance(value, dict):
+                return {key: rewrite(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [rewrite(item) for item in value]
+            if isinstance(value, str):
+                return value.replace(staging_token, final_token)
+            return value
+
+        manifest_path.write_text(
+            json.dumps(rewrite(payload), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    final_dir.parent.mkdir(parents=True, exist_ok=True)
+    backup_dir = final_dir.with_name(f".{final_dir.name}.previous")
+    shutil.rmtree(backup_dir, ignore_errors=True)
+    if final_dir.exists():
+        final_dir.replace(backup_dir)
+    try:
+        staging_dir.replace(final_dir)
+    except Exception:
+        if backup_dir.exists() and not final_dir.exists():
+            backup_dir.replace(final_dir)
+        raise
+    shutil.rmtree(backup_dir, ignore_errors=True)
+    return final_dir / manifest_name
 
 
 def enrich_render_plan_with_reference_sheets(
