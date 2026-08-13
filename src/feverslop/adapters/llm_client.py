@@ -9,7 +9,7 @@ from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 import random
 import time
 
-from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
+from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopLMLError
 from feverslop.prompting.vision_references import prepare_vision_image
 from feverslop.security.url_validation import validate_api_url
@@ -61,6 +61,7 @@ class LocalOpenAIClient:
         request_timeout_seconds: float = 180.0,
         dspy_cache: bool = False,
         metrics: APIMetrics | None = None,
+        rate_limit_interval_seconds: float = 0.0,
     ):
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be greater than zero")
@@ -78,6 +79,7 @@ class LocalOpenAIClient:
         self.request_timeout_seconds = float(request_timeout_seconds)
         self.dspy_cache = dspy_cache
         self.metrics = metrics or default_api_metrics
+        self.rate_limiter = RequestRateLimiter(rate_limit_interval_seconds)
 
     def complete_prompt(
         self,
@@ -128,6 +130,7 @@ class LocalOpenAIClient:
         for attempt in range(self.max_retries):
             started_at = time.perf_counter()
             try:
+                self.rate_limiter.wait()
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
