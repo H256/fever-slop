@@ -39,11 +39,25 @@ def _scene_references(
 
     actor_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths") or []
     actor_ids = references.get("actor_ids") or []
+    actor_descriptions = {
+        str(item.get("id") or item.get("name") or ""): str(
+            item.get("visual_description") or item.get("image_prompt") or ""
+        ).strip()
+        for item in references.get("actor_reference_descriptions") or []
+        if isinstance(item, dict)
+    }
     for index, source in enumerate(actor_paths, start=1):
         name = str(actor_ids[index - 1]) if index <= len(actor_ids) else f"Actor {index}"
         path = Path(source)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
-        result.append(_reference(label=f"<Picture {index}>", source=path, kind="picture", name=name, role="subject"))
+        result.append(_reference(
+            label=f"<Picture {index}>",
+            source=path,
+            kind="picture",
+            name=name,
+            description=actor_descriptions.get(name, ""),
+            role="subject",
+        ))
         if image_path.is_file():
             images.append(image_path)
 
@@ -51,11 +65,17 @@ def _scene_references(
     if location:
         path = Path(location)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
+        location_description = references.get("location_reference_description") or {}
         result.append(_reference(
             label=f"<Picture {len(result) + 1}>",
             source=path,
             kind="picture",
             name=str(references.get("location_id") or "Location"),
+            description=str(
+                location_description.get("visual_description")
+                or location_description.get("image_prompt")
+                or ""
+            ).strip(),
             role="environment",
         ))
         if image_path.is_file():
