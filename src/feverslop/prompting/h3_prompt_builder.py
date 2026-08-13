@@ -82,6 +82,11 @@ def _build_references_from_segment(segment: dict) -> dict | None:
     return result
 
 
+def build_references_from_segment(segment: dict) -> dict | None:
+    """Build the normalized H3 reference payload for a segment."""
+    return _build_references_from_segment(segment)
+
+
 class H3PromptBuilder:
     """Builds H3-structured prompts per scene, mirroring ScenePromptBuilder pattern."""
 
