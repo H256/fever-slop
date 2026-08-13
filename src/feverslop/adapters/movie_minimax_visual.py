@@ -99,7 +99,8 @@ class ComfyUIMiniMaxMovieVisualAdapter:
                 "prompt": _h3_movie_prompt(scene),
             }
             scenes.append(scene)
-        plan["shots"] = scenes
+        # RenderVideoUseCase consumes the canonical scene-list format.
+        plan = scenes
         output = self.output_dir / "render_plan_h3.json"
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

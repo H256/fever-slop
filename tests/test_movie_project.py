@@ -3816,7 +3816,8 @@ class MovieProjectTests(unittest.TestCase):
                 video_pipeline="minimax-h3-r2v",
             )
             prepared = json.loads(adapter._prepare_render_plan(source, project_dir).read_text(encoding="utf-8"))
-            scene = prepared["shots"][0]
+            self.assertIsInstance(prepared, list)
+            scene = prepared[0]
 
         self.assertEqual(["movie/references/actors/bard/msr_sheet.png"], scene["references"]["actor_msr_paths"])
         self.assertEqual("movie/references/locations/tavern/hero.png", scene["references"]["location_msr_path"])
