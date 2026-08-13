@@ -1,10 +1,15 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from feverslop.adapters.api_observability import APIMetrics, redact_secrets
+from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, redact_secrets
 
 
 class APIMetricsTests(unittest.TestCase):
+    def test_rate_limiter_rejects_negative_interval_and_is_disabled_by_default(self):
+        with self.assertRaises(ValueError):
+            RequestRateLimiter(-1)
+        RequestRateLimiter().wait()
+
     def test_redact_secrets_removes_query_and_header_style_credentials(self):
         value = "https://llm.example/v1?api_key=secret123&model=x Authorization: Bearer abc123"
         redacted = redact_secrets(value)
