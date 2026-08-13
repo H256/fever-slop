@@ -8,6 +8,9 @@ import os
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopAdaptationError
 
+FFMPEG_TIMEOUT_SECONDS = 120
+FFPROBE_TIMEOUT_SECONDS = 30
+
 
 class VideoPostProcessor:
     def __init__(
@@ -92,12 +95,17 @@ class VideoPostProcessor:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                timeout=FFPROBE_TIMEOUT_SECONDS,
             )
             probe = json.loads(result.stdout)
             duration = float(probe["format"]["duration"])
             stream_types = {stream.get("codec_type") for stream in probe.get("streams", [])}
             if "video" not in stream_types:
                 duration = None
+        except subprocess.TimeoutExpired as exc:
+            raise FeverSlopAdaptationError(
+                f"{operation} timed out while probing video: {video_file}"
+            ) from exc
         except (subprocess.CalledProcessError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             duration = None
         if duration is None or duration < expected_duration * 0.5:
@@ -185,7 +193,12 @@ class VideoPostProcessor:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                timeout=FFPROBE_TIMEOUT_SECONDS,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise FeverSlopAdaptationError(
+                f"Timed out while probing audio duration: {video_file}"
+            ) from exc
         except subprocess.CalledProcessError:
             return None
         value = result.stdout.strip()
@@ -327,7 +340,7 @@ class VideoPostProcessor:
 
     def _run_ffmpeg(self, cmd: list[str]) -> None:
         if self.debug:
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, timeout=FFMPEG_TIMEOUT_SECONDS)
             return
         try:
             subprocess.run(
@@ -336,7 +349,12 @@ class VideoPostProcessor:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 text=True,
+                timeout=FFMPEG_TIMEOUT_SECONDS,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise FeverSlopAdaptationError(
+                f"FFmpeg timed out after {FFMPEG_TIMEOUT_SECONDS}s: {' '.join(cmd)}"
+            ) from exc
         except subprocess.CalledProcessError as exc:
             details = str(exc.stderr or "").strip()
             raise FeverSlopAdaptationError(

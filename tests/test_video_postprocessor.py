@@ -110,6 +110,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
                 "stdout": subprocess.DEVNULL,
                 "stderr": subprocess.PIPE,
                 "text": True,
+                "timeout": 120,
             },
             run.call_args.kwargs,
         )
@@ -140,7 +141,14 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
                 output_file=Path("final_concat.mp4"),
             )
 
-        self.assertEqual({"check": True}, run.call_args.kwargs)
+        self.assertEqual({"check": True, "timeout": 120}, run.call_args.kwargs)
+
+    def test_ffmpeg_timeout_is_reported_as_adaptation_error(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        timeout = subprocess.TimeoutExpired(["ffmpeg"], 120)
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run", side_effect=timeout):
+            with self.assertRaisesRegex(Exception, "timed out"):
+                processor._run_ffmpeg(["ffmpeg", "-i", "broken.mp4"])
 
     def test_trim_clip_pads_short_output_to_requested_frames(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")

@@ -47,7 +47,31 @@ class InsightFaceTracker:
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise ValueError(f"Cannot open video: {video_path}")
+        try:
+            return self._track_video_with_capture(
+                cap,
+                video_path,
+                actor_embeddings,
+                crop_size,
+                anchor_interval,
+                crop_padding,
+                output_dir,
+                actor_id,
+            )
+        finally:
+            cap.release()
 
+    def _track_video_with_capture(
+        self,
+        cap: cv2.VideoCapture,
+        video_path: Path,
+        actor_embeddings: dict[str, np.ndarray],
+        crop_size: int = 768,
+        anchor_interval: int = 16,
+        crop_padding: float = 0.25,
+        output_dir: Path | None = None,
+        actor_id: str | None = None,
+    ) -> FaceCropResult:
         if output_dir is None:
             output_dir = Path(video_path).parent / "facefix"
 
@@ -152,8 +176,6 @@ class InsightFaceTracker:
                     anchor_paths.append(anchor_path)
 
             frame_idx += 1
-
-        cap.release()
 
         if not entries:
             logger.warning("No face tracks found for actor %s in %s", actor_id, video_path)
