@@ -6,6 +6,7 @@ import time
 from typing import Any, Callable
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.adapters.api_observability import redact_secrets
 from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
@@ -138,7 +139,7 @@ class GenerateRenderPlanUseCase:
             f"Output: [cyan]{config.output_dir}[/cyan]\n"
             f"FPS: [yellow]{video_settings.fps}[/yellow]\n"
             f"Resolution: [yellow]{video_settings.width}x{video_settings.height}[/yellow]\n"
-            f"LLM: [yellow]{app_config.llm.model}[/yellow] @ [cyan]{app_config.llm.base_url}[/cyan]",
+            f"LLM: [yellow]{app_config.llm.model}[/yellow] @ [cyan]{redact_secrets(app_config.llm.base_url)}[/cyan]",
             title="Startup",
         )
 
