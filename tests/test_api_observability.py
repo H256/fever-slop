@@ -40,6 +40,14 @@ class APIMetricsTests(unittest.TestCase):
         self.assertEqual(100, stats.usage_units)
         self.assertEqual(0.02, stats.estimated_cost)
 
+    def test_export_snapshot_has_stable_json_schema(self):
+        metrics = APIMetrics()
+        metrics.record("llm", "chat", 1, success=True)
+        snapshot = metrics.export_snapshot()
+        self.assertEqual(1, snapshot["version"])
+        self.assertEqual("llm", snapshot["entries"][0]["service"])
+        self.assertIn('"entries"', metrics.export_json())
+
     @patch("requests.Session")
     def test_comfyui_client_records_http_call_and_structured_log(self, session_class):
         from feverslop.adapters.comfyui_client import ComfyUIClient
