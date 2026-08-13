@@ -6,6 +6,7 @@ Tests are automatically skipped when the ComfyUI endpoint is unreachable.
 from __future__ import annotations
 
 import subprocess
+import shutil
 import unittest
 import urllib.request
 from pathlib import Path
@@ -78,6 +79,7 @@ class MiniMaxH3IntegrationSmoke(unittest.TestCase):
         )
 
         tmp = Path(__import__("tempfile").mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
 
         options = RenderVideoCompositionOptions(
             app_config_path="./app_config.json",
