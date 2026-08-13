@@ -29,7 +29,7 @@ from feverslop.domain.face_detection import (
 )
 from feverslop.domain.facefix_rendering import FaceFixConfig
 from feverslop.path_utils import coerce_local_path
-from feverslop.ports.reporting import ConsoleReporter
+from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.utils.io import file_is_valid
 
 logger = logging.getLogger(__name__)

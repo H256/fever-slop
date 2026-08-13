@@ -47,7 +47,8 @@ from feverslop.ports.movie import (
     ReferenceGenerationPort,
     VisualGenerationPort,
 )
-from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
+from feverslop.ports.reporting import Reporter
+from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 
 
 class ScaffoldMovieUseCase:

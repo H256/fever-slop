@@ -80,7 +80,7 @@ class TestFaceFixPipelineStep(unittest.TestCase):
 
     def test_default_reporter_is_null(self):
         step = FaceFixPipelineStep(backend=self.mock_backend)
-        from feverslop.ports.reporting import NullReporter
+        from feverslop.adapters.reporting import NullReporter
         self.assertIsInstance(step.reporter, NullReporter)
 
 

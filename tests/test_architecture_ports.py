@@ -13,7 +13,6 @@ from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
 from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoRenderBackend
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
-from feverslop.ports.audio import AudioAnalyzerPort
 from feverslop.ports.rendering import ImageRenderRequest, VideoRenderRequest
 from feverslop.ports.workflow import WorkflowBackendPort
 from feverslop.config.project_config import ProjectConfig, ProjectPaths
@@ -41,11 +40,6 @@ class FakeVideoBackend:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake mp4")
         return output
-
-
-class FakeAudioAnalyzer:
-    def analyze(self, audio_file: Path) -> dict:
-        return {"audio_file": str(audio_file)}
 
 
 class FakeWorkflowBackend:
@@ -173,12 +167,10 @@ class ArchitecturePortsTests(unittest.TestCase):
                 result.as_manifest_entry(),
             )
 
-    def test_audio_and_workflow_ports_are_structural(self):
-        audio: AudioAnalyzerPort = FakeAudioAnalyzer()
+    def test_workflow_port_is_structural(self):
         workflow: WorkflowBackendPort = FakeWorkflowBackend()
         path = Path("workflow.json")
 
-        self.assertEqual({"audio_file": "song.mp3"}, audio.analyze(Path("song.mp3")))
         workflow.validate_workflow(path, ["#PROMPT"])
         self.assertEqual((path, ["#PROMPT"]), workflow.validated)
 

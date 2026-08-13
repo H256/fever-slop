@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.ports.reporting import NullReporter, Reporter
+from feverslop.ports.reporting import Reporter
+from feverslop.adapters.reporting import NullReporter
 from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 
 

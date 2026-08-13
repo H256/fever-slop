@@ -1,9 +1,10 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Protocol
 
-from feverslop.ports.llm import LLMPort
+if TYPE_CHECKING:
+    from feverslop.ports.llm import LLMPort
 
 
 class StemSeparatorPort(Protocol):
@@ -17,7 +18,15 @@ class VocalTimelineAnalyzerPort(Protocol):
 
 
 class BeatImpactAnalyzerPort(Protocol):
-    def analyze_to_json_file(self, **kwargs: Any) -> Path | None:
+    def analyze_to_json_file(
+        self,
+        final_mix_path: str | Path,
+        output_json_path: str | Path,
+        drums_path: str | Path | None = None,
+        bass_path: str | Path | None = None,
+        vocals_path: str | Path | None = None,
+        other_path: str | Path | None = None,
+    ) -> Path | None:
         """Analyze beat/impact data and write JSON output."""
 
 
@@ -26,12 +35,17 @@ class LyricAlignerPort(Protocol):
         """Correct vocal segment text using complete reference lyrics."""
 
 
-StemSeparatorFactory = Callable[[Any], StemSeparatorPort]
-VocalTimelineAnalyzerFactory = Callable[[Any], VocalTimelineAnalyzerPort]
+StemSeparatorFactory = Callable[[dict[str, Any]], StemSeparatorPort]
+VocalTimelineAnalyzerFactory = Callable[[dict[str, Any]], VocalTimelineAnalyzerPort]
 BeatImpactAnalyzerFactory = Callable[[], BeatImpactAnalyzerPort]
-LyricAlignerFactory = Callable[[Any], LyricAlignerPort]
-LLMFactory = Callable[[Any], LLMPort]
-PromptPipelineFactory = Callable[[LLMPort], Any]
+LyricAlignerFactory = Callable[[dict[str, Any]], LyricAlignerPort]
+LLMFactory = Callable[[dict[str, Any]], "LLMPort"]
+# Returns a prompt pipeline object (e.g. MusicVideoPromptPipeline)
+PromptPipelineFactory = Callable[["LLMPort"], Any]
+# Returns a concept batcher object (e.g. ConceptPromptBatcher)
+# Takes llm, batch_size, and optional keyword args
 ConceptBatcherFactory = Callable[..., Any]
-ScenePromptBuilderFactory = Callable[[LLMPort], Any]
-H3PromptBuilderFactory = Callable[[LLMPort], Any]
+# Returns a scene prompt builder (e.g. ScenePromptBuilder)
+ScenePromptBuilderFactory = Callable[["LLMPort"], Any]
+# Returns an H3 prompt builder (e.g. H3PromptBuilder or DspyH3PromptBuilder)
+H3PromptBuilderFactory = Callable[["LLMPort"], Any]

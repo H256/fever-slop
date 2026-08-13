@@ -63,7 +63,7 @@ from feverslop.composition.render_storyboard import build_render_storyboard_use_
 from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
 from feverslop.config.app_config import AppConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
-from feverslop.ports.reporting import ConsoleReporter
+from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 from feverslop.utils.io import file_is_valid
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator

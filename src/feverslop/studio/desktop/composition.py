@@ -6,7 +6,7 @@ from pathlib import Path
 from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
 from feverslop.application.scene_workspace import LoadSceneWorkspaceUseCase, PatchSceneUseCase
 from feverslop.infra.sqlite_adapter import SqliteArtifactProvenance, SqliteRevisionStore
-from feverslop.ports.reporting import NullReporter
+from feverslop.adapters.reporting import NullReporter
 from feverslop.studio.job_service import StudioJobService
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.projects import ProjectStore
