@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.config.project_config import ProjectConfig
+from feverslop.utils.io import read_json_document, write_json_document
 
 
 def build_startframe_director_prompts(
@@ -19,8 +20,8 @@ def build_startframe_director_prompts(
         project_config = ProjectConfig.load(project_dir / "config.json")
         reference_image_size = project_config.reference_images.resolve(project_config.video)
     movie_dir = project_dir / "movie"
-    plan = json.loads((movie_dir / "startframe_plan.json").read_text(encoding="utf-8"))
-    identity = json.loads((movie_dir / "identity_ledger.json").read_text(encoding="utf-8"))
+    plan = read_json_document(movie_dir / "startframe_plan.json")
+    identity = read_json_document(movie_dir / "identity_ledger.json")
     backend = _director_backend(director_backend)
     shots = []
     for shot in plan.get("shots", []):
@@ -45,7 +46,7 @@ def build_startframe_director_prompts(
             }
         )
     output_path = movie_dir / "startframe_director_prompts.json"
-    output_path.write_text(json.dumps({"version": 1, "shots": shots}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_document(output_path, {"version": 1, "shots": shots})
     return output_path
 
 

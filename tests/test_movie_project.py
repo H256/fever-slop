@@ -2,6 +2,7 @@ import json
 import time
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from PIL import Image
@@ -4320,16 +4321,17 @@ class MovieProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             client = NativeStudioHarness(temp_dir)
 
-            response = client.post(
-                "/api/projects",
-                json={
-                    "project_type": "movie",
-                    "name": "Bad Script",
-                    "source_type": "screenplay",
-                    "story_text": "no scene heading here",
-                    "desired_length": 30,
-                },
-            )
+            with patch.dict("os.environ", {"LLM_API_KEY": "test-key"}):
+                response = client.post(
+                    "/api/projects",
+                    json={
+                        "project_type": "movie",
+                        "name": "Bad Script",
+                        "source_type": "screenplay",
+                        "story_text": "no scene heading here",
+                        "desired_length": 30,
+                    },
+                )
 
             self.assertEqual(400, response.status_code)
             self.assertIn("screenplay", response.text.lower())

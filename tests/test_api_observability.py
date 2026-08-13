@@ -1,10 +1,27 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from feverslop.adapters.api_observability import APIMetrics
+from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, redact_secrets, require_json_object
 
 
 class APIMetricsTests(unittest.TestCase):
+    def test_require_json_object_rejects_scalar_external_payloads(self):
+        with self.assertRaises(ValueError):
+            require_json_object([], context="test")
+
+    def test_rate_limiter_rejects_negative_interval_and_is_disabled_by_default(self):
+        with self.assertRaises(ValueError):
+            RequestRateLimiter(-1)
+        RequestRateLimiter().wait()
+
+    def test_redact_secrets_removes_query_and_header_style_credentials(self):
+        value = "https://llm.example/v1?api_key=secret123&model=x Authorization: Bearer abc123"
+        redacted = redact_secrets(value)
+        self.assertNotIn("secret123", redacted)
+        self.assertNotIn("abc123", redacted)
+        self.assertIn("api_key=[REDACTED]", redacted)
+        self.assertIn("[REDACTED]", redacted)
+
     def test_records_success_and_failure_by_service_and_operation(self):
         metrics = APIMetrics()
         metrics.record("comfyui", "queue_prompt", 12.5, success=True)
@@ -15,6 +32,21 @@ class APIMetricsTests(unittest.TestCase):
         self.assertEqual(1, stats.successes)
         self.assertEqual(1, stats.failures)
         self.assertEqual(20.0, stats.total_duration_ms)
+
+    def test_records_usage_and_cost(self):
+        metrics = APIMetrics()
+        metrics.record("llm", "chat", 1, success=True, usage_units=100, estimated_cost=0.02)
+        stats = metrics.snapshot()[("llm", "chat")]
+        self.assertEqual(100, stats.usage_units)
+        self.assertEqual(0.02, stats.estimated_cost)
+
+    def test_export_snapshot_has_stable_json_schema(self):
+        metrics = APIMetrics()
+        metrics.record("llm", "chat", 1, success=True)
+        snapshot = metrics.export_snapshot()
+        self.assertEqual(1, snapshot["version"])
+        self.assertEqual("llm", snapshot["entries"][0]["service"])
+        self.assertIn('"entries"', metrics.export_json())
 
     @patch("requests.Session")
     def test_comfyui_client_records_http_call_and_structured_log(self, session_class):
