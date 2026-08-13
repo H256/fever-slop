@@ -70,6 +70,36 @@ class FeverSlopErrorHierarchyTests(unittest.TestCase):
     def test_config_error_is_not_render_error(self):
         self.assertFalse(issubclass(FeverSlopConfigError, FeverSlopRenderError))
 
+    def test_root_imports_are_same_objects_as_submodule(self):
+        """Root-level imports resolve to same class objects as submodule."""
+        import feverslop
+        from feverslop.errors import (
+            FeverSlopError as SubModuleError,
+            FeverSlopAdaptationError as SubModuleAdaptationError,
+            FeverSlopConfigError as SubModuleConfigError,
+            FeverSlopDataError as SubModuleDataError,
+            FeverSlopLMLError as SubModuleLMLError,
+            FeverSlopRenderError as SubModuleRenderError,
+            FeverSlopValidationError as SubModuleValidationError,
+            FeverSlopWorkflowError as SubModuleWorkflowError,
+        )
+        self.assertIs(feverslop.FeverSlopError, SubModuleError)
+        self.assertIs(feverslop.FeverSlopAdaptationError, SubModuleAdaptationError)
+        self.assertIs(feverslop.FeverSlopConfigError, SubModuleConfigError)
+        self.assertIs(feverslop.FeverSlopDataError, SubModuleDataError)
+        self.assertIs(feverslop.FeverSlopLMLError, SubModuleLMLError)
+        self.assertIs(feverslop.FeverSlopRenderError, SubModuleRenderError)
+        self.assertIs(feverslop.FeverSlopValidationError, SubModuleValidationError)
+        self.assertIs(feverslop.FeverSlopWorkflowError, SubModuleWorkflowError)
+
+    def test_root_imports_preserve_hierarchy(self):
+        """Root-level imports maintain correct inheritance chain."""
+        import feverslop
+        self.assertTrue(issubclass(feverslop.FeverSlopLMLError, feverslop.FeverSlopError))
+        self.assertTrue(issubclass(feverslop.FeverSlopRenderError, feverslop.FeverSlopError))
+        self.assertTrue(issubclass(feverslop.FeverSlopWorkflowError, feverslop.FeverSlopRenderError))
+        self.assertTrue(issubclass(feverslop.FeverSlopWorkflowError, feverslop.FeverSlopError))
+
 
 if __name__ == "__main__":
     unittest.main()
