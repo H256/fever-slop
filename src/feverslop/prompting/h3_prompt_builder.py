@@ -103,6 +103,19 @@ class H3PromptBuilder:
         Returns dict with H3 fields plus a merged `prompt` string key.
         """
         silent_mode = bool(global_context.get("silent_mode", False))
+        segment = dict(segment)
+        if silent_mode:
+            segment_references = dict(segment.get("references") or {})
+            vocal_path = str(
+                ((segment.get("stem_audio") or {}).get("paths") or {}).get("vocals") or ""
+            )
+            if vocal_path:
+                segment_references["reference_audio_paths"] = [
+                    path
+                    for path in segment_references.get("reference_audio_paths", [])
+                    if str(path) != vocal_path
+                ]
+            segment["references"] = segment_references
         has_audio_refs = bool(segment.get("references", {}).get("reference_audio_paths"))
 
         # Build references dict from segment for ref mode

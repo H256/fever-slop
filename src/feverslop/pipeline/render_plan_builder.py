@@ -187,6 +187,23 @@ def _effective_relay_state(state: object, scene: dict) -> str:
     return str(state or "").strip().lower()
 
 
+def _filter_silent_audio_references(references: dict, scene: dict) -> dict:
+    """Remove vocal audio references when Silent Mode is active."""
+    if not _scene_silent_mode(scene):
+        return references
+    filtered = dict(references)
+    vocal_path = str(((scene.get("stem_audio") or {}).get("paths") or {}).get("vocals") or "")
+    filtered["reference_audio_paths"] = [
+        path for path in filtered.get("reference_audio_paths", [])
+        if not vocal_path or str(path) != vocal_path
+    ]
+    tags = dict(filtered.get("_stem_audio_tags") or {})
+    if vocal_path:
+        tags.pop(vocal_path, None)
+    filtered["_stem_audio_tags"] = tags
+    return filtered
+
+
 def _scene_references(scene: dict) -> dict:
     references = dict(scene.get("references") or {})
     actor_ids = list(references.get("actor_ids") or [])
@@ -455,7 +472,7 @@ def build_render_plan(
                 "character_motion": scene.get("character_motion", ""),
             },
         }
-        references = _scene_references(scene)
+        references = _filter_silent_audio_references(_scene_references(scene), scene)
         if references and project_dir is not None:
             _portable_audio_references(references, project_dir)
         if references:
@@ -474,6 +491,8 @@ def build_render_plan(
                     priority_first.append(s)
             resolved_stem_paths: dict[str, str] = {}
             for stem_name in priority_first:
+                if _scene_silent_mode(scene) and stem_name == "vocals":
+                    continue
                 if stem_name == "full_mix" and input_audio is not None:
                     stem_path = input_audio
                 elif stem_name in stem_files:
