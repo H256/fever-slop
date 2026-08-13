@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from feverslop.studio.job_service import StudioJobRequest, StudioJobService
 from feverslop.studio.jobs import JobRegistry
-from feverslop.studio.desktop.requests import project_create_request
+from feverslop.studio.project_requests import project_create_request
 from feverslop.studio.projects import ProjectStore
 
 
