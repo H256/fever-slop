@@ -23,7 +23,6 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -35,9 +34,6 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.12"
-Historical internal tracker reference removed for the public history.
-Historical internal tracker reference removed for the public history.
-Historical internal tracker reference removed for the public history.
 dependencies = [
     "audioread>=3.1.0",
     "demucs>=4.0.1",
@@ -86,3 +82,8 @@ explicit = true
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
 torchaudio = { index = "pytorch-cu130" }
+
+[project.urls]
+Historical internal tracker reference removed for the public history.
+Historical internal tracker reference removed for the public history.
+Historical internal tracker reference removed for the public history.

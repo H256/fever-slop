@@ -465,5 +465,25 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
         self.assertEqual(result[1]["prompt"], "beta")
 
 
+    def test_rejects_invalid_render_plan_json_with_context(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan = temp / "render_plan.json"
+            output = temp / "out.json"
+            plan.write_text("not json", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Render plan contains invalid JSON"):
+                enrich_render_plan_with_msr_prompts(plan, output)
+
+    def test_rejects_missing_render_plan_with_context(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan = temp / "missing_render_plan.json"
+            output = temp / "out.json"
+            with self.assertRaises(FileNotFoundError):
+                enrich_render_plan_with_msr_prompts(plan, output)
+
+
 if __name__ == "__main__":
     unittest.main()
