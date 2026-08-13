@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +23,26 @@ from feverslop.ports.reference_library import (
     ReferenceLibraryPort,
     SceneCastPort,
 )
+
+
+@contextmanager
+def _assignment_file_lock(lock_path: Path):
+    """Serialize revision check and replace across threads/processes."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 class ProjectReferenceLibrary(
@@ -80,36 +103,40 @@ class ProjectReferenceLibrary(
         root = self._project_root
         assignments_path = root / "movie" / "reference_assignments.json"
 
-        current_revision = "r1"
-        if assignments_path.exists():
-            data = json.loads(assignments_path.read_text(encoding="utf-8"))
-            current_revision = str(data.get("revision", "r1"))
+        with _assignment_file_lock(assignments_path.with_suffix(".lock")):
+            current_revision = "r1"
+            if assignments_path.exists():
+                data = json.loads(assignments_path.read_text(encoding="utf-8"))
+                current_revision = str(data.get("revision", "r1"))
 
-        if current_revision != expected_revision:
-            raise ValueError(
-                f"Revision mismatch: expected {expected_revision!r}, got {current_revision!r}"
-            )
+            if current_revision != expected_revision:
+                raise ValueError(
+                    f"Revision mismatch: expected {expected_revision!r}, got {current_revision!r}"
+                )
 
-        new_revision = _next_revision(current_revision)
-        payload = {
-            "revision": new_revision,
-            "assignments": [
-                {
-                    "scene_number": a.scene_number,
-                    "actor_ids": list(a.actor_ids),
-                    "location_ids": list(a.location_ids),
-                    "background_ids": list(a.background_ids),
-                    "style_ids": list(a.style_ids),
-                    "actor_look_ids": dict(a.actor_look_ids or {}),
-                }
-                for a in assignments
-            ],
-        }
-        assignments_path.parent.mkdir(parents=True, exist_ok=True)
-        assignments_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+            new_revision = _next_revision(current_revision)
+            payload = {
+                "revision": new_revision,
+                "assignments": [
+                    {
+                        "scene_number": a.scene_number,
+                        "actor_ids": list(a.actor_ids),
+                        "location_ids": list(a.location_ids),
+                        "background_ids": list(a.background_ids),
+                        "style_ids": list(a.style_ids),
+                        "actor_look_ids": dict(a.actor_look_ids or {}),
+                    }
+                    for a in assignments
+                ],
+            }
+            assignments_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=assignments_path.parent, delete=False,
+            ) as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                temporary_path = Path(handle.name)
+            os.replace(temporary_path, assignments_path)
         return new_revision
 
     def add_asset(self, project_id: str, asset: ReferenceAsset) -> ReferenceAsset:
