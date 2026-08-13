@@ -822,6 +822,27 @@ class RunnerScriptTests(unittest.TestCase):
 
         self.assertEqual([1, 3, 5], args.scenes)
 
+    def test_movie_pipeline_can_regenerate_openshot_project_as_standalone_stage(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_movie_project(Path(temp_dir), ready=True)
+            (project / "config.json").write_text(
+                json.dumps({"project_name": "Test Movie", "input_audio": "", "video": {"fps": 24, "width": 1280, "height": 704}}),
+                encoding="utf-8",
+            )
+            clip = project / "output" / "movie" / "minimax-h3-r2v" / "final" / "scene_0001.mp4"
+            clip.parent.mkdir(parents=True)
+            clip.touch()
+
+            result = movie_pipeline.run(movie_pipeline.build_arg_parser().parse_args([
+                str(project), "--stage", "openshot_export", "--movie-video-workflow", "minimax-h3-r2v",
+            ]))
+
+            output = project / "output" / "movie" / "openshot" / "test-movie.osp"
+            self.assertEqual(project / "movie" / "render_plan.json", result.render_plan_path)
+            self.assertTrue(output.is_file())
+            exported = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual("../minimax-h3-r2v/final/scene_0001.mp4", exported["files"][0]["path"])
+
     def test_movie_pipeline_debug_workflows_relative_dir_uses_cwd(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             root = Path(temp_dir)

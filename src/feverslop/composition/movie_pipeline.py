@@ -12,6 +12,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+from feverslop.application.openshot_exporter import export_render_plan_to_openshot
 from feverslop.cli.movie_cli import build_movie_arg_parser, config_from_args
 from feverslop.path_utils import coerce_local_path
 from feverslop.config.app_config import AppConfig
@@ -143,7 +144,8 @@ class MoviePipelineResult:
 
 def run(args: argparse.Namespace) -> MoviePipelineResult:
     config = config_from_args(args)
-    with MovieStageProgressReporter(stage_titles=_movie_stage_titles(config), console=console) as progress:
+    stage_titles = {"Movie OpenShot export"} if getattr(args, "stage", None) == "openshot_export" else _movie_stage_titles(config)
+    with MovieStageProgressReporter(stage_titles=stage_titles, console=console) as progress:
         global _stage_progress
         previous_progress = _stage_progress
         _stage_progress = progress
@@ -179,6 +181,9 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     continuity_plan_path = project_dir / "movie" / "continuity_plan.json"
     render_plan_msr_path = project_dir / "movie" / "render_plan_msr.json"
     render_plan_ingredients_path = project_dir / "movie" / "render_plan_ingredients.json"
+
+    if getattr(args, "stage", None) == "openshot_export":
+        return _run_movie_openshot_export_stage(args, project_dir)
 
     def ingredients_llm():
         try:
@@ -323,6 +328,101 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         render_plan_path, continuity_plan_path, render_plan_msr_path,
         reference_manifest_path,
         ingredients_llm, report_msr_analysis, report_ingredients_analysis, manifest_path)
+
+
+def _run_movie_openshot_export_stage(args: argparse.Namespace, project_dir: Path) -> MoviePipelineResult:
+    """Regenerate an OpenShot project from existing movie plans and rendered clips."""
+    config_path = project_dir / "config.json"
+    raw_config = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    plan_path = _find_existing_movie_export_plan(project_dir)
+    entries = _movie_plan_entries(plan_path)
+    clips = _find_existing_movie_render_clips(
+        project_dir,
+        entries,
+        preferred_workflow=getattr(args, "movie_video_workflow", None),
+    )
+    video = raw_config.get("video") or {}
+    audio_value = str(raw_config.get("input_audio") or "").strip()
+    audio_path = None
+    if audio_value:
+        audio_path = coerce_local_path(audio_value, base_dir=project_dir).resolve()
+    output_path = project_dir / "output" / "movie" / "openshot" / f"{project_dir.name}.osp"
+
+    console.print(f"Movie OpenShot export: writing {len(clips)} rendered clips")
+
+    def report(completed: int, total: int, label: str) -> None:
+        console.print(f"[dim]Movie OpenShot export: {completed}/{total} ({label})[/dim]")
+
+    export_render_plan_to_openshot(
+        render_plan_path=plan_path,
+        clip_paths=clips,
+        audio_path=audio_path,
+        output_path=output_path,
+        width=int(video.get("width", 1280)),
+        height=int(video.get("height", 704)),
+        fps=int(video.get("fps", 24)),
+        on_progress=report,
+    )
+    _log_stage("Movie OpenShot export", str(output_path))
+    return MoviePipelineResult(
+        project_dir=project_dir,
+        render_plan_path=plan_path,
+    )
+
+
+def _find_existing_movie_export_plan(project_dir: Path) -> Path:
+    candidates = (
+        project_dir / "movie" / "render_plan.json",
+        project_dir / "movie" / "render_plan_msr.json",
+        project_dir / "movie" / "render_plan_ingredients.json",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError("No existing movie render plan found under movie/")
+
+
+def _movie_plan_entries(plan_path: Path) -> list[dict[str, Any]]:
+    payload = json.loads(plan_path.read_text(encoding="utf-8-sig"))
+    entries = payload if isinstance(payload, list) else payload.get("shots") or payload.get("scenes") or []
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(f"Movie render plan contains no shots: {plan_path}")
+    normalized = []
+    for index, entry in enumerate(entries, start=1):
+        item = dict(entry)
+        item["scene"] = int(item.get("scene") or item.get("scene_number") or index)
+        normalized.append(item)
+    return normalized
+
+
+def _find_existing_movie_render_clips(
+    project_dir: Path,
+    entries: list[dict[str, Any]],
+    *,
+    preferred_workflow: str | None,
+) -> list[Path]:
+    movie_output = project_dir / "output" / "movie"
+    workflow_dirs = []
+    if preferred_workflow:
+        workflow_dirs.append(movie_output / preferred_workflow)
+    if movie_output.is_dir():
+        workflow_dirs.extend(path for path in sorted(movie_output.iterdir()) if path.is_dir())
+    workflow_dirs.append(movie_output)
+    clips: list[Path] = []
+    for entry in entries:
+        scene_number = int(entry.get("scene") or entry.get("scene_number"))
+        candidates = []
+        for directory in workflow_dirs:
+            candidates.extend((
+                directory / "final" / f"scene_{scene_number:04}.mp4",
+                directory / f"scene_{scene_number:04}.mp4",
+                directory / f"scene_{scene_number:04}" / "final.mp4",
+            ))
+        clip = next((candidate for candidate in candidates if candidate.is_file()), None)
+        if clip is None:
+            raise FileNotFoundError(f"No rendered movie clip found for scene {scene_number}")
+        clips.append(clip)
+    return clips
 
 
 # ====================================================================

@@ -24,6 +24,8 @@ def export_render_plan_to_openshot(
 ) -> Path:
     """Write an OpenShot .osp project whose clips follow the render plan timeline."""
     plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    if isinstance(plan, dict):
+        plan = plan.get("shots") or plan.get("scenes") or []
     if not isinstance(plan, list):
         raise ValueError(f"Render plan must be a JSON list: {render_plan_path}")
     if len(plan) != len(clip_paths):
@@ -42,7 +44,7 @@ def export_render_plan_to_openshot(
     for index, (entry, clip_path) in enumerate(zip(plan, clip_paths, strict=True), start=1):
         if not isinstance(entry, dict):
             raise ValueError(f"Render plan entry {index} must be an object")
-        scene_number = int(entry["scene"])
+        scene_number = int(entry.get("scene") or entry.get("scene_number") or index)
         duration = float(entry.get("duration_seconds", 0.0))
         if duration <= 0:
             raise ValueError(f"Render plan scene {scene_number} has no positive duration")
