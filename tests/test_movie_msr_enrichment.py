@@ -5,7 +5,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from feverslop.application.movie_msr_enrichment import _read_json
+from feverslop.application.movie_msr_enrichment import (
+    _read_json,
+    _read_json as _read_json_msr,
+)
+from feverslop.application.movie_ingredients_sheets import (
+    _read_json as _read_json_ingredients,
+)
+from feverslop.application.movie_artifacts import (
+    _read_json as _read_json_artifacts,
+)
 from feverslop.errors import FeverSlopDataError
 
 
@@ -71,5 +80,66 @@ class TestReadJsonErrorHandling(unittest.TestCase):
             with self.assertRaises(FeverSlopDataError) as ctx:
                 _read_json(path)
             self.assertIsInstance(ctx.exception.__cause__, json.JSONDecodeError)
+        finally:
+            path.unlink()
+
+
+class TestTOCTOUReplacement(unittest.TestCase):
+    """APP-2003: All _read_json helpers raise FileNotFoundError so EAFP callers get empty dict."""
+
+    def _eafp_read_default(read_json, path, default):
+        """Helper that mirrors the EAFP pattern used in all three modules."""
+        try:
+            return read_json(path)
+        except (FileNotFoundError, IsADirectoryError):
+            return default
+
+    def test_msr_read_json_eafp_missing_returns_empty(self):
+        result = TestTOCTOUReplacement._eafp_read_default(
+            _read_json_msr, Path("/nonexistent"), {}
+        )
+        self.assertEqual(result, {})
+
+    def test_ingredients_read_json_eafp_missing_returns_empty(self):
+        result = TestTOCTOUReplacement._eafp_read_default(
+            _read_json_ingredients, Path("/nonexistent"), {}
+        )
+        self.assertEqual(result, {})
+
+    def test_artifacts_read_json_eafp_missing_returns_empty(self):
+        result = TestTOCTOUReplacement._eafp_read_default(
+            _read_json_artifacts, Path("/nonexistent"), {}
+        )
+        self.assertEqual(result, {})
+
+    def test_artifacts_read_json_eafp_missing_returns_custom_default(self):
+        default = {"actors": [], "locations": []}
+        result = TestTOCTOUReplacement._eafp_read_default(
+            _read_json_artifacts, Path("/nonexistent"), default
+        )
+        self.assertEqual(result, default)
+
+    def test_msr_read_json_eafp_existing_returns_data(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({"foo": "bar"}, f)
+            f.flush()
+            path = Path(f.name)
+        try:
+            result = TestTOCTOUReplacement._eafp_read_default(
+                _read_json_msr, path, {}
+            )
+            self.assertEqual(result, {"foo": "bar"})
+        finally:
+            path.unlink()
+
+    def test_read_json_eafp_corrupted_json_propagates(self):
+        """Non-FileNotFoundError exceptions must still propagate."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("not json")
+            f.flush()
+            path = Path(f.name)
+        try:
+            with self.assertRaises(FeverSlopDataError):
+                TestTOCTOUReplacement._eafp_read_default(_read_json_msr, path, {})
         finally:
             path.unlink()

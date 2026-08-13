@@ -66,9 +66,18 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     bible_path = movie_dir / "bible.json"
     render_plan = _read_json(render_plan_path)
     manifest = _read_json(reference_manifest_path)
-    bible = _read_json(bible_path) if bible_path.exists() else {}
-    continuity_plan = _read_json(continuity_plan_path) if continuity_plan_path.exists() else {}
-    shot_cards = _read_json(shot_cards_path) if shot_cards_path.exists() else {}
+    try:
+        bible = _read_json(bible_path)
+    except (FileNotFoundError, IsADirectoryError):
+        bible = {}
+    try:
+        continuity_plan = _read_json(continuity_plan_path)
+    except (FileNotFoundError, IsADirectoryError):
+        continuity_plan = {}
+    try:
+        shot_cards = _read_json(shot_cards_path)
+    except (FileNotFoundError, IsADirectoryError):
+        shot_cards = {}
 
     base_w, base_h = _read_json(render_plan_path).get("resolution", {}).get("width", 1280), \
         _read_json(render_plan_path).get("resolution", {}).get("height", 704)

@@ -77,7 +77,10 @@ def ensure_movie_bible(project_dir: Path) -> Path:
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
     render_plan = _read_json(render_plan_path)
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
-    manifest = _read_json(manifest_path) if manifest_path.exists() else {"actors": [], "locations": []}
+    try:
+        manifest = _read_json(manifest_path)
+    except (FileNotFoundError, IsADirectoryError):
+        manifest = {"actors": [], "locations": []}
     bible = _legacy_bible_from_render_plan(render_plan, manifest, project_dir=project_dir)
     bible_path.write_text(json.dumps(bible, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return bible_path
@@ -90,7 +93,11 @@ def regenerate_movie_bible(project_dir: Path, *, planner) -> Path:
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
     render_plan = _read_json(render_plan_path)
     source_type, story_text, desired_length = _movie_source_metadata(project_dir, render_plan)
-    config = _read_json(project_dir / "config.json") if (project_dir / "config.json").exists() else {}
+    config_path = project_dir / "config.json"
+    try:
+        config = _read_json(config_path)
+    except (FileNotFoundError, IsADirectoryError):
+        config = {}
     title = str(render_plan.get("title") or project_dir.name)
     request = MovieInput(
         name=title,
@@ -131,6 +138,11 @@ def ensure_movie_screenplay(project_dir: Path, *, force: bool = False) -> Path:
     bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
     render_plan = _read_json(project_dir / "movie" / "render_plan.json")
     source_type, story_text, desired_length = _movie_source_metadata(project_dir, render_plan)
+    config_path = project_dir / "config.json"
+    try:
+        config = _read_json(config_path)
+    except (FileNotFoundError, IsADirectoryError):
+        config = {}
     request = MovieInput(
         name=str(render_plan.get("title") or project_dir.name),
         source_type=source_type,
@@ -138,7 +150,7 @@ def ensure_movie_screenplay(project_dir: Path, *, force: bool = False) -> Path:
         desired_length=desired_length,
         width=int((render_plan.get("resolution") or {}).get("width") or 1280),
         height=int((render_plan.get("resolution") or {}).get("height") or 704),
-        config=_read_json(project_dir / "config.json") if (project_dir / "config.json").exists() else {},
+        config=config,
     )
     story_design = movie_story_design_from_dict(_read_json(ensure_movie_story_design(project_dir)), fallback_title=request.name, bible=bible)
     screenplay = build_movie_screenplay_fallback(request=request, bible=bible, story_arch=bible.story_arch, story_design=story_design, config=request.config)
@@ -155,6 +167,11 @@ def ensure_movie_story_design(project_dir: Path, *, force: bool = False) -> Path
     bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
     render_plan = _read_json(project_dir / "movie" / "render_plan.json")
     source_type, story_text, desired_length = _movie_source_metadata(project_dir, render_plan)
+    config_path = project_dir / "config.json"
+    try:
+        config = _read_json(config_path)
+    except (FileNotFoundError, IsADirectoryError):
+        config = {}
     request = MovieInput(
         name=str(render_plan.get("title") or project_dir.name),
         source_type=source_type,
@@ -162,7 +179,7 @@ def ensure_movie_story_design(project_dir: Path, *, force: bool = False) -> Path
         desired_length=desired_length,
         width=int((render_plan.get("resolution") or {}).get("width") or 1280),
         height=int((render_plan.get("resolution") or {}).get("height") or 704),
-        config=_read_json(project_dir / "config.json") if (project_dir / "config.json").exists() else {},
+        config=config,
     )
     design = build_movie_story_design_fallback(request=request, bible=bible, story_arch=bible.story_arch, config=request.config)
     path.write_text(json.dumps(movie_story_design_to_dict(design), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -248,7 +265,10 @@ def write_movie_reference_manifest_from_bible(project_dir: Path) -> Path:
     bible_path = ensure_movie_bible(project_dir)
     manifest_path = project_dir / "movie" / "references" / "manifest.json"
     bible = _read_json(bible_path)
-    existing = _read_json(manifest_path) if manifest_path.exists() else {}
+    try:
+        existing = _read_json(manifest_path)
+    except (FileNotFoundError, IsADirectoryError):
+        existing = {}
     existing_actors = {str(actor.get("id")): actor for actor in existing.get("actors") or [] if isinstance(actor, dict)}
     existing_locations = {str(location.get("id")): location for location in existing.get("locations") or [] if isinstance(location, dict)}
     manifest = dict(existing)
