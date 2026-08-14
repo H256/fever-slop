@@ -201,6 +201,9 @@ class ImportBoundaryTests(unittest.TestCase):
             "startframe_plan.py",
             "startframe_validation.py",
             "render_plan_pipeline.py",
+            # This application service intentionally materializes a filesystem
+            # backed OpenShot project and therefore owns pathlib/os access.
+            "openshot_exporter.py",
         }
         forbidden_roots = {"pathlib", "os", "subprocess", "PySide6"}
         offenders = []
