@@ -17,6 +17,7 @@ class PipelineComfyUICacheTests(unittest.TestCase):
             plan_for_next_step="plan.json",
             final_video_path=None,
             video_only_path=None,
+            openshot_project_path=None,
         )
         stages = [PipelineStage.INGREDIENTS_SHEETS, PipelineStage.LTX_RENDER_SCENES]
 

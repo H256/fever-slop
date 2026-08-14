@@ -48,6 +48,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark one configured LLM endpoint.")
     parser.add_argument("--base-url", default="http://localhost:8080/v1")
     parser.add_argument("--model", default="default")
+    parser.add_argument("--dspy-temperature", type=float, default=0.4)
     parser.add_argument("--api-key", default=os.environ.get("LLM_API_KEY"))
     parser.add_argument("--prompt-file", required=True, help="UTF-8 file with one prompt per line")
     parser.add_argument("--system-prompt", default="Return a concise answer.")
@@ -59,6 +60,7 @@ def main() -> int:
         base_url=args.base_url,
         api_key=args.api_key,
         model=args.model,
+        dspy_temperature=args.dspy_temperature,
         max_tokens=2048,
         max_concurrent_requests=1,
     )

@@ -532,6 +532,7 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-continuity",
                             "--skip-movie-plan",
                             "--skip-movie-references",
+                            "--skip-openshot-export",
                         ]
                     )
                 )
@@ -571,6 +572,7 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-continuity",
                             "--skip-movie-plan",
                             "--skip-movie-references",
+                            "--skip-openshot-export",
                         ]
                     )
                 )
@@ -624,6 +626,7 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-continuity",
                             "--skip-movie-plan",
                             "--skip-movie-references",
+                            "--skip-openshot-export",
                         ]
                     )
                 )
@@ -677,6 +680,7 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-continuity",
                             "--skip-movie-plan",
                             "--skip-movie-references",
+                            "--skip-openshot-export",
                         ]
                     )
                 )
@@ -722,6 +726,7 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-continuity",
                             "--skip-movie-plan",
                             "--skip-movie-references",
+                            "--skip-openshot-export",
                             "--write-debug-workflows",
                             "--debug-workflows-dir",
                             str(debug_dir),
@@ -790,6 +795,7 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-continuity",
                             "--skip-movie-plan",
                             "--skip-movie-references",
+                            "--skip-openshot-export",
                             "--write-debug-workflows",
                             "--debug-workflows-dir",
                             str(debug_dir),
