@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import httpx
 import logging
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ import random
 import time
 from dataclasses import dataclass
 
-from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
+from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopLMLError
 from feverslop.llm_concurrency import (
     LLMConcurrencySnapshot,
@@ -126,6 +127,7 @@ class LocalOpenAIClient:
         max_concurrent_requests: int = 1,
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
+        min_request_interval_seconds: float = 0.0,
     ):
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be greater than zero")
@@ -135,6 +137,8 @@ class LocalOpenAIClient:
         self.client = OpenAI(
             base_url=base_url,
             api_key=resolved_key,
+            http_client=httpx.Client(follow_redirects=False),
+            max_retries=0,
             default_headers=self.auth_headers or None,
         )
         self.model = model
@@ -146,6 +150,7 @@ class LocalOpenAIClient:
         self.request_timeout_seconds = float(request_timeout_seconds)
         self.dspy_cache = dspy_cache
         self.max_concurrent_requests = int(max_concurrent_requests)
+        self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics
         self.last_response_telemetry = LLMResponseTelemetry(model=self.model)
@@ -201,6 +206,7 @@ class LocalOpenAIClient:
             retry_attempts = 0
             for attempt in range(self.max_retries):
                 try:
+                    self.request_rate_limiter.wait()
                     response = self.client.chat.completions.create(
                         model=self.model,
                         messages=messages,
@@ -265,6 +271,7 @@ class LocalOpenAIClient:
 
     def model_supports_vision(self) -> bool:
         """Return the server's explicit vision capability for the selected model."""
+        self.request_rate_limiter.wait()
         model_info = self.client.models.retrieve(self.model)
         return model_supports_vision(model_info)
 
@@ -272,6 +279,7 @@ class LocalOpenAIClient:
         """Run a read-only, bounded probe against the configured model server."""
         started_at = time.perf_counter()
         try:
+            self.request_rate_limiter.wait()
             self.client.models.list(timeout=min(self.request_timeout_seconds, 10.0))
         except Exception:
             record_api_call(self.metrics, logger, "llm", "health_check", started_at, success=False)

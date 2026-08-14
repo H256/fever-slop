@@ -10,7 +10,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from threading import Event
 
-from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call, redact_secrets, require_json_object
+from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, default_api_metrics, record_api_call, redact_secrets, require_json_object
 from feverslop.errors import FeverSlopWorkflowError
 from feverslop.security.url_validation import validate_api_url
 
@@ -48,11 +48,13 @@ class ComfyUIClient:
         metrics: APIMetrics | None = None,
         api_key: str | None = None,
         auth_header: str = "Authorization",
+        min_request_interval_seconds: float = 0.0,
     ):
         self.base_url = validate_api_url(base_url).rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
         self.metrics = metrics or default_api_metrics
+        self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         token = api_key or os.environ.get("COMFYUI_API_KEY")
         self.auth_headers = ({auth_header: f"Bearer {token}"} if token else {})
         self._session: requests.Session | None = None
@@ -69,8 +71,10 @@ class ComfyUIClient:
         emit_log = kwargs.pop("_emit_log", True)
         if self.auth_headers:
             kwargs.setdefault("headers", {}).update(self.auth_headers)
+        kwargs.setdefault("allow_redirects", False)
         started_at = time.perf_counter()
         try:
+            self.request_rate_limiter.wait()
             response = getattr(self._ensure_session(), method)(url, **kwargs)
         except Exception:
             record_api_call(self.metrics, logger if emit_log else None, "comfyui", operation, started_at, success=False)
@@ -306,7 +310,7 @@ class ComfyUIClient:
             logger.debug("ComfyUI cache/VRAM release failed: %s", exc)
 
     def _raise_for_status(self, response: requests.Response, operation: str) -> None:
-        if response.ok:
+        if response.ok and getattr(response, "is_redirect", False) is not True:
             return
 
         detail = self._response_detail(response)

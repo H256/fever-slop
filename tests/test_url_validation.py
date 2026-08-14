@@ -26,7 +26,34 @@ class APIURLValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(APIURLValidationError, "allowlist"):
                 validate_api_url("https://other.example/v1")
 
+    def test_allowlist_can_explicitly_trust_private_local_service(self):
+        with patch.dict(os.environ, {"FEVERSLOP_ALLOWED_API_HOSTS": "192.168.1.10"}):
+            self.assertEqual(
+                "http://192.168.1.10:8188",
+                validate_api_url("http://192.168.1.10:8188"),
+            )
+
     def test_rejects_query_and_fragment_on_base_url(self):
         for suffix in ("?token=secret", "#fragment"):
             with self.subTest(suffix=suffix), self.assertRaises(APIURLValidationError):
                 validate_api_url("https://api.example/v1" + suffix)
+
+    @patch("feverslop.security.url_validation.socket.getaddrinfo")
+    def test_rejects_hostname_resolving_to_private_address(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (2, 1, 6, "", ("192.168.1.10", 8080)),
+        ]
+
+        with self.assertRaisesRegex(APIURLValidationError, "private"):
+            validate_api_url("https://service.example:8080")
+
+    @patch("feverslop.security.url_validation.socket.getaddrinfo")
+    def test_allows_hostname_resolving_to_public_address(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ]
+
+        self.assertEqual(
+            "https://service.example",
+            validate_api_url("https://service.example"),
+        )
