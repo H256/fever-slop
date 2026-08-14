@@ -33,10 +33,10 @@ class SongBriefGeneratorTests(unittest.TestCase):
         self.assertEqual("friends", spec.visual_story_idea)
         self.assertEqual("warm", spec.visual_style)
 
-    def test_system_prompt_adapts_ace_step_prompt_designer_to_json_schema(self):
-        from feverslop.adapters.llm_song_brief_generator import LLMSongBriefGenerator
+    def test_song_brief_guide_contains_the_legacy_prompt_contract(self):
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
-        prompt = LLMSongBriefGenerator._system_prompt()
+        prompt = load_markdown_guide("song-brief")
 
         self.assertIn("Return ONLY valid JSON", prompt)
         self.assertIn('"tags"', prompt)
