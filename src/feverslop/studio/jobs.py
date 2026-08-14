@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.adapters.pipeline_runner import RunPipelineAdapter
+from feverslop.adapters.api_observability import api_observability_context
 from feverslop.adapters.project_visual_consistency import (
     ProjectReferenceManifestAdapter,
     validate_project_scene_artifacts,
@@ -301,9 +302,12 @@ class JobRegistry:
                 job["recent_logs"] = job["logs"][-100:]
                 self._refresh_runtime(job)
 
+        with self._lock:
+            project_id = self._jobs[job_id]["project_id"]
         self._update(job_id, status="running", started_at=time.time())
         try:
-            result = handler(log)
+            with api_observability_context(job_id=job_id, project_id=project_id):
+                result = handler(log)
         except VisualConsistencyValidationError as exc:
             log(f"ERROR: {exc}")
             self._update(

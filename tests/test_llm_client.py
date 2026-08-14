@@ -8,6 +8,7 @@ import tempfile
 from PIL import Image
 
 from feverslop.adapters.llm_client import LocalOpenAIClient
+from feverslop.adapters.api_observability import APIMetrics
 from feverslop.errors import FeverSlopLMLError
 
 
@@ -36,6 +37,60 @@ class LLMModelCapabilityTests(unittest.TestCase):
 
 
 class LLMClientRetryTests(unittest.TestCase):
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_health_check_probes_model_endpoint(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.models.list.return_value = object()
+
+        metrics = APIMetrics()
+        client = LocalOpenAIClient(api_key="test-key", metrics=metrics)
+
+        self.assertTrue(client.health_check())
+        mock_client.models.list.assert_called_once()
+        self.assertEqual(1, metrics.snapshot()["llm", "health_check"].successes)
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    @patch("feverslop.adapters.llm_client.time.sleep", return_value=None)
+    def test_records_logical_request_with_explicit_retry_count(self, mock_sleep, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content="ok"))]
+        mock_client.chat.completions.create.side_effect = [
+            APIConnectionError(message="connect failed", request=httpx.Request("GET", "http://localhost")),
+            APIConnectionError(message="connect failed", request=httpx.Request("GET", "http://localhost")),
+            response,
+        ]
+        metrics = APIMetrics()
+
+        client = LocalOpenAIClient(
+            api_key="test-key", max_retries=3, retry_base_delay=0.01, metrics=metrics
+        )
+        self.assertEqual("ok", client.complete_prompt("system", "prompt"))
+
+        stats = metrics.snapshot()["llm", "chat_completions"]
+        self.assertEqual(1, stats.calls)
+        self.assertEqual(2, stats.retry_attempts)
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    @patch("feverslop.adapters.llm_client.time.sleep", return_value=None)
+    def test_exhausted_retries_count_only_retries_after_initial_attempt(self, mock_sleep, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = APIConnectionError(
+            message="connect failed", request=httpx.Request("GET", "http://localhost")
+        )
+        metrics = APIMetrics()
+        client = LocalOpenAIClient(api_key="test-key", max_retries=3, metrics=metrics)
+
+        with self.assertRaises(FeverSlopLMLError):
+            client.complete_prompt("system", "prompt")
+
+        stats = metrics.snapshot()["llm", "chat_completions"]
+        self.assertEqual(1, stats.calls)
+        self.assertEqual(2, stats.retry_attempts)
+
     @patch("feverslop.adapters.llm_client.OpenAI")
     def test_captures_usage_finish_reason_and_reasoning_tokens(self, mock_openai):
         mock_client = MagicMock()

@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.adapters.api_observability import APIMetrics, record_api_call
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
 )
@@ -33,6 +34,20 @@ class _Store:
 
 
 class StudioVisualConsistencyJobTests(unittest.TestCase):
+    def test_job_execution_provides_observability_context(self):
+        metrics = APIMetrics()
+
+        def handler(_log):
+            record_api_call(metrics, None, "test", "operation", 0.0, success=True)
+            return None
+
+        with JobRegistry(max_workers=1) as registry:
+            job_id = registry.start("project-7", "test-action", handler)
+
+        stats = metrics.export_snapshot()["entries"][0]
+        self.assertEqual(job_id, stats["job_id"])
+        self.assertEqual("project-7", stats["project_id"])
+
     def test_structured_plan_uses_typed_profile_and_configured_capability(self):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
