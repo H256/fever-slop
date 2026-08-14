@@ -1,0 +1,1 @@
+Repair only missing music-video concept keys. Return valid JSON with exactly the keys in MISSING_SEGMENTS and one concise visual concept per key. Preserve continuity and location constraints, do not describe subject identity, outfit, or hair, and do not repeat full prompts.

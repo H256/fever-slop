@@ -6,8 +6,8 @@ import re
 from typing import Callable
 
 from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.prompting.music_video_modules import MusicVideoPromptModules
 from feverslop.prompting.music_video_prompt_style import (
-    build_concept_mapper_system_prompt,
     build_detail_system_prompt,
     build_i2v_system_prompt,
     build_t2i_system_prompt,
@@ -19,131 +19,32 @@ from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt
 
 
 class MusicVideoPromptPipeline:
-    def __init__(self, llm: LLMPort):
+    def __init__(self, llm: LLMPort, *, prompt_modules: MusicVideoPromptModules | None = None):
         self.llm = llm
+        self.prompt_modules = prompt_modules or MusicVideoPromptModules(llm)
 
     def create_story_idea(
         self,
         lyrics: str,
         notes: str = "",
     ) -> str:
-        system_prompt = """
-You turn song lyrics and optional user notes into a short story idea/concept.
-
-Input:
-- Lyrics
-- Optional notes such as style, genre, mood, setting, characters, themes, or constraints
-
-Task:
-Create one concise short story idea inspired by the lyrics and notes.
-
-Rules:
-- Keep the final concept under 1000 characters.
-- Do not quote or reuse long lyric phrases.
-- Capture the emotional core, imagery, conflict, or theme of the lyrics.
-- If notes are provided, follow them.
-- If notes conflict with the lyrics, blend them creatively.
-- Output only the story concept.
-- No explanations, titles, bullet points, or extra text.
-
-Style:
-- Clear, vivid, and specific.
-- Prefer cinematic story hooks.
-- Avoid vague concepts like "a person learns about love."
-- Make it feel like a story premise, not a summary of the song.
-""".strip()
-
-        return self.llm.complete_prompt(
-            system_prompt=system_prompt,
-            prompt=f"LYRICS:\n{lyrics}\n\nNOTES:\n{notes}",
-        ).strip()
+        return self.prompt_modules.story_idea(lyrics, notes)
 
     def create_style_block(
         self,
         lyrics: str,
         notes: str = "",
     ) -> str:
-        system_prompt = """
-send back ONLY this 3-part block:
-
-STYLE / THEME
-1 short sentence describing the overall feeling, tone, and visual direction.
-
-COLOR PALETTE
-1 short line describing the main colors and accent colors. Never fade into dark colors.
-
-LIGHTING / MOOD
-1 short line describing brightness, contrast, and shadows.
-
-Rules:
-Use simple, everyday words.
-Keep the full output under 1000 characters.
-Do not include camera, lens, framing, composition, or extra detail sections.
-Avoid metaphors, symbolism, poetic language, and extra explanation.
-Output only the block.
-""".strip()
-
-        return self.llm.complete_prompt(
-            system_prompt=system_prompt,
-            prompt=f"LYRICS:\n{lyrics}\n\nNOTES:\n{notes}",
-        ).strip()
+        return self.prompt_modules.style_block(lyrics, notes)
 
     def create_subject_and_locations(
         self,
         story_idea: str,
         notes: str = "",
     ) -> dict:
-        system_prompt = """
-You extract one legacy subject, one or more reusable actors, and a short list of usable physical locations for a music video.
-
-Return ONLY valid JSON in this exact shape:
-{
-  "subject": "a [gender/person], with [hair color], wearing [outfit]",
-  "actors": [
-    {
-      "id": "short_snake_case_actor_id",
-      "name": "short actor name",
-      "role": "story or performance role",
-      "visual_description": "detailed stable visual description for image generation",
-      "image_prompt": "image generator prompt for the actor reference sheet"
-    }
-  ],
-  "locations": [
-    {
-      "id": "short_snake_case_location_id",
-      "name": "short physical location name",
-      "visual_description": "detailed stable environment description",
-      "image_prompt": "image generator prompt for one wide location photograph"
-    }
-  ]
-}
-
-Rules for subject:
-- Keep subject as a backward-compatible summary of the main or lead actor.
-- Infer gender only if clearly implied. If unclear, use: person.
-- If hair color is not mentioned, invent a reasonable default that fits the tone.
-- Only include gender/person, hair color, and outfit.
-
-Rules for actors:
-- Create one to four actors.
-- Each actor must be visually distinct and stable across scenes.
-- Do not create crowd members or background extras.
-
-Rules for locations:
-- Create a compact reusable set of locations that covers the major story phases, turning points, conflict spaces, and resolution spaces implied by STORY_IDEA.
-- Avoid collapsing visually distinct story beats into one generic location when separate physical environments would make the story clearer.
-- List only physical environments where a person could realistically be standing.
-- Avoid aerial, drone, satellite, or far landscape shots.
-- No camera directions.
-- No emotional explanations.
-- image_prompt must describe one continuous wide image with no collage, split screen, or panels.
-- Never use "environment reference sheet" or "reference sheet" in a location image_prompt.
-""".strip()
-
-        response = self.llm.complete_prompt(
-            system_prompt=system_prompt,
-            prompt=f"STORY_IDEA:\n{story_idea}\n\nNOTES:\n{notes}",
-        )
+        response = self.prompt_modules.subject_locations(story_idea, notes)
+        if not isinstance(response, str):
+            response = response.model_dump_json() if hasattr(response, "model_dump_json") else json.dumps(response)
 
         data = extract_json_object(response)
         for location in data.get("locations") or []:
@@ -162,26 +63,12 @@ Rules for locations:
         global_context: dict | None = None,
         notes: str = "",
     ) -> dict:
-        prompt = json.dumps(
-            {
-                "STORY_IDEA": story_idea,
-                "GLOBAL_CONTEXT": global_context or {},
-                "NOTES": notes,
-                "SEGMENT_TIMELINE_JSON": stage1_segments,
-            },
-            ensure_ascii=False,
-            indent=2,
+        response = self.prompt_modules.concepts(
+            {"STORY_IDEA": story_idea, "GLOBAL_CONTEXT": global_context or {}, "NOTES": notes,
+             "SEGMENT_TIMELINE_JSON": stage1_segments},
+            silent_mode=bool((global_context or {}).get("silent_mode", False)),
         )
-
-        response = self.llm.complete_prompt(
-            system_prompt=build_concept_mapper_system_prompt(
-                batch=False,
-                silent_mode=bool((global_context or {}).get("silent_mode", False)),
-            ),
-            prompt=prompt,
-        )
-
-        return extract_json_object(response)
+        return response if isinstance(response, dict) else extract_json_object(str(response))
 
     def create_scene_details(
         self,
@@ -214,39 +101,20 @@ Rules for locations:
                 max_scene_actors=int(context.get("max_scene_actors") or 4),
             ))
 
-            camera_motion = self.llm.complete_prompt(
-                system_prompt=build_detail_system_prompt(
-                    "Camera Motion",
-                    segment_type=segment_type,
-                    silent_mode=bool((global_context or {}).get("silent_mode", False)),
-                ),
-                prompt=json.dumps(
-                    {
-                        "scene_concept": concept_text,
-                        "scene_cast": scene_cast,
-                        "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-            ).strip()
-
-            character_motion = self.llm.complete_prompt(
-                system_prompt=build_detail_system_prompt(
-                    "Character Motion",
-                    segment_type=segment_type,
-                    silent_mode=bool((global_context or {}).get("silent_mode", False)),
-                ),
-                prompt=json.dumps(
-                    {
-                        "scene_concept": concept_text,
-                        "scene_cast": scene_cast,
-                        "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-            ).strip()
+            detail_payload = {
+                "scene_concept": concept_text, "scene_cast": scene_cast,
+                "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
+            }
+            camera_motion = self.prompt_modules.detail(
+                "Camera Motion", detail_payload,
+                build_detail_system_prompt("Camera Motion", segment_type=segment_type,
+                    silent_mode=bool((global_context or {}).get("silent_mode", False))),
+            )
+            character_motion = self.prompt_modules.detail(
+                "Character Motion", detail_payload,
+                build_detail_system_prompt("Character Motion", segment_type=segment_type,
+                    silent_mode=bool((global_context or {}).get("silent_mode", False))),
+            )
 
             details[segment_id] = {
                 "camera_motion": camera_motion,
@@ -283,10 +151,7 @@ Rules for locations:
             concept = concept_prompts[segment_id]
             details = scene_details[segment_id]
 
-            t2i_prompt = self.llm.complete_prompt(
-                system_prompt=build_t2i_system_prompt(),
-                prompt=json.dumps(
-                    {
+            t2i_payload = {
                         "segment": segment,
                         "performance_mode": segment.get("type", ""),
                         "scene_concept": concept,
@@ -297,11 +162,8 @@ Rules for locations:
                         "locations": global_context["locations"],
                         "prompt_guidance": global_context.get("prompt_guidance", {}),
                         "custom_instructions": "",
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-            ).strip()
+                    }
+            t2i_prompt = self.prompt_modules.t2i(t2i_payload, build_t2i_system_prompt())
 
             prompt_payload = json.dumps(
                 build_video_payload(
@@ -315,13 +177,15 @@ Rules for locations:
                 indent=2,
             )
 
-            final_prompt = self.llm.complete_prompt(
-                system_prompt=build_i2v_system_prompt(
-                    str(segment.get("type", "")),
-                    silent_mode=bool(global_context.get("silent_mode", False)),
-                ),
-                prompt=prompt_payload,
-            ).strip()
+            final_prompt = self.prompt_modules.i2v(
+                json.loads(prompt_payload),
+                build_i2v_system_prompt(str(segment.get("type", "")),
+                    silent_mode=bool(global_context.get("silent_mode", False))),
+                performance_policy=str(build_video_payload(
+                    segment=segment, concept=concept, scene_details=details,
+                    global_context=global_context, t2i_prompt=t2i_prompt,
+                )["performance_policy"]),
+            )
 
             result.append({
                 **segment,
