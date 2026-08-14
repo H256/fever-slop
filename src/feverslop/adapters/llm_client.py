@@ -59,6 +59,7 @@ class LocalOpenAIClient:
         api_key: str | None = None,
         model: str = "default",
         temperature: float = 0.7,
+        dspy_temperature: float = 0.4,
         max_tokens: int = 512,
         max_retries: int = 3,
         retry_base_delay: float = 0.5,
@@ -80,6 +81,7 @@ class LocalOpenAIClient:
         )
         self.model = model
         self.temperature = temperature
+        self.dspy_temperature = dspy_temperature
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay

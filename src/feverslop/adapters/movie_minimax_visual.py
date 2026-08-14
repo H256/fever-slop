@@ -95,6 +95,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             api_key=app_config.llm.api_key,
             model=app_config.llm.model,
             temperature=app_config.llm.temperature,
+            dspy_temperature=app_config.llm.dspy_temperature,
             max_tokens=app_config.llm.max_tokens,
             request_timeout_seconds=app_config.llm.request_timeout_seconds,
             dspy_cache=app_config.llm.dspy_cache,

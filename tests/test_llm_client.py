@@ -35,6 +35,12 @@ class LLMClientRetryTests(unittest.TestCase):
         self.assertEqual(42.0, create_kwargs["timeout"])
 
     @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_keeps_dspy_temperature_for_prompt_runtime(self, mock_openai):
+        client = LocalOpenAIClient(api_key="test-key", dspy_temperature=0.25)
+
+        self.assertEqual(0.25, client.dspy_temperature)
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
     def test_complete_prompt_override_timeout(self, mock_openai):
         mock_client = MagicMock()
         mock_openai.return_value = mock_client

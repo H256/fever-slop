@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class Gemma4StartframeValidator:
+    """Separate external LLM validation API, outside the DSPy prompt boundary."""
+
     def __init__(
         self,
         *,
