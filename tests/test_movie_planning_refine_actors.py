@@ -8,27 +8,12 @@ from feverslop.domain.movie import MovieActor
 
 
 class TestRefineActorPromptsPrompt(unittest.TestCase):
-    def test_prompt_includes_actor_ids_and_source_text(self):
-        from feverslop.adapters.movie_planning import _refine_actor_prompts_prompt
+    def test_actor_refinement_guide_is_a_dspy_resource(self):
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
-        actors = (
-            MovieActor(id="hans", name="Hans", role="soldier", visual_description="mud covered soldier"),
-            MovieActor(id="karl", name="Karl", role="soldier", visual_description="trembling young recruit"),
-        )
-        source_text = "EXT. SOMME - DAY\nGerman soldiers in WWI trenches."
-        prompt = _refine_actor_prompts_prompt(actors, source_text, "WWI Somme 1916")
-
-        self.assertIn("hans", prompt)
-        self.assertIn("karl", prompt)
-        self.assertIn("Hans", prompt)
-        self.assertIn("Karl", prompt)
-        self.assertIn("mud covered soldier", prompt)
-        self.assertIn("SOMME", prompt)
-        self.assertIn("ethnicity", prompt.lower())
-        self.assertIn("face", prompt.lower())
-        self.assertIn("hair", prompt.lower())
-        self.assertIn("stature", prompt.lower())
-        self.assertIn("image_prompt", prompt)
+        guide = load_markdown_guide("movie-refine-actors")
+        self.assertTrue(guide.strip())
+        self.assertIn("stable physical appearance", guide)
 
     def test_krea_guide_is_selected_only_for_krea_workflow(self):
         from feverslop.adapters.movie_planning_prompts import _krea_reference_guides

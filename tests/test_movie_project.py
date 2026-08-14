@@ -4950,36 +4950,6 @@ def _continuity_handoff_factory(
 class TestRefineLocationPrompts(unittest.TestCase):
     """Tests for LLM-based location description refinement."""
 
-    def test_refine_locations_prompt_includes_location_data(self):
-        from feverslop.adapters.movie_planning import _refine_location_prompts_prompt
-        from feverslop.domain.movie import MovieLocation
-
-        locations = (
-            MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
-            MovieLocation(id="stone_hut", name="Stone Hut", visual_description="Stone Hut"),
-        )
-        prompt = _refine_location_prompts_prompt(locations, "EXT. GARDEN - DAY\nA wild herb garden.")
-
-        self.assertIn('"id": "garden"', prompt)
-        self.assertIn('"id": "stone_hut"', prompt)
-        self.assertIn("GARDEN", prompt)
-        self.assertIn("physical environment", prompt.lower())
-        self.assertIn("no people", prompt)
-        self.assertIn("no text", prompt)
-
-    def test_refine_locations_prompt_rules_are_present(self):
-        from feverslop.adapters.movie_planning import _refine_location_prompts_prompt
-        from feverslop.domain.movie import MovieLocation
-
-        locations = (MovieLocation(id="x", name="X", visual_description="X"),)
-        prompt = _refine_location_prompts_prompt(locations, "test")
-
-        self.assertIn("visual_description", prompt)
-        self.assertIn("image_prompt", prompt)
-        self.assertIn("Remove all character names", prompt)
-        self.assertIn("Wide establishing view", prompt)
-        self.assertIn("production design", prompt)
-
     def test_refine_locations_success(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieLocation

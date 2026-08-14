@@ -13,6 +13,9 @@ Core Python packages live under `src/feverslop`. Composition code such as
 `feverslop.composition.generate_render_plan` is kept separate from adapters
 such as `feverslop.adapters.comfyui_video_backend`.
 
+The DSPy prompt boundary, bundled guide naming, typed inputs, fallback rules,
+and concurrency model are documented in [docs/prompt-architecture.md](docs/prompt-architecture.md).
+
 ## Quick Start
 
 Install Python dependencies from the repository root:
