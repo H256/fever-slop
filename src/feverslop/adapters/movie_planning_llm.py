@@ -34,10 +34,10 @@ def _module_data(value):
 
 
 class LLMMoviePlanner:
-    def __init__(self, llm, *, reference_hero_workflow: str | None = None):
+    def __init__(self, llm, *, reference_hero_workflow: str | None = None, modules=None):
         self.llm = llm
         self.reference_hero_workflow = reference_hero_workflow
-        self._modules = MoviePlanningModules(llm)
+        self._modules = modules if modules is not None else MoviePlanningModules(llm)
 
     def generate_story_arch(self, *, title: str, source_type: str, story_text: str, desired_length: float) -> StoryArch:
         data = _module_data(self._modules.story_arch({
