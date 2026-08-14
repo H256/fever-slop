@@ -20,6 +20,7 @@ class LLMConfig:
     max_tokens: int = 4096
     request_timeout_seconds: float = 180.0
     dspy_cache: bool = False
+    max_concurrent_requests: int = 1
     _local_api_key: str | None = field(default=None, repr=False)
 
     @property
@@ -202,10 +203,13 @@ class AppConfig:
 
         llm_temperature = float(llm_raw.get("temperature", 0.7))
         llm_max_tokens = int(llm_raw.get("max_tokens", 4096))
+        llm_max_concurrent_requests = int(llm_raw.get("max_concurrent_requests", 1))
         if llm_temperature < 0:
             raise ValueError(f"llm.temperature must be >= 0, got {llm_temperature}")
         if llm_max_tokens <= 0:
             raise ValueError(f"llm.max_tokens must be > 0, got {llm_max_tokens}")
+        if llm_max_concurrent_requests <= 0:
+            raise ValueError("llm.max_concurrent_requests must be > 0")
         return cls(
             llm=LLMConfig(
                 base_url=llm_raw.get("base_url", "http://localhost:8080/v1"),
@@ -215,6 +219,7 @@ class AppConfig:
                 max_tokens=llm_max_tokens,
                 request_timeout_seconds=float(llm_raw.get("request_timeout_seconds", 180.0)),
                 dspy_cache=_parse_bool(llm_raw.get("dspy_cache", False), "llm.dspy_cache"),
+                max_concurrent_requests=llm_max_concurrent_requests,
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),
             comfyui=ComfyUIConfig(

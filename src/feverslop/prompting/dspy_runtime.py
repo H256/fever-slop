@@ -49,19 +49,13 @@ class DspyRuntime:
         api_base = getattr(client, "base_url", None)
         if api_base is not None and not isinstance(api_base, str):
             api_base = str(api_base)
-        kwargs = {
-            "api_base": api_base,
-            "api_key": getattr(client, "api_key", None),
-            "temperature": getattr(llm, "dspy_temperature", 0.4),
-            "max_tokens": llm.max_tokens,
-            "cache": getattr(llm, "dspy_cache", False),
-        }
-        timeout = getattr(llm, "request_timeout_seconds", None)
-        if timeout is not None:
-            kwargs["timeout"] = timeout
         lm = self.lm_factory(
             f"openai/{llm.model}",
-            **kwargs,
+            api_base=api_base,
+            api_key=getattr(client, "api_key", None),
+            temperature=getattr(llm, "dspy_temperature", 0.4),
+            max_tokens=llm.max_tokens,
+            cache=getattr(llm, "dspy_cache", False),
         )
         limiter = getattr(llm, "llm_limiter", None)
         if limiter is None:

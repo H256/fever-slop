@@ -30,6 +30,7 @@ def build_full_auto_use_case(
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
+        max_concurrent_requests=app_config.llm.max_concurrent_requests,
     )
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,

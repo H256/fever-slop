@@ -42,6 +42,7 @@ def build_render_storyboard_use_case(
             temperature=app_config.llm.temperature,
             max_tokens=app_config.llm.max_tokens,
             request_timeout_seconds=app_config.llm.request_timeout_seconds,
+            max_concurrent_requests=app_config.llm.max_concurrent_requests,
         )
         prompt_transformer = TemplateStoryboardPromptTransformer(
             llm=llm,
