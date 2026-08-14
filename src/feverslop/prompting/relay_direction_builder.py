@@ -60,7 +60,7 @@ def _clean_direction(text: str, max_chars: int = 220) -> str:
 
 
 def _limit_words(text: str, max_words: int) -> str:
-    return " ".join(text.split()[:max(0, max_words)])
+    return " ".join(text.split()[:max(1, max_words)])
 
 
 class RelayDirectionBuilder:
@@ -147,7 +147,7 @@ class RelayDirectionBuilder:
                 subject_anchor=self.subject_anchor,
             )
             by_index = {
-                item.index: _limit_words(_clean_direction(item.prompt), self.max_words)
+                item.index: _clean_direction(item.prompt)
                 for item in typed.directions
             }
         except Exception:
@@ -163,6 +163,7 @@ class RelayDirectionBuilder:
             fallback = self._fallback_direction(scene, relay, has_vocals)
             prompt = by_index.get(idx, fallback)
             prompt = self._safety_fix_prompt(scene, relay, prompt, has_vocals)
+            prompt = _limit_words(_clean_direction(prompt), self.max_words) or fallback
             new_relay["prompt"] = prompt
             result.append(new_relay)
 
@@ -221,4 +222,4 @@ class RelayDirectionBuilder:
 
         parts.append("environmental motion stays behind or around the subject")
 
-        return _clean_direction(", ".join(parts))
+        return _limit_words(_clean_direction(", ".join(parts)), self.max_words)

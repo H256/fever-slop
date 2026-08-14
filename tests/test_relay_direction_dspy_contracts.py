@@ -90,6 +90,58 @@ class RelayDirectionDspyContractTests(unittest.TestCase):
 
         self.assertIn("preserve the same shot", prompt)
 
+    def test_deterministic_singing_fallback_respects_max_words_and_constraints(self):
+        class LLM:
+            pass
+
+        builder = RelayDirectionBuilder(LLM(), max_words=28)
+        scene = {
+            "metadata": {
+                "type": "vocals",
+                "camera_motion": "the camera drifts slowly",
+                "character_motion": "the warrior raises his hand",
+            },
+            "ltx": {"base_prompt": "A dark road."},
+            "prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "singing"}],
+        }
+
+        prompt = builder.compact_scene_relays(scene, scene["prompt_relay"])[0]["prompt"]
+
+        self.assertTrue(prompt)
+        self.assertLessEqual(len(prompt.split()), 28)
+        self.assertIn("singing", prompt)
+        self.assertIn("lip sync", prompt)
+
+    def test_safety_repair_respects_max_words_and_preserves_singing_constraints(self):
+        class Predictor:
+            def __call__(self, **kwargs):
+                return {"result": {"directions": [{"index": 0, "prompt": "tree sings"}]}}
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        builder = RelayDirectionBuilder(LLM(), dspy_runtime=Runtime(), max_words=28)
+        scene = {
+            "metadata": {"type": "vocals"},
+            "ltx": {"base_prompt": "A dark road."},
+            "prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "singing"}],
+        }
+
+        prompt = builder.compact_scene_relays(scene, scene["prompt_relay"])[0]["prompt"]
+
+        self.assertTrue(prompt)
+        self.assertLessEqual(len(prompt.split()), 28)
+        self.assertIn("singing", prompt)
+        self.assertIn("lip sync", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
