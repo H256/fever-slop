@@ -390,9 +390,8 @@ def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
     """Create the complete planner/analyzer/renderer generator from dspy_prompt_test."""
     from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 
-    guides = Path(__file__).with_name("guides")
     return VideoPromptGenerator(
-        base_guide_path=guides / "minimax-h3-base.md",
-        reference_guide_path=guides / "minimax-h3-references.md",
+        base_guide_path="minimax-h3-base.md",
+        reference_guide_path="minimax-h3-references.md",
         llm=llm,
     )
