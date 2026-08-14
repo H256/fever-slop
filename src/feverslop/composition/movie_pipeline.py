@@ -716,6 +716,7 @@ def _run_msr_workflow(
                 f"[cyan]H3 prompts: {completed}/{total} scenes - scene {scene}[/cyan]"
             ),
         )
+        _log_stage("Movie MiniMax H3 prompts", str(prepared_minimax_plan_path))
     render_stage_title = (
         "Movie MiniMax H3 render"
         if config["movie_video_workflow"].startswith("minimax-h3-")
@@ -755,7 +756,7 @@ def _run_msr_workflow(
     else:
         _log_stage(render_stage_title, "skipped")
 
-    _log_stage("Movie complete", str(final_video_path or render_plan_path))
+    _log_stage("Movie complete", str(final_video_path or prepared_minimax_plan_path or render_plan_path))
 
     return MoviePipelineResult(
         project_dir=project_dir,
