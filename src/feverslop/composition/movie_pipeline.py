@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
@@ -17,6 +16,7 @@ from feverslop.cli.movie_cli import build_movie_arg_parser, config_from_args
 from feverslop.path_utils import coerce_local_path
 from feverslop.config.app_config import AppConfig
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.utils.rich_progress import build_progress
 from feverslop.composition.movie_pipeline_jobs import (
     build_movie_reference_generator,
     build_movie_visual_adapter,
@@ -86,15 +86,7 @@ class MovieStageProgressReporter:
     def __init__(self, stage_titles: set[str], *, console: Console = console):
         self.stage_titles = set(stage_titles)
         self.total = len(self.stage_titles)
-        self.progress = Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("{task.completed}/{task.total}"),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        )
+        self.progress = build_progress(console=console)
         self.task_id = None
         self.completed = 0
         self.seen: set[str] = set()
