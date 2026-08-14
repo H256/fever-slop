@@ -10,14 +10,6 @@ import subprocess
 from tempfile import NamedTemporaryFile
 
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
@@ -67,6 +59,7 @@ from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
 from feverslop.utils.io import file_is_valid
+from feverslop.utils.rich_progress import build_progress
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator
 from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 from feverslop.prompting.model_types import resolve_model_type
@@ -113,15 +106,7 @@ class RenderProgressReporter:
         self.description = description
         self.total = total
         self.emit_scene_progress = emit_scene_progress
-        self.progress = Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("{task.completed}/{task.total}"),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        )
+        self.progress = build_progress(console=console)
         self.task_id = None
 
     def __enter__(self) -> RenderProgressReporter:
