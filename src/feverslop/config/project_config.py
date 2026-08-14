@@ -117,6 +117,36 @@ class StructuredLocationConfig:
 
 
 @dataclass(frozen=True)
+class GlobalAssetConfig:
+    asset_id: str
+    look_id: str = "default"
+    role: str = ""
+
+    def __post_init__(self) -> None:
+        if not str(self.asset_id).strip():
+            raise ValueError("global asset_id is required")
+        if not str(self.look_id).strip():
+            raise ValueError("global look_id is required")
+
+
+def _load_global_assets(raw, field_name: str) -> tuple[GlobalAssetConfig, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError(f"{field_name} must be an array")
+    result = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError(f"{field_name} entries must be objects")
+        result.append(GlobalAssetConfig(
+            asset_id=str(item.get("asset_id", "")).strip(),
+            look_id=str(item.get("look_id", "default") or "default").strip(),
+            role=str(item.get("role", "") or "").strip(),
+        ))
+    return tuple(result)
+
+
+@dataclass(frozen=True)
 class LoraConfig:
     enabled: bool = False
     name: str = ""
@@ -220,6 +250,10 @@ class ProjectConfig:
     locations: list[str] = field(default_factory=list)
     actors: tuple[ActorConfig, ...] = field(default_factory=tuple)
     structured_locations: tuple[StructuredLocationConfig, ...] = field(default_factory=tuple)
+    global_cast: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
+    global_locations: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
+    global_styles: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
+    global_props: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
     subject_mode: str = "multi"
     max_scene_actors: int = 4
 
@@ -249,6 +283,9 @@ class ProjectConfig:
         actors_raw = raw.get("actors", [])
         locations_raw = raw.get("locations", [])
         audio_refs_raw = raw.get("minimax_h3_audio_refs", {})
+        global_raw = raw.get("global_assets", {})
+        if not isinstance(global_raw, dict):
+            raise ValueError("global_assets must be an object")
 
         input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
         _validate_numeric_fields(video_raw, ("fps", "width", "height"))
@@ -335,6 +372,10 @@ class ProjectConfig:
                 _load_structured_location(item, index)
                 for index, item in enumerate(locations_raw, start=1)
             ),
+            global_cast=_load_global_assets(raw.get("global_cast", global_raw.get("cast")), "global_cast"),
+            global_locations=_load_global_assets(raw.get("global_locations", global_raw.get("locations")), "global_locations"),
+            global_styles=_load_global_assets(raw.get("global_styles", global_raw.get("styles")), "global_styles"),
+            global_props=_load_global_assets(raw.get("global_props", global_raw.get("props")), "global_props"),
             subject_mode=subject_mode,
             max_scene_actors=max_scene_actors,
 
