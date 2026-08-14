@@ -13,6 +13,7 @@ import shutil
 import sys
 
 from feverslop.adapters.global_library import GlobalLibraryAdapter
+from feverslop.application.global_character_creator import AssetIdea, GuidedAssetGenerator
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
 
@@ -55,6 +56,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     prune = commands.add_parser("prune")
     prune.add_argument("--kind", type=_kind)
     commands.add_parser("import-from-project").add_argument("--manifest", type=Path, required=True)
+    generate = commands.add_parser("generate")
+    generate.add_argument("--kind", type=_kind)
+    generate.add_argument("--id")
+    generate.add_argument("--name")
+    generate.add_argument("--idea")
+    generate.add_argument("--input", type=Path)
+    generate.add_argument("--workflow", default="character-sheet-v1")
+    generate.add_argument("--interactive", action="store_true")
+    generate.add_argument("--dry-run", action="store_true")
+    generate.add_argument("--hero-image", type=Path)
     return parser
 
 
@@ -105,6 +116,36 @@ def main(argv: list[str] | None = None) -> int:
             asset = GlobalAsset.from_dict(json.loads(args.manifest.read_text(encoding="utf-8")))
             library.create(asset)
             print(f"imported {asset.kind.value}/{asset.id}")
+        elif args.command == "generate":
+            raw = {}
+            if args.input:
+                raw_text = sys.stdin.read() if str(args.input) == "-" else args.input.read_text(encoding="utf-8")
+                raw = json.loads(raw_text)
+            if args.interactive:
+                raw.setdefault("kind", input("Asset kind [character/location/style/prop]: ").strip())
+                raw.setdefault("asset_id", input("Stable asset ID: ").strip())
+                raw.setdefault("name", input("Display name: ").strip())
+                raw.setdefault("visual_concept", input("Visual concept: ").strip())
+            if args.kind:
+                raw["kind"] = args.kind.value
+            for key in ("id", "name", "idea"):
+                value = getattr(args, key)
+                if value:
+                    raw[{"id": "asset_id", "name": "name", "idea": "visual_concept"}[key]] = value
+            idea = AssetIdea(**{key: raw[key] for key in ("kind", "asset_id", "name", "visual_concept")})
+            def runner(**kwargs):
+                if args.hero_image is None:
+                    return {}
+                target = Path(kwargs["run_dir"]) / args.hero_image.name
+                shutil.copy2(args.hero_image, target)
+                return {"hero_image": target.name}
+            generator = GuidedAssetGenerator(library, profiles={args.workflow: runner})
+            preview = generator.preview(idea, profile_id=args.workflow)
+            if args.dry_run:
+                print(json.dumps(preview, ensure_ascii=False, indent=2))
+            else:
+                result = generator.generate(idea, profile_id=args.workflow)
+                print(json.dumps({"run_id": result.run_id, "asset_id": result.asset.id, "status": result.status}, indent=2))
         return 0
     except (FileNotFoundError, ValueError, FileExistsError, KeyError, OSError) as exc:
         return _error(f"{exc}; create or import the asset and check the configured library path")
