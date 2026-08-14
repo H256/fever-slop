@@ -36,3 +36,13 @@ class ServiceHealthChecker:
             if not result.healthy and self.alert is not None:
                 self.alert(result)
         return results
+
+
+def build_service_probes(*, comfyui: object | None = None, llm: object | None = None) -> dict[str, Callable[[], object]]:
+    """Build standard non-mutating probes for configured external clients."""
+    probes: dict[str, Callable[[], object]] = {}
+    if comfyui is not None:
+        probes["comfyui"] = getattr(comfyui, "health_check")
+    if llm is not None:
+        probes["llm"] = getattr(llm, "health_check")
+    return probes

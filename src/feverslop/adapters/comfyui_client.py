@@ -83,6 +83,17 @@ class ComfyUIClient:
             self._session.close()
             self._session = None
 
+    def health_check(self) -> bool:
+        """Run a read-only, bounded ComfyUI health probe."""
+        response = self._request(
+            "get",
+            f"{self.base_url}/system_stats",
+            "health_check",
+            timeout=min(self.prompt_timeout_seconds, 10.0),
+        )
+        self._raise_for_status(response, "health check")
+        return True
+
     def __enter__(self) -> ComfyUIClient:
         return self
 

@@ -197,8 +197,9 @@ class LocalOpenAIClient:
         last_error = None
         request_timeout = self.request_timeout_seconds if timeout is None else timeout
         with self.llm_limiter.acquire():
+            started_at = time.perf_counter()
+            retry_attempts = 0
             for attempt in range(self.max_retries):
-                started_at = time.perf_counter()
                 try:
                     response = self.client.chat.completions.create(
                         model=self.model,
@@ -224,19 +225,37 @@ class LocalOpenAIClient:
                         prompt_tokens=telemetry.prompt_tokens,
                         completion_tokens=telemetry.completion_tokens,
                         reasoning_tokens=telemetry.reasoning_tokens,
+                        retry_attempts=retry_attempts,
                     )
                     return result
                 except RETRYABLE_ERRORS as exc:
-                    record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
                     last_error = exc
                     if attempt < self.max_retries - 1:
+                        retry_attempts += 1
                         base_delay = self.retry_base_delay * (2 ** attempt)
                         jitter = random.uniform(0, base_delay)
                         time.sleep(base_delay + jitter)
                 except Exception:
-                    record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
+                    record_api_call(
+                        self.metrics,
+                        logger,
+                        "llm",
+                        "chat_completions",
+                        started_at,
+                        success=False,
+                        retry_attempts=retry_attempts,
+                    )
                     raise
 
+            record_api_call(
+                self.metrics,
+                logger,
+                "llm",
+                "chat_completions",
+                started_at,
+                success=False,
+                retry_attempts=retry_attempts,
+            )
         raise FeverSlopLMLError(
             f"LLM API error after {self.max_retries} attempts: {last_error}"
         ) from last_error
@@ -248,3 +267,14 @@ class LocalOpenAIClient:
         """Return the server's explicit vision capability for the selected model."""
         model_info = self.client.models.retrieve(self.model)
         return model_supports_vision(model_info)
+
+    def health_check(self) -> bool:
+        """Run a read-only, bounded probe against the configured model server."""
+        started_at = time.perf_counter()
+        try:
+            self.client.models.list(timeout=min(self.request_timeout_seconds, 10.0))
+        except Exception:
+            record_api_call(self.metrics, logger, "llm", "health_check", started_at, success=False)
+            raise
+        record_api_call(self.metrics, logger, "llm", "health_check", started_at, success=True)
+        return True
