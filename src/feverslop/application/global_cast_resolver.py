@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Iterable
-
-from feverslop.adapters.global_library import GlobalLibraryAdapter
-from feverslop.config.project_config import GlobalAssetConfig
+from typing import Any, Iterable
 from feverslop.domain.global_library import AssetKind
 
 
@@ -21,14 +17,14 @@ class GlobalCastResolution:
 
 
 class GlobalCastResolver:
-    def __init__(self, library: GlobalLibraryAdapter):
+    def __init__(self, library: Any):
         self.library = library
 
     def _resolve_kind(
         self,
         kind: AssetKind,
-        entries: Iterable[GlobalAssetConfig],
-        project_reference_dir: Path,
+        entries: Iterable[Any],
+        project_reference_dir: Any,
     ) -> tuple[list[dict], list[dict]]:
         result: list[dict] = []
         snapshots: list[dict] = []
@@ -57,8 +53,8 @@ class GlobalCastResolver:
                 "snapshot_path": str(snapshot_dir),
             }
             if look is not None:
-                record["hero_path"] = str(snapshot_dir / Path(look.hero_image).name) if look.hero_image else ""
-                record["sheet_path"] = str(snapshot_dir / Path(look.sheet_image).name) if look.sheet_image else ""
+                record["hero_path"] = f"{snapshot_dir}/{look.hero_image.rsplit('/', 1)[-1]}" if look.hero_image else ""
+                record["sheet_path"] = f"{snapshot_dir}/{look.sheet_image.rsplit('/', 1)[-1]}" if look.sheet_image else ""
             result.append(record)
             snapshots.append({"kind": kind.value, "asset_id": asset.id, "look_id": entry.look_id, "revision": asset.revision, "path": str(snapshot_dir)})
         return result, snapshots
@@ -66,13 +62,13 @@ class GlobalCastResolver:
     def resolve(
         self,
         *,
-        cast: Iterable[GlobalAssetConfig],
-        locations: Iterable[GlobalAssetConfig],
-        styles: Iterable[GlobalAssetConfig],
-        props: Iterable[GlobalAssetConfig],
-        project_reference_dir: str | Path,
+        cast: Iterable[Any],
+        locations: Iterable[Any],
+        styles: Iterable[Any],
+        props: Iterable[Any],
+        project_reference_dir: Any,
     ) -> GlobalCastResolution:
-        reference_dir = Path(project_reference_dir).resolve()
+        reference_dir = project_reference_dir
         actors, actor_snapshots = self._resolve_kind(AssetKind.CHARACTER, cast, reference_dir)
         resolved_locations, location_snapshots = self._resolve_kind(AssetKind.LOCATION, locations, reference_dir)
         resolved_styles, style_snapshots = self._resolve_kind(AssetKind.STYLE, styles, reference_dir)
@@ -85,7 +81,8 @@ class GlobalCastResolver:
 
 def materialize_global_assets(project_config, app_config, *, refresh: bool = False) -> GlobalCastResolution:
     """Materialize declarations before reference generation; refresh is explicit."""
-    resolver = GlobalCastResolver(GlobalLibraryAdapter(app_config.global_library_path))
+    adapter_type = __import__("feverslop.adapters.global_library", fromlist=["GlobalLibraryAdapter"]).GlobalLibraryAdapter
+    resolver = GlobalCastResolver(adapter_type(app_config.global_library_path))
     if not refresh:
         # Existing snapshots are intentionally left alone; callers can inspect their staleness.
         pass

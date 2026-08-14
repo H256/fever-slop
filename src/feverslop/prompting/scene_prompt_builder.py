@@ -30,6 +30,11 @@ def normalize_scene_references(references: dict, global_context: dict) -> dict:
         for location in global_context.get("structured_locations", [])
         if isinstance(location, dict) and str(location.get("id", "")).strip()
     ]
+    props = [
+        str(prop.get("id", "")).strip()
+        for prop in global_context.get("props", [])
+        if isinstance(prop, dict) and str(prop.get("id", "")).strip()
+    ]
     subject_mode = str(global_context.get("subject_mode", "multi") or "multi").strip().lower()
     max_scene_actors = int(global_context.get("max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
     max_scene_actors = max(1, min(4, max_scene_actors))
@@ -51,6 +56,21 @@ def normalize_scene_references(references: dict, global_context: dict) -> dict:
         if location_id not in locations:
             location_id = locations[0]
         output["location_id"] = location_id
+
+    if props:
+        selected_props = [
+            str(prop_id).strip()
+            for prop_id in output.get("prop_ids", [])
+            if str(prop_id).strip() in props
+        ]
+        output["prop_ids"] = list(dict.fromkeys(selected_props))
+        output["prop_interactions"] = [
+            item for item in output.get("prop_interactions", [])
+            if isinstance(item, dict)
+            and str(item.get("actor_id", "")).strip() in actors
+            and str(item.get("prop_id", "")).strip() in props
+            and str(item.get("action", "")).strip()
+        ]
 
     return output
 
