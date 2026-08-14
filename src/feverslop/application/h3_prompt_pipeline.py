@@ -117,10 +117,7 @@ class H3PromptPipeline:
             builder_factory = self.dspy_prompt_builder_factory
         builder = builder_factory(llm)
 
-        if model_spec and model_spec.prompt_mode is PromptMode.R2V:
-            mode = "ref"
-        else:
-            mode = "base"
+        mode = model_spec.prompt_mode.value if model_spec else PromptMode.T2V.value
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
         audio_paths = (
             _configured_audio_paths(config, stem_files, getattr(config, "input_audio", None))

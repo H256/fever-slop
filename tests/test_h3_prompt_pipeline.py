@@ -165,7 +165,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
             with self.subTest(video_pipeline=video_pipeline):
                 calls = self._run_pipeline(video_pipeline)
                 self.assertEqual(1, len(calls))
-                expected_mode = "ref" if video_pipeline.endswith("-r2v") else "base"
+                expected_mode = video_pipeline.removeprefix("minimax-h3-")
                 self.assertEqual("dspy", calls[0][0])
                 self.assertEqual(expected_mode, calls[0][1]["mode"])
 

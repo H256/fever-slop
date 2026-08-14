@@ -36,6 +36,17 @@ def _scene_references(
     references = segment.get("references") or {}
     result: list[dict[str, str]] = []
     images: list[Path] = []
+    seen: dict[str, set[str]] = {"picture": set(), "video": set(), "audio": set()}
+
+    def add_reference(reference: dict[str, str], image_path: Path | None = None) -> None:
+        source = reference["source"]
+        kind = reference["kind"]
+        if source in seen[kind]:
+            return
+        seen[kind].add(source)
+        result.append(reference)
+        if image_path is not None and image_path.is_file():
+            images.append(image_path)
 
     actor_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths") or []
     actor_ids = references.get("actor_ids") or []
@@ -50,23 +61,21 @@ def _scene_references(
         name = str(actor_ids[index - 1]) if index <= len(actor_ids) else f"Actor {index}"
         path = Path(source)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
-        result.append(_reference(
+        add_reference(_reference(
             label=f"<Picture {index}>",
             source=path,
             kind="picture",
             name=name,
             description=actor_descriptions.get(name, ""),
             role="subject",
-        ))
-        if image_path.is_file():
-            images.append(image_path)
+        ), image_path)
 
     location = references.get("location_msr_path") or references.get("location_sheet_path")
     if location:
         path = Path(location)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
         location_description = references.get("location_reference_description") or {}
-        result.append(_reference(
+        add_reference(_reference(
             label=f"<Picture {len(result) + 1}>",
             source=path,
             kind="picture",
@@ -77,13 +86,41 @@ def _scene_references(
                 or ""
             ).strip(),
             role="environment",
+        ), image_path)
+
+    for path_value in references.get("reference_image_paths") or []:
+        path = Path(path_value)
+        image_path = path if path.is_absolute() or reference_root is None else reference_root / path
+        add_reference(_reference(
+            label=f"<Picture {sum(kind == 'picture' for kind in seen['picture']) + 1}>",
+            source=path,
+            kind="picture",
+            name=path.stem,
+        ), image_path)
+
+    for path_value in references.get("reference_video_paths") or []:
+        path = Path(path_value)
+        add_reference(_reference(
+            label=f"<Video {len([ref for ref in result if ref['kind'] == 'video']) + 1}>",
+            source=path,
+            kind="video",
+            name=path.stem,
         ))
-        if image_path.is_file():
-            images.append(image_path)
+
+    for path_value in references.get("reference_audio_paths") or []:
+        path = Path(path_value)
+        add_reference(_reference(
+            label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
+            source=path,
+            kind="audio",
+            name=path.stem,
+            description="Use this synchronized reference for the scene's audio behavior.",
+            role="audio_reuse",
+        ))
 
     for index, (name, source) in enumerate((audio_paths or {}).items(), start=1):
-        result.append(_reference(
-            label=f"<Audio {index}>",
+        add_reference(_reference(
+            label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
             source=source,
             kind="audio",
             name=name,

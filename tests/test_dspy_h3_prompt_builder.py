@@ -500,6 +500,65 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             ["subject", "environment", "audio_reuse"],
         )
 
+    def test_scene_references_preserve_canonical_paths_and_dedupe_derived_refs(self):
+        references, _ = _scene_references(
+            {
+                "references": {
+                    "reference_image_paths": ["existing.png", "actor.png"],
+                    "reference_video_paths": ["clip.mp4"],
+                    "reference_audio_paths": ["existing.wav", "vocals.wav"],
+                    "actor_ids": ["leo"],
+                    "actor_msr_paths": ["actor.png"],
+                    "location_id": "forest",
+                    "location_msr_path": "forest.png",
+                }
+            },
+            {"vocals": Path("vocals.wav"), "full_mix": Path("full_mix.wav")},
+            None,
+        )
+
+        self.assertEqual(
+            [(reference["kind"], reference["source"]) for reference in references],
+            [
+                ("picture", "actor.png"),
+                ("picture", "forest.png"),
+                ("picture", "existing.png"),
+                ("video", "clip.mp4"),
+                ("audio", "existing.wav"),
+                ("audio", "vocals.wav"),
+                ("audio", "full_mix.wav"),
+            ],
+        )
+
+    def test_build_request_propagates_r2v_canonical_references(self):
+        generator = FakeGenerator()
+        DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={
+                "segment_id": "seg-1",
+                "references": {
+                    "reference_image_paths": ["existing.png"],
+                    "reference_video_paths": ["clip.mp4"],
+                    "reference_audio_paths": ["existing.wav"],
+                },
+            },
+            concept="A scene",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+            audio_paths={"vocals": Path("vocals.wav")},
+        )
+
+        request = generator.requests[0]
+        self.assertEqual(
+            [(reference["kind"], reference["source"]) for reference in request["references"]],
+            [
+                ("picture", "existing.png"),
+                ("video", "clip.mp4"),
+                ("audio", "existing.wav"),
+                ("audio", "vocals.wav"),
+            ],
+        )
+
     def test_reports_progress_after_each_scene(self):
         progress = []
         statuses = []

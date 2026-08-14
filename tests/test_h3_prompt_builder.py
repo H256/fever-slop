@@ -590,6 +590,58 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
 class VideoPipelineModeResolutionTests(unittest.TestCase):
     """Test that H3PromptPipeline derives mode from config.video_pipeline."""
 
+    def test_all_h3_modes_are_forwarded_as_canonical_values(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        class FakeArtifactStore:
+            def read_json(self, path): return []
+
+        class FakeBuilder:
+            def __init__(self):
+                self.mode = None
+
+            def build_all_h3_prompts(self, **kwargs):
+                self.mode = kwargs["mode"]
+
+        modes = {
+            "minimax-h3-t2v": "t2v",
+            "minimax-h3-i2v": "i2v",
+            "minimax-h3-fl2v": "fl2v",
+            "minimax-h3-l2v": "l2v",
+            "minimax-h3-r2v": "r2v",
+        }
+        for video_pipeline, expected_mode in modes.items():
+            builder = FakeBuilder()
+
+            class FakeConfig:
+                pass
+
+            config = FakeConfig()
+            config.video_pipeline = video_pipeline
+            pipeline = H3PromptPipeline(
+                llm_factory=lambda c: None,
+                h3_prompt_builder_factory=lambda llm: None,
+                dspy_prompt_builder_factory=lambda llm: builder,
+            )
+            ctx = {
+                "app_config": {},
+                "config": config,
+                "stage1_segments": [{"segment_id": "s1"}],
+                "concept_prompts": {},
+                "scene_details": {},
+                "global_context": {},
+                "h3_prompts_json": "test.json",
+                "artifact_store": FakeArtifactStore(),
+                "log_step": lambda x: None,
+                "log_file": lambda a, b: None,
+            }
+            for key in pipeline.required_keys:
+                ctx.setdefault(key, None)
+
+            pipeline.run(ctx)
+
+            self.assertEqual(expected_mode, builder.mode, video_pipeline)
+
     def test_r2v_derives_ref_mode(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
         pipeline = H3PromptPipeline(
@@ -631,9 +683,9 @@ class VideoPipelineModeResolutionTests(unittest.TestCase):
                 ctx[key] = None
 
         pipeline.run(ctx)
-        self.assertEqual(build_count["mode"], "ref")
+        self.assertEqual(build_count["mode"], "r2v")
 
-    def test_base_pipeline_derives_base_mode(self):
+    def test_non_h3_pipeline_uses_t2v_mode(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 
         class FakeConfig:
@@ -671,7 +723,7 @@ class VideoPipelineModeResolutionTests(unittest.TestCase):
                 ctx[key] = None
 
         pipeline.run(ctx)
-        self.assertEqual(build_count["mode"], "base")
+        self.assertEqual(build_count["mode"], "t2v")
 
 
 if __name__ == "__main__":
