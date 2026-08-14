@@ -1,10 +1,35 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.movie_planning_signatures import build_movie_planning_signature_bundle
+from feverslop.prompting.movie_planning_signatures import (
+    ContinuityPlanPayload,
+    MovieBiblePayload,
+    NarrativePlanPayload,
+    RefineActorsPayload,
+    RefineLocationsPayload,
+    ScreenplayPayload,
+    ShotPlanFromBiblePayload,
+    ShotPlanPayload,
+    StoryArchPayload,
+    StoryDesignPayload,
+)
+
+
+_PAYLOAD_TYPES = {
+    "story_arch": StoryArchPayload,
+    "movie_bible": MovieBiblePayload,
+    "refine_locations": RefineLocationsPayload,
+    "refine_actors": RefineActorsPayload,
+    "continuity_plan": ContinuityPlanPayload,
+    "story_design": StoryDesignPayload,
+    "screenplay": ScreenplayPayload,
+    "narrative_plan": NarrativePlanPayload,
+    "shot_plan_from_bible": ShotPlanFromBiblePayload,
+    "shot_plan": ShotPlanPayload,
+}
 
 
 def _value(result: Any, name: str) -> Any:
@@ -13,34 +38,31 @@ def _value(result: Any, name: str) -> Any:
     return getattr(result, name, result)
 
 
-def _json_default(value: Any) -> Any:
-    if hasattr(value, "model_dump"):
-        return value.model_dump()
-    if hasattr(value, "__dict__"):
-        return value.__dict__
-    if isinstance(value, tuple):
-        return list(value)
-    return str(value)
-
-
 class MoviePlanningModules:
-    """DSPy-backed Movie contracts with a legacy transport compatibility seam."""
+    """DSPy-backed Movie planning contracts."""
 
     def __init__(self, llm: Any, *, dspy_runtime: Any | None = None):
         self._llm = llm
         self._predictors: dict[str, Any] = {}
-        if isinstance(getattr(llm, "model", None), str) and getattr(llm, "client", None) is not None:
-            import dspy
+        if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
+            raise RuntimeError("DSPy movie planning requires a configured DSPy-compatible LLM")
+        runtime = dspy_runtime
+        if runtime is None:
+            try:
+                import dspy
+            except ImportError as exc:
+                raise RuntimeError("DSPy is required for movie planning; install the dspy dependency") from exc
+            from feverslop.prompting.dspy_runtime import DspyRuntime
 
-            runtime = dspy_runtime
-            if runtime is None:
-                from feverslop.prompting.dspy_runtime import DspyRuntime
-
-                runtime = DspyRuntime.create(dspy)
-            self._lm = runtime.make_lm(llm)
-            self._context = runtime.context
-            for name, signature in build_movie_planning_signature_bundle(dspy).items():
-                self._predictors[name] = runtime.predict(signature)
+            runtime = DspyRuntime.create(dspy)
+        else:
+            dspy = __import__("dspy")
+        self._lm = runtime.make_lm(llm)
+        self._context = runtime.context
+        self._predictors = {
+            name: runtime.predict(signature)
+            for name, signature in build_movie_planning_signature_bundle(dspy).items()
+        }
 
     def _call(self, name: str, payload: dict[str, Any], output: str, *, timeout: float | None = None, system_prompt: str = "") -> Any:
         guide_name = {
@@ -48,12 +70,7 @@ class MoviePlanningModules:
             "shot_plan_from_bible": "movie-shot-plan-bible",
         }.get(name, f"movie-{name.replace('_', '-')}")
         guide = load_markdown_guide(guide_name)
-        if not self._predictors:
-            prompt = f"{guide}\n\nStructured input data:\n{json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default)}"
-            kwargs: dict[str, Any] = {"system_prompt": system_prompt or guide, "prompt": prompt}
-            if timeout is not None:
-                kwargs["timeout"] = timeout
-            return self._llm.complete_prompt(**kwargs)
+        payload = _PAYLOAD_TYPES[name].model_validate(payload)
         kwargs: dict[str, Any] = {"guide": guide, "payload": payload}
         if timeout is not None:
             kwargs["config"] = {"timeout": timeout}

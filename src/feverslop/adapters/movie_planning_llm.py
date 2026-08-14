@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieScreenplayArtifact, StoryArch
 from feverslop.adapters.movie_planning_helpers import (
@@ -31,7 +30,7 @@ def _module_data(value):
         return value.model_dump()
     if isinstance(value, dict):
         return value
-    return extract_json_object(str(value))
+    raise TypeError(f"Movie planning predictor returned unsupported output: {type(value).__name__}")
 
 
 class LLMMoviePlanner:

@@ -1,8 +1,14 @@
 import unittest
 from contextlib import nullcontext
+from unittest.mock import patch
 
 from feverslop.prompting.movie_planning_modules import MoviePlanningModules
-from feverslop.prompting.movie_planning_signatures import build_movie_planning_signature_bundle
+from feverslop.prompting.movie_planning_signatures import (
+    MovieBiblePayload,
+    MovieBibleResult,
+    StoryArchPayload,
+    build_movie_planning_signature_bundle,
+)
 from feverslop.prompting.guide_loader import load_markdown_guide
 
 
@@ -22,23 +28,23 @@ class MoviePlanningDspyContractTests(unittest.TestCase):
         self.assertIn("result", bundle["movie_bible"].output_fields)
         self.assertIn("result", bundle["shot_plan"].output_fields)
 
-    def test_legacy_transport_receives_markdown_guide_and_structured_payload(self):
+    def test_movie_planning_fails_clearly_without_dspy_predictors(self):
         class LLM:
-            def __init__(self):
-                self.calls = []
+            model = "fake-model"
+            client = object()
 
             def complete_prompt(self, **kwargs):
-                self.calls.append(kwargs)
-                return '{"title":"T","premise":"P","beats":["B"]}'
+                raise AssertionError("legacy prompt transport must not be used")
 
-        llm = LLM()
-        modules = MoviePlanningModules(llm)
-        result = modules.story_arch({"title": "T", "source_type": "idea", "story_text": "P"})
+        with patch.dict("sys.modules", {"dspy": None}):
+            with self.assertRaisesRegex(RuntimeError, "DSPy.*movie planning"):
+                MoviePlanningModules(LLM())
 
-        self.assertEqual("{\"title\":\"T\",\"premise\":\"P\",\"beats\":[\"B\"]}", result)
-        self.assertIn("story arch", llm.calls[0]["prompt"].lower())
-        self.assertIn('"story_text": "P"', llm.calls[0]["prompt"])
-        self.assertNotIn("{{", llm.calls[0]["prompt"])
+    def test_movie_planning_rejects_unstructured_predictor_output(self):
+        with self.assertRaises(TypeError):
+            from feverslop.adapters.movie_planning_llm import _module_data
+
+            _module_data('{"title":"T"}')
 
     def test_dspy_transport_passes_typed_payload_and_timeout_to_each_contract(self):
         calls = []
@@ -66,7 +72,8 @@ class MoviePlanningDspyContractTests(unittest.TestCase):
         modules.story_arch({"title": "T"}, timeout=17.0)
 
         self.assertEqual("StoryArch", calls[0][0])
-        self.assertEqual({"title": "T"}, calls[0][1]["payload"])
+        self.assertIsInstance(calls[0][1]["payload"], StoryArchPayload)
+        self.assertEqual("T", calls[0][1]["payload"].title)
         self.assertEqual(17.0, calls[0][1]["config"]["timeout"])
 
     def test_dspy_module_exposes_all_ten_contract_calls(self):
@@ -110,6 +117,13 @@ class MoviePlanningDspyContractTests(unittest.TestCase):
             "movie-shot-plan-bible", "movie-shot-plan",
         ):
             self.assertTrue(load_markdown_guide(name).strip())
+
+    def test_movie_signatures_use_typed_payload_and_output_models(self):
+        bundle = build_movie_planning_signature_bundle()
+
+        self.assertIs(bundle["story_arch"].input_fields["payload"].annotation, StoryArchPayload)
+        self.assertIs(bundle["movie_bible"].input_fields["payload"].annotation, MovieBiblePayload)
+        self.assertIs(bundle["movie_bible"].output_fields["result"].annotation, MovieBibleResult)
 
 
 if __name__ == "__main__":
