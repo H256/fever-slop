@@ -21,7 +21,13 @@ class LLMConfig:
     request_timeout_seconds: float = 180.0
     dspy_cache: bool = False
     max_concurrent_requests: int = 1
+    models: dict[str, str] = field(default_factory=dict)
     _local_api_key: str | None = field(default=None, repr=False)
+
+    def model_for(self, task_type: str | None = None) -> str:
+        """Return an optional task-profile model, falling back to the legacy model."""
+        profile = str(task_type or "").strip().lower()
+        return self.models.get(profile, self.model) if profile else self.model
 
     @property
     def api_key(self) -> str | None:
@@ -204,6 +210,16 @@ class AppConfig:
         llm_temperature = float(llm_raw.get("temperature", 0.7))
         llm_max_tokens = int(llm_raw.get("max_tokens", 4096))
         llm_max_concurrent_requests = int(llm_raw.get("max_concurrent_requests", 1))
+        llm_models_raw = llm_raw.get("models", {})
+        if not isinstance(llm_models_raw, dict):
+            raise ValueError("llm.models must be an object")
+        llm_models: dict[str, str] = {}
+        for raw_profile, raw_model in llm_models_raw.items():
+            profile = str(raw_profile).strip().lower()
+            model = str(raw_model).strip()
+            if not profile or not model:
+                raise ValueError("llm.models requires non-empty profile and model names")
+            llm_models[profile] = model
         if llm_temperature < 0:
             raise ValueError(f"llm.temperature must be >= 0, got {llm_temperature}")
         if llm_max_tokens <= 0:
@@ -220,6 +236,7 @@ class AppConfig:
                 request_timeout_seconds=float(llm_raw.get("request_timeout_seconds", 180.0)),
                 dspy_cache=_parse_bool(llm_raw.get("dspy_cache", False), "llm.dspy_cache"),
                 max_concurrent_requests=llm_max_concurrent_requests,
+                models=llm_models,
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),
             comfyui=ComfyUIConfig(
