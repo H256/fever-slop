@@ -20,6 +20,7 @@ from feverslop.prompting.dspy_h3_models import (
     ReferenceKind,
     ReferenceLimits,
     ReferenceVideoPrompt,
+    VideoPromptRequest,
 )
 from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator as CoreVideoPromptGenerator
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
@@ -558,6 +559,41 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 ("audio", "vocals.wav"),
             ],
         )
+
+    def test_build_request_is_valid_canonical_h3_payload_for_all_modes(self):
+        image_paths = {
+            "t2v": ["style.png"],
+            "i2v": ["first.png"],
+            "fl2v": ["first.png", "last.png"],
+            "l2v": ["last.png"],
+            "r2v": ["reference.png"],
+        }
+        for mode, paths in image_paths.items():
+            generator = FakeGenerator()
+            DspyH3PromptBuilder(generator).build_h3_prompt(
+                segment={
+                    "segment_id": "seg-1",
+                    "references": {
+                        "reference_image_paths": paths,
+                        "reference_video_paths": ["motion.mp4"],
+                        "reference_audio_paths": ["scene.wav"],
+                    },
+                },
+                concept="A scene",
+                scene_details={},
+                global_context={},
+                mode=mode,
+            )
+
+            request = VideoPromptRequest.model_validate(generator.requests[0])
+            self.assertTrue(all(reference.description for reference in request.references))
+            roles = [reference.role.value for reference in request.references]
+            if mode == "i2v":
+                self.assertEqual(["first_frame"], roles[:1])
+            elif mode == "fl2v":
+                self.assertEqual(["first_frame", "last_frame"], roles[:2])
+            elif mode == "l2v":
+                self.assertEqual("last_frame", roles[0])
 
     def test_reports_progress_after_each_scene(self):
         progress = []

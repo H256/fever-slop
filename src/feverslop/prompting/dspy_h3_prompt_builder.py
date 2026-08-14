@@ -23,7 +23,7 @@ def _reference(
         "source": source_text,
         "kind": kind,
         "name": name,
-        "description": description,
+        "description": description or f"Preserved {kind} reference from {Path(source_text).name}.",
         "role": role,
     }
 
@@ -32,6 +32,7 @@ def _scene_references(
     segment: dict[str, Any],
     audio_paths: dict[str, Path] | None,
     reference_root: Path | None,
+    mode: str = "r2v",
 ) -> tuple[list[dict[str, str]], list[Path]]:
     references = segment.get("references") or {}
     result: list[dict[str, str]] = []
@@ -88,14 +89,24 @@ def _scene_references(
             role="environment",
         ), image_path)
 
-    for path_value in references.get("reference_image_paths") or []:
+    for index, path_value in enumerate(references.get("reference_image_paths") or []):
         path = Path(path_value)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
+        role = "subject"
+        if mode == "i2v" and index == 0:
+            role = "first_frame"
+        elif mode == "fl2v" and index == 0:
+            role = "first_frame"
+        elif mode == "fl2v" and index == 1:
+            role = "last_frame"
+        elif mode == "l2v" and index == 0:
+            role = "last_frame"
         add_reference(_reference(
             label=f"<Picture {sum(kind == 'picture' for kind in seen['picture']) + 1}>",
             source=path,
             kind="picture",
             name=path.stem,
+            role=role,
         ), image_path)
 
     for path_value in references.get("reference_video_paths") or []:
@@ -105,6 +116,7 @@ def _scene_references(
             source=path,
             kind="video",
             name=path.stem,
+            role="motion",
         ))
 
     for path_value in references.get("reference_audio_paths") or []:
@@ -319,6 +331,7 @@ class DspyH3PromptBuilder:
             segment,
             audio_paths,
             reference_root or self.reference_root,
+            mode=mode,
         )
         relay_segments = _normalize_relay_segments(segment)
         generator_references = [dict(reference) for reference in references]
