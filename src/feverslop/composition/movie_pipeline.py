@@ -171,14 +171,14 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
 
 def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
     if config["movie_video_workflow"] == "i2v-edit":
-        return MOVIE_I2V_EDIT_STAGE_TITLES
+        return set(MOVIE_I2V_EDIT_STAGE_TITLES)
     if config["movie_video_workflow"] == "startframe-director":
-        return MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES
+        return set(MOVIE_STARTFRAME_DIRECTOR_STAGE_TITLES)
     if config["movie_video_workflow"] == "ingredients":
-        return MOVIE_INGREDIENTS_STAGE_TITLES
+        return set(MOVIE_INGREDIENTS_STAGE_TITLES)
     if _is_minimax_movie_workflow(config["movie_video_workflow"]):
-        return MOVIE_MINIMAX_STAGE_TITLES
-    return MOVIE_MSR_STAGE_TITLES
+        return set(MOVIE_MINIMAX_STAGE_TITLES)
+    return set(MOVIE_MSR_STAGE_TITLES)
 
 
 def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResult:

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 import os
+import json
 from unittest.mock import patch
 
 
@@ -38,7 +39,10 @@ class AppConfigTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "app_config.json"
-            config_path.write_text('{"llm": {}}', encoding="utf-8")
+            config_path.write_text(
+                json.dumps({"llm": {}, "global_library_path": str(Path(temp_dir) / "library")}),
+                encoding="utf-8",
+            )
 
             config = AppConfig.load(config_path)
 
@@ -60,7 +64,10 @@ class AppConfigTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "app_config.json"
-            config_path.write_text('{"llm": {}}', encoding="utf-8")
+            config_path.write_text(
+                json.dumps({"llm": {}, "global_library_path": str(Path(temp_dir) / "library")}),
+                encoding="utf-8",
+            )
 
             config = AppConfig.load(config_path)
 
@@ -123,7 +130,10 @@ class AppConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
             root = Path(temp_dir)
             config_path = root / "app_config.json"
-            config_path.write_text('{"llm": {}}', encoding="utf-8")
+            config_path.write_text(
+                json.dumps({"llm": {}, "global_library_path": str(root / "library")}),
+                encoding="utf-8",
+            )
             (root / ".env").write_text(
                 'LLM_API_KEY="dotenv-secret" # local key\n', encoding="utf-8"
             )
@@ -138,7 +148,13 @@ class AppConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
             root = Path(temp_dir)
             config_path = root / "app_config.json"
-            config_path.write_text('{"llm": {"api_key": "json-secret"}}', encoding="utf-8")
+            config_path.write_text(
+                json.dumps({
+                    "llm": {"api_key": "json-secret"},
+                    "global_library_path": str(root / "library"),
+                }),
+                encoding="utf-8",
+            )
             (root / ".env").write_text("LLM_API_KEY=dotenv-secret\n", encoding="utf-8")
 
             config = AppConfig.load(config_path)
@@ -152,7 +168,13 @@ class AppConfigTests(unittest.TestCase):
         ):
             root = Path(temp_dir)
             config_path = root / "app_config.json"
-            config_path.write_text('{"llm": {"api_key": "json-secret"}}', encoding="utf-8")
+            config_path.write_text(
+                json.dumps({
+                    "llm": {"api_key": "json-secret"},
+                    "global_library_path": str(root / "library"),
+                }),
+                encoding="utf-8",
+            )
             (root / ".env").write_text("LLM_API_KEY=dotenv-secret\n", encoding="utf-8")
 
             config = AppConfig.load(config_path)

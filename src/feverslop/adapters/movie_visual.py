@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
@@ -26,6 +27,21 @@ from feverslop.domain.movie_utils import transition_from_previous
 from feverslop.ports.rendering import VideoRenderRequest
 
 
+def write_local_placeholder_clip(path: Path, *, duration_seconds: float = 1.0) -> None:
+    """Write a tiny valid MP4 for offline pipeline and export tests."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-f", "lavfi", "-i",
+            f"color=c=black:s=16x16:r=1:d={max(0.1, duration_seconds):.3f}",
+            "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 class LocalMovieVisualAdapter:
     """Local placeholder adapter for movie production tests and offline Studio use."""
 
@@ -41,11 +57,20 @@ class LocalMovieVisualAdapter:
     ) -> Path:
         output_dir = project_dir / "output" / "movie"
         output_dir.mkdir(parents=True, exist_ok=True)
+        plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
+        scenes = plan.get("shots") or plan.get("scenes") or []
+        clip_dir = output_dir / "ltx_msr" / "final"
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        for index, scene in enumerate(scenes, start=1):
+            scene_number = int(scene.get("scene") or scene.get("scene_number") or index)
+            write_local_placeholder_clip(
+                clip_dir / f"scene_{scene_number:04}.mp4",
+                duration_seconds=float(scene.get("duration_seconds") or 1.0),
+            )
         final = output_dir / f"{project_dir.name}.mp4"
-        final.write_bytes(b"feverslop movie placeholder\n" + render_plan_path.read_bytes())
+        write_local_placeholder_clip(final)
         if on_clip_rendered is not None:
-            plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
-            total = len(plan.get("shots") or plan.get("scenes") or []) or 1
+            total = len(scenes) or 1
             for completed in range(1, total + 1):
                 on_clip_rendered(completed, total, completed)
         return final

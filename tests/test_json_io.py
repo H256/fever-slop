@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,7 +15,7 @@ class JsonIoTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "broken.json"
             path.write_text("{broken", encoding="utf-8")
-            with self.assertRaisesRegex(FeverSlopDataError, str(path)):
+            with self.assertRaisesRegex(FeverSlopDataError, re.escape(str(path))):
                 read_json_document(path)
 
     def test_document_writer_is_atomic_and_readable(self):

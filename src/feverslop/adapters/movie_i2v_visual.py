@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
 
+from feverslop.adapters.movie_visual import write_local_placeholder_clip
 from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
 
 
@@ -21,10 +23,20 @@ class LocalMovieI2VEditVisualAdapter:
     ) -> Path:
         output_dir = Path(project_dir) / "output" / "movie"
         output_dir.mkdir(parents=True, exist_ok=True)
+        plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
+        scenes = plan if isinstance(plan, list) else plan.get("shots") or plan.get("scenes") or []
+        clip_dir = output_dir / "i2v-edit" / "final"
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        for index, scene in enumerate(scenes, start=1):
+            scene_number = int(scene.get("scene") or scene.get("scene_number") or index)
+            write_local_placeholder_clip(
+                clip_dir / f"scene_{scene_number:04}.mp4",
+                duration_seconds=float(scene.get("duration_seconds") or 1.0),
+            )
         final = output_dir / f"{Path(project_dir).name}.mp4"
-        final.write_bytes(b"feverslop movie i2v-edit placeholder\n" + Path(render_plan_path).read_bytes())
+        write_local_placeholder_clip(final)
         if on_clip_rendered is not None:
-            on_clip_rendered(1, 1, 1)
+            on_clip_rendered(1, len(scenes) or 1, int(scenes[0].get("scene") or 1) if scenes else 1)
         return final
 
 

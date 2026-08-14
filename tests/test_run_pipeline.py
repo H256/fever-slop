@@ -550,7 +550,11 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             render_dir = project_dir / "output" / "render"
             render_dir.mkdir(parents=True)
             (render_dir / "render_plan_song.json").write_text(
-                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                json.dumps([
+                    {"scene": 1, "duration_seconds": 1.0},
+                    {"scene": 2, "duration_seconds": 1.0},
+                    {"scene": 3, "duration_seconds": 1.0},
+                ]),
                 encoding="utf-8",
             )
             args = run_pipeline.build_arg_parser().parse_args(
@@ -753,11 +757,16 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
                 encoding="utf-8",
             )
+            (project_dir / "song.mp3").write_bytes(b"audio")
             render_dir = project_dir / "output" / "render"
             render_dir.mkdir(parents=True)
             plan_path = render_dir / "render_plan_song.json"
             plan_path.write_text(
-                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                json.dumps([
+                    {"scene": 1, "duration_seconds": 1.0},
+                    {"scene": 2, "duration_seconds": 1.0},
+                    {"scene": 3, "duration_seconds": 1.0},
+                ]),
                 encoding="utf-8",
             )
             clip_1 = render_dir / "ltx_single_prompt" / "final" / "scene_0001.mp4"
@@ -809,15 +818,27 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 json.dumps({"project_name": "Song", "input_audio": "song.mp3"}),
                 encoding="utf-8",
             )
+            (project_dir / "song.mp3").write_bytes(b"audio")
             render_dir = project_dir / "output" / "render"
             render_dir.mkdir(parents=True)
             plan_path = render_dir / "render_plan_song_refs.json"
             plan_path.write_text(
-                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                json.dumps([
+                    {"scene": 1, "duration_seconds": 1.0},
+                    {"scene": 2, "duration_seconds": 1.0},
+                    {"scene": 3, "duration_seconds": 1.0},
+                ]),
                 encoding="utf-8",
             )
             base_plan = render_dir / "render_plan_song.json"
-            base_plan.write_text(json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]), encoding="utf-8")
+            base_plan.write_text(
+                json.dumps([
+                    {"scene": 1, "duration_seconds": 1.0},
+                    {"scene": 2, "duration_seconds": 1.0},
+                    {"scene": 3, "duration_seconds": 1.0},
+                ]),
+                encoding="utf-8",
+            )
             clip_1 = render_dir / "ltx_msr" / "scene_0001.mp4"
             clip_2 = render_dir / "ltx_msr" / "scene_0002.mp4"
             clip_3 = render_dir / "ltx_msr" / "scene_0003.mp4"
