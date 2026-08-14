@@ -113,6 +113,26 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("A weathered hiker.", references[0]["description"])
         self.assertEqual("A dark ancient forest.", references[1]["description"])
 
+    def test_local_picture_without_description_reaches_h3_analyzer_without_placeholder(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            picture = root / "actor.png"
+            picture.write_bytes(b"image")
+            references, images = _scene_references(
+                {
+                    "references": {
+                        "actor_msr_paths": ["actor.png"],
+                        "actor_ids": ["leo"],
+                        "actor_reference_descriptions": [{"id": "leo"}],
+                    }
+                },
+                None,
+                root,
+            )
+
+        self.assertEqual("", references[0]["description"])
+        self.assertEqual([picture], images)
+
     def test_passes_general_steering_and_prompt_guidance_to_generator(self):
         generator = FakeGenerator()
         DspyH3PromptBuilder(generator).build_h3_prompt(

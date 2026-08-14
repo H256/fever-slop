@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from threading import Condition, Lock
 from typing import Any, Iterator
 
+import dspy
+
 
 @dataclass(frozen=True, slots=True)
 class LLMConcurrencySnapshot:
@@ -83,8 +85,21 @@ def get_shared_llm_concurrency_limiter(max_concurrent_requests: int = 1) -> LLMC
         return _default_limiter
 
 
-class LimitedDspyLM:
+class LimitedDspyLM(dspy.BaseLM):
     def __init__(self, lm: Any, limiter: LLMConcurrencyLimiter) -> None:
+        kwargs = dict(getattr(lm, "kwargs", {}) or {})
+        temperature = kwargs.pop("temperature", None)
+        max_tokens = kwargs.pop("max_tokens", None)
+        super().__init__(
+            model=getattr(lm, "model", "unknown"),
+            model_type=getattr(lm, "model_type", "chat"),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            cache=getattr(lm, "cache", True),
+            callbacks=getattr(lm, "callbacks", None),
+            num_retries=getattr(lm, "num_retries", 3),
+            **kwargs,
+        )
         self._lm = lm
         self.llm_limiter = limiter
 
@@ -92,12 +107,21 @@ class LimitedDspyLM:
         return getattr(self._lm, name)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        with self.llm_limiter.acquire():
-            return self._lm(*args, **kwargs)
+        # Keep lightweight test/integration callables usable while real DSPy
+        # LMs use BaseLM's response normalization and history handling.
+        if not isinstance(self._lm, dspy.BaseLM):
+            with self.llm_limiter.acquire():
+                return self._lm(*args, **kwargs)
+        return super().__call__(*args, **kwargs)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         with self.llm_limiter.acquire():
-            return self._lm.forward(*args, **kwargs)
+            forward = getattr(self._lm, "forward", None)
+            return forward(*args, **kwargs) if forward is not None else self._lm(*args, **kwargs)
+
+    async def aforward(self, *args: Any, **kwargs: Any) -> Any:
+        with self.llm_limiter.acquire():
+            return await self._lm.aforward(*args, **kwargs)
 
     def copy(self, **kwargs: Any) -> "LimitedDspyLM":
         copied = self._lm.copy(**kwargs)

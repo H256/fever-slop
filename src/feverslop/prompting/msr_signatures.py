@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -30,7 +28,7 @@ def build_msr_signature_bundle(dspy_module: Any | None = None):
 
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
-        images: list[Any] = dspy_module.InputField()
+        images: list[dspy_module.Image] = dspy_module.InputField()
         result: MSRPromptResult = dspy_module.OutputField()
 
     class Segments(dspy_module.Signature):

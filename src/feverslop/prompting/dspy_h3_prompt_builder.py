@@ -14,7 +14,7 @@ def _reference(
     source: str | Path,
     kind: str,
     name: str,
-    description: str = "",
+    description: str | None = None,
     role: str = "general",
 ) -> dict[str, str]:
     source_text = str(source).replace("\\", "/")
@@ -23,7 +23,7 @@ def _reference(
         "source": source_text,
         "kind": kind,
         "name": name,
-        "description": description or f"Preserved {kind} reference from {Path(source_text).name}.",
+        "description": description if description is not None else f"Preserved {kind} reference from {Path(source_text).name}.",
         "role": role,
     }
 
@@ -67,7 +67,11 @@ def _scene_references(
             source=path,
             kind="picture",
             name=name,
-            description=actor_descriptions.get(name, ""),
+            description=(
+                actor_descriptions[name]
+                if actor_descriptions.get(name)
+                else ("" if image_path.is_file() else None)
+            ),
             role="subject",
         ), image_path)
 
@@ -81,11 +85,14 @@ def _scene_references(
             source=path,
             kind="picture",
             name=str(references.get("location_id") or "Location"),
-            description=str(
-                location_description.get("visual_description")
-                or location_description.get("image_prompt")
-                or ""
-            ).strip(),
+            description=(
+                str(
+                    location_description.get("visual_description")
+                    or location_description.get("image_prompt")
+                    or ""
+                ).strip()
+                or ("" if image_path.is_file() else None)
+            ),
             role="environment",
         ), image_path)
 
@@ -106,6 +113,7 @@ def _scene_references(
             source=path,
             kind="picture",
             name=path.stem,
+            description="" if image_path.is_file() else None,
             role=role,
         ), image_path)
 

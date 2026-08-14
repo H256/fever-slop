@@ -34,7 +34,7 @@ class MSRPromptModules:
         signatures = build_msr_signature_bundle(dspy)
         self._predictors = {name: dspy_runtime.predict(signature) for name, signature in signatures.items()}
 
-    def _call(self, name: str, guide_name: str, payload: dict[str, Any], *, images: list[Path] | None = None, timeout: float | None = None) -> MSRPromptResult:
+    def _call(self, name: str, guide_name: str, payload: dict[str, Any], *, images: list[Any] | None = None, timeout: float | None = None) -> MSRPromptResult:
         kwargs: dict[str, Any] = {
             "guide": load_markdown_guide(guide_name),
             "payload": payload,
@@ -48,7 +48,15 @@ class MSRPromptModules:
         return MSRPromptResult.model_validate(result)
 
     def vision(self, payload: dict[str, Any], images: list[Path], *, timeout: float | None = None) -> MSRPromptResult:
-        return self._call("vision", "msr-vision", payload, images=images, timeout=timeout)
+        import dspy
+
+        return self._call(
+            "vision",
+            "msr-vision",
+            payload,
+            images=[image if isinstance(image, dspy.Image) else dspy.Image.from_path(str(image)) for image in images],
+            timeout=timeout,
+        )
 
     def segments(self, payload: dict[str, Any], *, timeout: float | None = None) -> MSRPromptResult:
         return self._call("segments", "msr-segments", payload, timeout=timeout)

@@ -29,6 +29,8 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
         self.assertIn("25 to 45", load_markdown_guide("msr-segments"))
 
     def test_msr_dspy_module_passes_images_and_payload_as_structured_inputs(self):
+        import dspy
+
         calls = []
 
         class Predictor:
@@ -49,10 +51,16 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
 
         modules = MSRPromptModules(LLM(), dspy_runtime=Runtime())
         payload = {"scene": 4, "relay_segments": [{"index": 0}]}
-        modules.vision(payload, [Path("actor.png")], timeout=12.0)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "actor.png"
+            image_path.write_bytes(
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82"
+            )
+            modules.vision(payload, [image_path], timeout=12.0)
 
         self.assertEqual(payload, calls[0]["payload"])
-        self.assertEqual([Path("actor.png")], calls[0]["images"])
+        self.assertTrue(all(isinstance(image, dspy.Image) for image in calls[0]["images"]))
         self.assertEqual(12.0, calls[0]["config"]["timeout"])
 
     def test_rejects_invalid_render_plan_after_write(self):

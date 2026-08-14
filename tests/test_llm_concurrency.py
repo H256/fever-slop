@@ -37,6 +37,18 @@ class BlockingBackend:
 
 
 class LLMConcurrencyTests(unittest.TestCase):
+    def test_limited_dspy_lm_is_accepted_by_dspy_context(self):
+        import dspy
+
+        from feverslop.llm_concurrency import LLMConcurrencyLimiter, LimitedDspyLM
+
+        underlying = dspy.LM("openai/fake-model", api_key="test", api_base="http://localhost")
+        limited = LimitedDspyLM(underlying, LLMConcurrencyLimiter())
+
+        self.assertIsInstance(limited, dspy.BaseLM)
+        with dspy.context(lm=limited):
+            self.assertIs(dspy.settings.lm, limited)
+
     @patch("feverslop.adapters.llm_client.OpenAI")
     def test_direct_openai_calls_default_to_one_in_flight_request(self, mock_openai):
         backend = BlockingBackend()
