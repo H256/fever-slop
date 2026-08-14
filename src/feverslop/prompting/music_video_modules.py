@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
-from feverslop.prompting.dspy_runtime import DspyRuntime
 
 
 def _value(result: Any, name: str) -> Any:
@@ -21,7 +19,8 @@ class MusicVideoPromptModules:
     """Typed DSPy request boundary with a small legacy-fake compatibility seam."""
 
     def __init__(self, llm: Any, *, dspy_runtime: Any | None = None):
-        self._llm = llm
+        if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
+            raise RuntimeError("DSPy music-video prompts require a configured DSPy-compatible LLM")
         self._predictors: dict[str, Any] = {}
         if isinstance(getattr(llm, "model", None), str) and getattr(llm, "client", None) is not None:
             import dspy
@@ -38,11 +37,6 @@ class MusicVideoPromptModules:
                 self._predictors[name] = runtime.predict(signature)
 
     def _call(self, name: str, guide: str, payload: dict[str, Any], output: str, *, timeout=None):
-        if not self._predictors:
-            kwargs = {"system_prompt": guide, "prompt": json.dumps(payload.get("payload", payload), ensure_ascii=False, indent=2)}
-            if timeout is not None:
-                kwargs["timeout"] = timeout
-            return DspyRuntime.complete_text(self._llm, **kwargs)
         predictor_kwargs = {"guide": guide, **payload}
         if timeout is not None:
             predictor_kwargs["config"] = {"timeout": timeout}

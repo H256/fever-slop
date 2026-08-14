@@ -4,7 +4,6 @@ from contextlib import nullcontext
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.music_video_modules import MusicVideoPromptModules
 from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
-from tests.fakellm import FakeLLM
 
 
 class MusicVideoDspyContractTests(unittest.TestCase):
@@ -19,18 +18,34 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         self.assertIn("result", bundle["subject_locations"].output_fields)
         self.assertIn("concepts", bundle["concept_map"].output_fields)
 
-    def test_legacy_test_transport_receives_markdown_guide_and_structured_data(self):
-        llm = FakeLLM('{"segment_001": "A forest path."}')
-        modules = MusicVideoPromptModules(llm)
+    def test_injected_predictor_receives_markdown_guide_and_structured_data(self):
+        calls = []
+
+        class Predictor:
+            def __call__(self, **kwargs):
+                calls.append(kwargs)
+                return {"concepts": {"segment_001": "A forest path."}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
 
         result = modules.concepts(
             {"GLOBAL_CONTEXT": {"location_constraint": "forest"}, "CURRENT_BATCH_SEGMENTS": [{"segment_id": "segment_001"}]},
         )
 
-        self.assertEqual('{"segment_001": "A forest path."}', result)
-        self.assertIn("location_constraint", llm.calls[0].system_prompt)
-        self.assertIn("CURRENT_BATCH_SEGMENTS", llm.calls[0].prompt)
-        self.assertNotIn("{GLOBAL_CONTEXT}", llm.calls[0].system_prompt)
+        self.assertEqual({"segment_001": "A forest path."}, result)
+        self.assertIn("location_constraint", calls[0]["guide"])
+        self.assertIn("CURRENT_BATCH_SEGMENTS", calls[0]["payload"])
 
     def test_dspy_predictor_receives_caller_timeout_as_lm_config(self):
         calls = []

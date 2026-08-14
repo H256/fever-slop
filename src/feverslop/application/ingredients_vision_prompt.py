@@ -35,6 +35,7 @@ def build_ingredients_vision_prompt(
     fallback_shot_invariants: str,
     scene_sheet_description: str = "",
     dspy_runtime: Any | None = None,
+    image_factory=None,
 ) -> IngredientsPromptResult:
     unavailable_fallback = IngredientsPromptResult(
         fallback_reference_description, fallback_shot_invariants, "vision unavailable"
@@ -46,7 +47,7 @@ def build_ingredients_vision_prompt(
         return unavailable_fallback
 
     try:
-        result = IngredientsPromptModules(llm, dspy_runtime=dspy_runtime).vision(
+        result = IngredientsPromptModules(llm, dspy_runtime=dspy_runtime, image_factory=image_factory).vision(
             {
                 "references": reference_metadata,
                 "target_context": target_context,

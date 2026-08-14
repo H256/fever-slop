@@ -64,25 +64,3 @@ class DspyRuntime:
         if limiter is None:
             return lm
         return limit_dspy_lm(lm, limiter)
-
-    @staticmethod
-    def complete_text(llm: Any, *, system_prompt: str, prompt: str, timeout: float | None = None) -> str:
-        """Compatibility transport for non-DSPy test doubles and old clients."""
-        return llm.complete_prompt(system_prompt=system_prompt, prompt=prompt, timeout=timeout)
-
-    @staticmethod
-    def complete_images(
-        llm: Any,
-        *,
-        system_prompt: str,
-        prompt: str,
-        image_paths: list[Any],
-        timeout: float | None = None,
-    ) -> str:
-        """Compatibility transport for non-DSPy vision test doubles."""
-        try:
-            return llm.complete_prompt_with_images(system_prompt, prompt, image_paths, timeout=timeout)
-        except TypeError as exc:
-            if "timeout" not in str(exc):
-                raise
-            return llm.complete_prompt_with_images(system_prompt, prompt, image_paths)

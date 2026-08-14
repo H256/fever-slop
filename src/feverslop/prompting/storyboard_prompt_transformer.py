@@ -12,9 +12,10 @@ class TemplateStoryboardPromptTransformer:
     llm: LLMPort
     template_path: Path
     debug_dir: Path
+    modules: object | None = None
 
     def __post_init__(self) -> None:
-        self._modules = GeneralPromptModules(self.llm)
+        self._modules = self.modules if self.modules is not None else GeneralPromptModules(self.llm)
 
     def transform_prompt(
         self,
@@ -38,8 +39,8 @@ class TemplateStoryboardPromptTransformer:
             "width": width,
             "height": height,
             "original_prompt": original_prompt,
-        }, legacy_system_prompt=system_prompt, legacy_prompt=user_prompt)
-        response = (result.prompt if hasattr(result, "prompt") else result).strip()
+        })
+        response = result.prompt.strip()
         self._write_debug(scene_number, system_prompt, user_prompt, response)
         return response
 

@@ -21,15 +21,16 @@ class LlmPromptBoundaryTests(unittest.TestCase):
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
             for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr":
+                    if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                        name = node.args[1].value
+                        if isinstance(name, str) and name.startswith("complete"):
+                            violations.append(f"{path}:{node.lineno}")
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {
                     "complete_prompt",
                     "complete_prompt_with_images",
-                    "create",
                 }:
-                    is_transport_call = node.func.attr in {"complete_prompt", "complete_prompt_with_images"}
-                    is_raw_openai_call = ast.unparse(node.func).endswith(".chat.completions.create")
-                    if is_transport_call or is_raw_openai_call:
-                        violations.append(f"{path}:{node.lineno}")
+                    violations.append(f"{path}:{node.lineno}")
         self.assertEqual([], violations)
 
     def test_remaining_contracts_have_typed_signatures_and_guides(self):

@@ -4,11 +4,7 @@ from pathlib import Path
 import re
 from typing import Callable
 
-from feverslop.prompting.music_video_prompt_style import (
-    build_i2v_system_prompt,
-    build_t2i_system_prompt,
-    build_video_payload,
-)
+from feverslop.prompting.music_video_prompt_style import build_i2v_system_prompt, build_video_payload
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
@@ -99,7 +95,7 @@ class ScenePromptBuilder:
             "trigger_word": trigger_word,
         }
 
-        result = self._modules.zimage_prompt(payload, legacy_system_prompt=build_t2i_system_prompt())
+        result = self._modules.zimage_prompt(payload)
         result = result.prompt if hasattr(result, "prompt") else result
 
         result = clean_llm_text(result)

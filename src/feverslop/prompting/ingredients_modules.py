@@ -21,7 +21,7 @@ def _value(result: Any, name: str) -> Any:
 class IngredientsPromptModules:
     """DSPy boundary for the multimodal Ingredients vision contract."""
 
-    def __init__(self, llm: Any, *, dspy_runtime: Any | None = None):
+    def __init__(self, llm: Any, *, dspy_runtime: Any | None = None, image_factory=None):
         if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
             raise RuntimeError("DSPy Ingredients prompts require a configured DSPy-compatible LLM")
         runtime = dspy_runtime
@@ -35,6 +35,7 @@ class IngredientsPromptModules:
             dspy = __import__("dspy")
         self._lm = runtime.make_lm(llm)
         self._context = runtime.context
+        self._image_factory = image_factory
         self._predictor = runtime.predict(build_ingredients_signature_bundle(dspy)["vision"])
 
     def vision(
@@ -55,8 +56,8 @@ class IngredientsPromptModules:
             result = _value(self._predictor(**kwargs), "result")
         return IngredientsVisionResult.model_validate(result)
 
-    @staticmethod
-    def _image(path: Path) -> Any:
+    def _image(self, path: Path) -> Any:
+        if self._image_factory is not None:
+            return self._image_factory(path)
         import dspy
-
         return dspy.Image.from_path(str(path))
