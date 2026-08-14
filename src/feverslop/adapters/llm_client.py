@@ -128,12 +128,13 @@ class LocalOpenAIClient:
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
         min_request_interval_seconds: float = 0.0,
+        allow_private_addresses: bool = True,
     ):
         if request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be greater than zero")
         resolved_key = _resolve_api_key(api_key)
         self.auth_headers = dict(auth_headers or {})
-        validate_api_url(base_url)
+        validate_api_url(base_url, allow_private_addresses=allow_private_addresses)
         self.client = OpenAI(
             base_url=base_url,
             api_key=resolved_key,

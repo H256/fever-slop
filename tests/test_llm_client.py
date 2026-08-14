@@ -119,7 +119,11 @@ class LLMClientRetryTests(unittest.TestCase):
         from feverslop.security.url_validation import APIURLValidationError
 
         with self.assertRaises(APIURLValidationError):
-            LocalOpenAIClient(base_url="http://10.0.0.8:8080/v1", api_key="test-key")
+            LocalOpenAIClient(
+                base_url="http://10.0.0.8:8080/v1",
+                api_key="test-key",
+                allow_private_addresses=False,
+            )
         mock_openai.assert_not_called()
 
     @patch("feverslop.adapters.llm_client.OpenAI")
