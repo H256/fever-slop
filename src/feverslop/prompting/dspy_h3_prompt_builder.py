@@ -257,6 +257,8 @@ class DspyH3PromptBuilder:
         generator: Callable[[dict[str, Any]], Any],
         *,
         reference_root: Path | None = None,
+        # Compatibility callers may retain concept-only fallback; production
+        # construction must pass False so DSPy failures are surfaced.
         allow_fallback: bool = True,
     ):
         self.generator = generator

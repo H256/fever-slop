@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
-from typing import Callable
 
-from feverslop.domain.llm_parsing import extract_json_object
-from feverslop.prompting.minimax_h3_prompt_style import build_h3_video_system_prompt
-from feverslop.ports.artifacts import ArtifactStore
-from feverslop.ports.llm import LLMPort
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    build_dspy_generator,
+)
 
 
 def _build_references_from_segment(segment: dict) -> dict | None:
@@ -87,137 +85,12 @@ def build_references_from_segment(segment: dict) -> dict | None:
     return _build_references_from_segment(segment)
 
 
-class H3PromptBuilder:
-    """Builds H3-structured prompts per scene, mirroring ScenePromptBuilder pattern."""
+class H3PromptBuilder(DspyH3PromptBuilder):
+    """Compatibility facade backed by the canonical DSPy H3 builder."""
 
-    def __init__(self, llm: LLMPort):
-        self.llm = llm
-
-    def build_h3_prompt(
-        self,
-        *,
-        segment: dict,
-        concept: str,
-        scene_details: dict,
-        global_context: dict,
-        mode: str = "base",
-        video_type: str = "music_video",
-    ) -> dict:
-        """Generate H3-structured prompt for one scene.
-
-        Returns dict with H3 fields plus a merged `prompt` string key.
-        """
-        silent_mode = bool(global_context.get("silent_mode", False))
-        segment = dict(segment)
-        if silent_mode:
-            segment_references = dict(segment.get("references") or {})
-            vocal_path = str(
-                ((segment.get("stem_audio") or {}).get("paths") or {}).get("vocals") or ""
-            )
-            if vocal_path:
-                segment_references["reference_audio_paths"] = [
-                    path
-                    for path in segment_references.get("reference_audio_paths", [])
-                    if str(path) != vocal_path
-                ]
-            segment["references"] = segment_references
-        has_audio_refs = bool(segment.get("references", {}).get("reference_audio_paths"))
-
-        # Build references dict from segment for ref mode
-        references = _build_references_from_segment(segment)
-        system_prompt = build_h3_video_system_prompt(
-            mode=mode,
-            video_type=video_type,
-            silent_mode=silent_mode,
-            references=references,
+    def __init__(self, llm, *, reference_root: Path | None = None, allow_fallback: bool = True):
+        super().__init__(
+            build_dspy_generator(llm),
+            reference_root=reference_root,
+            allow_fallback=allow_fallback,
         )
-
-        payload = {
-            "segment": segment,
-            "performance_mode": segment.get("type", ""),
-            "scene_concept": concept,
-            "camera_motion": json.dumps(scene_details, ensure_ascii=False, indent=2) if isinstance(scene_details, dict) else scene_details,
-            "character_motion": "",
-            "global_subject": global_context.get("subject", ""),
-            "story_idea": global_context.get("story_idea", ""),
-            "style": global_context.get("style", ""),
-            "locations": global_context.get("locations", []),
-            "location_constraint": global_context.get("location_constraint", ""),
-            "silent_mode": silent_mode,
-            "has_audio_refs": has_audio_refs,
-        }
-
-        try:
-            response = self.llm.complete_prompt(
-                system_prompt=system_prompt,
-                prompt=json.dumps(payload, ensure_ascii=False, indent=2),
-            )
-            structured: dict = extract_json_object(response)
-        except Exception:
-            # Fallback: return raw text in prompt key
-            structured = {"prompt": str(response).strip()}
-
-        # Build merged prompt string if not present
-        if "prompt" not in structured:
-            merged_parts: list[str] = []
-            # For ref mode
-            if mode == "ref":
-                for field in ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"):
-                    val = structured.get(field, "")
-                    if val:
-                        merged_parts.append(f"{field}: {val}")
-            else:
-                for field in ("integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"):
-                    val = structured.get(field, "")
-                    if val:
-                        merged_parts.append(f"{field}: {val}")
-            structured["prompt"] = "\n".join(merged_parts)
-
-        return structured
-
-    def build_all_h3_prompts(
-        self,
-        *,
-        stage1_segments: list[dict],
-        concept_prompts: dict,
-        scene_details: dict,
-        global_context: dict,
-        mode: str = "base",
-        video_type: str = "music_video",
-        output_json_path: str | Path,
-        artifact_store: ArtifactStore,
-        audio_paths: dict[str, Path] | None = None,
-        reference_root: Path | None = None,
-        progress_callback: Callable[[int, int], None] | None = None,
-        status_callback: Callable[[int, int, str], None] | None = None,
-    ) -> Path:
-        """Per-scene batch generation. Returns written file path."""
-        results = []
-        total = len(stage1_segments)
-        for current, segment in enumerate(stage1_segments, start=1):
-            segment_id = segment["segment_id"]
-            if status_callback is not None:
-                status_callback(current, total, "started")
-            concept = concept_prompts.get(segment_id, {})
-            if isinstance(concept, dict):
-                concept_text = str(concept.get("concept", ""))
-            else:
-                concept_text = str(concept)
-            details = scene_details.get(segment_id, {})
-
-            h3_data = self.build_h3_prompt(
-                segment=segment,
-                concept=concept_text,
-                scene_details=details,
-                global_context=global_context,
-                mode=mode,
-                video_type=video_type,
-            )
-            entry = {"segment_id": segment_id, **h3_data}
-            results.append(entry)
-            if progress_callback is not None:
-                progress_callback(current, total)
-            if status_callback is not None:
-                status_callback(current, total, "completed")
-
-        return artifact_store.write_json(output_json_path, results)
