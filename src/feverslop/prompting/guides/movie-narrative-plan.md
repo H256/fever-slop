@@ -1,0 +1,1 @@
+Create narrative memory from the canonical screenplay. Return sequences, a causal_chain, and open_threads. Use only screenplay scene ids, preserve scene order, give every later scene a concrete cause_from_previous, and give every non-final scene a concrete sets_up_next. This is planning memory, not renderer prose.
