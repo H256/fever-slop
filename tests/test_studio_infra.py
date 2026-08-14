@@ -1,6 +1,7 @@
 """Tests for studio infrastructure fixes (Issue #280)."""
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,7 +19,12 @@ class TestArtifactCatalogOSError(unittest.TestCase):
             (root / "config.json").write_text("{}")
             # Create a broken symlink
             target = root / "broken_link"
-            target.symlink_to("nonexistent_file")
+            try:
+                target.symlink_to("nonexistent_file")
+            except OSError as exc:
+                if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("Windows symlink privilege is unavailable")
+                raise
             # catalog_snapshot should not crash
             catalog = ArtifactCatalog(lambda _: root)
             snapshot = catalog.catalog_snapshot("")

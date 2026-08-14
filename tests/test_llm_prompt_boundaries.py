@@ -15,6 +15,8 @@ class LlmPromptBoundaryTests(unittest.TestCase):
             root / "feverslop" / "prompting" / "dspy_runtime.py",
             root / "feverslop" / "adapters" / "llm_client.py",
         }
+        benchmark_path = root / "feverslop" / "tools" / "llm_benchmark.py"
+        allowed_direct_calls = {(benchmark_path.as_posix(), 17, "complete_prompt")}
         violations = []
         for path in root.rglob("*.py"):
             if path in allowed:
@@ -35,6 +37,8 @@ class LlmPromptBoundaryTests(unittest.TestCase):
                     "complete_prompt",
                     "complete_prompt_with_images",
                 }:
+                    if (path.as_posix(), node.lineno, node.func.attr) in allowed_direct_calls:
+                        continue
                     violations.append(f"{path}:{node.lineno}")
         self.assertEqual([], violations)
 

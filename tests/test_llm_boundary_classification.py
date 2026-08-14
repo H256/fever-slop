@@ -18,7 +18,7 @@ class LLMBoundaryClassificationTests(unittest.TestCase):
         offenders = []
         for path in PRODUCTION_ROOT.rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-            allowed = APPROVED_DIRECT_LLM_CALLS.get(str(path), set())
+            allowed = APPROVED_DIRECT_LLM_CALLS.get(path.as_posix(), set())
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
                     continue
@@ -26,7 +26,7 @@ class LLMBoundaryClassificationTests(unittest.TestCase):
                     continue
                 call = f"{node.func.value.id}.{node.func.attr}"
                 if call == "requests.post" and call not in allowed:
-                    offenders.append(f"{path}:{node.lineno}:{call}")
+                    offenders.append(f"{path.as_posix()}:{node.lineno}:{call}")
         self.assertEqual([], offenders)
 
     def test_all_openai_compatible_client_construction_passes_dspy_temperature(self):
