@@ -7,10 +7,11 @@ import json
 import logging
 import re
 
-from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import LLMPort, VisionLLMPort
+from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.utils.io import atomic_write_json
 
 
@@ -125,8 +126,8 @@ def _build_vision_msr_prompts(
     if not references:
         logger.warning("MSR image analysis fallback: scene=%s reason=no images", scene_number)
         return None
-    complete_with_images = getattr(llm, "complete_prompt_with_images", None)
-    if not callable(complete_with_images):
+    modules = _dspy_modules(llm)
+    if modules is None:
         logger.warning("MSR image analysis fallback: scene=%s reason=vision unavailable", scene_number)
         return None
 
@@ -140,11 +141,9 @@ def _build_vision_msr_prompts(
     if on_analysis_status is not None:
         on_analysis_status(scene_number, status_references)
     try:
-        response = complete_with_images(
-            _msr_vision_system_prompt(),
-            json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=True),
-            [reference.path for reference in references],
-        )
+        payload = _msr_segment_payload(scene, relays)
+        typed = modules.vision(payload, [reference.path for reference in references])
+        data = typed.model_dump()
     except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         logger.warning(
             "MSR image analysis fallback: scene=%s reason=vision unavailable",
@@ -152,8 +151,14 @@ def _build_vision_msr_prompts(
             exc_info=exc,
         )
         return None
+    except (ValueError, TypeError) as exc:
+        logger.warning(
+            "MSR image analysis fallback: scene=%s reason=invalid response",
+            scene_number,
+            exc_info=exc,
+        )
+        return None
     try:
-        data = extract_json_object(response)
         parsed_references = data.get("references")
         parsed_relays = data.get("relays")
         expected_pairs = {(reference.id, reference.type) for reference in references}
@@ -228,16 +233,7 @@ def _reference_base(render_plan_path: Path, scene: dict) -> Path:
 
 
 def _msr_vision_system_prompt() -> str:
-    return """
-You write vision-grounded LTX MSR global reference descriptions and local PromptRelay directions.
-Treat supplied images as ground truth for stable appearance and scene geography. Return only JSON:
-{"references":[{"id":"unchanged id","type":"actor or location","description":"detailed stable visible description"}],"relays":[{"index":0,"prompt":"50-90 word local direction"}]}
-Include every reference and relay index exactly once. Each relay describes only chronological local action,
-acting, camera behavior, and environment response. Do not use Ingredients headings, Reference Sheet Description,
-Target Description, source-layout or panel language, edit commands, frame numbers, or repeat the full global identity block.
-Singing relays require clear lip sync. For state "dialogue", the actor speaks the provided dialogue with precise lip sync.
-Instrumental and other non-vocal states keep mouths closed and omit lip sync.
-""".strip()
+    return load_markdown_guide("msr-vision")
 
 
 def build_msr_global_prompt(references: dict) -> str:
@@ -256,16 +252,14 @@ def build_msr_global_prompt(references: dict) -> str:
 
 
 def _build_llm_segment_prompts(scene: dict, relays: list[dict], *, llm: LLMPort | None) -> dict[int, str]:
-    complete_prompt = getattr(llm, "complete_prompt", None)
-    if not callable(complete_prompt):
+    modules = _dspy_modules(llm)
+    if modules is None:
+        logger.warning("MSR segment prompt generation fallback: DSPy unavailable")
         return {}
 
     try:
-        response = complete_prompt(
-            system_prompt=_msr_segment_system_prompt(),
-            prompt=json.dumps(_msr_segment_payload(scene, relays), ensure_ascii=False, indent=2),
-        )
-        items = _extract_json_array(response)
+        payload = _msr_segment_payload(scene, relays)
+        items = [item.model_dump() for item in modules.segments(payload).relays]
     except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError, ValueError, TypeError) as exc:
         logger.warning("MSR segment prompt generation failed; using deterministic fallback", exc_info=exc)
         return {}
@@ -283,34 +277,17 @@ def _build_llm_segment_prompts(scene: dict, relays: list[dict], *, llm: LLMPort 
     return prompts
 
 
+def _dspy_modules(llm: Any) -> MSRPromptModules | None:
+    if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
+        return None
+    try:
+        return MSRPromptModules(llm)
+    except (ImportError, RuntimeError):
+        return None
+
+
 def _msr_segment_system_prompt() -> str:
-    return """
-You write LTX MSR PromptRelay local segment directions.
-
-Return ONLY valid JSON array with exactly one object per relay segment:
-[
-  {"index": 0, "prompt": "specific stage direction"}
-]
-
-Rules:
-- Write in English.
-- Segment prompts are stage direction, not edit instructions.
-- Do not write "preserve same subject", "keep identity", "keep same subject", "lock first frame", or "Start frame".
-- Do not repeat the full reference image descriptions.
-- Use the named reference actor as the subject anchor.
-- For state "singing": the actor sings the provided lyrics with clear lip sync and expressive acting.
-- For state "dialogue": the actor speaks the provided dialogue with precise lip sync and expressive acting.
-- For instrumental and other non-vocal states: the actor is silent, mouth closed, and physically performs the scene action.
-- If silent_mode is true in the payload, every segment is non-singing even if source lyrics exist.
-- Include camera motion and concrete character/environment motion when provided.
-- Write rich cinematic direction, usually 25 to 45 words per segment, with action, acting, camera behavior, and visible environment effects.
-- Preroll-like or transition-like segments still need concrete cinematic atmosphere and tension, not generic continuity filler.
-- No markdown, no comments, no frame numbers.
-- When multiple relay segments exist in the same scene, each must have a distinct, non-repeating description.
-  Vary camera motion, character action, environment response, and framing across segments.
-  Do not reuse the same phrasing or description across segments.
-- Each segment should capture the specific moment in time, not the general scene.
-""".strip()
+    return load_markdown_guide("msr-segments")
 
 
 def _msr_segment_payload(scene: dict, relays: list[dict]) -> dict:

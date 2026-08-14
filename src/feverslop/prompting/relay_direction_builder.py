@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from feverslop.ports.llm import LLMPort
+from feverslop.prompting.relay_modules import RelayPromptModules
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:
@@ -58,6 +59,10 @@ def _clean_direction(text: str, max_chars: int = 220) -> str:
     return text
 
 
+def _limit_words(text: str, max_words: int) -> str:
+    return " ".join(text.split()[:max(0, max_words)])
+
+
 class RelayDirectionBuilder:
     def __init__(
         self,
@@ -67,10 +72,18 @@ class RelayDirectionBuilder:
             "the old weary warrior man with weathered scarred face, "
             "salt-and-pepper beard, tattered leather armor, and heavy frayed cloak"
         ),
+        *,
+        dspy_runtime: Any | None = None,
     ):
         self.llm = llm
         self.max_words = max_words
         self.subject_anchor = subject_anchor
+        self._modules = None
+        if isinstance(getattr(llm, "model", None), str) and getattr(llm, "client", None) is not None:
+            try:
+                self._modules = RelayPromptModules(llm, dspy_runtime=dspy_runtime)
+            except (ImportError, RuntimeError):
+                self._modules = None
 
     def compact_render_plan_file(self, input_render_plan: str | Path, output_render_plan: str | Path) -> Path:
         input_render_plan = Path(input_render_plan)
@@ -125,44 +138,17 @@ class RelayDirectionBuilder:
             ],
         }
 
-        system_prompt = f"""
-You create compact PromptRelay local directions for LTX image-to-video.
-
-The global prompt is already provided separately. Do NOT repeat the full scene, style, location, lighting, or full story.
-
-Return ONLY valid JSON array with exactly one object per relay segment:
-[
-  {{"index": 0, "prompt": "short local direction"}}
-]
-
-Hard rules:
-- Keep each prompt under {self.max_words} words.
-- Preserve every concrete action, manipulated object, and required prop from
-  current_prompt (for example, cooking a rabbit); do not replace it with only
-  atmosphere, composition, or camera language.
-- current_prompt may be image-like, but treat its concrete action and object
-  details as binding source material and translate them into observable motion.
-- For state "singing": the main subject must remain clearly visible and must sing/lip-sync.
-- Main subject: {self.subject_anchor}
-- Never write: "no subject visible", "no visible subject", "tree sings", "bark sings", "shadows sing", "ropes sing".
-- The tree, bark, shadows, fog, ropes, branches, spirits, or secondary figures must not sing.
-- For instrumental: no singing and no lip movement.
-- For vocals/mixed scenes: keep the main subject foreground or clearly visible; environment moves behind or around him.
-- Make directions dynamic: turns, reaches, recoils, breathes, gazes, camera drifts, fog curls, light pulses.
-- No frame numbers, no markdown, no comments.
-""".strip()
-
-        response = self.llm.complete_prompt(
-            system_prompt=system_prompt,
-            prompt=json.dumps(payload, ensure_ascii=False, indent=2),
-        )
-
         try:
-            items = _extract_json_array(response)
+            if self._modules is None:
+                raise RuntimeError("DSPy relay prompts unavailable; using deterministic fallback")
+            typed = self._modules.compact(
+                payload,
+                max_words=self.max_words,
+                subject_anchor=self.subject_anchor,
+            )
             by_index = {
-                int(item["index"]): _clean_direction(item["prompt"])
-                for item in items
-                if "index" in item and "prompt" in item
+                item.index: _limit_words(_clean_direction(item.prompt), self.max_words)
+                for item in typed.directions
             }
         except Exception:
             by_index = {}
