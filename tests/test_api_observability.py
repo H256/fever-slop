@@ -40,6 +40,19 @@ class APIMetricsTests(unittest.TestCase):
         self.assertEqual(100, stats.usage_units)
         self.assertEqual(0.02, stats.estimated_cost)
 
+    def test_records_token_breakdown_without_prompt_content(self):
+        metrics = APIMetrics()
+        metrics.record(
+            "llm", "chat", 1, success=True,
+            prompt_tokens=10, completion_tokens=20, reasoning_tokens=12,
+        )
+
+        stats = metrics.snapshot()["llm", "chat"]
+        self.assertEqual((10, 20, 12), (stats.prompt_tokens, stats.completion_tokens, stats.reasoning_tokens))
+        entry = metrics.export_snapshot()["entries"][0]
+        self.assertEqual(10, entry["prompt_tokens"])
+        self.assertEqual(12, entry["reasoning_tokens"])
+
     def test_export_snapshot_has_stable_json_schema(self):
         metrics = APIMetrics()
         metrics.record("llm", "chat", 1, success=True)

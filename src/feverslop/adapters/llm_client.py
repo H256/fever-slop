@@ -8,6 +8,7 @@ from pathlib import Path
 from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 import random
 import time
+from dataclasses import dataclass
 
 from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopLMLError
@@ -21,6 +22,16 @@ from feverslop.security.url_validation import validate_api_url
 
 RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class LLMResponseTelemetry:
+    model: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
+    finish_reason: str | None = None
 
 
 def model_supports_vision(model_info: object) -> bool:
@@ -69,6 +80,36 @@ def _resolve_api_key(api_key: str | None) -> str:
     return env_key
 
 
+def _int_field(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return 0
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _field(value: object, name: str) -> object:
+    if isinstance(value, dict):
+        return value.get(name)
+    return getattr(value, name, None)
+
+
+def _response_telemetry(response: object, model: str) -> LLMResponseTelemetry:
+    usage = _field(response, "usage")
+    details = _field(usage, "completion_tokens_details")
+    choices = _field(response, "choices") or []
+    choice = choices[0] if choices else None
+    return LLMResponseTelemetry(
+        model=str(_field(response, "model") or model),
+        prompt_tokens=_int_field(_field(usage, "prompt_tokens")),
+        completion_tokens=_int_field(_field(usage, "completion_tokens")),
+        total_tokens=_int_field(_field(usage, "total_tokens")),
+        reasoning_tokens=_int_field(_field(details, "reasoning_tokens")) or _int_field(_field(usage, "reasoning_tokens")),
+        finish_reason=_field(choice, "finish_reason"),
+    )
+
+
 class LocalOpenAIClient:
     def __init__(
         self,
@@ -107,6 +148,7 @@ class LocalOpenAIClient:
         self.max_concurrent_requests = int(max_concurrent_requests)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics
+        self.last_response_telemetry = LLMResponseTelemetry(model=self.model)
 
     def complete_prompt(
         self,
@@ -173,7 +215,16 @@ class LocalOpenAIClient:
                     result = str(getattr(message, "content", "") or "").strip()
                     if not result:
                         raise FeverSlopLMLError("LLM response contains empty content")
-                    record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=True)
+                    telemetry = _response_telemetry(response, self.model)
+                    self.last_response_telemetry = telemetry
+                    record_api_call(
+                        self.metrics, logger, "llm", "chat_completions", started_at,
+                        success=True,
+                        usage_units=telemetry.total_tokens,
+                        prompt_tokens=telemetry.prompt_tokens,
+                        completion_tokens=telemetry.completion_tokens,
+                        reasoning_tokens=telemetry.reasoning_tokens,
+                    )
                     return result
                 except RETRYABLE_ERRORS as exc:
                     record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)

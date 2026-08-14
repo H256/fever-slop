@@ -386,6 +386,7 @@ Most useful runs require:
 ## Documentation
 
 - [App configuration reference](docs/app_config.md): complete `app_config.json` field reference and defaults.
+- [LLM performance](docs/llm-performance.md): Thinking trade-offs, token diagnostics, and concurrency guidance.
 - [Setup](docs/setup.md): prerequisites, dependencies, ComfyUI/ACE-Step, local config.
 - [Running](docs/running.md): CLI startup and pipeline operation.
 - [Pipelines](docs/pipelines.md): standard, Full-Auto, MSR/classic, progress and logs.

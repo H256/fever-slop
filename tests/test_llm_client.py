@@ -37,6 +37,29 @@ class LLMModelCapabilityTests(unittest.TestCase):
 
 class LLMClientRetryTests(unittest.TestCase):
     @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_captures_usage_finish_reason_and_reasoning_tokens(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content="ok"), finish_reason="stop")]
+        response.model = "gemma4"
+        response.usage = MagicMock(
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_tokens=30,
+            completion_tokens_details=MagicMock(reasoning_tokens=12),
+        )
+        mock_client.chat.completions.create.return_value = response
+
+        client = LocalOpenAIClient(api_key="test-key")
+        self.assertEqual("ok", client.complete_prompt(system_prompt="system", prompt="test"))
+
+        telemetry = client.last_response_telemetry
+        self.assertEqual((10, 20, 12, "stop"), (
+            telemetry.prompt_tokens, telemetry.completion_tokens,
+            telemetry.reasoning_tokens, telemetry.finish_reason,
+        ))
+    @patch("feverslop.adapters.llm_client.OpenAI")
     def test_rejects_private_non_loopback_endpoint(self, mock_openai):
         from feverslop.security.url_validation import APIURLValidationError
 
