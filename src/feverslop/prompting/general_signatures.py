@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SongBriefResult(BaseModel):
@@ -22,6 +22,13 @@ class LyricCorrections(BaseModel):
 
 class PromptResult(BaseModel):
     prompt: str
+
+    @field_validator("prompt")
+    @classmethod
+    def prompt_must_be_bounded(cls, value: str) -> str:
+        if len(value.split()) > 150:
+            raise ValueError("prompt must contain at most 150 words")
+        return value
 
 
 def build_general_signature_bundle(dspy_module: Any | None = None):

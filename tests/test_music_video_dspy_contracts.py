@@ -46,6 +46,7 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         self.assertEqual({"segment_001": "A forest path."}, result)
         self.assertIn("location_constraint", calls[0]["guide"])
         self.assertIn("CURRENT_BATCH_SEGMENTS", calls[0]["payload"])
+        self.assertEqual(512, calls[0]["config"]["max_tokens"])
 
     def test_dspy_predictor_receives_caller_timeout_as_lm_config(self):
         calls = []

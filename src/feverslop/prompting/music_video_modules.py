@@ -4,6 +4,7 @@ from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
+from feverslop.prompting.llm_policy import policy_for
 
 
 def _value(result: Any, name: str) -> Any:
@@ -38,8 +39,10 @@ class MusicVideoPromptModules:
 
     def _call(self, name: str, guide: str, payload: dict[str, Any], output: str, *, timeout=None):
         predictor_kwargs = {"guide": guide, **payload}
+        config = {"max_tokens": policy_for(name).max_tokens}
         if timeout is not None:
-            predictor_kwargs["config"] = {"timeout": timeout}
+            config["timeout"] = timeout
+        predictor_kwargs["config"] = config
         with self._context(lm=self._lm):
             return _value(self._predictors[name](**predictor_kwargs), output)
 
