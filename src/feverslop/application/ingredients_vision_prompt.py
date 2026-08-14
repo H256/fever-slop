@@ -1,38 +1,12 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any
 
-from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.domain.vision_references import ReferenceImage
-
-
-_SYSTEM_PROMPT = """You create a vision-grounded Ingredients prompt for video generation.
-Return only JSON with this exact shape:
-{
-  "references": [
-    {"id": "reference id", "type": "actor or location", "position": "panel position label", "description": "stable visible identity details"}
-  ],
-  "shot_invariants": "60-160 word non-temporal continuous-shot contract"
-}
-
-Treat the supplied images as ground truth. Text metadata is supplementary intent only.
-Describe stable visible identity and environment details. Do not reproduce the source character's
-pose or camera angle, but DO include the panel position label from the scene sheet description.
-The panel position tells the model where to find each reference in the ingredients image.
-Do not include borders, typography, or sheet layout details beyond the position labels.
-
-Write shot_invariants in 60-160 words. It must describe one single continuous full-frame shot.
-Specify stable spatial staging, camera framing and motion policy, identity-critical details,
-clothing and hair behavior, environment motion, and lighting behavior. Keep it non-temporal.
-Do not schedule an opening, progression, final state, dialogue timing, singing, lip-sync,
-mouth state, or any other performance transition; those are supplied by a frame-level relay.
-Do not include captions, titles, signs, logos, screens, UI/HUD, or written characters unless the
-shot context explicitly requires them. Include every supplied reference exactly once with its
-unchanged id and type.
-"""
+from feverslop.errors import FeverSlopLMLError
+from feverslop.prompting.ingredients_modules import IngredientsPromptModules
 
 
 @dataclass(frozen=True)
@@ -60,6 +34,7 @@ def build_ingredients_vision_prompt(
     fallback_reference_description: str,
     fallback_shot_invariants: str,
     scene_sheet_description: str = "",
+    dspy_runtime: Any | None = None,
 ) -> IngredientsPromptResult:
     unavailable_fallback = IngredientsPromptResult(
         fallback_reference_description, fallback_shot_invariants, "vision unavailable"
@@ -70,46 +45,33 @@ def build_ingredients_vision_prompt(
     if llm is None:
         return unavailable_fallback
 
-    payload = json.dumps(
-        {"references": reference_metadata, "target_context": target_context, "scene_sheet_description": scene_sheet_description},
-        ensure_ascii=True,
-    )
     try:
-        response = llm.complete_prompt_with_images(
-            _SYSTEM_PROMPT,
-            payload,
+        result = IngredientsPromptModules(llm, dspy_runtime=dspy_runtime).vision(
+            {
+                "references": reference_metadata,
+                "target_context": target_context,
+                "scene_sheet_description": scene_sheet_description,
+            },
             [reference.path for reference in references],
         )
+    except (ConnectionError, TimeoutError, OSError, RuntimeError, FeverSlopLMLError):
+        return unavailable_fallback
+    except (TypeError, ValueError, KeyError):
+        return invalid_fallback
     except Exception:
         return unavailable_fallback
 
-    try:
-        data = extract_json_object(response)
-        parsed_references = data.get("references")
-        shot_invariants = data.get("shot_invariants")
-        expected_pairs = {(reference.id, reference.type) for reference in references}
-        if not isinstance(parsed_references, list) or len(parsed_references) != len(references):
+    expected_pairs = {(reference.id, reference.type) for reference in references}
+    descriptions: dict[tuple[str, str], str] = {}
+    positions: dict[tuple[str, str], str] = {}
+    for item in result.references:
+        pair = (item.id, item.type)
+        if pair in descriptions or not item.t2i_description.strip():
             return invalid_fallback
-        if not isinstance(shot_invariants, str) or not 60 <= len(shot_invariants.split()) <= 160:
-            return invalid_fallback
-
-        descriptions: dict[tuple[str, str], str] = {}
-        positions: dict[tuple[str, str], str] = {}
-        for item in parsed_references:
-            if not isinstance(item, dict):
-                return invalid_fallback
-            reference_id = item.get("id")
-            reference_type = item.get("type")
-            position = item.get("position")
-            description = item.get("description")
-            if not all(isinstance(value, str) and value.strip() for value in (reference_id, reference_type, description)):
-                return invalid_fallback
-            descriptions[(reference_id, reference_type)] = description.strip()
-            if position and position.strip():
-                positions[(reference_id, reference_type)] = position.strip()
-        if set(descriptions) != expected_pairs or len(descriptions) != len(references):
-            return invalid_fallback
-    except Exception:
+        descriptions[pair] = item.t2i_description.strip()
+        if item.position.strip():
+            positions[pair] = item.position.strip()
+    if set(descriptions) != expected_pairs or len(descriptions) != len(references):
         return invalid_fallback
 
     reference_lines = []
@@ -129,7 +91,7 @@ def build_ingredients_vision_prompt(
         "The source images provide appearance only; do not reproduce their framing, composition, "
         "borders, panels, or layout."
     )
-    return IngredientsPromptResult("\n".join(reference_lines), shot_invariants.strip())
+    return IngredientsPromptResult("\n".join(reference_lines), result.shot_invariants.strip())
 
 
 def _reference_label(reference_type: str) -> str:
