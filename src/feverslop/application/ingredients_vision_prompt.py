@@ -46,6 +46,14 @@ def build_ingredients_vision_prompt(
     if llm is None:
         return unavailable_fallback
 
+    capability_check = getattr(llm, "model_supports_vision", None)
+    if callable(capability_check):
+        try:
+            if not capability_check():
+                return unavailable_fallback
+        except Exception:
+            return unavailable_fallback
+
     try:
         result = IngredientsPromptModules(llm, dspy_runtime=dspy_runtime, image_factory=image_factory).vision(
             {

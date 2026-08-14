@@ -207,7 +207,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             return OpenAICompatibleLLMClient(
                 base_url=app_config.llm.base_url,
                 api_key=app_config.llm.api_key,
-                model=app_config.llm.model,
+                model=app_config.llm.model_for("creative"),
                 temperature=app_config.llm.temperature,
                 dspy_temperature=app_config.llm.dspy_temperature,
                 max_tokens=app_config.llm.max_tokens,

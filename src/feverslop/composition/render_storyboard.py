@@ -38,7 +38,7 @@ def build_render_storyboard_use_case(
         llm = OpenAICompatibleLLMClient(
             base_url=app_config.llm.base_url,
             api_key=app_config.llm.api_key,
-            model=app_config.llm.model,
+            model=app_config.llm.model_for("structured"),
             temperature=app_config.llm.temperature,
             dspy_temperature=app_config.llm.dspy_temperature,
             max_tokens=app_config.llm.max_tokens,

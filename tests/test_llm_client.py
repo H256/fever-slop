@@ -11,6 +11,30 @@ from feverslop.adapters.llm_client import LocalOpenAIClient
 from feverslop.errors import FeverSlopLMLError
 
 
+class LLMModelCapabilityTests(unittest.TestCase):
+    def test_model_metadata_reports_vision_from_modalities(self):
+        from feverslop.adapters.llm_client import model_supports_vision
+
+        self.assertTrue(model_supports_vision({"modalities": ["text", "vision"]}))
+        self.assertFalse(model_supports_vision({"modalities": ["text"]}))
+
+    def test_missing_model_capability_is_not_assumed_to_be_vision(self):
+        from feverslop.adapters.llm_client import model_supports_vision
+
+        self.assertFalse(model_supports_vision({}))
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_client_reads_vision_capability_from_model_endpoint(self, mock_openai):
+        client = MagicMock()
+        mock_openai.return_value = client
+        client.models.retrieve.return_value = {"id": "vision-model", "modalities": ["text", "vision"]}
+
+        llm = LocalOpenAIClient(api_key="test-key", model="vision-model")
+
+        self.assertTrue(llm.model_supports_vision())
+        client.models.retrieve.assert_called_once_with("vision-model")
+
+
 class LLMClientRetryTests(unittest.TestCase):
     @patch("feverslop.adapters.llm_client.OpenAI")
     def test_rejects_private_non_loopback_endpoint(self, mock_openai):

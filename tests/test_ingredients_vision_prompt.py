@@ -131,6 +131,20 @@ class IngredientsVisionPromptTests(unittest.TestCase):
         self.assertTrue(all(isinstance(image, dspy.Image) for image in calls[0]["images"]))
         self.assertTrue(all(image.url.startswith("data:image/") for image in calls[0]["images"]))
 
+    def test_skips_vision_request_when_endpoint_reports_no_vision(self):
+        class LLM:
+            model = "text-only"
+            client = object()
+
+            @staticmethod
+            def model_supports_vision():
+                return False
+
+        result = self.build(LLM())
+
+        self.assertEqual("vision unavailable", result.fallback_reason)
+        self.assertEqual([], self.last_module_calls)
+
     def test_missing_reference_and_word_boundaries_are_invalid_typed_outputs(self):
         class Predictor:
             def __init__(self, result):

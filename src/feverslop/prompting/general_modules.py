@@ -10,6 +10,7 @@ from feverslop.prompting.general_signatures import (
     build_general_signature_bundle,
 )
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.llm_policy import policy_for
 
 
 def _value(result: Any, name: str) -> Any:
@@ -40,8 +41,10 @@ class GeneralPromptModules:
     def _call(self, name: str, guide_name: str, payload: dict[str, Any], output_type: Any, *, timeout=None, **extra):
         guide = load_markdown_guide(guide_name)
         kwargs = {"guide": guide, **payload, **extra}
+        config = {"max_tokens": policy_for(name).max_tokens}
         if timeout is not None:
-            kwargs["config"] = {"timeout": timeout}
+            config["timeout"] = timeout
+        kwargs["config"] = config
         with self._context(lm=self._lm):
             result = _value(self._predictors[name](**kwargs), "result")
         return output_type.model_validate(result)
@@ -57,8 +60,10 @@ class GeneralPromptModules:
 
     def i2v_prompt(self, payload: dict[str, Any], *, guide: str, timeout=None) -> PromptResult:
         kwargs = {"guide": guide, "payload": payload}
+        config = {"max_tokens": policy_for("i2v_prompt").max_tokens}
         if timeout is not None:
-            kwargs["config"] = {"timeout": timeout}
+            config["timeout"] = timeout
+        kwargs["config"] = config
         with self._context(lm=self._lm):
             return PromptResult.model_validate(_value(self._predictors["i2v_prompt"](**kwargs), "result"))
 

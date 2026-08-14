@@ -23,6 +23,23 @@ RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
 logger = logging.getLogger(__name__)
 
 
+def model_supports_vision(model_info: object) -> bool:
+    """Read explicit vision/input-modality metadata without guessing."""
+    if isinstance(model_info, dict):
+        capabilities = model_info.get("capabilities")
+        values = [model_info.get("modalities"), model_info.get("input_modalities")]
+    else:
+        capabilities = getattr(model_info, "capabilities", None)
+        values = [getattr(model_info, "modalities", None), getattr(model_info, "input_modalities", None)]
+    if isinstance(capabilities, dict) and capabilities.get("vision") is True:
+        return True
+    return any(
+        isinstance(modalities, (list, tuple, set))
+        and any(str(value).strip().lower() in {"vision", "image", "images"} for value in modalities)
+        for modalities in values
+    )
+
+
 def _resolve_api_key(api_key: str | None) -> str:
     """Resolve API key: explicit > env var > error."""
     if api_key is not None:
@@ -175,3 +192,8 @@ class LocalOpenAIClient:
 
     def llm_concurrency_snapshot(self) -> LLMConcurrencySnapshot:
         return self.llm_limiter.snapshot()
+
+    def model_supports_vision(self) -> bool:
+        """Return the server's explicit vision capability for the selected model."""
+        model_info = self.client.models.retrieve(self.model)
+        return model_supports_vision(model_info)

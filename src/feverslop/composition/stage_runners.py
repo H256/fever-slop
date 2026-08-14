@@ -363,7 +363,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(
             base_url=current_config.llm.base_url,
             api_key=current_config.llm.api_key,
-            model=current_config.llm.model,
+            model=current_config.llm.model_for("structured"),
             temperature=current_config.llm.temperature,
             dspy_temperature=current_config.llm.dspy_temperature,
             max_tokens=current_config.llm.max_tokens,
@@ -460,7 +460,7 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         api_key=app_config.llm.api_key,
-        model=app_config.llm.model,
+        model=app_config.llm.model_for("structured"),
         temperature=app_config.llm.temperature,
         dspy_temperature=app_config.llm.dspy_temperature,
         max_tokens=app_config.llm.max_tokens,
@@ -643,7 +643,7 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         api_key=app_config.llm.api_key,
-        model=app_config.llm.model,
+        model=app_config.llm.model_for("structured"),
         temperature=app_config.llm.temperature,
         dspy_temperature=app_config.llm.dspy_temperature,
         max_tokens=app_config.llm.max_tokens,
@@ -677,7 +677,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         api_key=app_config.llm.api_key,
-        model=app_config.llm.model,
+        model=app_config.llm.model_for("structured"),
         temperature=app_config.llm.temperature,
         dspy_temperature=app_config.llm.dspy_temperature,
         max_tokens=app_config.llm.max_tokens,
