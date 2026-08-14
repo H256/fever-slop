@@ -42,8 +42,11 @@ class MusicVideoPromptModules:
             if timeout is not None:
                 kwargs["timeout"] = timeout
             return self._llm.complete_prompt(**kwargs)
+        predictor_kwargs = {"guide": guide, **payload}
+        if timeout is not None:
+            predictor_kwargs["config"] = {"timeout": timeout}
         with self._context(lm=self._lm):
-            return _value(self._predictors[name](guide=guide, **payload), output)
+            return _value(self._predictors[name](**predictor_kwargs), output)
 
     def story_idea(self, lyrics: str, notes: str = "") -> str:
         return str(self._call("story_idea", load_markdown_guide("music-video-story-idea"), {"lyrics": lyrics, "notes": notes}, "story_idea")).strip()
