@@ -1,18 +1,14 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
-import json
 import re
 from typing import Callable
 
-from feverslop.prompting.music_video_prompt_style import (
-    build_i2v_system_prompt,
-    build_t2i_system_prompt,
-    build_video_payload,
-)
+from feverslop.prompting.music_video_prompt_style import build_i2v_system_prompt, build_video_payload
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
+from feverslop.prompting.general_modules import GeneralPromptModules
 
 
 def clean_llm_text(text: str) -> str:
@@ -69,8 +65,9 @@ class ScenePromptBuilder:
     - LTX prompts are video prompts and may contain motion.
     """
 
-    def __init__(self, llm: LLMPort):
+    def __init__(self, llm: LLMPort, *, dspy_runtime=None, modules=None):
         self.llm = llm
+        self._modules = modules if modules is not None else GeneralPromptModules(llm, dspy_runtime=dspy_runtime)
 
     def build_zimage_prompt(
         self,
@@ -98,10 +95,8 @@ class ScenePromptBuilder:
             "trigger_word": trigger_word,
         }
 
-        result = self.llm.complete_prompt(
-            system_prompt=build_t2i_system_prompt(),
-            prompt=json.dumps(payload, ensure_ascii=False, indent=2),
-        )
+        result = self._modules.zimage_prompt(payload)
+        result = result.prompt if hasattr(result, "prompt") else result
 
         result = clean_llm_text(result)
 
@@ -150,15 +145,12 @@ class ScenePromptBuilder:
             custom_instructions=custom_instructions,
         )
 
-        return clean_llm_text(
-            self.llm.complete_prompt(
-                system_prompt=build_i2v_system_prompt(
-                    str(segment.get("type", "")),
-                    silent_mode=bool(global_context.get("silent_mode", False)),
-                ),
-                prompt=json.dumps(payload, ensure_ascii=False, indent=2),
-            )
+        guide = build_i2v_system_prompt(
+            str(segment.get("type", "")),
+            silent_mode=bool(global_context.get("silent_mode", False)),
         )
+        result = self._modules.i2v_prompt(payload, guide=guide)
+        return clean_llm_text(result.prompt if hasattr(result, "prompt") else result)
 
     def build_scene_prompts(
         self,

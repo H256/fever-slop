@@ -1,4 +1,4 @@
-"""Integration test: FullAutoUseCase → LLMSongBriefGenerator (real) → FakeLLM → JSON parsing → SongSpec.
+"""Integration test: FullAutoUseCase → LLMSongBriefGenerator → typed prompt module → SongSpec.
 
 Exercises the real LLMSongBriefGenerator adapter so that system-prompt creation,
 JSON extraction, and SongSpec construction are validated end-to-end with only the
@@ -16,7 +16,7 @@ from feverslop.adapters.llm_song_brief_generator import LLMSongBriefGenerator
 from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
 from feverslop.domain.full_auto import GeneratedSong, SongSpec
 
-from tests.fakellm import FakeLLM
+from tests.prompt_fakes import GeneralModulesFake
 
 
 class FakeSongGenerator:
@@ -67,8 +67,8 @@ class FullAutoLLMChainTests(unittest.TestCase):
 
     def test_llm_called_with_system_prompt_and_json_payload(self):
         """LLMSongBriefGenerator sends correct system prompt and serialized request."""
-        llm = FakeLLM(_json_response())
-        generator = LLMSongBriefGenerator(llm)
+        modules = GeneralModulesFake(song_brief=json.loads(_json_response()))
+        generator = LLMSongBriefGenerator(object(), modules=modules)
 
         request = FullAutoRequest(
             idea="friendship",
@@ -78,12 +78,10 @@ class FullAutoLLMChainTests(unittest.TestCase):
         )
         spec = generator.generate(request)
 
-        self.assertEqual(len(llm.calls), 1)
-        call = llm.calls[0]
-        self.assertIn("ACE-Step", call.system_prompt)
-        self.assertIn("Return ONLY valid JSON", call.system_prompt)
+        self.assertEqual(len(modules.calls), 1)
+        call = modules.calls[0]
 
-        payload = json.loads(call.prompt)
+        payload = call.payload
         self.assertEqual(payload["idea"], "friendship")
         self.assertEqual(payload["style"], "bright pop")
         self.assertEqual(payload["duration_seconds"], 90.0)
@@ -100,9 +98,8 @@ class FullAutoLLMChainTests(unittest.TestCase):
 
     def test_json_parsing_strips_code_fences(self):
         """LLMSongBriefGenerator extracts JSON wrapped in markdown code fences."""
-        fenced_response = "```json\n" + _json_response() + "\n```"
-        llm = FakeLLM(fenced_response)
-        generator = LLMSongBriefGenerator(llm)
+        modules = GeneralModulesFake(song_brief=json.loads(_json_response()))
+        generator = LLMSongBriefGenerator(object(), modules=modules)
 
         request = FullAutoRequest(
             idea="test",
@@ -128,8 +125,8 @@ class FullAutoLLMChainTests(unittest.TestCase):
             "visual_style": "cyberpunk noir",
         })
 
-        llm = FakeLLM(custom_response)
-        generator = LLMSongBriefGenerator(llm)
+        modules = GeneralModulesFake(song_brief=json.loads(custom_response))
+        generator = LLMSongBriefGenerator(object(), modules=modules)
 
         spec = generator.generate(
             FullAutoRequest(
@@ -165,11 +162,11 @@ class FullAutoLLMChainTests(unittest.TestCase):
             "visual_style": "minimalist",
         })
 
-        llm = FakeLLM(llm_response)
+        modules = GeneralModulesFake(song_brief=json.loads(llm_response))
 
         with tempfile.TemporaryDirectory() as temp_dir:
             use_case = FullAutoUseCase(
-                brief_generator=LLMSongBriefGenerator(llm),
+                brief_generator=LLMSongBriefGenerator(object(), modules=modules),
                 song_generator=FakeSongGenerator(),
                 project_scaffold=LocalProjectScaffold(),
                 pipeline_runner=None,
@@ -198,16 +195,15 @@ class FullAutoLLMChainTests(unittest.TestCase):
 
     def test_llm_brief_generator_adapts_request_defaults_for_missing_values(self):
         """LLMSongBriefGenerator falls back to request values when LLM omits fields."""
-        response_without_optional = json.dumps({
-            "title": "Short",
-            "tags": "short tags",
-            "lyrics": "[Verse]\nshort",
-            "visual_story_idea": "short idea",
-            "visual_style": "short style",
-        })
+        class PartialSongBriefModules:
+            def song_brief(self, payload):
+                return type("Result", (), {"model_dump": lambda self: {
+                    "title": "Short", "tags": "short tags", "lyrics": "[Verse]\nshort",
+                    "visual_story_idea": "short idea", "visual_style": "short style",
+                }})()
 
-        llm = FakeLLM(response_without_optional)
-        generator = LLMSongBriefGenerator(llm)
+        modules = PartialSongBriefModules()
+        generator = LLMSongBriefGenerator(object(), modules=modules)
 
         spec = generator.generate(
             FullAutoRequest(

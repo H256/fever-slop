@@ -1,6 +1,6 @@
 import unittest
 
-from tests.fakellm import FakeLLM
+from tests.prompt_fakes import GeneralModulesFake
 
 
 class SongBriefGeneratorTests(unittest.TestCase):
@@ -8,22 +8,11 @@ class SongBriefGeneratorTests(unittest.TestCase):
         from feverslop.adapters.llm_song_brief_generator import LLMSongBriefGenerator
         from feverslop.application.full_auto import FullAutoRequest
 
-        generator = LLMSongBriefGenerator(
-            FakeLLM(
-                """
-                {
-                  "title": "Joy Demo",
-                  "tags": "bright pop song",
-                  "lyrics": "[Verse]\\nhello",
-                  "bpm": 123,
-                  "language": "en",
-                  "keyscale": "D major",
-                  "visual_story_idea": "friends",
-                  "visual_style": "warm"
-                }
-                """
-            )
-        )
+        generator = LLMSongBriefGenerator(object(), modules=GeneralModulesFake(song_brief={
+            "title": "Joy Demo", "tags": "bright pop song", "lyrics": "[Verse]\nhello",
+            "bpm": 123, "language": "en", "keyscale": "D major",
+            "visual_story_idea": "friends", "visual_style": "warm",
+        }))
 
         spec = generator.generate(
             FullAutoRequest(

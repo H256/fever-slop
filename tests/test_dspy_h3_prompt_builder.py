@@ -20,6 +20,7 @@ from feverslop.prompting.dspy_h3_models import (
     ReferenceKind,
     ReferenceLimits,
     ReferenceVideoPrompt,
+    VideoPromptRequest,
 )
 from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator as CoreVideoPromptGenerator
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
@@ -111,6 +112,26 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual("A weathered hiker.", references[0]["description"])
         self.assertEqual("A dark ancient forest.", references[1]["description"])
+
+    def test_local_picture_without_description_reaches_h3_analyzer_without_placeholder(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            picture = root / "actor.png"
+            picture.write_bytes(b"image")
+            references, images = _scene_references(
+                {
+                    "references": {
+                        "actor_msr_paths": ["actor.png"],
+                        "actor_ids": ["leo"],
+                        "actor_reference_descriptions": [{"id": "leo"}],
+                    }
+                },
+                None,
+                root,
+            )
+
+        self.assertEqual("", references[0]["description"])
+        self.assertEqual([picture], images)
 
     def test_passes_general_steering_and_prompt_guidance_to_generator(self):
         generator = FakeGenerator()
@@ -214,8 +235,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="ref",
         )
 
-        self.assertIn("relay_segments_json", generator.requests[0])
-        self.assertIn('"start_seconds": 0.0', generator.requests[0]["relay_segments_json"])
+        self.assertNotIn("relay_segments_json", generator.requests[0])
+        self.assertEqual(0.0, generator.requests[0]["relay_segments"][0]["start_seconds"])
         self.assertIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
         self.assertIn("actor.png", " ".join(reference["source"] for reference in result["references"]))
 
@@ -453,13 +474,21 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             __import__("feverslop.prompting.dspy_h3_models", fromlist=["ImageAnalysis"]).ImageAnalysis,
         )
 
-    def test_relay_signature_inputs_are_optional_with_empty_array_default(self):
+    def test_signatures_use_structured_inputs_instead_of_json_strings(self):
         _, build_plan, render_base, render_reference = build_dspy_signatures()
 
+        self.assertNotIn("references_json", build_plan.input_fields)
+        self.assertNotIn("plan_json", render_base.input_fields)
+        self.assertNotIn("references_json", render_base.input_fields)
+        self.assertNotIn("relay_segments_json", render_base.input_fields)
+        self.assertNotIn("plan_json", render_reference.input_fields)
+        self.assertNotIn("references_json", render_reference.input_fields)
+        self.assertNotIn("relay_segments_json", render_reference.input_fields)
+
         for signature in (build_plan, render_base, render_reference):
-            field = signature.input_fields["relay_segments_json"]
+            field = signature.input_fields["relay_segments"]
             self.assertFalse(field.is_required())
-            self.assertEqual(field.default, "[]")
+            self.assertEqual(field.default, [])
 
     def test_integrated_guides_are_bundled_with_prompting_package(self):
         guides = files("feverslop.prompting.guides")
@@ -491,6 +520,100 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             [reference["role"] for reference in references],
             ["subject", "environment", "audio_reuse"],
         )
+
+    def test_scene_references_preserve_canonical_paths_and_dedupe_derived_refs(self):
+        references, _ = _scene_references(
+            {
+                "references": {
+                    "reference_image_paths": ["existing.png", "actor.png"],
+                    "reference_video_paths": ["clip.mp4"],
+                    "reference_audio_paths": ["existing.wav", "vocals.wav"],
+                    "actor_ids": ["leo"],
+                    "actor_msr_paths": ["actor.png"],
+                    "location_id": "forest",
+                    "location_msr_path": "forest.png",
+                }
+            },
+            {"vocals": Path("vocals.wav"), "full_mix": Path("full_mix.wav")},
+            None,
+        )
+
+        self.assertEqual(
+            [(reference["kind"], reference["source"]) for reference in references],
+            [
+                ("picture", "actor.png"),
+                ("picture", "forest.png"),
+                ("picture", "existing.png"),
+                ("video", "clip.mp4"),
+                ("audio", "existing.wav"),
+                ("audio", "vocals.wav"),
+                ("audio", "full_mix.wav"),
+            ],
+        )
+
+    def test_build_request_propagates_r2v_canonical_references(self):
+        generator = FakeGenerator()
+        DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={
+                "segment_id": "seg-1",
+                "references": {
+                    "reference_image_paths": ["existing.png"],
+                    "reference_video_paths": ["clip.mp4"],
+                    "reference_audio_paths": ["existing.wav"],
+                },
+            },
+            concept="A scene",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+            audio_paths={"vocals": Path("vocals.wav")},
+        )
+
+        request = generator.requests[0]
+        self.assertEqual(
+            [(reference["kind"], reference["source"]) for reference in request["references"]],
+            [
+                ("picture", "existing.png"),
+                ("video", "clip.mp4"),
+                ("audio", "existing.wav"),
+                ("audio", "vocals.wav"),
+            ],
+        )
+
+    def test_build_request_is_valid_canonical_h3_payload_for_all_modes(self):
+        image_paths = {
+            "t2v": ["style.png"],
+            "i2v": ["first.png"],
+            "fl2v": ["first.png", "last.png"],
+            "l2v": ["last.png"],
+            "r2v": ["reference.png"],
+        }
+        for mode, paths in image_paths.items():
+            generator = FakeGenerator()
+            DspyH3PromptBuilder(generator).build_h3_prompt(
+                segment={
+                    "segment_id": "seg-1",
+                    "references": {
+                        "reference_image_paths": paths,
+                        "reference_video_paths": ["motion.mp4"],
+                        "reference_audio_paths": ["scene.wav"],
+                    },
+                },
+                concept="A scene",
+                scene_details={},
+                global_context={},
+                mode=mode,
+            )
+
+            request = VideoPromptRequest.model_validate(generator.requests[0])
+            self.assertTrue(all(reference.description for reference in request.references))
+            roles = [reference.role.value for reference in request.references]
+            if mode == "i2v":
+                self.assertEqual(["first_frame"], roles[:1])
+            elif mode == "fl2v":
+                self.assertEqual(["first_frame", "last_frame"], roles[:2])
+            elif mode == "l2v":
+                self.assertEqual("last_frame", roles[0])
 
     def test_reports_progress_after_each_scene(self):
         progress = []

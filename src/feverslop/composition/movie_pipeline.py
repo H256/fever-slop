@@ -209,8 +209,10 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
                 api_key=app_config.llm.api_key,
                 model=app_config.llm.model,
                 temperature=app_config.llm.temperature,
+                dspy_temperature=app_config.llm.dspy_temperature,
                 max_tokens=app_config.llm.max_tokens,
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
+                max_concurrent_requests=app_config.llm.max_concurrent_requests,
             )
         except (OSError, ValueError):
             return None

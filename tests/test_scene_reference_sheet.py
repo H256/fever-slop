@@ -13,6 +13,7 @@ from feverslop.application.movie_ingredients_sheets import (
     IngredientsSceneSheetBuilder,
     enrich_movie_render_plan_with_ingredients_sheets,
 )
+from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
 from feverslop.application.reference_bible import (
     _fit_contain_image,
     _panel_position_label,
@@ -936,28 +937,33 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
                 "dialogue": "Alice: It remembers me.", "continuity_notes": "wet coat from prior shot",
             })
 
-            class FakeVisionLLM:
-                image_paths = []
-                user_prompt = ""
+            class FakeIngredientsModule:
+                def __init__(self, _llm, **_kwargs):
+                    self.image_paths = []
+                    self.user_prompt = ""
 
-                def complete_prompt_with_images(self, _system, user, paths):
+                def vision(self, payload, paths):
                     self.image_paths = paths
-                    self.user_prompt = user
-                    invariants = " ".join(["stable cinematic composition"] * 30)
-                    return json.dumps({"references": [
-                        {"id": "actor_1", "type": "actor", "description": "brown hair and a rain-dark coat"},
-                        {"id": "loc_1", "type": "location", "description": "a silent archive room"},
-                    ], "shot_invariants": invariants})
+                    self.user_prompt = json.dumps(payload)
+                    return IngredientsVisionResult(
+                        references=[
+                            {"id": "actor_1", "type": "actor", "t2i_description": "brown hair and a rain-dark coat"},
+                            {"id": "loc_1", "type": "location", "t2i_description": "a silent archive room"},
+                        ],
+                        shot_invariants=" ".join(["stable cinematic composition"] * 30),
+                    )
 
-            llm = FakeVisionLLM()
+            llm = object()
+            module = FakeIngredientsModule(llm)
             events = []
-            out = enrich_movie_render_plan_with_ingredients_sheets(
-                project_dir=tmp, llm=llm,
-                on_analysis_status=lambda shot_id, refs: events.append((shot_id, refs)),
-            )
+            with patch("feverslop.application.ingredients_vision_prompt.IngredientsPromptModules", return_value=module):
+                out = enrich_movie_render_plan_with_ingredients_sheets(
+                    project_dir=tmp, llm=llm,
+                    on_analysis_status=lambda shot_id, refs: events.append((shot_id, refs)),
+                )
             shot = json.loads(out.read_text(encoding="utf-8"))["shots"][0]
 
-            self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
+            self.assertEqual([actor_sheet, location_sheet], module.image_paths)
             self.assertIn("brown hair", shot["ingredients_global_prompt"])
             self.assertIn("### Target Description", shot["ingredients_global_prompt"])
             self.assertNotIn("It remembers me", shot["ingredients_global_prompt"])
@@ -967,7 +973,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
                 shot["ltx"]["prompt_relay"][0]["frame_end"],
             ))
             for detail in ("A test scene", "opens the ledger", "slow dolly", "controlled fear", "It remembers me", "wet coat", "duration_seconds"):
-                self.assertIn(detail, llm.user_prompt)
+                self.assertIn(detail, module.user_prompt)
             self.assertEqual([("shot_001", [{"id": "actor_1", "type": "actor"}, {"id": "loc_1", "type": "location"}])], events)
 
     def test_enrichment_shot_has_native_audio_without_mirrored_ingredients_fields(self):

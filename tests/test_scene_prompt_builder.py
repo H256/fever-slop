@@ -5,26 +5,14 @@ from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
-from tests.fakellm import FakeLLM
-
-
-def _dynamic_response(system_prompt: str, _prompt: str) -> str:
-    lower = system_prompt.lower()
-    if "text-to-image prompt" in lower:
-        return "T2I RESULT"
-    if "image-to-video prompt" in lower:
-        return "I2V RESULT"
-    return "DETAIL RESULT"
-
-
-DYNAMIC_LLM = FakeLLM(side_effect=_dynamic_response)
+from tests.prompt_fakes import GeneralModulesFake
 
 
 class ScenePromptBuilderTests(unittest.TestCase):
     def test_scene_prompts_report_progress_after_each_scene(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
+        modules = GeneralModulesFake()
         progress = []
-        builder = ScenePromptBuilder(llm)
+        builder = ScenePromptBuilder(object(), modules=modules)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             builder.build_scene_prompts(
@@ -49,8 +37,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual([(1, 2), (2, 2)], progress)
 
     def test_scene_prompts_include_explicit_t2i_and_i2v_fields(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
-        builder = ScenePromptBuilder(llm)
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
         stage1_segments = [
             {
                 "segment_id": "segment_001",
@@ -86,12 +74,12 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual("T2I RESULT", data[0]["ltx_base_prompt"])
         self.assertEqual("I2V RESULT", data[0]["i2v_prompt_from_t2i"])
         self.assertEqual("I2V RESULT", data[0]["original_style_i2v_prompt"])
-        self.assertGreaterEqual(len(llm.calls), 2)
-        self.assertIn("T2I RESULT", llm.calls[-1].prompt)
+        self.assertGreaterEqual(len(modules.calls), 2)
+        self.assertIn("T2I RESULT", modules.calls[-1].payload["t2i_prompt"])
 
     def test_silent_mode_uses_dialogue_free_i2v_policy_for_vocal_segments(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
-        builder = ScenePromptBuilder(llm)
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
 
         builder.build_i2v_prompt_from_t2i(
             segment={"segment_id": "segment_001", "type": "vocals", "lyrics": "hello"},
@@ -108,8 +96,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
             t2i_prompt="Mara stands under a spotlight.",
         )
 
-        system_prompt = llm.calls[0].system_prompt.lower()
-        payload = json.loads(llm.calls[0].prompt)
+        system_prompt = modules.calls[0].guide.lower()
+        payload = modules.calls[0].payload
 
         self.assertNotIn("singing with passion", system_prompt)
         self.assertNotIn("lip sync only during vocal intervals", system_prompt)
@@ -119,8 +107,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertNotIn("singing with passion", payload["performance_policy"].lower())
 
     def test_scene_prompts_persist_silent_mode_for_render_plan(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
-        builder = ScenePromptBuilder(llm)
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "scene_prompts.json"
@@ -154,8 +142,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertTrue(data[0]["silent_mode"])
 
     def test_zimage_prompt_payload_includes_location_constraint(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
-        builder = ScenePromptBuilder(llm)
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
 
         builder.build_zimage_prompt(
             segment={"segment_id": "segment_001", "type": "instrumental"},
@@ -170,13 +158,13 @@ class ScenePromptBuilderTests(unittest.TestCase):
             },
         )
 
-        payload = json.loads(llm.calls[0].prompt)
+        payload = modules.calls[0].payload
 
         self.assertEqual("Allowed locations: ancient forest, secluded spring", payload["location_constraint"])
 
     def test_build_scene_prompts_carries_reference_metadata_from_concept_dict(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
-        builder = ScenePromptBuilder(llm)
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
         stage1_segments = [
             {
                 "segment_id": "segment_001",
@@ -216,8 +204,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual({"actor_ids": ["singer"], "location_id": "stage"}, data[0]["references"])
 
     def test_build_scene_prompts_passes_selected_cast_to_t2i_and_i2v(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
-        builder = ScenePromptBuilder(llm)
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             builder.build_scene_prompts(
@@ -250,8 +238,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
                 artifact_store=JsonArtifactStore(),
             )
 
-        t2i_payload = json.loads(llm.calls[0].prompt)
-        i2v_payload = json.loads(llm.calls[1].prompt)
+        t2i_payload = modules.calls[0].payload
+        i2v_payload = modules.calls[1].payload
         expected_ids = ["warrior_lead", "mage_lead", "rogue_lead"]
         self.assertEqual(expected_ids, t2i_payload["scene_cast"]["visible_actor_ids"])
         self.assertEqual("warrior_lead", t2i_payload["scene_cast"]["primary_actor_id"])
@@ -259,8 +247,8 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual(expected_ids, i2v_payload["scene_cast"]["visible_actor_ids"])
 
     def test_single_subject_mode_forces_first_actor_reference(self):
-        llm = FakeLLM(side_effect=_dynamic_response)
-        builder = ScenePromptBuilder(llm)
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "scene_prompts.json"

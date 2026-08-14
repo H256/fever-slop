@@ -72,6 +72,26 @@ class AppConfigTests(unittest.TestCase):
             config = AppConfig.load(config_path)
             self.assertEqual(180.0, config.llm.request_timeout_seconds)
 
+    def test_llm_max_concurrent_requests_defaults_to_one(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+            self.assertEqual(1, config.llm.max_concurrent_requests)
+
+    def test_loads_llm_max_concurrent_requests(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {"max_concurrent_requests": 2}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+            self.assertEqual(2, config.llm.max_concurrent_requests)
+
     def test_loads_llm_api_key_from_adjacent_dotenv(self):
         from feverslop.config.app_config import AppConfig
 

@@ -15,25 +15,6 @@ from __future__ import annotations
 from feverslop.adapters.movie_planning_llm import LLMMoviePlanner
 from feverslop.adapters.movie_planning_deterministic import DeterministicMoviePlanner
 
-# Prompt helpers (used by tests and external callers)
-from feverslop.adapters.movie_planning_prompts import (
-    _config_dialogue_language,
-    _movie_bible_prompt,
-    _movie_continuity_plan_prompt,
-    _movie_narrative_plan_prompt,
-    _movie_screenplay_prompt,
-    _movie_story_design_prompt,
-    _refine_actor_prompts_prompt,
-    _refine_location_prompts_prompt,
-    _sanitize_location_image_prompt,
-    _shot_plan_from_bible_prompt,
-    _shot_plan_prompt,
-    _story_arch_prompt,
-    asdict_like_actor,
-    asdict_like_location,
-    movie_story_design_like,
-)
-
 # Bible construction
 from feverslop.adapters.movie_planning_bible import (
     _actors_from_data,
@@ -105,22 +86,6 @@ __all__ = [
     "_split_screenplay_beats",
     "_visual_location_action",
     "_is_character_action",
-    # Prompts
-    "_config_dialogue_language",
-    "_movie_bible_prompt",
-    "_movie_continuity_plan_prompt",
-    "_movie_narrative_plan_prompt",
-    "_movie_screenplay_prompt",
-    "_movie_story_design_prompt",
-    "_refine_actor_prompts_prompt",
-    "_refine_location_prompts_prompt",
-    "_sanitize_location_image_prompt",
-    "_shot_plan_from_bible_prompt",
-    "_shot_plan_prompt",
-    "_story_arch_prompt",
-    "asdict_like_actor",
-    "asdict_like_location",
-    "movie_story_design_like",
     # Helpers
     "_beat_text",
     "_dialogue_actor_ids",

@@ -1,0 +1,1 @@
+Turn song lyrics and optional notes into one concise short story idea. Keep it under 1000 characters; do not quote long lyric phrases. Capture emotional core, imagery, conflict, or theme. Follow notes and blend conflicts creatively. Return only a clear, vivid cinematic story premise with no title, explanation, bullets, or song summary.

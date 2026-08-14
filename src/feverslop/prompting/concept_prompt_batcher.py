@@ -1,11 +1,10 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
-import json
 from typing import Any, Callable
 
 from feverslop.domain.llm_parsing import extract_json_object
-from feverslop.prompting.music_video_prompt_style import build_concept_mapper_system_prompt
+from feverslop.prompting.music_video_modules import MusicVideoPromptModules
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 
@@ -42,6 +41,7 @@ class ConceptPromptBatcher:
         max_previous_concepts: int = 6,
         request_timeout_seconds: float | None = None,
         progress_callback: Callable[[str], None] | None = None,
+        prompt_modules: MusicVideoPromptModules | None = None,
     ):
         if batch_size < 1:
             raise ValueError("batch_size must be >= 1")
@@ -51,6 +51,7 @@ class ConceptPromptBatcher:
         self.max_previous_concepts = max_previous_concepts
         self.request_timeout_seconds = request_timeout_seconds
         self.progress_callback = progress_callback
+        self.prompt_modules = prompt_modules or MusicVideoPromptModules(llm)
 
     def create_concept_prompts_batched(
         self,
@@ -147,16 +148,12 @@ class ConceptPromptBatcher:
             "CURRENT_BATCH_SEGMENTS": batch,
         }
 
-        response = self.llm.complete_prompt(
-            system_prompt=build_concept_mapper_system_prompt(
-                batch=True,
-                silent_mode=bool(global_context.get("silent_mode", False)),
-            ),
-            prompt=json.dumps(payload, ensure_ascii=False, indent=2),
+        response = self.prompt_modules.concepts(
+            payload, batch=True,
+            silent_mode=bool(global_context.get("silent_mode", False)),
             timeout=self.request_timeout_seconds,
         )
-
-        return extract_json_object(response)
+        return response if isinstance(response, dict) else extract_json_object(str(response))
 
     def _repair_missing_or_extra_keys(
         self,
@@ -199,23 +196,6 @@ class ConceptPromptBatcher:
             if seg["segment_id"] in missing
         ]
 
-        system_prompt = """
-You repair missing music-video visual concepts.
-
-Return ONLY valid JSON object.
-Create exactly one concise concept for each segment in MISSING_SEGMENTS.
-Each key must exactly match the segment_id.
-Do not add extra keys.
-
-Rules:
-- One sentence per concept.
-- Preserve story continuity.
-- If GLOBAL_CONTEXT.location_constraint is provided, follow it as a mandatory rule.
-- Do not describe subject identity/outfit/hair.
-- Do not repeat full prompts.
-- Describe visual story action, environment, transformation, symbol, or mood.
-""".strip()
-
         payload = {
             "STORY_IDEA": story_idea,
             "GLOBAL_CONTEXT": global_context,
@@ -226,13 +206,11 @@ Rules:
             "EXPECTED_KEYS": missing,
         }
 
-        response = self.llm.complete_prompt(
-            system_prompt=system_prompt,
-            prompt=json.dumps(payload, ensure_ascii=False, indent=2),
+        response = self.prompt_modules.repair_concepts(
+            payload,
             timeout=self.request_timeout_seconds,
         )
-
-        repair = extract_json_object(response)
+        repair = response if isinstance(response, dict) else extract_json_object(str(response))
 
         for segment_id in missing:
             value = repair.get(segment_id)
@@ -264,30 +242,16 @@ Rules:
 
         recent = dict(list(concepts.items())[-12:])
 
-        system_prompt = """
-Summarize the current visual story progression for a music video.
-
-Return only 2-4 concise sentences.
-Focus on:
-- where the story currently is
-- what changed visually
-- what tension or transformation is ongoing
-- what should remain continuous next
-
-Do not mention JSON or segment ids unless needed.
-""".strip()
-
         payload = {
             "STORY_IDEA": story_idea,
             "GLOBAL_CONTEXT": global_context,
             "RECENT_CONCEPTS": recent,
         }
 
-        return self.llm.complete_prompt(
-            system_prompt=system_prompt,
-            prompt=json.dumps(payload, ensure_ascii=False, indent=2),
+        return self.prompt_modules.summary(
+            payload,
             timeout=self.request_timeout_seconds,
-        ).strip()
+        )
 
     @staticmethod
     def _fallback_concept(segment_id: str, global_context: dict | None = None) -> str:

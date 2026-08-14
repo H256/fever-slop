@@ -1,0 +1,1 @@
+Summarize current music-video visual story progression in 2-4 concise sentences: current story position, visual change, ongoing tension or transformation, and continuity to preserve next. Do not mention JSON or segment ids unless needed.

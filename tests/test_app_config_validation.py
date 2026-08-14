@@ -338,6 +338,18 @@ class LLMConfigValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "llm.max_tokens must be > 0"):
                 AppConfig.load(config_path)
 
+    def test_rejects_zero_llm_max_concurrent_requests(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"max_concurrent_requests": 0}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "llm.max_concurrent_requests must be > 0"):
+                AppConfig.load(config_path)
+
 
 class RecursiveRequiredKeysTests(unittest.TestCase):
     """Test recursive required_keys validation with dot-notation paths."""

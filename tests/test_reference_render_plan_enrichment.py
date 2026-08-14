@@ -2,11 +2,13 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from PIL import Image
 
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
 from feverslop.errors import FeverSlopValidationError
+from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
 
 
 class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
@@ -191,34 +193,39 @@ class IngredientsVisionEnrichmentTests(unittest.TestCase):
                 },
             }]), encoding="utf-8")
 
-            class FakeVisionLLM:
-                image_paths = []
-                user_prompt = ""
+            class FakeIngredientsModule:
+                def __init__(self, _llm, **_kwargs):
+                    self.image_paths = []
+                    self.user_prompt = ""
 
-                def complete_prompt_with_images(self, _system, user, paths):
+                def vision(self, payload, paths):
                     self.image_paths = paths
-                    self.user_prompt = user
-                    invariants = " ".join(["stable cinematic composition"] * 30)
-                    return json.dumps({"references": [
-                        {"id": "singer", "type": "actor", "description": "silver hair and a vivid red coat"},
-                        {"id": "stage", "type": "location", "description": "black mirrors crossed by blue neon rain"},
-                    ], "shot_invariants": invariants})
+                    self.user_prompt = json.dumps(payload)
+                    return IngredientsVisionResult(
+                        references=[
+                            {"id": "singer", "type": "actor", "t2i_description": "silver hair and a vivid red coat"},
+                            {"id": "stage", "type": "location", "t2i_description": "black mirrors crossed by blue neon rain"},
+                        ],
+                        shot_invariants=" ".join(["stable cinematic composition"] * 30),
+                    )
 
-            llm = FakeVisionLLM()
+            llm = object()
+            module = FakeIngredientsModule(llm)
             events = []
-            output = enrich_render_plan_with_ingredients_sheets(
-                plan, references, project / "enriched.json", llm=llm,
-                on_analysis_status=lambda scene_id, refs: events.append((scene_id, refs)),
-            )
+            with patch("feverslop.application.ingredients_vision_prompt.IngredientsPromptModules", return_value=module):
+                output = enrich_render_plan_with_ingredients_sheets(
+                    plan, references, project / "enriched.json", llm=llm,
+                    on_analysis_status=lambda scene_id, refs: events.append((scene_id, refs)),
+                )
             scene = json.loads(output.read_text(encoding="utf-8"))[0]
 
-            self.assertEqual([actor_sheet, location_sheet], llm.image_paths)
-            self.assertNotIn("ingredients_sheets", str(llm.image_paths[0]))
+            self.assertEqual([actor_sheet, location_sheet], module.image_paths)
+            self.assertNotIn("ingredients_sheets", str(module.image_paths[0]))
             self.assertIn("Character `singer`", scene["ingredients"]["global_prompt"])
             self.assertIn("silver hair", scene["ingredients"]["global_prompt"])
             self.assertIn("### Target Description", scene["ingredients"]["global_prompt"])
-            self.assertIn("defiant chorus", llm.user_prompt)
-            self.assertIn("slow orbit", llm.user_prompt)
+            self.assertIn("defiant chorus", module.user_prompt)
+            self.assertIn("slow orbit", module.user_prompt)
             self.assertEqual([(7, [{"id": "singer", "type": "actor"}, {"id": "stage", "type": "location"}])], events)
 
             plan.write_text(json.dumps([{

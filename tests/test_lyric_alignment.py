@@ -2,7 +2,7 @@ import unittest
 
 from feverslop.domain.timeline import TimelineSegment
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
-from tests.fakellm import FakeLLM
+from tests.prompt_fakes import GeneralModulesFake
 
 
 class LyricTimelineAlignerTests(unittest.TestCase):
@@ -12,8 +12,8 @@ class LyricTimelineAlignerTests(unittest.TestCase):
             TimelineSegment(start=1.5, end=3.0, kind="vocals", text="helo wrld"),
             TimelineSegment(start=3.0, end=5.0, kind="vocals", text="secnd line"),
         ]
-        llm = FakeLLM('{"segment1": "hello world", "segment2": "second line"}')
-        aligner = LyricTimelineAligner(llm)
+        modules = GeneralModulesFake(lyric_alignment={"segments": {"segment1": "hello world", "segment2": "second line"}})
+        aligner = LyricTimelineAligner(object(), modules=modules)
 
         corrected = aligner.align(timeline, "[Verse]\nhello world\nsecond line")
 
@@ -21,26 +21,25 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         self.assertEqual("hello world", corrected[1].text)
         self.assertEqual("second line", corrected[2].text)
         self.assertEqual((1.5, 3.0, "vocals"), (corrected[1].start, corrected[1].end, corrected[1].kind))
-        self.assertIn("REFERENCE_LYRICS", llm.calls[0].prompt)
-        self.assertIn("segment1", llm.calls[0].prompt)
+        self.assertIn("hello world", modules.calls[0].payload["REFERENCE_LYRICS"])
+        self.assertEqual("segment1", modules.calls[0].payload["WHISPER_SEGMENTS"][0]["key"])
 
     def test_raises_when_llm_returns_wrong_segment_count(self):
         timeline = [
             TimelineSegment(start=0.0, end=2.0, kind="vocals", text="one"),
             TimelineSegment(start=2.0, end=4.0, kind="vocals", text="two"),
         ]
-        llm = FakeLLM('{"segment1": "one"}')
-        aligner = LyricTimelineAligner(llm)
+        aligner = LyricTimelineAligner(object(), modules=GeneralModulesFake(lyric_alignment={"segments": {"segment1": "one"}}))
 
         with self.assertRaisesRegex(ValueError, "Expected 2 corrected lyric segments"):
             aligner.align(timeline, "one\ntwo")
 
     def test_returns_original_timeline_when_no_vocal_segments_exist(self):
         timeline = [TimelineSegment(start=0.0, end=2.0, kind="instrumental", text="")]
-        llm = FakeLLM("{}")
-        aligner = LyricTimelineAligner(llm)
+        modules = GeneralModulesFake()
+        aligner = LyricTimelineAligner(object(), modules=modules)
 
         corrected = aligner.align(timeline, "reference")
 
         self.assertIs(corrected, timeline)
-        self.assertEqual([], llm.calls)
+        self.assertEqual([], modules.calls)

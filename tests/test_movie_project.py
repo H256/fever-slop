@@ -6,6 +6,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from PIL import Image
+from feverslop.prompting.msr_signatures import MSRPromptResult
 
 from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from tests.studio_harness import NativeStudioHarness
@@ -197,6 +198,63 @@ class FakeMoviePlanner:
 
     def generate_movie_narrative_plan(self, *, title, source_type, desired_length, bible, screenplay, config):
         return {}
+
+
+class FakeMoviePlanningModules:
+    def __init__(self, responses=None, error=None):
+        self.responses = responses or {}
+        self.error = error
+        self.calls = []
+
+    def _call(self, name, payload):
+        self.calls.append((name, payload))
+        if self.error is not None:
+            raise self.error
+        response = self.responses.get(name, {})
+        return response() if callable(response) else response
+
+    def story_arch(self, payload, **_kwargs):
+        return self._call("story_arch", payload)
+
+    def movie_bible(self, payload, **_kwargs):
+        return self._call("movie_bible", payload)
+
+    def refine_locations(self, payload, **_kwargs):
+        return self._call("refine_locations", payload)
+
+    def refine_actors(self, payload, **_kwargs):
+        return self._call("refine_actors", payload)
+
+    def continuity_plan(self, payload, **_kwargs):
+        return self._call("continuity_plan", payload)
+
+    def story_design(self, payload, **_kwargs):
+        return self._call("story_design", payload)
+
+    def screenplay(self, payload, **_kwargs):
+        return self._call("screenplay", payload)
+
+    def narrative_plan(self, payload, **_kwargs):
+        return self._call("narrative_plan", payload)
+
+    def shot_plan_from_bible(self, payload, **_kwargs):
+        return self._call("shot_plan_from_bible", payload)
+
+    def shot_plan(self, payload, **_kwargs):
+        return self._call("shot_plan", payload)
+
+
+class FakeMovieVisionModules:
+    def __init__(self, result=None, error=None):
+        self.result = result
+        self.error = error
+        self.calls = []
+
+    def vision(self, payload, image_paths):
+        self.calls.append((payload, image_paths))
+        if self.error is not None:
+            raise self.error
+        return MSRPromptResult.model_validate(self.result or {})
 
 
 class MovieProjectTests(unittest.TestCase):
@@ -830,13 +888,7 @@ class MovieProjectTests(unittest.TestCase):
     def test_movie_msr_enrichment_uses_individual_manifest_images_for_vision(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 
-        class VisionLLM:
-            def __init__(self):
-                self.calls = []
-
-            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
-                self.calls.append((system_prompt, prompt, image_paths))
-                return json.dumps({
+        modules = FakeMovieVisionModules({
                     "references": [
                         {"id": "mara", "type": "actor", "description": "Mara wears a graphite coat over a narrow red scarf, with a precise black bob"},
                         {"id": "ivo", "type": "actor", "description": "Ivo has swept silver hair, a white dinner jacket, and a dark carved cane"},
@@ -868,15 +920,14 @@ class MovieProjectTests(unittest.TestCase):
                 ],
                 "locations": [{"id": "archive", "name": "Archive", "visual_description": "fallback Archive", "msr_sheet_path": "movie/references/archive.png"}],
             }), encoding="utf-8")
-            llm = VisionLLM()
             statuses = []
 
             output = enrich_movie_render_plan_with_msr_prompts(
-                project_dir=project, llm=llm, on_analysis_status=lambda shot, references: statuses.append((shot, references))
+                project_dir=project, modules=modules, on_analysis_status=lambda shot, references: statuses.append((shot, references))
             )
 
             shot = json.loads(output.read_text(encoding="utf-8"))["shots"][0]
-            self.assertEqual(paths, llm.calls[0][2])
+            self.assertEqual(paths, modules.calls[0][1])
             self.assertIn("graphite coat", shot["ltx"]["msr_global_prompt"])
             self.assertIn("swept silver hair", shot["ltx"]["msr_global_prompt"])
             self.assertIn("towering brass shelves", shot["ltx"]["msr_global_prompt"])
@@ -890,12 +941,7 @@ class MovieProjectTests(unittest.TestCase):
     def test_movie_msr_partial_missing_images_keep_full_labeled_fallback(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 
-        class VisionLLM:
-            calls = []
-
-            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
-                self.calls.append(image_paths)
-                return "{}"
+        modules = FakeMovieVisionModules({})
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -916,22 +962,18 @@ class MovieProjectTests(unittest.TestCase):
                 ],
                 "locations": [{"id": "archive", "name": "Archive", "visual_description": "Archive fallback", "msr_sheet_path": "movie/references/archive.png"}],
             }), encoding="utf-8")
-            llm = VisionLLM()
-
-            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=llm)
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, modules=modules)
 
             global_prompt = json.loads(output.read_text(encoding="utf-8"))["shots"][0]["ltx"]["msr_global_prompt"]
             self.assertIn("Reference image 1 (Mara): Mara fallback", global_prompt)
             self.assertIn("Reference image 2 (Ivo): Ivo fallback", global_prompt)
             self.assertIn("Reference image 3 (Scene): Archive fallback", global_prompt)
-            self.assertEqual([], llm.calls)
+            self.assertEqual([], modules.calls)
 
     def test_movie_msr_transport_exception_is_logged_as_vision_unavailable(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
 
-        class FailingVisionLLM:
-            def complete_prompt_with_images(self, system_prompt, prompt, image_paths):
-                raise RuntimeError("transport failed")
+        modules = FakeMovieVisionModules(error=RuntimeError("transport failed"))
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -950,22 +992,16 @@ class MovieProjectTests(unittest.TestCase):
             }), encoding="utf-8")
 
             with self.assertLogs("feverslop.application.movie_msr_enrichment", level="WARNING") as logs:
-                enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=FailingVisionLLM())
+                enrich_movie_render_plan_with_msr_prompts(project_dir=project, modules=modules)
 
             self.assertTrue(any("reason=vision unavailable" in message for message in logs.output))
             self.assertFalse(any("reason=invalid response" in message for message in logs.output))
 
     def test_movie_msr_vision_dialogue_relay_requests_spoken_lip_sync(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
-        class DialogueVisionLLM:
-            prompt = ""
-            system_prompt = ""
-
-            def complete_prompt_with_images(self, system, prompt, _paths):
-                self.system_prompt = system
-                self.prompt = prompt
-                return json.dumps({
+        modules = FakeMovieVisionModules({
                     "references": [{"id": "mara", "type": "actor", "description": "Mara has dark hair and a silver coat"}],
                     "relays": [{"index": 0, "prompt": "Mara speaks the line with precise lip sync and wary expression as the camera moves closer."}],
                 })
@@ -986,19 +1022,16 @@ class MovieProjectTests(unittest.TestCase):
                 "actors": [{"id": "mara", "name": "Mara", "msr_sheet_path": "movie/references/mara.png"}],
                 "locations": [],
             }))
-            llm = DialogueVisionLLM()
-
-            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=llm)
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, modules=modules)
             relay = json.loads(output.read_text())["shots"][0]["ltx"]["msr_prompt_relay"][0]["prompt"]
 
-            self.assertEqual("dialogue", json.loads(llm.prompt)["relay_segments"][0]["state"])
+            self.assertEqual("dialogue", modules.calls[0][0]["relay_segments"][0]["state"])
             self.assertIn("speaks", relay)
             self.assertIn("lip sync", relay)
             self.assertNotIn("mouth closed", relay)
-            self.assertIn('state "dialogue"', llm.system_prompt)
-            self.assertIn("speaks the provided dialogue with precise lip sync", llm.system_prompt)
-            self.assertIn("instrumental and other non-vocal states keep mouths closed", llm.system_prompt.lower())
-            self.assertNotIn("non-singing relays keep mouths closed", llm.system_prompt)
+            guide = load_markdown_guide("msr-vision")
+            self.assertIn("Dialogue requires precise lip sync", guide)
+            self.assertIn("Instrumental and other non-vocal states keep mouths closed", guide)
 
 
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
@@ -2969,10 +3002,7 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import StoryArch
 
-        class BadBibleLLM:
-            def complete_prompt(self, *_args, **_kwargs):
-                return json.dumps(
-                    {
+        modules = FakeMoviePlanningModules(responses={"movie_bible": {
                         "actors": [
                             {
                                 "id": "technikerin",
@@ -2994,8 +3024,7 @@ class MovieProjectTests(unittest.TestCase):
                                 "visual_description": "Primary Location, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere",
                             }
                         ],
-                    }
-                )
+                    }})
 
         story_arch = StoryArch(
             title="Station",
@@ -3004,7 +3033,7 @@ class MovieProjectTests(unittest.TestCase):
         )
         screenplay = "INT. KORRIDOR DER STATION - NACHT\n\nTECHNIKERIN\nWer ist da drin?\n\nHinter einer Metalltuer klopft etwas langsam von innen."
 
-        bible = LLMMoviePlanner(BadBibleLLM()).generate_movie_bible(
+        bible = LLMMoviePlanner(object(), modules=modules).generate_movie_bible(
             title="Station",
             source_type="screenplay",
             story_text=screenplay,
@@ -3916,15 +3945,10 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_llm_movie_planner_sends_story_and_shot_requests_to_llm(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
-        class FakeLLM:
-            def __init__(self):
-                self.calls = []
-
-            def complete_prompt(self, system_prompt, prompt):
-                self.calls.append((system_prompt, prompt))
-                if "shot plan" in prompt.lower():
-                    return json.dumps({
+        modules = FakeMoviePlanningModules(responses={
+                "shot_plan": {
                         "shots": [
                             {
                                 "description": "Mara opens the door",
@@ -3935,11 +3959,11 @@ class MovieProjectTests(unittest.TestCase):
                                 "dialogue": "MARA: We go below.",
                             }
                         ]
-                    })
-                return json.dumps({"premise": "A locksmith descends below the city.", "beats": ["Mara finds the door."]})
+                },
+                "story_arch": {"premise": "A locksmith descends below the city.", "beats": ["Mara finds the door."]},
+        })
 
-        llm = FakeLLM()
-        planner = LLMMoviePlanner(llm)
+        planner = LLMMoviePlanner(object(), modules=modules)
 
         story_arch = planner.generate_story_arch(
             title="Door Below",
@@ -3953,37 +3977,24 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual(("Mara finds the door.",), story_arch.beats)
         self.assertEqual("slow push-in", shots[0].camera)
         self.assertEqual("MARA: We go below.", shots[0].dialogue)
-        self.assertEqual(2, len(llm.calls))
-        self.assertIn("story arch", llm.calls[0][1].lower())
-        self.assertIn("shot plan", llm.calls[1][1].lower())
-        self.assertIn("Write every non-dialogue prose field in English", llm.calls[1][1])
-        self.assertIn("Only the dialogue field may use", llm.calls[1][1])
+        self.assertEqual(["story_arch", "shot_plan"], [name for name, _payload in modules.calls])
+        self.assertEqual("A locksmith finds a glowing door below an abandoned station.", modules.calls[0][1]["story_text"])
+        self.assertIn("Name every actor_ids entry in action", load_markdown_guide("movie-shot-plan"))
+        self.assertIn("Write every non-dialogue prose field in English", load_markdown_guide("movie-shot-plan"))
+        self.assertIn("Only the dialogue field may use the requested spoken dialogue language", load_markdown_guide("movie-shot-plan"))
 
     def test_llm_movie_planner_prompts_require_english_visual_prose_except_dialogue(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import StoryArch
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
-        class CapturingLLM:
-            def __init__(self):
-                self.calls = []
+        modules = FakeMoviePlanningModules(responses={
+            "movie_bible": {"actors": [], "locations": []},
+            "story_design": {}, "screenplay": {}, "shot_plan_from_bible": {"shots": []},
+            "story_arch": {"premise": "A technician enters a lighthouse.", "beats": ["The light fails."]},
+        })
 
-            def complete_prompt(self, system_prompt, prompt):
-                self.calls.append(prompt)
-                if "movie bible" in prompt.lower():
-                    return json.dumps({"actors": [], "locations": []})
-                if "dramaturgical story design" in prompt.lower():
-                    return json.dumps({})
-                if "canonical structured screenplay" in prompt.lower():
-                    return json.dumps({})
-                if "narrative memory plan" in prompt.lower():
-                    return json.dumps({})
-                if "continuity plan" in prompt.lower():
-                    return json.dumps({})
-                if "render plan" in prompt.lower():
-                    return json.dumps({"shots": []})
-                return json.dumps({"premise": "A technician enters a lighthouse.", "beats": ["The light fails."]})
-
-        planner = LLMMoviePlanner(CapturingLLM())
+        planner = LLMMoviePlanner(object(), modules=modules)
         story_arch = StoryArch(title="Light", premise="A technician enters a lighthouse.", beats=("The light fails.",))
         bible = planner.generate_movie_bible(
             title="Light",
@@ -4014,29 +4025,38 @@ class MovieProjectTests(unittest.TestCase):
         )
         planner.plan_shots_from_bible(bible=bible, screenplay=None, desired_length=30, width=640, height=480)
 
-        prompts = "\n".join(planner.llm.calls)
-        self.assertIn("Name every actor_ids entry in action", prompts)
-        self.assertIn("spatial relationship", prompts)
-        self.assertIn("collective noun", prompts)
-
-        prompts = "\n\n".join(planner.llm.calls)
-        self.assertIn("actor visual_description", prompts)
-        self.assertIn("Write all story-design prose in English", prompts)
-        self.assertIn("Write every non-dialogue screenplay field in English", prompts)
-        self.assertIn("Write every non-dialogue prose field in English", prompts)
-        self.assertIn("Only dialogue may use German", prompts)
+        self.assertEqual(
+            {"movie_bible", "story_design", "screenplay", "shot_plan_from_bible"},
+            {name for name, _payload in modules.calls},
+        )
+        guides = {
+            "movie_bible": load_markdown_guide("movie-bible"),
+            "story_design": load_markdown_guide("movie-story-design"),
+            "screenplay": load_markdown_guide("movie-screenplay"),
+            "shot_plan_from_bible": load_markdown_guide("movie-shot-plan-bible"),
+        }
+        self.assertIn("Write every non-dialogue prose field in English", guides["movie_bible"])
+        self.assertIn("Only dialogue may use German or the requested dialogue language", guides["movie_bible"])
+        self.assertIn("Never use placeholder actor visual_description or location visual_description text", guides["movie_bible"])
+        self.assertIn("Name every actor_ids entry in action", guides["movie_bible"])
+        self.assertIn("Name every actor_ids entry in action", guides["story_design"])
+        self.assertIn("Name every required_actors entry in action", guides["story_design"])
+        self.assertIn("Describe spatial relationships for multiple actors", guides["story_design"])
+        self.assertIn("Write all story-design prose in English", guides["story_design"])
+        self.assertIn("Write every non-dialogue screenplay field in English", guides["screenplay"])
+        self.assertIn("Dialogue is mandatory", guides["screenplay"])
+        self.assertIn("SCREENPLAY data is authoritative", guides["shot_plan_from_bible"])
+        self.assertIn("Map screenplay scene dialogue to shots", guides["shot_plan_from_bible"])
+        self.assertIn("name every selected actor in action", guides["shot_plan_from_bible"])
+        self.assertIn("Write every non-dialogue prose field in English", load_markdown_guide("movie-shot-plan"))
+        self.assertIn("Only the dialogue field may use the requested spoken dialogue language", load_markdown_guide("movie-shot-plan"))
 
     def test_shot_plan_prompt_INCLUDES_screenplay(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieBible, MovieActor, MovieLocation, MovieContinuityRule, StoryArch, MovieScreenplayArtifact, MovieScreenplayScene
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
-        class CapturingLLM:
-            def __init__(self):
-                self.calls = []
-
-            def complete_prompt(self, system_prompt, prompt):
-                self.calls.append(prompt)
-                return json.dumps({
+        modules = FakeMoviePlanningModules(responses={"shot_plan_from_bible": {
                     "shots": [{
                         "shot_id": "shot_0001",
                         "description": "test",
@@ -4051,10 +4071,9 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity_notes": "",
                         "transition_from_previous": "cut",
                     }],
-                })
+                }})
 
-        llm = CapturingLLM()
-        planner = LLMMoviePlanner(llm)
+        planner = LLMMoviePlanner(object(), modules=modules)
         bible = MovieBible(
             title="Test",
             premise="A test",
@@ -4088,18 +4107,16 @@ class MovieProjectTests(unittest.TestCase):
             width=640,
             height=480,
         )
-        prompt = "\n".join(llm.calls)
-        self.assertIn("SCREENPLAY", prompt)
-        self.assertIn("Hello, world", prompt)
-        self.assertIn("Map screenplay scene dialogue", prompt)
+        payload = modules.calls[0][1]
+        self.assertEqual("A: Hello, world.", payload["screenplay"].scenes[0].dialogue)
+        self.assertEqual("English", payload["screenplay"].dialogue_language)
+        self.assertIn("Preserve screenplay dialogue and scene order", load_markdown_guide("movie-shot-plan-bible"))
 
     def test_movie_planner_preserves_requested_minimum_actor_count(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
 
-        class OneActorLLM:
-            def complete_prompt(self, system_prompt, prompt):
-                if "shot plan" in prompt.lower():
-                    return json.dumps({
+        modules = FakeMoviePlanningModules(responses={
+                "shot_plan": {
                         "shots": [
                             {
                                 "description": "Mara enters the archive",
@@ -4108,13 +4125,14 @@ class MovieProjectTests(unittest.TestCase):
                                 "location_id": "archive",
                             }
                         ]
-                    })
-                return json.dumps({
+                },
+                "story_arch": {
                     "premise": "A story with at least 3 characters entering a haunted archive.",
                     "beats": ["Mara, Theo, and Lin cross the threshold."],
-                })
+                },
+        })
 
-        planner = LLMMoviePlanner(OneActorLLM())
+        planner = LLMMoviePlanner(object(), modules=modules)
         story_arch = planner.generate_story_arch(title="Archive", source_type="short_story", story_text="at least 3 characters", desired_length=12)
         shots = planner.plan_shots(story_arch=story_arch, desired_length=12, width=1280, height=704)
         actor_ids = {actor_id for shot in shots for actor_id in shot.actor_ids}
@@ -4593,13 +4611,7 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
 
-        class CapturingLLM:
-            def __init__(self):
-                self.calls = []
-
-            def complete_prompt(self, system_prompt, prompt):
-                self.calls.append(prompt)
-                return json.dumps({
+        modules = FakeMoviePlanningModules(responses={"screenplay": {
                     "title": "Test",
                     "source_type": "short_story",
                     "dialogue_language": "English",
@@ -4618,9 +4630,9 @@ class MovieProjectTests(unittest.TestCase):
                         "subtext": "",
                         "dialogue_function": "",
                     }],
-                })
+                }})
 
-        planner = LLMMoviePlanner(CapturingLLM())
+        planner = LLMMoviePlanner(object(), modules=modules)
         bible = MovieBible(
             title="Test",
             premise="A test",
@@ -4641,10 +4653,7 @@ class MovieProjectTests(unittest.TestCase):
             story_design=None,
             config={},
         )
-        prompt = "\n".join(planner.llm.calls).lower()
-        self.assertIn("dialogue is mandatory", prompt)
-        self.assertIn("every scene with two or more actors", prompt)
-        self.assertIn("voiceover", prompt)
+        self.assertEqual("screenplay", modules.calls[0][0])
 
 
 class TestLocationMergeHelpers(unittest.TestCase):
@@ -4941,45 +4950,13 @@ def _continuity_handoff_factory(
 class TestRefineLocationPrompts(unittest.TestCase):
     """Tests for LLM-based location description refinement."""
 
-    def test_refine_locations_prompt_includes_location_data(self):
-        from feverslop.adapters.movie_planning import _refine_location_prompts_prompt
-        from feverslop.domain.movie import MovieLocation
-
-        locations = (
-            MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
-            MovieLocation(id="stone_hut", name="Stone Hut", visual_description="Stone Hut"),
-        )
-        prompt = _refine_location_prompts_prompt(locations, "EXT. GARDEN - DAY\nA wild herb garden.")
-
-        self.assertIn('"id": "garden"', prompt)
-        self.assertIn('"id": "stone_hut"', prompt)
-        self.assertIn("GARDEN", prompt)
-        self.assertIn("physical environment", prompt.lower())
-        self.assertIn("no people", prompt)
-        self.assertIn("no text", prompt)
-
-    def test_refine_locations_prompt_rules_are_present(self):
-        from feverslop.adapters.movie_planning import _refine_location_prompts_prompt
-        from feverslop.domain.movie import MovieLocation
-
-        locations = (MovieLocation(id="x", name="X", visual_description="X"),)
-        prompt = _refine_location_prompts_prompt(locations, "test")
-
-        self.assertIn("visual_description", prompt)
-        self.assertIn("image_prompt", prompt)
-        self.assertIn("Remove all character names", prompt)
-        self.assertIn("Wide establishing view", prompt)
-        self.assertIn("production design", prompt)
-
     def test_refine_locations_success(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieLocation
 
-        class FakeLLM:
-            def complete_prompt(self, system_prompt, prompt):
-                return '{"locations": [{"id": "garden", "visual_description": "Overgrown herb garden with stone paths", "image_prompt": "Overgrown herb garden with stone paths. Wide establishing view, production design, lighting, atmosphere, no people, no text."}]}'
+        modules = FakeMoviePlanningModules(responses={"refine_locations": {"locations": [{"id": "garden", "visual_description": "Overgrown herb garden with stone paths", "image_prompt": "Overgrown herb garden with stone paths. Wide establishing view, production design, lighting, atmosphere, no people, no text."}]}})
 
-        planner = LLMMoviePlanner(FakeLLM())
+        planner = LLMMoviePlanner(object(), modules=modules)
         locations = (
             MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
         )
@@ -4994,11 +4971,9 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieLocation
 
-        class FakeLLM:
-            def complete_prompt(self, system_prompt, prompt):
-                return '{"locations": [{"id": "garden", "visual_description": "Overgrown garden", "image_prompt": "Cinematic environment reference sheet for Garden. Wide establishing view."}]}'
+        modules = FakeMoviePlanningModules(responses={"refine_locations": {"locations": [{"id": "garden", "visual_description": "Overgrown garden", "image_prompt": "Cinematic environment reference sheet for Garden. Wide establishing view."}]}})
 
-        result = LLMMoviePlanner(FakeLLM()).refine_locations(
+        result = LLMMoviePlanner(object(), modules=modules).refine_locations(
             (MovieLocation(id="garden", name="Garden", visual_description="Garden"),),
             source_text="EXT. GARDEN - DAY",
         )
@@ -5010,11 +4985,9 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieLocation
 
-        class FakeLLM:
-            def complete_prompt(self, system_prompt, prompt):
-                raise ConnectionError("llm down")
+        modules = FakeMoviePlanningModules(error=ConnectionError("llm down"))
 
-        planner = LLMMoviePlanner(FakeLLM())
+        planner = LLMMoviePlanner(object(), modules=modules)
         locations = (
             MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
         )
@@ -5028,11 +5001,9 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieLocation
 
-        class FakeLLM:
-            def complete_prompt(self, system_prompt, prompt):
-                return "not json at all"
+        modules = FakeMoviePlanningModules(responses={"refine_locations": "not json at all"})
 
-        planner = LLMMoviePlanner(FakeLLM())
+        planner = LLMMoviePlanner(object(), modules=modules)
         locations = (
             MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
         )
@@ -5046,11 +5017,9 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieLocation
 
-        class FakeLLM:
-            def complete_prompt(self, system_prompt, prompt):
-                return '{"locations": [{"id": "other", "visual_description": "Something", "image_prompt": "Something"}]}'
+        modules = FakeMoviePlanningModules(responses={"refine_locations": {"locations": [{"id": "other", "visual_description": "Something", "image_prompt": "Something"}]}})
 
-        planner = LLMMoviePlanner(FakeLLM())
+        planner = LLMMoviePlanner(object(), modules=modules)
         locations = (
             MovieLocation(id="garden", name="GARDEN", visual_description="GARDEN"),
         )
@@ -5065,20 +5034,11 @@ class TestRefineLocationPrompts(unittest.TestCase):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import StoryArch
 
-        class FakeLLM:
-            def __init__(self):
-                self.calls = []
-
-            def complete_prompt(self, system_prompt, prompt):
-                self.calls.append(system_prompt)
-                if "film development producer" in system_prompt:
-                    return '{"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]}'
-                elif "production designer" in system_prompt:
-                    return '{"locations": [{"id": "loc", "visual_description": "Refined environment", "image_prompt": "Refined environment. Wide establishing view, production design, lighting, atmosphere, no people, no text."}]}'
-                return "{}"
-
-        llm = FakeLLM()
-        planner = LLMMoviePlanner(llm)
+        modules = FakeMoviePlanningModules(responses={
+            "movie_bible": {"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]},
+            "refine_locations": {"locations": [{"id": "loc", "visual_description": "Refined environment", "image_prompt": "Refined environment. Wide establishing view, production design, lighting, atmosphere, no people, no text."}]},
+        })
+        planner = LLMMoviePlanner(object(), modules=modules)
         bible = planner.generate_movie_bible(
             title="Test",
             source_type="short_story",
@@ -5091,22 +5051,14 @@ class TestRefineLocationPrompts(unittest.TestCase):
         self.assertEqual(bible.locations[0].id, "loc")
         self.assertIn("Refined environment", bible.locations[0].visual_description)
         self.assertIn("no people", bible.locations[0].image_prompt)
-        self.assertEqual(2, len(llm.calls))
+        self.assertEqual(["movie_bible", "refine_locations"], [name for name, _payload in modules.calls])
 
     def test_refine_locations_not_wired_without_config(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import StoryArch
 
-        class FakeLLM:
-            def __init__(self):
-                self.calls = []
-
-            def complete_prompt(self, system_prompt, prompt):
-                self.calls.append(system_prompt)
-                return '{"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]}'
-
-        llm = FakeLLM()
-        planner = LLMMoviePlanner(llm)
+        modules = FakeMoviePlanningModules(responses={"movie_bible": {"title": "Test", "premise": "Test", "actors": [{"id": "a", "name": "A", "role": "r", "visual_description": "A"}], "locations": [{"id": "loc", "name": "LOC", "visual_description": "LOC"}]}})
+        planner = LLMMoviePlanner(object(), modules=modules)
         planner.generate_movie_bible(
             title="Test",
             source_type="short_story",
@@ -5115,8 +5067,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
             story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
             config={},
         )
-        self.assertEqual(1, len(llm.calls))
-        self.assertNotIn("production designer", llm.calls[0])
+        self.assertEqual(["movie_bible"], [name for name, _payload in modules.calls])
 
     def test_reference_manifest_prefers_image_prompt(self):
         from feverslop.application.movie import _reference_manifest

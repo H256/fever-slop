@@ -1,0 +1,1 @@
+Refine each supplied actor without changing ids or order. Describe stable physical appearance and wardrobe only: no scene, action, emotion, dialogue, camera movement, or reference-sheet layout. Keep identities consistent and write concise English descriptions.
