@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import socket
 from urllib.parse import urlsplit
 
 
@@ -50,12 +51,38 @@ def validate_api_url(
         configured_hosts = {item.strip().lower().rstrip(".") for item in raw_hosts.split(",") if item.strip()}
     if configured_hosts and normalized_host not in configured_hosts:
         raise APIURLValidationError(f"API host is not in the allowlist: {normalized_host}")
+    explicitly_allowed = bool(configured_hosts and normalized_host in configured_hosts)
+
+    # A configured host is an explicit trust decision. This is required for
+    # local deployments that address ComfyUI or an LLM over a private LAN.
+    if explicitly_allowed:
+        return value
 
     if normalized_host == "localhost" and allow_loopback:
         return value
     try:
         address = ipaddress.ip_address(normalized_host)
     except ValueError:
+        try:
+            resolved = socket.getaddrinfo(normalized_host, port or 443, type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            # Defer DNS failure handling to the HTTP client; do not turn a
+            # temporarily unavailable external service into a config error.
+            return value
+        for result in resolved:
+            resolved_address = ipaddress.ip_address(result[4][0])
+            if resolved_address.is_loopback and allow_loopback:
+                continue
+            if (
+                resolved_address.is_private
+                or resolved_address.is_link_local
+                or resolved_address.is_multicast
+                or resolved_address.is_reserved
+                or resolved_address.is_unspecified
+            ):
+                raise APIURLValidationError(
+                    f"API URL hostname resolves to a private or reserved address: {normalized_host}"
+                )
         return value
     if address.is_loopback and allow_loopback:
         return value

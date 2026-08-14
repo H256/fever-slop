@@ -18,6 +18,22 @@ class ComfyUIClientTests(unittest.TestCase):
         ComfyUIClient(api_key="secret").queue_prompt({})
         self.assertEqual("Bearer secret", session.post.call_args.kwargs["headers"]["Authorization"])
 
+    @patch("feverslop.adapters.comfyui_client.RequestRateLimiter")
+    @patch("requests.Session")
+    def test_request_rate_limiter_is_applied(self, session_class, limiter_class):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        session = MagicMock()
+        session.post.return_value.ok = True
+        session.post.return_value.json.return_value = {"prompt_id": "p1"}
+        session_class.return_value = session
+
+        client = ComfyUIClient(min_request_interval_seconds=0.25)
+        client.queue_prompt({})
+
+        limiter_class.assert_called_once_with(0.25)
+        limiter_class.return_value.wait.assert_called_once_with()
+
     def test_rejects_private_non_loopback_endpoint(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient
         from feverslop.security.url_validation import APIURLValidationError
@@ -80,9 +96,10 @@ class ComfyUIClientTests(unittest.TestCase):
             "http://comfy.example/prompt",
             json={"prompt": {}, "client_id": client.client_id},
             timeout=900,
+            allow_redirects=False,
         )
-        session.get.assert_any_call("http://comfy.example/history/prompt-1", timeout=900)
-        session.get.assert_any_call("http://comfy.example/object_info", timeout=900)
+        session.get.assert_any_call("http://comfy.example/history/prompt-1", timeout=900, allow_redirects=False)
+        session.get.assert_any_call("http://comfy.example/object_info", timeout=900, allow_redirects=False)
 
     def test_http_error_includes_response_body(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient, ComfyUIHTTPError
@@ -101,6 +118,17 @@ class ComfyUIClientTests(unittest.TestCase):
         ):
             client._raise_for_status(response, "queue prompt")
 
+    def test_redirect_response_is_rejected(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient, ComfyUIHTTPError
+
+        response = requests.Response()
+        response.status_code = 302
+        response.url = "http://comfy.example/prompt"
+        response.headers["Location"] = "http://other.example/prompt"
+
+        with self.assertRaises(ComfyUIHTTPError):
+            ComfyUIClient(base_url="http://comfy.example")._raise_for_status(response, "queue prompt")
+
     def test_free_cache_and_vram_posts_to_comfyui(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient
 
@@ -115,6 +143,7 @@ class ComfyUIClientTests(unittest.TestCase):
             "http://comfy.example/free",
             json={"unload_models": True, "free_memory": True},
             timeout=30,
+            allow_redirects=False,
         )
 
     def test_free_cache_and_vram_is_best_effort(self):

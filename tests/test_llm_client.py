@@ -136,6 +136,45 @@ class LLMClientRetryTests(unittest.TestCase):
         create_kwargs = mock_client.chat.completions.create.call_args.kwargs
         self.assertEqual(42.0, create_kwargs["timeout"])
 
+    @patch("feverslop.adapters.llm_client.RequestRateLimiter")
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_request_rate_limiter_is_applied(self, mock_openai, limiter_class):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content="ok"))]
+        mock_client.chat.completions.create.return_value = response
+
+        client = LocalOpenAIClient(
+            api_key="test-key",
+            min_request_interval_seconds=0.5,
+        )
+        client.complete_prompt(system_prompt="system", prompt="test")
+
+        limiter_class.assert_called_once_with(0.5)
+        limiter_class.return_value.wait.assert_called_once_with()
+
+    @patch("feverslop.adapters.llm_client.RequestRateLimiter")
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_request_rate_limiter_covers_health_and_model_requests(self, mock_openai, limiter_class):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.models.retrieve.return_value = {"modalities": ["text"]}
+
+        client = LocalOpenAIClient(api_key="test-key", min_request_interval_seconds=0.5)
+        client.health_check()
+        client.model_supports_vision()
+
+        self.assertEqual(2, limiter_class.return_value.wait.call_count)
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_openai_client_does_not_follow_redirects_or_retry_internally(self, mock_openai):
+        LocalOpenAIClient(api_key="test-key")
+
+        kwargs = mock_openai.call_args.kwargs
+        self.assertFalse(kwargs["http_client"].follow_redirects)
+        self.assertEqual(0, kwargs["max_retries"])
+
     @patch("feverslop.adapters.llm_client.OpenAI")
     def test_keeps_dspy_temperature_for_prompt_runtime(self, mock_openai):
         client = LocalOpenAIClient(api_key="test-key", dspy_temperature=0.25)
