@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-
-from pydantic import BaseModel
 
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_models import (
@@ -78,19 +75,12 @@ class VideoPromptGenerator:
             ))
         return result
 
-    @staticmethod
-    def _json(value: BaseModel | list[BaseModel]) -> str:
-        data = value.model_dump(mode="json") if isinstance(value, BaseModel) else [
-            item.model_dump(mode="json") for item in value
-        ]
-        return json.dumps(data, ensure_ascii=False, indent=2)
-
     def _plan(self, request: VideoPromptRequest, refs: list[ResolvedReference]) -> ResolvedPromptPlan:
         prediction = self.planner(
             mode=request.mode.value, user_prompt=request.user_prompt, duration_seconds=request.duration_seconds,
-            references_json=self._json(refs), notes=request.notes or "", strict_fidelity=request.strict_fidelity,
+            references=refs, notes=request.notes or "", strict_fidelity=request.strict_fidelity,
             requested_music_intent=request.music_intent.value if request.music_intent else "",
-            relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
+            relay_segments=request.relay_segments,
         )
         plan = prediction.plan
         if request.music_intent is not None:
@@ -134,15 +124,13 @@ class VideoPromptGenerator:
         with self.dspy_runtime.context(lm=self.lm):
             refs = self._resolve_references(request.references)
             plan = self._plan(request, refs)
-            plan_json = self._json(plan)
-            references_json = self._json(refs)
             if request.mode == PromptMode.R2V:
                 output = self.reference_renderer(
                     guide=self._read(self.reference_guide_path), user_prompt=request.user_prompt,
-                    plan_json=plan_json, references_json=references_json,
+                    plan=plan, references=refs,
                     notes=request.notes or "",
                     strict_fidelity=request.strict_fidelity, music_intent=plan.music_intent.value,
-                    relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
+                    relay_segments=request.relay_segments,
                 )
                 prompt = ReferenceVideoPrompt(
                     subject_definitions=plan.subjects, summary=output.summary,
@@ -154,11 +142,11 @@ class VideoPromptGenerator:
             else:
                 output = self.base_renderer(
                     guide=self._read(self.base_guide_path), mode=request.mode.value,
-                    user_prompt=request.user_prompt, plan_json=plan_json,
-                    references_json=references_json, notes=request.notes or "",
+                    user_prompt=request.user_prompt, plan=plan,
+                    references=refs, notes=request.notes or "",
                     strict_fidelity=request.strict_fidelity,
                     music_intent=plan.music_intent.value,
-                    relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
+                    relay_segments=request.relay_segments,
                 )
                 prompt = output.result
         if plan.music_intent == MusicIntent.NONE:

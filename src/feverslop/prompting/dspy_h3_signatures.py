@@ -11,6 +11,8 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         BaseVideoPrompt,
         ImageAnalysis,
         PromptPlan,
+        ResolvedPromptPlan,
+        ResolvedReference,
         RetentionAnalysis,
     )
 
@@ -33,11 +35,11 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         mode: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
         duration_seconds: float | None = dspy_module.InputField()
-        references_json: str = dspy_module.InputField()
+        references: list[ResolvedReference] = dspy_module.InputField()
         notes: str = dspy_module.InputField()
         strict_fidelity: bool = dspy_module.InputField()
         requested_music_intent: str = dspy_module.InputField()
-        relay_segments_json: str = dspy_module.InputField(default="[]")
+        relay_segments: list[dict[str, Any]] = dspy_module.InputField(default=[])
         plan: PromptPlan = dspy_module.OutputField()
 
     class RenderBasePrompt(dspy_module.Signature):
@@ -45,24 +47,24 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         guide: str = dspy_module.InputField()
         mode: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
-        plan_json: str = dspy_module.InputField()
-        references_json: str = dspy_module.InputField()
+        plan: ResolvedPromptPlan = dspy_module.InputField()
+        references: list[ResolvedReference] = dspy_module.InputField()
         notes: str = dspy_module.InputField()
         strict_fidelity: bool = dspy_module.InputField()
         music_intent: str = dspy_module.InputField()
-        relay_segments_json: str = dspy_module.InputField(default="[]")
+        relay_segments: list[dict[str, Any]] = dspy_module.InputField(default=[])
         result: BaseVideoPrompt = dspy_module.OutputField()
 
     class RenderReferencePrompt(dspy_module.Signature):
         """Render all generated portions of a MiniMax full-reference prompt."""
         guide: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
-        plan_json: str = dspy_module.InputField()
-        references_json: str = dspy_module.InputField()
+        plan: ResolvedPromptPlan = dspy_module.InputField()
+        references: list[ResolvedReference] = dspy_module.InputField()
         notes: str = dspy_module.InputField()
         strict_fidelity: bool = dspy_module.InputField()
         music_intent: str = dspy_module.InputField()
-        relay_segments_json: str = dspy_module.InputField(default="[]")
+        relay_segments: list[dict[str, Any]] = dspy_module.InputField(default=[])
         summary: str = dspy_module.OutputField()
         retention_analysis: list[RetentionAnalysis] = dspy_module.OutputField()
         detailed_description: str = dspy_module.OutputField()

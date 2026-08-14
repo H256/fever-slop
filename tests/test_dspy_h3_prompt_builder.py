@@ -214,8 +214,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="ref",
         )
 
-        self.assertIn("relay_segments_json", generator.requests[0])
-        self.assertIn('"start_seconds": 0.0', generator.requests[0]["relay_segments_json"])
+        self.assertNotIn("relay_segments_json", generator.requests[0])
+        self.assertEqual(0.0, generator.requests[0]["relay_segments"][0]["start_seconds"])
         self.assertIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
         self.assertIn("actor.png", " ".join(reference["source"] for reference in result["references"]))
 
@@ -453,13 +453,21 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             __import__("feverslop.prompting.dspy_h3_models", fromlist=["ImageAnalysis"]).ImageAnalysis,
         )
 
-    def test_relay_signature_inputs_are_optional_with_empty_array_default(self):
+    def test_signatures_use_structured_inputs_instead_of_json_strings(self):
         _, build_plan, render_base, render_reference = build_dspy_signatures()
 
+        self.assertNotIn("references_json", build_plan.input_fields)
+        self.assertNotIn("plan_json", render_base.input_fields)
+        self.assertNotIn("references_json", render_base.input_fields)
+        self.assertNotIn("relay_segments_json", render_base.input_fields)
+        self.assertNotIn("plan_json", render_reference.input_fields)
+        self.assertNotIn("references_json", render_reference.input_fields)
+        self.assertNotIn("relay_segments_json", render_reference.input_fields)
+
         for signature in (build_plan, render_base, render_reference):
-            field = signature.input_fields["relay_segments_json"]
+            field = signature.input_fields["relay_segments"]
             self.assertFalse(field.is_required())
-            self.assertEqual(field.default, "[]")
+            self.assertEqual(field.default, [])
 
     def test_integrated_guides_are_bundled_with_prompting_package(self):
         guides = files("feverslop.prompting.guides")

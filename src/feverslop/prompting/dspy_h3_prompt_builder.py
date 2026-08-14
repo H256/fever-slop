@@ -305,7 +305,6 @@ class DspyH3PromptBuilder:
             "references": generator_references,
             "images": images,
             "relay_segments": relay_segments,
-            "relay_segments_json": json.dumps(relay_segments, ensure_ascii=False),
             "strict_fidelity": True,
         }
         if audio_paths:

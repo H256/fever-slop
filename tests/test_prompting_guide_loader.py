@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+import tempfile
 
 from feverslop.prompting.guide_loader import (
     PromptGuideNotFoundError,
@@ -21,6 +22,16 @@ class PromptingGuideLoaderTests(unittest.TestCase):
 
         self.assertEqual("minimax-h3-references.md", path.name)
         self.assertTrue(path.is_file())
+
+    def test_explicit_path_is_narrowed_to_package_local_guide_name(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            custom = Path(temp_dir) / "minimax-h3-base.md"
+            custom.write_text("custom guide", encoding="utf-8")
+
+            loaded = load_markdown_guide(custom)
+
+        self.assertIn("integrated_multimodal_description", loaded)
+        self.assertNotEqual("custom guide", loaded)
 
     def test_missing_guide_error_names_the_requested_markdown_file(self):
         with self.assertRaises(PromptGuideNotFoundError) as caught:
