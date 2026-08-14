@@ -999,6 +999,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_msr_vision_dialogue_relay_requests_spoken_lip_sync(self):
         from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
         modules = FakeMovieVisionModules({
                     "references": [{"id": "mara", "type": "actor", "description": "Mara has dark hair and a silver coat"}],
@@ -1028,6 +1029,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("speaks", relay)
             self.assertIn("lip sync", relay)
             self.assertNotIn("mouth closed", relay)
+            guide = load_markdown_guide("msr-vision")
+            self.assertIn("Dialogue requires precise lip sync", guide)
+            self.assertIn("Instrumental and other non-vocal states keep mouths closed", guide)
 
 
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
@@ -3941,6 +3945,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_llm_movie_planner_sends_story_and_shot_requests_to_llm(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
         modules = FakeMoviePlanningModules(responses={
                 "shot_plan": {
@@ -3974,10 +3979,14 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual("MARA: We go below.", shots[0].dialogue)
         self.assertEqual(["story_arch", "shot_plan"], [name for name, _payload in modules.calls])
         self.assertEqual("A locksmith finds a glowing door below an abandoned station.", modules.calls[0][1]["story_text"])
+        self.assertIn("Name every actor_ids entry in action", load_markdown_guide("movie-shot-plan"))
+        self.assertIn("Write every non-dialogue prose field in English", load_markdown_guide("movie-shot-plan"))
+        self.assertIn("Only the dialogue field may use the requested spoken dialogue language", load_markdown_guide("movie-shot-plan"))
 
     def test_llm_movie_planner_prompts_require_english_visual_prose_except_dialogue(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import StoryArch
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
         modules = FakeMoviePlanningModules(responses={
             "movie_bible": {"actors": [], "locations": []},
@@ -4020,10 +4029,32 @@ class MovieProjectTests(unittest.TestCase):
             {"movie_bible", "story_design", "screenplay", "shot_plan_from_bible"},
             {name for name, _payload in modules.calls},
         )
+        guides = {
+            "movie_bible": load_markdown_guide("movie-bible"),
+            "story_design": load_markdown_guide("movie-story-design"),
+            "screenplay": load_markdown_guide("movie-screenplay"),
+            "shot_plan_from_bible": load_markdown_guide("movie-shot-plan-bible"),
+        }
+        self.assertIn("Write every non-dialogue prose field in English", guides["movie_bible"])
+        self.assertIn("Only dialogue may use German or the requested dialogue language", guides["movie_bible"])
+        self.assertIn("Never use placeholder actor visual_description or location visual_description text", guides["movie_bible"])
+        self.assertIn("Name every actor_ids entry in action", guides["movie_bible"])
+        self.assertIn("Name every actor_ids entry in action", guides["story_design"])
+        self.assertIn("Name every required_actors entry in action", guides["story_design"])
+        self.assertIn("Describe spatial relationships for multiple actors", guides["story_design"])
+        self.assertIn("Write all story-design prose in English", guides["story_design"])
+        self.assertIn("Write every non-dialogue screenplay field in English", guides["screenplay"])
+        self.assertIn("Dialogue is mandatory", guides["screenplay"])
+        self.assertIn("SCREENPLAY data is authoritative", guides["shot_plan_from_bible"])
+        self.assertIn("Map screenplay scene dialogue to shots", guides["shot_plan_from_bible"])
+        self.assertIn("name every selected actor in action", guides["shot_plan_from_bible"])
+        self.assertIn("Write every non-dialogue prose field in English", load_markdown_guide("movie-shot-plan"))
+        self.assertIn("Only the dialogue field may use the requested spoken dialogue language", load_markdown_guide("movie-shot-plan"))
 
     def test_shot_plan_prompt_INCLUDES_screenplay(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
         from feverslop.domain.movie import MovieBible, MovieActor, MovieLocation, MovieContinuityRule, StoryArch, MovieScreenplayArtifact, MovieScreenplayScene
+        from feverslop.prompting.guide_loader import load_markdown_guide
 
         modules = FakeMoviePlanningModules(responses={"shot_plan_from_bible": {
                     "shots": [{
@@ -4078,6 +4109,8 @@ class MovieProjectTests(unittest.TestCase):
         )
         payload = modules.calls[0][1]
         self.assertEqual("A: Hello, world.", payload["screenplay"].scenes[0].dialogue)
+        self.assertEqual("English", payload["screenplay"].dialogue_language)
+        self.assertIn("Preserve screenplay dialogue and scene order", load_markdown_guide("movie-shot-plan-bible"))
 
     def test_movie_planner_preserves_requested_minimum_actor_count(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
