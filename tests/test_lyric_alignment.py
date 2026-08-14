@@ -2,10 +2,17 @@ import unittest
 
 from feverslop.domain.timeline import TimelineSegment
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
+from feverslop.prompting.guide_loader import load_markdown_guide
 from tests.prompt_fakes import GeneralModulesFake
 
 
 class LyricTimelineAlignerTests(unittest.TestCase):
+    def test_lyric_alignment_guide_contains_boundary_contract(self):
+        guide = load_markdown_guide("lyric-alignment")
+
+        self.assertIn("Do not merge, split, skip, reorder", guide)
+        self.assertIn("Return exactly one output value", guide)
+
     def test_replaces_only_vocal_text_and_preserves_timing(self):
         timeline = [
             TimelineSegment(start=0.0, end=1.5, kind="instrumental", text=""),
