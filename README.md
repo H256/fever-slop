@@ -143,6 +143,10 @@ uv run python run_pipeline.py ./projects/my-song \
 
 The standalone tool prints the generated prompt to stdout. It does not write
 project artifacts; an output option may be added in a future version.
+DSPy calls share the same process-local LLM concurrency budget as direct
+OpenAI-compatible calls. Configure it with `llm.max_concurrent_requests` in
+`app_config.json`; the default is `1` and applies only inside the current
+FeverSlop process, not across multiple processes or other clients.
 
 ```bash
 # T2V: text only; no reference is required

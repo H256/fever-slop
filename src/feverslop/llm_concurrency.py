@@ -65,11 +65,21 @@ class LLMConcurrencyLimiter:
 
 _default_limiter_lock = Lock()
 _default_limiter = LLMConcurrencyLimiter()
+_default_limiter_configured_limit: int | None = None
 
 
 def get_shared_llm_concurrency_limiter(max_concurrent_requests: int = 1) -> LLMConcurrencyLimiter:
+    global _default_limiter_configured_limit
+    limit = LLMConcurrencyLimiter._validate_limit(max_concurrent_requests)
     with _default_limiter_lock:
-        _default_limiter.configure(max_concurrent_requests)
+        if _default_limiter_configured_limit is None:
+            _default_limiter.configure(limit)
+            _default_limiter_configured_limit = limit
+        elif _default_limiter_configured_limit != limit:
+            raise ValueError(
+                "llm.max_concurrent_requests already configured as "
+                f"{_default_limiter_configured_limit}; got conflicting value {limit}"
+            )
         return _default_limiter
 
 

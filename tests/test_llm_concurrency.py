@@ -155,6 +155,15 @@ class LLMConcurrencyTests(unittest.TestCase):
         self.assertEqual(1, backend.max_observed)
         self.assertEqual(1, client.llm_concurrency_snapshot().max_observed)
 
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_conflicting_client_concurrency_limits_are_rejected(self, mock_openai):
+        mock_openai.return_value = MagicMock()
+
+        LocalOpenAIClient(api_key="test-key", max_concurrent_requests=1)
+
+        with self.assertRaisesRegex(ValueError, "already configured"):
+            LocalOpenAIClient(api_key="test-key", max_concurrent_requests=2)
+
 
 if __name__ == "__main__":
     unittest.main()
