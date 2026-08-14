@@ -1,8 +1,57 @@
 from pathlib import Path
+import re
 import unittest
 
 
 class DocumentationCurrentTests(unittest.TestCase):
+    OPERATIONAL_DOCUMENTS = (
+        Path("README.md"),
+        Path("docs/setup.md"),
+        Path("docs/running.md"),
+        Path("docs/pipelines.md"),
+        Path("docs/project_workflow.md"),
+        Path("docs/app_config.md"),
+        Path("docs/comfyui_model_resolution.md"),
+        Path("docs/minimax-h3-setup.md"),
+        Path("docs/projects.md"),
+    )
+
+    def test_operational_docs_do_not_reference_removed_workflows(self):
+        removed_workflows = (
+            "video_ltxv_i2v_v1.json",
+            "video_ltxv_msr_1actor_1background_v2.json",
+            "video_ltxv_ingredients_audio_2stage_v5.json",
+            "video_ltxv_relay_v1.json",
+            "image_seg_sam3_v1.json",
+            "image_inpaint_ipadapter_v1.json",
+            "image_detail_easyuse_v1.json",
+            "video_minimax_h3_i2v.json",
+        )
+        for path in self.OPERATIONAL_DOCUMENTS:
+            text = path.read_text(encoding="utf-8")
+            for workflow in removed_workflows:
+                with self.subTest(path=path, workflow=workflow):
+                    self.assertNotIn(workflow, text)
+
+    def test_operational_workflow_references_exist_or_are_explicit_placeholders(self):
+        placeholders = {
+            "workflows/example.json",
+            "workflows/video_example.json",
+            "workflows/x.json",
+            "workflows/my_custom_reference_workflow.json",
+            "workflows/my_custom_edit_workflow.json",
+            "workflows/your_prompt_relay_workflow.json",
+        }
+        pattern = re.compile(r"(?:\.\\|\./)?(workflows[\\/][A-Za-z0-9_.-]+\.json)")
+        for path in self.OPERATIONAL_DOCUMENTS:
+            text = path.read_text(encoding="utf-8")
+            for raw_reference in pattern.findall(text):
+                reference = raw_reference.replace("\\", "/")
+                with self.subTest(path=path, reference=reference):
+                    if reference in placeholders:
+                        continue
+                    self.assertTrue(Path(reference).is_file())
+
     def test_readme_does_not_reference_removed_dead_code_candidates(self):
         text = Path("README.md").read_text(encoding="utf-8")
 
