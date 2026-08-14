@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from feverslop.ports.llm import LLMPort
+from feverslop.prompting.general_modules import GeneralPromptModules
 
 
 @dataclass
@@ -11,6 +12,9 @@ class TemplateStoryboardPromptTransformer:
     llm: LLMPort
     template_path: Path
     debug_dir: Path
+
+    def __post_init__(self) -> None:
+        self._modules = GeneralPromptModules(self.llm)
 
     def transform_prompt(
         self,
@@ -28,7 +32,14 @@ class TemplateStoryboardPromptTransformer:
             .replace("{{original_prompt}}", original_prompt)
             .strip()
         )
-        response = self.llm.complete_prompt(system_prompt=system_prompt, prompt=user_prompt).strip()
+        result = self._modules.storyboard_transform({
+            "system_template": system_prompt,
+            "user_template": user_prompt,
+            "width": width,
+            "height": height,
+            "original_prompt": original_prompt,
+        }, legacy_system_prompt=system_prompt, legacy_prompt=user_prompt)
+        response = (result.prompt if hasattr(result, "prompt") else result).strip()
         self._write_debug(scene_number, system_prompt, user_prompt, response)
         return response
 

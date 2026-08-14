@@ -5,6 +5,7 @@ from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
+from feverslop.prompting.dspy_runtime import DspyRuntime
 
 
 def _value(result: Any, name: str) -> Any:
@@ -41,7 +42,7 @@ class MusicVideoPromptModules:
             kwargs = {"system_prompt": guide, "prompt": json.dumps(payload.get("payload", payload), ensure_ascii=False, indent=2)}
             if timeout is not None:
                 kwargs["timeout"] = timeout
-            return self._llm.complete_prompt(**kwargs)
+            return DspyRuntime.complete_text(self._llm, **kwargs)
         predictor_kwargs = {"guide": guide, **payload}
         if timeout is not None:
             predictor_kwargs["config"] = {"timeout": timeout}

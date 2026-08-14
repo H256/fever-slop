@@ -22,6 +22,8 @@ from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import VisionLLMPort
+from feverslop.prompting.dspy_runtime import DspyRuntime
+from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.utils.io import atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
@@ -217,12 +219,19 @@ def _movie_vision_prompts(
         on_analysis_status(shot_id, status_references)
     relay = {"frame_start": 0, "frame_end": frame_count - 1, "state": _movie_relay_state(shot)}
     metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
+    payload = {"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}
     try:
-        response = complete_with_images(
-            _msr_vision_system_prompt(),
-            json.dumps({"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}, ensure_ascii=True),
-            [reference.path for reference in references],
-        )
+        if isinstance(getattr(llm, "model", None), str) and getattr(llm, "client", None) is not None:
+            typed = MSRPromptModules(llm).vision(payload, [reference.path for reference in references])
+            data = typed.model_dump()
+        else:
+            response = DspyRuntime.complete_images(
+                llm,
+                system_prompt=_msr_vision_system_prompt(),
+                prompt=json.dumps(payload, ensure_ascii=True),
+                image_paths=[reference.path for reference in references],
+            )
+            data = extract_json_object(response)
     except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         logger.warning(
             "MSR image analysis fallback: shot=%s reason=vision unavailable",
@@ -231,7 +240,6 @@ def _movie_vision_prompts(
         )
         return None
     try:
-        data = extract_json_object(response)
         items = data.get("references")
         relays = data.get("relays")
         if not isinstance(items, list) or not isinstance(relays, list) or len(relays) != 1:

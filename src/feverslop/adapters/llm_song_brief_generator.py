@@ -1,33 +1,27 @@
 from __future__ import annotations
 
-import json
-
 from feverslop.domain.full_auto import SongSpec
 from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.ports.llm import LLMPort
+from feverslop.prompting.general_modules import GeneralPromptModules
 
 
 class LLMSongBriefGenerator:
     def __init__(self, llm: LLMPort):
         self.llm = llm
+        self._modules = GeneralPromptModules(llm)
 
     def generate(self, request) -> SongSpec:
-        response = self.llm.complete_prompt(
-            system_prompt=self._system_prompt(),
-            prompt=json.dumps(
-                {
-                    "idea": request.idea,
-                    "style": request.style,
-                    "duration_seconds": request.duration_seconds,
-                    "language": request.language,
-                    "bpm_override": request.bpm,
-                    "keyscale_override": request.keyscale,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-        data = extract_json_object(response)
+        payload = {
+            "idea": request.idea,
+            "style": request.style,
+            "duration_seconds": request.duration_seconds,
+            "language": request.language,
+            "bpm_override": request.bpm,
+            "keyscale_override": request.keyscale,
+        }
+        result = self._modules.song_brief(payload, legacy_system_prompt=self._system_prompt())
+        data = result.model_dump() if hasattr(result, "model_dump") else extract_json_object(result)
         return SongSpec(
             title=str(data["title"]).strip(),
             tags=str(data["tags"]).strip(),

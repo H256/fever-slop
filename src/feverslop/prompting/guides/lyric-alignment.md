@@ -1,0 +1,1 @@
+Correct Whisper lyric segments against the reference lyrics. Return one value for every input key, in the same order. Never merge, split, skip, reorder, or move words between segments. Return only the typed result.
