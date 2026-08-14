@@ -65,9 +65,9 @@ class ScenePromptBuilder:
     - LTX prompts are video prompts and may contain motion.
     """
 
-    def __init__(self, llm: LLMPort, *, dspy_runtime=None):
+    def __init__(self, llm: LLMPort, *, dspy_runtime=None, modules=None):
         self.llm = llm
-        self._modules = GeneralPromptModules(llm, dspy_runtime=dspy_runtime)
+        self._modules = modules if modules is not None else GeneralPromptModules(llm, dspy_runtime=dspy_runtime)
 
     def build_zimage_prompt(
         self,
