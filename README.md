@@ -219,14 +219,17 @@ uv run python run_pipeline.py ./projects/my-song \
 # relay — patches #PROMPT_RELAY for multi-scene continuity
 uv run python run_pipeline.py ./projects/my-song \
   --render-mode relay \
-  --relay-workflow ./workflows/video_ltxv_relay_v1.json --skip-tests
+  --relay-workflow ./workflows/your_prompt_relay_workflow.json --skip-tests
 
 # auto — picks per-scene from the render plan hints
 uv run python run_pipeline.py ./projects/my-song \
   --render-mode auto \
-  --single-prompt-workflow ./workflows/video_ltxv_i2v_v1.json \
-  --relay-workflow ./workflows/video_ltxv_relay_v1.json --skip-tests
+  --single-prompt-workflow ./workflows/video_ltxv_i2v_v2.json \
+  --relay-workflow ./workflows/your_prompt_relay_workflow.json --skip-tests
 ```
+
+`your_prompt_relay_workflow.json` is an external/custom API workflow
+placeholder; no relay template is bundled in this repository.
 
 ### Movie Pipeline Modes
 
