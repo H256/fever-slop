@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-
-from pydantic import BaseModel
 
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_models import (
@@ -22,7 +19,8 @@ from feverslop.prompting.dspy_h3_models import (
     SubjectDefinition,
     VideoPromptRequest,
 )
-from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
+from feverslop.prompting.dspy_runtime import DspyRuntime
+from feverslop.prompting.guide_loader import load_markdown_guide
 
 
 class VideoPromptGenerator:
@@ -30,35 +28,25 @@ class VideoPromptGenerator:
 
     def __init__(self, *, base_guide_path: str | Path, reference_guide_path: str | Path,
                  llm: Any, image_analysis_mode: ImageAnalysisMode = ImageAnalysisMode.MISSING_ONLY,
-                 limits: ReferenceLimits | None = None):
-        import dspy
-
-        self.base_guide_path = Path(base_guide_path)
-        self.reference_guide_path = Path(reference_guide_path)
+                 limits: ReferenceLimits | None = None,
+                 dspy_runtime: DspyRuntime | None = None):
+        self.base_guide_path = Path(str(base_guide_path)).name
+        self.reference_guide_path = Path(str(reference_guide_path)).name
         self.limits = limits or ReferenceLimits()
-        AnalyzeImage, BuildPromptPlan, RenderBasePrompt, RenderReferencePrompt = build_dspy_signatures()
-        self.image_analyzer = LocalImageAnalyzer(dspy.Predict(AnalyzeImage), image_analysis_mode)
-        self.planner = dspy.Predict(BuildPromptPlan)
-        self.base_renderer = dspy.Predict(RenderBasePrompt)
-        self.reference_renderer = dspy.Predict(RenderReferencePrompt)
-        client = getattr(llm, "client", None)
-        api_base = getattr(client, "base_url", None)
-        if api_base is not None and not isinstance(api_base, str):
-            api_base = str(api_base)
-        self.lm = dspy.LM(
-            f"openai/{llm.model}",
-            api_base=api_base,
-            api_key=getattr(client, "api_key", None),
-            temperature=getattr(llm, "dspy_temperature", 0.4),
-            max_tokens=llm.max_tokens,
-            cache=getattr(llm, "dspy_cache", False),
+        self.dspy_runtime = dspy_runtime or DspyRuntime.create()
+        signatures = self.dspy_runtime.signatures
+        self.image_analyzer = LocalImageAnalyzer(
+            self.dspy_runtime.predict(signatures.analyze_image),
+            image_analysis_mode,
         )
+        self.planner = self.dspy_runtime.predict(signatures.build_prompt_plan)
+        self.base_renderer = self.dspy_runtime.predict(signatures.render_base_prompt)
+        self.reference_renderer = self.dspy_runtime.predict(signatures.render_reference_prompt)
+        self.lm = self.dspy_runtime.make_lm(llm)
 
     @staticmethod
-    def _read(path: Path) -> str:
-        if not path.is_file():
-            raise FileNotFoundError(f"Guide not found: {path}")
-        return path.read_text(encoding="utf-8")
+    def _read(path: str | Path) -> str:
+        return load_markdown_guide(path)
 
     @staticmethod
     def _label(kind: ReferenceKind, number: int) -> str:
@@ -87,19 +75,12 @@ class VideoPromptGenerator:
             ))
         return result
 
-    @staticmethod
-    def _json(value: BaseModel | list[BaseModel]) -> str:
-        data = value.model_dump(mode="json") if isinstance(value, BaseModel) else [
-            item.model_dump(mode="json") for item in value
-        ]
-        return json.dumps(data, ensure_ascii=False, indent=2)
-
     def _plan(self, request: VideoPromptRequest, refs: list[ResolvedReference]) -> ResolvedPromptPlan:
         prediction = self.planner(
             mode=request.mode.value, user_prompt=request.user_prompt, duration_seconds=request.duration_seconds,
-            references_json=self._json(refs), notes=request.notes or "", strict_fidelity=request.strict_fidelity,
+            references=refs, notes=request.notes or "", strict_fidelity=request.strict_fidelity,
             requested_music_intent=request.music_intent.value if request.music_intent else "",
-            relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
+            relay_segments=request.relay_segments,
         )
         plan = prediction.plan
         if request.music_intent is not None:
@@ -136,23 +117,20 @@ class VideoPromptGenerator:
         if request_data.get("mode") == "ref":
             request_data = {**request_data, "mode": PromptMode.R2V.value}
         request = VideoPromptRequest.model_validate(request_data)
-        dspy = __import__("dspy")
         # Planning and optional image analysis are DSPy calls as well.  They
         # must use the same configured LM as the final renderer; otherwise a
         # planner failure is caught by the adapter and looks like a valid
         # legacy/concept prompt.
-        with dspy.context(lm=self.lm):
+        with self.dspy_runtime.context(lm=self.lm):
             refs = self._resolve_references(request.references)
             plan = self._plan(request, refs)
-            plan_json = self._json(plan)
-            references_json = self._json(refs)
             if request.mode == PromptMode.R2V:
                 output = self.reference_renderer(
                     guide=self._read(self.reference_guide_path), user_prompt=request.user_prompt,
-                    plan_json=plan_json, references_json=references_json,
+                    plan=plan, references=refs,
                     notes=request.notes or "",
                     strict_fidelity=request.strict_fidelity, music_intent=plan.music_intent.value,
-                    relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
+                    relay_segments=request.relay_segments,
                 )
                 prompt = ReferenceVideoPrompt(
                     subject_definitions=plan.subjects, summary=output.summary,
@@ -164,11 +142,11 @@ class VideoPromptGenerator:
             else:
                 output = self.base_renderer(
                     guide=self._read(self.base_guide_path), mode=request.mode.value,
-                    user_prompt=request.user_prompt, plan_json=plan_json,
-                    references_json=references_json, notes=request.notes or "",
+                    user_prompt=request.user_prompt, plan=plan,
+                    references=refs, notes=request.notes or "",
                     strict_fidelity=request.strict_fidelity,
                     music_intent=plan.music_intent.value,
-                    relay_segments_json=json.dumps(request.relay_segments, ensure_ascii=False),
+                    relay_segments=request.relay_segments,
                 )
                 prompt = output.result
         if plan.music_intent == MusicIntent.NONE:

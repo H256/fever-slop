@@ -19,6 +19,8 @@ from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistenc
 from feverslop.errors import FeverSlopValidationError
 from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
+from unittest.mock import patch
 
 
 class FakeUploader:
@@ -272,16 +274,18 @@ class WorkflowMaterializerTests(unittest.TestCase):
             self.assertEqual([], queue.workflows)
 
     def test_vision_enriched_ingredients_prompt_reaches_materialized_workflow_unchanged(self):
-        class VisionLLM:
-            def complete_prompt_with_images(self, _system, _prompt, _paths):
-                invariants = " ".join(["stable full-frame composition and amber lighting"] * 12)
-                return json.dumps({
-                    "references": [
-                        {"id": "mara", "type": "actor", "description": "Mara has a sharp black bob, grey eyes, and a silver coat."},
-                        {"id": "archive", "type": "location", "description": "The archive has amber lamps, dark oak shelves, and a brass desk."},
+        class FakeIngredientsModule:
+            def __init__(self, _llm, **_kwargs):
+                pass
+
+            def vision(self, _payload, _paths):
+                return IngredientsVisionResult(
+                    references=[
+                        {"id": "mara", "type": "actor", "t2i_description": "Mara has a sharp black bob, grey eyes, and a silver coat."},
+                        {"id": "archive", "type": "location", "t2i_description": "The archive has amber lamps, dark oak shelves, and a brass desk."},
                     ],
-                    "shot_invariants": invariants,
-                })
+                    shot_invariants=" ".join(["stable full-frame composition and amber lighting"] * 12),
+                )
 
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
@@ -306,9 +310,10 @@ class WorkflowMaterializerTests(unittest.TestCase):
                     }],
                 },
             }]))
-            enriched_path = enrich_render_plan_with_ingredients_sheets(
-                plan, refs, project / "ingredients.json", llm=VisionLLM(),
-            )
+            with patch("feverslop.application.ingredients_vision_prompt.IngredientsPromptModules", FakeIngredientsModule):
+                enriched_path = enrich_render_plan_with_ingredients_sheets(
+                    plan, refs, project / "ingredients.json", llm=object(),
+                )
             scene = json.loads(enriched_path.read_text())[0]
             template = project / "workflow.json"
             original_negative = "bad anatomy, text, panels"

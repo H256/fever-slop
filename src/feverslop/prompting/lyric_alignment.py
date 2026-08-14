@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
-
-from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.domain.timeline import TimelineSegment
 from feverslop.ports.llm import LLMPort
+from feverslop.prompting.general_modules import GeneralPromptModules
 
 
 LYRIC_ALIGNMENT_SYSTEM_PROMPT = """
@@ -29,8 +27,9 @@ Output shape:
 
 
 class LyricTimelineAligner:
-    def __init__(self, llm: LLMPort):
+    def __init__(self, llm: LLMPort, *, modules=None):
         self.llm = llm
+        self._modules = modules if modules is not None else GeneralPromptModules(llm)
 
     def align(self, timeline: list[TimelineSegment], reference_lyrics: str) -> list[TimelineSegment]:
         reference_lyrics = str(reference_lyrics or "").strip()
@@ -51,11 +50,7 @@ class LyricTimelineAligner:
                 for index, segment in enumerate(vocal_segments, start=1)
             ],
         }
-        response = self.llm.complete_prompt(
-            system_prompt=LYRIC_ALIGNMENT_SYSTEM_PROMPT,
-            prompt=json.dumps(payload, ensure_ascii=False, indent=2),
-        )
-        corrected = extract_json_object(response)
+        corrected = self._modules.lyric_alignment(payload).segments
         expected_keys = [f"segment{index}" for index in range(1, len(vocal_segments) + 1)]
         actual_keys = list(corrected.keys())
         if actual_keys != expected_keys:

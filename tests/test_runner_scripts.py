@@ -11,6 +11,7 @@ from rich.console import Console
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
+from feverslop.prompting.msr_signatures import MSRPromptResult
 
 from tools.repair_scene_srt import main as repair_scene_srt_main
 import movie_pipeline
@@ -26,14 +27,21 @@ class RunnerScriptTests(unittest.TestCase):
 
     def test_vision_enriched_msr_prompts_reach_relay_inputs_with_separate_formats(self):
         class VisionLLM:
-            def complete_prompt_with_images(self, _system, _prompt, _paths):
-                return json.dumps({
+            model = "test-model"
+            client = object()
+
+        class VisionModules:
+            def vision(self, _payload, _images):
+                return MSRPromptResult.model_validate({
                     "references": [
                         {"id": "mara", "type": "actor", "description": "Mara has a sharp black bob and silver coat."},
                         {"id": "archive", "type": "location", "description": "The archive has amber lamps and oak shelves."},
                     ],
                     "relays": [{"index": 0, "prompt": "Mara crosses toward the desk as the camera tracks beside her and dust lifts in the warm light."}],
                 })
+
+            def segments(self, _payload):
+                return MSRPromptResult(relays=[])
 
         class Uploader:
             def resolve_reference_image_name(self, path, **_kwargs):
@@ -53,9 +61,10 @@ class RunnerScriptTests(unittest.TestCase):
                 },
                 "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 48, "state": "instrumental"}]},
             }]))
-            enriched = json.loads(enrich_render_plan_with_msr_prompts(
-                plan, temp / "enriched.json", llm=VisionLLM(),
-            ).read_text())[0]
+            with patch("feverslop.application.msr_prompt_enrichment.MSRPromptModules", return_value=VisionModules()):
+                enriched = json.loads(enrich_render_plan_with_msr_prompts(
+                    plan, temp / "enriched.json", llm=VisionLLM(),
+                ).read_text())[0]
             workflow_path = temp / "workflow.json"
             workflow_path.write_text(json.dumps({
                 "1": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_ACTOR_1"}},

@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
+
+import dspy
 
 from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
 from feverslop.domain.vision_references import ReferenceImage
+from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.ingredients_modules import IngredientsPromptModules
+from feverslop.prompting.ingredients_signatures import build_ingredients_signature_bundle
 from tests.fakellm import FakeVisionLLM, FailingVisionLLM
 
 
 class IngredientsVisionPromptTests(unittest.TestCase):
     def setUp(self):
-        self.actor = Path("actor.png")
-        self.location = Path("location.png")
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.actor = Path(self.temp_dir.name) / "actor.png"
+        self.location = Path(self.temp_dir.name) / "location.png"
+        self.actor.write_bytes(b"actor")
+        self.location.write_bytes(b"location")
         self.references = [
             ReferenceImage("mara", "actor", self.actor),
             ReferenceImage("archive", "location", self.location),
@@ -47,6 +58,31 @@ class IngredientsVisionPromptTests(unittest.TestCase):
         return " ".join(f"invariant{i}" for i in range(80))
 
     def build(self, llm):
+        if llm is not None:
+            llm.model = "fake-model"
+            llm.client = object()
+        calls = []
+
+        class Predictor:
+            def __call__(predictor_self, **kwargs):
+                calls.append(kwargs)
+                if isinstance(llm, FailingVisionLLM):
+                    raise RuntimeError("vision failed")
+                response = getattr(llm, "_canned", "")
+                try:
+                    response = json.loads(response)
+                except (TypeError, json.JSONDecodeError):
+                    pass
+                return {"result": response}
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        self.last_module_calls = calls
         return build_ingredients_vision_prompt(
             llm=llm,
             references=self.references,
@@ -54,14 +90,85 @@ class IngredientsVisionPromptTests(unittest.TestCase):
             target_context=self.target_context,
             fallback_reference_description=self.fallback_reference,
             fallback_shot_invariants=self.fallback_invariants,
+            dspy_runtime=Runtime(),
         )
+
+    def test_signature_and_module_pass_typed_payload_and_images(self):
+        calls = []
+
+        class Predictor:
+            def __call__(self, **kwargs):
+                calls.append(kwargs)
+                return {"result": {"references": [], "shot_invariants": " ".join(f"invariant{i}" for i in range(80))}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        bundle = build_ingredients_signature_bundle()
+        self.assertIn("images", bundle["vision"].input_fields)
+        self.assertEqual(list[dspy.Image], bundle["vision"].input_fields["images"].annotation)
+        self.assertIn("result", bundle["vision"].output_fields)
+        result_type = bundle["vision"].output_fields["result"].annotation
+        self.assertIn("t2i_description", result_type.model_fields["references"].annotation.__args__[0].model_fields)
+        self.assertIn("t2i_description", bundle["vision"].input_fields["payload"].annotation.model_fields["references"].annotation.__args__[0].model_fields)
+        self.assertIn("Ingredients", load_markdown_guide("ingredients-vision"))
+        modules = IngredientsPromptModules(LLM(), dspy_runtime=Runtime())
+        modules.vision(
+            {"references": self.reference_metadata, "target_context": self.target_context},
+            [self.actor, self.location],
+        )
+        self.assertEqual("mara", calls[0]["payload"].references[0].id)
+        self.assertEqual("Mara has cropped black hair and a charcoal coat.", calls[0]["payload"].references[0].t2i_description)
+        self.assertEqual(self.target_context, calls[0]["payload"].target_context)
+        self.assertTrue(all(isinstance(image, dspy.Image) for image in calls[0]["images"]))
+        self.assertTrue(all(image.url.startswith("data:image/") for image in calls[0]["images"]))
+
+    def test_missing_reference_and_word_boundaries_are_invalid_typed_outputs(self):
+        class Predictor:
+            def __init__(self, result):
+                self.result = result
+
+            def __call__(self, **kwargs):
+                return {"result": self.result}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+
+            def predict(self, signature):
+                return Predictor({"references": [], "shot_invariants": "too short"})
+
+        result = build_ingredients_vision_prompt(
+            llm=LLM(),
+            references=self.references,
+            reference_metadata=self.reference_metadata,
+            target_context=self.target_context,
+            fallback_reference_description=self.fallback_reference,
+            fallback_shot_invariants=self.fallback_invariants,
+            dspy_runtime=Runtime(),
+        )
+        self.assertEqual("invalid response", result.fallback_reason)
 
     def test_builds_grounded_prompt_and_attaches_references_in_source_order(self):
         llm = FakeVisionLLM(
             json.dumps({
                 "references": [
-                    {"id": "mara", "type": "actor", "description": "Cropped black hair, silver ear cuff, charcoal coat."},
-                    {"id": "archive", "type": "location", "description": "Narrow stone archive with dusty shelves."},
+                    {"id": "mara", "type": "actor", "t2i_description": "Cropped black hair, silver ear cuff, charcoal coat."},
+                    {"id": "archive", "type": "location", "t2i_description": "Narrow stone archive with dusty shelves."},
                 ],
                 "shot_invariants": self.shot_invariants(),
             })
@@ -69,22 +176,26 @@ class IngredientsVisionPromptTests(unittest.TestCase):
 
         result = self.build(llm)
 
-        call = llm.calls[0]
-        self.assertEqual([self.actor, self.location], call.image_paths)
-        payload = json.loads(call.prompt)
-        self.assertEqual(self.reference_metadata, payload["references"])
+        call = self.last_module_calls[0]
+        self.assertEqual(2, len(call["images"]))
+        self.assertTrue(all(isinstance(image, dspy.Image) for image in call["images"]))
+        self.assertFalse(any(isinstance(image, (Path, str)) for image in call["images"]))
+        payload = call["payload"]
+        self.assertEqual("mara", payload.references[0].id)
+        self.assertEqual("archive", payload.references[1].id)
+        self.assertEqual("Mara has cropped black hair and a charcoal coat.", payload.references[0].t2i_description)
         for key, value in self.target_context.items():
-            self.assertEqual(value, payload["target_context"][key])
-        system_prompt = str(call.system_prompt)
-        self.assertIn("60-160 words", system_prompt)
-        self.assertIn("non-temporal", system_prompt)
-        self.assertIn("Do not schedule", system_prompt)
-        self.assertIn("singing", system_prompt)
-        self.assertIn("lip-sync", system_prompt)
-        self.assertIn("single continuous full-frame shot", system_prompt)
-        self.assertIn("do not reproduce", system_prompt.lower())
-        self.assertIn("framing", system_prompt.lower())
-        self.assertIn("layout", system_prompt.lower())
+            self.assertEqual(value, payload.target_context[key])
+        guide = str(call["guide"])
+        self.assertIn("60-160", guide)
+        self.assertIn("non-temporal", guide)
+        self.assertIn("Do not schedule", guide)
+        self.assertIn("singing", guide)
+        self.assertIn("lip-sync", guide)
+        self.assertIn("single continuous full-frame shot", guide)
+        self.assertIn("do not reproduce", guide.lower())
+        self.assertIn("framing", guide.lower())
+        self.assertIn("layout", guide.lower())
         self.assertEqual(
             ["### Reference Sheet Description", "### Target Description"],
             [line for line in result.positive_prompt.splitlines() if line.startswith("###")],
@@ -97,27 +208,27 @@ class IngredientsVisionPromptTests(unittest.TestCase):
         invalid_responses = {
             "invalid json": "not JSON",
             "missing reference": {
-                "references": [{"id": "mara", "type": "actor", "description": "Mara"}],
+                "references": [{"id": "mara", "type": "actor", "t2i_description": "Mara"}],
                 "shot_invariants": self.shot_invariants(),
             },
             "wrong type": {
                 "references": [
-                    {"id": "mara", "type": "location", "description": "Mara"},
-                    {"id": "archive", "type": "location", "description": "Archive"},
+                    {"id": "mara", "type": "location", "t2i_description": "Mara"},
+                    {"id": "archive", "type": "location", "t2i_description": "Archive"},
                 ],
                 "shot_invariants": self.shot_invariants(),
             },
             "empty target": {
                 "references": [
-                    {"id": "mara", "type": "actor", "description": "Mara"},
-                    {"id": "archive", "type": "location", "description": "Archive"},
+                    {"id": "mara", "type": "actor", "t2i_description": "Mara"},
+                    {"id": "archive", "type": "location", "t2i_description": "Archive"},
                 ],
                 "shot_invariants": "",
             },
             "short target": {
                 "references": [
-                    {"id": "mara", "type": "actor", "description": "Mara"},
-                    {"id": "archive", "type": "location", "description": "Archive"},
+                    {"id": "mara", "type": "actor", "t2i_description": "Mara"},
+                    {"id": "archive", "type": "location", "t2i_description": "Archive"},
                 ],
                 "shot_invariants": "too short",
             },

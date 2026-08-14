@@ -14,7 +14,7 @@ def _reference(
     source: str | Path,
     kind: str,
     name: str,
-    description: str = "",
+    description: str | None = None,
     role: str = "general",
 ) -> dict[str, str]:
     source_text = str(source).replace("\\", "/")
@@ -23,7 +23,7 @@ def _reference(
         "source": source_text,
         "kind": kind,
         "name": name,
-        "description": description,
+        "description": description if description is not None else f"Preserved {kind} reference from {Path(source_text).name}.",
         "role": role,
     }
 
@@ -32,10 +32,22 @@ def _scene_references(
     segment: dict[str, Any],
     audio_paths: dict[str, Path] | None,
     reference_root: Path | None,
+    mode: str = "r2v",
 ) -> tuple[list[dict[str, str]], list[Path]]:
     references = segment.get("references") or {}
     result: list[dict[str, str]] = []
     images: list[Path] = []
+    seen: dict[str, set[str]] = {"picture": set(), "video": set(), "audio": set()}
+
+    def add_reference(reference: dict[str, str], image_path: Path | None = None) -> None:
+        source = reference["source"]
+        kind = reference["kind"]
+        if source in seen[kind]:
+            return
+        seen[kind].add(source)
+        result.append(reference)
+        if image_path is not None and image_path.is_file():
+            images.append(image_path)
 
     actor_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths") or []
     actor_ids = references.get("actor_ids") or []
@@ -50,40 +62,85 @@ def _scene_references(
         name = str(actor_ids[index - 1]) if index <= len(actor_ids) else f"Actor {index}"
         path = Path(source)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
-        result.append(_reference(
+        add_reference(_reference(
             label=f"<Picture {index}>",
             source=path,
             kind="picture",
             name=name,
-            description=actor_descriptions.get(name, ""),
+            description=(
+                actor_descriptions[name]
+                if actor_descriptions.get(name)
+                else ("" if image_path.is_file() else None)
+            ),
             role="subject",
-        ))
-        if image_path.is_file():
-            images.append(image_path)
+        ), image_path)
 
     location = references.get("location_msr_path") or references.get("location_sheet_path")
     if location:
         path = Path(location)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
         location_description = references.get("location_reference_description") or {}
-        result.append(_reference(
+        add_reference(_reference(
             label=f"<Picture {len(result) + 1}>",
             source=path,
             kind="picture",
             name=str(references.get("location_id") or "Location"),
-            description=str(
-                location_description.get("visual_description")
-                or location_description.get("image_prompt")
-                or ""
-            ).strip(),
+            description=(
+                str(
+                    location_description.get("visual_description")
+                    or location_description.get("image_prompt")
+                    or ""
+                ).strip()
+                or ("" if image_path.is_file() else None)
+            ),
             role="environment",
+        ), image_path)
+
+    for index, path_value in enumerate(references.get("reference_image_paths") or []):
+        path = Path(path_value)
+        image_path = path if path.is_absolute() or reference_root is None else reference_root / path
+        role = "subject"
+        if mode == "i2v" and index == 0:
+            role = "first_frame"
+        elif mode == "fl2v" and index == 0:
+            role = "first_frame"
+        elif mode == "fl2v" and index == 1:
+            role = "last_frame"
+        elif mode == "l2v" and index == 0:
+            role = "last_frame"
+        add_reference(_reference(
+            label=f"<Picture {sum(kind == 'picture' for kind in seen['picture']) + 1}>",
+            source=path,
+            kind="picture",
+            name=path.stem,
+            description="" if image_path.is_file() else None,
+            role=role,
+        ), image_path)
+
+    for path_value in references.get("reference_video_paths") or []:
+        path = Path(path_value)
+        add_reference(_reference(
+            label=f"<Video {len([ref for ref in result if ref['kind'] == 'video']) + 1}>",
+            source=path,
+            kind="video",
+            name=path.stem,
+            role="motion",
         ))
-        if image_path.is_file():
-            images.append(image_path)
+
+    for path_value in references.get("reference_audio_paths") or []:
+        path = Path(path_value)
+        add_reference(_reference(
+            label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
+            source=path,
+            kind="audio",
+            name=path.stem,
+            description="Use this synchronized reference for the scene's audio behavior.",
+            role="audio_reuse",
+        ))
 
     for index, (name, source) in enumerate((audio_paths or {}).items(), start=1):
-        result.append(_reference(
-            label=f"<Audio {index}>",
+        add_reference(_reference(
+            label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
             source=source,
             kind="audio",
             name=name,
@@ -257,6 +314,8 @@ class DspyH3PromptBuilder:
         generator: Callable[[dict[str, Any]], Any],
         *,
         reference_root: Path | None = None,
+        # Compatibility callers may retain concept-only fallback; production
+        # construction must pass False so DSPy failures are surfaced.
         allow_fallback: bool = True,
     ):
         self.generator = generator
@@ -280,6 +339,7 @@ class DspyH3PromptBuilder:
             segment,
             audio_paths,
             reference_root or self.reference_root,
+            mode=mode,
         )
         relay_segments = _normalize_relay_segments(segment)
         generator_references = [dict(reference) for reference in references]
@@ -305,7 +365,6 @@ class DspyH3PromptBuilder:
             "references": generator_references,
             "images": images,
             "relay_segments": relay_segments,
-            "relay_segments_json": json.dumps(relay_segments, ensure_ascii=False),
             "strict_fidelity": True,
         }
         if audio_paths:
@@ -390,9 +449,8 @@ def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
     """Create the complete planner/analyzer/renderer generator from dspy_prompt_test."""
     from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 
-    guides = Path(__file__).with_name("guides")
     return VideoPromptGenerator(
-        base_guide_path=guides / "minimax-h3-base.md",
-        reference_guide_path=guides / "minimax-h3-references.md",
+        base_guide_path="minimax-h3-base.md",
+        reference_guide_path="minimax-h3-references.md",
         llm=llm,
     )

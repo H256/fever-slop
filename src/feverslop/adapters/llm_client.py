@@ -11,6 +11,10 @@ import time
 
 from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
 from feverslop.errors import FeverSlopLMLError
+from feverslop.llm_concurrency import (
+    LLMConcurrencySnapshot,
+    get_shared_llm_concurrency_limiter,
+)
 from feverslop.prompting.vision_references import prepare_vision_image
 from feverslop.security.url_validation import validate_api_url
 
@@ -55,11 +59,13 @@ class LocalOpenAIClient:
         api_key: str | None = None,
         model: str = "default",
         temperature: float = 0.7,
+        dspy_temperature: float = 0.4,
         max_tokens: int = 512,
         max_retries: int = 3,
         retry_base_delay: float = 0.5,
         request_timeout_seconds: float = 180.0,
         dspy_cache: bool = False,
+        max_concurrent_requests: int = 1,
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
     ):
@@ -75,11 +81,14 @@ class LocalOpenAIClient:
         )
         self.model = model
         self.temperature = temperature
+        self.dspy_temperature = dspy_temperature
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.request_timeout_seconds = float(request_timeout_seconds)
         self.dspy_cache = dspy_cache
+        self.max_concurrent_requests = int(max_concurrent_requests)
+        self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics
 
     def complete_prompt(
@@ -128,37 +137,41 @@ class LocalOpenAIClient:
     def _complete(self, messages, timeout: float | None) -> str:
         last_error = None
         request_timeout = self.request_timeout_seconds if timeout is None else timeout
-        for attempt in range(self.max_retries):
-            started_at = time.perf_counter()
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    stream=False,
-                    timeout=request_timeout,
-                )
-                choices = getattr(response, "choices", None)
-                if not isinstance(choices, list) or not choices:
-                    raise FeverSlopLMLError("LLM response missing choices")
-                message = getattr(choices[0], "message", None)
-                result = str(getattr(message, "content", "") or "").strip()
-                if not result:
-                    raise FeverSlopLMLError("LLM response contains empty content")
-                record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=True)
-                return result
-            except RETRYABLE_ERRORS as exc:
-                record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
-                last_error = exc
-                if attempt < self.max_retries - 1:
-                    base_delay = self.retry_base_delay * (2 ** attempt)
-                    jitter = random.uniform(0, base_delay)
-                    time.sleep(base_delay + jitter)
-            except Exception:
-                record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
-                raise
+        with self.llm_limiter.acquire():
+            for attempt in range(self.max_retries):
+                started_at = time.perf_counter()
+                try:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                        stream=False,
+                        timeout=request_timeout,
+                    )
+                    choices = getattr(response, "choices", None)
+                    if not isinstance(choices, list) or not choices:
+                        raise FeverSlopLMLError("LLM response missing choices")
+                    message = getattr(choices[0], "message", None)
+                    result = str(getattr(message, "content", "") or "").strip()
+                    if not result:
+                        raise FeverSlopLMLError("LLM response contains empty content")
+                    record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=True)
+                    return result
+                except RETRYABLE_ERRORS as exc:
+                    record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
+                    last_error = exc
+                    if attempt < self.max_retries - 1:
+                        base_delay = self.retry_base_delay * (2 ** attempt)
+                        jitter = random.uniform(0, base_delay)
+                        time.sleep(base_delay + jitter)
+                except Exception:
+                    record_api_call(self.metrics, logger, "llm", "chat_completions", started_at, success=False)
+                    raise
 
         raise FeverSlopLMLError(
             f"LLM API error after {self.max_retries} attempts: {last_error}"
         ) from last_error
+
+    def llm_concurrency_snapshot(self) -> LLMConcurrencySnapshot:
+        return self.llm_limiter.snapshot()

@@ -1,21 +1,38 @@
 import unittest
 import json
-from unittest.mock import MagicMock
 from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
+
+
+class FakeConceptModules:
+    def __init__(self, responses):
+        self.responses = iter(responses)
+        self.calls = []
+
+    def concepts(self, payload, *, batch=False, silent_mode=False, timeout=None):
+        self.calls.append(("concepts", payload, timeout))
+        return next(self.responses)
+
+    def repair_concepts(self, payload, *, timeout=None):
+        self.calls.append(("repair_concepts", payload, timeout))
+        return next(self.responses)
+
+    def summary(self, payload, *, timeout=None):
+        self.calls.append(("summary", payload, timeout))
+        return next(self.responses)
 
 
 class ConceptPromptBatcherTests(unittest.TestCase):
     def test_reports_batch_progress(self):
-        mock_llm = MagicMock()
-        mock_llm.complete_prompt.side_effect = [
+        modules = FakeConceptModules([
             json.dumps({"seg_1": "concept 1"}),
             "summary",
             json.dumps({"seg_2": "concept 2"}),
             "summary",
-        ]
+        ])
         progress = []
         batcher = ConceptPromptBatcher(
-            llm=mock_llm,
+            llm=object(),
+            prompt_modules=modules,
             batch_size=1,
             progress_callback=progress.append,
         )
@@ -39,72 +56,63 @@ class ConceptPromptBatcherTests(unittest.TestCase):
         )
 
     def test_passes_timeout_to_llm(self):
-        mock_llm = MagicMock()
-        mock_llm.complete_prompt.return_value = json.dumps({"seg_1": "concept 1"})
-        
+        modules = FakeConceptModules([json.dumps({"seg_1": "concept 1"}), "summary"])
+
         batcher = ConceptPromptBatcher(
-            llm=mock_llm,
+            llm=object(),
+            prompt_modules=modules,
             batch_size=1,
             request_timeout_seconds=42.0
         )
-        
+
         batcher.create_concept_prompts_batched(
             stage1_segments=[{"segment_id": "seg_1"}],
             story_idea="idea",
             global_context={"silent_mode": False},
             notes="notes"
         )
-        
+
         # Check _generate_batch call
-        self.assertTrue(mock_llm.complete_prompt.called)
-        # Find the call in _generate_batch
-        # It's called multiple times: 
-        # 1. _generate_batch
-        # 2. _summarize_progress
-        
         found_batch_call = False
         found_summary_call = False
-        
-        for call in mock_llm.complete_prompt.call_args_list:
-            if "CURRENT_BATCH_SEGMENTS" in call.kwargs.get("prompt", ""):
+
+        for name, payload, timeout in modules.calls:
+            if name == "concepts" and "CURRENT_BATCH_SEGMENTS" in payload:
                 found_batch_call = True
-                self.assertEqual(call.kwargs.get("timeout"), 42.0)
-            if "RECENT_CONCEPTS" in call.kwargs.get("prompt", ""):
+                self.assertEqual(timeout, 42.0)
+            if name == "summary" and "RECENT_CONCEPTS" in payload:
                 found_summary_call = True
-                self.assertEqual(call.kwargs.get("timeout"), 42.0)
-        
+                self.assertEqual(timeout, 42.0)
+
         self.assertTrue(found_batch_call, "_generate_batch was not called")
         self.assertTrue(found_summary_call, "_summarize_progress was not called")
 
     def test_passes_timeout_to_repair_call(self):
-        mock_llm = MagicMock()
-        # First call (generate batch) returns empty dict to trigger repair
-        # Second call (repair) returns the missing key
-        # Third call (summarize)
-        mock_llm.complete_prompt.side_effect = [
-            json.dumps({}), # batch result (missing seg_1)
-            json.dumps({"seg_1": "repaired concept"}), # repair result
-            "summary" # summarize progress result
-        ]
-        
+        modules = FakeConceptModules([
+            json.dumps({}),  # batch result (missing seg_1)
+            json.dumps({"seg_1": "repaired concept"}),  # repair result
+            "summary",  # summarize progress result
+        ])
+
         batcher = ConceptPromptBatcher(
-            llm=mock_llm,
+            llm=object(),
+            prompt_modules=modules,
             batch_size=1,
             request_timeout_seconds=99.0
         )
-        
+
         batcher.create_concept_prompts_batched(
             stage1_segments=[{"segment_id": "seg_1"}],
             story_idea="idea",
             global_context={},
         )
-        
+
         found_repair_call = False
-        for call in mock_llm.complete_prompt.call_args_list:
-            if "MISSING_SEGMENTS" in call.kwargs.get("prompt", ""):
+        for name, payload, timeout in modules.calls:
+            if name == "repair_concepts" and "MISSING_SEGMENTS" in payload:
                 found_repair_call = True
-                self.assertEqual(call.kwargs.get("timeout"), 99.0)
-                
+                self.assertEqual(timeout, 99.0)
+
         self.assertTrue(found_repair_call, "_repair_missing_or_extra_keys was not called")
 
 if __name__ == "__main__":

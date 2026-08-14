@@ -1,0 +1,1 @@
+Build a valid JSON-shaped continuity plan with continuity_ledger, scene_continuity, and narrative_chain. Preserve shot order, actor and location ids, continuity facts, and causal story progression. Write continuity, state, style, location, and narrative prose in English; preserve dialogue only where needed.

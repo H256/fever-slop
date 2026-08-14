@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import re
 from copy import deepcopy
@@ -16,12 +15,12 @@ from feverslop.domain.visual_consistency_runtime import (
     reference_look_id,
     resolve_reference_look,
 )
-from feverslop.application.msr_prompt_enrichment import _clean_segment_prompt, _is_valid_segment_prompt, _msr_vision_system_prompt
-from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.application.msr_prompt_enrichment import _clean_segment_prompt, _is_valid_segment_prompt
 from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.screenplay import looks_like_screenplay
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import VisionLLMPort
+from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.utils.io import atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
@@ -34,6 +33,7 @@ def enrich_movie_render_plan_with_msr_prompts(
     llm: VisionLLMPort | None = None,
     on_analysis_status=None,
     workflow_profile: str = "msr-default",
+    modules=None,
 ) -> Path:
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
@@ -67,7 +67,7 @@ def enrich_movie_render_plan_with_msr_prompts(
             {**shot, "scene": int(shot.get("scene") or index)},
             bible=bible, manifest=manifest, fps=_fps(bible), keyframe_mode=keyframe_mode,
             shot_cards=shot_cards, project_dir=project_dir, llm=llm, on_analysis_status=on_analysis_status,
-            workflow_profile=workflow_profile,
+            workflow_profile=workflow_profile, modules=modules,
         )
         for index, shot in enumerate(render_plan.get("shots") or [], start=1)
     ]
@@ -81,7 +81,7 @@ def _enrich_shot(
     shot: dict, *, bible: dict, manifest: dict, fps: int, keyframe_mode: str = "none",
     shot_cards: dict | None = None, project_dir: Path | None = None, llm: VisionLLMPort | None = None,
     on_analysis_status=None,
-    workflow_profile: str = "msr-default",
+    workflow_profile: str = "msr-default", modules=None,
 ) -> dict:
     enriched = deepcopy(shot)
     shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
@@ -102,7 +102,7 @@ def _enrich_shot(
     )
     vision = _movie_vision_prompts(
         shot, bible=bible, manifest=manifest, project_dir=project_dir, llm=llm,
-        frame_count=frame_count, on_analysis_status=on_analysis_status,
+        frame_count=frame_count, on_analysis_status=on_analysis_status, modules=modules,
     )
     global_prompt, relay_prompt = vision or (fallback_global, prompt)
     global_prompt = bind_continuity_anchors(global_prompt, contract)
@@ -197,15 +197,15 @@ def _project_relative_reference(
 
 def _movie_vision_prompts(
     shot: dict, *, bible: dict, manifest: dict, project_dir: Path | None, llm: VisionLLMPort | None,
-    frame_count: int, on_analysis_status,
+    frame_count: int, on_analysis_status, modules=None,
 ) -> tuple[str, str] | None:
     shot_id = str(shot.get("shot_id") or "")
     references = _movie_reference_images(shot, bible=bible, manifest=manifest, project_dir=project_dir)
     if not references:
         logger.warning("MSR image analysis fallback: shot=%s reason=no images", shot_id)
         return None
-    complete_with_images = getattr(llm, "complete_prompt_with_images", None)
-    if not callable(complete_with_images):
+    modules = modules or _movie_msr_modules(llm)
+    if modules is None:
         logger.warning("MSR image analysis fallback: shot=%s reason=vision unavailable", shot_id)
         return None
     status_references = [{"id": ref.id, "type": ref.type} for ref in references]
@@ -217,12 +217,9 @@ def _movie_vision_prompts(
         on_analysis_status(shot_id, status_references)
     relay = {"frame_start": 0, "frame_end": frame_count - 1, "state": _movie_relay_state(shot)}
     metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
+    payload = {"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}
     try:
-        response = complete_with_images(
-            _msr_vision_system_prompt(),
-            json.dumps({"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}, ensure_ascii=True),
-            [reference.path for reference in references],
-        )
+        data = modules.vision(payload, [reference.path for reference in references]).model_dump()
     except (FeverSlopLMLError, ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         logger.warning(
             "MSR image analysis fallback: shot=%s reason=vision unavailable",
@@ -231,7 +228,6 @@ def _movie_vision_prompts(
         )
         return None
     try:
-        data = extract_json_object(response)
         items = data.get("references")
         relays = data.get("relays")
         if not isinstance(items, list) or not isinstance(relays, list) or len(relays) != 1:
@@ -264,6 +260,15 @@ def _movie_vision_prompts(
         label = "Scene" if reference.type == "location" else str(item.get("name") or reference.id)
         parts.append(f"Reference image {index} ({label}): {descriptions[(reference.id, reference.type)]}.")
     return " ".join(parts), relay_prompt
+
+
+def _movie_msr_modules(llm):
+    if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
+        return None
+    try:
+        return MSRPromptModules(llm)
+    except (ImportError, RuntimeError):
+        return None
 
 
 def _movie_relay_state(shot: dict) -> str:

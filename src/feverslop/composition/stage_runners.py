@@ -365,9 +365,11 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             api_key=current_config.llm.api_key,
             model=current_config.llm.model,
             temperature=current_config.llm.temperature,
+            dspy_temperature=current_config.llm.dspy_temperature,
             max_tokens=current_config.llm.max_tokens,
             request_timeout_seconds=current_config.llm.request_timeout_seconds,
             dspy_cache=getattr(current_config.llm, "dspy_cache", False),
+            max_concurrent_requests=current_config.llm.max_concurrent_requests,
         ),
         h3_prompt_builder_factory=H3PromptBuilder,
         dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
@@ -460,8 +462,10 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
         api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
+        dspy_temperature=app_config.llm.dspy_temperature,
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
+        max_concurrent_requests=app_config.llm.max_concurrent_requests,
     )
     state.plan_for_next_step = RelayDirectionBuilder(llm=llm).compact_render_plan_file(
         input_render_plan=state.plan_for_next_step,
@@ -641,8 +645,10 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
         api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
+        dspy_temperature=app_config.llm.dspy_temperature,
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
+        max_concurrent_requests=app_config.llm.max_concurrent_requests,
     )
     msr_prompt_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR prompts", msr_prompt_total) as msr_prompt_progress:
@@ -673,8 +679,10 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
         api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
+        dspy_temperature=app_config.llm.dspy_temperature,
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
+        max_concurrent_requests=app_config.llm.max_concurrent_requests,
     )
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     ingredients_total = count_render_plan_items(state.plan_for_next_step)

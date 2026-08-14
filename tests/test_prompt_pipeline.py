@@ -1,18 +1,13 @@
-import json
 import unittest
 
 from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
-from tests.fakellm import FakeLLM
-
-
-CONCEPT_RESPONSE = '{"segment_001": "A youth stands in the allowed forest."}'
-SUBJECT_RESPONSE = '{"subject": "a singer", "actors": [{"id": "singer", "name": "Mara"}], "locations": ["stage"]}'
+from tests.prompt_fakes import MusicVideoModulesFake
 
 
 class MusicVideoPromptPipelineTests(unittest.TestCase):
     def test_create_concept_prompts_includes_global_context_and_notes(self):
-        llm = FakeLLM(CONCEPT_RESPONSE)
-        pipeline = MusicVideoPromptPipeline(llm)
+        modules = MusicVideoModulesFake(concepts={"segment_001": "A youth stands in the allowed forest."})
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=modules)
 
         pipeline.create_concept_prompts(
             stage1_segments=[{"segment_id": "segment_001", "type": "instrumental"}],
@@ -24,38 +19,30 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
             notes="Keep the spring visible.",
         )
 
-        payload = json.loads(llm.calls[0].prompt)
+        payload = modules.calls[0].payload
 
         self.assertEqual("Allowed locations: ancient forest", payload["GLOBAL_CONTEXT"]["location_constraint"])
         self.assertEqual("Keep the spring visible.", payload["NOTES"])
-        self.assertIn("references", llm.calls[0].system_prompt)
+        self.assertIn("segment_001", payload["SEGMENT_TIMELINE_JSON"][0]["segment_id"])
 
     def test_subject_and_locations_prompt_requests_multi_actor_reference_data(self):
-        llm = FakeLLM(SUBJECT_RESPONSE)
-        pipeline = MusicVideoPromptPipeline(llm)
+        modules = MusicVideoModulesFake(subject_locations={"subject": "a singer", "actors": [{"id": "singer", "name": "Mara"}]})
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=modules)
 
         result = pipeline.create_subject_and_locations("stage story")
 
-        self.assertIn('"actors"', llm.calls[0].system_prompt)
+        self.assertEqual("stage story", modules.calls[0].payload["story_idea"])
         self.assertEqual("singer", result["actors"][0]["id"])
 
     def test_location_image_prompt_avoids_and_removes_reference_sheet_wording(self):
-        class ReferenceSheetLLM:
-            def complete_prompt(self, system_prompt: str, prompt: str) -> str:
-                self.system_prompt = system_prompt
-                return '{"subject": "a singer", "actors": [], "locations": [{"id": "stage", "image_prompt": "Cinematic environment reference sheet for a dark stage"}]}'
+        modules = MusicVideoModulesFake(subject_locations={"subject": "a singer", "actors": [], "locations": [{"id": "stage", "image_prompt": "Cinematic environment reference sheet for a dark stage"}]})
+        result = MusicVideoPromptPipeline(object(), prompt_modules=modules).create_subject_and_locations("stage story")
 
-        llm = ReferenceSheetLLM()
-        result = MusicVideoPromptPipeline(llm).create_subject_and_locations("stage story")
-
-        self.assertNotIn("location reference sheet", llm.system_prompt.lower())
-        self.assertIn("never use \"environment reference sheet\"", llm.system_prompt.lower())
         self.assertNotIn("reference sheet", result["locations"][0]["image_prompt"].lower())
 
     def test_create_final_scene_prompts_raises_for_missing_segments(self):
         """Missing segment IDs should produce a clear error, not a raw KeyError."""
-        llm = FakeLLM(CONCEPT_RESPONSE)
-        pipeline = MusicVideoPromptPipeline(llm)
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=MusicVideoModulesFake())
 
         with self.assertRaisesRegex(ValueError, "segment_002"):
             pipeline.create_final_scene_prompts(
@@ -69,18 +56,16 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
             )
 
     def test_subject_and_locations_prompt_requests_story_phase_locations(self):
-        llm = FakeLLM(SUBJECT_RESPONSE)
-        pipeline = MusicVideoPromptPipeline(llm)
+        modules = MusicVideoModulesFake(subject_locations={"subject": "a singer", "actors": [{"id": "singer", "name": "Mara"}]})
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=modules)
 
         pipeline.create_subject_and_locations("A quest through caverns, a dragon lair, and a magic spring.")
 
-        system_prompt = llm.calls[0].system_prompt
-        self.assertIn("major story phases", system_prompt)
-        self.assertIn("avoid collapsing", system_prompt.lower())
+        self.assertEqual("A quest through caverns, a dragon lair, and a magic spring.", modules.calls[0].payload["story_idea"])
 
     def test_scene_details_receive_selected_scene_cast(self):
-        llm = FakeLLM(CONCEPT_RESPONSE)
-        pipeline = MusicVideoPromptPipeline(llm)
+        modules = MusicVideoModulesFake(detail="DETAIL RESULT")
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=modules)
         progress = []
 
         pipeline.create_scene_details(
@@ -99,8 +84,8 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
             progress_callback=lambda current, total: progress.append((current, total)),
         )
 
-        for call in llm.calls:
-            payload = json.loads(call.prompt)
+        for call in modules.calls:
+            payload = call.payload
             self.assertEqual(["warrior", "mage"], payload["scene_cast"]["visible_actor_ids"])
             self.assertTrue(payload["scene_cast"]["requires_group_staging"])
 

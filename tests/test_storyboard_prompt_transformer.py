@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.fakellm import FakeLLM
+from tests.prompt_fakes import GeneralModulesFake
 
 
 class StoryboardPromptTransformerTests(unittest.TestCase):
@@ -18,10 +18,11 @@ class StoryboardPromptTransformerTests(unittest.TestCase):
                 "User idea: {{original_prompt}}\n",
                 encoding="utf-8",
             )
-            llm = FakeLLM(" raw non-json response \n")
+            modules = GeneralModulesFake(storyboard=" raw non-json response \n")
 
             result = TemplateStoryboardPromptTransformer(
-                llm=llm,
+                llm=object(),
+                modules=modules,
                 template_path=template,
                 debug_dir=temp / "debug",
             ).transform_prompt(
@@ -32,12 +33,8 @@ class StoryboardPromptTransformerTests(unittest.TestCase):
             )
 
         self.assertEqual("raw non-json response", result)
-        self.assertEqual("System rules", llm.calls[0].system_prompt)
-        self.assertEqual(
-            "TARGET IMAGE ASPECT RATIO: 1920:1088 (width:height).\n"
-            "User idea: cinematic frame",
-            llm.calls[0].prompt,
-        )
+        self.assertEqual("System rules", modules.calls[0].payload["system_template"])
+        self.assertEqual("TARGET IMAGE ASPECT RATIO: 1920:1088 (width:height).\nUser idea: cinematic frame", modules.calls[0].payload["user_template"])
 
     def test_template_transformer_writes_debug_files(self):
         from feverslop.prompting.storyboard_prompt_transformer import TemplateStoryboardPromptTransformer
@@ -48,7 +45,8 @@ class StoryboardPromptTransformerTests(unittest.TestCase):
             template.write_text("[SYSTEM]\nS\n\n[USER]\nU {{width}} {{height}} {{original_prompt}}", encoding="utf-8")
 
             TemplateStoryboardPromptTransformer(
-                llm=FakeLLM("{not json but ok}"),
+                llm=object(),
+                modules=GeneralModulesFake(storyboard="{not json but ok}"),
                 template_path=template,
                 debug_dir=temp / "debug",
             ).transform_prompt(

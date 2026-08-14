@@ -78,7 +78,9 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
             H3PromptPipeline(
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
-                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(build_dspy_generator(llm)),
+                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
+                    build_dspy_generator(llm), allow_fallback=False
+                ),
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
         ],
@@ -166,7 +168,9 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
             H3PromptPipeline(
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
-                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(build_dspy_generator(llm)),
+                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
+                    build_dspy_generator(llm), allow_fallback=False
+                ),
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
         ],
@@ -205,9 +209,11 @@ def _build_llm(app_config):
         api_key=app_config.llm.api_key,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
+        dspy_temperature=app_config.llm.dspy_temperature,
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
         dspy_cache=app_config.llm.dspy_cache,
+        max_concurrent_requests=app_config.llm.max_concurrent_requests,
     )
 
 

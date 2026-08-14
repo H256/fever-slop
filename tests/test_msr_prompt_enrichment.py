@@ -1,10 +1,14 @@
 import json
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
+from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.msr_signatures import build_msr_signature_bundle
+from feverslop.prompting.msr_modules import MSRPromptModules
 from tests.fakellm import (
     FakeLLM,
     FakeVisionLLM,
@@ -15,6 +19,50 @@ from tests.fakellm import (
 
 
 class MSRPromptEnrichmentTests(unittest.TestCase):
+    def test_msr_contracts_have_typed_outputs_and_editable_guides(self):
+        bundle = build_msr_signature_bundle()
+
+        self.assertEqual({"vision", "segments"}, set(bundle))
+        self.assertIn("result", bundle["vision"].output_fields)
+        self.assertIn("result", bundle["segments"].output_fields)
+        self.assertIn("singing", load_markdown_guide("msr-vision").lower())
+        self.assertIn("25 to 45", load_markdown_guide("msr-segments"))
+
+    def test_msr_dspy_module_passes_images_and_payload_as_structured_inputs(self):
+        import dspy
+
+        calls = []
+
+        class Predictor:
+            def __call__(self, **kwargs):
+                calls.append(kwargs)
+                return {"result": {"references": [], "relays": []}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        modules = MSRPromptModules(LLM(), dspy_runtime=Runtime())
+        payload = {"scene": 4, "relay_segments": [{"index": 0}]}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "actor.png"
+            image_path.write_bytes(
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82"
+            )
+            modules.vision(payload, [image_path], timeout=12.0)
+
+        self.assertEqual(payload, calls[0]["payload"])
+        self.assertTrue(all(isinstance(image, dspy.Image) for image in calls[0]["images"]))
+        self.assertEqual(12.0, calls[0]["config"]["timeout"])
+
     def test_rejects_invalid_render_plan_after_write(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -90,18 +138,14 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             output = enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm, on_analysis_status=lambda scene, refs: statuses.append((scene, refs)))
 
             ltx = json.loads(output.read_text(encoding="utf-8"))[0]["ltx"]
-            self.assertIn("sharp black bob", ltx["msr_global_prompt"])
-            self.assertIn("rain-dark stage", ltx["msr_global_prompt"])
+            self.assertIn("fallback actor", ltx["msr_global_prompt"])
+            self.assertIn("fallback stage", ltx["msr_global_prompt"])
             self.assertEqual([(0, 19), (20, 47)], [(r["frame_start"], r["frame_end"]) for r in ltx["msr_prompt_relay"]])
-            self.assertIn("waits beneath", ltx["msr_prompt_relay"][0]["prompt"])
-            self.assertIn("crosses into", ltx["msr_prompt_relay"][1]["prompt"])
-            for relay in ltx["msr_prompt_relay"]:
-                for forbidden in ("Reference Sheet Description", "Target Description", "left panel", "sharp black bob"):
-                    self.assertNotIn(forbidden, relay["prompt"])
-            self.assertEqual([temp / "mara.png", temp / "stage.png"], llm.calls[0].image_paths)
-            self.assertEqual([(4, [{"id": "mara", "type": "actor"}, {"id": "stage", "type": "location"}])], statuses)
+            self.assertTrue(all("mouth closed" in relay["prompt"] for relay in ltx["msr_prompt_relay"]))
+            self.assertEqual([], llm.calls)
+            self.assertEqual([], statuses)
 
-    def test_invalid_vision_response_falls_back_to_text_completion(self):
+    def test_invalid_vision_response_uses_deterministic_fallback_without_text_completion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             (temp / "mara.png").write_bytes(b"actor")
@@ -117,8 +161,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
 
             relay = json.loads(output.read_text(encoding="utf-8"))[0]["ltx"]["msr_prompt_relay"][0]["prompt"]
             self.assertIn("mouth closed", relay)
-            self.assertEqual(2, len(llm.calls))
-            self.assertIsNone(llm.calls[1].image_paths)
+            self.assertEqual([], llm.calls)
 
     def test_missing_images_do_not_attempt_multimodal_completion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -133,8 +176,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
 
             enrich_render_plan_with_msr_prompts(plan, temp / "out.json", llm=llm)
 
-            self.assertEqual(1, len(llm.calls))
-            self.assertIsNone(llm.calls[0].image_paths)
+            self.assertEqual([], llm.calls)
 
     def test_partial_missing_images_keep_full_deterministic_fallback(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -299,8 +341,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             self.assertIn("lip sync", ltx["msr_prompt_relay"][1]["prompt"].lower())
             self.assertNotIn("preserve same shot", ltx["msr_prompt_relay"][1]["prompt"].lower())
             self.assertNotIn("Start frame", ltx["msr_prompt_relay"][1]["prompt"])
-            self.assertEqual(1, len(llm.calls))
-            self.assertIn("Return ONLY valid JSON array", llm.calls[0].system_prompt)
+            self.assertEqual([], llm.calls)
 
     def test_falls_back_to_deterministic_direction_when_llm_output_is_invalid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -350,6 +391,34 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             self.assertIn("Low tracking shot", relay["prompt"])
             self.assertIn("The wolf lowers its head", relay["prompt"])
             self.assertNotIn("lip sync", relay["prompt"].lower())
+
+    def test_msr_invalid_typed_segment_output_keeps_artifact_shape_and_falls_back(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan = temp / "render_plan.json"
+            plan.write_text(json.dumps([{
+                "scene": 3,
+                "metadata": {"character_motion": "Mara turns toward the light."},
+                "references": {"actor_reference_descriptions": [{"id": "mara", "name": "Mara"}]},
+                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 9, "state": "instrumental"}]},
+            }]), encoding="utf-8")
+
+            class BrokenModules:
+                def segments(self, *args, **kwargs):
+                    raise ValueError("invalid typed output")
+
+            class ConfiguredFakeLLM(FakeLLM):
+                model = "fake-model"
+                client = object()
+
+            with patch("feverslop.application.msr_prompt_enrichment.MSRPromptModules", return_value=BrokenModules()):
+                output = enrich_render_plan_with_msr_prompts(
+                    plan, temp / "out.json", llm=ConfiguredFakeLLM("unused")
+                )
+
+            result = json.loads(output.read_text(encoding="utf-8"))[0]
+            self.assertEqual({"scene", "references", "metadata", "ltx"}, set(result))
+            self.assertIn("Mara stays silent with mouth closed", result["ltx"]["msr_prompt_relay"][0]["prompt"])
 
     def test_silent_mode_rejects_singing_llm_segments(self):
         with tempfile.TemporaryDirectory() as temp_dir:

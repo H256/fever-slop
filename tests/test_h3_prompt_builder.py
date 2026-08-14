@@ -1,5 +1,4 @@
 import unittest
-import json
 from pathlib import Path
 
 from feverslop.domain.render_plan import RenderScene
@@ -87,162 +86,72 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
             self.assertIn(marker, prompt)
 
 
-# ─── H3PromptBuilder ─────────────────────────────────────────────────────────
+# ─── H3PromptBuilder compatibility export ───────────────────────────────────
 
-class H3PromptBuilderTests(unittest.TestCase):
-    def _get_builder(self, response: str):
+class H3PromptBuilderCompatibilityTests(unittest.TestCase):
+    def test_compatibility_export_delegates_to_canonical_generator(self):
+        from unittest.mock import patch
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
-        builder = H3PromptBuilder(FakeLLM(response))
-        return builder
 
-    def test_produces_structured_output(self):
-        llm_response = json.dumps({
-            "integrated_multimodal_description": "A person standing in a room.",
-            "overall_soundscape": "N/A",
-            "non_diegetic_music": "N/A",
-        })
-        builder = self._get_builder(llm_response)
-        result = builder.build_h3_prompt(
-            segment={"segment_id": "seg1", "type": "vocals"},
-            concept="A person in a room.",
-            scene_details={"camera_motion": "Push In", "character_motion": "standing"},
-            global_context={
-                "subject": "a person",
-                "story_idea": "alone",
-                "style": "cinematic",
-                "locations": ["room"],
-                "silent_mode": False,
-                "location_constraint": "",
-            },
-            mode="base",
-        )
-        self.assertIn("integrated_multimodal_description", result)
-        self.assertIn("prompt", result)
-        self.assertIn("A person standing", result["prompt"])
+        requests = []
 
-    def test_forwards_system_prompt(self):
-        llm_response = json.dumps({
-            "integrated_multimodal_description": "X",
-            "overall_soundscape": "N/A",
-            "non_diegetic_music": "N/A",
-        })
-        llm = FakeLLM(llm_response)
+        def generator(request):
+            requests.append(request)
+            return {"prompt": "canonical prompt"}
+
+        llm = FakeLLM()
+        with patch("feverslop.prompting.h3_prompt_builder.build_dspy_generator", return_value=generator):
+            result = H3PromptBuilder(llm).build_h3_prompt(
+                segment={"segment_id": "s1"},
+                concept="test concept",
+                scene_details={},
+                global_context={},
+                mode="base",
+            )
+
+        self.assertEqual("canonical prompt", result["prompt"])
+        self.assertEqual("test concept", requests[0]["user_prompt"])
+        self.assertEqual([], llm.calls)
+
+    def test_compatibility_export_keeps_explicit_fallback_policy(self):
+        from unittest.mock import patch
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
-        builder = H3PromptBuilder(llm)
-        builder.build_h3_prompt(
-            segment={"segment_id": "s1", "type": "vocals"},
-            concept="test",
-            scene_details={},
-            global_context={
-                "subject": "person",
-                "story_idea": "story",
-                "style": "style",
-                "locations": ["loc"],
-                "silent_mode": False,
-                "location_constraint": "",
-            },
-        )
-        self.assertEqual(len(llm.calls), 1)
-        call = llm.calls[0]
-        system_prompt = call.system_prompt
-        payload = call.prompt
-        self.assertIn("integrated_multimodal_description", system_prompt)
-        parsed = json.loads(payload)
-        self.assertEqual(parsed["scene_concept"], "test")
 
-    def test_silent_mode_removes_vocal_stem_from_h3_payload(self):
-        builder = self._get_builder(json.dumps({"prompt": "silent journey"}))
-        builder.build_h3_prompt(
-            segment={
-                "segment_id": "s1",
-                "type": "vocals",
-                "stem_audio": {"paths": {"vocals": "vocals.wav", "full_mix": "full_mix.wav"}},
-                "references": {"reference_audio_paths": ["vocals.wav", "full_mix.wav"]},
-            },
-            concept="three travelers cross a valley",
-            scene_details={},
-            global_context={"subject": "three travelers", "story_idea": "journey", "style": "cinematic", "locations": [], "silent_mode": True},
-        )
-        payload = json.loads(builder.llm.calls[0].prompt)
-        self.assertEqual(["full_mix.wav"], payload["segment"]["references"]["reference_audio_paths"])
+        def broken(_request):
+            raise RuntimeError("DSPy unavailable")
 
-    def test_fallback_on_parse_failure(self):
-        response = "not valid json at all"
-        builder = self._get_builder(response)
-        result = builder.build_h3_prompt(
-            segment={"segment_id": "s1", "type": "vocals"},
-            concept="test",
-            scene_details={},
-            global_context={
-                "subject": "person",
-                "story_idea": "story",
-                "style": "style",
-                "locations": ["loc"],
-                "silent_mode": False,
-                "location_constraint": "",
-            },
-        )
-        self.assertIn("prompt", result)
-        self.assertIn("not valid json", result["prompt"])
-
-    def test_ref_mode_output(self):
-        llm_response = json.dumps({
-            "subject_definitions": "Subject 1 is a person.",
-            "summary": "A scene in a room.",
-            "retention_analysis": "<Picture 1>: face=fully_preserved",
-            "detailed_description": "A person in a room.",
-            "overall_soundscape": "N/A",
-            "non_diegetic_music": "N/A",
-        })
-        builder = self._get_builder(llm_response)
-        result = builder.build_h3_prompt(
-            segment={"segment_id": "s1", "type": "vocals"},
-            concept="test",
-            scene_details={},
-            global_context={
-                "subject": "person",
-                "story_idea": "story",
-                "style": "style",
-                "locations": ["loc"],
-                "silent_mode": False,
-                "location_constraint": "",
-            },
-            mode="ref",
-        )
-        self.assertIn("subject_definitions", result)
-        self.assertIn("prompt", result)
+        with patch("feverslop.prompting.h3_prompt_builder.build_dspy_generator", return_value=broken):
+            with self.assertRaisesRegex(RuntimeError, "DSPy H3 generation failed"):
+                H3PromptBuilder(FakeLLM(), allow_fallback=False).build_h3_prompt(
+                    segment={"segment_id": "s1"},
+                    concept="test concept",
+                    scene_details={},
+                    global_context={},
+                )
 
 
 # ─── H3PromptBuilder Batch ──────────────────────────────────────────────────
 
 class H3PromptBuilderBatchTests(unittest.TestCase):
     def test_batch_writes_all_scenes(self):
-        llm_response = json.dumps({
-            "integrated_multimodal_description": "Scene content.",
-            "overall_soundscape": "N/A",
-            "non_diegetic_music": "N/A",
-        })
+        from unittest.mock import patch
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
         store = FakeArtifactStore()
-        builder = H3PromptBuilder(FakeLLM(llm_response))
-        builder.build_all_h3_prompts(
-            stage1_segments=[
-                {"segment_id": "seg1", "type": "vocals"},
-                {"segment_id": "seg2", "type": "instrumental"},
-            ],
-            concept_prompts={"seg1": "concept one", "seg2": "concept two"},
-            scene_details={"seg1": {}, "seg2": {}},
-            global_context={
-                "subject": "person",
-                "story_idea": "story",
-                "style": "style",
-                "locations": ["loc"],
-                "silent_mode": False,
-                "location_constraint": "",
-            },
-            output_json_path="output.json",
-            artifact_store=store,
-        )
+        with patch(
+            "feverslop.prompting.h3_prompt_builder.build_dspy_generator",
+            return_value=lambda request: {"prompt": request["user_prompt"]},
+        ):
+            H3PromptBuilder(FakeLLM()).build_all_h3_prompts(
+                stage1_segments=[
+                    {"segment_id": "seg1", "type": "vocals"},
+                    {"segment_id": "seg2", "type": "instrumental"},
+                ],
+                concept_prompts={"seg1": "concept one", "seg2": "concept two"},
+                scene_details={"seg1": {}, "seg2": {}},
+                global_context={},
+                output_json_path="output.json",
+                artifact_store=store,
+            )
         data = store.writes.get("output.json", [])
         self.assertEqual(len(data), 2)
         seg_ids = [entry["segment_id"] for entry in data]
@@ -643,60 +552,6 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
         self.assertIn("Song", prompt)
         self.assertIn("<Audio 1>", prompt)  # per-type numbering: audio starts at 1
 
-    def test_builder_passes_references_for_ref_mode(self):
-        """End-to-end: H3PromptBuilder passes references to system prompt for ref mode."""
-        from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
-
-        segment_with_refs = {
-            "segment_id": "s1",
-            "type": "vocals",
-            "references": {
-                "reference_image_paths": ["output/actor.png"],
-                "reference_audio_paths": ["music/song.wav"],
-            },
-            "ref_items": [
-                {"type": "actor", "name": "Hero"},
-            ],
-        }
-        llm = FakeLLM(json.dumps({"prompt": "test output"}))
-        builder = H3PromptBuilder(llm)
-        builder.build_h3_prompt(
-            segment=segment_with_refs,
-            concept="A hero sings",
-            scene_details={},
-            global_context={},
-            mode="ref",
-            video_type="music_video",
-        )
-        system_prompt = llm.calls[0].system_prompt
-        # References should be in the system prompt
-        self.assertIn("<Picture 1>", system_prompt)
-        self.assertIn("Hero", system_prompt)
-
-    def test_builder_no_references_when_no_refs(self):
-        """Builder should not inject reference labels when segment has no refs."""
-        from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
-
-        segment_no_refs = {
-            "segment_id": "s1",
-            "type": "vocals",
-        }
-        llm = FakeLLM(json.dumps({"prompt": "test output"}))
-        builder = H3PromptBuilder(llm)
-        builder.build_h3_prompt(
-            segment=segment_no_refs,
-            concept="Test",
-            scene_details={},
-            global_context={},
-            mode="ref",
-            video_type="music_video",
-        )
-        system_prompt = llm.calls[0].system_prompt
-        # Should NOT contain ## Reference Labels and Subjects (only the generic instruction)
-        self.assertNotIn("## Reference Labels and Subjects", system_prompt)
-        # Generic instruction should still be present
-        self.assertIn("## Reference Labels", system_prompt)
-
     def test_backward_compat_string_refs(self):
         """Old-style string-format references are still accepted."""
         references = {"image": ["OldStyleLabel"], "audio": ["OldTrack"], "subjects": []}
@@ -734,6 +589,58 @@ class RefModeWithReferencesLabelTests(unittest.TestCase):
 
 class VideoPipelineModeResolutionTests(unittest.TestCase):
     """Test that H3PromptPipeline derives mode from config.video_pipeline."""
+
+    def test_all_h3_modes_are_forwarded_as_canonical_values(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        class FakeArtifactStore:
+            def read_json(self, path): return []
+
+        class FakeBuilder:
+            def __init__(self):
+                self.mode = None
+
+            def build_all_h3_prompts(self, **kwargs):
+                self.mode = kwargs["mode"]
+
+        modes = {
+            "minimax-h3-t2v": "t2v",
+            "minimax-h3-i2v": "i2v",
+            "minimax-h3-fl2v": "fl2v",
+            "minimax-h3-l2v": "l2v",
+            "minimax-h3-r2v": "r2v",
+        }
+        for video_pipeline, expected_mode in modes.items():
+            builder = FakeBuilder()
+
+            class FakeConfig:
+                pass
+
+            config = FakeConfig()
+            config.video_pipeline = video_pipeline
+            pipeline = H3PromptPipeline(
+                llm_factory=lambda c: None,
+                h3_prompt_builder_factory=lambda llm: None,
+                dspy_prompt_builder_factory=lambda llm: builder,
+            )
+            ctx = {
+                "app_config": {},
+                "config": config,
+                "stage1_segments": [{"segment_id": "s1"}],
+                "concept_prompts": {},
+                "scene_details": {},
+                "global_context": {},
+                "h3_prompts_json": "test.json",
+                "artifact_store": FakeArtifactStore(),
+                "log_step": lambda x: None,
+                "log_file": lambda a, b: None,
+            }
+            for key in pipeline.required_keys:
+                ctx.setdefault(key, None)
+
+            pipeline.run(ctx)
+
+            self.assertEqual(expected_mode, builder.mode, video_pipeline)
 
     def test_r2v_derives_ref_mode(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
@@ -776,9 +683,9 @@ class VideoPipelineModeResolutionTests(unittest.TestCase):
                 ctx[key] = None
 
         pipeline.run(ctx)
-        self.assertEqual(build_count["mode"], "ref")
+        self.assertEqual(build_count["mode"], "r2v")
 
-    def test_base_pipeline_derives_base_mode(self):
+    def test_non_h3_pipeline_uses_t2v_mode(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 
         class FakeConfig:
@@ -816,7 +723,7 @@ class VideoPipelineModeResolutionTests(unittest.TestCase):
                 ctx[key] = None
 
         pipeline.run(ctx)
-        self.assertEqual(build_count["mode"], "base")
+        self.assertEqual(build_count["mode"], "t2v")
 
 
 if __name__ == "__main__":
