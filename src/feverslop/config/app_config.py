@@ -114,6 +114,7 @@ def _check_required_keys(raw: dict, required_keys: list[str]) -> None:
 class AppConfig:
     llm: LLMConfig
     comfyui: ComfyUIConfig
+    global_library_path: Path = field(default_factory=lambda: (Path.home() / ".feverslop" / "library").expanduser())
     storyboard_prompt_transforms: list[StoryboardPromptTransformConfig] = field(default_factory=list)
     video_workflow_profiles: tuple[VideoWorkflowProfile, ...] = field(default_factory=tuple)
     _video_workflow_profile_defaults: tuple[tuple[str, str, str], ...] = field(
@@ -175,10 +176,16 @@ class AppConfig:
         if required_keys:
             _check_required_keys(raw, required_keys)
 
-        return cls._build_config(raw, dotenv_api_key=dotenv_api_key)
+        return cls._build_config(raw, dotenv_api_key=dotenv_api_key, base_dir=path.parent)
 
     @classmethod
-    def _build_config(cls, raw: dict, *, dotenv_api_key: str | None = None) -> "AppConfig":
+    def _build_config(
+        cls,
+        raw: dict,
+        *,
+        dotenv_api_key: str | None = None,
+        base_dir: Path | None = None,
+    ) -> "AppConfig":
         llm_raw = raw.get("llm", {})
         comfyui_raw = raw.get("comfyui", {})
         default_max_render_duration_raw = comfyui_raw.get("default_max_render_duration_seconds")
@@ -226,6 +233,12 @@ class AppConfig:
             raise ValueError(f"llm.max_tokens must be > 0, got {llm_max_tokens}")
         if llm_max_concurrent_requests <= 0:
             raise ValueError("llm.max_concurrent_requests must be > 0")
+        library_raw = raw.get("global_library_path")
+        if library_raw is None and isinstance(raw.get("global_library"), dict):
+            library_raw = raw["global_library"].get("path")
+        library_path = Path(str(library_raw or (Path.home() / ".feverslop" / "library"))).expanduser()
+        if not library_path.is_absolute() and base_dir is not None:
+            library_path = base_dir / library_path
         return cls(
             llm=LLMConfig(
                 base_url=llm_raw.get("base_url", "http://localhost:8080/v1"),
@@ -249,6 +262,7 @@ class AppConfig:
                 default_max_render_duration_seconds=default_max_render_duration,
                 video_workflow_limits=video_workflow_limits,
             ),
+            global_library_path=library_path.resolve(),
             storyboard_prompt_transforms=[
                 StoryboardPromptTransformConfig.from_dict(item)
                 for item in raw.get("storyboard_prompt_transforms", [])
