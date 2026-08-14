@@ -10,7 +10,7 @@ import shutil
 import tempfile
 from typing import Iterator
 
-from feverslop.domain.global_library import AssetKind, GlobalAsset
+from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
 
 class GlobalLibraryAdapter:
@@ -121,7 +121,9 @@ class GlobalLibraryAdapter:
         asset = self.get(kind, asset_id)
         look = next((item for item in asset.looks if item.id == look_id), None)
         if look is None:
-            raise ValueError(f"look not found for {asset.kind.value}/{asset.id}: {look_id}")
+            if asset.looks:
+                raise ValueError(f"look not found for {asset.kind.value}/{asset.id}: {look_id}")
+            look = AssetLook(look_id, look_id)
         source_dir = self._directory(asset.kind, asset.id)
         destination = Path(project_reference_dir).resolve() / "global_assets" / asset.kind.value / asset.id / look.id
         destination.mkdir(parents=True, exist_ok=True)

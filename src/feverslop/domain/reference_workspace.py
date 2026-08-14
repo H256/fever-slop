@@ -50,6 +50,35 @@ class ReferenceAsset:
 
 
 @dataclass(frozen=True)
+class PropInteraction:
+    actor_id: str
+    prop_id: str
+    action: str
+    relationship: str = ""
+    actor_look_id: str = ""
+    prop_look_id: str = ""
+
+    def __post_init__(self) -> None:
+        for field_name in ("actor_id", "prop_id", "action"):
+            if not str(getattr(self, field_name)).strip():
+                raise ValueError(f"prop interaction {field_name} is required")
+
+    def to_dict(self) -> dict[str, str]:
+        return {key: value for key, value in {
+            "actor_id": self.actor_id, "prop_id": self.prop_id, "action": self.action,
+            "relationship": self.relationship, "actor_look_id": self.actor_look_id, "prop_look_id": self.prop_look_id,
+        }.items() if value}
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, str]) -> "PropInteraction":
+        return cls(
+            actor_id=str(payload.get("actor_id", "")), prop_id=str(payload.get("prop_id", "")),
+            action=str(payload.get("action", "")), relationship=str(payload.get("relationship", "")),
+            actor_look_id=str(payload.get("actor_look_id", "")), prop_look_id=str(payload.get("prop_look_id", "")),
+        )
+
+
+@dataclass(frozen=True)
 class SceneReferenceAssignment:
     scene_number: int
     actor_ids: tuple[str, ...] = ()
@@ -57,6 +86,8 @@ class SceneReferenceAssignment:
     background_ids: tuple[str, ...] = ()
     style_ids: tuple[str, ...] = ()
     actor_look_ids: dict[str, str] | None = None
+    prop_ids: tuple[str, ...] = ()
+    prop_interactions: tuple[PropInteraction, ...] = ()
 
     def __post_init__(self) -> None:
         if isinstance(self.scene_number, bool) or not isinstance(self.scene_number, int) or self.scene_number <= 0:
@@ -65,6 +96,11 @@ class SceneReferenceAssignment:
         object.__setattr__(self, "location_ids", tuple(dict.fromkeys(str(loc).strip() for loc in self.location_ids if str(loc).strip())))
         object.__setattr__(self, "background_ids", tuple(dict.fromkeys(str(b).strip() for b in self.background_ids or () if str(b).strip())))
         object.__setattr__(self, "style_ids", tuple(dict.fromkeys(str(s).strip() for s in self.style_ids if str(s).strip())))
+        object.__setattr__(self, "prop_ids", tuple(dict.fromkeys(str(p).strip() for p in self.prop_ids if str(p).strip())))
+        interactions = tuple(self.prop_interactions)
+        if any(not isinstance(item, PropInteraction) for item in interactions):
+            raise ValueError("prop_interactions must contain PropInteraction objects")
+        object.__setattr__(self, "prop_interactions", interactions)
         object.__setattr__(
             self,
             "actor_look_ids",
@@ -79,11 +115,13 @@ class SceneReferenceAssignment:
         known_actor_ids: Iterable[str],
         known_location_ids: Iterable[str],
         known_background_ids: Iterable[str] | None = None,
+        known_prop_ids: Iterable[str] | None = None,
         max_scene_actors: int = 4,
     ) -> list[str]:
         known_actors = set(known_actor_ids)
         known_locations = set(known_location_ids)
         known_backgrounds = set(known_background_ids or ())
+        known_props = set(known_prop_ids or ())
         issues: list[str] = []
 
         for aid in self.actor_ids:
@@ -97,6 +135,15 @@ class SceneReferenceAssignment:
         for bgid in self.background_ids:
             if known_backgrounds and bgid not in known_backgrounds:
                 issues.append(f"Unknown background ID: {bgid}")
+
+        for prop_id in self.prop_ids:
+            if prop_id not in known_props:
+                issues.append(f"Unknown prop ID: {prop_id}")
+        for interaction in self.prop_interactions:
+            if interaction.actor_id not in known_actors:
+                issues.append(f"Unknown interaction actor ID: {interaction.actor_id}")
+            if interaction.prop_id not in known_props:
+                issues.append(f"Unknown interaction prop ID: {interaction.prop_id}")
 
         resolved = resolve_scene_cast(
             selected_actor_ids=self.actor_ids,
@@ -135,6 +182,7 @@ class ReferenceWorkspaceSnapshot:
                 + tuple(a.location_ids)
                 + tuple(a.background_ids)
                 + tuple(a.style_ids)
+                + tuple(a.prop_ids)
             )
         )
 

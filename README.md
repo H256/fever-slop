@@ -16,6 +16,9 @@ such as `feverslop.adapters.comfyui_video_backend`.
 The DSPy prompt boundary, bundled guide naming, typed inputs, fallback rules,
 and concurrency model are documented in [docs/prompt-architecture.md](docs/prompt-architecture.md).
 
+The canonical global asset library, project snapshots, guided generation, and
+prop interactions are documented in [docs/global-assets.md](docs/global-assets.md).
+
 ## Quick Start
 
 Install Python dependencies from the repository root:

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.domain.reference_workspace import (
+    PropInteraction,
     ReferenceAsset,
     ReferenceKind,
     ReferenceProvenance,
@@ -82,6 +83,8 @@ class ProjectReferenceLibrary(
                     background_ids=tuple(a.get("background_ids") or ()),
                     style_ids=tuple(a.get("style_ids") or ()),
                     actor_look_ids=dict(a.get("actor_look_ids") or {}),
+                    prop_ids=tuple(a.get("prop_ids") or ()),
+                    prop_interactions=tuple(PropInteraction.from_dict(item) for item in a.get("prop_interactions") or []),
                 )
                 for a in data.get("assignments") or []
             )
@@ -125,6 +128,8 @@ class ProjectReferenceLibrary(
                         "background_ids": list(a.background_ids),
                         "style_ids": list(a.style_ids),
                         "actor_look_ids": dict(a.actor_look_ids or {}),
+                        "prop_ids": list(a.prop_ids),
+                        "prop_interactions": [item.to_dict() for item in a.prop_interactions],
                     }
                     for a in assignments
                 ],

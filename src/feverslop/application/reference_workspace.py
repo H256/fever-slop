@@ -194,6 +194,8 @@ class SaveSceneAssignmentsUseCase:
                 a.background_ids,
                 a.style_ids,
                 tuple(sorted((a.actor_look_ids or {}).items())),
+                a.prop_ids,
+                tuple(item.to_dict() for item in a.prop_interactions),
             )
 
         old_map: dict[int, tuple] = {}

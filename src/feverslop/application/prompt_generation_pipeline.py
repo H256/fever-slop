@@ -14,6 +14,7 @@ from feverslop.ports.generate_pipeline import (
 )
 from feverslop.domain.prompt_constraints import build_location_constraint
 from feverslop.utils.sub_step_progress import SubStepProgress
+from feverslop.application.global_cast_resolver import materialize_global_assets
 
 
 def join_notes(*parts: str) -> str:
@@ -150,6 +151,7 @@ class PromptGenerationPipeline:
         ).strip()
         global_context = self.build_resolved_global_context(
             config=config,
+            app_config=app_config,
             prompt_pipeline=prompt_pipeline,
             all_lyrics=all_lyrics,
             run_spinner=run_spinner,
@@ -277,6 +279,7 @@ class PromptGenerationPipeline:
         self,
         *,
         config: Any,
+        app_config: Any = None,
         prompt_pipeline: Any,
         all_lyrics: str,
         run_spinner: Callable[[str, Callable[[], Any]], Any],
@@ -360,6 +363,14 @@ class PromptGenerationPipeline:
             config_items_as_dicts(config_structured_locations)
             or config_items_as_dicts(subject_locations.get("locations", []))
         )
+        global_resolution = None
+        if app_config is not None and any(
+            get_config_value(config, field_name, ())
+            for field_name in ("global_cast", "global_locations", "global_styles", "global_props")
+        ):
+            global_resolution = materialize_global_assets(config, app_config)
+            actors = list(global_resolution.actors) + actors
+            structured_locations = list(global_resolution.locations) + structured_locations
 
         return {
             "story_idea": story_idea,
@@ -368,6 +379,9 @@ class PromptGenerationPipeline:
             "locations": locations,
             "actors": actors,
             "structured_locations": structured_locations,
+            "props": list(global_resolution.props) if global_resolution else [],
+            "styles": list(global_resolution.styles) if global_resolution else [],
+            "global_asset_snapshots": list(global_resolution.snapshots) if global_resolution else [],
             "subject_mode": subject_mode,
             "max_scene_actors": max_scene_actors,
             "silent_mode": silent_mode,
