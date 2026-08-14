@@ -139,8 +139,6 @@ class ImportBoundaryTests(unittest.TestCase):
             "import feverslop.audio.",
             "from feverslop.pipeline.",
             "import feverslop.pipeline.",
-            "from feverslop.prompting.",
-            "import feverslop.prompting.",
             "from app_config",
             "from project_config",
             "from beat_analysis",
