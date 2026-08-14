@@ -48,6 +48,9 @@ class APICallStats:
     total_duration_ms: float
     usage_units: float
     estimated_cost: float
+    prompt_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int
 
 
 class APIMetrics:
@@ -55,9 +58,9 @@ class APIMetrics:
 
     def __init__(self) -> None:
         self._lock = Lock()
-        self._stats: dict[tuple[str, str], list[float]] = defaultdict(lambda: [0, 0, 0, 0.0, 0.0, 0.0])
+        self._stats: dict[tuple[str, str], list[float]] = defaultdict(lambda: [0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0])
 
-    def record(self, service: str, operation: str, duration_ms: float, *, success: bool, usage_units: float = 0.0, estimated_cost: float = 0.0) -> None:
+    def record(self, service: str, operation: str, duration_ms: float, *, success: bool, usage_units: float = 0.0, estimated_cost: float = 0.0, prompt_tokens: int = 0, completion_tokens: int = 0, reasoning_tokens: int = 0) -> None:
         key = (service, operation)
         with self._lock:
             values = self._stats[key]
@@ -66,11 +69,14 @@ class APIMetrics:
             values[3] += duration_ms
             values[4] += float(usage_units)
             values[5] += float(estimated_cost)
+            values[6] += int(prompt_tokens)
+            values[7] += int(completion_tokens)
+            values[8] += int(reasoning_tokens)
 
     def snapshot(self) -> dict[tuple[str, str], APICallStats]:
         with self._lock:
             return {
-                key: APICallStats(int(values[0]), int(values[1]), int(values[2]), values[3], values[4], values[5])
+                key: APICallStats(int(values[0]), int(values[1]), int(values[2]), values[3], values[4], values[5], int(values[6]), int(values[7]), int(values[8]))
                 for key, values in self._stats.items()
             }
 
@@ -87,6 +93,9 @@ class APIMetrics:
                 "total_duration_ms": stats.total_duration_ms,
                 "usage_units": stats.usage_units,
                 "estimated_cost": stats.estimated_cost,
+                "prompt_tokens": stats.prompt_tokens,
+                "completion_tokens": stats.completion_tokens,
+                "reasoning_tokens": stats.reasoning_tokens,
             })
         return {"version": 1, "entries": rows}
 
@@ -129,9 +138,12 @@ def record_api_call(
     success: bool,
     usage_units: float = 0.0,
     estimated_cost: float = 0.0,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    reasoning_tokens: int = 0,
 ) -> None:
     duration_ms = (perf_counter() - started_at) * 1000
-    metrics.record(service, operation, duration_ms, success=success, usage_units=usage_units, estimated_cost=estimated_cost)
+    metrics.record(service, operation, duration_ms, success=success, usage_units=usage_units, estimated_cost=estimated_cost, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, reasoning_tokens=reasoning_tokens)
     if logger is not None:
         logger.info(
             "api_call service=%s operation=%s duration_ms=%.1f success=%s",
