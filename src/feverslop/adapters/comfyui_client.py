@@ -49,8 +49,12 @@ class ComfyUIClient:
         api_key: str | None = None,
         auth_header: str = "Authorization",
         min_request_interval_seconds: float = 0.0,
+        allow_private_addresses: bool = True,
     ):
-        self.base_url = validate_api_url(base_url).rstrip("/")
+        self.base_url = validate_api_url(
+            base_url,
+            allow_private_addresses=allow_private_addresses,
+        ).rstrip("/")
         self.client_id = client_id or str(uuid.uuid4())
         self.prompt_timeout_seconds = float(prompt_timeout_seconds)
         self.metrics = metrics or default_api_metrics

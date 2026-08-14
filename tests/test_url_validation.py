@@ -18,7 +18,13 @@ class APIURLValidationTests(unittest.TestCase):
     def test_rejects_literal_private_and_reserved_addresses(self):
         for address in ("10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.1.1", "0.0.0.0"):
             with self.subTest(address=address), self.assertRaises(APIURLValidationError):
-                validate_api_url(f"http://{address}:8080")
+                validate_api_url(f"http://{address}:8080", allow_private_addresses=False)
+
+    def test_allows_private_addresses_for_local_default(self):
+        self.assertEqual(
+            "http://192.168.178.45:8188",
+            validate_api_url("http://192.168.178.45:8188"),
+        )
 
     def test_allowlist_can_restrict_hostname(self):
         with patch.dict(os.environ, {"FEVERSLOP_ALLOWED_API_HOSTS": "llm.example, comfy.example"}):
@@ -45,7 +51,7 @@ class APIURLValidationTests(unittest.TestCase):
         ]
 
         with self.assertRaisesRegex(APIURLValidationError, "private"):
-            validate_api_url("https://service.example:8080")
+            validate_api_url("https://service.example:8080", allow_private_addresses=False)
 
     @patch("feverslop.security.url_validation.socket.getaddrinfo")
     def test_allows_hostname_resolving_to_public_address(self, getaddrinfo):
@@ -55,5 +61,5 @@ class APIURLValidationTests(unittest.TestCase):
 
         self.assertEqual(
             "https://service.example",
-            validate_api_url("https://service.example"),
+            validate_api_url("https://service.example", allow_private_addresses=False),
         )

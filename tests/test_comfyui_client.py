@@ -39,7 +39,7 @@ class ComfyUIClientTests(unittest.TestCase):
         from feverslop.security.url_validation import APIURLValidationError
 
         with self.assertRaises(APIURLValidationError):
-            ComfyUIClient(base_url="http://192.168.1.10:8188")
+            ComfyUIClient(base_url="http://192.168.1.10:8188", allow_private_addresses=False)
 
     def test_wait_for_completion_raises_comfyui_execution_error_details(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient

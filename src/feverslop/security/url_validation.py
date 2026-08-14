@@ -15,6 +15,7 @@ def validate_api_url(
     *,
     allowed_hosts: set[str] | None = None,
     allow_loopback: bool = True,
+    allow_private_addresses: bool = True,
 ) -> str:
     """Validate an HTTP API endpoint before it is used for a request.
 
@@ -53,9 +54,9 @@ def validate_api_url(
         raise APIURLValidationError(f"API host is not in the allowlist: {normalized_host}")
     explicitly_allowed = bool(configured_hosts and normalized_host in configured_hosts)
 
-    # A configured host is an explicit trust decision. This is required for
-    # local deployments that address ComfyUI or an LLM over a private LAN.
-    if explicitly_allowed:
+    # Local-network services are the default deployment model. Strict private
+    # address filtering is opt-in for deployments that need SSRF protection.
+    if allow_private_addresses or explicitly_allowed:
         return value
 
     if normalized_host == "localhost" and allow_loopback:
