@@ -33,9 +33,6 @@ class MoviePlanningDspyContractTests(unittest.TestCase):
             model = "fake-model"
             client = object()
 
-            def complete_prompt(self, **kwargs):
-                raise AssertionError("legacy prompt transport must not be used")
-
         with patch.dict("sys.modules", {"dspy": None}):
             with self.assertRaisesRegex(RuntimeError, "DSPy.*movie planning"):
                 MoviePlanningModules(LLM())

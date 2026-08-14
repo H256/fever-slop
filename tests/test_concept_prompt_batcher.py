@@ -57,25 +57,25 @@ class ConceptPromptBatcherTests(unittest.TestCase):
 
     def test_passes_timeout_to_llm(self):
         modules = FakeConceptModules([json.dumps({"seg_1": "concept 1"}), "summary"])
-        
+
         batcher = ConceptPromptBatcher(
             llm=object(),
             prompt_modules=modules,
             batch_size=1,
             request_timeout_seconds=42.0
         )
-        
+
         batcher.create_concept_prompts_batched(
             stage1_segments=[{"segment_id": "seg_1"}],
             story_idea="idea",
             global_context={"silent_mode": False},
             notes="notes"
         )
-        
+
         # Check _generate_batch call
         found_batch_call = False
         found_summary_call = False
-        
+
         for name, payload, timeout in modules.calls:
             if name == "concepts" and "CURRENT_BATCH_SEGMENTS" in payload:
                 found_batch_call = True
@@ -83,36 +83,36 @@ class ConceptPromptBatcherTests(unittest.TestCase):
             if name == "summary" and "RECENT_CONCEPTS" in payload:
                 found_summary_call = True
                 self.assertEqual(timeout, 42.0)
-        
+
         self.assertTrue(found_batch_call, "_generate_batch was not called")
         self.assertTrue(found_summary_call, "_summarize_progress was not called")
 
     def test_passes_timeout_to_repair_call(self):
         modules = FakeConceptModules([
-            json.dumps({}), # batch result (missing seg_1)
-            json.dumps({"seg_1": "repaired concept"}), # repair result
-            "summary" # summarize progress result
+            json.dumps({}),  # batch result (missing seg_1)
+            json.dumps({"seg_1": "repaired concept"}),  # repair result
+            "summary",  # summarize progress result
         ])
-        
+
         batcher = ConceptPromptBatcher(
             llm=object(),
             prompt_modules=modules,
             batch_size=1,
             request_timeout_seconds=99.0
         )
-        
+
         batcher.create_concept_prompts_batched(
             stage1_segments=[{"segment_id": "seg_1"}],
             story_idea="idea",
             global_context={},
         )
-        
+
         found_repair_call = False
         for name, payload, timeout in modules.calls:
             if name == "repair_concepts" and "MISSING_SEGMENTS" in payload:
                 found_repair_call = True
                 self.assertEqual(timeout, 99.0)
-                
+
         self.assertTrue(found_repair_call, "_repair_missing_or_extra_keys was not called")
 
 if __name__ == "__main__":
