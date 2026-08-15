@@ -41,7 +41,11 @@ def generate_sequence_to_sheet(
     with tempfile.TemporaryDirectory(prefix="sequence-to-sheet-") as temporary:
         run_dir = Path(temporary)
         extracted_dir = run_dir / "frames"
-        candidates = extract_video_frames(sequence_path, extracted_dir, max(view_count * 4, view_count))
+        candidates = extract_video_frames(
+            sequence_path,
+            extracted_dir,
+            sample_count=max(view_count * 4, view_count),
+        )
         selected = select_frames(candidates, config=FrameSelectionConfig(view_count=view_count))
         sheet = run_dir / "sheet.png"
         compose_contact_sheet(selected, sheet)
