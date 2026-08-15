@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
+from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
+
 
 @dataclass(frozen=True, slots=True)
 class FrameSelectionConfig:
@@ -32,6 +34,8 @@ def generate_sequence_to_sheet(
     view_count: int = 4,
     backend: str = "offline",
     profile: str = "sequence_to_sheet_v1",
+    subject: str = "the reference subject",
+    vision_endpoint: str | None = None,
 ) -> dict[str, Any]:
     """Extract, select, compose, and publish a neutral sequence-to-sheet result."""
     sequence_path = Path(sequence_video)
@@ -46,7 +50,12 @@ def generate_sequence_to_sheet(
             extracted_dir,
             sample_count=max(view_count * 4, view_count),
         )
-        selected = select_frames(candidates, config=FrameSelectionConfig(view_count=view_count))
+        selected = select_orbitsheet_frames(
+            candidates,
+            count=view_count,
+            subject=subject,
+            vision_endpoint=vision_endpoint,
+        )
         sheet = run_dir / "sheet.png"
         compose_contact_sheet(selected, sheet)
         updated = library.update_look_artifacts(
@@ -150,9 +159,16 @@ def select_frames(
     selected: list[_FrameFeatures] = []
     for slot in range(config.view_count):
         target_position = slot * (len(features) - 1) / max(config.view_count - 1, 1)
+        segment_half_width = max(
+            1.0,
+            (len(features) - 1) / max(config.view_count - 1, 1) / 2.0,
+        )
         ranked: list[tuple[float, int, _FrameFeatures]] = []
         for feature_index, feature in enumerate(features):
             if feature in selected:
+                continue
+            in_temporal_segment = abs(feature.position - target_position) <= segment_half_width
+            if not in_temporal_segment:
                 continue
             coverage = 1.0 - abs(feature.position - target_position) / max(len(features) - 1, 1)
             if not selected:
@@ -169,6 +185,23 @@ def select_frames(
                 + config.coverage_weight * coverage
             )
             ranked.append((score, -feature.position, feature))
+        if not ranked:
+            # A prior slot may have consumed the only frame in a narrow
+            # segment; retain deterministic behavior without losing a view.
+            for feature_index, feature in enumerate(features):
+                if feature in selected:
+                    continue
+                coverage = 1.0 - abs(feature.position - target_position) / max(len(features) - 1, 1)
+                diversity = 1.0 if not selected else min(
+                    1.0,
+                    min(float(np.linalg.norm(feature.descriptor - other.descriptor)) for other in selected) / 2.0,
+                )
+                score = (
+                    config.sharpness_weight * float(sharp_normalized[feature_index])
+                    + config.diversity_weight * diversity
+                    + config.coverage_weight * coverage
+                )
+                ranked.append((score, -feature.position, feature))
         selected.append(max(ranked, key=lambda item: (item[0], item[1]))[2])
 
     return tuple(feature.path for feature in sorted(selected, key=lambda item: item.position))
