@@ -22,9 +22,12 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             "a scarred pirate captain in a blue coat", kind="character", frames=124
         )
 
-        self.assertEqual(5, prompt.shots)
+        self.assertEqual(6, prompt.shots)
         self.assertEqual(124, prompt.frames)
         self.assertIn("hard cuts", prompt.prompt)
+        self.assertIn("tight close-up of the face", prompt.prompt)
+        self.assertIn("expression now frightened", prompt.prompt)
+        self.assertIn("<Picture 1>", prompt.prompt)
         self.assertIn("rear", prompt.prompt)
 
     def test_builds_neutral_location_prompt_with_continuous_move(self):

@@ -14,8 +14,8 @@ from feverslop.domain.orbitsheets_prompts import (
 class OrbitSheetsLogicTests(unittest.TestCase):
     def test_character_prompt_writes_structured_h3_shots(self):
         result = build_h3_character_prompt("a pirate captain", frames=124)
-        self.assertEqual(5, result.shots)
-        self.assertIn("locked-off shots joined by hard cuts", result.prompt)
+        self.assertEqual(6, result.shots)
+        self.assertIn("Six distinct locked-off views joined by hard cuts", result.prompt)
         self.assertIn("left profile", result.prompt)
         self.assertIn("rear", result.prompt)
 

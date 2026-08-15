@@ -24,22 +24,59 @@ def _fit_rotation(rotation: str, take_seconds: float) -> tuple[int, str]:
 def build_h3_character_prompt(
     description: str,
     *,
-    shots: int = 5,
+    shots: int = 6,
     frames: int = 124,
     framing: str = "full body, generous margin",
+    shot_seconds: float = 0.75,
+    scared_shot: bool = True,
+    backdrop: str = "plain seamless neutral grey studio backdrop",
+    visual_style: str = "Cinematic, live-action",
 ) -> H3SheetPrompt:
     duration = float(frames) / 24.0
-    per_shot = duration / max(1, shots)
-    shot_list = " → ".join(("full-body front", "left profile", "right profile", "rear", "full-body three-quarter")[:shots])
-    prompt = (
-        f"The same character throughout: {description.strip()}. "
-        f"Create a {duration:.1f}-second I2VA reference take with {shots} distinct locked-off shots joined by hard cuts. "
-        f"Shot order: {shot_list}. Each shot lasts approximately {per_shot:.2f} seconds. "
-        f"Use {framing}; keep the complete figure inside the frame with margin. "
-        "Preserve face, hair, clothing, accessories, proportions, colors and silhouette exactly. "
-        "Keep the horizon level and the camera static within each shot. No extra characters, text, collage or watermark."
+    total_shots = 6 if scared_shot else min(5, max(1, shots))
+    step = max(0.25, min(float(shot_seconds), duration / total_shots))
+    at = [f"{int(i * step // 60):02d}:{i * step % 60:06.3f}" for i in range(total_shots)]
+    subject = description.strip().rstrip(".") or "the character"
+    style = visual_style.strip().rstrip(".") or "Cinematic, live-action"
+    set_dressing = backdrop.strip().rstrip(".") or "plain seamless neutral grey studio backdrop"
+    set_dressing = set_dressing[0].upper() + set_dressing[1:]
+    margin = (
+        "Every full-body shot is framed with generous empty margin on every side; "
+        "the whole figure and anything extending beyond the body stays fully inside the frame."
+        if framing == "full body, generous margin"
+        else "Every full-body shot is tightly framed but never crops the figure."
     )
-    return H3SheetPrompt(prompt, shots, frames)
+    scared = (
+        f" [Shot 6] At {at[5]}, the shot cuts to a medium close-up of the face and shoulders, "
+        "still facing the camera, the expression now frightened: eyes wide and brows raised and "
+        "drawn together, mouth slightly open. Only the expression changes; the figure does not "
+        "flinch, recoil, turn away or move."
+        if scared_shot and total_shots == 6 else ""
+    )
+    prompt = (
+        "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n"
+        "integrated_multimodal_description: "
+        "Six distinct locked-off views joined by hard cuts. "
+        f"[Shot 1] {style}, a full-body shot frames {subject}, the entire figure visible from head to toe, "
+        f"facing the camera. {margin} The figure stands still in a neutral upright pose with arms relaxed "
+        "at the sides and does not move, walk, gesture or turn at any point, and holds a neutral expression "
+        "until the final shot. [Shot 2] At "
+        f"{at[1] if len(at) > 1 else '00:00.750'}, the shot cuts to a tight close-up of the face, framed from "
+        "the top of the hair to the chin, still facing the camera, the mouth closed and a still neutral expression. "
+        "[Shot 3] At "
+        f"{at[2] if len(at) > 2 else '00:01.500'}, the shot cuts to a left side profile of the full figure, the "
+        "whole body visible from head to toe with the same framing margin, the head turned to show the left profile, "
+        "the mouth closed and a still neutral expression. [Shot 4] At "
+        f"{at[3] if len(at) > 3 else '00:02.250'}, the shot cuts to a right side profile of the full figure, the "
+        "whole body visible from head to toe with the same framing margin, the head turned to show the right profile, "
+        "the mouth closed and a still neutral expression. [Shot 5] At "
+        f"{at[4] if len(at) > 4 else '00:03.000'}, the shot cuts to a rear view of the full figure, the back "
+        "of the body visible from head to toe with the same framing margin, the mouth closed and a still neutral expression."
+        f"{scared} {set_dressing}, even neutral lighting from every side, no props and no cast shadows. "
+        "Clothing, hair, colours, proportions and every visible detail remain identical across every shot.\n\n"
+        "overall_soundscape: N/A\n\nnon_diegetic_music: N/A"
+    )
+    return H3SheetPrompt(prompt, total_shots, frames)
 
 
 def build_h3_location_prompt(
