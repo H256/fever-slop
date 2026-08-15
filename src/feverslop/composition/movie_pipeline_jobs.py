@@ -461,6 +461,7 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
     from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+    from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
     from feverslop.application.movie_references import MovieReferenceSheetGenerator
     from feverslop.config.app_config import AppConfig
     from feverslop.ports.rendering import WorkflowAnchorConfig
@@ -483,9 +484,18 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
         output_dir=Path("."),
         model_resolver=resolver,
     )
+    sequence_backend = None
+    if movie_runtime_config(movie_config)["reference_generation"] == "sequence_sheet":
+        sequence_backend = ComfyUISequenceToSheetBackend(
+            client=client,
+            workflow_path=backend_config_path(movie_runtime_config(movie_config)["sequence_to_sheet_workflow"]),
+            backend="minimax",
+            model_resolver=resolver,
+        )
     return MovieReferenceSheetGenerator(
         backend=hero,
         edit_backend=edit,
+        sequence_backend=sequence_backend,
         hero_anchors=WorkflowAnchorConfig(positive_prompt_title="#PROMPT_POSITIVE"),
         edit_anchors=WorkflowAnchorConfig(positive_prompt_title="#PROMPT_POSITIVE", reference_image_title="#IMAGE_1"),
     )
@@ -686,6 +696,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     return {
         "planner_backend": planner_backend,
         "reference_backend": _movie_backend(raw.get("reference_backend"), default="comfyui", supported={"comfyui", "local"}),
+        "reference_generation": _movie_backend(raw.get("reference_generation"), default="image_views", supported={"image_views", "sequence_sheet"}),
         "render_backend": _movie_backend(raw.get("render_backend"), default="comfyui", supported={"comfyui", "local"}),
         "hero_workflow": _movie_workflow_path(raw.get("hero_workflow"), "workflows/image_t2i_startframe_krea_v1.json"),
         "edit_workflow": _movie_workflow_path(raw.get("edit_workflow"), edit_workflow_default),
@@ -707,6 +718,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), i2v_default),
         "r2v_workflow": _movie_workflow_path(raw.get("r2v_workflow"), "workflows/video_minimax_h3_r2v.json"),
         "t2v_workflow": _movie_workflow_path(raw.get("t2v_workflow"), "workflows/video_minimax_h3_t2v.json"),
+        "sequence_to_sheet_workflow": _movie_workflow_path(raw.get("sequence_to_sheet_workflow"), "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
         "ingredients_workflow": _movie_workflow_path(raw.get("ingredients_workflow"), ingredients_default) if ingredients_default or raw.get("ingredients_workflow") else "",
         "movie_video_workflow": movie_video_workflow,
         "keyframe_mode": _movie_backend(raw.get("keyframe_mode"), default="none", supported={"none", "start", "start-end"}),

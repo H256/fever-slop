@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -105,6 +106,100 @@ class GlobalLibraryAdapter:
             self._write_manifest(directory / "manifest.json", asset)
         return asset
 
+    def update_look_artifacts(
+        self,
+        kind: AssetKind | str,
+        asset_id: str,
+        look_id: str,
+        *,
+        anchor_image: str | Path | None = None,
+        sequence_video: str | Path | None = None,
+        selected_frames: tuple[str | Path, ...] = (),
+        sheet_image: str | Path | None = None,
+        contact_sheet_image: str | Path | None = None,
+        provenance: dict[str, str] | None = None,
+        expected_revision: int,
+    ) -> GlobalAsset:
+        """Copy generated media and publish one new manifest revision.
+
+        Files are staged before the manifest is replaced, so a manifest never
+        references an artifact that was not successfully copied.
+        """
+        directory = self._directory(kind, asset_id)
+        if not look_id or Path(look_id).name != look_id or look_id in {".", ".."}:
+            raise ValueError("look id must be a single safe path component")
+        with self._lock(directory):
+            current = self.get(kind, asset_id)
+            if current.revision != expected_revision:
+                raise ValueError(
+                    f"revision conflict for {current.kind.value}/{current.id}: expected {expected_revision}, "
+                    f"current is {current.revision}"
+                )
+            look = next((item for item in current.looks if item.id == look_id), None)
+            if look is None:
+                if current.looks:
+                    raise ValueError(f"look not found for {current.kind.value}/{current.id}: {look_id}")
+                look = AssetLook(look_id, look_id)
+
+            supplied = {
+                "anchor_image": anchor_image,
+                "sequence_video": sequence_video,
+                "sheet_image": sheet_image,
+                "contact_sheet_image": contact_sheet_image,
+            }
+            frame_sources = tuple(Path(path) for path in selected_frames)
+            for path in (*tuple(Path(path) for path in supplied.values() if path is not None), *frame_sources):
+                if not path.is_file():
+                    raise FileNotFoundError(f"generated artifact not found: {path}")
+
+            stage_dir = Path(tempfile.mkdtemp(prefix="sheet-", dir=directory))
+            try:
+                staged_look_dir = stage_dir / "looks" / look_id
+                staged_look_dir.mkdir(parents=True)
+
+                destinations: dict[str, str] = {}
+                for field_name, source in supplied.items():
+                    if source is None:
+                        continue
+                    destination_name = {
+                        "anchor_image": "anchor.png",
+                        "sequence_video": "sequence.mp4",
+                        "sheet_image": "sheet.png",
+                        "contact_sheet_image": "contact-sheet.png",
+                    }[field_name]
+                    shutil.copy2(source, staged_look_dir / destination_name)
+                    destinations[field_name] = f"looks/{look_id}/{destination_name}"
+
+                frame_destinations: list[str] = []
+                for source in frame_sources:
+                    shutil.copy2(source, staged_look_dir / source.name)
+                    frame_destinations.append(f"looks/{look_id}/{source.name}")
+
+                target_look_dir = directory / "looks" / look_id
+                target_look_dir.mkdir(parents=True, exist_ok=True)
+                for staged_file in staged_look_dir.iterdir():
+                    os.replace(staged_file, target_look_dir / staged_file.name)
+
+                metadata = dict(look.metadata)
+                metadata.update({str(key): str(value) for key, value in (provenance or {}).items()})
+                updated_look = replace(
+                    look,
+                    anchor_image=destinations.get("anchor_image", look.anchor_image),
+                    sequence_video=destinations.get("sequence_video", look.sequence_video),
+                    selected_frames=tuple(frame_destinations) if selected_frames else look.selected_frames,
+                    sheet_image=destinations.get("sheet_image", look.sheet_image),
+                    contact_sheet_image=destinations.get("contact_sheet_image", look.contact_sheet_image),
+                    metadata=tuple(metadata.items()),
+                )
+                looks = tuple(updated_look if item.id == look.id else item for item in current.looks)
+                if not current.looks:
+                    looks = (updated_look,)
+                updated = replace(current, looks=looks, revision=current.revision + 1)
+                self._write_manifest(directory / "manifest.json", updated)
+                return updated
+            finally:
+                shutil.rmtree(stage_dir, ignore_errors=True)
+
     def delete(self, kind: AssetKind | str, asset_id: str) -> None:
         directory = self._directory(kind, asset_id)
         if not (directory / "manifest.json").is_file():
@@ -127,7 +222,19 @@ class GlobalLibraryAdapter:
         source_dir = self._directory(asset.kind, asset.id)
         destination = Path(project_reference_dir).resolve() / "global_assets" / asset.kind.value / asset.id / look.id
         destination.mkdir(parents=True, exist_ok=True)
-        files = tuple(path for path in (look.hero_image, look.sheet_image, *look.references) if path)
+        files = tuple(
+            path
+            for path in (
+                look.hero_image,
+                look.sheet_image,
+                look.contact_sheet_image,
+                look.anchor_image,
+                look.sequence_video,
+                *look.selected_frames,
+                *look.references,
+            )
+            if path
+        )
         for relative in files:
             source = (source_dir / relative).resolve()
             if source != source_dir and source_dir not in source.parents:
