@@ -21,6 +21,16 @@ def recommended_view_count(kind: Any) -> int:
     return 6 if str(value) == "character" else 5 if str(value) == "location" else 4
 
 
+def recommended_sheet_layout(kind: Any) -> tuple[int, tuple[int, int]]:
+    """Return a compact layout while preserving the H3 frame aspect ratio."""
+    value = getattr(kind, "value", kind)
+    if str(value) == "character":
+        return 2, (512, 288)
+    if str(value) == "location":
+        return 3, (512, 288)
+    return 2, (512, 288)
+
+
 @dataclass(frozen=True, slots=True)
 class FrameSelectionConfig:
     view_count: int = 4
@@ -66,7 +76,8 @@ def generate_sequence_to_sheet(
             vision_endpoint=vision_endpoint,
         )
         sheet = run_dir / "sheet.png"
-        compose_contact_sheet(selected, sheet)
+        columns, panel_size = recommended_sheet_layout(kind)
+        compose_contact_sheet(selected, sheet, columns=columns, panel_size=panel_size)
         updated = library.update_look_artifacts(
             kind,
             asset_id,

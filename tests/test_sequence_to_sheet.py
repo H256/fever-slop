@@ -11,6 +11,7 @@ from feverslop.application.sequence_to_sheet import (
     generate_sequence_to_sheet,
     select_frames,
     recommended_view_count,
+    recommended_sheet_layout,
 )
 from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
@@ -31,6 +32,10 @@ class SequenceToSheetTests(unittest.TestCase):
     def test_recommended_view_counts_match_character_and_location_sheets(self):
         self.assertEqual(6, recommended_view_count("character"))
         self.assertEqual(5, recommended_view_count("location"))
+
+    def test_recommended_layout_preserves_video_aspect_ratio(self):
+        self.assertEqual((2, (512, 288)), recommended_sheet_layout("character"))
+        self.assertEqual((3, (512, 288)), recommended_sheet_layout("location"))
 
     def test_select_frames_is_deterministic_and_prefers_sharp_frames(self):
         with tempfile.TemporaryDirectory() as temp_dir:
