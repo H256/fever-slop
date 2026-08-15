@@ -15,6 +15,12 @@ from PIL import Image, ImageDraw
 from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 
 
+def recommended_view_count(kind: Any) -> int:
+    """Return the OrbitSheets-compatible default for an asset kind."""
+    value = getattr(kind, "value", kind)
+    return 6 if str(value) == "character" else 5 if str(value) == "location" else 4
+
+
 @dataclass(frozen=True, slots=True)
 class FrameSelectionConfig:
     view_count: int = 4
@@ -31,13 +37,16 @@ def generate_sequence_to_sheet(
     look_id: str,
     sequence_video: str | Path,
     anchor_image: str | Path | None = None,
-    view_count: int = 4,
+    view_count: int | None = None,
     backend: str = "offline",
     profile: str = "sequence_to_sheet_v1",
     subject: str = "the reference subject",
     vision_endpoint: str | None = None,
 ) -> dict[str, Any]:
     """Extract, select, compose, and publish a neutral sequence-to-sheet result."""
+    view_count = recommended_view_count(kind) if view_count is None else view_count
+    if type(view_count) is not int or view_count < 1:
+        raise ValueError("view_count must be a positive integer")
     sequence_path = Path(sequence_video)
     if not sequence_path.is_file():
         raise FileNotFoundError(f"sequence video not found: {sequence_path}")

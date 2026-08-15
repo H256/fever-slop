@@ -73,7 +73,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     sheet.add_argument("--look-id", default="default")
     sheet.add_argument("--sequence", type=Path, required=True)
     sheet.add_argument("--anchor-image", type=Path)
-    sheet.add_argument("--view-count", type=int, default=4)
+    sheet.add_argument(
+        "--view-count",
+        type=int,
+        default=None,
+        help="number of views (default: 6 for characters, 5 for locations)",
+    )
     sheet.add_argument("--backend", choices=("offline", "minimax"), default="offline")
     sheet.add_argument("--profile", default="sequence_to_sheet_v1")
     sheet.add_argument("--json", action="store_true")
@@ -158,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = generator.generate(idea, profile_id=args.workflow)
                 print(json.dumps({"run_id": result.run_id, "asset_id": result.asset.id, "status": result.status}, indent=2))
         elif args.command == "sequence-to-sheet":
-            if args.view_count < 1:
+            if args.view_count is not None and args.view_count < 1:
                 raise ValueError("view-count must be positive")
             result = generate_sequence_to_sheet(
                 library,

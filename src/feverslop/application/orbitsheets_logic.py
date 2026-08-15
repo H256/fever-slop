@@ -83,9 +83,44 @@ def select_orbitsheet_frames(
         small = (small - small.mean()) / (small.std() + 1e-6)
         descriptors.append(small.reshape(-1))
         sharpness.append(float(cv2.Laplacian(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()))
-    descriptors = np.asarray(descriptors)
+    descriptors = np.asarray(descriptors, dtype=np.float32)
+    target_count = min(count, len(candidates))
+    if target_count == len(candidates):
+        return candidates
+
+    # OrbitSheets' fallback is view-oriented: cluster the montage, then keep
+    # the sharpest member of each appearance cluster. This avoids selecting
+    # several adjacent sharp frames from the same turn.
+    if target_count > 1:
+        compact = descriptors.reshape(len(candidates), -1)
+        seeds = [0]
+        while len(seeds) < target_count:
+            distances = np.min(
+                np.linalg.norm(compact[:, None] - compact[seeds][None, :], axis=2), axis=1
+            )
+            distances[seeds] = -1
+            seeds.append(int(np.argmax(distances)))
+        centers = compact[seeds].copy()
+        labels = np.zeros(len(candidates), dtype=np.int32)
+        for _ in range(12):
+            labels = np.argmin(
+                np.linalg.norm(compact[:, None] - centers[None, :], axis=2), axis=1
+            )
+            for cluster in range(target_count):
+                members = compact[labels == cluster]
+                if len(members):
+                    centers[cluster] = members.mean(axis=0)
+        sharp = np.asarray(sharpness)
+        chosen = []
+        for cluster in range(target_count):
+            members = np.flatnonzero(labels.ravel() == cluster)
+            if len(members):
+                chosen.append(int(members[np.argmax(sharp[members])]))
+        if len(chosen) == target_count:
+            return tuple(candidates[index] for index in sorted(chosen))
+
     chosen = [0]
-    while len(chosen) < min(count, len(candidates)):
+    while len(chosen) < target_count:
         distances = np.min(np.linalg.norm(descriptors[:, None] - descriptors[chosen][None, :], axis=2), axis=1)
         distances[chosen] = -1
         score = distances / max(float(distances.max()), 1e-6) * 0.65

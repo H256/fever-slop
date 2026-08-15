@@ -38,6 +38,22 @@ class OrbitSheetsLogicTests(unittest.TestCase):
 
             self.assertEqual(tuple(paths), selected)
 
+    def test_fallback_selects_one_sharp_frame_per_appearance_cluster(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = []
+            for index, color in enumerate(((220, 40, 40), (40, 220, 40), (40, 40, 220))):
+                for duplicate in range(4):
+                    path = Path(temp) / f"frame_{index * 4 + duplicate:04}.png"
+                    image = Image.new("RGB", (96, 64), color)
+                    ImageDraw.Draw(image).rectangle((10 + duplicate, 10, 70, 50), fill="white")
+                    image.save(path)
+                    paths.append(path)
+
+            selected = select_orbitsheet_frames(paths, count=3, subject="a ship")
+
+            self.assertEqual(3, len(selected))
+            self.assertEqual({paths.index(path) // 4 for path in selected}, {0, 1, 2})
+
 
 if __name__ == "__main__":
     unittest.main()
