@@ -2,83 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import base64
 import io
 import json
-from pathlib import Path
 import re
-from typing import Iterable
+from typing import Any, Iterable
 
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
 
-@dataclass(frozen=True, slots=True)
-class H3SheetPrompt:
-    prompt: str
-    shots: int
-    frames: int
-    rotation_degrees: int = 0
-
-
-def _fit_rotation(rotation: str, take_seconds: float) -> tuple[int, str]:
-    ceiling = max(1.0, float(take_seconds)) * 40.0
-    requested = {"quarter": 90, "half": 180, "full": 360}.get(rotation, None)
-    degrees = min(requested or max((value for value in (90, 180, 360) if value <= ceiling), default=90), ceiling)
-    degrees = int(degrees // 10 * 10)
-    return degrees, f"a {degrees}-degree turn" if degrees < 360 else "a complete 360-degree turn"
-
-
-def build_h3_character_prompt(
-    description: str,
-    *,
-    shots: int = 5,
-    frames: int = 124,
-    framing: str = "full body, generous margin",
-    shot_seconds: float | None = None,
-) -> H3SheetPrompt:
-    duration = float(frames) / 24.0
-    per_shot = float(shot_seconds or duration / max(1, shots))
-    shot_list = " → ".join(("full-body front", "left profile", "right profile", "rear", "full-body three-quarter")[:shots])
-    prompt = (
-        f"The same character throughout: {description.strip()}. "
-        f"Create a {duration:.1f}-second I2VA reference take with {shots} distinct locked-off shots joined by hard cuts. "
-        f"Shot order: {shot_list}. Each shot lasts approximately {per_shot:.2f} seconds. "
-        f"Use {framing}; keep the complete figure inside the frame with margin. "
-        "Preserve face, hair, clothing, accessories, proportions, colors and silhouette exactly. "
-        "Keep the horizon level and the camera static within each shot. No extra characters, text, collage or watermark."
-    )
-    return H3SheetPrompt(prompt, shots, frames)
-
-
-def build_h3_location_prompt(
-    description: str,
-    *,
-    shots: int = 5,
-    frames: int = 124,
-    coverage: str = "cut views",
-    rotation: str = "auto",
-) -> H3SheetPrompt:
-    if coverage == "continuous move":
-        degrees, turn = _fit_rotation(rotation, float(frames) / 24.0)
-        prompt = (
-            f"The same location throughout: {description.strip()}. Continue one continuous, level camera move around the subject, "
-            f"making {turn} at a slow constant rate. Stay at the same height and distance; keep vertical lines vertical and the horizon level. "
-            "Preserve architecture, materials, props, lighting and layout. No people, text, cuts or new structures."
-        )
-        return H3SheetPrompt(prompt, 0, frames, degrees)
-    prompt = (
-        f"The same location throughout: {description.strip()}. Create a {float(frames) / 24.0:.1f}-second reference take with "
-        f"{shots} locked-off tripod views joined by hard cuts: front, right side, rear, left side and a wide establishing view. "
-        "Keep the camera level and static in every shot. Preserve architecture, materials, props, lighting and layout. "
-        "No people, text, watermark or unrelated structures."
-    )
-    return H3SheetPrompt(prompt, shots, frames)
-
-
-def _montage(paths: tuple[Path, ...], *, cell_width: int = 384) -> Image.Image:
+def _montage(paths: tuple[Any, ...], *, cell_width: int = 384) -> Image.Image:
     columns = 4
     cell_height = int(cell_width * 9 / 16)
     sheet = Image.new("RGB", (columns * cell_width, ((len(paths) + columns - 1) // columns) * cell_height), "black")
@@ -94,7 +29,7 @@ def _montage(paths: tuple[Path, ...], *, cell_width: int = 384) -> Image.Image:
     return sheet
 
 
-def _vision_picks(paths: tuple[Path, ...], count: int, endpoint: str, subject: str) -> tuple[int, ...] | None:
+def _vision_picks(paths: tuple[Any, ...], count: int, endpoint: str, subject: str) -> tuple[int, ...] | None:
     import requests
 
     buffer = io.BytesIO()
@@ -122,14 +57,14 @@ def _vision_picks(paths: tuple[Path, ...], count: int, endpoint: str, subject: s
 
 
 def select_orbitsheet_frames(
-    frame_paths: Iterable[str | Path],
+    frame_paths: Iterable[Any],
     *,
     count: int,
     subject: str,
     vision_endpoint: str | None = None,
-) -> tuple[Path, ...]:
+) -> tuple[Any, ...]:
     """Select views using a vision judge, then deterministic content spread fallback."""
-    paths = tuple(Path(path) for path in frame_paths)
+    paths = tuple(frame_paths)
     if not paths or count < 1:
         raise ValueError("frame paths and positive count are required")
     candidates = paths[:16]

@@ -4,10 +4,10 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from feverslop.application.orbitsheets_logic import (
+from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
+from feverslop.domain.orbitsheets_prompts import (
     build_h3_character_prompt,
     build_h3_location_prompt,
-    select_orbitsheet_frames,
 )
 
 

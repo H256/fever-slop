@@ -15,6 +15,11 @@ from feverslop.adapters.sequence_to_sheet_workflow import (
     SequenceToSheetWorkflowProfile,
 )
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.domain.orbitsheets_prompts import (
+    H3SheetPrompt,
+    build_h3_character_prompt,
+    build_h3_location_prompt,
+)
 
 
 class ComfyUISequenceToSheetBackend:
@@ -56,6 +61,36 @@ class ComfyUISequenceToSheetBackend:
         if errors:
             raise ValueError(f"invalid sequence-to-sheet workflow: {', '.join(errors)}")
         return workflow
+
+    @staticmethod
+    def build_sheet_prompt(
+        description: str,
+        *,
+        kind: str,
+        shots: int = 5,
+        frames: int = 124,
+        framing: str = "full body, generous margin",
+        coverage: str = "cut views",
+        rotation: str = "auto",
+    ) -> H3SheetPrompt:
+        """Build the backend-neutral multi-view prompt used by H3 workflows."""
+        normalized = kind.strip().lower()
+        if normalized == "character":
+            return build_h3_character_prompt(
+                description,
+                shots=shots,
+                frames=frames,
+                framing=framing,
+            )
+        if normalized == "location":
+            return build_h3_location_prompt(
+                description,
+                shots=shots,
+                frames=frames,
+                coverage=coverage,
+                rotation=rotation,
+            )
+        raise ValueError(f"unsupported sheet kind: {kind}")
 
     def build_workflow(
         self,

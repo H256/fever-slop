@@ -11,6 +11,42 @@ class FakeUploader:
 
 
 class SequenceToSheetBackendTests(unittest.TestCase):
+    def test_builds_neutral_character_prompt_with_hard_cut_views(self):
+        backend = ComfyUISequenceToSheetBackend(
+            client=object(),
+            workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_v1.json"),
+            backend="minimax",
+        )
+
+        prompt = backend.build_sheet_prompt(
+            "a scarred pirate captain in a blue coat", kind="character", frames=124
+        )
+
+        self.assertEqual(5, prompt.shots)
+        self.assertEqual(124, prompt.frames)
+        self.assertIn("hard cuts", prompt.prompt)
+        self.assertIn("rear", prompt.prompt)
+
+    def test_builds_neutral_location_prompt_with_continuous_move(self):
+        backend = ComfyUISequenceToSheetBackend(
+            client=object(),
+            workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_v1.json"),
+            backend="minimax",
+        )
+
+        prompt = backend.build_sheet_prompt(
+            "a weathered pirate ship at dusk",
+            kind="location",
+            coverage="continuous move",
+            rotation="half",
+            frames=124,
+        )
+
+        self.assertEqual(0, prompt.shots)
+        self.assertEqual(124, prompt.frames)
+        self.assertEqual(180, prompt.rotation_degrees)
+        self.assertIn("continuous", prompt.prompt)
+
     def test_builds_ltx_workflow_from_semantic_inputs(self):
         with tempfile.TemporaryDirectory() as temp:
             workflow = Path("workflows/sequence_to_sheet_ltx_v1.json")

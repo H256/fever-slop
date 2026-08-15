@@ -45,6 +45,24 @@ class SequenceToSheetTests(unittest.TestCase):
             self.assertNotIn(root / "frame_0001.png", first)
             self.assertNotIn(root / "frame_0005.png", first)
 
+    def test_select_frames_reserves_temporal_segments_for_each_view(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            paths = []
+            for index in range(16):
+                path = root / f"frame_{index:04}.png"
+                make_frame(path, marker=index)
+                paths.append(path)
+
+            selected = select_frames(paths, config=FrameSelectionConfig(view_count=4))
+
+            positions = [paths.index(path) for path in selected]
+            self.assertEqual(4, len(selected))
+            self.assertLessEqual(positions[0], 3)
+            self.assertGreaterEqual(positions[1], 3)
+            self.assertGreaterEqual(positions[2], 7)
+            self.assertGreaterEqual(positions[3], 11)
+
     def test_compose_contact_sheet_creates_requested_grid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
