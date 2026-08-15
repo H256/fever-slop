@@ -125,6 +125,8 @@ class GlobalLibraryAdapter:
         references an artifact that was not successfully copied.
         """
         directory = self._directory(kind, asset_id)
+        if not look_id or Path(look_id).name != look_id or look_id in {".", ".."}:
+            raise ValueError("look id must be a single safe path component")
         with self._lock(directory):
             current = self.get(kind, asset_id)
             if current.revision != expected_revision:
