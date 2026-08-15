@@ -13,6 +13,7 @@ class SequenceToSheetWorkflowProfile:
     workflow_filename: str
     required_titles: tuple[str, ...]
     prompt_titles: tuple[str, ...]
+    required_class_types: tuple[str, ...] = ()
 
     def validate(self, workflow: dict) -> tuple[str, ...]:
         patcher = WorkflowPatcher(workflow)
@@ -25,6 +26,9 @@ class SequenceToSheetWorkflowProfile:
 
         if self.prompt_titles and not any(self._has_title(patcher, title) for title in self.prompt_titles):
             missing.append(" or ".join(self.prompt_titles))
+        for class_type in self.required_class_types:
+            if not patcher.find_nodes_by_class_type(class_type):
+                missing.append(f"class_type:{class_type}")
         return tuple(missing)
 
     @staticmethod
@@ -49,6 +53,7 @@ LTX_SEQUENCE_TO_SHEET_PROFILE = SequenceToSheetWorkflowProfile(
         "#SAVE_VIDEO",
     ),
     prompt_titles=("#PROMPT_POSITIVE", "#PROMPT"),
+    required_class_types=("VRAMCleanup",),
 )
 
 
@@ -65,4 +70,5 @@ MINIMAX_H3_SEQUENCE_TO_SHEET_PROFILE = SequenceToSheetWorkflowProfile(
         "#SAVE_VIDEO",
     ),
     prompt_titles=(),
+    required_class_types=("VRAMCleanup",),
 )
