@@ -51,6 +51,85 @@ class GlobalLibraryAdapterTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.adapter.delete(AssetKind.PROP, "lamp")
 
+    def test_materialize_copies_multiview_artifacts(self):
+        asset_dir = self.root / "location" / "room"
+        for relative, payload in {
+            "looks/default/anchor.png": b"anchor",
+            "looks/default/sequence.mp4": b"sequence",
+            "looks/default/frame_0001.png": b"frame",
+            "looks/default/sheet.png": b"sheet",
+        }.items():
+            target = asset_dir / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        asset = GlobalAsset(
+            "room",
+            AssetKind.LOCATION,
+            "Room",
+            looks=(AssetLook(
+                "default",
+                "Default",
+                anchor_image="looks/default/anchor.png",
+                sequence_video="looks/default/sequence.mp4",
+                selected_frames=("looks/default/frame_0001.png",),
+                sheet_image="looks/default/sheet.png",
+            ),),
+        )
+        self.adapter.create(asset)
+
+        destination = self.adapter.materialize(
+            AssetKind.LOCATION,
+            "room",
+            "default",
+            Path(self.temp_dir.name) / "project" / "references",
+        )
+
+        self.assertEqual(b"anchor", (destination / "anchor.png").read_bytes())
+        self.assertEqual(b"sequence", (destination / "sequence.mp4").read_bytes())
+        self.assertEqual(b"frame", (destination / "frame_0001.png").read_bytes())
+        self.assertEqual(b"sheet", (destination / "sheet.png").read_bytes())
+
+    def test_update_look_artifacts_publishes_one_new_revision(self):
+        asset = GlobalAsset(
+            "room",
+            AssetKind.LOCATION,
+            "Room",
+            looks=(AssetLook("default", "Default"),),
+        )
+        self.adapter.create(asset)
+        source = Path(self.temp_dir.name) / "run"
+        source.mkdir()
+        artifacts = {}
+        for name, payload in {
+            "anchor.png": b"anchor",
+            "sequence.mp4": b"sequence",
+            "frame_0001.png": b"frame",
+            "sheet.png": b"sheet",
+        }.items():
+            path = source / name
+            path.write_bytes(payload)
+            artifacts[name] = path
+
+        updated = self.adapter.update_look_artifacts(
+            AssetKind.LOCATION,
+            "room",
+            "default",
+            anchor_image=artifacts["anchor.png"],
+            sequence_video=artifacts["sequence.mp4"],
+            selected_frames=(artifacts["frame_0001.png"],),
+            sheet_image=artifacts["sheet.png"],
+            provenance={"backend": "ltx", "profile": "sequence_to_sheet_ltx_v1"},
+            expected_revision=1,
+        )
+
+        self.assertEqual(2, updated.revision)
+        stored = self.adapter.get(AssetKind.LOCATION, "room").looks[0]
+        self.assertEqual("looks/default/anchor.png", stored.anchor_image)
+        self.assertEqual("looks/default/sequence.mp4", stored.sequence_video)
+        self.assertEqual(("looks/default/frame_0001.png",), stored.selected_frames)
+        self.assertEqual("ltx", dict(stored.metadata)["backend"])
+        self.assertEqual(b"sheet", (self.root / "location" / "room" / "looks" / "default" / "sheet.png").read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()

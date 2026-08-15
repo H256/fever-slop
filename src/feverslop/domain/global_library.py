@@ -44,18 +44,23 @@ class AssetLook:
     sheet_image: str = ""
     references: tuple[str, ...] = ()
     metadata: tuple[tuple[str, str], ...] = ()
+    anchor_image: str = ""
+    sequence_video: str = ""
+    selected_frames: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "id", _text(self.id, "look id"))
         object.__setattr__(self, "name", _text(self.name, "look name"))
         object.__setattr__(self, "description", _text(self.description, "look description", required=False))
-        for field_name in ("hero_image", "sheet_image"):
+        for field_name in ("hero_image", "sheet_image", "anchor_image", "sequence_video"):
             value = getattr(self, field_name)
             if value:
                 object.__setattr__(self, field_name, _safe_relative_path(value, field_name))
         normalized_refs = tuple(_safe_relative_path(path, "reference path") for path in self.references)
         object.__setattr__(self, "references", normalized_refs)
         object.__setattr__(self, "metadata", tuple((str(key), str(value)) for key, value in self.metadata))
+        normalized_frames = tuple(_safe_relative_path(path, "selected frame path") for path in self.selected_frames)
+        object.__setattr__(self, "selected_frames", normalized_frames)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -66,6 +71,9 @@ class AssetLook:
             "sheet_image": self.sheet_image,
             "references": list(self.references),
             "metadata": dict(self.metadata),
+            "anchor_image": self.anchor_image,
+            "sequence_video": self.sequence_video,
+            "selected_frames": list(self.selected_frames),
         }
 
     @classmethod
@@ -78,11 +86,17 @@ class AssetLook:
         raw_references = payload.get("references", ())
         if not isinstance(raw_references, (list, tuple)):
             raise ValueError("look references must be an array")
+        raw_selected_frames = payload.get("selected_frames", ())
+        if not isinstance(raw_selected_frames, (list, tuple)):
+            raise ValueError("look selected_frames must be an array")
         return cls(
             id=payload.get("id", ""), name=payload.get("name", ""),
             description=payload.get("description", ""),
             hero_image=payload.get("hero_image", ""), sheet_image=payload.get("sheet_image", ""),
             references=tuple(raw_references), metadata=tuple(raw_metadata.items()),
+            anchor_image=payload.get("anchor_image", ""),
+            sequence_video=payload.get("sequence_video", ""),
+            selected_frames=tuple(raw_selected_frames),
         )
 
 
