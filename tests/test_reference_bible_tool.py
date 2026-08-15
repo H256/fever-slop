@@ -28,6 +28,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
         self.assertEqual("projects/demo/config.json", args.project_config)
         self.assertEqual("workflows/image_edit_flux2_klein_1ref_v1.json", args.edit_workflow)
         self.assertEqual("msr", args.view_set)
+        self.assertEqual("image_views", args.reference_generation)
 
     def test_parser_accepts_full_bible_view_set(self):
         args = build_arg_parser().parse_args(

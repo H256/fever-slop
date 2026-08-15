@@ -26,6 +26,7 @@ from feverslop.domain.visual_consistency_runtime import (
     ingredients_sheet_signature as _ingredients_sheet_signature,
 )
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
+from feverslop.application.sequence_reference_pipeline import SequenceReferencePipeline, SequenceReferenceRequest
 
 
 INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
@@ -81,6 +82,7 @@ class ReferenceBibleGenerator:
         msr_sheet_size: tuple[int, int] = (1280, 704),
         reference_image_size: tuple[int, int] | None = None,
         direct_msr_sheet_prompt_builder: Callable[[ReferenceSubject], str] | None = None,
+        sequence_backend: Any | None = None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
@@ -99,8 +101,11 @@ class ReferenceBibleGenerator:
         self.actor_hero_size = (int(reference_height), int(reference_width))
         self.location_hero_size = (int(reference_width), int(reference_height))
         self.direct_msr_sheet_prompt_builder = direct_msr_sheet_prompt_builder
+        self.sequence_backend = sequence_backend
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
+        if self.sequence_backend is not None:
+            return self._generate_sequence_subject_bible(subject)
         final_dir = self.output_dir / "actors" / subject.id
         staging_dir = self.output_dir / ".staging" / f"actor-{subject.id}-{uuid.uuid4().hex}"
         try:
@@ -108,6 +113,34 @@ class ReferenceBibleGenerator:
             return _commit_staged_reference(staging_dir, final_dir, manifest_path.name)
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _generate_sequence_subject_bible(self, subject: ReferenceSubject) -> Path:
+        result = SequenceReferencePipeline(
+            anchor_backend=self.backend,
+            sequence_backend=self.sequence_backend,
+        ).generate(
+            SequenceReferenceRequest(
+                kind="character",
+                asset_id=subject.id,
+                name=subject.name,
+                description=subject.visual_description or subject.name,
+                image_prompt=subject.image_prompt,
+                output_dir=self.output_dir,
+            )
+        )
+        manifest = {
+            **asdict(subject),
+            "kind": "actor",
+            "views": [],
+            "anchor_path": self._artifact_path(result.anchor_path),
+            "sequence_path": self._artifact_path(result.sequence_path),
+            "contact_sheet_path": self._artifact_path(result.contact_sheet_path),
+            "msr_input_path": self._artifact_path(result.sheet_path),
+            "sheet_path": self._artifact_path(result.sheet_path),
+        }
+        manifest_path = self.output_dir / "actors" / subject.id / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return manifest_path
 
     def _generate_subject_bible(self, subject: ReferenceSubject, subject_dir: Path) -> Path:
         subject_dir.mkdir(parents=True, exist_ok=True)
@@ -221,6 +254,8 @@ class ReferenceBibleGenerator:
         return manifest_path
 
     def generate_location_bible(self, location: ReferenceLocation) -> Path:
+        if self.sequence_backend is not None:
+            return self._generate_sequence_location_bible(location)
         final_dir = self.output_dir / "locations" / location.id
         staging_dir = self.output_dir / ".staging" / f"location-{location.id}-{uuid.uuid4().hex}"
         try:
@@ -228,6 +263,34 @@ class ReferenceBibleGenerator:
             return _commit_staged_reference(staging_dir, final_dir, manifest_path.name)
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _generate_sequence_location_bible(self, location: ReferenceLocation) -> Path:
+        result = SequenceReferencePipeline(
+            anchor_backend=self.backend,
+            sequence_backend=self.sequence_backend,
+        ).generate(
+            SequenceReferenceRequest(
+                kind="location",
+                asset_id=location.id,
+                name=location.name,
+                description=location.visual_description or location.name,
+                image_prompt=location.image_prompt,
+                output_dir=self.output_dir,
+            )
+        )
+        manifest = {
+            **asdict(location),
+            "kind": "location",
+            "views": [],
+            "anchor_path": self._artifact_path(result.anchor_path),
+            "sequence_path": self._artifact_path(result.sequence_path),
+            "contact_sheet_path": self._artifact_path(result.contact_sheet_path),
+            "msr_background_path": self._artifact_path(result.anchor_path),
+            "sheet_path": self._artifact_path(result.sheet_path),
+        }
+        manifest_path = self.output_dir / "locations" / location.id / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return manifest_path
 
     def _generate_location_bible(self, location: ReferenceLocation, location_dir: Path) -> Path:
         location_dir.mkdir(parents=True, exist_ok=True)

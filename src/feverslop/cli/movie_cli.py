@@ -33,6 +33,7 @@ def build_movie_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--app-config", default="app_config.json")
     parser.add_argument("--reference-backend", choices=["comfyui", "local"], default=None)
+    parser.add_argument("--reference-generation", choices=["image_views", "sequence_sheet"], default=None)
     parser.add_argument("--render-backend", choices=["comfyui", "local"], default=None)
     parser.add_argument("--hero-workflow", default=None)
     parser.add_argument("--edit-workflow", default=None)
@@ -48,6 +49,7 @@ def build_movie_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--msr-i2v-workflow", default=None)
     parser.add_argument("--i2v-workflow", default=None)
     parser.add_argument("--r2v-workflow", default=None)
+    parser.add_argument("--sequence-to-sheet-workflow", default=None)
     parser.add_argument("--t2v-workflow", default=None)
     parser.add_argument("--ingredients-workflow", default=None)
     parser.add_argument("--skip-movie-bible", action="store_true", help="Reuse existing movie/bible.json.")
@@ -90,6 +92,7 @@ def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
     config["app_config_path"] = args.app_config
     for key in (
         "reference_backend",
+        "reference_generation",
         "render_backend",
         "hero_workflow",
         "edit_workflow",
@@ -105,6 +108,7 @@ def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "msr_i2v_workflow",
         "i2v_workflow",
         "r2v_workflow",
+        "sequence_to_sheet_workflow",
         "t2v_workflow",
         "ingredients_workflow",
         "movie_video_workflow",
