@@ -104,6 +104,12 @@ repeating the earlier LLM stages, but it requires the reference-enriched plan
 from `msr_reference_sheets`; run `render_plan` afterward to copy the new prompts
 into `base.json`:
 
+For the sequence-based actor/location sheet path, see the complete
+[Sequence-to-Sheet Reference Pipeline tutorial](docs/sequence-reference-pipeline.md).
+It documents the opt-in `--reference-generation sequence_sheet` mode for both
+music-video and Movie projects, including direct reference rebuilding and
+reviewable intermediate artifacts.
+
 To generate the MSR sheets with a custom image workflow and stop after preparing
 the final MiniMax R2V render plan, select the stages explicitly:
 
