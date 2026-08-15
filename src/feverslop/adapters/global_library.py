@@ -116,6 +116,7 @@ class GlobalLibraryAdapter:
         sequence_video: str | Path | None = None,
         selected_frames: tuple[str | Path, ...] = (),
         sheet_image: str | Path | None = None,
+        contact_sheet_image: str | Path | None = None,
         provenance: dict[str, str] | None = None,
         expected_revision: int,
     ) -> GlobalAsset:
@@ -144,6 +145,7 @@ class GlobalLibraryAdapter:
                 "anchor_image": anchor_image,
                 "sequence_video": sequence_video,
                 "sheet_image": sheet_image,
+                "contact_sheet_image": contact_sheet_image,
             }
             frame_sources = tuple(Path(path) for path in selected_frames)
             for path in (*tuple(Path(path) for path in supplied.values() if path is not None), *frame_sources):
@@ -163,6 +165,7 @@ class GlobalLibraryAdapter:
                         "anchor_image": "anchor.png",
                         "sequence_video": "sequence.mp4",
                         "sheet_image": "sheet.png",
+                        "contact_sheet_image": "contact-sheet.png",
                     }[field_name]
                     shutil.copy2(source, staged_look_dir / destination_name)
                     destinations[field_name] = f"looks/{look_id}/{destination_name}"
@@ -185,6 +188,7 @@ class GlobalLibraryAdapter:
                     sequence_video=destinations.get("sequence_video", look.sequence_video),
                     selected_frames=tuple(frame_destinations) if selected_frames else look.selected_frames,
                     sheet_image=destinations.get("sheet_image", look.sheet_image),
+                    contact_sheet_image=destinations.get("contact_sheet_image", look.contact_sheet_image),
                     metadata=tuple(metadata.items()),
                 )
                 looks = tuple(updated_look if item.id == look.id else item for item in current.looks)
@@ -223,6 +227,7 @@ class GlobalLibraryAdapter:
             for path in (
                 look.hero_image,
                 look.sheet_image,
+                look.contact_sheet_image,
                 look.anchor_image,
                 look.sequence_video,
                 *look.selected_frames,

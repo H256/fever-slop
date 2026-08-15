@@ -47,12 +47,13 @@ class AssetLook:
     anchor_image: str = ""
     sequence_video: str = ""
     selected_frames: tuple[str, ...] = ()
+    contact_sheet_image: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "id", _text(self.id, "look id"))
         object.__setattr__(self, "name", _text(self.name, "look name"))
         object.__setattr__(self, "description", _text(self.description, "look description", required=False))
-        for field_name in ("hero_image", "sheet_image", "anchor_image", "sequence_video"):
+        for field_name in ("hero_image", "sheet_image", "contact_sheet_image", "anchor_image", "sequence_video"):
             value = getattr(self, field_name)
             if value:
                 object.__setattr__(self, field_name, _safe_relative_path(value, field_name))
@@ -74,6 +75,7 @@ class AssetLook:
             "anchor_image": self.anchor_image,
             "sequence_video": self.sequence_video,
             "selected_frames": list(self.selected_frames),
+            "contact_sheet_image": self.contact_sheet_image,
         }
 
     @classmethod
@@ -97,6 +99,7 @@ class AssetLook:
             anchor_image=payload.get("anchor_image", ""),
             sequence_video=payload.get("sequence_video", ""),
             selected_frames=tuple(raw_selected_frames),
+            contact_sheet_image=payload.get("contact_sheet_image", ""),
         )
 
 

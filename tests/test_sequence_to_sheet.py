@@ -12,6 +12,7 @@ from feverslop.application.sequence_to_sheet import (
     select_frames,
     recommended_view_count,
     recommended_sheet_layout,
+    compose_sheet_from_contact_sheet,
 )
 from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
@@ -95,6 +96,26 @@ class SequenceToSheetTests(unittest.TestCase):
             with Image.open(output) as sheet:
                 self.assertEqual((128, 128), sheet.size)
 
+    def test_final_sheet_is_reflowed_from_raw_contact_sheet_tiles(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            frames = []
+            for index in range(6):
+                path = root / f"frame_{index:04}.png"
+                make_frame(path, marker=index)
+                frames.append(path)
+            contact = root / "contact.png"
+            compose_contact_sheet(frames, contact, columns=3, panel_size=(64, 36), include_labels=False)
+            output = root / "sheet.png"
+
+            compose_sheet_from_contact_sheet(
+                contact, output, frame_count=6, source_columns=3,
+                columns=2, panel_size=(64, 36), include_labels=False,
+            )
+
+            with Image.open(output) as sheet:
+                self.assertEqual((128, 108), sheet.size)
+
     def test_generate_sequence_to_sheet_publishes_selected_artifacts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -119,7 +140,7 @@ class SequenceToSheetTests(unittest.TestCase):
 
             with patch("feverslop.application.sequence_to_sheet.extract_video_frames", fake_extract), patch(
                 "feverslop.application.sequence_to_sheet.compose_contact_sheet", fake_compose
-            ):
+            ), patch("feverslop.application.sequence_to_sheet.compose_sheet_from_contact_sheet", fake_compose):
                 result = generate_sequence_to_sheet(
                     library,
                     kind=AssetKind.LOCATION,

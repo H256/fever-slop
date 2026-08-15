@@ -74,10 +74,19 @@ def generate_sequence_to_sheet(
             count=view_count,
             subject=subject,
             vision_endpoint=vision_endpoint,
-        )
+            )
+        contact_sheet = run_dir / "contact-sheet.png"
+        compose_contact_sheet(selected, contact_sheet, columns=3, panel_size=(512, 288), include_labels=False)
         sheet = run_dir / "sheet.png"
         columns, panel_size = recommended_sheet_layout(kind)
-        compose_contact_sheet(selected, sheet, columns=columns, panel_size=panel_size)
+        compose_sheet_from_contact_sheet(
+            contact_sheet,
+            sheet,
+            frame_count=len(selected),
+            source_columns=3,
+            columns=columns,
+            panel_size=panel_size,
+        )
         updated = library.update_look_artifacts(
             kind,
             asset_id,
@@ -86,6 +95,7 @@ def generate_sequence_to_sheet(
             sequence_video=sequence_path,
             selected_frames=selected,
             sheet_image=sheet,
+            contact_sheet_image=contact_sheet,
             provenance={"backend": backend, "profile": profile},
             expected_revision=current.revision,
         )
@@ -96,6 +106,7 @@ def generate_sequence_to_sheet(
         "revision": updated.revision,
         "selected_frames": len(selected),
         "sheet_image": f"looks/{look_id}/sheet.png",
+        "contact_sheet_image": f"looks/{look_id}/contact-sheet.png",
         "backend": backend,
         "profile": profile,
     }
@@ -269,6 +280,45 @@ def compose_contact_sheet(
     target.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(target, format="PNG")
     return target
+
+
+def compose_sheet_from_contact_sheet(
+    contact_sheet_path: str | Path,
+    output_path: str | Path,
+    *,
+    frame_count: int,
+    source_columns: int,
+    columns: int,
+    panel_size: tuple[int, int],
+    include_labels: bool = True,
+) -> Path:
+    """Reflow exact tiles from a raw contact sheet into the final sheet."""
+    source_path = Path(contact_sheet_path)
+    if not source_path.is_file():
+        raise FileNotFoundError(source_path)
+    if frame_count < 1 or source_columns < 1 or columns < 1:
+        raise ValueError("frame_count and column counts must be positive")
+    panel_width, panel_height = panel_size
+    with Image.open(source_path) as source, tempfile.TemporaryDirectory(prefix="sheet-tiles-") as temporary:
+        tiles = []
+        for index in range(frame_count):
+            row, column = divmod(index, source_columns)
+            box = (
+                column * panel_width,
+                row * panel_height,
+                (column + 1) * panel_width,
+                (row + 1) * panel_height,
+            )
+            tile_path = Path(temporary) / f"tile_{index:04}.png"
+            source.crop(box).save(tile_path, format="PNG")
+            tiles.append(tile_path)
+        return compose_contact_sheet(
+            tiles,
+            output_path,
+            columns=columns,
+            panel_size=panel_size,
+            include_labels=include_labels,
+        )
 
 
 def _read_features(path: Path, position: int) -> _FrameFeatures:
