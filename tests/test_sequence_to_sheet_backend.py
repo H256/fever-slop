@@ -49,7 +49,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
                 if node.get("_meta", {}).get("title", "").startswith("#REF_")
             }
             self.assertEqual("uploaded/anchor.png", refs["#REF_1"])
-            self.assertEqual("", refs["#REF_2"])
+            self.assertEqual("uploaded/anchor.png", refs["#REF_2"])
             self.assertEqual(7, patched["129"]["inputs"]["noise_seed"])
 
 

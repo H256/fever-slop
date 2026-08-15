@@ -85,7 +85,10 @@ class ComfyUISequenceToSheetBackend:
             patcher.set_input_by_title("#PROMPT_POSITIVE", "text", prompt)
         else:
             for index in range(1, 10):
-                patcher.set_input_by_title(f"#REF_{index}", "image", uploaded[index - 1] if index <= len(uploaded) else "")
+                # ComfyUI's LoadImage rejects an empty filename. Reusing the
+                # anchor keeps every optional reference slot valid while the
+                # R2V node still receives one semantic source image.
+                patcher.set_input_by_title(f"#REF_{index}", "image", uploaded[index - 1] if index <= len(uploaded) else uploaded[0])
             patcher.set_input_by_title("#MEGAPIXELS", "megapixels", round(width * height / 1_000_000, 1))
             patcher.set_input_by_title("#FRAMECOUNT", "value", int(frames))
             patcher.set_input_by_title("#PROMPT", "value", prompt)
