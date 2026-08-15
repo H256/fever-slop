@@ -75,7 +75,8 @@ class SequenceToSheetTests(unittest.TestCase):
             library = GlobalLibraryAdapter(root / "library")
             library.create(GlobalAsset("room", AssetKind.LOCATION, "Room", looks=(AssetLook("default", "Default"),)))
 
-            def fake_extract(_video, output_dir, _sample_count):
+            def fake_extract(_video, output_dir, sample_count):
+                _ = sample_count
                 output_dir.mkdir(parents=True, exist_ok=True)
                 paths = []
                 for index, name in enumerate(("frame_0000.png", "frame_0001.png")):
