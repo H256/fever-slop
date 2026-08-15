@@ -2,7 +2,7 @@
   "115": {
     "inputs": {
       "aspect_ratio": "16:9 (Widescreen)",
-      "megapixels": 0.25,
+      "megapixels": 0.85,
       "multiple": 32
     },
     "class_type": "ResolutionSelector",
@@ -31,7 +31,7 @@
   "121": {
     "inputs": {
       "samples": [
-        "141",
+        "134",
         0
       ],
       "vae": [
@@ -72,10 +72,10 @@
   "124": {
     "inputs": {
       "scheduler": "simple",
-      "steps": 20,
+      "steps": 4,
       "denoise": 1,
       "model": [
-        "127",
+        "139",
         0
       ]
     },
@@ -103,7 +103,7 @@
         0
       ],
       "latent_image": [
-        "136",
+        "131",
         1
       ]
     },
@@ -119,7 +119,7 @@
         0
       ],
       "conditioning": [
-        "136",
+        "131",
         0
       ]
     },
@@ -130,7 +130,7 @@
   },
   "127": {
     "inputs": {
-      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -151,28 +151,16 @@
   },
   "129": {
     "inputs": {
-      "noise_seed": 0
+      "noise_seed": 1
     },
     "class_type": "RandomNoise",
     "_meta": {
       "title": "#SEED"
     }
   },
-  "132": {
+  "131": {
     "inputs": {
-      "value": 97
-    },
-    "class_type": "PrimitiveInt",
-    "_meta": {
-      "title": "#FRAMECOUNT"
-    }
-  },
-  "136": {
-    "inputs": {
-      "prompt": [
-        "138",
-        0
-      ],
+      "prompt": "The same character throughout. Create five distinct locked-off turnaround views joined by hard cuts: full-body front, left profile, right profile, rear, and full-body three-quarter. Preserve face, hair, clothing, accessories, proportions, colors and silhouette exactly. No extra characters, text, collage or watermark.",
       "width": [
         "115",
         0
@@ -182,10 +170,9 @@
         1
       ],
       "length": [
-        "132",
+        "133",
         0
       ],
-      "ref_image_size": "match",
       "clip": [
         "128",
         0
@@ -194,74 +181,29 @@
         "119",
         0
       ],
-      "audio_vae": [
-        "120",
-        0
-      ],
-      "ref_images.ref_image_0": [
-        "137",
-        0
-      ],
-      "ref_images.ref_image_1": [
-        "143",
-        0
-      ],
-      "ref_images.ref_image_2": [
-        "144",
-        0
-      ],
-      "ref_images.ref_image_3": [
-        "145",
-        0
-      ],
-      "ref_images.ref_image_4": [
-        "146",
-        0
-      ],
-      "ref_images.ref_image_5": [
-        "147",
-        0
-      ],
-      "ref_images.ref_image_6": [
-        "148",
-        0
-      ],
-      "ref_images.ref_image_7": [
-        "149",
-        0
-      ],
-      "ref_images.ref_image_8": [
-        "150",
+      "first_frame": [
+        "136",
         0
       ]
     },
-    "class_type": "MiniMaxH3ReferenceToVideo",
-    "_meta": {
-      "title": "#R2V_COMBINE"
-    }
-  },
-  "137": {
-    "inputs": {
-      "image": "red_superboy_on_city_roof.png"
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#REF_1"
-    }
-  },
-  "138": {
-    "inputs": {
-      "value": "Generate a coherent multi-view reference sequence from the supplied single-view anchor images. Preserve identity, wardrobe, materials, silhouette, lighting, and environment. Use deliberate hard cuts between front, three-quarter, side, back, and wider contextual views. Do not introduce unrelated subjects, audio cues, or text overlays."
-    },
-    "class_type": "PrimitiveStringMultiline",
+    "class_type": "MiniMaxH3ImageToVideo",
     "_meta": {
       "title": "#PROMPT"
     }
   },
-  "141": {
+  "133": {
+    "inputs": {
+      "value": 124
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "#FRAMECOUNT"
+    }
+  },
+  "134": {
     "inputs": {
       "offload_model": true,
-      "offload_cache": false,
+      "offload_cache": true,
       "anything": [
         "125",
         0
@@ -269,14 +211,14 @@
     },
     "class_type": "VRAMCleanup",
     "_meta": {
-      "title": "#VRAM_CLEANUP_AFTER_SAMPLE"
+      "title": "🎈VRAM-Cleanup"
     }
   },
-  "142": {
+  "135": {
     "inputs": {
       "frame_rate": 24,
       "loop_count": 0,
-      "filename_prefix": "sequence_to_sheet/minimax_h3",
+      "filename_prefix": "sequence_to_sheet/minimax_h3_i2va",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -298,76 +240,28 @@
       "title": "#SAVE_VIDEO"
     }
   },
-  "143": {
+  "136": {
     "inputs": {
-      "image": ""
+      "image": "empty_placeholder.png",
+      "upload": "image"
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "#REF_2"
+      "title": "#STARTFRAME"
     }
   },
-  "144": {
+  "139": {
     "inputs": {
-      "image": ""
+      "model": [
+        "127",
+        0
+      ],
+      "lora_name": "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+      "strength_model": 1
     },
-    "class_type": "LoadImage",
+    "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "#REF_3"
-    }
-  },
-  "145": {
-    "inputs": {
-      "image": ""
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#REF_4"
-    }
-  },
-  "146": {
-    "inputs": {
-      "image": ""
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#REF_5"
-    }
-  },
-  "147": {
-    "inputs": {
-      "image": ""
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#REF_6"
-    }
-  },
-  "148": {
-    "inputs": {
-      "image": ""
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#REF_7"
-    }
-  },
-  "149": {
-    "inputs": {
-      "image": ""
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#REF_8"
-    }
-  },
-  "150": {
-    "inputs": {
-      "image": ""
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#REF_9"
+      "title": "#TURBO_LORA"
     }
   }
 }

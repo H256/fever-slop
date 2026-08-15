@@ -42,14 +42,14 @@ class SequenceToSheetWorkflowProfile:
 
 MINIMAX_H3_SEQUENCE_TO_SHEET_PROFILE = SequenceToSheetWorkflowProfile(
     backend="minimax-h3",
-    workflow_filename="sequence_to_sheet_minimax_h3_v1.json",
+    workflow_filename="sequence_to_sheet_minimax_h3_i2va_v1.json",
     required_titles=(
         "#MEGAPIXELS",
-        "#R2V_COMBINE",
+        "#STARTFRAME",
         "#PROMPT",
         "#SEED",
         "#FRAMECOUNT",
-        *(f"#REF_{index}" for index in range(1, 10)),
+        "#TURBO_LORA",
         "#SAVE_VIDEO",
     ),
     prompt_titles=(),

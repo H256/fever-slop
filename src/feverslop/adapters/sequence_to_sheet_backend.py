@@ -95,9 +95,9 @@ class ComfyUISequenceToSheetBackend:
         anchor_images: list[str | Path],
         prompt: str,
         seed: int,
-        width: int = 768,
-        height: int = 512,
-        frames: int = 97,
+        width: int = 1216,
+        height: int = 672,
+        frames: int = 124,
         output_prefix: str = "sequence_to_sheet/output",
     ) -> dict:
         if not anchor_images:
@@ -107,14 +107,15 @@ class ComfyUISequenceToSheetBackend:
             self.asset_uploader.resolve_reference_image_name(path)
             for path in anchor_images[:9]
         ]
-        for index in range(1, 10):
-            # ComfyUI's LoadImage rejects an empty filename. Reusing the
-            # anchor keeps every optional reference slot valid while the
-            # R2V node still receives one semantic source image.
-            patcher.set_input_by_title(f"#REF_{index}", "image", uploaded[index - 1] if index <= len(uploaded) else uploaded[0])
-        patcher.set_input_by_title("#MEGAPIXELS", "megapixels", round(width * height / 1_000_000, 1))
+        patcher.set_input_by_title("#STARTFRAME", "image", uploaded[0])
+        patcher.set_input_by_title("#MEGAPIXELS", "megapixels", round(width * height / 1_000_000, 2))
         patcher.set_input_by_title("#FRAMECOUNT", "value", int(frames))
-        patcher.set_input_by_title("#PROMPT", "value", prompt)
+        patcher.set_input_by_title("#PROMPT", "prompt", prompt)
+        patcher.set_input_by_title(
+            "#TURBO_LORA",
+            "lora_name",
+            "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+        )
         if not patcher.try_set_existing_input_by_title("#SEED", "noise_seed", int(seed)):
             patcher.set_input_by_title("#SEED", "value", int(seed))
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", output_prefix)
