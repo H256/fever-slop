@@ -1,14 +1,18 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image, ImageFilter, ImageDraw
 
 from feverslop.application.sequence_to_sheet import (
     FrameSelectionConfig,
     compose_contact_sheet,
+    generate_sequence_to_sheet,
     select_frames,
 )
+from feverslop.adapters.global_library import GlobalLibraryAdapter
+from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
 
 def make_frame(path: Path, *, marker: int, blurred: bool = False) -> None:
@@ -62,6 +66,48 @@ class SequenceToSheetTests(unittest.TestCase):
             self.assertEqual(output, result)
             with Image.open(output) as sheet:
                 self.assertEqual((128, 128), sheet.size)
+
+    def test_generate_sequence_to_sheet_publishes_selected_artifacts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sequence = root / "input.mp4"
+            sequence.write_bytes(b"video")
+            library = GlobalLibraryAdapter(root / "library")
+            library.create(GlobalAsset("room", AssetKind.LOCATION, "Room", looks=(AssetLook("default", "Default"),)))
+
+            def fake_extract(_video, output_dir, _sample_count):
+                output_dir.mkdir(parents=True, exist_ok=True)
+                paths = []
+                for index, name in enumerate(("frame_0000.png", "frame_0001.png")):
+                    path = output_dir / name
+                    make_frame(path, marker=index)
+                    paths.append(path)
+                return tuple(paths)
+
+            def fake_compose(_frame_paths, output_path, **_kwargs):
+                output_path.write_bytes(b"sheet")
+                return output_path
+
+            with patch("feverslop.application.sequence_to_sheet.extract_video_frames", fake_extract), patch(
+                "feverslop.application.sequence_to_sheet.compose_contact_sheet", fake_compose
+            ):
+                result = generate_sequence_to_sheet(
+                    library,
+                    kind=AssetKind.LOCATION,
+                    asset_id="room",
+                    look_id="default",
+                    sequence_video=sequence,
+                    view_count=2,
+                    backend="ltx",
+                )
+
+            self.assertEqual(2, result["revision"])
+            stored = library.get(AssetKind.LOCATION, "room").looks[0]
+            self.assertEqual("ltx", dict(stored.metadata)["backend"])
+            self.assertEqual(
+                b"sheet",
+                (root / "library" / "location" / "room" / "looks" / "default" / "sheet.png").read_bytes(),
+            )
 
 
 if __name__ == "__main__":

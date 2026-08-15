@@ -40,6 +40,30 @@ class GlobalCastResolverTests(unittest.TestCase):
                 )
             self.assertIn("create or import", str(missing.exception))
 
+    def test_resolves_multiview_paths_for_reference_consumers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            adapter = GlobalLibraryAdapter(root / "library")
+            look_dir = root / "library" / "location" / "room" / "looks" / "default"
+            look_dir.mkdir(parents=True)
+            for name in ("anchor.png", "sequence.mp4", "sheet.png", "frame_0001.png"):
+                (look_dir / name).write_bytes(name.encode())
+            adapter.create(GlobalAsset("room", AssetKind.LOCATION, "Room", looks=(AssetLook(
+                "default", "Default", anchor_image="looks/default/anchor.png",
+                sequence_video="looks/default/sequence.mp4", sheet_image="looks/default/sheet.png",
+                selected_frames=("looks/default/frame_0001.png",),
+            ),)))
+
+            result = GlobalCastResolver(adapter).resolve(
+                cast=(), locations=(GlobalAssetConfig("room", "default", "set"),), styles=(), props=(),
+                project_reference_dir=root / "project" / "references",
+            )
+
+            location = result.locations[0]
+            self.assertTrue(Path(location["anchor_path"]).is_file())
+            self.assertTrue(Path(location["sequence_path"]).is_file())
+            self.assertEqual(1, len(location["selected_frame_paths"]))
+
 
 if __name__ == "__main__":
     unittest.main()

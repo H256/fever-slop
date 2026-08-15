@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import tempfile
+from typing import Any
 from typing import Iterable
 
 import cv2
@@ -17,6 +19,53 @@ class FrameSelectionConfig:
     sharpness_weight: float = 0.60
     diversity_weight: float = 0.25
     coverage_weight: float = 0.15
+
+
+def generate_sequence_to_sheet(
+    library: Any,
+    *,
+    kind: Any,
+    asset_id: str,
+    look_id: str,
+    sequence_video: str | Path,
+    anchor_image: str | Path | None = None,
+    view_count: int = 4,
+    backend: str = "offline",
+    profile: str = "sequence_to_sheet_v1",
+) -> dict[str, Any]:
+    """Extract, select, compose, and publish a neutral sequence-to-sheet result."""
+    sequence_path = Path(sequence_video)
+    if not sequence_path.is_file():
+        raise FileNotFoundError(f"sequence video not found: {sequence_path}")
+    current = library.get(kind, asset_id)
+    with tempfile.TemporaryDirectory(prefix="sequence-to-sheet-") as temporary:
+        run_dir = Path(temporary)
+        extracted_dir = run_dir / "frames"
+        candidates = extract_video_frames(sequence_path, extracted_dir, max(view_count * 4, view_count))
+        selected = select_frames(candidates, config=FrameSelectionConfig(view_count=view_count))
+        sheet = run_dir / "sheet.png"
+        compose_contact_sheet(selected, sheet)
+        updated = library.update_look_artifacts(
+            kind,
+            asset_id,
+            look_id,
+            anchor_image=anchor_image,
+            sequence_video=sequence_path,
+            selected_frames=selected,
+            sheet_image=sheet,
+            provenance={"backend": backend, "profile": profile},
+            expected_revision=current.revision,
+        )
+    return {
+        "asset_id": updated.id,
+        "kind": updated.kind.value,
+        "look_id": look_id,
+        "revision": updated.revision,
+        "selected_frames": len(selected),
+        "sheet_image": f"looks/{look_id}/sheet.png",
+        "backend": backend,
+        "profile": profile,
+    }
 
     def __post_init__(self) -> None:
         if type(self.view_count) is not int or self.view_count < 1:

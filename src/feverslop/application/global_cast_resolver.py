@@ -55,6 +55,11 @@ class GlobalCastResolver:
             if look is not None:
                 record["hero_path"] = f"{snapshot_dir}/{look.hero_image.rsplit('/', 1)[-1]}" if look.hero_image else ""
                 record["sheet_path"] = f"{snapshot_dir}/{look.sheet_image.rsplit('/', 1)[-1]}" if look.sheet_image else ""
+                record["anchor_path"] = f"{snapshot_dir}/{look.anchor_image.rsplit('/', 1)[-1]}" if look.anchor_image else ""
+                record["sequence_path"] = f"{snapshot_dir}/{look.sequence_video.rsplit('/', 1)[-1]}" if look.sequence_video else ""
+                record["selected_frame_paths"] = tuple(
+                    f"{snapshot_dir}/{path.rsplit('/', 1)[-1]}" for path in look.selected_frames
+                )
             result.append(record)
             snapshots.append({"kind": kind.value, "asset_id": asset.id, "look_id": entry.look_id, "revision": asset.revision, "path": str(snapshot_dir)})
         return result, snapshots

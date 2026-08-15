@@ -14,6 +14,7 @@ import sys
 
 from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.application.global_character_creator import AssetIdea, GuidedAssetGenerator
+from feverslop.application.sequence_to_sheet import generate_sequence_to_sheet
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
 
@@ -66,6 +67,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     generate.add_argument("--interactive", action="store_true")
     generate.add_argument("--dry-run", action="store_true")
     generate.add_argument("--hero-image", type=Path)
+    sheet = commands.add_parser("sequence-to-sheet")
+    sheet.add_argument("--kind", type=_kind, required=True)
+    sheet.add_argument("--id", required=True)
+    sheet.add_argument("--look-id", default="default")
+    sheet.add_argument("--sequence", type=Path, required=True)
+    sheet.add_argument("--anchor-image", type=Path)
+    sheet.add_argument("--view-count", type=int, default=4)
+    sheet.add_argument("--backend", choices=("offline", "ltx", "minimax"), default="offline")
+    sheet.add_argument("--profile", default="sequence_to_sheet_v1")
+    sheet.add_argument("--json", action="store_true")
     return parser
 
 
@@ -146,6 +157,21 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = generator.generate(idea, profile_id=args.workflow)
                 print(json.dumps({"run_id": result.run_id, "asset_id": result.asset.id, "status": result.status}, indent=2))
+        elif args.command == "sequence-to-sheet":
+            if args.view_count < 1:
+                raise ValueError("view-count must be positive")
+            result = generate_sequence_to_sheet(
+                library,
+                kind=args.kind,
+                asset_id=args.id,
+                look_id=args.look_id,
+                sequence_video=args.sequence,
+                anchor_image=args.anchor_image,
+                view_count=args.view_count,
+                backend=args.backend,
+                profile=args.profile,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else f"published {args.kind.value}/{args.id}/{args.look_id} revision {result['revision']}")
         return 0
     except (FileNotFoundError, ValueError, FileExistsError, KeyError, OSError) as exc:
         return _error(f"{exc}; create or import the asset and check the configured library path")
