@@ -117,12 +117,12 @@ class SequenceToSheetTests(unittest.TestCase):
                     look_id="default",
                     sequence_video=sequence,
                     view_count=2,
-                    backend="ltx",
+                    backend="minimax",
                 )
 
             self.assertEqual(2, result["revision"])
             stored = library.get(AssetKind.LOCATION, "room").looks[0]
-            self.assertEqual("ltx", dict(stored.metadata)["backend"])
+            self.assertEqual("minimax", dict(stored.metadata)["backend"])
             self.assertEqual(
                 b"sheet",
                 (root / "library" / "location" / "room" / "looks" / "default" / "sheet.png").read_bytes(),

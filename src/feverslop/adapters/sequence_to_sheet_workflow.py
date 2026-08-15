@@ -40,23 +40,6 @@ class SequenceToSheetWorkflowProfile:
             return False
 
 
-LTX_SEQUENCE_TO_SHEET_PROFILE = SequenceToSheetWorkflowProfile(
-    backend="ltx",
-    workflow_filename="sequence_to_sheet_ltx_v1.json",
-    required_titles=(
-        "#WIDTH",
-        "#HEIGHT",
-        "#STARTFRAME",
-        "#FRAMES",
-        "#FRAMERATE",
-        "#SEED",
-        "#SAVE_VIDEO",
-    ),
-    prompt_titles=("#PROMPT_POSITIVE", "#PROMPT"),
-    required_class_types=("VRAMCleanup",),
-)
-
-
 MINIMAX_H3_SEQUENCE_TO_SHEET_PROFILE = SequenceToSheetWorkflowProfile(
     backend="minimax-h3",
     workflow_filename="sequence_to_sheet_minimax_h3_v1.json",

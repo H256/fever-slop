@@ -47,25 +47,6 @@ class SequenceToSheetBackendTests(unittest.TestCase):
         self.assertEqual(180, prompt.rotation_degrees)
         self.assertIn("continuous", prompt.prompt)
 
-    def test_builds_ltx_workflow_from_semantic_inputs(self):
-        with tempfile.TemporaryDirectory() as temp:
-            workflow = Path("workflows/sequence_to_sheet_ltx_v1.json")
-            anchor = Path(temp) / "anchor.png"
-            anchor.write_bytes(b"anchor")
-            backend = ComfyUISequenceToSheetBackend(
-                client=object(), workflow_path=workflow, backend="ltx", asset_uploader=FakeUploader()
-            )
-
-            patched = backend.build_workflow(
-                anchor_images=[anchor], prompt="turnaround", seed=42, width=640, height=384, frames=65
-            )
-
-            self.assertEqual("uploaded/anchor.png", patched["14"]["inputs"]["image"])
-            self.assertEqual(640, patched["10"]["inputs"]["value"])
-            self.assertEqual(65, patched["22"]["inputs"]["value"])
-            self.assertEqual("turnaround", patched["27"]["inputs"]["text"])
-            self.assertEqual(42, patched["37"]["inputs"]["noise_seed"])
-
     def test_builds_minimax_workflow_and_clears_unused_reference_slots(self):
         with tempfile.TemporaryDirectory() as temp:
             anchor = Path(temp) / "anchor.png"

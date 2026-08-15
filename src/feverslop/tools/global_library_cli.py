@@ -74,7 +74,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     sheet.add_argument("--sequence", type=Path, required=True)
     sheet.add_argument("--anchor-image", type=Path)
     sheet.add_argument("--view-count", type=int, default=4)
-    sheet.add_argument("--backend", choices=("offline", "ltx", "minimax"), default="offline")
+    sheet.add_argument("--backend", choices=("offline", "minimax"), default="offline")
     sheet.add_argument("--profile", default="sequence_to_sheet_v1")
     sheet.add_argument("--json", action="store_true")
     return parser
