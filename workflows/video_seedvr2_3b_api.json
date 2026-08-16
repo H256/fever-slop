@@ -1,0 +1,14 @@
+{
+  "1": {"class_type": "VHS_LoadVideo", "inputs": {"video": "input.mp4", "force_rate": 24, "custom_width": 1280, "custom_height": 720, "frame_load_cap": 0, "skip_first_frames": 0, "select_every_nth": 1}, "_meta": {"title": "#LOAD_VIDEO"}},
+  "2": {"class_type": "SeedVR2Preprocess", "inputs": {"resized_images": ["1", 0]}, "_meta": {"title": "#SEEDVR_PREPROCESS"}},
+  "3": {"class_type": "VAEEncode", "inputs": {"pixels": ["2", 0], "vae": ["10", 0]}, "_meta": {"title": "#VAE_ENCODE"}},
+  "4": {"class_type": "SeedVR2TemporalChunk", "inputs": {"latent": ["3", 0], "temporal_overlap": 4, "chunking_mode": "auto"}, "_meta": {"title": "#TEMPORAL_CHUNK"}},
+  "5": {"class_type": "UNETLoader", "inputs": {"unet_name": "seedvr2_3b_int8_convrot.safetensors", "weight_dtype": "default"}, "_meta": {"title": "#SEEDVR_MODEL"}},
+  "6": {"class_type": "SeedVR2Conditioning", "inputs": {"model": ["5", 0], "vae_conditioning": ["4", 0]}, "_meta": {"title": "#SEEDVR_CONDITIONING"}},
+  "7": {"class_type": "KSampler", "inputs": {"model": ["5", 0], "seed": 0, "steps": 1, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "positive": ["6", 0], "negative": ["6", 1], "latent_image": ["4", 0], "denoise": 0.35}, "_meta": {"title": "#SEEDVR_SAMPLER"}},
+  "8": {"class_type": "SeedVR2TemporalMerge", "inputs": {"latents": ["7", 0], "temporal_overlap": ["4", 1]}, "_meta": {"title": "#TEMPORAL_MERGE"}},
+  "9": {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["10", 0]}, "_meta": {"title": "#VAE_DECODE"}},
+  "10": {"class_type": "VAELoader", "inputs": {"vae_name": "seedvr2_ema_vae_fp16.safetensors"}, "_meta": {"title": "#SEEDVR_VAE"}},
+  "11": {"class_type": "SeedVR2PostProcessing", "inputs": {"images": ["9", 0], "original_resized_images": ["1", 0], "color_correction_method": "lab"}, "_meta": {"title": "#COLOR_CORRECTION"}},
+  "12": {"class_type": "VHS_VideoCombine", "inputs": {"images": ["11", 0], "frame_rate": 24, "loop_count": 0, "filename_prefix": "feverslop/seedvr2/output", "format": "video/h264-mp4", "pingpong": false, "save_output": true, "audio": ["1", 2]}, "_meta": {"title": "#SAVE_VIDEO"}}
+}
