@@ -60,6 +60,16 @@ def _probe_duration(path: Path) -> float | None:
     return value if value >= 0 else None
 
 
+def _resolve_vae_temporal_size(configured: int, duration_seconds: float | None) -> int:
+    if duration_seconds is None:
+        return configured
+    if duration_seconds > 10.0:
+        return min(configured, 16)
+    if duration_seconds > 6.0:
+        return min(configured, 32)
+    return configured
+
+
 def _source_clip(layout: SceneArtifactLayout, scene_number: int) -> Path:
     candidates = [layout.scene_final_facefix_video(scene_number), layout.scene_final_video(scene_number)]
     legacy_dirs = []
@@ -178,14 +188,16 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         scene_dir = layout.scene_dir(scene_number)
         current = source
         records: list[dict] = []
+        vae_temporal_size = _resolve_vae_temporal_size(upscale.vae_temporal_size, source_duration)
+        vae_temporal_overlap = min(upscale.vae_temporal_overlap, vae_temporal_size)
         settings = SeedVR2RenderSettings(
             model=upscale.model,
             vae=upscale.vae,
             denoise=upscale.denoise,
             temporal_overlap=upscale.temporal_overlap,
             split_latent=upscale.split_latent,
-            vae_temporal_size=upscale.vae_temporal_size,
-            vae_temporal_overlap=upscale.vae_temporal_overlap,
+            vae_temporal_size=vae_temporal_size,
+            vae_temporal_overlap=vae_temporal_overlap,
             color_correction=upscale.color_correction,
             seed=upscale.seed,
             fps=config.video.fps,
@@ -201,7 +213,8 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                 continue
             options.reporter.message(
                 f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} starting: "
-                f"{pass_spec.input_size[0]}x{pass_spec.input_size[1]} -> {pass_spec.output_size[0]}x{pass_spec.output_size[1]}[/cyan]"
+                f"{pass_spec.input_size[0]}x{pass_spec.input_size[1]} -> {pass_spec.output_size[0]}x{pass_spec.output_size[1]} "
+                f"vae_temporal_size={settings.vae_temporal_size}[/cyan]"
             )
             try:
                 rendered = backend.render(

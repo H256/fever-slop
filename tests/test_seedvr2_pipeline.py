@@ -100,21 +100,24 @@ class SeedVR2PipelineTests(unittest.TestCase):
             plan = root / "plan.json"
             plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
             reporter = RecordingReporter()
+            backend = FakeBackend()
 
             run_seedvr2(SeedVR2CompositionOptions(
                 project_config_path=config,
                 render_plan_path=plan,
-                backend=FakeBackend(),
+                backend=backend,
                 probe_size=lambda _path: (640, 360),
-                probe_duration=lambda _path: 7.83,
+                probe_duration=lambda _path: 11.08,
                 reporter=reporter,
             ))
 
-        self.assertTrue(any("source" in message and "7.83s" in message for message in reporter.messages))
+        self.assertTrue(any("source" in message and "11.08s" in message for message in reporter.messages))
+        self.assertTrue(any("vae_temporal_size=16" in message for message in reporter.messages))
         self.assertTrue(any("scene 1/1" in message and "starting" in message for message in reporter.messages))
         self.assertTrue(any("pass 1/2" in message and "complete" in message for message in reporter.messages))
         self.assertTrue(any("pass 2/2" in message and "complete" in message for message in reporter.messages))
         self.assertTrue(any("scene 1/1" in message and "complete" in message for message in reporter.messages))
+        self.assertEqual(16, backend.calls[0]["settings"].vae_temporal_size)
 
     def test_run_seedvr2_finds_legacy_ltx_scene_clip(self):
         with tempfile.TemporaryDirectory() as temp_dir:
