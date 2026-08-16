@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+import json
+import math
+import os
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
+
+def export_render_plan_to_mlt(
+    *,
+    render_plan_path: str | Path,
+    clip_paths: Sequence[str | Path],
+    output_path: str | Path,
+    width: int,
+    height: int,
+    fps: int,
+    audio_path: str | Path | None = None,
+) -> Path:
+    """Write an MLT XML timeline for Shotcut and Kdenlive."""
+    plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
+    if isinstance(plan, dict):
+        plan = plan.get("shots") or plan.get("scenes") or []
+    if not isinstance(plan, list):
+        raise ValueError(f"Render plan must be a JSON list: {render_plan_path}")
+    if len(plan) != len(clip_paths):
+        raise ValueError(
+            "MLT export requires one rendered clip per render-plan entry "
+            f"(got {len(clip_paths)} clips for {len(plan)} entries)"
+        )
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    root = ET.Element("mlt", {"LC_NUMERIC": "C", "version": "7.0.0"})
+    ET.SubElement(root, "profile", {
+        "description": f"Custom {int(width)}x{int(height)} {int(fps)} fps",
+        "width": str(int(width)),
+        "height": str(int(height)),
+        "frame_rate_num": str(int(fps)),
+        "frame_rate_den": "1",
+        "progressive": "1",
+        "sample_aspect_num": "1",
+        "sample_aspect_den": "1",
+        "display_aspect_num": str(int(width)),
+        "display_aspect_den": str(int(height)),
+        "colorspace": "709",
+    })
+
+    video_playlist = ET.SubElement(root, "playlist", {"id": "video"})
+    audio_playlist = ET.SubElement(root, "playlist", {"id": "audio"})
+    total_frames = 0
+    timeline_cursor = 0
+
+    for index, (entry, clip_path) in enumerate(zip(plan, clip_paths, strict=True), start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Render plan entry {index} must be an object")
+        scene_number = int(entry.get("scene") or entry.get("scene_number") or index)
+        duration = float(entry.get("duration_seconds", 0.0))
+        if duration <= 0:
+            raise ValueError(f"Render plan scene {scene_number} has no positive duration")
+        path = Path(clip_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Rendered clip does not exist: {path}")
+        frames = max(1, math.ceil(duration * int(fps)))
+        start_seconds = entry.get("abs_start_seconds")
+        start_frame = (
+            max(0, round(float(start_seconds) * int(fps)))
+            if start_seconds is not None
+            else timeline_cursor
+        )
+        if start_frame < timeline_cursor:
+            raise ValueError(
+                "MLT export cannot represent overlapping render-plan entries: "
+                f"scene {scene_number} starts at frame {start_frame}, "
+                f"before frame {timeline_cursor}"
+            )
+        if start_frame > timeline_cursor:
+            ET.SubElement(video_playlist, "blank", {"length": str(start_frame - timeline_cursor)})
+        producer_id = f"video_{index:04}"
+        _add_avformat_producer(root, producer_id, path, output, frames - 1)
+        ET.SubElement(video_playlist, "entry", {
+            "producer": producer_id,
+            "in": "0",
+            "out": str(frames - 1),
+        })
+        timeline_cursor = start_frame + frames
+        total_frames = max(total_frames, timeline_cursor)
+
+    if audio_path is not None:
+        audio = Path(audio_path)
+        if not audio.is_file():
+            raise FileNotFoundError(f"Audio file does not exist: {audio}")
+        _add_avformat_producer(root, "audio_original", audio, output, max(0, total_frames - 1))
+        ET.SubElement(audio_playlist, "entry", {
+            "producer": "audio_original",
+            "in": "0",
+            "out": str(max(0, total_frames - 1)),
+        })
+
+    main_bin = ET.SubElement(root, "playlist", {"id": "main bin"})
+    ET.SubElement(main_bin, "property", {"name": "xml_retain"}).text = "1"
+    tractor = ET.SubElement(root, "tractor", {
+        "id": "main",
+        "in": "0",
+        "out": str(max(0, total_frames - 1)),
+    })
+    multitrack = ET.SubElement(tractor, "multitrack", {"id": "multitrack0"})
+    ET.SubElement(multitrack, "track", {"producer": "video"})
+    if audio_path is not None:
+        ET.SubElement(multitrack, "track", {"producer": "audio"})
+
+    ET.indent(root, space="  ")
+    ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
+    return output
+
+
+def _add_avformat_producer(
+    root: ET.Element,
+    producer_id: str,
+    path: Path,
+    project_file: Path,
+    out_frame: int,
+) -> None:
+    producer = ET.SubElement(root, "producer", {
+        "id": producer_id,
+        "in": "0",
+        "out": str(out_frame),
+    })
+    ET.SubElement(producer, "property", {"name": "resource"}).text = _relative_path(path, project_file)
+    ET.SubElement(producer, "property", {"name": "mlt_service"}).text = "avformat"
+
+
+def _relative_path(path: Path, project_file: Path) -> str:
+    return Path(os.path.relpath(path.resolve(), project_file.parent.resolve())).as_posix()

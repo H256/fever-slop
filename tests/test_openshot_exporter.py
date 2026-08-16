@@ -1,4 +1,5 @@
 import json
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 import tempfile
 import unittest
@@ -109,6 +110,94 @@ class OpenShotExporterTests(unittest.TestCase):
             )
 
             self.assertEqual(progress, [(1, 2, "scene 1"), (2, 2, "audio")])
+
+
+class MltExporterTests(unittest.TestCase):
+    def test_exports_ordered_video_and_original_audio_as_mlt_xml(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "render_plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.5, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.5, "abs_start_seconds": 1.5},
+            ]), encoding="utf-8")
+            clips = [root / "scene_0001.mp4", root / "scene_0002.mp4"]
+            audio = root / "dwarfventure.mp3"
+            for path in (*clips, audio):
+                path.touch()
+            output = root / "shotcut" / "timeline.mlt"
+
+            result = export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                audio_path=audio,
+                output_path=output,
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            self.assertEqual(result, output)
+            document = ET.parse(output)
+            root_element = document.getroot()
+            profile = root_element.find("profile")
+            self.assertEqual(profile.attrib["width"], "1216")
+            self.assertEqual(profile.attrib["height"], "672")
+            self.assertEqual(profile.attrib["frame_rate_num"], "24")
+            video_playlist = root_element.find("playlist[@id='video']")
+            audio_playlist = root_element.find("playlist[@id='audio']")
+            self.assertEqual(
+                [entry.attrib["producer"] for entry in video_playlist.findall("entry")],
+                ["video_0001", "video_0002"],
+            )
+            self.assertEqual(audio_playlist.find("entry").attrib["producer"], "audio_original")
+            self.assertEqual(
+                root_element.find("tractor/multitrack/track[@producer='audio']").attrib["producer"],
+                "audio",
+            )
+
+    def test_preserves_gaps_from_absolute_render_plan_positions(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 2.0},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4"]
+            for clip in clips:
+                clip.touch()
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+            root_element = ET.parse(root / "timeline.mlt").getroot()
+            self.assertEqual(root_element.find("playlist[@id='video']/blank").attrib["length"], "24")
+
+    def test_rejects_mismatched_plan_and_clip_counts(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([{"scene": 1, "duration_seconds": 1.0}]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "one rendered clip"):
+                export_render_plan_to_mlt(
+                    render_plan_path=plan,
+                    clip_paths=[],
+                    output_path=root / "timeline.mlt",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
 
 
 if __name__ == "__main__":
