@@ -66,6 +66,7 @@ RUNNER_ARGUMENTS = (
     ("skip_msr_prompt_enrichment", ("--skip-msr-prompt-enrichment",), {"action": "store_true"}),
     ("skip_ingredients_sheets", ("--skip-ingredients-sheets",), {"action": "store_true"}),
     ("skip_ltx", ("--skip-ltx",), {"action": "store_true"}),
+    ("upscale", ("--upscale",), {"action": "store_true", "default": None, "help": "Run the configured SeedVR2 upscale stage."}),
     ("skip_final_concat", ("--skip-final-concat",), {"action": "store_true"}),
     ("skip_openshot_export", ("--skip-openshot-export",), {"action": "store_true"}),
     ("skip_facefix", ("--skip-facefix",), {"action": "store_true", "default": True}),

@@ -77,6 +77,9 @@ class SceneArtifactLayout:
     def scene_final_facefix_video(self, scene_number: int) -> Path:
         return self.scene_dir(scene_number) / "final_facefix.mp4"
 
+    def scene_upscaled_video(self, scene_number: int) -> Path:
+        return self.scene_dir(scene_number) / "upscale_final.mp4"
+
     @property
     def storyboard_dir(self) -> Path:
         return self.render_dir / "storyboard"
@@ -94,12 +97,24 @@ class SceneArtifactLayout:
         return self.final_dir / "video_audio.mp4"
 
     @property
+    def video_only_upscaled(self) -> Path:
+        return self.final_dir / "video_only_upscaled.mp4"
+
+    @property
+    def video_audio_upscaled(self) -> Path:
+        return self.final_dir / "video_audio_upscaled.mp4"
+
+    @property
     def concat_raw(self) -> Path:
         return self.final_dir / "concat_raw.txt"
 
     @property
     def movie(self) -> Path:
         return self.final_dir / "movie.mp4"
+
+    @property
+    def movie_upscaled(self) -> Path:
+        return self.final_dir / "movie_upscaled.mp4"
 
     def find_scene_final_video(self, scene_number: int, *, legacy_dirs: Iterable[str | Path] = ()) -> Path | None:
         candidates = [self.scene_final_video(scene_number)]

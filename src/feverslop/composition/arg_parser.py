@@ -24,6 +24,7 @@ class PipelineStage(str, Enum):
     LTX_RENDER_SCENES = "ltx_render_scenes"
     PREPARE_WORKFLOWS = "prepare_workflows"
     RENDER_SCENES = "render_scenes"
+    UPSCALE = "upscale"
     CONCAT_VIDEO_ONLY = "concat_video_only"
     MUX_ORIGINAL_AUDIO = "mux_original_audio"
     DIAGNOSTIC_SCENE_AUDIO_CONCAT = "diagnostic_scene_audio_concat"
