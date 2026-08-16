@@ -64,6 +64,8 @@ def plan_seedvr2_passes(
         default_scale=default_scale,
     )
     current = (int(source_width), int(source_height))
+    if target[0] < current[0] or target[1] < current[1]:
+        raise ValueError("target resolution must not be smaller than the source")
     if current == target:
         return ()
 

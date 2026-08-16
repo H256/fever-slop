@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import subprocess
+import shutil
 from typing import Callable, Protocol
 from dataclasses import replace
 
@@ -107,6 +108,11 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
             max_pass_scale=max_pass_scale,
             max_ai_passes=max_ai_passes,
         )
+        if not passes:
+            final_output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, final_output)
+            outputs.append(final_output)
+            continue
         scene_dir = layout.scene_dir(scene_number)
         current = source
         records: list[dict] = []

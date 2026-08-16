@@ -10,6 +10,23 @@
     "height": 704
   },
 
+  "upscale": {
+    "enabled": false,
+    "workflow_path": "workflows/video_seedvr2_3b_api.json",
+    "model": "seedvr2_3b_int8_convrot.safetensors",
+    "vae": "seedvr2_ema_vae_fp16.safetensors",
+    "target_width": null,
+    "target_height": null,
+    "default_scale": 2.0,
+    "strategy": "auto",
+    "max_pass_scale": 2.0,
+    "max_ai_passes": 3,
+    "denoise": 0.35,
+    "temporal_overlap": 4,
+    "color_correction": "lab",
+    "seed": 0
+  },
+
   "reference_images": {
     "width": 2048,
     "height": 1152

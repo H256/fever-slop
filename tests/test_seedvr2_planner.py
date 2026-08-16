@@ -22,3 +22,7 @@ class SeedVR2PlannerTests(unittest.TestCase):
     def test_planner_rejects_unreachable_target(self):
         with self.assertRaisesRegex(ValueError, "max_ai_passes"):
             plan_seedvr2_passes(640, 360, target_width=3840, max_pass_scale=2.0, max_ai_passes=2)
+
+    def test_planner_rejects_downscale_target(self):
+        with self.assertRaisesRegex(ValueError, "smaller"):
+            plan_seedvr2_passes(1920, 1080, target_width=1280)
