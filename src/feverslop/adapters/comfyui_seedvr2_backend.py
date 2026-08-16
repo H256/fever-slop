@@ -23,6 +23,7 @@ class SeedVR2RenderSettings:
     color_correction: str = "lab"
     seed: int = 0
     fps: int = 24
+    split_latent: bool = False
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.denoise <= 1.0:
@@ -60,21 +61,17 @@ class ComfyUISeedVR2Backend:
             raise ValueError("output_size must be positive")
         workflow = json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
         patcher = WorkflowPatcher(workflow)
-        patcher.set_input_by_title("#LOAD_VIDEO", "video", video_name)
-        for name, value in (
-            ("force_rate", settings.fps),
-            ("custom_width", width),
-            ("custom_height", height),
-        ):
-            patcher.set_existing_input_by_title("#LOAD_VIDEO", name, value)
+        patcher.set_input_by_title("#LOAD_VIDEO", "file", video_name)
+        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.width", width)
+        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.height", height)
         patcher.set_input_by_title("#SEEDVR_MODEL", "unet_name", settings.model)
         patcher.set_input_by_title("#SEEDVR_VAE", "vae_name", settings.vae)
         patcher.set_input_by_title("#TEMPORAL_CHUNK", "temporal_overlap", settings.temporal_overlap)
+        patcher.set_input_by_title("#SPLIT_LATENT_BOOLEAN", "value", settings.split_latent)
         patcher.set_input_by_title("#SEEDVR_SAMPLER", "seed", settings.seed)
         patcher.set_input_by_title("#SEEDVR_SAMPLER", "denoise", settings.denoise)
         patcher.set_input_by_title("#COLOR_CORRECTION", "color_correction_method", settings.color_correction)
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", output_prefix)
-        patcher.set_input_by_title("#SAVE_VIDEO", "frame_rate", settings.fps)
         return patcher.get()
 
     def render(
