@@ -147,6 +147,7 @@ class MltExporterTests(unittest.TestCase):
                 width=1216,
                 height=672,
                 fps=24,
+                project_name="The Well of Youth",
             )
 
             self.assertEqual(result, output)
@@ -175,6 +176,12 @@ class MltExporterTests(unittest.TestCase):
                 ["video_0001", "video_0002"],
             )
             self.assertEqual(audio_playlist.find("entry").attrib["producer"], "audio_original")
+            notes = root_element.find("property[@name='shotcut:projectNotes']").text
+            self.assertIn("Project: The Well of Youth", notes)
+            self.assertIn("Scenes: 2", notes)
+            self.assertIn("Profile: 1216x672 @ 24 fps", notes)
+            self.assertIn("Duration: 00:03", notes)
+            self.assertIn("Audio track: A1 - Original audio (dwarfventure.mp3)", notes)
             self.assertEqual(
                 root_element.find("chain[@id='video_0001']/property[@name='shotcut:caption']").text,
                 "Scene 0001",

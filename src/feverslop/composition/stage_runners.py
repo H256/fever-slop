@@ -1583,6 +1583,7 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
             render_plan_path=state.plan_for_next_step, clip_paths=clips,
             audio_path=state.context.input_audio, output_path=output_path,
             width=video.width, height=video.height, fps=video.fps,
+            project_name=state.context.project_file_stem,
         )
     else:
         state.openshot_project_path = export_render_plan_to_openshot(

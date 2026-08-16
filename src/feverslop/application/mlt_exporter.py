@@ -17,6 +17,7 @@ def export_render_plan_to_mlt(
     height: int,
     fps: int,
     audio_path: str | Path | None = None,
+    project_name: str | None = None,
 ) -> Path:
     """Write an MLT XML timeline for Shotcut and Kdenlive."""
     plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
@@ -134,6 +135,18 @@ def export_render_plan_to_mlt(
 
     root.append(video_playlist)
     root.append(audio_playlist)
+    ET.SubElement(root, "property", {"name": "shotcut:projectNotes"}).text = _project_notes(
+        project_name=project_name or output.stem,
+        scene_count=len(plan),
+        first_scene=int(plan[0].get("scene") or plan[0].get("scene_number") or 1),
+        last_scene=int(plan[-1].get("scene") or plan[-1].get("scene_number") or len(plan)),
+        width=width,
+        height=height,
+        fps=fps,
+        total_frames=total_frames,
+        audio_path=audio_path,
+        render_plan_path=render_plan_path,
+    )
 
     main_bin = ET.SubElement(root, "playlist", {"id": "main_bin"})
     ET.SubElement(main_bin, "property", {"name": "xml_retain"}).text = "1"
@@ -204,3 +217,33 @@ def _scene_comment(entry: dict) -> str | None:
     if entry.get("seed") is not None:
         lines.append(f"Seed: {entry['seed']}")
     return "\n".join(lines) or None
+
+
+def _project_notes(
+    *,
+    project_name: str,
+    scene_count: int,
+    first_scene: int,
+    last_scene: int,
+    width: int,
+    height: int,
+    fps: int,
+    total_frames: int,
+    audio_path: str | Path | None,
+    render_plan_path: str | Path,
+) -> str:
+    duration_seconds = max(0, round(total_frames / int(fps)))
+    minutes, seconds = divmod(duration_seconds, 60)
+    audio_name = Path(audio_path).name if audio_path is not None else "none"
+    return "\n".join([
+        f"Project: {project_name}",
+        "Pipeline: FeverSlop",
+        f"Scenes: {scene_count} (Scene {first_scene:04d} - Scene {last_scene:04d})",
+        f"Profile: {int(width)}x{int(height)} @ {int(fps)} fps",
+        f"Duration: {minutes:02d}:{seconds:02d}",
+        "Video track: V1 - scene clips",
+        f"Audio track: A1 - Original audio ({audio_name})",
+        f"Render plan: {Path(render_plan_path).name}",
+        "Per-scene story, motion, and seed details are stored in each clip comment.",
+        "Regenerate: --stage export_timeline --format mlt",
+    ])
