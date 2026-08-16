@@ -7,6 +7,10 @@ from feverslop.adapters.comfyui_seedvr2_backend import (
 
 
 class ComfyUISeedVR2BackendTests(unittest.TestCase):
+    @staticmethod
+    def node(workflow, title):
+        return next(node for node in workflow.values() if node.get("_meta", {}).get("title") == title)
+
     def test_build_workflow_uses_memory_safe_video_template(self):
         backend = ComfyUISeedVR2Backend(client=object())
 
@@ -27,25 +31,25 @@ class ComfyUISeedVR2BackendTests(unittest.TestCase):
         self.assertNotIn("VHS_LoadVideo", class_types)
         self.assertNotIn("VHS_VideoCombine", class_types)
 
-        encode = next(node for node in workflow.values() if node["class_type"] == "VAEEncodeTiled")
-        decode = next(node for node in workflow.values() if node["class_type"] == "VAEDecodeTiled")
+        encode = self.node(workflow, "#VAE_ENCODE_TILED")
+        decode = self.node(workflow, "#VAE_DECODE_TILED")
         self.assertEqual(512, encode["inputs"]["tile_size"])
         self.assertEqual(128, encode["inputs"]["overlap"])
-        self.assertEqual(64, encode["inputs"]["temporal_size"])
+        self.assertEqual(32, encode["inputs"]["temporal_size"])
         self.assertEqual(8, encode["inputs"]["temporal_overlap"])
         self.assertEqual(encode["inputs"]["tile_size"], decode["inputs"]["tile_size"])
         self.assertEqual(encode["inputs"]["overlap"], decode["inputs"]["overlap"])
 
-        resize = next(node for node in workflow.values() if node["class_type"] == "ResizeImageMaskNode")
+        resize = self.node(workflow, "#RESIZE_VIDEO")
         self.assertEqual("scale dimensions", resize["inputs"]["resize_type"])
         self.assertEqual(1920, resize["inputs"]["resize_type.width"])
         self.assertEqual(1080, resize["inputs"]["resize_type.height"])
 
-        self.assertEqual(["3", 0], workflow["4"]["inputs"]["resized_images"])
-        self.assertEqual(["2", 0], workflow["3"]["inputs"]["input"])
-        self.assertEqual(["2", 1], workflow["16"]["inputs"]["audio"])
-        self.assertEqual(["2", 2], workflow["16"]["inputs"]["fps"])
-        self.assertTrue(workflow["18"]["inputs"]["value"])
+        self.assertEqual(["66:57", 0], self.node(workflow, "#SEEDVR_PREPROCESS")["inputs"]["resized_images"])
+        self.assertEqual(["66:74", 0], resize["inputs"]["input"])
+        self.assertEqual(["66:74", 1], self.node(workflow, "#CREATE_VIDEO")["inputs"]["audio"])
+        self.assertEqual(["66:74", 2], self.node(workflow, "#CREATE_VIDEO")["inputs"]["fps"])
+        self.assertTrue(self.node(workflow, "#SPLIT_LATENT_BOOLEAN")["inputs"]["value"])
 
     def test_build_workflow_uses_patch_anchors_and_seedvr2_defaults(self):
         backend = ComfyUISeedVR2Backend(client=object())
@@ -57,13 +61,13 @@ class ComfyUISeedVR2BackendTests(unittest.TestCase):
             settings=SeedVR2RenderSettings(),
         )
 
-        self.assertEqual("feverslop/input/scene_0001.mp4", workflow["1"]["inputs"]["file"])
-        self.assertEqual(1920, workflow["3"]["inputs"]["resize_type.width"])
-        self.assertEqual(1080, workflow["3"]["inputs"]["resize_type.height"])
-        self.assertEqual("seedvr2_3b_int8_convrot.safetensors", workflow["8"]["inputs"]["unet_name"])
-        self.assertEqual(0.35, workflow["11"]["inputs"]["denoise"])
-        self.assertEqual(4, workflow["7"]["inputs"]["temporal_overlap"])
-        self.assertEqual("feverslop/seedvr2/scene_0001/pass_01", workflow["17"]["inputs"]["filename_prefix"])
+        self.assertEqual("feverslop/input/scene_0001.mp4", self.node(workflow, "#LOAD_VIDEO")["inputs"]["file"])
+        self.assertEqual(1920, self.node(workflow, "#RESIZE_VIDEO")["inputs"]["resize_type.width"])
+        self.assertEqual(1080, self.node(workflow, "#RESIZE_VIDEO")["inputs"]["resize_type.height"])
+        self.assertEqual("seedvr2_3b_int8_convrot.safetensors", self.node(workflow, "#SEEDVR_MODEL")["inputs"]["unet_name"])
+        self.assertEqual(0.35, self.node(workflow, "#SEEDVR_SAMPLER")["inputs"]["denoise"])
+        self.assertEqual(4, self.node(workflow, "#TEMPORAL_CHUNK")["inputs"]["temporal_overlap"])
+        self.assertEqual("feverslop/seedvr2/scene_0001/pass_01", self.node(workflow, "#SAVE_VIDEO")["inputs"]["filename_prefix"])
 
     def test_build_workflow_rejects_unsupported_color_correction(self):
         backend = ComfyUISeedVR2Backend(client=object())

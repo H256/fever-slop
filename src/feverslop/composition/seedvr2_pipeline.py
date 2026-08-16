@@ -28,6 +28,7 @@ class SeedVR2CompositionOptions:
     render_plan_path: str | Path
     backend: SeedVR2Backend | None = None
     probe_size: Callable[[Path], tuple[int, int]] | None = None
+    probe_duration: Callable[[Path], float | None] | None = None
     skip_existing: bool = True
     force_enabled: bool = False
     resolution_override: tuple[int, int] | None = None
@@ -43,6 +44,20 @@ def _probe_size(path: Path) -> tuple[int, int]:
     )
     stream = (json.loads(result.stdout).get("streams") or [])[0]
     return int(stream["width"]), int(stream["height"])
+
+
+def _probe_duration(path: Path) -> float | None:
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        value = float(result.stdout.strip())
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return None
+    return value if value >= 0 else None
 
 
 def _source_clip(layout: SceneArtifactLayout, scene_number: int) -> Path:
@@ -110,6 +125,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         workflow_path=Path(config.project_dir, config.upscale.workflow_path),
     )
     probe_size = options.probe_size or _probe_size
+    probe_duration = options.probe_duration or _probe_duration
     plan = json.loads(Path(options.render_plan_path).read_text(encoding="utf-8-sig"))
     outputs: list[Path] = []
     progress = SubStepProgress(options.reporter, "SeedVR2 scenes", len(plan), interval=1, verbose=True)
@@ -125,8 +141,10 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
             progress.update(scene_index, detail=f"scene {scene_number} skipped", force=True)
             continue
         source = _source_clip(layout, scene_number)
+        source_duration = probe_duration(source)
+        duration_suffix = f" ({source_duration:.2f}s)" if source_duration is not None else ""
         options.reporter.message(
-            f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} starting: source {source}[/cyan]"
+            f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} starting: source {source}{duration_suffix}[/cyan]"
         )
         source_size = probe_size(source)
         upscale = config.upscale
@@ -166,6 +184,8 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
             denoise=upscale.denoise,
             temporal_overlap=upscale.temporal_overlap,
             split_latent=upscale.split_latent,
+            vae_temporal_size=upscale.vae_temporal_size,
+            vae_temporal_overlap=upscale.vae_temporal_overlap,
             color_correction=upscale.color_correction,
             seed=upscale.seed,
             fps=config.video.fps,
@@ -205,6 +225,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         manifest = {
             "scene": scene_number,
             "source": str(source),
+            "source_duration_seconds": source_duration,
             "strategy": upscale.strategy,
             "profile": "identity",
             "settings": {
@@ -213,6 +234,8 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                 "denoise": settings.denoise,
                 "temporal_overlap": settings.temporal_overlap,
                 "split_latent": settings.split_latent,
+                "vae_temporal_size": settings.vae_temporal_size,
+                "vae_temporal_overlap": settings.vae_temporal_overlap,
                 "color_correction": settings.color_correction,
                 "seed": settings.seed,
             },

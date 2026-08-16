@@ -30,6 +30,8 @@ class UpscaleConfig:
     denoise: float = 0.35
     temporal_overlap: int = 4
     split_latent: bool = True
+    vae_temporal_size: int = 32
+    vae_temporal_overlap: int = 8
     color_correction: str = "lab"
     seed: int = 0
 
@@ -44,6 +46,10 @@ class UpscaleConfig:
             raise ValueError("upscale denoise must be between 0 and 1")
         if self.temporal_overlap < 0:
             raise ValueError("upscale temporal_overlap must not be negative")
+        if self.vae_temporal_size < 8:
+            raise ValueError("upscale vae_temporal_size must be at least 8")
+        if self.vae_temporal_overlap < 4 or self.vae_temporal_overlap > self.vae_temporal_size:
+            raise ValueError("upscale vae_temporal_overlap must be between 4 and vae_temporal_size")
         if self.color_correction not in {"lab", "wavelet", "adain", "none"}:
             raise ValueError("upscale color_correction must be lab, wavelet, adain, or none")
 
@@ -378,6 +384,8 @@ class ProjectConfig:
                 denoise=float(upscale_raw.get("denoise", 0.35)),
                 temporal_overlap=int(upscale_raw.get("temporal_overlap", 4)),
                 split_latent=bool(upscale_raw.get("split_latent", True)),
+                vae_temporal_size=int(upscale_raw.get("vae_temporal_size", 32)),
+                vae_temporal_overlap=int(upscale_raw.get("vae_temporal_overlap", 8)),
                 color_correction=str(upscale_raw.get("color_correction", "lab")),
                 seed=int(upscale_raw.get("seed", 0)),
             ),

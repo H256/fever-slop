@@ -106,9 +106,11 @@ class SeedVR2PipelineTests(unittest.TestCase):
                 render_plan_path=plan,
                 backend=FakeBackend(),
                 probe_size=lambda _path: (640, 360),
+                probe_duration=lambda _path: 7.83,
                 reporter=reporter,
             ))
 
+        self.assertTrue(any("source" in message and "7.83s" in message for message in reporter.messages))
         self.assertTrue(any("scene 1/1" in message and "starting" in message for message in reporter.messages))
         self.assertTrue(any("pass 1/2" in message and "complete" in message for message in reporter.messages))
         self.assertTrue(any("pass 2/2" in message and "complete" in message for message in reporter.messages))

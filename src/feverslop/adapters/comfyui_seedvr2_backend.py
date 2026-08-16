@@ -24,12 +24,18 @@ class SeedVR2RenderSettings:
     seed: int = 0
     fps: int = 24
     split_latent: bool = True
+    vae_temporal_size: int = 32
+    vae_temporal_overlap: int = 8
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.denoise <= 1.0:
             raise ValueError("denoise must be between 0 and 1")
         if self.temporal_overlap < 0:
             raise ValueError("temporal_overlap must not be negative")
+        if self.vae_temporal_size < 8:
+            raise ValueError("vae_temporal_size must be at least 8")
+        if self.vae_temporal_overlap < 4 or self.vae_temporal_overlap > self.vae_temporal_size:
+            raise ValueError("vae_temporal_overlap must be between 4 and vae_temporal_size")
         if self.color_correction not in {"lab", "wavelet", "adain", "none"}:
             raise ValueError("color_correction must be lab, wavelet, adain, or none")
 
@@ -62,11 +68,16 @@ class ComfyUISeedVR2Backend:
         workflow = json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
         patcher = WorkflowPatcher(workflow)
         patcher.set_input_by_title("#LOAD_VIDEO", "file", video_name)
+        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type", "scale dimensions")
         patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.width", width)
         patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.height", height)
+        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.crop", "disabled")
         patcher.set_input_by_title("#SEEDVR_MODEL", "unet_name", settings.model)
         patcher.set_input_by_title("#SEEDVR_VAE", "vae_name", settings.vae)
         patcher.set_input_by_title("#TEMPORAL_CHUNK", "temporal_overlap", settings.temporal_overlap)
+        for title in ("#VAE_ENCODE_TILED", "#VAE_DECODE_TILED"):
+            patcher.set_input_by_title(title, "temporal_size", settings.vae_temporal_size)
+            patcher.set_input_by_title(title, "temporal_overlap", settings.vae_temporal_overlap)
         patcher.set_input_by_title("#SPLIT_LATENT_BOOLEAN", "value", settings.split_latent)
         patcher.set_input_by_title("#SEEDVR_SAMPLER", "seed", settings.seed)
         patcher.set_input_by_title("#SEEDVR_SAMPLER", "denoise", settings.denoise)
