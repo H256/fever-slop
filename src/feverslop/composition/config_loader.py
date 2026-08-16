@@ -54,6 +54,7 @@ class PipelineRunResult:
     final_video_path: Path | None = None
     video_only_path: Path | None = None
     openshot_project_path: Path | None = None
+    timeline_project_path: Path | None = None
 
 
 @dataclass
@@ -73,6 +74,7 @@ class PipelineRunState:
     video_only_path: Path | None = None
     final_video_path: Path | None = None
     openshot_project_path: Path | None = None
+    timeline_project_path: Path | None = None
     comfyui_client: Any | None = None
 
 

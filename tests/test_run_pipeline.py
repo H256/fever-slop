@@ -146,6 +146,18 @@ class RunPipelinePathTests(unittest.TestCase):
 
         self.assertEqual(layout.references_plan, selected)
 
+    def test_timeline_export_stage_accepts_mlt_and_openshot_formats(self):
+        from feverslop.composition.arg_parser import build_arg_parser
+        from feverslop.composition.stage_runners import resolve_pipeline_stages
+
+        parser = build_arg_parser()
+        mlt_args = parser.parse_args(["--stage", "export_timeline", "--format", "mlt"])
+        openshot_args = parser.parse_args(["--stage", "export_timeline", "--format", "openshot"])
+
+        self.assertEqual(resolve_pipeline_stages(mlt_args), [PipelineStage.EXPORT_TIMELINE])
+        self.assertEqual(mlt_args.timeline_format, "mlt")
+        self.assertEqual(openshot_args.timeline_format, "openshot")
+
     @patch("feverslop.composition.stage_runners._run_render_plan_stage")
     @patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets")
     def test_reference_sheets_create_missing_intermediate_render_plan(

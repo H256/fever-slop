@@ -32,6 +32,7 @@ from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
 from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+from feverslop.application.mlt_exporter import export_render_plan_to_mlt
 from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
@@ -1560,7 +1561,7 @@ def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
     )
 
 
-def _run_openshot_export_stage(state: PipelineRunState) -> None:
+def _run_timeline_export_stage(state: PipelineRunState) -> None:
     from .config_loader import collect_render_plan_scene_clips
 
     config = ProjectConfig.load(state.context.project_config_path)
@@ -1571,23 +1572,31 @@ def _run_openshot_export_stage(state: PipelineRunState) -> None:
         layout=state.context.artifact_layout,
         prefer_facefix=not state.args.skip_facefix,
     )
-    output_path = state.context.project_output_dir / "openshot" / f"{state.context.project_file_stem}.osp"
-    console.print(f"OpenShot export: writing {len(clips)} rendered clips")
+    legacy_openshot_stage = PipelineStage.OPENSHOT_EXPORT.value in (getattr(state.args, "stages", None) or [])
+    export_format = "openshot" if legacy_openshot_stage else getattr(state.args, "timeline_format", "openshot")
+    extension = "mlt" if export_format == "mlt" else "osp"
+    output_dir_name = "timeline" if export_format == "mlt" else "openshot"
+    output_path = state.context.project_output_dir / output_dir_name / f"{state.context.project_file_stem}.{extension}"
+    console.print(f"Timeline export ({export_format}): writing {len(clips)} rendered clips")
 
     def report(completed: int, total: int, label: str) -> None:
-        console.print(f"[dim]OpenShot export: {completed}/{total} ({label})[/dim]")
+        console.print(f"[dim]Timeline export: {completed}/{total} ({label})[/dim]")
 
-    state.openshot_project_path = export_render_plan_to_openshot(
-        render_plan_path=state.plan_for_next_step,
-        clip_paths=clips,
-        audio_path=state.context.input_audio,
-        output_path=output_path,
-        width=video.width,
-        height=video.height,
-        fps=video.fps,
-        on_progress=report,
-    )
-    console.print(f"[green]OpenShot project written: {state.openshot_project_path}[/green]")
+    if export_format == "mlt":
+        state.timeline_project_path = export_render_plan_to_mlt(
+            render_plan_path=state.plan_for_next_step, clip_paths=clips,
+            audio_path=state.context.input_audio, output_path=output_path,
+            width=video.width, height=video.height, fps=video.fps,
+            project_name=state.context.project_file_stem,
+        )
+    else:
+        state.openshot_project_path = export_render_plan_to_openshot(
+            render_plan_path=state.plan_for_next_step, clip_paths=clips,
+            audio_path=state.context.input_audio, output_path=output_path,
+            width=video.width, height=video.height, fps=video.fps,
+            on_progress=report,
+        )
+    console.print(f"[green]Timeline project written: {output_path}[/green]")
 
 
 def _run_facefix_stage(state: PipelineRunState) -> None:
@@ -1678,7 +1687,8 @@ STAGE_RUNNERS = {
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: _run_diagnostic_scene_audio_concat_stage,
     PipelineStage.FACEFIX: _run_facefix_stage,
     PipelineStage.FACEFIX_CONCAT: _run_facefix_concat_stage,
-    PipelineStage.OPENSHOT_EXPORT: _run_openshot_export_stage,
+    PipelineStage.EXPORT_TIMELINE: _run_timeline_export_stage,
+    PipelineStage.OPENSHOT_EXPORT: _run_timeline_export_stage,
 }
 
 STAGE_LABELS = {
@@ -1704,6 +1714,7 @@ STAGE_LABELS = {
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: "Diagnostic scene-audio concat",
     PipelineStage.FACEFIX: "FaceFix postprocessing",
     PipelineStage.FACEFIX_CONCAT: "FaceFix final concat",
+    PipelineStage.EXPORT_TIMELINE: "Timeline export",
     PipelineStage.OPENSHOT_EXPORT: "OpenShot project export",
 }
 
@@ -1730,6 +1741,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         aliases = {
             PipelineStage.PREPARE_WORKFLOWS.value: PipelineStage.LTX_PREPARE_WORKFLOWS,
             PipelineStage.RENDER_SCENES.value: PipelineStage.LTX_RENDER_SCENES,
+            PipelineStage.EXPORT_TIMELINE.value: PipelineStage.EXPORT_TIMELINE,
         }
         return [aliases.get(stage, PipelineStage(stage)) for stage in selected]
 
@@ -1798,7 +1810,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         elif args.no_original_audio_mux:
             console.print("--no-original-audio-mux is deprecated; original-audio muxing is now always used for final concat.")
         if not getattr(args, "skip_openshot_export", False):
-            stages.append(PipelineStage.OPENSHOT_EXPORT)
+            stages.append(PipelineStage.EXPORT_TIMELINE)
         else:
             console.print("Skipping OpenShot project export.")
     elif not args.skip_facefix:
@@ -1814,7 +1826,7 @@ def _initial_render_plan(context: PipelineRunContext, args: argparse.Namespace, 
     legacy_base = render_dir / f"render_plan_{context.song_id}.json"
     legacy_references = render_dir / f"render_plan_{context.song_id}_refs.json"
     legacy_ingredients = render_dir / f"render_plan_{context.song_id}_ingredients.json"
-    if stages == [PipelineStage.OPENSHOT_EXPORT]:
+    if stages in ([PipelineStage.OPENSHOT_EXPORT], [PipelineStage.EXPORT_TIMELINE]):
         for plan_path, legacy_paths in (
             (context.render_plan, [legacy_base]),
             (context.reference_plan, [legacy_references]),

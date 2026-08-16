@@ -1,4 +1,5 @@
 import json
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 import tempfile
 import unittest
@@ -109,6 +110,164 @@ class OpenShotExporterTests(unittest.TestCase):
             )
 
             self.assertEqual(progress, [(1, 2, "scene 1"), (2, 2, "audio")])
+
+
+class MltExporterTests(unittest.TestCase):
+    def test_exports_ordered_video_and_original_audio_as_mlt_xml(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "render_plan.json"
+            plan.write_text(json.dumps([
+                {
+                    "scene": 1,
+                    "seed": 123,
+                    "duration_seconds": 1.5,
+                    "abs_start_seconds": 0.0,
+                    "metadata": {
+                        "base_concept": "A dwarf enters the cavern.",
+                        "camera_motion": "Slow dolly in.",
+                        "character_motion": "Raises the hammer.",
+                    },
+                },
+                {"scene": 2, "duration_seconds": 1.5, "abs_start_seconds": 1.5},
+            ]), encoding="utf-8")
+            clips = [root / "scene_0001.mp4", root / "scene_0002.mp4"]
+            audio = root / "dwarfventure.mp3"
+            for path in (*clips, audio):
+                path.touch()
+            output = root / "shotcut" / "timeline.mlt"
+
+            result = export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                audio_path=audio,
+                output_path=output,
+                width=1216,
+                height=672,
+                fps=24,
+                project_name="The Well of Youth",
+            )
+
+            self.assertEqual(result, output)
+            document = ET.parse(output)
+            root_element = document.getroot()
+            self.assertEqual(root_element.attrib["producer"], "main_bin")
+            self.assertIsNotNone(root_element.find("playlist[@id='main_bin']"))
+            self.assertIsNone(root_element.find("playlist[@id='main bin']"))
+            profile = root_element.find("profile")
+            self.assertEqual(profile.attrib["width"], "1216")
+            self.assertEqual(profile.attrib["height"], "672")
+            self.assertEqual(profile.attrib["frame_rate_num"], "24")
+            video_playlist = root_element.find("playlist[@id='playlist0']")
+            audio_playlist = root_element.find("playlist[@id='playlist1']")
+            children = list(root_element)
+            self.assertLess(
+                children.index(root_element.find("chain[@id='video_0001']")),
+                children.index(video_playlist),
+            )
+            self.assertLess(
+                children.index(root_element.find("chain[@id='audio_original']")),
+                children.index(audio_playlist),
+            )
+            self.assertEqual(
+                [entry.attrib["producer"] for entry in video_playlist.findall("entry")],
+                ["video_0001", "video_0002"],
+            )
+            self.assertEqual(audio_playlist.find("entry").attrib["producer"], "audio_original")
+            notes = root_element.find("property[@name='shotcut:projectNotes']").text
+            self.assertIn("Project: The Well of Youth", notes)
+            self.assertIn("Scenes: 2", notes)
+            self.assertIn("Profile: 1216x672 @ 24 fps", notes)
+            self.assertIn("Duration: 00:03", notes)
+            self.assertIn("Audio track: A1 - Original audio (dwarfventure.mp3)", notes)
+            self.assertEqual(
+                root_element.find("chain[@id='video_0001']/property[@name='shotcut:caption']").text,
+                "Scene 0001",
+            )
+            comment = root_element.find("chain[@id='video_0001']/property[@name='shotcut:comment']").text
+            self.assertIn("Story: A dwarf enters the cavern.", comment)
+            self.assertIn("Camera: Slow dolly in.", comment)
+            self.assertIn("Character: Raises the hammer.", comment)
+            self.assertIn("Seed: 123", comment)
+            self.assertIsNotNone(root_element.find("playlist[@id='background']"))
+            self.assertEqual(
+                root_element.find("tractor/track").attrib["producer"],
+                "background",
+            )
+            self.assertIsNone(root_element.find("tractor/multitrack"))
+            self.assertEqual(
+                [track.attrib["producer"] for track in root_element.findall("tractor/track")],
+                ["background", "playlist0", "playlist1"],
+            )
+            self.assertEqual(
+                root_element.find("tractor/track[@producer='playlist1']").attrib["hide"],
+                "video",
+            )
+
+    def test_preserves_gaps_from_absolute_render_plan_positions(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 2.0},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4"]
+            for clip in clips:
+                clip.touch()
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+            root_element = ET.parse(root / "timeline.mlt").getroot()
+            self.assertEqual(root_element.find("playlist[@id='playlist0']/blank").attrib["length"], "24")
+
+    def test_tolerates_one_frame_boundary_rounding_difference(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 23 / 24},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4"]
+            for clip in clips:
+                clip.touch()
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+    def test_rejects_mismatched_plan_and_clip_counts(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([{"scene": 1, "duration_seconds": 1.0}]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "one rendered clip"):
+                export_render_plan_to_mlt(
+                    render_plan_path=plan,
+                    clip_paths=[],
+                    output_path=root / "timeline.mlt",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
 
 
 if __name__ == "__main__":

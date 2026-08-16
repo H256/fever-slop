@@ -202,6 +202,9 @@ class ImportBoundaryTests(unittest.TestCase):
             # This application service intentionally materializes a filesystem
             # backed OpenShot project and therefore owns pathlib/os access.
             "openshot_exporter.py",
+            # This application service materializes an MLT XML project and
+            # therefore owns pathlib/os access.
+            "mlt_exporter.py",
             # This application service extracts frames and materializes the
             # generated sheet, so it intentionally owns filesystem access.
             "sequence_to_sheet.py",
