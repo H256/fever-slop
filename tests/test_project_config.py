@@ -7,6 +7,47 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
+    def test_upscale_config_defaults_to_conservative_seedvr2_3b_profile(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({"input_audio": "song.mp3"}), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertFalse(config.upscale.enabled)
+        self.assertEqual("seedvr2_3b_int8_convrot.safetensors", config.upscale.model)
+        self.assertEqual(0.35, config.upscale.denoise)
+        self.assertEqual(4, config.upscale.temporal_overlap)
+
+    def test_upscale_config_accepts_one_target_dimension(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "upscale": {"enabled": True, "target_width": 3840},
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual(3840, config.upscale.target_width)
+        self.assertIsNone(config.upscale.target_height)
+
+    def test_upscale_config_rejects_two_target_dimensions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "upscale": {"target_width": 3840, "target_height": 2160},
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "only one"):
+                ProjectConfig.load(config_path)
     def test_reference_images_resolution_defaults_to_video_resolution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
