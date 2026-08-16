@@ -3887,6 +3887,14 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIsInstance(generator, MovieReferenceSheetGenerator)
         self.assertIsInstance(generator.backend, ComfyUIImageBackend)
 
+    def test_movie_reference_generator_can_select_sequence_sheet_mode(self):
+        from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
+        from feverslop.studio.job_service import build_movie_reference_generator
+
+        generator = build_movie_reference_generator({"reference_generation": "sequence_sheet"})
+
+        self.assertIsInstance(generator.sequence_backend, ComfyUISequenceToSheetBackend)
+
     def test_movie_local_reference_generator_requires_explicit_dev_override(self):
         from feverslop.adapters.movie_references import LocalMovieImageBackend
         from feverslop.studio.job_service import build_movie_reference_generator
@@ -4172,6 +4180,50 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("1st panel head-and-shoulders closeup", backend.requests[0].prompt)
             self.assertIn("plain white seamless studio background", backend.requests[0].prompt)
             self.assertIn("no extra characters", backend.requests[0].prompt)
+
+    def test_movie_reference_generator_can_use_sequence_sheet_mode(self):
+        from feverslop.application.movie_references import MovieReferenceSheetGenerator
+        from feverslop.application.sequence_reference_pipeline import SequenceReferenceResult
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            manifest_path = temp / "movie" / "references" / "manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(
+                json.dumps({
+                    "actors": [{"id": "astronaut", "name": "Astronaut", "prompt": "a space explorer"}],
+                    "locations": [],
+                }),
+                encoding="utf-8",
+            )
+            generated = temp / "movie" / "references" / "actors" / "astronaut"
+            generated.mkdir(parents=True)
+            paths = {}
+            for name in ("anchor.png", "sequence.mp4", "contact-sheet.png", "sheet.png"):
+                path = generated / name
+                path.write_bytes(b"artifact")
+                paths[name] = path
+            fake_result = SequenceReferenceResult(
+                kind="character", asset_id="astronaut",
+                anchor_path=paths["anchor.png"], sequence_path=paths["sequence.mp4"],
+                contact_sheet_path=paths["contact-sheet.png"], sheet_path=paths["sheet.png"],
+                selected_frames=6,
+            )
+            with patch(
+                "feverslop.application.movie_references.SequenceReferencePipeline.generate",
+                return_value=fake_result,
+            ) as generate:
+                updated = MovieReferenceSheetGenerator(
+                    backend=FakeMovieImageBackend(),
+                    sequence_backend=object(),
+                ).generate(project_dir=temp)
+
+            manifest = json.loads(updated.read_text())
+            actor = manifest["actors"][0]
+            self.assertEqual("movie/references/actors/astronaut/sheet.png", actor["sheet_path"])
+            self.assertEqual("movie/references/actors/astronaut/sheet.png", actor["msr_sheet_path"])
+            self.assertEqual("movie/references/actors/astronaut/contact-sheet.png", actor["contact_sheet_path"])
+            generate.assert_called_once()
 
     def test_movie_reference_sync_adds_missing_render_plan_ids(self):
         from feverslop.studio.job_service import sync_movie_manifest_with_render_plan

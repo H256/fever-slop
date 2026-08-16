@@ -38,6 +38,22 @@ class GlobalLibraryDomainTests(unittest.TestCase):
         self.assertEqual(first.id, renamed.id)
         self.assertNotEqual(first.name, renamed.name)
 
+    def test_multiview_artifacts_round_trip_without_using_sheet_as_anchor(self):
+        look = AssetLook(
+            id="default",
+            name="Default",
+            anchor_image="looks/default/anchor.png",
+            sheet_image="looks/default/sheet.png",
+            sequence_video="looks/default/sequence.mp4",
+            selected_frames=("looks/default/frame_0001.png", "looks/default/frame_0002.png"),
+        )
+
+        restored = AssetLook.from_dict(look.to_dict())
+
+        self.assertEqual(look, restored)
+        self.assertEqual("looks/default/anchor.png", restored.anchor_image)
+        self.assertNotEqual(restored.anchor_image, restored.sheet_image)
+
 
 if __name__ == "__main__":
     unittest.main()

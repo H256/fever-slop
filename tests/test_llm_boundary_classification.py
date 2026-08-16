@@ -10,6 +10,9 @@ APPROVED_DIRECT_LLM_CALLS = {
     "src/feverslop/adapters/gemma4_startframe_validator.py": {
         "requests.post",
     },
+    "src/feverslop/application/orbitsheets_logic.py": {
+        "requests.post",
+    },
 }
 
 
