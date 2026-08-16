@@ -32,7 +32,12 @@ def export_render_plan_to_mlt(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    root = ET.Element("mlt", {"LC_NUMERIC": "C", "version": "7.0.0"})
+    root = ET.Element("mlt", {
+        "LC_NUMERIC": "C",
+        "version": "7.0.0",
+        "title": "Shotcut timeline export",
+        "producer": "main_bin",
+    })
     ET.SubElement(root, "profile", {
         "description": f"Custom {int(width)}x{int(height)} {int(fps)} fps",
         "width": str(int(width)),
@@ -48,7 +53,11 @@ def export_render_plan_to_mlt(
     })
 
     video_playlist = ET.SubElement(root, "playlist", {"id": "video"})
+    ET.SubElement(video_playlist, "property", {"name": "shotcut:video"}).text = "1"
+    ET.SubElement(video_playlist, "property", {"name": "shotcut:name"}).text = "V1"
     audio_playlist = ET.SubElement(root, "playlist", {"id": "audio"})
+    ET.SubElement(audio_playlist, "property", {"name": "shotcut:audio"}).text = "1"
+    ET.SubElement(audio_playlist, "property", {"name": "shotcut:name"}).text = "A1"
     total_frames = 0
     timeline_cursor = 0
 
@@ -106,14 +115,29 @@ def export_render_plan_to_mlt(
             "out": str(max(0, total_frames - 1)),
         })
 
-    main_bin = ET.SubElement(root, "playlist", {"id": "main bin"})
+    main_bin = ET.SubElement(root, "playlist", {"id": "main_bin"})
     ET.SubElement(main_bin, "property", {"name": "xml_retain"}).text = "1"
+    for producer_id in [f"video_{index:04}" for index in range(1, len(plan) + 1)]:
+        ET.SubElement(main_bin, "entry", {"producer": producer_id})
+    if audio_path is not None:
+        ET.SubElement(main_bin, "entry", {"producer": "audio_original"})
+
+    background_producer = ET.SubElement(root, "producer", {"id": "black", "in": "0", "out": str(max(0, total_frames - 1))})
+    ET.SubElement(background_producer, "property", {"name": "mlt_service"}).text = "color"
+    ET.SubElement(background_producer, "property", {"name": "resource"}).text = "black"
+    background = ET.SubElement(root, "playlist", {"id": "background"})
+    ET.SubElement(background, "property", {"name": "shotcut:video"}).text = "1"
+    ET.SubElement(background, "property", {"name": "shotcut:name"}).text = "Background"
+    ET.SubElement(background, "entry", {"producer": "black", "in": "0", "out": str(max(0, total_frames - 1))})
+
     tractor = ET.SubElement(root, "tractor", {
         "id": "main",
         "in": "0",
         "out": str(max(0, total_frames - 1)),
     })
+    ET.SubElement(tractor, "property", {"name": "shotcut"}).text = "1"
     multitrack = ET.SubElement(tractor, "multitrack", {"id": "multitrack0"})
+    ET.SubElement(multitrack, "track", {"producer": "background"})
     ET.SubElement(multitrack, "track", {"producer": "video"})
     if audio_path is not None:
         ET.SubElement(multitrack, "track", {"producer": "audio"})

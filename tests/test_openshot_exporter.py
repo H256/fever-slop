@@ -142,6 +142,9 @@ class MltExporterTests(unittest.TestCase):
             self.assertEqual(result, output)
             document = ET.parse(output)
             root_element = document.getroot()
+            self.assertEqual(root_element.attrib["producer"], "main_bin")
+            self.assertIsNotNone(root_element.find("playlist[@id='main_bin']"))
+            self.assertIsNone(root_element.find("playlist[@id='main bin']"))
             profile = root_element.find("profile")
             self.assertEqual(profile.attrib["width"], "1216")
             self.assertEqual(profile.attrib["height"], "672")
@@ -153,6 +156,11 @@ class MltExporterTests(unittest.TestCase):
                 ["video_0001", "video_0002"],
             )
             self.assertEqual(audio_playlist.find("entry").attrib["producer"], "audio_original")
+            self.assertIsNotNone(root_element.find("playlist[@id='background']"))
+            self.assertEqual(
+                root_element.find("tractor/multitrack/track").attrib["producer"],
+                "background",
+            )
             self.assertEqual(
                 root_element.find("tractor/multitrack/track[@producer='audio']").attrib["producer"],
                 "audio",
