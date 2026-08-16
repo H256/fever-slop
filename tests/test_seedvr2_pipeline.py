@@ -19,6 +19,14 @@ class FakeBackend:
         return output
 
 
+class RecordingReporter:
+    def __init__(self):
+        self.messages = []
+
+    def message(self, text):
+        self.messages.append(text)
+
+
 class SeedVR2PipelineTests(unittest.TestCase):
     def test_run_seedvr2_creates_multi_pass_artifacts_and_logs_settings(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -59,7 +67,7 @@ class SeedVR2PipelineTests(unittest.TestCase):
             root = Path(temp_dir)
             (root / "song.mp3").write_bytes(b"")
             config = root / "config.json"
-            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True}}), encoding="utf-8")
+            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True, "target_width": 2560}}), encoding="utf-8")
             layout = SceneArtifactLayout(root)
             source = layout.scene_final_video(1)
             final = layout.scene_upscaled_video(1)
@@ -78,3 +86,52 @@ class SeedVR2PipelineTests(unittest.TestCase):
             ))
 
         self.assertEqual([], backend.calls)
+
+    def test_run_seedvr2_reports_each_scene_and_pass(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.mp3").write_bytes(b"")
+            config = root / "config.json"
+            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True, "target_width": 2560}}), encoding="utf-8")
+            layout = SceneArtifactLayout(root)
+            source = layout.scene_final_video(1)
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b"video")
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            reporter = RecordingReporter()
+
+            run_seedvr2(SeedVR2CompositionOptions(
+                project_config_path=config,
+                render_plan_path=plan,
+                backend=FakeBackend(),
+                probe_size=lambda _path: (640, 360),
+                reporter=reporter,
+            ))
+
+        self.assertTrue(any("scene 1/1" in message and "starting" in message for message in reporter.messages))
+        self.assertTrue(any("pass 1/2" in message and "complete" in message for message in reporter.messages))
+        self.assertTrue(any("pass 2/2" in message and "complete" in message for message in reporter.messages))
+        self.assertTrue(any("scene 1/1" in message and "complete" in message for message in reporter.messages))
+
+    def test_run_seedvr2_finds_legacy_ltx_scene_clip(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.mp3").write_bytes(b"")
+            config = root / "config.json"
+            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True}}), encoding="utf-8")
+            legacy_source = root / "output" / "movie" / "ltx_msr" / "scene_0001.mp4"
+            legacy_source.parent.mkdir(parents=True, exist_ok=True)
+            legacy_source.write_bytes(b"video")
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            backend = FakeBackend()
+
+            run_seedvr2(SeedVR2CompositionOptions(
+                project_config_path=config,
+                render_plan_path=plan,
+                backend=backend,
+                probe_size=lambda _path: (640, 360),
+            ))
+
+        self.assertEqual(legacy_source, backend.calls[0]["source_video"])

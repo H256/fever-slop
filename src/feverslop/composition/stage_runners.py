@@ -1579,6 +1579,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
         client=state.comfyui_client,
         workflow_path=workflow_path,
     )
+    reporter = ConsoleReporter(console)
     run_seedvr2(SeedVR2CompositionOptions(
         project_config_path=state.context.project_config_path,
         render_plan_path=state.plan_for_next_step,
@@ -1590,6 +1591,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
             if getattr(state.args, "upscale_resolution", None) is not None
             else None
         ),
+        reporter=reporter,
     ))
     console.print("[green]SeedVR2 upscale artifacts ready.[/green]")
 

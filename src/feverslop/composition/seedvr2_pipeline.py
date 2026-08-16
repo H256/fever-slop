@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 import json
 from pathlib import Path
 import subprocess
 import shutil
-from typing import Callable, Protocol
-from dataclasses import replace
+from typing import Any, Callable, Protocol
 
 from feverslop.adapters.comfyui_seedvr2_backend import (
     ComfyUISeedVR2Backend,
@@ -15,6 +14,8 @@ from feverslop.adapters.comfyui_seedvr2_backend import (
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.seedvr2 import SeedVR2Pass, plan_seedvr2_passes
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.adapters.reporting import NullReporter
+from feverslop.utils.sub_step_progress import SubStepProgress
 
 
 class SeedVR2Backend(Protocol):
@@ -30,6 +31,7 @@ class SeedVR2CompositionOptions:
     skip_existing: bool = True
     force_enabled: bool = False
     resolution_override: tuple[int, int] | None = None
+    reporter: Any = field(default_factory=NullReporter)
 
 
 def _probe_size(path: Path) -> tuple[int, int]:
@@ -44,10 +46,32 @@ def _probe_size(path: Path) -> tuple[int, int]:
 
 
 def _source_clip(layout: SceneArtifactLayout, scene_number: int) -> Path:
-    for candidate in (layout.scene_final_facefix_video(scene_number), layout.scene_final_video(scene_number)):
+    candidates = [layout.scene_final_facefix_video(scene_number), layout.scene_final_video(scene_number)]
+    legacy_dirs = []
+    for root in (layout.render_dir, layout.output_dir / "movie"):
+        if not root.is_dir():
+            continue
+        legacy_dirs.append(root)
+        legacy_dirs.extend(
+            directory
+            for directory in sorted(root.iterdir())
+            if directory.is_dir() and directory.name != layout.scenes_dir.name
+        )
+    for directory in legacy_dirs:
+        candidates.extend((
+            directory / "facefix" / f"scene_{scene_number:04d}.mp4",
+            directory / "facefix" / "final" / f"scene_{scene_number:04d}.mp4",
+        ))
+    for directory in legacy_dirs:
+        candidates.extend((
+            directory / f"scene_{scene_number:04d}.mp4",
+            directory / "final" / f"scene_{scene_number:04d}.mp4",
+        ))
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise FileNotFoundError(f"No final or FaceFix clip found for scene {scene_number}: {layout.scene_dir(scene_number)}")
+    searched = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(f"No final or FaceFix clip found for scene {scene_number}; searched: {searched}")
 
 
 def _pass_path(layout: SceneArtifactLayout, scene_number: int, pass_number: int, final: bool) -> Path:
@@ -88,13 +112,22 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     probe_size = options.probe_size or _probe_size
     plan = json.loads(Path(options.render_plan_path).read_text(encoding="utf-8-sig"))
     outputs: list[Path] = []
-    for entry in plan:
+    progress = SubStepProgress(options.reporter, "SeedVR2 scenes", len(plan), interval=1, verbose=True)
+    progress.update(0, detail="starting", force=True)
+    for scene_index, entry in enumerate(plan, start=1):
         scene_number = int(entry.get("scene") or entry.get("scene_number"))
         final_output = layout.scene_upscaled_video(scene_number)
         if options.skip_existing and final_output.is_file():
+            options.reporter.message(
+                f"[yellow]SeedVR2 scene {scene_index}/{len(plan)} skipped: existing {final_output}[/yellow]"
+            )
             outputs.append(final_output)
+            progress.update(scene_index, detail=f"scene {scene_number} skipped", force=True)
             continue
         source = _source_clip(layout, scene_number)
+        options.reporter.message(
+            f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} starting: source {source}[/cyan]"
+        )
         source_size = probe_size(source)
         upscale = config.upscale
         max_pass_scale = upscale.max_pass_scale
@@ -118,7 +151,11 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         if not passes:
             final_output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, final_output)
+            options.reporter.message(
+                f"[green]SeedVR2 scene {scene_index}/{len(plan)} complete: copied source (target already matched)[/green]"
+            )
             outputs.append(final_output)
+            progress.update(scene_index, detail=f"scene {scene_number} complete", force=True)
             continue
         scene_dir = layout.scene_dir(scene_number)
         current = source
@@ -137,17 +174,33 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
             if options.skip_existing and output.is_file():
                 current = output
                 records.append(_pass_record(pass_spec, output, pass_number))
+                options.reporter.message(
+                    f"[yellow]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} skipped: existing {output}[/yellow]"
+                )
                 continue
-            rendered = backend.render(
-                source_video=current,
-                output_path=output,
-                output_size=pass_spec.output_size,
-                scene_number=scene_number,
-                pass_number=pass_number,
-                settings=settings,
+            options.reporter.message(
+                f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} starting: "
+                f"{pass_spec.input_size[0]}x{pass_spec.input_size[1]} -> {pass_spec.output_size[0]}x{pass_spec.output_size[1]}[/cyan]"
             )
+            try:
+                rendered = backend.render(
+                    source_video=current,
+                    output_path=output,
+                    output_size=pass_spec.output_size,
+                    scene_number=scene_number,
+                    pass_number=pass_number,
+                    settings=settings,
+                )
+            except Exception as exc:
+                options.reporter.message(
+                    f"[red]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} failed: {exc}[/red]"
+                )
+                raise
             current = Path(rendered)
             records.append(_pass_record(pass_spec, current, pass_number))
+            options.reporter.message(
+                f"[green]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} complete: {current}[/green]"
+            )
         manifest = {
             "scene": scene_number,
             "source": str(source),
@@ -166,6 +219,10 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         scene_dir.mkdir(parents=True, exist_ok=True)
         (scene_dir / "upscale_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         outputs.append(final_output)
+        options.reporter.message(
+            f"[green]SeedVR2 scene {scene_index}/{len(plan)} complete: {final_output}[/green]"
+        )
+        progress.update(scene_index, detail=f"scene {scene_number} complete", force=True)
     return outputs
 
 
