@@ -568,9 +568,9 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_references_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v"):
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
         raise ValueError(
-            "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
+            "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v"
         )
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
@@ -591,14 +591,18 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         str(state.context.references_dir),
         "--view-set",
         "msr",
+        "--reference-generation",
+        str(getattr(state.args, "reference_generation", "image_views")),
+        "--sequence-workflow",
+        str(getattr(state.args, "sequence_to_sheet_workflow", "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json")),
     ])
     render_reference_bible(reference_args)
 
 
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v"):
+    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
         raise ValueError(
-            "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, or minimax-h3-r2v"
+            "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v"
         )
     if not state.plan_for_next_step.is_file():
         console.print(

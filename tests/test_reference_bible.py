@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -27,6 +28,42 @@ class FakeImageBackend:
 
 
 class ReferenceBibleTests(unittest.TestCase):
+    def test_generator_can_publish_sequence_sheet_artifacts(self):
+        from feverslop.application.sequence_reference_pipeline import SequenceReferenceResult
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "output" / "references"
+            actor_dir = output_dir / "actors" / "singer"
+            actor_dir.mkdir(parents=True)
+            files = {}
+            for name in ("anchor.png", "sequence.mp4", "contact-sheet.png", "sheet.png"):
+                path = actor_dir / name
+                path.write_bytes(b"artifact")
+                files[name] = path
+            result = SequenceReferenceResult(
+                kind="character", asset_id="singer",
+                anchor_path=files["anchor.png"], sequence_path=files["sequence.mp4"],
+                contact_sheet_path=files["contact-sheet.png"], sheet_path=files["sheet.png"],
+                selected_frames=6,
+            )
+            generator = ReferenceBibleGenerator(
+                backend=FakeImageBackend(),
+                output_dir=output_dir,
+                sequence_backend=object(),
+            )
+            with patch(
+                "feverslop.application.reference_bible.SequenceReferencePipeline.generate",
+                return_value=result,
+            ):
+                manifest_path = generator.generate_subject_bible(
+                    ReferenceSubject(id="singer", name="Mara", image_prompt="astronaut")
+                )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual("output/references/actors/singer/sheet.png", manifest["sheet_path"])
+            self.assertEqual("output/references/actors/singer/contact-sheet.png", manifest["contact_sheet_path"])
+            self.assertEqual("output/references/actors/singer/sheet.png", manifest["msr_input_path"])
+
     def test_generator_writes_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_dir = Path(temp_dir) / "project"

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
+from feverslop.application.sequence_reference_pipeline import SequenceReferencePipeline, SequenceReferenceRequest
 from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
@@ -18,11 +20,13 @@ class MovieReferenceSheetGenerator:
         edit_backend=None,
         hero_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
         edit_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
+        sequence_backend=None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
         self.hero_anchors = hero_anchors
         self.edit_anchors = edit_anchors
+        self.sequence_backend = sequence_backend
 
     def generate(self, *, project_dir: Path) -> Path:
         project_dir = Path(project_dir)
@@ -52,18 +56,100 @@ class MovieReferenceSheetGenerator:
             actor["visual_description"] = subject.visual_description
             actor["image_prompt"] = build_movie_actor_reference_prompt(subject.name, subject.visual_description)
             actor["prompt"] = actor["image_prompt"]
-            path = generator.generate_subject_bible(subject)
+            path = (
+                self._generate_sequence_subject(subject, output_dir)
+                if self.sequence_backend is not None
+                else generator.generate_subject_bible(subject)
+            )
             actor_manifest = json.loads(path.read_text(encoding="utf-8"))
             actor["msr_sheet_path"] = _project_reference_path(actor_manifest.get("msr_input_path") or actor_manifest.get("sheet_path") or "")
             actor["sheet_path"] = _project_reference_path(actor_manifest.get("sheet_path") or "")
+            if actor_manifest.get("contact_sheet_path"):
+                actor["contact_sheet_path"] = _project_reference_path(actor_manifest["contact_sheet_path"])
+            if actor_manifest.get("sequence_path"):
+                actor["sequence_path"] = _project_reference_path(actor_manifest["sequence_path"])
 
         for location in manifest.get("locations") or []:
-            path = generator.generate_location_bible(_location_from_manifest(location))
+            location_model = _location_from_manifest(location)
+            path = (
+                self._generate_sequence_location(location_model, output_dir)
+                if self.sequence_backend is not None
+                else generator.generate_location_bible(location_model)
+            )
             location_manifest = json.loads(path.read_text(encoding="utf-8"))
             location["msr_sheet_path"] = _project_reference_path(location_manifest.get("msr_background_path") or location_manifest.get("sheet_path") or "")
             location["sheet_path"] = _project_reference_path(location_manifest.get("sheet_path") or "")
+            if location_manifest.get("contact_sheet_path"):
+                location["contact_sheet_path"] = _project_reference_path(location_manifest["contact_sheet_path"])
+            if location_manifest.get("sequence_path"):
+                location["sequence_path"] = _project_reference_path(location_manifest["sequence_path"])
 
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return manifest_path
+
+    def _generate_sequence_subject(self, subject: ReferenceSubject, output_dir: Path) -> Path:
+        result = SequenceReferencePipeline(
+            anchor_backend=self.backend,
+            sequence_backend=self.sequence_backend,
+        ).generate(
+            SequenceReferenceRequest(
+                kind="character",
+                asset_id=subject.id,
+                name=subject.name,
+                description=subject.visual_description or subject.name,
+                image_prompt=subject.image_prompt,
+                output_dir=output_dir,
+            )
+        )
+        return self._write_sequence_manifest(
+            result,
+            output_dir / "actors" / subject.id,
+            output_root=output_dir,
+            msr_path=result.sheet_path,
+            background_path=None,
+            subject=subject,
+        )
+
+    def _generate_sequence_location(self, location: ReferenceLocation, output_dir: Path) -> Path:
+        result = SequenceReferencePipeline(
+            anchor_backend=self.backend,
+            sequence_backend=self.sequence_backend,
+        ).generate(
+            SequenceReferenceRequest(
+                kind="location",
+                asset_id=location.id,
+                name=location.name,
+                description=location.visual_description or location.name,
+                image_prompt=location.image_prompt,
+                output_dir=output_dir,
+            )
+        )
+        return self._write_sequence_manifest(
+            result,
+            output_dir / "locations" / location.id,
+            output_root=output_dir,
+            msr_path=result.anchor_path,
+            background_path=result.anchor_path,
+            subject=location,
+        )
+
+    def _write_sequence_manifest(self, result, directory: Path, *, output_root: Path, msr_path: Path, background_path: Path | None, subject) -> Path:
+        def artifact_path(path: Path) -> str:
+            return path.relative_to(output_root).as_posix()
+
+        manifest = {
+            **asdict(subject),
+            "kind": result.kind,
+            "anchor_path": artifact_path(result.anchor_path),
+            "sequence_path": artifact_path(result.sequence_path),
+            "contact_sheet_path": artifact_path(result.contact_sheet_path),
+            "sheet_path": artifact_path(result.sheet_path),
+            "msr_input_path": artifact_path(msr_path),
+        }
+        if background_path is not None:
+            manifest["msr_background_path"] = artifact_path(background_path)
+        manifest_path = directory / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         return manifest_path
 
 

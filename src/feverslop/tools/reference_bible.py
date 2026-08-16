@@ -10,6 +10,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
 from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
@@ -36,6 +37,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="msr",
         help="msr renders direct 4-panel actor sheets and hero location references; full renders hero plus edit views and sheets.",
     )
+    parser.add_argument("--reference-generation", choices=["image_views", "sequence_sheet"], default="image_views")
+    parser.add_argument("--sequence-workflow", default="workflows/sequence_to_sheet_minimax_h3_i2va_v1.json")
     parser.add_argument("--only-kind", choices=["actor", "location"], default=None)
     parser.add_argument("--only-id", default=None)
     return parser
@@ -126,6 +129,14 @@ def run(args: argparse.Namespace) -> list[Path]:
         output_dir=output_dir,
         model_resolver=model_resolver,
     )
+    sequence_backend = None
+    if args.reference_generation == "sequence_sheet":
+        sequence_backend = ComfyUISequenceToSheetBackend(
+            client=client,
+            workflow_path=args.sequence_workflow,
+            backend="minimax",
+            model_resolver=model_resolver,
+        )
     hero_anchors = WorkflowAnchorConfig(positive_prompt_title=args.hero_positive_title)
     edit_anchors = WorkflowAnchorConfig(
         positive_prompt_title=args.edit_positive_title,
@@ -146,7 +157,9 @@ def run(args: argparse.Namespace) -> list[Path]:
         )
 
     actor_view_names, location_view_names = resolve_view_names(args.view_set)
-    total_views = (len(subjects) * len(actor_view_names)) + (len(locations) * len(location_view_names))
+    actor_work = 1 if sequence_backend is not None else len(actor_view_names)
+    location_work = 1 if sequence_backend is not None else len(location_view_names)
+    total_views = (len(subjects) * actor_work) + (len(locations) * location_work)
     console.print(
         "[bold cyan]Reference Bible render plan[/bold cyan]\n"
         f"Project: [cyan]{project_config.project_name}[/cyan]\n"
@@ -200,25 +213,26 @@ def run(args: argparse.Namespace) -> list[Path]:
             location_view_names=location_view_names,
             msr_sheet_size=(project_config.video.width, project_config.video.height),
             reference_image_size=project_config.reference_images.resolve(project_config.video),
+            sequence_backend=sequence_backend,
         )
 
         for subject in subjects:
             current_task_id = progress.add_task(
                 f"Actor {subject.id}",
-                total=len(actor_view_names),
+                total=actor_work,
             )
             manifest = generator.generate_subject_bible(subject)
             manifests.append(manifest)
-            progress.update(current_task_id, completed=len(actor_view_names))
+            progress.update(current_task_id, completed=actor_work)
             console.print(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
         for location in locations:
             current_task_id = progress.add_task(
                 f"Location {location.id}",
-                total=len(location_view_names),
+                total=location_work,
             )
             manifest = generator.generate_location_bible(location)
             manifests.append(manifest)
-            progress.update(current_task_id, completed=len(location_view_names))
+            progress.update(current_task_id, completed=location_work)
             console.print(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
         current_task_id = None
     return manifests

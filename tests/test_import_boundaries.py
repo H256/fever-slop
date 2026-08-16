@@ -205,6 +205,12 @@ class ImportBoundaryTests(unittest.TestCase):
             # This application service materializes an MLT XML project and
             # therefore owns pathlib/os access.
             "mlt_exporter.py",
+            # This application service extracts frames and materializes the
+            # generated sheet, so it intentionally owns filesystem access.
+            "sequence_to_sheet.py",
+            # This application service owns the anchor/sequence filesystem
+            # lifecycle and delegates sheet extraction to sequence_to_sheet.
+            "sequence_reference_pipeline.py",
         }
         forbidden_roots = {"pathlib", "os", "subprocess", "PySide6"}
         offenders = []
