@@ -7,12 +7,58 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from feverslop.domain.global_library import AssetKind
 
 
 class AnchorKind(StrEnum):
     SINGLE_VIEW = "single_view"
     SHEET = "sheet"
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledReferenceSheetPlan:
+    kind: str
+    view_count: int
+    view_labels: tuple[str, ...]
+    framing: str
+    coverage: str
+    rotation: str
+    backdrop: str
+    duration_seconds: float
+    anchor_rule: str
+    identity_constraints: str
+    negative_constraints: str
+
+    def to_prompt_payload(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "view_count": self.view_count,
+            "view_labels": list(self.view_labels),
+            "framing": self.framing,
+            "coverage": self.coverage,
+            "rotation": self.rotation,
+            "backdrop": self.backdrop,
+            "duration_seconds": self.duration_seconds,
+            "anchor_rule": self.anchor_rule,
+            "identity_constraints": self.identity_constraints,
+            "negative_constraints": self.negative_constraints,
+        }
+
+
+class ReferenceSheetPlan(BaseModel):
+    kind: str
+    view_count: int = 0
+    view_labels: list[str] = Field(default_factory=list)
+    framing: str = ""
+    coverage: str = ""
+    rotation: str = ""
+    backdrop: str = ""
+    duration_seconds: float = 0.0
+    anchor_rule: str = ""
+    identity_constraints: list[str] = Field(default_factory=list)
+    negative_constraints: list[str] = Field(default_factory=list)
 
 
 def _text(value: Any, field_name: str, *, required: bool = True) -> str:

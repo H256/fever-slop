@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
 import shutil
 import tempfile
 from typing import Any
 
+from feverslop.application.reference_sheet_planning import (
+    DeterministicReferenceSheetPlanner,
+    compile_reference_sheet_plan,
+)
 from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 from feverslop.application.sequence_to_sheet import (
     compose_contact_sheet,
@@ -29,6 +35,7 @@ class SequenceReferenceRequest:
     image_prompt: str = ""
     seed: int = 0
     frames: int = 124
+    asset_context: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,14 +47,24 @@ class SequenceReferenceResult:
     contact_sheet_path: Path
     sheet_path: Path
     selected_frames: int
+    planning_profile: str = "reference-sheet-from-sequence/v1"
+    prompt_revision: str = "reference-sheet-compiler/v1"
+    planner_source: str = "deterministic"
+    fallback_reason: str | None = None
+    semantic_plan_hash: str = ""
+    prompt_hash: str = ""
+    workflow_profile: str = ""
+    seed: int = 0
+    frames: int = 124
 
 
 class SequenceReferencePipeline:
     """Generate a reusable character/location reference from one anchor."""
 
-    def __init__(self, *, anchor_backend: Any, sequence_backend: Any):
+    def __init__(self, *, anchor_backend: Any, sequence_backend: Any, planner: Any | None = None):
         self.anchor_backend = anchor_backend
         self.sequence_backend = sequence_backend
+        self.planner = planner or DeterministicReferenceSheetPlanner()
 
     def generate(self, request: SequenceReferenceRequest) -> SequenceReferenceResult:
         kind = request.kind.strip().lower()
@@ -78,12 +95,26 @@ class SequenceReferencePipeline:
             if not anchor.is_file():
                 raise FileNotFoundError(f"anchor backend did not create an image: {anchor}")
 
-            prompt = self.sequence_backend.build_sheet_prompt(
-                request.description,
+            semantic_plan = self.planner.plan(
                 kind=kind,
-                shots=view_count,
+                description=request.description,
+                asset_context=dict(request.asset_context or {}),
+            )
+            compiled_plan = compile_reference_sheet_plan(
+                semantic_plan,
+                kind=kind,
+                description=request.description,
                 frames=request.frames,
             )
+            if hasattr(self.sequence_backend, "build_sheet_prompt_from_plan"):
+                prompt = self.sequence_backend.build_sheet_prompt_from_plan(compiled_plan)
+            else:
+                prompt = self.sequence_backend.build_sheet_prompt(
+                    request.description,
+                    kind=kind,
+                    shots=view_count,
+                    frames=request.frames,
+                )
             sequence = staging_dir / "sequence.mp4"
             rendered = self.sequence_backend.render(
                 anchor_images=[anchor],
@@ -95,6 +126,10 @@ class SequenceReferencePipeline:
             sequence = Path(rendered)
             if not sequence.is_file():
                 raise FileNotFoundError(f"sequence backend did not create a video: {sequence}")
+            semantic_plan_hash = hashlib.sha256(
+                json.dumps(semantic_plan.model_dump() if hasattr(semantic_plan, "model_dump") else semantic_plan, sort_keys=True).encode()
+            ).hexdigest()
+            prompt_hash = hashlib.sha256(prompt.prompt.encode()).hexdigest()
 
             frames_dir = staging_dir / "frames"
             candidates = extract_video_frames(
@@ -150,6 +185,15 @@ class SequenceReferencePipeline:
                 contact_sheet_path=final_dir / "contact-sheet.png",
                 sheet_path=final_dir / "sheet.png",
                 selected_frames=len(selected),
+                planning_profile="reference-sheet-from-sequence/v1",
+                prompt_revision="reference-sheet-compiler/v1",
+                planner_source=getattr(self.planner, "source", "deterministic"),
+                fallback_reason=getattr(self.planner, "fallback_reason", None),
+                semantic_plan_hash=semantic_plan_hash,
+                prompt_hash=prompt_hash,
+                workflow_profile=str(getattr(getattr(self.sequence_backend, "profile", None), "workflow_filename", "")),
+                seed=request.seed,
+                frames=request.frames,
             )
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)

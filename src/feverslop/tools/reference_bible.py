@@ -12,6 +12,8 @@ from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
 from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
 from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
+from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
+from feverslop.adapters.llm_client import LocalOpenAIClient
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
@@ -130,12 +132,26 @@ def run(args: argparse.Namespace) -> list[Path]:
         model_resolver=model_resolver,
     )
     sequence_backend = None
+    sequence_planner = None
     if args.reference_generation == "sequence_sheet":
         sequence_backend = ComfyUISequenceToSheetBackend(
             client=client,
             workflow_path=args.sequence_workflow,
             backend="minimax",
             model_resolver=model_resolver,
+        )
+        sequence_planner = ReferenceSheetPlanner(
+            llm=LocalOpenAIClient(
+                base_url=app_config.llm.base_url,
+                api_key=app_config.llm.api_key,
+                model=app_config.llm.model_for("structured"),
+                temperature=app_config.llm.temperature,
+                dspy_temperature=app_config.llm.dspy_temperature,
+                max_tokens=app_config.llm.max_tokens,
+                request_timeout_seconds=app_config.llm.request_timeout_seconds,
+                dspy_cache=app_config.llm.dspy_cache,
+                max_concurrent_requests=app_config.llm.max_concurrent_requests,
+            )
         )
     hero_anchors = WorkflowAnchorConfig(positive_prompt_title=args.hero_positive_title)
     edit_anchors = WorkflowAnchorConfig(
@@ -214,6 +230,7 @@ def run(args: argparse.Namespace) -> list[Path]:
             msr_sheet_size=(project_config.video.width, project_config.video.height),
             reference_image_size=project_config.reference_images.resolve(project_config.video),
             sequence_backend=sequence_backend,
+            sequence_planner=sequence_planner,
         )
 
         for subject in subjects:

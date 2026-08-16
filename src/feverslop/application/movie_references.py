@@ -21,12 +21,14 @@ class MovieReferenceSheetGenerator:
         hero_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
         edit_anchors: WorkflowAnchorConfig = WorkflowAnchorConfig(),
         sequence_backend=None,
+        sequence_planner=None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
         self.hero_anchors = hero_anchors
         self.edit_anchors = edit_anchors
         self.sequence_backend = sequence_backend
+        self.sequence_planner = sequence_planner
 
     def generate(self, *, project_dir: Path) -> Path:
         project_dir = Path(project_dir)
@@ -68,6 +70,10 @@ class MovieReferenceSheetGenerator:
                 actor["contact_sheet_path"] = _project_reference_path(actor_manifest["contact_sheet_path"])
             if actor_manifest.get("sequence_path"):
                 actor["sequence_path"] = _project_reference_path(actor_manifest["sequence_path"])
+            if actor_manifest.get("planning_profile"):
+                actor["planning_profile"] = actor_manifest["planning_profile"]
+            if actor_manifest.get("prompt_revision"):
+                actor["prompt_revision"] = actor_manifest["prompt_revision"]
 
         for location in manifest.get("locations") or []:
             location_model = _location_from_manifest(location)
@@ -83,6 +89,10 @@ class MovieReferenceSheetGenerator:
                 location["contact_sheet_path"] = _project_reference_path(location_manifest["contact_sheet_path"])
             if location_manifest.get("sequence_path"):
                 location["sequence_path"] = _project_reference_path(location_manifest["sequence_path"])
+            if location_manifest.get("planning_profile"):
+                location["planning_profile"] = location_manifest["planning_profile"]
+            if location_manifest.get("prompt_revision"):
+                location["prompt_revision"] = location_manifest["prompt_revision"]
 
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return manifest_path
@@ -91,6 +101,7 @@ class MovieReferenceSheetGenerator:
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
+            planner=self.sequence_planner,
         ).generate(
             SequenceReferenceRequest(
                 kind="character",
@@ -98,6 +109,7 @@ class MovieReferenceSheetGenerator:
                 name=subject.name,
                 description=subject.visual_description or subject.name,
                 image_prompt=subject.image_prompt,
+                asset_context=asdict(subject),
                 output_dir=output_dir,
             )
         )
@@ -114,6 +126,7 @@ class MovieReferenceSheetGenerator:
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
+            planner=self.sequence_planner,
         ).generate(
             SequenceReferenceRequest(
                 kind="location",
@@ -121,6 +134,7 @@ class MovieReferenceSheetGenerator:
                 name=location.name,
                 description=location.visual_description or location.name,
                 image_prompt=location.image_prompt,
+                asset_context=asdict(location),
                 output_dir=output_dir,
             )
         )
@@ -145,6 +159,15 @@ class MovieReferenceSheetGenerator:
             "contact_sheet_path": artifact_path(result.contact_sheet_path),
             "sheet_path": artifact_path(result.sheet_path),
             "msr_input_path": artifact_path(msr_path),
+            "planning_profile": result.planning_profile,
+            "prompt_revision": result.prompt_revision,
+            "planner_source": result.planner_source,
+            "fallback_reason": result.fallback_reason,
+            "semantic_plan_hash": result.semantic_plan_hash,
+            "prompt_hash": result.prompt_hash,
+            "workflow_profile": result.workflow_profile,
+            "seed": result.seed,
+            "frames": result.frames,
         }
         if background_path is not None:
             manifest["msr_background_path"] = artifact_path(background_path)

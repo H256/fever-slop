@@ -463,6 +463,8 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
     from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
     from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
     from feverslop.application.movie_references import MovieReferenceSheetGenerator
+    from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
+    from feverslop.adapters.llm_client import LocalOpenAIClient
     from feverslop.config.app_config import AppConfig
     from feverslop.ports.rendering import WorkflowAnchorConfig
 
@@ -485,6 +487,7 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
         model_resolver=resolver,
     )
     sequence_backend = None
+    sequence_planner = None
     if movie_runtime_config(movie_config)["reference_generation"] == "sequence_sheet":
         sequence_backend = ComfyUISequenceToSheetBackend(
             client=client,
@@ -492,10 +495,24 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
             backend="minimax",
             model_resolver=resolver,
         )
+        sequence_planner = ReferenceSheetPlanner(
+            llm=LocalOpenAIClient(
+                base_url=app_config.llm.base_url,
+                api_key=app_config.llm.api_key,
+                model=app_config.llm.model_for("structured"),
+                temperature=app_config.llm.temperature,
+                dspy_temperature=app_config.llm.dspy_temperature,
+                max_tokens=app_config.llm.max_tokens,
+                request_timeout_seconds=app_config.llm.request_timeout_seconds,
+                dspy_cache=app_config.llm.dspy_cache,
+                max_concurrent_requests=app_config.llm.max_concurrent_requests,
+            )
+        )
     return MovieReferenceSheetGenerator(
         backend=hero,
         edit_backend=edit,
         sequence_backend=sequence_backend,
+        sequence_planner=sequence_planner,
         hero_anchors=WorkflowAnchorConfig(positive_prompt_title="#PROMPT_POSITIVE"),
         edit_anchors=WorkflowAnchorConfig(positive_prompt_title="#PROMPT_POSITIVE", reference_image_title="#IMAGE_1"),
     )
