@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from fractions import Fraction
 import json
 import math
 import os
 from pathlib import Path
+import subprocess
 from typing import Any
 
 
@@ -36,6 +38,8 @@ def export_render_plan_to_openshot(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
+    profile = _profile_from_clips(clip_paths) or (int(width), int(height), int(fps))
+    width, height, fps = profile
     files: list[dict[str, Any]] = []
     clips: list[dict[str, Any]] = []
     total_duration = 0.0
@@ -55,7 +59,8 @@ def export_render_plan_to_openshot(
         file_id = f"file_video_{scene_number:04}"
         files.append(_file_entry(file_id, path, output, media_type="video", duration=duration, width=width, height=height, fps=fps))
         clips.append(_clip_entry(
-            f"clip_video_{scene_number:04}", file_id, position, duration, layer=1000000,
+            f"clip_video_{scene_number:04}", file_id, position, duration,
+            layer=1000000, reader_path=_relative_path(path, output),
         ))
         total_duration = max(total_duration, position + duration)
         if on_progress:
@@ -67,7 +72,10 @@ def export_render_plan_to_openshot(
             raise FileNotFoundError(f"Audio file does not exist: {audio}")
         audio_id = "file_audio_original"
         files.append(_file_entry(audio_id, audio, output, media_type="audio", duration=total_duration))
-        clips.append(_clip_entry("clip_audio_original", audio_id, 0.0, total_duration, layer=2000000))
+        clips.append(_clip_entry(
+            "clip_audio_original", audio_id, 0.0, total_duration,
+            layer=2000000, reader_path=_relative_path(audio, output),
+        ))
         if on_progress:
             on_progress(total_items, total_items, "audio")
 
@@ -98,7 +106,9 @@ def export_render_plan_to_openshot(
         "markers": [],
         "progress": [],
         "history": {"undo": [], "redo": []},
-        "version": {"openshot-qt": "0.0.0", "libopenshot": "0.0.0"},
+        # 0.0.0 is OpenShot's beta marker and makes current OpenShot Qt run
+        # legacy migrations (including inverting alpha keyframes).
+        "version": {"openshot-qt": "3.5.1", "libopenshot": "0.7.0"},
     }
     output.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8")
     return output
@@ -107,6 +117,50 @@ def export_render_plan_to_openshot(
 def _ratio(width: int, height: int) -> dict[str, int]:
     divisor = math.gcd(int(width), int(height))
     return {"num": int(width) // divisor, "den": int(height) // divisor}
+
+
+def _profile_from_clips(clip_paths: Sequence[str | Path]) -> tuple[int, int, int] | None:
+    detected: tuple[int, int, int] | None = None
+    detected_path: Path | None = None
+    for clip_path in clip_paths:
+        profile = _probe_video_profile(Path(clip_path))
+        if profile is None:
+            continue
+        if detected is None:
+            detected = profile
+            detected_path = Path(clip_path)
+        elif profile != detected:
+            raise ValueError(
+                "OpenShot export requires matching rendered clip profiles: "
+                f"{detected_path} has {detected[0]}x{detected[1]}@{detected[2]}fps, "
+                f"but {clip_path} has {profile[0]}x{profile[1]}@{profile[2]}fps"
+            )
+    return detected
+
+
+def _probe_video_profile(path: Path) -> tuple[int, int, int] | None:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=width,height,r_frame_rate",
+                "-of", "json", str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        streams = json.loads(result.stdout).get("streams") or []
+        stream = streams[0]
+        width = int(stream["width"])
+        height = int(stream["height"])
+        rate = Fraction(str(stream["r_frame_rate"]))
+        fps = round(float(rate))
+        if width <= 0 or height <= 0 or fps <= 0:
+            return None
+        return width, height, fps
+    except (OSError, IndexError, KeyError, TypeError, ValueError, subprocess.CalledProcessError):
+        return None
 
 
 def _relative_path(path: Path, project_file: Path) -> str:
@@ -139,22 +193,46 @@ def _file_entry(
     }
 
 
-def _clip_entry(clip_id: str, file_id: str, position: float, duration: float, *, layer: int) -> dict[str, Any]:
+def _clip_entry(
+    clip_id: str,
+    file_id: str,
+    position: float,
+    duration: float,
+    *,
+    layer: int,
+    reader_path: str,
+) -> dict[str, Any]:
     return {
         "id": clip_id,
         "title": clip_id,
         "file_id": file_id,
+        "reader": {"type": "FFmpegReader", "path": reader_path},
         "position": position,
         "start": 0.0,
         "end": duration,
         "layer": layer,
         "effects": [],
         "animations": [],
-        "gravity": "center",
-        "scale": 1.0,
+        # libopenshot stores these as enum values in the timeline JSON.  In
+        # particular, passing the UI label "center" makes Timeline::SetJson
+        # fail when it reads the value with JsonCpp::asInt().
+        "gravity": 4,  # GRAVITY_CENTER
+        "scale": 1,  # SCALE_FIT
+        # OpenShot Qt upgrades these two fields by iterating Points, so they
+        # need a real initial point rather than an empty keyframe object.
         "rotation": 0.0,
         "shear_x": 0.0,
         "shear_y": 0.0,
-        "alpha": {"Points": []},
-        "volume": {"Points": []},
+        "alpha": _keyframe(1.0),
+        "volume": _keyframe(1.0),
+    }
+
+
+def _keyframe(value: float) -> dict[str, list[dict[str, Any]]]:
+    """Return a constant libopenshot keyframe with one initial point."""
+    return {
+        "Points": [{
+            "co": {"X": 1.0, "Y": float(value)},
+            "interpolation": 0,
+        }],
     }
