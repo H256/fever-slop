@@ -62,19 +62,27 @@ def export_render_plan_to_mlt(
         path = Path(clip_path)
         if not path.is_file():
             raise FileNotFoundError(f"Rendered clip does not exist: {path}")
-        frames = max(1, math.ceil(duration * int(fps)))
         start_seconds = entry.get("abs_start_seconds")
-        start_frame = (
-            max(0, round(float(start_seconds) * int(fps)))
-            if start_seconds is not None
-            else timeline_cursor
-        )
+        if start_seconds is not None:
+            start_frame = max(0, round(float(start_seconds) * int(fps)))
+            end_frame = max(start_frame + 1, round((float(start_seconds) + duration) * int(fps)))
+            frames = end_frame - start_frame
+        else:
+            start_frame = timeline_cursor
+            frames = max(1, math.ceil(duration * int(fps)))
         if start_frame < timeline_cursor:
-            raise ValueError(
-                "MLT export cannot represent overlapping render-plan entries: "
-                f"scene {scene_number} starts at frame {start_frame}, "
-                f"before frame {timeline_cursor}"
-            )
+            overlap = timeline_cursor - start_frame
+            if overlap <= 1:
+                # Render-plan seconds are floating point values while MLT is
+                # frame-based. Treat a one-frame boundary discrepancy as a
+                # contiguous cut instead of a real overlap.
+                start_frame = timeline_cursor
+            else:
+                raise ValueError(
+                    "MLT export cannot represent overlapping render-plan entries: "
+                    f"scene {scene_number} starts at frame {start_frame}, "
+                    f"before frame {timeline_cursor}"
+                )
         if start_frame > timeline_cursor:
             ET.SubElement(video_playlist, "blank", {"length": str(start_frame - timeline_cursor)})
         producer_id = f"video_{index:04}"

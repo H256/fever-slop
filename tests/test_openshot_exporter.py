@@ -182,6 +182,28 @@ class MltExporterTests(unittest.TestCase):
             root_element = ET.parse(root / "timeline.mlt").getroot()
             self.assertEqual(root_element.find("playlist[@id='video']/blank").attrib["length"], "24")
 
+    def test_tolerates_one_frame_boundary_rounding_difference(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 23 / 24},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4"]
+            for clip in clips:
+                clip.touch()
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
     def test_rejects_mismatched_plan_and_clip_counts(self):
         from feverslop.application.mlt_exporter import export_render_plan_to_mlt
 
