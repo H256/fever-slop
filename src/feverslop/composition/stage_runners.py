@@ -1585,6 +1585,11 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
         backend=backend,
         skip_existing=not state.args.no_skip_existing,
         force_enabled=bool(getattr(state.args, "upscale", False)),
+        resolution_override=(
+            (state.args.upscale_resolution.width, state.args.upscale_resolution.height)
+            if getattr(state.args, "upscale_resolution", None) is not None
+            else None
+        ),
     ))
     console.print("[green]SeedVR2 upscale artifacts ready.[/green]")
 

@@ -29,6 +29,7 @@ class SeedVR2CompositionOptions:
     probe_size: Callable[[Path], tuple[int, int]] | None = None
     skip_existing: bool = True
     force_enabled: bool = False
+    resolution_override: tuple[int, int] | None = None
 
 
 def _probe_size(path: Path) -> tuple[int, int]:
@@ -71,6 +72,12 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     config = ProjectConfig.load(options.project_config_path)
     if options.force_enabled and not config.upscale.enabled:
         config = replace(config, upscale=replace(config.upscale, enabled=True))
+    if options.resolution_override is not None:
+        width, height = options.resolution_override
+        config = replace(
+            config,
+            upscale=replace(config.upscale, target_width=width, target_height=height),
+        )
     if not config.upscale.enabled:
         return []
     layout = SceneArtifactLayout(config.project_dir)

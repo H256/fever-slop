@@ -36,7 +36,7 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertEqual(3840, config.upscale.target_width)
         self.assertIsNone(config.upscale.target_height)
 
-    def test_upscale_config_rejects_two_target_dimensions(self):
+    def test_upscale_config_accepts_two_target_dimensions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             (temp / "song.mp3").write_bytes(b"")
@@ -46,8 +46,9 @@ class ProjectConfigTests(unittest.TestCase):
                 "upscale": {"target_width": 3840, "target_height": 2160},
             }), encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "only one"):
-                ProjectConfig.load(config_path)
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual((3840, 2160), (config.upscale.target_width, config.upscale.target_height))
     def test_reference_images_resolution_defaults_to_video_resolution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

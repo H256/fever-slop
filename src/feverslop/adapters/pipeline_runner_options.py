@@ -25,6 +25,7 @@ class ResolutionTuple(NamedTuple):
 RUNNER_ARGUMENTS = (
     ("app_config", ("--app-config",), {"default": "app_config.json"}),
     ("resolution", ("--resolution",), {"type": ResolutionTuple.parse, "default": None}),
+    ("upscale_resolution", ("--upscale-resolution",), {"type": ResolutionTuple.parse, "default": None, "help": "Override SeedVR2 target resolution for this run."}),
     ("set_resolution", ("--set-resolution",), {"type": ResolutionTuple.parse, "default": None}),
     ("concept_batch_size", ("--concept-batch-size",), {"type": int, "default": 10}),
     ("storyboard_workflow", ("--storyboard-workflow",), {"default": str(Path("workflows") / "image_t2i_startframe_v1.json")}),

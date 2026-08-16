@@ -33,8 +33,6 @@ class UpscaleConfig:
     seed: int = 0
 
     def __post_init__(self) -> None:
-        if self.target_width is not None and self.target_height is not None:
-            raise ValueError("upscale target_width and target_height are mutually exclusive; set only one")
         if self.strategy not in {"auto", "single"}:
             raise ValueError("upscale strategy must be 'auto' or 'single'")
         if self.max_pass_scale <= 1.0:

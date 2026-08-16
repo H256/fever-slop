@@ -10,6 +10,13 @@ class SeedVR2PlannerTests(unittest.TestCase):
     def test_target_height_derives_width_preserving_aspect_ratio(self):
         self.assertEqual((3840, 2160), resolve_target_resolution(640, 360, target_height=2160))
 
+    def test_explicit_target_dimensions_are_supported(self):
+        self.assertEqual((3840, 2160), resolve_target_resolution(640, 360, target_width=3840, target_height=2160))
+
+    def test_explicit_target_dimensions_reject_incompatible_aspect_ratio(self):
+        with self.assertRaisesRegex(ValueError, "aspect ratio"):
+            resolve_target_resolution(640, 360, target_width=3840, target_height=2000)
+
     def test_missing_target_uses_default_scale(self):
         self.assertEqual((1280, 720), resolve_target_resolution(640, 360))
 
