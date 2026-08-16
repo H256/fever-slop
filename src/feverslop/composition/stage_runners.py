@@ -1591,6 +1591,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
             if getattr(state.args, "upscale_resolution", None) is not None
             else None
         ),
+        scene_numbers=parse_scene_list(getattr(state.args, "scenes", None)),
         reporter=reporter,
     ))
     console.print("[green]SeedVR2 upscale artifacts ready.[/green]")

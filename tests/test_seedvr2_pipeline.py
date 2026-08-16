@@ -100,6 +100,32 @@ class SeedVR2PipelineTests(unittest.TestCase):
 
         self.assertEqual([], backend.calls)
 
+    def test_run_seedvr2_processes_only_selected_scenes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.mp3").write_bytes(b"")
+            config = root / "config.json"
+            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True}}), encoding="utf-8")
+            layout = SceneArtifactLayout(root)
+            for scene_number in (1, 3):
+                source = layout.scene_final_video(scene_number)
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(b"video")
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([{"scene": 1}, {"scene": 3}]), encoding="utf-8")
+            backend = FakeBackend()
+
+            run_seedvr2(SeedVR2CompositionOptions(
+                project_config_path=config,
+                render_plan_path=plan,
+                backend=backend,
+                probe_size=lambda _path: (640, 360),
+                scene_numbers={3},
+            ))
+
+        self.assertEqual(1, len(backend.calls))
+        self.assertEqual(3, backend.calls[0]["scene_number"])
+
     def test_run_seedvr2_reports_each_scene_and_pass(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -155,6 +181,8 @@ class SeedVR2PipelineTests(unittest.TestCase):
             plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
             backend = FakeBackend()
             reporter = RecordingReporter()
+            for index in (1, 2, 3):
+                (layout.scene_dir(1) / f"upscale_pass_01_segment_{index:04d}.mp4").write_bytes(b"old segment")
 
             with patch("feverslop.composition.seedvr2_pipeline.VideoPostProcessor", return_value=FakePostProcessor()):
                 run_seedvr2(SeedVR2CompositionOptions(
@@ -164,6 +192,7 @@ class SeedVR2PipelineTests(unittest.TestCase):
                     probe_size=lambda _path: (640, 360),
                     probe_duration=lambda _path: 11.08,
                     reporter=reporter,
+                    skip_existing=False,
                 ))
                 final_exists = layout.scene_upscaled_video(1).is_file()
 

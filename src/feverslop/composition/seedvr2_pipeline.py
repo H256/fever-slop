@@ -34,6 +34,7 @@ class SeedVR2CompositionOptions:
     skip_existing: bool = True
     force_enabled: bool = False
     resolution_override: tuple[int, int] | None = None
+    scene_numbers: set[int] | None = None
     reporter: Any = field(default_factory=NullReporter)
 
 
@@ -138,12 +139,13 @@ def _render_segmented_pass(
     source: Path,
     output: Path,
     reporter: Any,
+    skip_existing: bool,
 ) -> Path:
     segment_outputs: list[Path] = []
     for segment in segments:
         segment_output = scene_dir / f"upscale_pass_{pass_number:02d}_segment_{segment.index:04d}.mp4"
         segment_outputs.append(segment_output)
-        if segment_output.is_file():
+        if skip_existing and segment_output.is_file():
             reporter.message(
                 f"[yellow]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} skipped: existing {segment_output}[/yellow]"
             )
@@ -195,6 +197,11 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     probe_duration = options.probe_duration or _probe_duration
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
     plan = json.loads(Path(options.render_plan_path).read_text(encoding="utf-8-sig"))
+    if options.scene_numbers is not None:
+        plan = [
+            entry for entry in plan
+            if int(entry.get("scene") or entry.get("scene_number")) in options.scene_numbers
+        ]
     outputs: list[Path] = []
     progress = SubStepProgress(options.reporter, "SeedVR2 scenes", len(plan), interval=1, verbose=True)
     progress.update(0, detail="starting", force=True)
@@ -295,6 +302,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                         source=current,
                         output=output,
                         reporter=options.reporter,
+                        skip_existing=options.skip_existing,
                     )
                 else:
                     rendered = backend.render(
