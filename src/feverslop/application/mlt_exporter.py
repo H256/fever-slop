@@ -104,6 +104,7 @@ def export_render_plan_to_mlt(
             output,
             frames - 1,
             caption=f"Scene {scene_number:04d}",
+            comment=_scene_comment(entry),
         )
         ET.SubElement(video_playlist, "entry", {
             "producer": producer_id,
@@ -172,6 +173,7 @@ def _add_avformat_producer(
     project_file: Path,
     out_frame: int,
     caption: str,
+    comment: str | None = None,
 ) -> None:
     producer = ET.SubElement(root, "chain", {
         "id": producer_id,
@@ -181,7 +183,24 @@ def _add_avformat_producer(
     ET.SubElement(producer, "property", {"name": "resource"}).text = _relative_path(path, project_file)
     ET.SubElement(producer, "property", {"name": "mlt_service"}).text = "avformat"
     ET.SubElement(producer, "property", {"name": "shotcut:caption"}).text = caption
+    if comment:
+        ET.SubElement(producer, "property", {"name": "shotcut:comment"}).text = comment
 
 
 def _relative_path(path: Path, project_file: Path) -> str:
     return Path(os.path.relpath(path.resolve(), project_file.parent.resolve())).as_posix()
+
+
+def _scene_comment(entry: dict) -> str | None:
+    metadata = entry.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    fields = (
+        ("Story", metadata.get("base_concept")),
+        ("Camera", metadata.get("camera_motion")),
+        ("Character", metadata.get("character_motion")),
+    )
+    lines = [f"{label}: {value}" for label, value in fields if isinstance(value, str) and value.strip()]
+    if entry.get("seed") is not None:
+        lines.append(f"Seed: {entry['seed']}")
+    return "\n".join(lines) or None

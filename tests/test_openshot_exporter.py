@@ -120,7 +120,17 @@ class MltExporterTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "render_plan.json"
             plan.write_text(json.dumps([
-                {"scene": 1, "duration_seconds": 1.5, "abs_start_seconds": 0.0},
+                {
+                    "scene": 1,
+                    "seed": 123,
+                    "duration_seconds": 1.5,
+                    "abs_start_seconds": 0.0,
+                    "metadata": {
+                        "base_concept": "A dwarf enters the cavern.",
+                        "camera_motion": "Slow dolly in.",
+                        "character_motion": "Raises the hammer.",
+                    },
+                },
                 {"scene": 2, "duration_seconds": 1.5, "abs_start_seconds": 1.5},
             ]), encoding="utf-8")
             clips = [root / "scene_0001.mp4", root / "scene_0002.mp4"]
@@ -169,6 +179,11 @@ class MltExporterTests(unittest.TestCase):
                 root_element.find("chain[@id='video_0001']/property[@name='shotcut:caption']").text,
                 "Scene 0001",
             )
+            comment = root_element.find("chain[@id='video_0001']/property[@name='shotcut:comment']").text
+            self.assertIn("Story: A dwarf enters the cavern.", comment)
+            self.assertIn("Camera: Slow dolly in.", comment)
+            self.assertIn("Character: Raises the hammer.", comment)
+            self.assertIn("Seed: 123", comment)
             self.assertIsNotNone(root_element.find("playlist[@id='background']"))
             self.assertEqual(
                 root_element.find("tractor/track").attrib["producer"],
