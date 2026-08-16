@@ -26,6 +26,8 @@ class SeedVR2RenderSettings:
     split_latent: bool = True
     vae_temporal_size: int = 32
     vae_temporal_overlap: int = 8
+    trim_start_seconds: float = 0.0
+    trim_duration_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.denoise <= 1.0:
@@ -36,6 +38,10 @@ class SeedVR2RenderSettings:
             raise ValueError("vae_temporal_size must be at least 8")
         if self.vae_temporal_overlap < 4 or self.vae_temporal_overlap > self.vae_temporal_size:
             raise ValueError("vae_temporal_overlap must be between 4 and vae_temporal_size")
+        if self.trim_start_seconds < 0:
+            raise ValueError("trim_start_seconds must not be negative")
+        if self.trim_duration_seconds is not None and self.trim_duration_seconds <= 0:
+            raise ValueError("trim_duration_seconds must be positive")
         if self.color_correction not in {"lab", "wavelet", "adain", "none"}:
             raise ValueError("color_correction must be lab, wavelet, adain, or none")
 
@@ -68,6 +74,11 @@ class ComfyUISeedVR2Backend:
         workflow = json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
         patcher = WorkflowPatcher(workflow)
         patcher.set_input_by_title("#LOAD_VIDEO", "file", video_name)
+        trim_enabled = settings.trim_duration_seconds is not None
+        patcher.set_input_by_title("#VIDEO_SOURCE", "switch", trim_enabled)
+        if trim_enabled:
+            patcher.set_input_by_title("#VIDEO_SLICE", "start_time", settings.trim_start_seconds)
+            patcher.set_input_by_title("#VIDEO_SLICE", "duration", settings.trim_duration_seconds)
         patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type", "scale dimensions")
         patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.width", width)
         patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.height", height)
@@ -94,6 +105,7 @@ class ComfyUISeedVR2Backend:
         scene_number: int,
         pass_number: int,
         settings: SeedVR2RenderSettings,
+        segment_number: int | None = None,
     ) -> Path:
         source_video = Path(source_video)
         output_path = Path(output_path)
@@ -105,9 +117,10 @@ class ComfyUISeedVR2Backend:
             upload_name=ComfyUIVideoAssetUploader.content_addressed_name(source_video),
         )
         video_name = ComfyUIVideoAssetUploader.comfy_path_from_upload(upload)
+        output_suffix = f"_segment_{segment_number:04d}" if segment_number is not None else ""
         workflow = self.build_workflow(
             video_name=video_name,
-            output_prefix=f"feverslop/seedvr2/scene_{scene_number:04d}/pass_{pass_number:02d}",
+            output_prefix=f"feverslop/seedvr2/scene_{scene_number:04d}/pass_{pass_number:02d}{output_suffix}",
             output_size=output_size,
             settings=settings,
         )

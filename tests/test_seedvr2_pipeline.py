@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from feverslop.composition.seedvr2_pipeline import SeedVR2CompositionOptions, run_seedvr2
 from feverslop.scene_artifacts import SceneArtifactLayout
@@ -25,6 +26,18 @@ class RecordingReporter:
 
     def message(self, text):
         self.messages.append(text)
+
+
+class FakePostProcessor:
+    def write_concat_list(self, video_files, output_file):
+        Path(output_file).write_text("\n".join(str(path) for path in video_files), encoding="utf-8")
+        return Path(output_file)
+
+    def concat_clips(self, concat_list, output_file, reencode=False):
+        output = Path(output_file)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"concatenated video")
+        return output
 
 
 class SeedVR2PipelineTests(unittest.TestCase):
@@ -92,7 +105,7 @@ class SeedVR2PipelineTests(unittest.TestCase):
             root = Path(temp_dir)
             (root / "song.mp3").write_bytes(b"")
             config = root / "config.json"
-            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True, "target_width": 2560}}), encoding="utf-8")
+            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True, "target_width": 2560, "segment_duration_seconds": 100}}), encoding="utf-8")
             layout = SceneArtifactLayout(root)
             source = layout.scene_final_video(1)
             source.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +131,48 @@ class SeedVR2PipelineTests(unittest.TestCase):
         self.assertTrue(any("pass 2/2" in message and "complete" in message for message in reporter.messages))
         self.assertTrue(any("scene 1/1" in message and "complete" in message for message in reporter.messages))
         self.assertEqual(16, backend.calls[0]["settings"].vae_temporal_size)
+
+    def test_run_seedvr2_segments_long_final_pass_before_concat(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.mp3").write_bytes(b"")
+            config = root / "config.json"
+            config.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "upscale": {
+                    "enabled": True,
+                    "target_width": 2560,
+                    "max_pass_scale": 2,
+                    "max_ai_passes": 2,
+                    "segment_duration_seconds": 4,
+                },
+            }), encoding="utf-8")
+            layout = SceneArtifactLayout(root)
+            source = layout.scene_final_video(1)
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b"video")
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            backend = FakeBackend()
+            reporter = RecordingReporter()
+
+            with patch("feverslop.composition.seedvr2_pipeline.VideoPostProcessor", return_value=FakePostProcessor()):
+                run_seedvr2(SeedVR2CompositionOptions(
+                    project_config_path=config,
+                    render_plan_path=plan,
+                    backend=backend,
+                    probe_size=lambda _path: (640, 360),
+                    probe_duration=lambda _path: 11.08,
+                    reporter=reporter,
+                ))
+                final_exists = layout.scene_upscaled_video(1).is_file()
+
+        self.assertEqual(4, len(backend.calls))
+        segment_calls = backend.calls[1:]
+        self.assertEqual([0.0, 4.0, 8.0], [call["settings"].trim_start_seconds for call in segment_calls])
+        self.assertEqual([4.0, 4.0, 3.08], [call["settings"].trim_duration_seconds for call in segment_calls])
+        self.assertTrue(final_exists)
+        self.assertTrue(any("segment 3/3 complete" in message for message in reporter.messages))
 
     def test_run_seedvr2_finds_legacy_ltx_scene_clip(self):
         with tempfile.TemporaryDirectory() as temp_dir:

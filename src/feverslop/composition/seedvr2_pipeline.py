@@ -13,6 +13,8 @@ from feverslop.adapters.comfyui_seedvr2_backend import (
 )
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.seedvr2 import SeedVR2Pass, plan_seedvr2_passes
+from feverslop.domain.seedvr2 import SeedVR2Segment, plan_seedvr2_segments
+from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.adapters.reporting import NullReporter
 from feverslop.utils.sub_step_progress import SubStepProgress
@@ -117,6 +119,61 @@ def _pass_record(item: SeedVR2Pass, output: Path, pass_number: int) -> dict:
     }
 
 
+def _pass_segment_cap(upscale, pass_spec: SeedVR2Pass, final_size: tuple[int, int]) -> float:
+    final_area = final_size[0] * final_size[1]
+    pass_area = pass_spec.output_size[0] * pass_spec.output_size[1]
+    return max(1.0, upscale.segment_duration_seconds * final_area / pass_area)
+
+
+def _render_segmented_pass(
+    *,
+    backend: SeedVR2Backend,
+    postprocessor: VideoPostProcessor,
+    segments: list[SeedVR2Segment],
+    scene_dir: Path,
+    pass_number: int,
+    scene_number: int,
+    pass_spec: SeedVR2Pass,
+    settings: SeedVR2RenderSettings,
+    source: Path,
+    output: Path,
+    reporter: Any,
+) -> Path:
+    segment_outputs: list[Path] = []
+    for segment in segments:
+        segment_output = scene_dir / f"upscale_pass_{pass_number:02d}_segment_{segment.index:04d}.mp4"
+        segment_outputs.append(segment_output)
+        if segment_output.is_file():
+            reporter.message(
+                f"[yellow]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} skipped: existing {segment_output}[/yellow]"
+            )
+            continue
+        reporter.message(
+            f"[cyan]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} starting: "
+            f"{segment.start_seconds:.2f}s + {segment.duration_seconds:.2f}s[/cyan]"
+        )
+        segment_settings = replace(
+            settings,
+            trim_start_seconds=segment.start_seconds,
+            trim_duration_seconds=segment.duration_seconds,
+        )
+        backend.render(
+            source_video=source,
+            output_path=segment_output,
+            output_size=pass_spec.output_size,
+            scene_number=scene_number,
+            pass_number=pass_number,
+            segment_number=segment.index,
+            settings=segment_settings,
+        )
+        reporter.message(
+            f"[green]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} complete: {segment_output}[/green]"
+        )
+    concat_list = scene_dir / f"upscale_pass_{pass_number:02d}_segments.txt"
+    postprocessor.write_concat_list(segment_outputs, concat_list)
+    return postprocessor.concat_clips(concat_list, output, reencode=True)
+
+
 def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     config = ProjectConfig.load(options.project_config_path)
     if options.force_enabled and not config.upscale.enabled:
@@ -136,6 +193,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     )
     probe_size = options.probe_size or _probe_size
     probe_duration = options.probe_duration or _probe_duration
+    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
     plan = json.loads(Path(options.render_plan_path).read_text(encoding="utf-8-sig"))
     outputs: list[Path] = []
     progress = SubStepProgress(options.reporter, "SeedVR2 scenes", len(plan), interval=1, verbose=True)
@@ -217,14 +275,35 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                 f"vae_temporal_size={settings.vae_temporal_size}[/cyan]"
             )
             try:
-                rendered = backend.render(
-                    source_video=current,
-                    output_path=output,
-                    output_size=pass_spec.output_size,
-                    scene_number=scene_number,
-                    pass_number=pass_number,
-                    settings=settings,
-                )
+                current_duration = probe_duration(current) or source_duration or 0.0
+                if current_duration > 0:
+                    segment_cap = _pass_segment_cap(upscale, pass_spec, passes[-1].output_size)
+                    segments = plan_seedvr2_segments(current_duration, max_segment_duration=segment_cap)
+                else:
+                    segments = []
+                if current_duration > 0 and len(segments) > 1:
+                    rendered = _render_segmented_pass(
+                        backend=backend,
+                        postprocessor=postprocessor,
+                        segments=segments,
+                        scene_dir=scene_dir,
+                        pass_number=pass_number,
+                        scene_number=scene_number,
+                        pass_spec=pass_spec,
+                        settings=settings,
+                        source=current,
+                        output=output,
+                        reporter=options.reporter,
+                    )
+                else:
+                    rendered = backend.render(
+                        source_video=current,
+                        output_path=output,
+                        output_size=pass_spec.output_size,
+                        scene_number=scene_number,
+                        pass_number=pass_number,
+                        settings=settings,
+                    )
             except Exception as exc:
                 options.reporter.message(
                     f"[red]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} failed: {exc}[/red]"

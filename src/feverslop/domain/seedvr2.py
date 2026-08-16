@@ -11,6 +11,34 @@ class SeedVR2Pass:
     scale: float
 
 
+@dataclass(frozen=True)
+class SeedVR2Segment:
+    index: int
+    start_seconds: float
+    duration_seconds: float
+
+
+def plan_seedvr2_segments(
+    duration_seconds: float,
+    *,
+    max_segment_duration: float = 4.0,
+) -> list[SeedVR2Segment]:
+    if duration_seconds <= 0:
+        raise ValueError("duration_seconds must be positive")
+    if max_segment_duration <= 0:
+        raise ValueError("max_segment_duration must be positive")
+
+    segments: list[SeedVR2Segment] = []
+    start = 0.0
+    index = 1
+    while start < duration_seconds - 1e-6:
+        segment_duration = min(max_segment_duration, duration_seconds - start)
+        segments.append(SeedVR2Segment(index, round(start, 6), round(segment_duration, 6)))
+        start += segment_duration
+        index += 1
+    return segments
+
+
 def _even(value: float) -> int:
     return max(2, int(round(value / 2.0) * 2))
 

@@ -32,6 +32,7 @@ class UpscaleConfig:
     split_latent: bool = True
     vae_temporal_size: int = 32
     vae_temporal_overlap: int = 8
+    segment_duration_seconds: float = 4.0
     color_correction: str = "lab"
     seed: int = 0
 
@@ -50,6 +51,8 @@ class UpscaleConfig:
             raise ValueError("upscale vae_temporal_size must be at least 8")
         if self.vae_temporal_overlap < 4 or self.vae_temporal_overlap > self.vae_temporal_size:
             raise ValueError("upscale vae_temporal_overlap must be between 4 and vae_temporal_size")
+        if self.segment_duration_seconds <= 0:
+            raise ValueError("upscale segment_duration_seconds must be positive")
         if self.color_correction not in {"lab", "wavelet", "adain", "none"}:
             raise ValueError("upscale color_correction must be lab, wavelet, adain, or none")
 
@@ -386,6 +389,7 @@ class ProjectConfig:
                 split_latent=bool(upscale_raw.get("split_latent", True)),
                 vae_temporal_size=int(upscale_raw.get("vae_temporal_size", 32)),
                 vae_temporal_overlap=int(upscale_raw.get("vae_temporal_overlap", 8)),
+                segment_duration_seconds=float(upscale_raw.get("segment_duration_seconds", 4.0)),
                 color_correction=str(upscale_raw.get("color_correction", "lab")),
                 seed=int(upscale_raw.get("seed", 0)),
             ),

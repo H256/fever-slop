@@ -79,3 +79,22 @@ class ComfyUISeedVR2BackendTests(unittest.TestCase):
                 output_size=(1920, 1080),
                 settings=SeedVR2RenderSettings(color_correction="invalid"),
             )
+
+    def test_build_workflow_activates_trim_for_segment(self):
+        backend = ComfyUISeedVR2Backend(client=object())
+
+        workflow = backend.build_workflow(
+            video_name="input.mp4",
+            output_prefix="output/segment",
+            output_size=(1920, 1088),
+            settings=SeedVR2RenderSettings(
+                trim_start_seconds=4.0,
+                trim_duration_seconds=3.08,
+            ),
+        )
+
+        source_switch = self.node(workflow, "#VIDEO_SOURCE")
+        trim = self.node(workflow, "#VIDEO_SLICE")
+        self.assertTrue(source_switch["inputs"]["switch"])
+        self.assertEqual(4.0, trim["inputs"]["start_time"])
+        self.assertEqual(3.08, trim["inputs"]["duration"])

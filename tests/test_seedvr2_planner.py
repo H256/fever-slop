@@ -1,9 +1,17 @@
 import unittest
 
-from feverslop.domain.seedvr2 import plan_seedvr2_passes, resolve_target_resolution
+from feverslop.domain.seedvr2 import plan_seedvr2_passes, plan_seedvr2_segments, resolve_target_resolution
 
 
 class SeedVR2PlannerTests(unittest.TestCase):
+    def test_segments_cover_duration_without_gaps(self):
+        segments = plan_seedvr2_segments(11.08, max_segment_duration=4.0)
+
+        self.assertEqual(3, len(segments))
+        self.assertEqual((0.0, 4.0), (segments[0].start_seconds, segments[0].duration_seconds))
+        self.assertEqual((4.0, 4.0), (segments[1].start_seconds, segments[1].duration_seconds))
+        self.assertEqual((8.0, 3.08), (segments[2].start_seconds, segments[2].duration_seconds))
+
     def test_target_width_derives_height_preserving_aspect_ratio(self):
         self.assertEqual((3840, 2160), resolve_target_resolution(640, 360, target_width=3840))
 

@@ -26,6 +26,7 @@
     "split_latent": true,
     "vae_temporal_size": 32,
     "vae_temporal_overlap": 8,
+    "segment_duration_seconds": 4.0,
     "color_correction": "lab",
     "seed": 0
   },
