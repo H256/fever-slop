@@ -149,8 +149,8 @@ class MltExporterTests(unittest.TestCase):
             self.assertEqual(profile.attrib["width"], "1216")
             self.assertEqual(profile.attrib["height"], "672")
             self.assertEqual(profile.attrib["frame_rate_num"], "24")
-            video_playlist = root_element.find("playlist[@id='video']")
-            audio_playlist = root_element.find("playlist[@id='audio']")
+            video_playlist = root_element.find("playlist[@id='playlist0']")
+            audio_playlist = root_element.find("playlist[@id='playlist1']")
             self.assertEqual(
                 [entry.attrib["producer"] for entry in video_playlist.findall("entry")],
                 ["video_0001", "video_0002"],
@@ -158,12 +158,17 @@ class MltExporterTests(unittest.TestCase):
             self.assertEqual(audio_playlist.find("entry").attrib["producer"], "audio_original")
             self.assertIsNotNone(root_element.find("playlist[@id='background']"))
             self.assertEqual(
-                root_element.find("tractor/multitrack/track").attrib["producer"],
+                root_element.find("tractor/track").attrib["producer"],
                 "background",
             )
+            self.assertIsNone(root_element.find("tractor/multitrack"))
             self.assertEqual(
-                root_element.find("tractor/multitrack/track[@producer='audio']").attrib["producer"],
-                "audio",
+                [track.attrib["producer"] for track in root_element.findall("tractor/track")],
+                ["background", "playlist0", "playlist1"],
+            )
+            self.assertEqual(
+                root_element.find("tractor/track[@producer='playlist1']").attrib["hide"],
+                "video",
             )
 
     def test_preserves_gaps_from_absolute_render_plan_positions(self):
@@ -188,7 +193,7 @@ class MltExporterTests(unittest.TestCase):
                 fps=24,
             )
             root_element = ET.parse(root / "timeline.mlt").getroot()
-            self.assertEqual(root_element.find("playlist[@id='video']/blank").attrib["length"], "24")
+            self.assertEqual(root_element.find("playlist[@id='playlist0']/blank").attrib["length"], "24")
 
     def test_tolerates_one_frame_boundary_rounding_difference(self):
         from feverslop.application.mlt_exporter import export_render_plan_to_mlt

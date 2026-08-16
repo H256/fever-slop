@@ -52,10 +52,10 @@ def export_render_plan_to_mlt(
         "colorspace": "709",
     })
 
-    video_playlist = ET.SubElement(root, "playlist", {"id": "video"})
+    video_playlist = ET.SubElement(root, "playlist", {"id": "playlist0", "autoclose": "1"})
     ET.SubElement(video_playlist, "property", {"name": "shotcut:video"}).text = "1"
     ET.SubElement(video_playlist, "property", {"name": "shotcut:name"}).text = "V1"
-    audio_playlist = ET.SubElement(root, "playlist", {"id": "audio"})
+    audio_playlist = ET.SubElement(root, "playlist", {"id": "playlist1", "autoclose": "1"})
     ET.SubElement(audio_playlist, "property", {"name": "shotcut:audio"}).text = "1"
     ET.SubElement(audio_playlist, "property", {"name": "shotcut:name"}).text = "A1"
     total_frames = 0
@@ -136,11 +136,10 @@ def export_render_plan_to_mlt(
         "out": str(max(0, total_frames - 1)),
     })
     ET.SubElement(tractor, "property", {"name": "shotcut"}).text = "1"
-    multitrack = ET.SubElement(tractor, "multitrack", {"id": "multitrack0"})
-    ET.SubElement(multitrack, "track", {"producer": "background"})
-    ET.SubElement(multitrack, "track", {"producer": "video"})
+    ET.SubElement(tractor, "track", {"producer": "background"})
+    ET.SubElement(tractor, "track", {"producer": "playlist0"})
     if audio_path is not None:
-        ET.SubElement(multitrack, "track", {"producer": "audio"})
+        ET.SubElement(tractor, "track", {"producer": "playlist1", "hide": "video"})
 
     ET.indent(root, space="  ")
     ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
@@ -154,7 +153,7 @@ def _add_avformat_producer(
     project_file: Path,
     out_frame: int,
 ) -> None:
-    producer = ET.SubElement(root, "producer", {
+    producer = ET.SubElement(root, "chain", {
         "id": producer_id,
         "in": "0",
         "out": str(out_frame),
