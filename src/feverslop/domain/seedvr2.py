@@ -23,13 +23,18 @@ def resolve_target_resolution(
     target_height: int | None = None,
     default_scale: float = 2.0,
 ) -> tuple[int, int]:
-    if target_width is not None and target_height is not None:
-        raise ValueError("target_width and target_height are mutually exclusive; set only one")
     if source_width <= 0 or source_height <= 0:
         raise ValueError("source dimensions must be positive")
     if default_scale <= 0:
         raise ValueError("default_scale must be positive")
     aspect = source_width / source_height
+    if target_width is not None and target_height is not None:
+        if target_width <= 0 or target_height <= 0:
+            raise ValueError("target dimensions must be positive")
+        target_aspect = target_width / target_height
+        if abs(target_aspect / aspect - 1.0) > 0.02:
+            raise ValueError("target dimensions have an incompatible aspect ratio")
+        return _even(target_width), _even(target_height)
     if target_width is not None:
         if target_width <= 0:
             raise ValueError("target_width must be positive")
