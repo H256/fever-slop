@@ -45,6 +45,7 @@ class ComfyUISeedVR2BackendTests(unittest.TestCase):
         self.assertEqual(["2", 0], workflow["3"]["inputs"]["input"])
         self.assertEqual(["2", 1], workflow["16"]["inputs"]["audio"])
         self.assertEqual(["2", 2], workflow["16"]["inputs"]["fps"])
+        self.assertTrue(workflow["18"]["inputs"]["value"])
 
     def test_build_workflow_uses_patch_anchors_and_seedvr2_defaults(self):
         backend = ComfyUISeedVR2Backend(client=object())

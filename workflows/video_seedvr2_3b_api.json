@@ -16,5 +16,5 @@
   "15": {"class_type": "SeedVR2PostProcessing", "inputs": {"images": ["14", 0], "original_resized_images": ["3", 0], "color_correction_method": "lab"}, "_meta": {"title": "#COLOR_CORRECTION"}},
   "16": {"class_type": "CreateVideo", "inputs": {"images": ["15", 0], "audio": ["2", 1], "fps": ["2", 2], "bit_depth": ["2", 3]}, "_meta": {"title": "#CREATE_VIDEO"}},
   "17": {"class_type": "SaveVideo", "inputs": {"video": ["16", 0], "filename_prefix": "feverslop/seedvr2/output", "format": "auto", "codec": "auto"}, "_meta": {"title": "#SAVE_VIDEO"}},
-  "18": {"class_type": "PrimitiveBoolean", "inputs": {"value": false}, "_meta": {"title": "#SPLIT_LATENT_BOOLEAN"}}
+  "18": {"class_type": "PrimitiveBoolean", "inputs": {"value": true}, "_meta": {"title": "#SPLIT_LATENT_BOOLEAN"}}
 }

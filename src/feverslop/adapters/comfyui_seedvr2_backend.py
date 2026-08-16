@@ -23,7 +23,7 @@ class SeedVR2RenderSettings:
     color_correction: str = "lab"
     seed: int = 0
     fps: int = 24
-    split_latent: bool = False
+    split_latent: bool = True
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.denoise <= 1.0:

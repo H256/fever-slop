@@ -29,6 +29,7 @@ class UpscaleConfig:
     max_ai_passes: int = 3
     denoise: float = 0.35
     temporal_overlap: int = 4
+    split_latent: bool = True
     color_correction: str = "lab"
     seed: int = 0
 
@@ -376,6 +377,7 @@ class ProjectConfig:
                 max_ai_passes=int(upscale_raw.get("max_ai_passes", 3)),
                 denoise=float(upscale_raw.get("denoise", 0.35)),
                 temporal_overlap=int(upscale_raw.get("temporal_overlap", 4)),
+                split_latent=bool(upscale_raw.get("split_latent", True)),
                 color_correction=str(upscale_raw.get("color_correction", "lab")),
                 seed=int(upscale_raw.get("seed", 0)),
             ),

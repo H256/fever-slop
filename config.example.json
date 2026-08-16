@@ -23,6 +23,7 @@
     "max_ai_passes": 3,
     "denoise": 0.35,
     "temporal_overlap": 4,
+    "split_latent": true,
     "color_correction": "lab",
     "seed": 0
   },
