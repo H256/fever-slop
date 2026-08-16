@@ -83,6 +83,7 @@ class ReferenceBibleGenerator:
         reference_image_size: tuple[int, int] | None = None,
         direct_msr_sheet_prompt_builder: Callable[[ReferenceSubject], str] | None = None,
         sequence_backend: Any | None = None,
+        sequence_planner: Any | None = None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
@@ -102,6 +103,7 @@ class ReferenceBibleGenerator:
         self.location_hero_size = (int(reference_width), int(reference_height))
         self.direct_msr_sheet_prompt_builder = direct_msr_sheet_prompt_builder
         self.sequence_backend = sequence_backend
+        self.sequence_planner = sequence_planner
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
         if self.sequence_backend is not None:
@@ -118,6 +120,7 @@ class ReferenceBibleGenerator:
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
+            planner=self.sequence_planner,
         ).generate(
             SequenceReferenceRequest(
                 kind="character",
@@ -125,6 +128,7 @@ class ReferenceBibleGenerator:
                 name=subject.name,
                 description=subject.visual_description or subject.name,
                 image_prompt=subject.image_prompt,
+                asset_context=asdict(subject),
                 output_dir=self.output_dir,
             )
         )
@@ -137,6 +141,15 @@ class ReferenceBibleGenerator:
             "contact_sheet_path": self._artifact_path(result.contact_sheet_path),
             "msr_input_path": self._artifact_path(result.sheet_path),
             "sheet_path": self._artifact_path(result.sheet_path),
+            "planning_profile": result.planning_profile,
+            "prompt_revision": result.prompt_revision,
+            "planner_source": result.planner_source,
+            "fallback_reason": result.fallback_reason,
+            "semantic_plan_hash": result.semantic_plan_hash,
+            "prompt_hash": result.prompt_hash,
+            "workflow_profile": result.workflow_profile,
+            "seed": result.seed,
+            "frames": result.frames,
         }
         manifest_path = self.output_dir / "actors" / subject.id / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -268,6 +281,7 @@ class ReferenceBibleGenerator:
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
+            planner=self.sequence_planner,
         ).generate(
             SequenceReferenceRequest(
                 kind="location",
@@ -275,6 +289,7 @@ class ReferenceBibleGenerator:
                 name=location.name,
                 description=location.visual_description or location.name,
                 image_prompt=location.image_prompt,
+                asset_context=asdict(location),
                 output_dir=self.output_dir,
             )
         )
@@ -287,6 +302,15 @@ class ReferenceBibleGenerator:
             "contact_sheet_path": self._artifact_path(result.contact_sheet_path),
             "msr_background_path": self._artifact_path(result.anchor_path),
             "sheet_path": self._artifact_path(result.sheet_path),
+            "planning_profile": result.planning_profile,
+            "prompt_revision": result.prompt_revision,
+            "planner_source": result.planner_source,
+            "fallback_reason": result.fallback_reason,
+            "semantic_plan_hash": result.semantic_plan_hash,
+            "prompt_hash": result.prompt_hash,
+            "workflow_profile": result.workflow_profile,
+            "seed": result.seed,
+            "frames": result.frames,
         }
         manifest_path = self.output_dir / "locations" / location.id / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

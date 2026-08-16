@@ -19,6 +19,7 @@ from feverslop.domain.orbitsheets_prompts import (
     build_h3_character_prompt,
     build_h3_location_prompt,
 )
+from feverslop.domain.reference_sheet import CompiledReferenceSheetPlan
 
 
 class ComfyUISequenceToSheetBackend:
@@ -88,6 +89,37 @@ class ComfyUISequenceToSheetBackend:
                 rotation=rotation,
             )
         raise ValueError(f"unsupported sheet kind: {kind}")
+
+    def build_sheet_prompt_from_plan(self, plan: CompiledReferenceSheetPlan) -> H3SheetPrompt:
+        """Serialize a compiled semantic plan into this backend's H3 prompt format."""
+        if plan.kind == "character":
+            result = build_h3_character_prompt(
+                plan.identity_constraints,
+                shots=plan.view_count,
+                frames=max(1, round(plan.duration_seconds * 24)),
+                framing=plan.framing,
+                backdrop=plan.backdrop,
+            )
+        elif plan.kind == "location":
+            result = build_h3_location_prompt(
+                plan.identity_constraints,
+                shots=plan.view_count,
+                frames=max(1, round(plan.duration_seconds * 24)),
+                coverage=plan.coverage,
+                rotation=plan.rotation,
+            )
+        else:
+            raise ValueError(f"unsupported sheet kind: {plan.kind}")
+        return H3SheetPrompt(
+            prompt=(
+                f"{result.prompt}\n\n{plan.anchor_rule}. "
+                f"Preserve these constraints: {plan.identity_constraints}. "
+                f"Avoid: {plan.negative_constraints}."
+            ),
+            shots=plan.view_count,
+            frames=result.frames,
+            rotation_degrees=result.rotation_degrees,
+        )
 
     def build_workflow(
         self,
