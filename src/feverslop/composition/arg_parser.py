@@ -29,7 +29,7 @@ class PipelineStage(str, Enum):
     DIAGNOSTIC_SCENE_AUDIO_CONCAT = "diagnostic_scene_audio_concat"
     FACEFIX = "facefix"
     FACEFIX_CONCAT = "facefix_concat"
-    EXPORT_TIMELINE = "export-timeline"
+    EXPORT_TIMELINE = "export_timeline"
     # Backward-compatible name for the original automatic OpenShot stage.
     OPENSHOT_EXPORT = "openshot_export"
 
@@ -52,6 +52,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="timeline_format",
         choices=["mlt", "openshot"],
         default="openshot",
-        help="Timeline export format for export-timeline (default: openshot).",
+        help="Timeline export format for export_timeline (default: openshot).",
     )
     return parser

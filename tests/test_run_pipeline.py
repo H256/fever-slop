@@ -151,8 +151,8 @@ class RunPipelinePathTests(unittest.TestCase):
         from feverslop.composition.stage_runners import resolve_pipeline_stages
 
         parser = build_arg_parser()
-        mlt_args = parser.parse_args(["--stage", "export-timeline", "--format", "mlt"])
-        openshot_args = parser.parse_args(["--stage", "export-timeline", "--format", "openshot"])
+        mlt_args = parser.parse_args(["--stage", "export_timeline", "--format", "mlt"])
+        openshot_args = parser.parse_args(["--stage", "export_timeline", "--format", "openshot"])
 
         self.assertEqual(resolve_pipeline_stages(mlt_args), [PipelineStage.EXPORT_TIMELINE])
         self.assertEqual(mlt_args.timeline_format, "mlt")
