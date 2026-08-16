@@ -151,6 +151,15 @@ class MltExporterTests(unittest.TestCase):
             self.assertEqual(profile.attrib["frame_rate_num"], "24")
             video_playlist = root_element.find("playlist[@id='playlist0']")
             audio_playlist = root_element.find("playlist[@id='playlist1']")
+            children = list(root_element)
+            self.assertLess(
+                children.index(root_element.find("chain[@id='video_0001']")),
+                children.index(video_playlist),
+            )
+            self.assertLess(
+                children.index(root_element.find("chain[@id='audio_original']")),
+                children.index(audio_playlist),
+            )
             self.assertEqual(
                 [entry.attrib["producer"] for entry in video_playlist.findall("entry")],
                 ["video_0001", "video_0002"],

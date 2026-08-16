@@ -52,10 +52,12 @@ def export_render_plan_to_mlt(
         "colorspace": "709",
     })
 
-    video_playlist = ET.SubElement(root, "playlist", {"id": "playlist0", "autoclose": "1"})
+    # MLT resolves producer references in document order. Keep the playlists
+    # detached until all chains they reference have been appended to the root.
+    video_playlist = ET.Element("playlist", {"id": "playlist0", "autoclose": "1"})
     ET.SubElement(video_playlist, "property", {"name": "shotcut:video"}).text = "1"
     ET.SubElement(video_playlist, "property", {"name": "shotcut:name"}).text = "V1"
-    audio_playlist = ET.SubElement(root, "playlist", {"id": "playlist1", "autoclose": "1"})
+    audio_playlist = ET.Element("playlist", {"id": "playlist1", "autoclose": "1"})
     ET.SubElement(audio_playlist, "property", {"name": "shotcut:audio"}).text = "1"
     ET.SubElement(audio_playlist, "property", {"name": "shotcut:name"}).text = "A1"
     total_frames = 0
@@ -114,6 +116,9 @@ def export_render_plan_to_mlt(
             "in": "0",
             "out": str(max(0, total_frames - 1)),
         })
+
+    root.append(video_playlist)
+    root.append(audio_playlist)
 
     main_bin = ET.SubElement(root, "playlist", {"id": "main_bin"})
     ET.SubElement(main_bin, "property", {"name": "xml_retain"}).text = "1"
