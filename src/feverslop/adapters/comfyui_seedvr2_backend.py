@@ -20,14 +20,15 @@ class SeedVR2RenderSettings:
     vae: str = "seedvr2_ema_vae_fp16.safetensors"
     denoise: float = 0.35
     temporal_overlap: int = 4
-    color_correction: str = "lab"
+    color_correction: str = "none"
     seed: int = 0
     fps: int = 24
     split_latent: bool = True
-    vae_temporal_size: int = 32
+    vae_temporal_size: int = 64
     vae_temporal_overlap: int = 8
     trim_start_seconds: float = 0.0
     trim_duration_seconds: float | None = None
+    scale_multiplier: float = 2.0
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.denoise <= 1.0:
@@ -42,6 +43,8 @@ class SeedVR2RenderSettings:
             raise ValueError("trim_start_seconds must not be negative")
         if self.trim_duration_seconds is not None and self.trim_duration_seconds <= 0:
             raise ValueError("trim_duration_seconds must be positive")
+        if self.scale_multiplier <= 0:
+            raise ValueError("scale_multiplier must be positive")
         if self.color_correction not in {"lab", "wavelet", "adain", "none"}:
             raise ValueError("color_correction must be lab, wavelet, adain, or none")
 
@@ -79,10 +82,8 @@ class ComfyUISeedVR2Backend:
         if trim_enabled:
             patcher.set_input_by_title("#VIDEO_SLICE", "start_time", settings.trim_start_seconds)
             patcher.set_input_by_title("#VIDEO_SLICE", "duration", settings.trim_duration_seconds)
-        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type", "scale dimensions")
-        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.width", width)
-        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.height", height)
-        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.crop", "disabled")
+        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type", "scale by multiplier")
+        patcher.set_input_by_title("#RESIZE_VIDEO", "resize_type.multiplier", settings.scale_multiplier)
         patcher.set_input_by_title("#SEEDVR_MODEL", "unet_name", settings.model)
         patcher.set_input_by_title("#SEEDVR_VAE", "vae_name", settings.vae)
         patcher.set_input_by_title("#TEMPORAL_CHUNK", "temporal_overlap", settings.temporal_overlap)

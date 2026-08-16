@@ -24,10 +24,10 @@
     "denoise": 0.35,
     "temporal_overlap": 4,
     "split_latent": true,
-    "vae_temporal_size": 32,
+    "vae_temporal_size": 64,
     "vae_temporal_overlap": 8,
     "segment_duration_seconds": 4.0,
-    "color_correction": "lab",
+    "color_correction": "none",
     "seed": 0
   },
 

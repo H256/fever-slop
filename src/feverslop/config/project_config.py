@@ -30,10 +30,10 @@ class UpscaleConfig:
     denoise: float = 0.35
     temporal_overlap: int = 4
     split_latent: bool = True
-    vae_temporal_size: int = 32
+    vae_temporal_size: int = 64
     vae_temporal_overlap: int = 8
     segment_duration_seconds: float = 4.0
-    color_correction: str = "lab"
+    color_correction: str = "none"
     seed: int = 0
 
     def __post_init__(self) -> None:
@@ -387,10 +387,10 @@ class ProjectConfig:
                 denoise=float(upscale_raw.get("denoise", 0.35)),
                 temporal_overlap=int(upscale_raw.get("temporal_overlap", 4)),
                 split_latent=bool(upscale_raw.get("split_latent", True)),
-                vae_temporal_size=int(upscale_raw.get("vae_temporal_size", 32)),
+                vae_temporal_size=int(upscale_raw.get("vae_temporal_size", 64)),
                 vae_temporal_overlap=int(upscale_raw.get("vae_temporal_overlap", 8)),
                 segment_duration_seconds=float(upscale_raw.get("segment_duration_seconds", 4.0)),
-                color_correction=str(upscale_raw.get("color_correction", "lab")),
+                color_correction=str(upscale_raw.get("color_correction", "none")),
                 seed=int(upscale_raw.get("seed", 0)),
             ),
             reference_images=ReferenceImagesConfig(

@@ -125,12 +125,12 @@ class SeedVR2PipelineTests(unittest.TestCase):
             ))
 
         self.assertTrue(any("source" in message and "11.08s" in message for message in reporter.messages))
-        self.assertTrue(any("vae_temporal_size=16" in message for message in reporter.messages))
+        self.assertTrue(any("vae_temporal_size=64" in message for message in reporter.messages))
         self.assertTrue(any("scene 1/1" in message and "starting" in message for message in reporter.messages))
         self.assertTrue(any("pass 1/2" in message and "complete" in message for message in reporter.messages))
         self.assertTrue(any("pass 2/2" in message and "complete" in message for message in reporter.messages))
         self.assertTrue(any("scene 1/1" in message and "complete" in message for message in reporter.messages))
-        self.assertEqual(16, backend.calls[0]["settings"].vae_temporal_size)
+        self.assertEqual(64, backend.calls[0]["settings"].vae_temporal_size)
 
     def test_run_seedvr2_segments_long_final_pass_before_concat(self):
         with tempfile.TemporaryDirectory() as temp_dir:

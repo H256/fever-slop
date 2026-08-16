@@ -35,15 +35,14 @@ class ComfyUISeedVR2BackendTests(unittest.TestCase):
         decode = self.node(workflow, "#VAE_DECODE_TILED")
         self.assertEqual(512, encode["inputs"]["tile_size"])
         self.assertEqual(128, encode["inputs"]["overlap"])
-        self.assertEqual(32, encode["inputs"]["temporal_size"])
+        self.assertEqual(64, encode["inputs"]["temporal_size"])
         self.assertEqual(8, encode["inputs"]["temporal_overlap"])
         self.assertEqual(encode["inputs"]["tile_size"], decode["inputs"]["tile_size"])
         self.assertEqual(encode["inputs"]["overlap"], decode["inputs"]["overlap"])
 
         resize = self.node(workflow, "#RESIZE_VIDEO")
-        self.assertEqual("scale dimensions", resize["inputs"]["resize_type"])
-        self.assertEqual(1920, resize["inputs"]["resize_type.width"])
-        self.assertEqual(1080, resize["inputs"]["resize_type.height"])
+        self.assertEqual("scale by multiplier", resize["inputs"]["resize_type"])
+        self.assertEqual(2.0, resize["inputs"]["resize_type.multiplier"])
 
         self.assertEqual(["66:57", 0], self.node(workflow, "#SEEDVR_PREPROCESS")["inputs"]["resized_images"])
         self.assertEqual(["66:74", 0], resize["inputs"]["input"])
@@ -62,8 +61,7 @@ class ComfyUISeedVR2BackendTests(unittest.TestCase):
         )
 
         self.assertEqual("feverslop/input/scene_0001.mp4", self.node(workflow, "#LOAD_VIDEO")["inputs"]["file"])
-        self.assertEqual(1920, self.node(workflow, "#RESIZE_VIDEO")["inputs"]["resize_type.width"])
-        self.assertEqual(1080, self.node(workflow, "#RESIZE_VIDEO")["inputs"]["resize_type.height"])
+        self.assertEqual(2.0, self.node(workflow, "#RESIZE_VIDEO")["inputs"]["resize_type.multiplier"])
         self.assertEqual("seedvr2_3b_int8_convrot.safetensors", self.node(workflow, "#SEEDVR_MODEL")["inputs"]["unet_name"])
         self.assertEqual(0.35, self.node(workflow, "#SEEDVR_SAMPLER")["inputs"]["denoise"])
         self.assertEqual(4, self.node(workflow, "#TEMPORAL_CHUNK")["inputs"]["temporal_overlap"])

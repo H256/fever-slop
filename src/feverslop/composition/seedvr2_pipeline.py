@@ -246,7 +246,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         scene_dir = layout.scene_dir(scene_number)
         current = source
         records: list[dict] = []
-        vae_temporal_size = _resolve_vae_temporal_size(upscale.vae_temporal_size, source_duration)
+        vae_temporal_size = upscale.vae_temporal_size
         vae_temporal_overlap = min(upscale.vae_temporal_overlap, vae_temporal_size)
         settings = SeedVR2RenderSettings(
             model=upscale.model,
@@ -276,6 +276,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
             )
             try:
                 current_duration = probe_duration(current) or source_duration or 0.0
+                pass_settings = replace(settings, scale_multiplier=pass_spec.scale)
                 if current_duration > 0:
                     segment_cap = _pass_segment_cap(upscale, pass_spec, passes[-1].output_size)
                     segments = plan_seedvr2_segments(current_duration, max_segment_duration=segment_cap)
@@ -290,7 +291,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                         pass_number=pass_number,
                         scene_number=scene_number,
                         pass_spec=pass_spec,
-                        settings=settings,
+                        settings=pass_settings,
                         source=current,
                         output=output,
                         reporter=options.reporter,
@@ -302,7 +303,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                         output_size=pass_spec.output_size,
                         scene_number=scene_number,
                         pass_number=pass_number,
-                        settings=settings,
+                        settings=pass_settings,
                     )
             except Exception as exc:
                 options.reporter.message(
