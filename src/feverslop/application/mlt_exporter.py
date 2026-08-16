@@ -97,7 +97,14 @@ def export_render_plan_to_mlt(
         if start_frame > timeline_cursor:
             ET.SubElement(video_playlist, "blank", {"length": str(start_frame - timeline_cursor)})
         producer_id = f"video_{index:04}"
-        _add_avformat_producer(root, producer_id, path, output, frames - 1)
+        _add_avformat_producer(
+            root,
+            producer_id,
+            path,
+            output,
+            frames - 1,
+            caption=f"Scene {scene_number:04d}",
+        )
         ET.SubElement(video_playlist, "entry", {
             "producer": producer_id,
             "in": "0",
@@ -110,7 +117,14 @@ def export_render_plan_to_mlt(
         audio = Path(audio_path)
         if not audio.is_file():
             raise FileNotFoundError(f"Audio file does not exist: {audio}")
-        _add_avformat_producer(root, "audio_original", audio, output, max(0, total_frames - 1))
+        _add_avformat_producer(
+            root,
+            "audio_original",
+            audio,
+            output,
+            max(0, total_frames - 1),
+            caption="Original audio",
+        )
         ET.SubElement(audio_playlist, "entry", {
             "producer": "audio_original",
             "in": "0",
@@ -157,6 +171,7 @@ def _add_avformat_producer(
     path: Path,
     project_file: Path,
     out_frame: int,
+    caption: str,
 ) -> None:
     producer = ET.SubElement(root, "chain", {
         "id": producer_id,
@@ -165,6 +180,7 @@ def _add_avformat_producer(
     })
     ET.SubElement(producer, "property", {"name": "resource"}).text = _relative_path(path, project_file)
     ET.SubElement(producer, "property", {"name": "mlt_service"}).text = "avformat"
+    ET.SubElement(producer, "property", {"name": "shotcut:caption"}).text = caption
 
 
 def _relative_path(path: Path, project_file: Path) -> str:

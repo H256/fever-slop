@@ -165,6 +165,10 @@ class MltExporterTests(unittest.TestCase):
                 ["video_0001", "video_0002"],
             )
             self.assertEqual(audio_playlist.find("entry").attrib["producer"], "audio_original")
+            self.assertEqual(
+                root_element.find("chain[@id='video_0001']/property[@name='shotcut:caption']").text,
+                "Scene 0001",
+            )
             self.assertIsNotNone(root_element.find("playlist[@id='background']"))
             self.assertEqual(
                 root_element.find("tractor/track").attrib["producer"],
