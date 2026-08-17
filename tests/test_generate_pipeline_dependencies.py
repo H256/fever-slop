@@ -387,6 +387,32 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertEqual(1, len(scene_prompt_builder.calls))
             self.assertEqual({"segment_001": "concept"}, result.concept_prompts)
 
+    def test_scene_prompt_stage_reports_accurate_name_and_boundaries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompt_builder = FakeScenePromptBuilder(object())
+            reporter = SimpleNamespace(steps=[], messages=[])
+            reporter.step = lambda title: reporter.steps.append(title)
+            reporter.message = lambda text: reporter.messages.append(text)
+            reporter.panel = lambda text, title=None: reporter.messages.append(text)
+            reporter.table = lambda title, columns, rows: reporter.messages.append(title)
+            reporter.run_progress = lambda description, func: func()
+            context = _prompt_context(temp, concept_batch_size=0)
+            context.reporter = reporter
+            context.log_step = reporter.step
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda _app_config: object(),
+                prompt_pipeline_factory=lambda _llm: FakePromptPipeline(_llm),
+                concept_batcher_factory=lambda _llm, _size: None,
+                scene_prompt_builder_factory=lambda _llm: scene_prompt_builder,
+            )
+
+            pipeline.execute(context)
+
+            self.assertIn("8. Scene Prompt Pack (T2I Startframe + I2V)", reporter.steps)
+            self.assertTrue(any("Scene prompt pack started" in message for message in reporter.messages))
+            self.assertTrue(any("Scene prompt pack finished" in message for message in reporter.messages))
+
     def test_prompt_pipeline_uses_injected_concept_batcher_when_batching(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

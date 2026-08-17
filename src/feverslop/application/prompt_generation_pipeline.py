@@ -249,7 +249,11 @@ class PromptGenerationPipeline:
         )
         log_file("Scene Details JSON", scene_details_json)
 
-        log_step("8. Z-Image + LTX Scene Prompts")
+        log_step("8. Scene Prompt Pack (T2I Startframe + I2V)")
+        reporter.message(
+            f"[cyan]Scene prompt pack started: {len(stage1_segments)} scenes; "
+            "building still-image startframe and image-to-video prompts[/cyan]"
+        )
         scene_prompt_builder = self.scene_prompt_builder_factory(llm)
         scene_prompts_progress = SubStepProgress(reporter, "Scene prompts", len(stage1_segments))
         scene_prompt_builder.build_scene_prompts(
@@ -264,6 +268,7 @@ class PromptGenerationPipeline:
             artifact_store=artifact_store,
             progress_callback=lambda current, total: scene_prompts_progress.update(current),
         )
+        reporter.message("[green]Scene prompt pack finished.[/green]")
         log_file("Scene Prompts JSON", scene_prompts_json)
 
         context.update(
