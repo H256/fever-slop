@@ -204,10 +204,22 @@ def _read_h3_input(path: Path, label: str):
     return JsonArtifactStore().read_json(path)
 
 
-def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
+def _select_pipeline_scenes(scenes: list[dict], scene_spec: str | None) -> list[dict]:
+    selected = parse_scene_list(scene_spec)
+    if selected is None:
+        return scenes
+    return [scene for scene in scenes if int(scene.get("scene") or scene.get("scene_number")) in selected]
+
+
+def _report_reference_fallbacks(warnings: list[str]) -> None:
+    for warning in warnings:
+        console.print(f"[yellow]Reference fallback:[/yellow] {warning}")
+
+
+def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> list[str]:
     """Ensure every scene has actor/location IDs resolvable from the bible."""
     if not plan_path.is_file():
-        return
+        return []
     store = JsonArtifactStore()
     plan = store.read_json(plan_path)
     actors = list(config.actors)
@@ -250,13 +262,16 @@ def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
     ]
     actor_ids = list(dict.fromkeys([*actor_ids, *existing_actor_ids]))
     if not actor_ids or not location_candidates:
-        return
+        return []
     changed = False
+    warnings: list[str] = []
     for scene in plan:
         references = scene.setdefault("references", {})
+        fallback_fields: list[str] = []
         if not references.get("actor_ids"):
             references["actor_ids"] = actor_ids[: config.max_scene_actors]
             changed = True
+            fallback_fields.append(f"actor_ids={references['actor_ids']!r}")
         if not references.get("location_id"):
             text = " ".join(
                 str(value)
@@ -280,8 +295,15 @@ def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
             )
             references["location_id"] = matching[0]
             changed = True
+            fallback_fields.append(f"location_id={matching[0]!r}")
+        if fallback_fields:
+            warnings.append(
+                f"scene {scene.get('scene')}: structured reference serialization missing; "
+                f"using {' and '.join(fallback_fields)} from the existing reference bible."
+            )
     if changed:
         store.write_json(plan_path, plan)
+    return warnings
 
 
 def _discover_stem_files(
@@ -356,7 +378,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     paths = config.paths
     stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
     if state.args.video_pipeline == "minimax-h3-r2v":
-        _seed_reference_bindings(state.plan_for_next_step, config)
+        _report_reference_fallbacks(_seed_reference_bindings(state.plan_for_next_step, config))
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
             state.plan_for_next_step,
             state.context.references_dir,
@@ -366,8 +388,24 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             stage1_segments,
             state.plan_for_next_step,
         )
+    selected_scene_spec = getattr(state.args, "scenes", None)
+    if selected_scene_spec:
+        selected = parse_scene_list(selected_scene_spec) or set()
+        stage1_segments = [segment for segment in stage1_segments if int(segment.get("scene") or 0) in selected]
     concept_prompts = _read_h3_input(state.context.concept_prompts, "concept prompts")
     scene_details = _read_h3_input(state.context.scene_details, "scene details")
+    if selected_scene_spec:
+        selected_ids = {str(segment.get("segment_id")) for segment in stage1_segments}
+        concept_prompts = {
+            key: value for key, value in concept_prompts.items() if str(key) in selected_ids
+        }
+        scene_details = {
+            key: value for key, value in scene_details.items() if str(key) in selected_ids
+        }
+        console.print(
+            f"[cyan]Scene selection active: H3 generation limited to "
+            f"{', '.join(str(number) for number in sorted(selected))}[/cyan]"
+        )
     global_context = _read_h3_input(state.context.resolved_context, "resolved context")
     h3_prompts_json = paths.prompts_dir / f"h3_prompts_{config.song_id}.json"
     paths.prompts_dir.mkdir(parents=True, exist_ok=True)
@@ -441,6 +479,17 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         _preserve_enriched_reference_paths(
             output_path=state.context.render_plan,
             reference_plan_path=state.context.reference_plan,
+        )
+    selected_scene_spec = getattr(state.args, "scenes", None)
+    if selected_scene_spec:
+        selected_plan = _select_pipeline_scenes(
+            JsonArtifactStore().read_json(state.context.render_plan),
+            selected_scene_spec,
+        )
+        JsonArtifactStore().write_json(state.context.render_plan, selected_plan)
+        console.print(
+            f"[cyan]Scene selection active: render plan limited to "
+            f"{len(selected_plan)} selected scene(s)[/cyan]"
         )
     state.plan_for_next_step = state.context.render_plan
     console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
@@ -620,10 +669,10 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         )
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
-        _seed_reference_bindings(
+        _report_reference_fallbacks(_seed_reference_bindings(
             state.plan_for_next_step,
             ProjectConfig.load(project_config_path),
-        )
+        ))
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
@@ -657,10 +706,10 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
         _run_render_plan_stage(state)
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
-        _seed_reference_bindings(
+        _report_reference_fallbacks(_seed_reference_bindings(
             state.plan_for_next_step,
             ProjectConfig.load(project_config_path),
-        )
+        ))
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:

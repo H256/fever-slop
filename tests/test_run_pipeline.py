@@ -91,11 +91,21 @@ class RunPipelinePathTests(unittest.TestCase):
                 input_audio=temp / "song.wav",
             )
 
-            _seed_reference_bindings(plan_path, config)
+            warnings = _seed_reference_bindings(plan_path, config)
             scene = json.loads(plan_path.read_text(encoding="utf-8"))[1]
 
         self.assertEqual(["actor_cat_01"], scene["references"]["actor_ids"])
         self.assertEqual("loc_kitchen_morning", scene["references"]["location_id"])
+        self.assertEqual(1, len(warnings))
+        self.assertIn("structured reference serialization missing", warnings[0])
+
+    def test_selected_pipeline_scenes_filters_render_plan(self):
+        from feverslop.composition.stage_runners import _select_pipeline_scenes
+
+        scenes = [{"scene": 1}, {"scene": 3}, {"scene": 5}]
+
+        self.assertEqual([{"scene": 3}], _select_pipeline_scenes(scenes, "3"))
+        self.assertEqual(scenes, _select_pipeline_scenes(scenes, None))
 
     @patch("feverslop.composition.stage_runners.VideoPostProcessor")
     def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
