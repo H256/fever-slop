@@ -9,6 +9,7 @@ from feverslop.application.sequence_reference_pipeline import (
     SequenceReferencePipeline,
     SequenceReferenceRequest,
 )
+from feverslop.tools.reference_bible import SEQUENCE_PHASE_LABELS
 
 
 class FakeAnchorBackend:
@@ -40,6 +41,17 @@ class FakeSequenceBackend:
 
 
 class SequenceReferencePipelineTests(unittest.TestCase):
+    def test_reference_phase_log_labels_are_english(self):
+        self.assertEqual(
+            {
+                "anchor_start": "Krea anchor started",
+                "anchor_complete": "Krea anchor finished",
+                "sequence_start": "MiniMax sequence started",
+                "sequence_complete": "MiniMax sequence finished",
+            },
+            SEQUENCE_PHASE_LABELS,
+        )
+
     def test_generates_anchor_sequence_contact_and_final_sheet(self):
         with tempfile.TemporaryDirectory() as temp:
             anchor_backend = FakeAnchorBackend()

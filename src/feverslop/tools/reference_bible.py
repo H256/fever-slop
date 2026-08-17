@@ -21,6 +21,12 @@ from feverslop.ports.rendering import WorkflowAnchorConfig
 
 console = Console()
 MSR_ACTOR_VIEW_NAMES = ReferenceBibleGenerator.direct_msr_actor_view_names
+SEQUENCE_PHASE_LABELS = {
+    "anchor_start": "Krea anchor started",
+    "anchor_complete": "Krea anchor finished",
+    "sequence_start": "MiniMax sequence started",
+    "sequence_complete": "MiniMax sequence finished",
+}
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -225,13 +231,7 @@ def run(args: argparse.Namespace) -> list[Path]:
                 progress.update(current_task_id, advance=1)
 
         def on_sequence_phase(event: dict) -> None:
-            labels = {
-                "anchor_start": "Krea anchor startet",
-                "anchor_complete": "Krea anchor fertig",
-                "sequence_start": "MiniMax-Sequenz startet",
-                "sequence_complete": "MiniMax-Sequenz fertig",
-            }
-            label = labels.get(event["phase"], event["phase"])
+            label = SEQUENCE_PHASE_LABELS.get(event["phase"], event["phase"])
             suffix = f": {event['path']}" if event.get("path") else ""
             console.print(f"[cyan]{event['kind']} {event['id']}[/cyan] {label}{suffix}")
 

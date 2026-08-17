@@ -115,5 +115,34 @@ class ConceptPromptBatcherTests(unittest.TestCase):
 
         self.assertTrue(found_repair_call, "_repair_missing_or_extra_keys was not called")
 
+    def test_reports_ids_of_missing_scene_keys_before_repair(self):
+        modules = FakeConceptModules([
+            json.dumps({"seg_1": "concept 1"}),
+            json.dumps({"seg_2": "repaired concept 2", "seg_3": "repaired concept 3"}),
+            "summary",
+        ])
+        progress = []
+        batcher = ConceptPromptBatcher(
+            llm=object(),
+            prompt_modules=modules,
+            batch_size=3,
+            progress_callback=progress.append,
+        )
+
+        batcher.create_concept_prompts_batched(
+            stage1_segments=[
+                {"segment_id": "seg_1"},
+                {"segment_id": "seg_2"},
+                {"segment_id": "seg_3"},
+            ],
+            story_idea="idea",
+            global_context={},
+        )
+
+        self.assertIn(
+            "Concept batch: repairing 2 missing scene keys: seg_2, seg_3",
+            progress,
+        )
+
 if __name__ == "__main__":
     unittest.main()

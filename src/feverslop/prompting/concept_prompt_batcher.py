@@ -185,7 +185,7 @@ class ConceptPromptBatcher:
 
         self._report(
             f"Concept batch: repairing {len(missing)} missing scene "
-            f"{'key' if len(missing) == 1 else 'keys'}",
+            f"{'key' if len(missing) == 1 else 'keys'}: {', '.join(missing)}",
             progress_callback,
         )
 

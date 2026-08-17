@@ -48,6 +48,58 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         self.assertIn("CURRENT_BATCH_SEGMENTS", calls[0]["payload"])
         self.assertEqual(512, calls[0]["config"]["max_tokens"])
 
+    def test_batched_concepts_scale_output_limit_per_segment(self):
+        calls = []
+
+        class Predictor:
+            def __call__(self, **kwargs):
+                calls.append(kwargs)
+                return {"concepts": {}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
+
+        modules.concepts(
+            {"CURRENT_BATCH_SEGMENTS": [{"segment_id": f"segment_{i:03}"} for i in range(1, 11)]},
+            batch=True,
+        )
+
+        self.assertEqual(6144, calls[0]["config"]["max_tokens"])
+
+    def test_legacy_concepts_scale_output_limit_by_timeline_size(self):
+        calls = []
+
+        class Predictor:
+            def __call__(self, **kwargs):
+                calls.append(kwargs)
+                return {"concepts": {}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
+        modules.concepts({"SEGMENT_TIMELINE_JSON": [{"segment_id": str(i)} for i in range(10)]})
+
+        self.assertEqual(6144, calls[0]["config"]["max_tokens"])
+
     def test_dspy_predictor_receives_caller_timeout_as_lm_config(self):
         calls = []
 

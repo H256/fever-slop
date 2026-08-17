@@ -22,6 +22,17 @@ class LLMPolicyTests(unittest.TestCase):
 
         self.assertEqual("structured", policy_for("new_signature").profile)
 
+    def test_multi_item_output_limits_scale_with_item_count(self):
+        from feverslop.prompting.llm_policy import (
+            concept_batch_max_tokens,
+            lyric_alignment_max_tokens,
+            msr_segments_max_tokens,
+        )
+
+        self.assertEqual(6144, concept_batch_max_tokens(10))
+        self.assertEqual(4352, lyric_alignment_max_tokens(13))
+        self.assertEqual(3072, msr_segments_max_tokens(4))
+
     def test_short_prompt_result_rejects_unbounded_text(self):
         from feverslop.prompting.general_signatures import PromptResult
 
