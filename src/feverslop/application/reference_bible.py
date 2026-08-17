@@ -84,6 +84,8 @@ class ReferenceBibleGenerator:
         direct_msr_sheet_prompt_builder: Callable[[ReferenceSubject], str] | None = None,
         sequence_backend: Any | None = None,
         sequence_planner: Any | None = None,
+        visual_style: str = "",
+        on_sequence_phase: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.backend = backend
         self.edit_backend = edit_backend or backend
@@ -104,6 +106,8 @@ class ReferenceBibleGenerator:
         self.direct_msr_sheet_prompt_builder = direct_msr_sheet_prompt_builder
         self.sequence_backend = sequence_backend
         self.sequence_planner = sequence_planner
+        self.visual_style = str(visual_style or "").strip()
+        self.on_sequence_phase = on_sequence_phase
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
         if self.sequence_backend is not None:
@@ -121,6 +125,7 @@ class ReferenceBibleGenerator:
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
             planner=self.sequence_planner,
+            on_phase=self.on_sequence_phase,
         ).generate(
             SequenceReferenceRequest(
                 kind="character",
@@ -128,6 +133,7 @@ class ReferenceBibleGenerator:
                 name=subject.name,
                 description=subject.visual_description or subject.name,
                 image_prompt=subject.image_prompt,
+                visual_style=self.visual_style,
                 asset_context=asdict(subject),
                 output_dir=self.output_dir,
             )
@@ -282,6 +288,7 @@ class ReferenceBibleGenerator:
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
             planner=self.sequence_planner,
+            on_phase=self.on_sequence_phase,
         ).generate(
             SequenceReferenceRequest(
                 kind="location",
@@ -289,6 +296,7 @@ class ReferenceBibleGenerator:
                 name=location.name,
                 description=location.visual_description or location.name,
                 image_prompt=location.image_prompt,
+                visual_style=self.visual_style,
                 asset_context=asdict(location),
                 output_dir=self.output_dir,
             )

@@ -85,6 +85,7 @@ class LocalProjectScaffold:
                     },
                     "story_idea": spec.visual_story_idea,
                     "style": spec.visual_style,
+                    "music_style": spec.music_style or spec.tags,
                     "subject": "",
                     "locations": [],
                     "steering": {

@@ -141,7 +141,13 @@ def _selected_video_workflows(state: PipelineRunState) -> tuple[Path, ...]:
     elif state.args.video_pipeline == "ltx_ingredients":
         candidates = (state.ingredients_workflow,)
     elif state.args.render_mode == "single_prompt":
-        candidates = (state.single_prompt_workflow,)
+        workflow = state.single_prompt_workflow
+        if (
+            state.args.video_pipeline == "minimax-h3-r2v"
+            and Path(workflow).name == "video_ltxv_i2v_v2.json"
+        ):
+            workflow = Path("workflows/video_minimax_h3_r2v_v1.json")
+        candidates = (workflow,)
     elif state.args.render_mode == "relay":
         candidates = (state.relay_workflow,)
     else:

@@ -205,6 +205,12 @@ def run(args: argparse.Namespace) -> list[Path]:
     ) as progress:
         total_task_id = progress.add_task("Rendering reference views", total=total_views)
 
+        if sequence_backend is not None:
+            console.print(
+                "[cyan]Reference phases:[/cyan] each asset runs the anchor image first, "
+                "then the MiniMax sequence."
+            )
+
         def on_view_complete(event: dict) -> None:
             nonlocal current_task_id
             progress.update(
@@ -217,6 +223,17 @@ def run(args: argparse.Namespace) -> list[Path]:
             )
             if current_task_id is not None:
                 progress.update(current_task_id, advance=1)
+
+        def on_sequence_phase(event: dict) -> None:
+            labels = {
+                "anchor_start": "Krea anchor startet",
+                "anchor_complete": "Krea anchor fertig",
+                "sequence_start": "MiniMax-Sequenz startet",
+                "sequence_complete": "MiniMax-Sequenz fertig",
+            }
+            label = labels.get(event["phase"], event["phase"])
+            suffix = f": {event['path']}" if event.get("path") else ""
+            console.print(f"[cyan]{event['kind']} {event['id']}[/cyan] {label}{suffix}")
 
         generator = ReferenceBibleGenerator(
             backend=hero_backend,
@@ -231,9 +248,12 @@ def run(args: argparse.Namespace) -> list[Path]:
             reference_image_size=project_config.reference_images.resolve(project_config.video),
             sequence_backend=sequence_backend,
             sequence_planner=sequence_planner,
+            visual_style=project_config.style,
+            on_sequence_phase=on_sequence_phase,
         )
 
         for subject in subjects:
+            console.print(f"[cyan]Starting Krea anchor + MiniMax sequence: actor {subject.id}[/cyan]")
             current_task_id = progress.add_task(
                 f"Actor {subject.id}",
                 total=actor_work,
@@ -243,6 +263,7 @@ def run(args: argparse.Namespace) -> list[Path]:
             progress.update(current_task_id, completed=actor_work)
             console.print(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
         for location in locations:
+            console.print(f"[cyan]Starting Krea anchor + MiniMax sequence: location {location.id}[/cyan]")
             current_task_id = progress.add_task(
                 f"Location {location.id}",
                 total=location_work,

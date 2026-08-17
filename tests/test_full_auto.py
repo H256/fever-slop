@@ -25,6 +25,7 @@ class FakeBriefGenerator:
             keyscale="C major",
             visual_story_idea="friends walking into sunlight",
             visual_style="warm realistic pop video",
+            music_style="bright synth-pop",
         )
 
 
@@ -112,6 +113,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
             self.assertEqual({"fps": 24, "width": 1024, "height": 576}, config["video"])
             self.assertEqual("friends walking into sunlight", config["story_idea"])
             self.assertEqual("warm realistic pop video", config["style"])
+            self.assertEqual("bright synth-pop", config["music_style"])
             self.assertTrue((project_dir / "lyrics.txt").exists())
             self.assertTrue((project_dir / "full_auto_song_spec.json").exists())
 

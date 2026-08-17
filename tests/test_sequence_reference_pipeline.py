@@ -44,9 +44,11 @@ class SequenceReferencePipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             anchor_backend = FakeAnchorBackend()
             sequence_backend = FakeSequenceBackend()
+            events = []
             pipeline = SequenceReferencePipeline(
                 anchor_backend=anchor_backend,
                 sequence_backend=sequence_backend,
+                on_phase=events.append,
             )
 
             def fake_extract(_video, output_dir, sample_count):
@@ -65,6 +67,7 @@ class SequenceReferencePipelineTests(unittest.TestCase):
                 description="a solitary astronaut",
                 output_dir=Path(temp) / "references",
                 seed=7,
+                visual_style="comic, bright colors, anime style",
             )
             with patch(
                 "feverslop.application.sequence_reference_pipeline.extract_video_frames",
@@ -82,6 +85,12 @@ class SequenceReferencePipelineTests(unittest.TestCase):
             self.assertTrue(Path(result.sheet_path).is_file())
             self.assertEqual(1, len(anchor_backend.calls))
             self.assertEqual(1, len([call for call in sequence_backend.calls if call[0] == "render"]))
+            self.assertIn("comic, bright colors, anime style", anchor_backend.calls[0].prompt)
+            self.assertIn("comic, bright colors, anime style", sequence_backend.calls[1][2])
+            self.assertEqual(
+                ["anchor_start", "anchor_complete", "sequence_start", "sequence_complete"],
+                [event["phase"] for event in events],
+            )
 
     def test_location_uses_five_views(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -65,7 +65,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
 
             self.assertEqual("uploaded/anchor.png", patched["136"]["inputs"]["image"])
             self.assertEqual(
-                "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+                "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
                 patched["139"]["inputs"]["lora_name"],
             )
             self.assertEqual("turnaround", patched["131"]["inputs"]["prompt"])

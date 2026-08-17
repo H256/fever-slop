@@ -111,6 +111,23 @@ class TestSelectedVideoWorkflows(unittest.TestCase):
         self.assertEqual(1, len(result))
         self.assertEqual(Path("/workflows/msr.json"), result[0])
 
+    def test_minimax_r2v_uses_bundled_r2v_workflow_when_cli_default_is_ltx(self):
+        from feverslop.composition.stage_runners import _selected_video_workflows
+
+        args = MagicMock()
+        args.video_pipeline = "minimax-h3-r2v"
+        args.render_mode = "single_prompt"
+
+        state = MagicMock()
+        state.args = args
+        state.single_prompt_workflow = Path("workflows/video_ltxv_i2v_v2.json")
+        state.relay_workflow = Path("")
+
+        self.assertEqual(
+            Path("workflows/video_minimax_h3_r2v_v1.json"),
+            _selected_video_workflows(state)[0],
+        )
+
 
 class TestRunUnitTestSuite(unittest.TestCase):
     """COMP-108: subprocess cwd."""

@@ -289,6 +289,7 @@ class ProjectConfig:
 
     story_idea: str = ""
     style: str = ""
+    music_style: str = ""
     subject: str = ""
     locations: list[str] = field(default_factory=list)
     actors: tuple[ActorConfig, ...] = field(default_factory=tuple)
@@ -424,6 +425,7 @@ class ProjectConfig:
 
             story_idea=raw.get("story_idea", ""),
             style=raw.get("style", ""),
+            music_style=raw.get("music_style", ""),
             subject=raw.get("subject", ""),
             locations=[
                 str(item.get("name") if isinstance(item, dict) else item)

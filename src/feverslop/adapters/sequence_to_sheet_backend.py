@@ -146,7 +146,7 @@ class ComfyUISequenceToSheetBackend:
         patcher.set_input_by_title(
             "#TURBO_LORA",
             "lora_name",
-            "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+            "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
         )
         if not patcher.try_set_existing_input_by_title("#SEED", "noise_seed", int(seed)):
             patcher.set_input_by_title("#SEED", "value", int(seed))

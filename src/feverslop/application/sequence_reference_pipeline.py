@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.application.reference_sheet_planning import (
     DeterministicReferenceSheetPlanner,
@@ -33,6 +33,7 @@ class SequenceReferenceRequest:
     description: str
     output_dir: Path
     image_prompt: str = ""
+    visual_style: str = ""
     seed: int = 0
     frames: int = 124
     asset_context: dict[str, Any] | None = None
@@ -61,10 +62,11 @@ class SequenceReferenceResult:
 class SequenceReferencePipeline:
     """Generate a reusable character/location reference from one anchor."""
 
-    def __init__(self, *, anchor_backend: Any, sequence_backend: Any, planner: Any | None = None):
+    def __init__(self, *, anchor_backend: Any, sequence_backend: Any, planner: Any | None = None, on_phase: Callable[[dict[str, Any]], None] | None = None):
         self.anchor_backend = anchor_backend
         self.sequence_backend = sequence_backend
         self.planner = planner or DeterministicReferenceSheetPlanner()
+        self.on_phase = on_phase
 
     def generate(self, request: SequenceReferenceRequest) -> SequenceReferenceResult:
         kind = request.kind.strip().lower()
@@ -79,11 +81,14 @@ class SequenceReferencePipeline:
         try:
             anchor_dir = staging_dir / "anchor"
             anchor_dir.mkdir(parents=True)
+            style = " ".join(str(request.visual_style or "").split())
+            style_suffix = f" Visual style: {style}." if style else ""
+            self._report_phase(request, "anchor_start")
             anchor = self.anchor_backend.render_image(
                 ImageRenderRequest(
                     scene={"reference_id": request.asset_id, "kind": kind, "view": "anchor"},
                     scene_number=1,
-                    prompt=request.image_prompt or request.description,
+                    prompt=f"{request.image_prompt or request.description}{style_suffix}",
                     workflow_path=Path(""),
                     output_dir=anchor_dir,
                     width=1920,
@@ -94,6 +99,7 @@ class SequenceReferencePipeline:
             anchor = Path(anchor)
             if not anchor.is_file():
                 raise FileNotFoundError(f"anchor backend did not create an image: {anchor}")
+            self._report_phase(request, "anchor_complete", path=anchor)
 
             semantic_plan = self.planner.plan(
                 kind=kind,
@@ -115,10 +121,14 @@ class SequenceReferencePipeline:
                     shots=view_count,
                     frames=request.frames,
                 )
+            sequence_prompt = prompt.prompt
+            if style:
+                sequence_prompt = f"{sequence_prompt}\n\nVisual style: {style}. Preserve this style throughout the sequence."
             sequence = staging_dir / "sequence.mp4"
+            self._report_phase(request, "sequence_start")
             rendered = self.sequence_backend.render(
                 anchor_images=[anchor],
-                prompt=prompt.prompt,
+                prompt=sequence_prompt,
                 output_path=sequence,
                 seed=request.seed,
                 frames=request.frames,
@@ -126,10 +136,11 @@ class SequenceReferencePipeline:
             sequence = Path(rendered)
             if not sequence.is_file():
                 raise FileNotFoundError(f"sequence backend did not create a video: {sequence}")
+            self._report_phase(request, "sequence_complete", path=sequence)
             semantic_plan_hash = hashlib.sha256(
                 json.dumps(semantic_plan.model_dump() if hasattr(semantic_plan, "model_dump") else semantic_plan, sort_keys=True).encode()
             ).hexdigest()
-            prompt_hash = hashlib.sha256(prompt.prompt.encode()).hexdigest()
+            prompt_hash = hashlib.sha256(sequence_prompt.encode()).hexdigest()
 
             frames_dir = staging_dir / "frames"
             candidates = extract_video_frames(
@@ -197,3 +208,7 @@ class SequenceReferencePipeline:
             )
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _report_phase(self, request: SequenceReferenceRequest, phase: str, **extra: Any) -> None:
+        if self.on_phase is not None:
+            self.on_phase({"kind": request.kind, "id": request.asset_id, "name": request.name, "phase": phase, **extra})
