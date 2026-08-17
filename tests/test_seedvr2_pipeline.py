@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.composition.seedvr2_pipeline import SeedVR2CompositionOptions, run_seedvr2
+from feverslop.domain.seedvr2 import plan_seedvr2_segments
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -29,11 +30,15 @@ class RecordingReporter:
 
 
 class FakePostProcessor:
+    def __init__(self):
+        self.concat_calls = []
+
     def write_concat_list(self, video_files, output_file):
         Path(output_file).write_text("\n".join(str(path) for path in video_files), encoding="utf-8")
         return Path(output_file)
 
-    def concat_clips(self, concat_list, output_file, reencode=False):
+    def concat_clips(self, concat_list, output_file, video_only=False, reencode=False, fps=None):
+        self.concat_calls.append((Path(concat_list), Path(output_file), video_only, reencode, fps))
         output = Path(output_file)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"concatenated video")
@@ -41,6 +46,14 @@ class FakePostProcessor:
 
 
 class SeedVR2PipelineTests(unittest.TestCase):
+    def test_segment_planner_balances_tiny_remainder_into_previous_segment(self):
+        segments = plan_seedvr2_segments(5.29, max_segment_duration=5.0)
+
+        self.assertEqual(2, len(segments))
+        self.assertAlmostEqual(2.645, segments[0].duration_seconds, places=3)
+        self.assertAlmostEqual(2.645, segments[1].duration_seconds, places=3)
+        self.assertAlmostEqual(5.29, sum(segment.duration_seconds for segment in segments), places=3)
+
     def test_run_seedvr2_creates_multi_pass_artifacts_and_logs_settings(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -184,7 +197,8 @@ class SeedVR2PipelineTests(unittest.TestCase):
             for index in (1, 2, 3):
                 (layout.scene_dir(1) / f"upscale_pass_01_segment_{index:04d}.mp4").write_bytes(b"old segment")
 
-            with patch("feverslop.composition.seedvr2_pipeline.VideoPostProcessor", return_value=FakePostProcessor()):
+            postprocessor = FakePostProcessor()
+            with patch("feverslop.composition.seedvr2_pipeline.VideoPostProcessor", return_value=postprocessor):
                 run_seedvr2(SeedVR2CompositionOptions(
                     project_config_path=config,
                     render_plan_path=plan,
@@ -202,6 +216,7 @@ class SeedVR2PipelineTests(unittest.TestCase):
         self.assertEqual([4.0, 4.0, 3.08], [call["settings"].trim_duration_seconds for call in segment_calls])
         self.assertTrue(final_exists)
         self.assertTrue(any("segment 3/3 complete" in message for message in reporter.messages))
+        self.assertEqual((True, True, 24), postprocessor.concat_calls[-1][2:])
 
     def test_run_seedvr2_finds_legacy_ltx_scene_clip(self):
         with tempfile.TemporaryDirectory() as temp_dir:

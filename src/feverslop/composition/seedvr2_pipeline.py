@@ -173,7 +173,13 @@ def _render_segmented_pass(
         )
     concat_list = scene_dir / f"upscale_pass_{pass_number:02d}_segments.txt"
     postprocessor.write_concat_list(segment_outputs, concat_list)
-    return postprocessor.concat_clips(concat_list, output, reencode=True)
+    return postprocessor.concat_clips(
+        concat_list,
+        output,
+        video_only=True,
+        reencode=True,
+        fps=settings.fps,
+    )
 
 
 def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:

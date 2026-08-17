@@ -206,7 +206,14 @@ class VideoPostProcessor:
             return None
         return float(value)
 
-    def concat_clips(self, concat_list: str | Path, output_file: str | Path, video_only: bool = False, reencode: bool = False) -> Path:
+    def concat_clips(
+        self,
+        concat_list: str | Path,
+        output_file: str | Path,
+        video_only: bool = False,
+        reencode: bool = False,
+        fps: float | None = None,
+    ) -> Path:
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -217,7 +224,19 @@ class VideoPostProcessor:
             "-safe", "0",
             "-i", str(concat_list),
         ]
-        if video_only:
+        if video_only and reencode:
+            cmd.extend([
+                "-an",
+                "-c:v", self.video_codec,
+                "-crf", str(self.crf),
+                "-preset", self.preset,
+                "-pix_fmt", "yuv420p",
+                "-fps_mode", "cfr",
+            ])
+            if fps is not None:
+                cmd.extend(["-r", str(fps)])
+            cmd.extend(["-movflags", "+faststart"])
+        elif video_only:
             cmd.extend(["-an", "-c:v", "copy"])
         elif reencode:
             cmd.extend([

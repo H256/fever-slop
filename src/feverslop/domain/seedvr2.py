@@ -28,6 +28,29 @@ def plan_seedvr2_segments(
     if max_segment_duration <= 0:
         raise ValueError("max_segment_duration must be positive")
 
+    segment_count = math.ceil(duration_seconds / max_segment_duration)
+    full_segment_count = math.floor(duration_seconds / max_segment_duration)
+    remainder = duration_seconds - full_segment_count * max_segment_duration
+    if (
+        segment_count > 1
+        and remainder > 1e-6
+        and remainder < max_segment_duration / 2
+    ):
+        balanced_duration = duration_seconds / segment_count
+        segments = []
+        start = 0.0
+        for index in range(1, segment_count + 1):
+            end = duration_seconds if index == segment_count else balanced_duration * index
+            segments.append(
+                SeedVR2Segment(
+                    index,
+                    round(start, 6),
+                    round(end - start, 6),
+                )
+            )
+            start = end
+        return segments
+
     segments: list[SeedVR2Segment] = []
     start = 0.0
     index = 1
