@@ -113,6 +113,28 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("A weathered hiker.", references[0]["description"])
         self.assertEqual("A dark ancient forest.", references[1]["description"])
 
+    def test_scene_references_deduplicate_audio_paths_from_scene_and_global_inputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            vocal = root / "output" / "stems" / "vocals.wav"
+            full_mix = root / "input" / "song.wav"
+            references, _images = _scene_references(
+                {
+                    "references": {
+                        "reference_audio_paths": [
+                            "output/stems/vocals.wav",
+                            "input/song.wav",
+                        ],
+                    }
+                },
+                {"vocals": vocal, "full_mix": full_mix},
+                root,
+            )
+
+        audio_references = [reference for reference in references if reference["kind"] == "audio"]
+        self.assertEqual(2, len(audio_references))
+        self.assertEqual(["vocals", "song"], [reference["name"] for reference in audio_references])
+
     def test_local_picture_without_description_reaches_h3_analyzer_without_placeholder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

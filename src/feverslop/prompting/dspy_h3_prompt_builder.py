@@ -28,6 +28,17 @@ def _reference(
     }
 
 
+def _reference_source_key(source: str | Path, reference_root: Path | None) -> str:
+    """Return a stable key so relative and absolute project paths deduplicate."""
+    path = Path(str(source))
+    if reference_root is not None and not path.is_absolute():
+        path = reference_root / path
+    try:
+        return path.resolve(strict=False).as_posix().casefold()
+    except OSError:
+        return str(path).replace("\\", "/").casefold()
+
+
 def _scene_references(
     segment: dict[str, Any],
     audio_paths: dict[str, Path] | None,
@@ -42,9 +53,10 @@ def _scene_references(
     def add_reference(reference: dict[str, str], image_path: Path | None = None) -> None:
         source = reference["source"]
         kind = reference["kind"]
-        if source in seen[kind]:
+        source_key = _reference_source_key(source, reference_root)
+        if source_key in seen[kind]:
             return
-        seen[kind].add(source)
+        seen[kind].add(source_key)
         result.append(reference)
         if image_path is not None and image_path.is_file():
             images.append(image_path)
