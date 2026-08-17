@@ -37,8 +37,8 @@ class FakePostProcessor:
         Path(output_file).write_text("\n".join(str(path) for path in video_files), encoding="utf-8")
         return Path(output_file)
 
-    def concat_clips(self, concat_list, output_file, video_only=False, reencode=False, fps=None):
-        self.concat_calls.append((Path(concat_list), Path(output_file), video_only, reencode, fps))
+    def concat_clips(self, concat_list, output_file, video_only=False, reencode=False, fps=None, frame_count=None):
+        self.concat_calls.append((Path(concat_list), Path(output_file), video_only, reencode, fps, frame_count))
         output = Path(output_file)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"concatenated video")
@@ -112,6 +112,42 @@ class SeedVR2PipelineTests(unittest.TestCase):
             ))
 
         self.assertEqual([], backend.calls)
+
+    def test_run_seedvr2_rebuilds_existing_final_from_segments_without_backend_render(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.mp3").write_bytes(b"")
+            config = root / "config.json"
+            config.write_text(json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": True, "target_width": 2560}}), encoding="utf-8")
+            layout = SceneArtifactLayout(root)
+            source = layout.scene_final_video(1)
+            final = layout.scene_upscaled_video(1)
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b"source")
+            final.write_bytes(b"stale final")
+            segment_one = layout.scene_dir(1) / "upscale_pass_01_segment_0001.mp4"
+            segment_two = layout.scene_dir(1) / "upscale_pass_01_segment_0002.mp4"
+            segment_one.write_bytes(b"segment one")
+            segment_two.write_bytes(b"segment two")
+            segment_list = layout.scene_dir(1) / "upscale_pass_01_segments.txt"
+            segment_list.write_text(f"file '{segment_one}'\nfile '{segment_two}'\n", encoding="utf-8")
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([{"scene": 1}]), encoding="utf-8")
+            backend = FakeBackend()
+            postprocessor = FakePostProcessor()
+
+            with patch("feverslop.composition.seedvr2_pipeline.VideoPostProcessor", return_value=postprocessor):
+                run_seedvr2(SeedVR2CompositionOptions(
+                    project_config_path=config,
+                    render_plan_path=plan,
+                    backend=backend,
+                    probe_size=lambda _path: (640, 360),
+                    probe_duration=lambda _path: 11.08,
+                    reporter=RecordingReporter(),
+                ))
+
+        self.assertEqual([], backend.calls)
+        self.assertEqual((True, True, 24, 266), postprocessor.concat_calls[-1][2:])
 
     def test_run_seedvr2_processes_only_selected_scenes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -216,7 +252,7 @@ class SeedVR2PipelineTests(unittest.TestCase):
         self.assertEqual([4.0, 4.0, 3.08], [call["settings"].trim_duration_seconds for call in segment_calls])
         self.assertTrue(final_exists)
         self.assertTrue(any("segment 3/3 complete" in message for message in reporter.messages))
-        self.assertEqual((True, True, 24), postprocessor.concat_calls[-1][2:])
+        self.assertEqual((True, True, 24, 266), postprocessor.concat_calls[-1][2:])
 
     def test_run_seedvr2_finds_legacy_ltx_scene_clip(self):
         with tempfile.TemporaryDirectory() as temp_dir:

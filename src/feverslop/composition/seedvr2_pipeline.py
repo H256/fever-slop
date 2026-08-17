@@ -140,6 +140,7 @@ def _render_segmented_pass(
     output: Path,
     reporter: Any,
     skip_existing: bool,
+    frame_count: int,
 ) -> Path:
     segment_outputs: list[Path] = []
     for segment in segments:
@@ -179,6 +180,7 @@ def _render_segmented_pass(
         video_only=True,
         reencode=True,
         fps=settings.fps,
+        frame_count=frame_count,
     )
 
 
@@ -215,6 +217,34 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         scene_number = int(entry.get("scene") or entry.get("scene_number"))
         final_output = layout.scene_upscaled_video(scene_number)
         if options.skip_existing and final_output.is_file():
+            segment_lists = sorted(layout.scene_dir(scene_number).glob("upscale_pass_*_segments.txt"))
+            if segment_lists:
+                segment_list = segment_lists[-1]
+                segment_outputs = [
+                    Path(line.strip()[6:-1])
+                    for line in segment_list.read_text(encoding="utf-8").splitlines()
+                    if line.strip().startswith("file '") and line.strip().endswith("'")
+                ]
+                if segment_outputs and all(path.is_file() for path in segment_outputs):
+                    source = _source_clip(layout, scene_number)
+                    source_duration = probe_duration(source)
+                    if source_duration is not None:
+                        frame_count = max(1, round(source_duration * config.video.fps))
+                        options.reporter.message(
+                            f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} rebuilding existing final "
+                            f"from {len(segment_outputs)} segments: {final_output}[/cyan]"
+                        )
+                        postprocessor.concat_clips(
+                            segment_list,
+                            final_output,
+                            video_only=True,
+                            reencode=True,
+                            fps=config.video.fps,
+                            frame_count=frame_count,
+                        )
+                        outputs.append(final_output)
+                        progress.update(scene_index, detail=f"scene {scene_number} rebuilt", force=True)
+                        continue
             options.reporter.message(
                 f"[yellow]SeedVR2 scene {scene_index}/{len(plan)} skipped: existing {final_output}[/yellow]"
             )
@@ -309,6 +339,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                         output=output,
                         reporter=options.reporter,
                         skip_existing=options.skip_existing,
+                        frame_count=max(1, round((source_duration or current_duration) * settings.fps)),
                     )
                 else:
                     rendered = backend.render(

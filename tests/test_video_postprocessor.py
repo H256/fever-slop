@@ -73,6 +73,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
                 video_only=True,
                 reencode=True,
                 fps=24,
+                frame_count=134,
             )
 
         cmd = run.call_args.args[0]
@@ -81,6 +82,8 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertIn("cfr", cmd)
         self.assertIn("-r", cmd)
         self.assertIn("24", cmd)
+        self.assertIn("-frames:v", cmd)
+        self.assertIn("134", cmd)
         self.assertIn("libx264", cmd)
         self.assertNotIn("copy", cmd)
 

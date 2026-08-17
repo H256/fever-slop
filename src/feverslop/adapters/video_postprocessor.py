@@ -213,6 +213,7 @@ class VideoPostProcessor:
         video_only: bool = False,
         reencode: bool = False,
         fps: float | None = None,
+        frame_count: int | None = None,
     ) -> Path:
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -235,6 +236,8 @@ class VideoPostProcessor:
             ])
             if fps is not None:
                 cmd.extend(["-r", str(fps)])
+            if frame_count is not None:
+                cmd.extend(["-frames:v", str(frame_count)])
             cmd.extend(["-movflags", "+faststart"])
         elif video_only:
             cmd.extend(["-an", "-c:v", "copy"])
