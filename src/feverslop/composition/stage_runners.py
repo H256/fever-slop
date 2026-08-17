@@ -205,20 +205,57 @@ def _read_h3_input(path: Path, label: str):
 
 
 def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
-    """Ensure reference stages have actor/location IDs to resolve from config."""
+    """Ensure every scene has actor/location IDs resolvable from the bible."""
     if not plan_path.is_file():
         return
     store = JsonArtifactStore()
     plan = store.read_json(plan_path)
     actors = list(config.actors)
     locations = list(config.structured_locations)
-    if not actors or not locations:
+    reference_root = config.project_dir / "output" / "references"
+    actor_ids = [actor.id for actor in actors]
+    if not actor_ids:
+        actor_ids = sorted(
+            path.name
+            for path in (reference_root / "actors").iterdir()
+            if path.is_dir()
+        ) if (reference_root / "actors").is_dir() else []
+    location_candidates: list[tuple[str, str]] = [
+        (location.id, " ".join((location.id, location.name, location.visual_description, location.image_prompt)))
+        for location in locations
+    ]
+    locations_root = reference_root / "locations"
+    if locations_root.is_dir():
+        for location_dir in sorted(path for path in locations_root.iterdir() if path.is_dir()):
+            manifest_path = location_dir / "manifest.json"
+            manifest: dict = {}
+            if manifest_path.is_file():
+                try:
+                    loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    manifest = loaded if isinstance(loaded, dict) else {}
+                except (OSError, json.JSONDecodeError):
+                    manifest = {}
+            location_candidates.append((
+                location_dir.name,
+                " ".join(
+                    str(manifest.get(key, ""))
+                    for key in ("id", "name", "visual_description", "image_prompt")
+                ) + " " + location_dir.name,
+            ))
+    existing_actor_ids = [
+        str(actor_id)
+        for scene in plan
+        for actor_id in (scene.get("references") or {}).get("actor_ids") or []
+        if str(actor_id).strip()
+    ]
+    actor_ids = list(dict.fromkeys([*actor_ids, *existing_actor_ids]))
+    if not actor_ids or not location_candidates:
         return
     changed = False
     for scene in plan:
         references = scene.setdefault("references", {})
         if not references.get("actor_ids"):
-            references["actor_ids"] = [actor.id for actor in actors[: config.max_scene_actors]]
+            references["actor_ids"] = actor_ids[: config.max_scene_actors]
             changed = True
         if not references.get("location_id"):
             text = " ".join(
@@ -233,12 +270,15 @@ def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
             matching = next(
                 (
                     location
-                    for location in locations
-                    if location.id.lower() in text or location.name.lower() in text
+                    for location in location_candidates
+                    if any(
+                        part.strip() and part.strip().lower() in text
+                        for part in location[1].split()
+                    )
                 ),
-                locations[0],
+                location_candidates[0],
             )
-            references["location_id"] = matching.id
+            references["location_id"] = matching[0]
             changed = True
     if changed:
         store.write_json(plan_path, plan)

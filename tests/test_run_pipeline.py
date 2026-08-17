@@ -68,6 +68,35 @@ class RunPipelinePathTests(unittest.TestCase):
         self.assertEqual(["singer"], scene["references"]["actor_ids"])
         self.assertEqual("cathedral", scene["references"]["location_id"])
 
+    def test_seed_reference_bindings_fills_unstructured_scenes_from_existing_bible(self):
+        with TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "base.json"
+            plan_path.write_text(
+                json.dumps([
+                    {"scene": 1, "references": {"actor_ids": ["actor_cat_01"], "location_id": "loc_kitchen_dawn"}},
+                    {"scene": 2, "z_image": {"prompt": "A sunlit kitchen in the morning."}, "references": {}},
+                ]),
+                encoding="utf-8",
+            )
+            locations_dir = temp / "output" / "references" / "locations" / "loc_kitchen_morning"
+            locations_dir.mkdir(parents=True)
+            (locations_dir / "manifest.json").write_text(
+                json.dumps({"name": "Sunlit Kitchen", "visual_description": "warm morning kitchen"}),
+                encoding="utf-8",
+            )
+            config = ProjectConfig(
+                project_dir=temp,
+                project_name="test",
+                input_audio=temp / "song.wav",
+            )
+
+            _seed_reference_bindings(plan_path, config)
+            scene = json.loads(plan_path.read_text(encoding="utf-8"))[1]
+
+        self.assertEqual(["actor_cat_01"], scene["references"]["actor_ids"])
+        self.assertEqual("loc_kitchen_morning", scene["references"]["location_id"])
+
     @patch("feverslop.composition.stage_runners.VideoPostProcessor")
     def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
