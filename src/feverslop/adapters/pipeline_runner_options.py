@@ -25,6 +25,7 @@ class ResolutionTuple(NamedTuple):
 RUNNER_ARGUMENTS = (
     ("app_config", ("--app-config",), {"default": "app_config.json"}),
     ("resolution", ("--resolution",), {"type": ResolutionTuple.parse, "default": None}),
+    ("upscale_resolution", ("--upscale-resolution",), {"type": ResolutionTuple.parse, "default": None, "help": "Override SeedVR2 target resolution for this run."}),
     ("set_resolution", ("--set-resolution",), {"type": ResolutionTuple.parse, "default": None}),
     ("concept_batch_size", ("--concept-batch-size",), {"type": int, "default": 10}),
     ("storyboard_workflow", ("--storyboard-workflow",), {"default": str(Path("workflows") / "image_t2i_startframe_v1.json")}),
@@ -66,6 +67,7 @@ RUNNER_ARGUMENTS = (
     ("skip_msr_prompt_enrichment", ("--skip-msr-prompt-enrichment",), {"action": "store_true"}),
     ("skip_ingredients_sheets", ("--skip-ingredients-sheets",), {"action": "store_true"}),
     ("skip_ltx", ("--skip-ltx",), {"action": "store_true"}),
+    ("upscale", ("--upscale",), {"action": "store_true", "default": None, "help": "Run the configured SeedVR2 upscale stage."}),
     ("skip_final_concat", ("--skip-final-concat",), {"action": "store_true"}),
     ("skip_openshot_export", ("--skip-openshot-export",), {"action": "store_true"}),
     ("skip_facefix", ("--skip-facefix",), {"action": "store_true", "default": True}),

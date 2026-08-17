@@ -1507,16 +1507,25 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         rewrite_concat_list,
         write_concat_list,
     )
+    render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+    layout = state.context.artifact_layout
+    use_upscaled = any(
+        layout.scene_upscaled_video(int(entry.get("scene") or entry.get("scene_number"))).is_file()
+        for entry in render_plan
+    )
     clips = collect_render_plan_scene_clips(
             state.plan_for_next_step,
             state.context.ltx_dir,
-            layout=state.context.artifact_layout,
+            layout=layout,
+            prefer_upscaled=use_upscaled,
     )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    video_only_output = layout.video_only_upscaled if use_upscaled else layout.video_only
+    video_audio_output = layout.video_audio_upscaled if use_upscaled else layout.video_audio
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
-        output_file=state.context.final_concat_video,
+        output_file=video_only_output,
         video_only=True,
     )
     try:
@@ -1535,7 +1544,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         )
     postprocessor.concat_clips(
         concat_list=state.context.concat_raw,
-        output_file=state.context.final_concat_video_audio,
+        output_file=video_audio_output,
         video_only=False,
     )
 
@@ -1545,11 +1554,47 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
     if state.video_only_path is None and not Path(video_only_path).exists():
         raise FileNotFoundError(f"Video-only concat not found: {video_only_path}")
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    output_file = state.context.final_concat
+    if Path(video_only_path).name == "video_only_upscaled.mp4":
+        output_file = Path(state.context.final_concat).with_name("movie_upscaled.mp4")
     state.final_video_path = postprocessor.mux_original_audio(
         video_file=video_only_path,
         audio_file=state.context.input_audio,
-        output_file=state.context.final_concat,
+        output_file=output_file,
     )
+
+
+def _run_upscale_stage(state: PipelineRunState) -> None:
+    from .seedvr2_pipeline import SeedVR2CompositionOptions, run_seedvr2
+    from feverslop.adapters.comfyui_seedvr2_backend import ComfyUISeedVR2Backend
+
+    config = ProjectConfig.load(state.context.project_config_path)
+    if not config.upscale.enabled and not getattr(state.args, "upscale", False):
+        console.print("SeedVR2 upscale disabled in project config.")
+        return
+    workflow_path = Path(config.upscale.workflow_path)
+    if not workflow_path.is_absolute():
+        workflow_path = runner_root() / workflow_path
+    backend = ComfyUISeedVR2Backend(
+        client=state.comfyui_client,
+        workflow_path=workflow_path,
+    )
+    reporter = ConsoleReporter(console)
+    run_seedvr2(SeedVR2CompositionOptions(
+        project_config_path=state.context.project_config_path,
+        render_plan_path=state.plan_for_next_step,
+        backend=backend,
+        skip_existing=not state.args.no_skip_existing,
+        force_enabled=bool(getattr(state.args, "upscale", False)),
+        resolution_override=(
+            (state.args.upscale_resolution.width, state.args.upscale_resolution.height)
+            if getattr(state.args, "upscale_resolution", None) is not None
+            else None
+        ),
+        scene_numbers=parse_scene_list(getattr(state.args, "scenes", None)),
+        reporter=reporter,
+    ))
+    console.print("[green]SeedVR2 upscale artifacts ready.[/green]")
 
 
 def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
@@ -1566,37 +1611,58 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
 
     config = ProjectConfig.load(state.context.project_config_path)
     video = config.to_video_settings()
-    clips = collect_render_plan_scene_clips(
-        state.plan_for_next_step,
-        state.context.ltx_dir,
-        layout=state.context.artifact_layout,
-        prefer_facefix=not state.args.skip_facefix,
-    )
     legacy_openshot_stage = PipelineStage.OPENSHOT_EXPORT.value in (getattr(state.args, "stages", None) or [])
     export_format = "openshot" if legacy_openshot_stage else getattr(state.args, "timeline_format", "openshot")
     extension = "mlt" if export_format == "mlt" else "osp"
     output_dir_name = "timeline" if export_format == "mlt" else "openshot"
-    output_path = state.context.project_output_dir / output_dir_name / f"{state.context.project_file_stem}.{extension}"
-    console.print(f"Timeline export ({export_format}): writing {len(clips)} rendered clips")
+    layout = state.context.artifact_layout
+    plan_entries = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+    has_facefix = any(
+        layout.scene_final_facefix_video(int(entry.get("scene") or entry.get("scene_number"))).is_file()
+        for entry in plan_entries
+    )
+    has_upscaled = any(
+        layout.scene_upscaled_video(int(entry.get("scene") or entry.get("scene_number"))).is_file()
+        for entry in plan_entries
+    )
+    variants = [("", False, False)]
+    if has_facefix:
+        variants.append(("_facefix", True, False))
+    if has_upscaled:
+        variants.append(("_upscaled", False, True))
 
     def report(completed: int, total: int, label: str) -> None:
         console.print(f"[dim]Timeline export: {completed}/{total} ({label})[/dim]")
 
-    if export_format == "mlt":
-        state.timeline_project_path = export_render_plan_to_mlt(
-            render_plan_path=state.plan_for_next_step, clip_paths=clips,
-            audio_path=state.context.input_audio, output_path=output_path,
-            width=video.width, height=video.height, fps=video.fps,
-            project_name=state.context.project_file_stem,
+    for suffix, prefer_facefix, prefer_upscaled in variants:
+        clips = collect_render_plan_scene_clips(
+            state.plan_for_next_step,
+            state.context.ltx_dir,
+            layout=layout,
+            prefer_facefix=prefer_facefix,
+            prefer_upscaled=prefer_upscaled,
         )
-    else:
-        state.openshot_project_path = export_render_plan_to_openshot(
-            render_plan_path=state.plan_for_next_step, clip_paths=clips,
-            audio_path=state.context.input_audio, output_path=output_path,
-            width=video.width, height=video.height, fps=video.fps,
-            on_progress=report,
-        )
-    console.print(f"[green]Timeline project written: {output_path}[/green]")
+        output_path = state.context.project_output_dir / output_dir_name / f"{state.context.project_file_stem}{suffix}.{extension}"
+        console.print(f"Timeline export ({export_format}, {suffix or 'final'}): writing {len(clips)} rendered clips")
+        if export_format == "mlt":
+            written = export_render_plan_to_mlt(
+                render_plan_path=state.plan_for_next_step, clip_paths=clips,
+                audio_path=state.context.input_audio, output_path=output_path,
+                width=video.width, height=video.height, fps=video.fps,
+                project_name=f"{state.context.project_file_stem}{suffix}",
+            )
+            if not suffix:
+                state.timeline_project_path = written
+        else:
+            written = export_render_plan_to_openshot(
+                render_plan_path=state.plan_for_next_step, clip_paths=clips,
+                audio_path=state.context.input_audio, output_path=output_path,
+                width=video.width, height=video.height, fps=video.fps,
+                on_progress=report,
+            )
+            if not suffix:
+                state.openshot_project_path = written
+        console.print(f"[green]Timeline project written: {output_path}[/green]")
 
 
 def _run_facefix_stage(state: PipelineRunState) -> None:
@@ -1682,6 +1748,7 @@ STAGE_RUNNERS = {
     PipelineStage.LTX_RENDER_SCENES: _run_ltx_render_scenes_stage,
     PipelineStage.PREPARE_WORKFLOWS: _run_ltx_prepare_workflows_stage,
     PipelineStage.RENDER_SCENES: _run_ltx_render_scenes_stage,
+    PipelineStage.UPSCALE: _run_upscale_stage,
     PipelineStage.CONCAT_VIDEO_ONLY: _run_concat_video_only_stage,
     PipelineStage.MUX_ORIGINAL_AUDIO: _run_mux_original_audio_stage,
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: _run_diagnostic_scene_audio_concat_stage,
@@ -1709,6 +1776,7 @@ STAGE_LABELS = {
     PipelineStage.LTX_RENDER_SCENES: "LTX render",
     PipelineStage.PREPARE_WORKFLOWS: "Prepare workflows",
     PipelineStage.RENDER_SCENES: "Render scenes",
+    PipelineStage.UPSCALE: "SeedVR2 upscale",
     PipelineStage.CONCAT_VIDEO_ONLY: "Final concat video-only",
     PipelineStage.MUX_ORIGINAL_AUDIO: "Mux original audio",
     PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT: "Diagnostic scene-audio concat",
@@ -1798,11 +1866,23 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
             stages.append(PipelineStage.LTX_PREPARE_WORKFLOWS)
         stages.append(PipelineStage.LTX_RENDER_SCENES)
     if not args.skip_final_concat:
+        config_path = getattr(args, "project_config", None)
+        if config_path is None and getattr(args, "project_root", None):
+            config_path = Path(args.project_root) / "config.json"
+        config_upscale_enabled = False
+        if config_path and Path(config_path).is_file():
+            config_upscale_enabled = ProjectConfig.load(config_path).upscale.enabled
+        upscale_enabled = bool(getattr(args, "upscale", False)) or config_upscale_enabled
         if not args.skip_facefix:
             stages.append(PipelineStage.FACEFIX)
             stages.append(PipelineStage.FACEFIX_CONCAT)
+            if upscale_enabled:
+                stages.append(PipelineStage.UPSCALE)
+                stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         else:
             console.print("Skipping FaceFix postprocessing.")
+            if upscale_enabled:
+                stages.append(PipelineStage.UPSCALE)
             stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         stages.append(PipelineStage.MUX_ORIGINAL_AUDIO)
         if args.diagnostic_original_audio_mux:

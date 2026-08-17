@@ -127,6 +127,7 @@ def collect_render_plan_scene_clips(
     *,
     layout: SceneArtifactLayout | None = None,
     prefer_facefix: bool = False,
+    prefer_upscaled: bool = False,
 ) -> list[Path]:
     output_dir = Path(output_dir)
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
@@ -137,7 +138,9 @@ def collect_render_plan_scene_clips(
         scene_number = int(scene["scene"])
         candidates = []
         if layout:
-            if prefer_facefix:
+            if prefer_upscaled:
+                candidates.append(layout.scene_upscaled_video(scene_number))
+            if prefer_facefix or prefer_upscaled:
                 candidates.append(layout.scene_final_facefix_video(scene_number))
             candidates.append(layout.scene_final_video(scene_number))
         candidates.extend([

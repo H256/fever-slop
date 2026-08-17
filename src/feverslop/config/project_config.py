@@ -16,6 +16,48 @@ class VideoConfig:
 
 
 @dataclass(frozen=True)
+class UpscaleConfig:
+    enabled: bool = False
+    workflow_path: str = "workflows/video_seedvr2_3b_api.json"
+    model: str = "seedvr2_3b_int8_convrot.safetensors"
+    vae: str = "seedvr2_ema_vae_fp16.safetensors"
+    target_width: int | None = None
+    target_height: int | None = None
+    default_scale: float = 2.0
+    strategy: str = "auto"
+    max_pass_scale: float = 2.0
+    max_ai_passes: int = 3
+    denoise: float = 0.35
+    temporal_overlap: int = 4
+    split_latent: bool = True
+    vae_temporal_size: int = 64
+    vae_temporal_overlap: int = 8
+    segment_duration_seconds: float = 4.0
+    color_correction: str = "none"
+    seed: int = 0
+
+    def __post_init__(self) -> None:
+        if self.strategy not in {"auto", "single"}:
+            raise ValueError("upscale strategy must be 'auto' or 'single'")
+        if self.max_pass_scale <= 1.0:
+            raise ValueError("upscale max_pass_scale must be greater than 1")
+        if self.max_ai_passes < 1:
+            raise ValueError("upscale max_ai_passes must be positive")
+        if not 0.0 <= self.denoise <= 1.0:
+            raise ValueError("upscale denoise must be between 0 and 1")
+        if self.temporal_overlap < 0:
+            raise ValueError("upscale temporal_overlap must not be negative")
+        if self.vae_temporal_size < 8:
+            raise ValueError("upscale vae_temporal_size must be at least 8")
+        if self.vae_temporal_overlap < 4 or self.vae_temporal_overlap > self.vae_temporal_size:
+            raise ValueError("upscale vae_temporal_overlap must be between 4 and vae_temporal_size")
+        if self.segment_duration_seconds <= 0:
+            raise ValueError("upscale segment_duration_seconds must be positive")
+        if self.color_correction not in {"lab", "wavelet", "adain", "none"}:
+            raise ValueError("upscale color_correction must be lab, wavelet, adain, or none")
+
+
+@dataclass(frozen=True)
 class ReferenceImagesConfig:
     width: int | None = None
     height: int | None = None
@@ -239,6 +281,7 @@ class ProjectConfig:
     lyrics: str = ""
 
     video: VideoConfig = field(default_factory=VideoConfig)
+    upscale: UpscaleConfig = field(default_factory=UpscaleConfig)
     reference_images: ReferenceImagesConfig = field(default_factory=ReferenceImagesConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     scene_generation: SceneGenerationConfig = field(default_factory=SceneGenerationConfig)
@@ -272,6 +315,9 @@ class ProjectConfig:
 
         project_dir = config_path.parent
         video_raw = raw.get("video", {})
+        upscale_raw = raw.get("upscale", {})
+        if not isinstance(upscale_raw, dict):
+            raise ValueError("upscale must be an object")
         reference_images_raw = raw.get("reference_images", {})
         audio_raw = raw.get("audio", {})
         scene_raw = raw.get("scene_generation", {})
@@ -326,6 +372,26 @@ class ProjectConfig:
                 fps=int(video_raw.get("fps", 24)),
                 width=int(video_raw.get("width", 1280)),
                 height=int(video_raw.get("height", 704)),
+            ),
+            upscale=UpscaleConfig(
+                enabled=bool(upscale_raw.get("enabled", False)),
+                workflow_path=str(upscale_raw.get("workflow_path", "workflows/video_seedvr2_3b_api.json")),
+                model=str(upscale_raw.get("model", "seedvr2_3b_int8_convrot.safetensors")),
+                vae=str(upscale_raw.get("vae", "seedvr2_ema_vae_fp16.safetensors")),
+                target_width=(int(upscale_raw["target_width"]) if upscale_raw.get("target_width") is not None else None),
+                target_height=(int(upscale_raw["target_height"]) if upscale_raw.get("target_height") is not None else None),
+                default_scale=float(upscale_raw.get("default_scale", 2.0)),
+                strategy=str(upscale_raw.get("strategy", "auto")),
+                max_pass_scale=float(upscale_raw.get("max_pass_scale", 2.0)),
+                max_ai_passes=int(upscale_raw.get("max_ai_passes", 3)),
+                denoise=float(upscale_raw.get("denoise", 0.35)),
+                temporal_overlap=int(upscale_raw.get("temporal_overlap", 4)),
+                split_latent=bool(upscale_raw.get("split_latent", True)),
+                vae_temporal_size=int(upscale_raw.get("vae_temporal_size", 64)),
+                vae_temporal_overlap=int(upscale_raw.get("vae_temporal_overlap", 8)),
+                segment_duration_seconds=float(upscale_raw.get("segment_duration_seconds", 4.0)),
+                color_correction=str(upscale_raw.get("color_correction", "none")),
+                seed=int(upscale_raw.get("seed", 0)),
             ),
             reference_images=ReferenceImagesConfig(
                 width=(int(reference_images_raw["width"]) if "width" in reference_images_raw else None),

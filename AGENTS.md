@@ -27,6 +27,32 @@ This file gives working instructions for AI coding agents in this repository.
 - Prefer structured parsing for JSON, TOML, SRT, and workflow files instead of ad hoc string replacement.
 - Avoid unrelated formatting churn, especially in large workflow JSON files.
 
+### Progress and observability
+
+- Every long-running pipeline action must provide visible Rich output from the
+  beginning of execution. The user must always be able to tell that the tool is
+  still working; do not leave expensive network, render, model, or file loops
+  silent.
+- Report both levels of progress: major pipeline stages and meaningful
+  intermediate work within a stage. Use the `Reporter` protocol (normally
+  `ConsoleReporter`) for stage boundaries and status messages, and use
+  `SubStepProgress` for repeated scene, shot, frame, request, or item work.
+  Emit an initial status before the expensive operation and a completion/status
+  update afterward; long loops must also emit throttled intermediate updates.
+- For determinate Rich progress bars, use the shared
+  `feverslop.utils.rich_progress.build_progress` factory. Keep the existing
+  reporter state machines (`RenderProgressReporter` and
+  `MovieStageProgressReporter`) separate when their semantics differ, but do
+  not duplicate the Rich column/presentation setup.
+- Thread the reporter/progress callback through new application and pipeline
+  layers instead of creating hidden consoles or printing directly from deep
+  implementation code. CLI and Studio adapters may translate the same events
+  into console output, streamed job logs, or UI progress.
+- Progress must reflect the actual selected stage set, including skipped
+  stages, and must advance on deterministic stage events rather than relying
+  on incidental log text matching. Do not log secrets, prompts, response
+  bodies, image bytes, or other sensitive payloads.
+
 ## Planning Workflow
 
 Historical internal tracker reference removed for the public history.

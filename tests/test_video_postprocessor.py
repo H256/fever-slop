@@ -63,6 +63,30 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertIn("-c:v", cmd)
         self.assertIn("copy", cmd)
 
+    def test_concat_clips_can_reencode_video_only_at_constant_frame_rate(self):
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(VideoPostProcessor, "_validate_video_output"):
+            processor.concat_clips(
+                concat_list=Path("segments.txt"),
+                output_file=Path("normalized.mp4"),
+                video_only=True,
+                reencode=True,
+                fps=24,
+                frame_count=134,
+            )
+
+        cmd = run.call_args.args[0]
+        self.assertIn("-an", cmd)
+        self.assertIn("-fps_mode", cmd)
+        self.assertIn("cfr", cmd)
+        self.assertIn("-r", cmd)
+        self.assertIn("24", cmd)
+        self.assertIn("-frames:v", cmd)
+        self.assertIn("134", cmd)
+        self.assertIn("libx264", cmd)
+        self.assertNotIn("copy", cmd)
+
     def test_concat_clips_can_retain_audio_in_named_output(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
 
