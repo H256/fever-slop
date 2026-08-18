@@ -72,6 +72,7 @@ class PipelineRunState:
     facefix_workflow: Path
     plan_for_next_step: Path
     video_only_path: Path | None = None
+    video_only_variants: dict[str, Path] | None = None
     final_video_path: Path | None = None
     openshot_project_path: Path | None = None
     timeline_project_path: Path | None = None

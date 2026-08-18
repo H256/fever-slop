@@ -5,6 +5,7 @@ from typing import Any
 
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.llm_policy import msr_segments_max_tokens
 from feverslop.prompting.msr_signatures import MSRPromptResult, build_msr_signature_bundle
 
 
@@ -34,7 +35,16 @@ class MSRPromptModules:
         signatures = build_msr_signature_bundle(dspy)
         self._predictors = {name: dspy_runtime.predict(signature) for name, signature in signatures.items()}
 
-    def _call(self, name: str, guide_name: str, payload: dict[str, Any], *, images: list[Any] | None = None, timeout: float | None = None) -> MSRPromptResult:
+    def _call(
+        self,
+        name: str,
+        guide_name: str,
+        payload: dict[str, Any],
+        *,
+        images: list[Any] | None = None,
+        timeout: float | None = None,
+        max_tokens: int | None = None,
+    ) -> MSRPromptResult:
         kwargs: dict[str, Any] = {
             "guide": load_markdown_guide(guide_name),
             "payload": payload,
@@ -43,6 +53,8 @@ class MSRPromptModules:
             kwargs["images"] = images
         if timeout is not None:
             kwargs["config"] = {"timeout": timeout}
+        if max_tokens is not None:
+            kwargs.setdefault("config", {})["max_tokens"] = max_tokens
         with self._context(lm=self._lm):
             result = _value(self._predictors[name](**kwargs), "result")
         return MSRPromptResult.model_validate(result)
@@ -59,4 +71,11 @@ class MSRPromptModules:
         )
 
     def segments(self, payload: dict[str, Any], *, timeout: float | None = None) -> MSRPromptResult:
-        return self._call("segments", "msr-segments", payload, timeout=timeout)
+        relay_count = len(payload.get("relay_segments", []))
+        return self._call(
+            "segments",
+            "msr-segments",
+            payload,
+            timeout=timeout,
+            max_tokens=msr_segments_max_tokens(relay_count),
+        )

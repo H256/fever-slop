@@ -14,6 +14,7 @@ class LLMSongBriefGenerator:
         payload = {
             "idea": request.idea,
             "style": request.style,
+            "music_style": request.music_style or request.style,
             "duration_seconds": request.duration_seconds,
             "language": request.language,
             "bpm_override": request.bpm,
@@ -30,4 +31,5 @@ class LLMSongBriefGenerator:
             keyscale=str(data.get("keyscale") or request.keyscale or "C major").strip(),
             visual_story_idea=str(data["visual_story_idea"]).strip(),
             visual_style=str(data["visual_style"]).strip(),
+            music_style=str(data.get("music_style") or request.music_style or request.style or "").strip(),
         )

@@ -147,8 +147,8 @@ class FullAutoLLMChainTests(unittest.TestCase):
         self.assertEqual(spec.visual_story_idea, "rainy city street")
         self.assertEqual(spec.visual_style, "cyberpunk noir")
 
-    def test_full_auto_use_case_wires_real_llm_brief_generator(self):
-        """FullAutoUseCase with real LLMSongBriefGenerator produces SongSpec with LLM values."""
+    def test_full_auto_use_case_preserves_explicit_idea_over_llm_visual_summary(self):
+        """The generated song brief must not replace explicit visual constraints."""
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
 
         llm_response = json.dumps({
@@ -190,8 +190,8 @@ class FullAutoLLMChainTests(unittest.TestCase):
             self.assertEqual(result.song_spec.lyrics, "[Verse]\nambient sounds")
             self.assertEqual(result.song_spec.bpm, 70)
             self.assertEqual(result.song_spec.duration_seconds, 60.0)
-            self.assertEqual(result.song_spec.visual_story_idea, "ocean waves")
-            self.assertEqual(result.song_spec.visual_style, "minimalist")
+            self.assertEqual(result.song_spec.visual_story_idea, "ocean")
+            self.assertEqual(result.song_spec.visual_style, "ambient")
 
     def test_llm_brief_generator_adapts_request_defaults_for_missing_values(self):
         """LLMSongBriefGenerator falls back to request values when LLM omits fields."""

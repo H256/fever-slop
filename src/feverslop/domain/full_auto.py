@@ -16,6 +16,7 @@ class SongSpec:
     keyscale: str
     visual_story_idea: str
     visual_style: str
+    music_style: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

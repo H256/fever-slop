@@ -72,7 +72,7 @@
   "124": {
     "inputs": {
       "scheduler": "simple",
-      "steps": 4,
+      "steps": 8,
       "denoise": 1,
       "model": [
         "139",
@@ -256,7 +256,7 @@
         "127",
         0
       ],
-      "lora_name": "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
       "strength_model": 1
     },
     "class_type": "LoraLoaderModelOnly",

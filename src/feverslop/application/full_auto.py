@@ -21,6 +21,7 @@ from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 class FullAutoRequest:
     idea: str
     style: str
+    music_style: str | None = None
     project_name: str | None = None
     projects_dir: Path = Path("projects")
     duration_seconds: float = 120.0
@@ -187,6 +188,7 @@ class FullAutoUseCase:
             duration_seconds=float(request.duration_seconds),
             language=str(request.language or spec.language),
             keyscale=str(request.keyscale or spec.keyscale),
-            visual_story_idea=spec.visual_story_idea,
-            visual_style=spec.visual_style,
+            visual_story_idea=str(request.idea).strip(),
+            visual_style=str(request.style).strip(),
+            music_style=str(request.music_style or spec.music_style or request.style or "").strip(),
         )

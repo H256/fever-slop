@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from feverslop.domain.reference_sheet import CompiledReferenceSheetPlan, ReferenceSheetPlan
@@ -10,11 +11,42 @@ from feverslop.domain.reference_sheet import CompiledReferenceSheetPlan, Referen
 CHARACTER_VIEWS = ("full_body", "front", "left_profile", "right_profile", "back", "closeup")
 LOCATION_VIEWS = ("front", "right_side", "rear", "left_side", "wide_establishing")
 
+_CHARACTER_ACTION = re.compile(
+    r"[,;]?\s+\b(?:singing|performing|playing|drumming|dancing|running|walking|"
+    r"fighting|holding|sitting|standing|posing|kneeling|jumping)\b[^,;.]*",
+    re.IGNORECASE,
+)
+_CHARACTER_ACTION_TO_IDENTITY = re.compile(
+    r"\b(?:singing|performing|playing|drumming|dancing|running|walking|fighting|"
+    r"holding|sitting|standing|posing|kneeling|jumping)\b[^,;.]*?"
+    r"(?=\b(?:with|wearing|featuring|having)\b)",
+    re.IGNORECASE,
+)
+_CHARACTER_LOCATION_TAIL = re.compile(
+    r"\s+\b(?:on|at|inside|outside|against|before|beside)\b[^,;.]*$",
+    re.IGNORECASE,
+)
+_CHARACTER_IN_LOCATION_TAIL = re.compile(
+    r"\s+\bin\b[^,;.]*(?:nightclub|studio|stage|altar|battlefield|kitchen|room|"
+    r"hall|forest|street|city|landscape|temple|castle|cave|bar|club)[^,;.]*$",
+    re.IGNORECASE,
+)
+
 
 def _text_list(values: Any) -> list[str]:
     if not isinstance(values, (list, tuple)):
         return []
     return [str(value).strip() for value in values if str(value).strip()]
+
+
+def _identity_anchor_description(description: str) -> str:
+    """Keep stable appearance text while dropping one-off action and setting tails."""
+    normalized = " ".join(str(description or "").split()).strip(" .")
+    identity = _CHARACTER_ACTION_TO_IDENTITY.sub("", normalized)
+    identity = _CHARACTER_ACTION.sub("", identity)
+    identity = _CHARACTER_LOCATION_TAIL.sub("", identity).strip(" ,;.")
+    identity = _CHARACTER_IN_LOCATION_TAIL.sub("", identity).strip(" ,;.")
+    return identity or normalized
 
 
 def compile_reference_sheet_plan(
@@ -35,12 +67,16 @@ def compile_reference_sheet_plan(
         coverage = "cut views"
         rotation = "none"
         backdrop = source.backdrop or "plain seamless neutral grey studio backdrop"
+        anchor_description = _identity_anchor_description(
+            source.anchor_description or description
+        )
     else:
         labels = LOCATION_VIEWS
         framing = "landscape"
         coverage = "cut views"
         rotation = "none"
         backdrop = source.backdrop or "the described location with no people"
+        anchor_description = source.anchor_description.strip() or description.strip()
     identity = _text_list(source.identity_constraints)
     if description.strip() and description.strip() not in identity:
         identity.insert(0, description.strip())
@@ -59,6 +95,7 @@ def compile_reference_sheet_plan(
         anchor_rule="the anchor image is fully referenced as the first frame",
         identity_constraints="; ".join(dict.fromkeys(identity)),
         negative_constraints="; ".join(dict.fromkeys(negatives)),
+        anchor_description=anchor_description,
     )
 
 
@@ -73,6 +110,11 @@ class DeterministicReferenceSheetPlanner:
                 constraints.append(str(value).strip())
         return ReferenceSheetPlan(
             kind=kind.strip().lower(),
+            anchor_description=(
+                _identity_anchor_description(description)
+                if kind.strip().lower() == "character"
+                else description.strip()
+            ),
             view_count=6 if kind.strip().lower() == "character" else 5,
             view_labels=list(CHARACTER_VIEWS if kind.strip().lower() == "character" else LOCATION_VIEWS),
             framing="full body, generous margin" if kind.strip().lower() == "character" else "landscape",

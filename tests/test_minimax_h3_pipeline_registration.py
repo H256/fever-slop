@@ -172,8 +172,8 @@ class VideoPipelineForModeTests(unittest.TestCase):
 class PipelineStepsTests(unittest.TestCase):
     """Verify _pipeline_step_names returns correct MiniMax H3 steps."""
 
-    EXPECTED_R2V = ["Main pipeline", "MSR references", "LTX render", "Final concat"]
-    EXPECTED_T2V = ["Main pipeline", "LTX render", "Final concat"]
+    EXPECTED_R2V = ["Main pipeline", "MSR references", "Video render", "Final concat"]
+    EXPECTED_T2V = ["Main pipeline", "Video render", "Final concat"]
 
     def test_returns_correct_full_pipeline_steps(self):
         actual = _pipeline_step_names("full-pipeline", pipeline_mode="minimax_h3_r2v")
@@ -210,11 +210,11 @@ class FullPipelineStepsByModeTests(unittest.TestCase):
         self.assertIn("minimax_h3_t2v", FULL_PIPELINE_STEPS_BY_MODE)
 
     def test_r2v_has_expected_steps(self):
-        expected = ["Main pipeline", "MSR references", "LTX render", "Final concat"]
+        expected = ["Main pipeline", "MSR references", "Video render", "Final concat"]
         self.assertEqual(expected, FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_r2v"])
 
     def test_t2v_has_expected_steps(self):
-        expected = ["Main pipeline", "LTX render", "Final concat"]
+        expected = ["Main pipeline", "Video render", "Final concat"]
         self.assertEqual(expected, FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_t2v"])
 
 

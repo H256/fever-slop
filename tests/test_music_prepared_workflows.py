@@ -12,6 +12,7 @@ from feverslop.composition.stage_runners import (
     STAGE_RUNNERS,
     _load_continuity_dirty,
     _merge_reference_paths_into_h3_segments,
+    _select_h3_segments,
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
     _run_visual_consistency_preflight,
@@ -29,6 +30,18 @@ from feverslop.application.visual_consistency_preflight import (
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
+    def test_h3_scene_selection_happens_before_reference_merge(self):
+        selected, segments = _select_h3_segments(
+            [
+                {"segment_id": "segment_001", "scene": 1},
+                {"segment_id": "segment_002", "scene": 2},
+            ],
+            "2",
+        )
+
+        self.assertEqual({2}, selected)
+        self.assertEqual([2], [segment["scene"] for segment in segments])
+
     def test_minimax_uses_canonical_scene_artifacts_without_debug_directory(self):
         with TemporaryDirectory() as tmp:
             for pipeline in ("minimax-h3-r2v", "minimax-h3-t2v"):

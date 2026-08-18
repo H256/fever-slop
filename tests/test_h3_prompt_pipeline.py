@@ -3,18 +3,74 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
-from feverslop.application.h3_prompt_pipeline import _attach_relay_segments, _configured_audio_paths
+from feverslop.application.h3_prompt_pipeline import (
+    _attach_beat_events,
+    _attach_relay_segments,
+    _configured_audio_paths,
+)
+from feverslop.domain.performance_sync import select_performance_stems
 
 
 class ConfiguredAudioPathTests(unittest.TestCase):
+    def test_attaches_scene_local_beat_and_downbeat_events(self):
+        result = _attach_beat_events(
+            [{"segment_id": "s2", "start": 8.0, "end": 10.0}],
+            {
+                "bpm": 120,
+                "beats": [
+                    {"time": 7.5, "downbeat": False, "impact": 0.1},
+                    {"time": 8.5, "downbeat": True, "impact": 0.8},
+                    {"time": 9.0, "downbeat": False, "impact": 0.4},
+                    {"time": 10.5, "downbeat": False, "impact": 0.2},
+                ],
+            },
+        )
+
+        timing = result[0]["performance_timing"]
+        self.assertEqual(120.0, timing["bpm"])
+        self.assertEqual([0.5, 1.0], [beat["time_seconds"] for beat in timing["beats"]])
+        self.assertTrue(timing["beats"][0]["downbeat"])
+
+    def test_selects_drum_stem_for_instrumental_drummer_scene(self):
+        segment = {
+            "type": "instrumental",
+            "references": {"actor_reference_descriptions": [
+                {"name": "Drummer", "role": "Percussionist"},
+                {"name": "Bassist", "role": "Bassist"},
+            ]},
+            "ltx": {"prompt_relay": [{"state": "instrumental"}]},
+        }
+
+        selected = select_performance_stems(
+            segment,
+            available_stems={"vocals", "drums", "bass", "other", "full_mix"},
+        )
+
+        self.assertEqual(["drums", "full_mix"], selected)
+
+    def test_selects_vocal_stem_for_visible_singer_during_vocal_scene(self):
+        segment = {
+            "type": "vocals",
+            "references": {"actor_reference_descriptions": [
+                {"name": "Lead Vocalist", "role": "Lead Singer"},
+            ]},
+            "ltx": {"prompt_relay": [{"state": "singing"}]},
+        }
+
+        selected = select_performance_stems(
+            segment,
+            available_stems={"vocals", "drums", "full_mix"},
+        )
+
+        self.assertEqual(["vocals", "full_mix"], selected)
     def test_attaches_relay_scene_to_matching_stage1_segment(self):
         result = _attach_relay_segments(
-            [{"segment_id": "segment_002", "type": "instrumental"}],
+            [{"segment_id": "segment_002", "scene": 2, "type": "instrumental"}],
             [{
-                "metadata": {"segment_id": "segment_002"},
+                "scene": 2,
                 "fps": 24,
                 "duration_seconds": 3.16,
-                "ltx": {"prompt_relay": [{"frame_start": 0, "frame_end": 76}]},
+                "prompt_relay": [{"frame_start": 0, "frame_end": 76, "state": "instrumental"}],
             }],
         )
 

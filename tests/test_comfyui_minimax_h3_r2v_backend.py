@@ -1225,6 +1225,75 @@ non_diegetic_music: N/A"""
         )
         self.assertEqual(generated_prompt, prompt_node["inputs"]["value"])
 
+    def test_scene_validation_rejects_h3_prompt_with_unbound_subject_and_picture(self):
+        backend = self._backend()
+        scene = {
+            "scene": 2,
+            "references": {
+                "actor_sheet_paths": ["actor.png"],
+                "location_sheet_path": "location.png",
+            },
+            "h3": {"prompt": """subject_definitions:
+<Subject 1> (Drummer): A drummer. Source references: <Picture 1>.
+summary: <Subject 1> performs on <Subject 3>.
+retention_analysis: <Subject 1>: fully_preserved - stable.
+detailed_description: <Subject 1> performs while <Subject 3> fills <Picture 3>.
+overall_soundscape: Music.
+non_diegetic_music: N/A"""},
+        }
+
+        with self.assertRaisesRegex(
+            Exception,
+            r"Scene 2 H3 reference contract mismatch.*undefined_subjects=.*<Subject 3>.*unbound_pictures=.*<Picture 2>",
+        ):
+            backend._validate_scene(scene)
+
+    def test_scene_validation_rejects_loaded_audio_missing_from_h3_definitions(self):
+        backend = self._backend()
+        scene = {
+            "scene": 4,
+            "references": {
+                "actor_sheet_paths": ["actor.png"],
+                "reference_audio_paths": ["song.wav"],
+            },
+            "h3": {"prompt": """subject_definitions:
+<Subject 1> (Drummer): A drummer. Source references: <Picture 1>.
+summary: <Subject 1> performs.
+retention_analysis: <Subject 1>: fully_preserved - stable.
+detailed_description: <Subject 1> performs.
+overall_soundscape: Music.
+non_diegetic_music: N/A"""},
+        }
+
+        with self.assertRaisesRegex(Exception, r"missing_audio=.*<Audio 1>"):
+            backend._validate_scene(scene)
+
+    def test_scene_validation_rejects_duplicate_picture_mapping_and_unknown_video(self):
+        backend = self._backend()
+        scene = {
+            "scene": 5,
+            "references": {
+                "actor_sheet_paths": ["actor.png"],
+                "reference_video_paths": ["motion.mp4"],
+            },
+            "h3": {"prompt": """subject_definitions:
+<Subject 1> (A): Stable. Source references: <Picture 1>.
+<Subject 2> (B): Duplicate. Source references: <Picture 1>.
+summary: <Subject 1> follows <Video 2>.
+retention_analysis:
+<Subject 1>: fully_preserved - stable.
+<Subject 2>: fully_preserved - stable.
+detailed_description: <Subject 1> moves.
+overall_soundscape: Music.
+non_diegetic_music: N/A"""},
+        }
+
+        with self.assertRaisesRegex(
+            Exception,
+            r"duplicate_picture_mappings=.*<Picture 1>.*unknown_videos=.*<Video 2>",
+        ):
+            backend._validate_scene(scene)
+
     def test_production_audio_workflow_maps_reference_audio_from_slot_zero(self):
         workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
@@ -1860,6 +1929,23 @@ class BuildWorkflowDynamicWiringTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class ResolveStemAudioPathsTests(unittest.TestCase):
+    def test_scene_stem_order_is_authoritative_over_backend_defaults(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            drums = root / "drums.wav"
+            full_mix = root / "song.wav"
+            drums.write_bytes(b"drums")
+            full_mix.write_bytes(b"mix")
+            backend = self._backend(audio_ref_stems=["vocals", "full_mix"])
+
+            result = backend._resolve_stem_audio_paths({
+                "stem_audio": {
+                    "stems": ["drums", "full_mix"],
+                    "paths": {"drums": str(drums), "full_mix": str(full_mix)},
+                },
+            })
+
+            self.assertEqual([drums, full_mix], result)
     """Tests for ComfyUIMiniMaxH3R2VBackend._resolve_stem_audio_paths."""
 
     def _backend(self, audio_ref_stems=None, workflow=None):
@@ -1971,8 +2057,8 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
 
             self.assertEqual([vocal_path], result)
 
-    def test_instance_override(self):
-        """Instance audio_ref_stems overrides scene-level stems list."""
+    def test_scene_selection_overrides_instance_defaults(self):
+        """A prepared scene's ordered slots override backend fallback defaults."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             vocal_path = tmp_path / "vocals.wav"
@@ -1992,11 +2078,7 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
             }
             backend = self._backend(audio_ref_stems=["drums", "vocals"])
             result = backend._resolve_stem_audio_paths(scene)
-            # Instance override: both drums and vocals are resolved (not just vocals)
-            # Priority reordering: vocals always first, drums second
-            self.assertEqual(len(result), 2)
-            self.assertEqual(result[0], vocal_path)
-            self.assertEqual(result[1], drums_path)
+            self.assertEqual([vocal_path], result)
 
     def test_max_clamped_to_three(self):
         """At most MAX_REF_AUDIOS (3) results returned."""
@@ -2038,8 +2120,8 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
         self.assertEqual(result, [])  # vocals doesn't exist, drums not in paths
 
 
-    def test_vocals_and_full_mix_prioritized(self):
-        """vocals and full_mix always come first regardless of config order."""
+    def test_scene_stem_order_is_preserved_and_clamped(self):
+        """Prepared H3 labels and backend slots use the same scene order."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             paths = {}
@@ -2057,9 +2139,10 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
             }
             backend = self._backend()
             result = backend._resolve_stem_audio_paths(scene)
-            # vocals must be first, full_mix second
-            self.assertIn(result[0].name, ["vocals.wav"])
-            self.assertIn(result[1].name, ["full_mix.wav"])
+            self.assertEqual(
+                ["drums.wav", "bass.wav", "vocals.wav"],
+                [path.name for path in result],
+            )
 
 
 class StemAudioRenderVideoIntegrationTests(unittest.TestCase):

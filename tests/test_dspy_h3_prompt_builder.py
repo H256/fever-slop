@@ -8,18 +8,29 @@ from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.dspy_h3_prompt_builder import (
     DspyH3PromptBuilder,
     _format_relay_shots,
+    _format_performance_timing,
     _normalize_relay_segments,
+    _repair_audio_references,
     _scene_references,
 )
 from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_models import (
+    MusicIntent,
+    PlannedShot,
+    PlannedSubject,
+    PromptPlan,
     PromptMode,
     ReferenceAsset,
     ReferenceKind,
     ReferenceLimits,
+    ReferenceUsage,
     ReferenceVideoPrompt,
+    ResolvedPromptPlan,
+    ResolvedReference,
+    RetentionAnalysis,
+    SubjectDefinition,
     VideoPromptRequest,
 )
 from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator as CoreVideoPromptGenerator
@@ -57,6 +68,57 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_formats_instrument_specific_beat_contact_guidance(self):
+        prompt = _format_performance_timing({
+            "references": {"actor_reference_descriptions": [
+                {"name": "Drummer", "role": "Percussionist"},
+            ]},
+            "performance_timing": {
+                "bpm": 120,
+                "beats": [
+                    {"time_seconds": 0.5, "downbeat": True, "impact": 0.8},
+                    {"time_seconds": 1.0, "downbeat": False, "impact": 0.4},
+                ],
+            },
+        })
+
+        self.assertIn("BPM 120", prompt)
+        self.assertIn("downbeats at 0.50s", prompt)
+        self.assertIn("stick contact exactly on each listed beat", prompt)
+        self.assertIn("rebound", prompt)
+    def test_audio_repair_replaces_annotated_duplicates_with_canonical_copy_modes(self):
+        prompt = """subject_definitions:
+<Subject 1> (Drummer): A drummer. Source references: <Picture 1>.
+<Audio 1> is an old vocal definition.
+<Audio 2> is an old mix definition.
+
+summary: [reference generation] <Subject 1> performs.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1]): fully_preserved - stable.
+<Audio 1> (appears in [Shot 1]): partially_copy - vocals.
+<Audio 2> (appears in [Shot 1]): fully_copy - mix.
+<Audio 1>: partially_copy - duplicate vocals.
+<Audio 2>: partially_copy - contradictory duplicate mix.
+
+detailed_description: <Subject 1> performs.
+
+overall_soundscape: Music.
+
+non_diegetic_music: N/A"""
+        references = [
+            {"label": "<Audio 1>", "kind": "audio", "role": "audio_reuse", "name": "vocals", "copy_mode": "partially_copy"},
+            {"label": "<Audio 2>", "kind": "audio", "role": "audio_reuse", "name": "full_mix", "copy_mode": "fully_copy"},
+        ]
+
+        repaired = _repair_audio_references(prompt, references)
+
+        retention = repaired.split("retention_analysis:", 1)[1].split("detailed_description:", 1)[0]
+        self.assertEqual(1, retention.count("<Audio 1>"))
+        self.assertEqual(1, retention.count("<Audio 2>"))
+        self.assertIn("<Audio 1>: partially_copy", retention)
+        self.assertIn("<Audio 2>: fully_copy", retention)
+
     def test_movie_minimax_adapter_uses_structured_dspy_r2v_prompt(self):
         from feverslop.adapters.movie_minimax_visual import _build_movie_h3_prompt
 
@@ -96,12 +158,13 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                     "actor_msr_paths": ["actor.png"],
                     "actor_ids": ["leo"],
                     "actor_reference_descriptions": [
-                        {"id": "leo", "visual_description": "A weathered hiker."},
+                        {"id": "leo", "name": "Leo", "visual_description": "A weathered hiker."},
                     ],
                     "location_msr_path": "forest.png",
                     "location_id": "forest",
                     "location_reference_description": {
                         "id": "forest",
+                        "name": "Ancient Forest",
                         "visual_description": "A dark ancient forest.",
                     },
                 }
@@ -112,6 +175,106 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual("A weathered hiker.", references[0]["description"])
         self.assertEqual("A dark ancient forest.", references[1]["description"])
+        self.assertEqual("Leo", references[0]["name"])
+        self.assertEqual("Ancient Forest", references[1]["name"])
+
+    def test_scene_references_deduplicate_audio_paths_from_scene_and_global_inputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            vocal = root / "output" / "stems" / "vocals.wav"
+            full_mix = root / "input" / "song.wav"
+            references, _images = _scene_references(
+                {
+                    "references": {
+                        "reference_audio_paths": [
+                            "output/stems/vocals.wav",
+                            "input/song.wav",
+                        ],
+                    }
+                },
+                {"vocals": vocal, "full_mix": full_mix},
+                root,
+            )
+
+        audio_references = [reference for reference in references if reference["kind"] == "audio"]
+        self.assertEqual(2, len(audio_references))
+        self.assertEqual(["full_mix", "vocals"], [reference["name"] for reference in audio_references])
+
+    def test_fully_instrumental_relay_excludes_vocal_stem_but_keeps_full_mix(self):
+        references, _images = _scene_references(
+            {
+                "ltx": {"prompt_relay": [{
+                    "frame_start": 0,
+                    "frame_end": 120,
+                    "state": "instrumental",
+                    "prompt": "No vocal performance, mouth closed, no lip movement.",
+                }]},
+                "references": {
+                    "reference_audio_paths": ["vocals.wav", "song.wav"],
+                    "_stem_audio_tags": {
+                        "vocals.wav": "audio_transfer - vocal singing lip-synced to the audio signal",
+                        "song.wav": "full_mix - original song for beat and rhythm continuity",
+                    },
+                },
+            },
+            {"vocals": Path("vocals.wav"), "full_mix": Path("song.wav")},
+            None,
+        )
+
+        audio = [reference for reference in references if reference["kind"] == "audio"]
+        self.assertEqual(["full_mix"], [reference["name"] for reference in audio])
+        self.assertEqual("fully_copy", audio[0]["copy_mode"])
+
+    def test_scene_audio_labels_follow_role_stem_then_full_mix_order(self):
+        references, _images = _scene_references(
+            {
+                "type": "instrumental",
+                "ltx": {"prompt_relay": [{"state": "instrumental"}]},
+                "references": {
+                    "actor_reference_descriptions": [
+                        {"name": "Drummer", "role": "Percussionist"},
+                    ],
+                    "reference_audio_paths": ["vocals.wav", "song.wav"],
+                    "_stem_audio_tags": {
+                        "vocals.wav": "audio_transfer - vocal singing lip-synced to the audio signal",
+                        "song.wav": "full_mix - original song for beat and rhythm continuity",
+                    },
+                },
+            },
+            {
+                "vocals": Path("vocals.wav"),
+                "drums": Path("drums.wav"),
+                "full_mix": Path("song.wav"),
+            },
+            None,
+        )
+
+        audio = [reference for reference in references if reference["kind"] == "audio"]
+        self.assertEqual(
+            [("<Audio 1>", "drums"), ("<Audio 2>", "full_mix")],
+            [(reference["label"], reference["name"]) for reference in audio],
+        )
+
+    def test_unmanaged_audio_follows_managed_stems_to_match_backend_slots(self):
+        references, _images = _scene_references(
+            {
+                "type": "vocals",
+                "references": {
+                    "actor_reference_descriptions": [
+                        {"name": "Singer", "role": "Lead Singer"},
+                    ],
+                    "reference_audio_paths": ["ambience.wav"],
+                },
+            },
+            {"vocals": Path("vocals.wav"), "full_mix": Path("song.wav")},
+            None,
+        )
+
+        audio = [reference for reference in references if reference["kind"] == "audio"]
+        self.assertEqual(
+            ["vocals", "full_mix", "ambience"],
+            [reference["name"] for reference in audio],
+        )
 
     def test_local_picture_without_description_reaches_h3_analyzer_without_placeholder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -260,7 +423,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("<Audio 2> is the synchronized full_mix audio reference and is reused for the scene.", prompt)
         self.assertIn("[reference generation + audio reuse]", prompt)
         self.assertIn("<Audio 1>: partially_copy", prompt)
-        self.assertIn("<Audio 2>: partially_copy", prompt)
+        self.assertIn("<Audio 2>: fully_copy", prompt)
         self.assertIn("<Audio 1> and <Audio 2>", prompt)
         self.assertIn("overall_soundscape: A quiet room tone. The synchronized audio behavior follows <Audio 1> and <Audio 2>.", prompt)
         self.assertIn("non_diegetic_music: The synchronized audio references are scene inputs, not non-diegetic music: <Audio 1> and <Audio 2>.", prompt)
@@ -280,7 +443,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         builder = DspyH3PromptBuilder(FakeGenerator(generated))
 
         result = builder.build_h3_prompt(
-            segment={"segment_id": "seg-1", "type": "instrumental"},
+            segment={"segment_id": "seg-1", "type": "vocals"},
             concept="A singer performs.",
             scene_details={},
             global_context={},
@@ -289,7 +452,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         prompt = result["prompt"]
         self.assertIn("<Audio 1> is the synchronized vocals audio reference and is reused for the scene.", prompt)
-        self.assertIn("<Audio 2>: partially_copy - the synchronized full_mix audio is reused for this scene.", prompt)
+        self.assertIn("<Audio 2>: fully_copy - the synchronized full_mix audio is reused for this scene.", prompt)
         self.assertNotIn("is a reference track.", prompt)
         self.assertNotIn("do not copy.", prompt)
 
@@ -302,7 +465,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             "[reference generation + audio reuse] A singer performs using <Audio 1> and <Audio 2>",
         ).replace(
             "<Subject 1>: fully_preserved - The singer remains recognizable.",
-            "<Subject 1>: fully_preserved - The singer remains recognizable.\n<Audio 1>: partially_copy - retained.\n<Audio 2>: partially_copy - retained.",
+            "<Subject 1>: fully_preserved - The singer remains recognizable.\n<Audio 1>: partially_copy - retained.\n<Audio 2>: fully_copy - retained.",
         ).replace(
             "<Subject 1> sings in a close-up.",
             "<Subject 1> sings in a close-up with <Audio 1> and <Audio 2>.",
@@ -459,6 +622,273 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual([item.label for item in resolved], ["<Picture 1>", "<Picture 2>"])
 
+    def test_persistent_unknown_planner_references_fail_after_three_attempts_with_all_labels(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        plan = PromptPlan(
+            creative_intent="Invalid",
+            subjects=[PlannedSubject(
+                name="Singer",
+                description="A singer",
+                source_references=["<Picture 9>"],
+            )],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 9>",
+                purpose="sync",
+                details="invalid",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A shot",
+                reference_labels=["<Video 9>"],
+            )],
+            overall_soundscape="A song",
+            music_intent=MusicIntent.NONE,
+        )
+        calls = []
+
+        def planner(**kwargs):
+            calls.append(kwargs)
+            return type("Prediction", (), {"plan": plan})()
+
+        generator.planner = planner
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A scene",
+            duration_seconds=5.0,
+        )
+        references = [ResolvedReference(
+            label="<Picture 1>",
+            kind="picture",
+            source="actor.png",
+            role="subject",
+            description="A singer",
+        )]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"unknown=\['<Audio 9>', '<Picture 9>', '<Video 9>'\].*allowed=\['<Picture 1>'\]",
+        ):
+            generator._plan(request, references)
+        self.assertEqual(3, len(calls))
+
+    def test_retries_planner_after_unknown_reference(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        plans = [
+            PromptPlan(
+                creative_intent="Invalid attempt",
+                subjects=[PlannedSubject(
+                    name="Singer",
+                    description="A singer",
+                    source_references=["<Picture 9>"],
+                )],
+                overall_soundscape="A song",
+                music_intent=MusicIntent.NONE,
+            ),
+            PromptPlan(
+                creative_intent="Valid attempt",
+                subjects=[PlannedSubject(
+                    name="Singer",
+                    description="A singer",
+                    source_references=["<Picture 1>"],
+                )],
+                overall_soundscape="A song",
+                music_intent=MusicIntent.NONE,
+            ),
+        ]
+        calls = []
+
+        def planner(**kwargs):
+            calls.append(kwargs)
+            return type("Prediction", (), {"plan": plans[len(calls) - 1]})()
+
+        generator.planner = planner
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A scene",
+            duration_seconds=5.0,
+        )
+        references = [ResolvedReference(
+            label="<Picture 1>",
+            kind="picture",
+            source="actor.png",
+            role="subject",
+            description="A singer",
+        )]
+
+        result = generator._plan(request, references)
+
+        self.assertEqual("Valid attempt", result.creative_intent)
+        self.assertEqual(2, len(calls))
+        self.assertIn("<Picture 9>", calls[1]["notes"])
+        self.assertIn("<Picture 1>", calls[1]["notes"])
+
+    def test_planner_retries_when_a_loaded_picture_is_not_mapped_to_a_subject(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        invalid = PromptPlan(
+            creative_intent="Missing location",
+            subjects=[PlannedSubject(
+                name="Drummer",
+                description="A drummer",
+                source_references=["<Picture 1>"],
+            )],
+            overall_soundscape="A song",
+            music_intent=MusicIntent.NONE,
+        )
+        valid = PromptPlan(
+            creative_intent="Mapped location",
+            subjects=[
+                PlannedSubject(name="Drummer", description="A drummer", source_references=["<Picture 1>"]),
+                PlannedSubject(name="Stage", description="A black stage", source_references=["<Picture 2>"]),
+            ],
+            overall_soundscape="A song",
+            music_intent=MusicIntent.NONE,
+        )
+        calls = []
+
+        def planner(**kwargs):
+            calls.append(kwargs)
+            return type("Prediction", (), {"plan": invalid if len(calls) == 1 else valid})()
+
+        generator.planner = planner
+        request = VideoPromptRequest(mode=PromptMode.R2V, user_prompt="A scene", duration_seconds=5.0)
+        references = [
+            ResolvedReference(label="<Picture 1>", kind="picture", source="actor.png", role="subject", name="Drummer", description="A drummer"),
+            ResolvedReference(label="<Picture 2>", kind="picture", source="stage.png", role="environment", name="Stage", description="A stage"),
+        ]
+
+        result = generator._plan(request, references)
+
+        self.assertEqual(2, len(calls))
+        self.assertIn("unmapped_visual=['<Picture 2>']", calls[1]["notes"])
+        self.assertIn('<Picture 2> -> subject "Stage"', calls[1]["notes"])
+        self.assertEqual(["<Subject 1>", "<Subject 2>"], [subject.label for subject in result.subjects])
+
+    def test_planner_reconstructs_persistently_unmapped_visuals_with_warning(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        invalid = PromptPlan(
+            creative_intent="Performance",
+            subjects=[],
+            overall_soundscape="A song",
+            music_intent=MusicIntent.NONE,
+        )
+        calls = []
+
+        def planner(**kwargs):
+            calls.append(kwargs)
+            return type("Prediction", (), {"plan": invalid.model_copy(deep=True)})()
+
+        generator.planner = planner
+        request = VideoPromptRequest(mode=PromptMode.R2V, user_prompt="A scene", duration_seconds=5.0)
+        references = [
+            ResolvedReference(label="<Picture 1>", kind="picture", source="actor.png", role="subject", name="Lead Singer", description="Silver-haired singer"),
+            ResolvedReference(label="<Picture 2>", kind="picture", source="reef.png", role="environment", name="The Azure Reef", description="Blue crystalline reef"),
+        ]
+
+        with self.assertLogs("feverslop.prompting.dspy_h3_generator_core", level="WARNING") as captured:
+            result = generator._plan(request, references)
+
+        self.assertEqual(2, len(calls))
+        self.assertEqual(
+            [["<Picture 1>"], ["<Picture 2>"]],
+            [subject.source_references for subject in result.subjects],
+        )
+        self.assertEqual(["Lead Singer", "The Azure Reef"], [subject.name for subject in result.subjects])
+        self.assertTrue(any("reconstructed" in message for message in captured.output))
+
+    def test_reference_renderer_retries_unknown_subject_with_mismatch_details(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        calls = []
+
+        def renderer(**kwargs):
+            calls.append(kwargs)
+            subject = "<Subject 3>" if len(calls) == 1 else "<Subject 1>"
+            return type("Output", (), {
+                "summary": f"{subject} performs.",
+                "retention_analysis": [RetentionAnalysis(
+                    target_label="<Subject 1>", mode="fully_preserved", details="stable"
+                )],
+                "detailed_description": f"{subject} performs on beat.",
+                "overall_soundscape": "Music.",
+                "non_diegetic_music": None,
+            })()
+
+        generator.reference_renderer = renderer
+        generator.reference_guide_path = "minimax-h3-references.md"
+        plan = ResolvedPromptPlan(
+            creative_intent="Performance",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Drummer", description="A drummer",
+                source_references=["<Picture 1>"],
+            )],
+            overall_soundscape="Music.",
+            music_intent=MusicIntent.NONE,
+        )
+        request = VideoPromptRequest(mode=PromptMode.R2V, user_prompt="A drummer", duration_seconds=5)
+        refs = [ResolvedReference(
+            label="<Picture 1>", kind="picture", source="actor.png",
+            role="subject", description="A drummer",
+        )]
+
+        output = generator._render_reference(request, plan, refs)
+
+        self.assertEqual(2, len(calls))
+        self.assertIn("undefined_subjects=['<Subject 3>']", calls[1]["notes"])
+        self.assertEqual("<Subject 1> performs.", output.summary)
+
+    def test_reference_renderer_retries_active_singing_in_instrumental_relay(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        calls = []
+
+        def renderer(**kwargs):
+            calls.append(kwargs)
+            description = (
+                "<Subject 1> sings with perfect lip sync."
+                if len(calls) == 1
+                else "<Subject 1> keeps the mouth relaxed and closed, with no singing or lip sync."
+            )
+            return type("Output", (), {
+                "summary": "<Subject 1> is shown.",
+                "retention_analysis": [RetentionAnalysis(
+                    target_label="<Subject 1>", mode="fully_preserved", details="stable"
+                )],
+                "detailed_description": description,
+                "overall_soundscape": "Instrumental music.",
+                "non_diegetic_music": None,
+            })()
+
+        generator.reference_renderer = renderer
+        generator.reference_guide_path = "minimax-h3-references.md"
+        plan = ResolvedPromptPlan(
+            creative_intent="Instrumental shot",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Singer", description="A singer",
+                source_references=["<Picture 1>"],
+            )],
+            overall_soundscape="Instrumental music.",
+            music_intent=MusicIntent.NONE,
+        )
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="An instrumental shot",
+            duration_seconds=5,
+            relay_segments=[{
+                "start_seconds": 0,
+                "end_seconds": 5,
+                "state": "instrumental",
+                "prompt": "No vocal performance, mouth closed, no lip movement.",
+            }],
+        )
+        refs = [ResolvedReference(
+            label="<Picture 1>", kind="picture", source="actor.png",
+            role="subject", description="A singer",
+        )]
+
+        output = generator._render_reference(request, plan, refs)
+
+        self.assertEqual(2, len(calls))
+        self.assertIn("active_vocal_language=True", calls[1]["notes"])
+        self.assertIn("no singing or lip sync", output.detailed_description)
+
     def test_generator_components_have_dedicated_modules(self):
         self.assertEqual(VideoPromptGenerator.__module__, "feverslop.prompting.dspy_h3_generator")
         self.assertEqual(LocalImageAnalyzer.__module__, "feverslop.prompting.dspy_h3_analyzer")
@@ -545,9 +975,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 ("picture", "forest.png"),
                 ("picture", "existing.png"),
                 ("video", "clip.mp4"),
+                ("audio", "full_mix.wav"),
                 ("audio", "existing.wav"),
                 ("audio", "vocals.wav"),
-                ("audio", "full_mix.wav"),
             ],
         )
 
@@ -575,8 +1005,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             [
                 ("picture", "existing.png"),
                 ("video", "clip.mp4"),
-                ("audio", "existing.wav"),
                 ("audio", "vocals.wav"),
+                ("audio", "existing.wav"),
             ],
         )
 

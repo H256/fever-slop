@@ -10,6 +10,8 @@ from feverslop.ports.llm import LLMPort
 from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 from feverslop.prompting.general_modules import GeneralPromptModules
 
+_SCENE_PROMPT_MAX_WORDS = 150
+
 
 def clean_llm_text(text: str) -> str:
     text = text.strip()
@@ -17,6 +19,35 @@ def clean_llm_text(text: str) -> str:
         text = re.sub(r"^```(?:text)?", "", text.strip(), flags=re.IGNORECASE).strip()
         text = re.sub(r"```$", "", text.strip()).strip()
     return text.strip()
+
+
+def limit_scene_prompt_words(
+    prompt: str,
+    *,
+    scene_number: int,
+    prompt_kind: str,
+    max_words: int,
+    status_callback: Callable[[str], None] | None,
+) -> str:
+    words = prompt.split()
+    if len(words) <= max_words:
+        return prompt
+    if status_callback is not None:
+        status_callback(
+            f"[yellow]Scene {scene_number} {prompt_kind} prompt exceeded the "
+            f"{max_words}-word limit ({len(words)} words); "
+            f"trimmed to {max_words} words.[/yellow]"
+        )
+    return " ".join(words[:max_words])
+
+
+def scene_prompt_word_limit(global_context: dict) -> int:
+    guidance = global_context.get("prompt_guidance") or {}
+    try:
+        configured = int(guidance.get("word_count_max", _SCENE_PROMPT_MAX_WORDS))
+    except (TypeError, ValueError):
+        return _SCENE_PROMPT_MAX_WORDS
+    return configured if configured > 0 else _SCENE_PROMPT_MAX_WORDS
 
 
 def normalize_scene_references(references: dict, global_context: dict) -> dict:
@@ -185,9 +216,11 @@ class ScenePromptBuilder:
         trigger_word: str = "",
         artifact_store: ArtifactStore,
         progress_callback: Callable[[int, int], None] | None = None,
+        status_callback: Callable[[str], None] | None = None,
     ) -> Path:
         output = []
         total = len(stage1_segments)
+        max_prompt_words = scene_prompt_word_limit(global_context)
 
         for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
@@ -216,6 +249,14 @@ class ScenePromptBuilder:
                 custom_instructions=zimage_instructions,
                 trigger_word=trigger_word,
             )
+            scene_number = int(segment.get("scene") or current)
+            t2i_prompt = limit_scene_prompt_words(
+                t2i_prompt,
+                scene_number=scene_number,
+                prompt_kind="T2I",
+                max_words=max_prompt_words,
+                status_callback=status_callback,
+            )
 
             i2v_prompt_from_t2i = self.build_i2v_prompt_from_t2i(
                 segment=segment,
@@ -225,6 +266,13 @@ class ScenePromptBuilder:
                 scene_cast=scene_cast,
                 t2i_prompt=t2i_prompt,
                 custom_instructions=ltx_instructions,
+            )
+            i2v_prompt_from_t2i = limit_scene_prompt_words(
+                i2v_prompt_from_t2i,
+                scene_number=scene_number,
+                prompt_kind="I2V",
+                max_words=max_prompt_words,
+                status_callback=status_callback,
             )
 
             scene_output = {

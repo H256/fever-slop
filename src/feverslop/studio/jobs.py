@@ -94,14 +94,14 @@ PIPELINE_STEPS: dict[str, list[str]] = {
     "msr-references": ["MSR references"],
     "msr-enrich": ["MSR reference enrichment", "MSR prompt enrichment"],
     "ltx-prepare-workflows": ["Prepare LTX workflows"],
-    "ltx-render-scenes": ["LTX render"],
+    "ltx-render-scenes": ["Video render"],
     "final-concat": ["Final concat"],
     "full-pipeline": [
         "Main pipeline",
         "MSR references",
         "MSR enrichment",
         "Storyboard",
-        "LTX render",
+        "Video render",
         "Final concat",
     ],
     "full-auto": [
@@ -130,7 +130,7 @@ STEP_ALIASES: dict[str, list[str]] = {
     "Scene planning": ["Render Plan Ready", "Planning Scenes"],
     "Krea2 visual consistency": ["Krea2"],
     "Movie references": ["Movie references", "Reference sheets"],
-    "LTX render": ["ltx-render-scenes"],
+    "Video render": ["ltx-render-scenes"],
     "LTX MSR native-audio render": ["LTX MSR", "native audio"],
     "Final movie": ["Movie Complete"],
     "MSR enrichment": ["MSR reference sheets", "MSR prompt enrichment"],
@@ -141,11 +141,11 @@ STEP_ALIASES: dict[str, list[str]] = {
 
 
 FULL_PIPELINE_STEPS_BY_MODE = {
-    "classic": ["Main pipeline", "Storyboard", "LTX render", "Final concat"],
-    "msr": ["Main pipeline", "MSR references", "MSR enrichment", "LTX render", "Final concat"],
-    "ingredients": ["Main pipeline", "MSR enrichment", "Ingredients sheets", "LTX render", "Final concat"],
-    "minimax_h3_r2v": ["Main pipeline", "MSR references", "LTX render", "Final concat"],
-    "minimax_h3_t2v": ["Main pipeline", "LTX render", "Final concat"],
+    "classic": ["Main pipeline", "Storyboard", "Video render", "Final concat"],
+    "msr": ["Main pipeline", "MSR references", "MSR enrichment", "Video render", "Final concat"],
+    "ingredients": ["Main pipeline", "MSR enrichment", "Ingredients sheets", "Video render", "Final concat"],
+    "minimax_h3_r2v": ["Main pipeline", "MSR references", "Video render", "Final concat"],
+    "minimax_h3_t2v": ["Main pipeline", "Video render", "Final concat"],
 }
 
 
@@ -409,7 +409,7 @@ class JobRegistry:
         if scene_progress:
             completed = int(scene_progress.group(1))
             total = max(1, int(scene_progress.group(2)))
-            render_step = next((step for step in steps if step["name"] == "LTX render"), current)
+            render_step = next((step for step in steps if step["name"] == "Video render"), current)
             if render_step:
                 if current and current is not render_step and current["status"] == "running":
                     current["status"] = "completed"

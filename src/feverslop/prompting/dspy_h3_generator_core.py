@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+import logging
+import re
 from typing import Any
 
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
@@ -9,6 +11,7 @@ from feverslop.prompting.dspy_h3_models import (
     GeneratedVideoPrompt,
     ImageAnalysisMode,
     MusicIntent,
+    PlannedSubject,
     PromptMode,
     ReferenceAsset,
     ReferenceKind,
@@ -21,6 +24,27 @@ from feverslop.prompting.dspy_h3_models import (
 )
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
+
+
+logger = logging.getLogger(__name__)
+
+_ACTIVE_VOCAL_PATTERN = re.compile(
+    r"\b(?:sings|singing|lip[- ]sync(?:s|ing)?|mouth\s+(?:moves|moving|opens?))\b",
+    re.IGNORECASE,
+)
+_VOCAL_NEGATION_PATTERN = re.compile(
+    r"\b(?:no|not|without|avoid|avoids|avoiding|prohibit|prohibits|forbid|forbids)\b[^.!?;]{0,80}$",
+    re.IGNORECASE,
+)
+
+
+def _contains_active_vocal_language(text: str) -> bool:
+    for match in _ACTIVE_VOCAL_PATTERN.finditer(text):
+        prefix = text[max(0, match.start() - 100):match.start()]
+        if _VOCAL_NEGATION_PATTERN.search(prefix):
+            continue
+        return True
+    return False
 
 
 class VideoPromptGenerator:
@@ -76,24 +100,98 @@ class VideoPromptGenerator:
         return result
 
     def _plan(self, request: VideoPromptRequest, refs: list[ResolvedReference]) -> ResolvedPromptPlan:
-        prediction = self.planner(
-            mode=request.mode.value, user_prompt=request.user_prompt, duration_seconds=request.duration_seconds,
-            references=refs, notes=request.notes or "", strict_fidelity=request.strict_fidelity,
-            requested_music_intent=request.music_intent.value if request.music_intent else "",
-            relay_segments=request.relay_segments,
-        )
-        plan = prediction.plan
-        if request.music_intent is not None:
-            plan.music_intent = request.music_intent
-        if plan.music_intent == MusicIntent.NONE:
-            plan.non_diegetic_music = None
         allowed = {ref.label for ref in refs}
-        for subject in plan.subjects:
-            if any(label not in allowed for label in subject.source_references):
-                raise ValueError("Planner invented an unknown reference")
-        for usage in plan.reference_usage:
-            if usage.reference_label not in allowed:
-                raise ValueError("Planner invented an unknown reference")
+        visual_labels = {
+            ref.label for ref in refs
+            if ref.kind is ReferenceKind.PICTURE
+        }
+        notes = request.notes or ""
+        for attempt in range(1, 4):
+            prediction = self.planner(
+                mode=request.mode.value, user_prompt=request.user_prompt,
+                duration_seconds=request.duration_seconds, references=refs, notes=notes,
+                strict_fidelity=request.strict_fidelity,
+                requested_music_intent=request.music_intent.value if request.music_intent else "",
+                relay_segments=request.relay_segments,
+            )
+            plan = prediction.plan
+            if request.music_intent is not None:
+                plan.music_intent = request.music_intent
+            if plan.music_intent == MusicIntent.NONE:
+                plan.non_diegetic_music = None
+            unknown = {
+                label
+                for subject in plan.subjects
+                for label in subject.source_references
+                if label not in allowed
+            }
+            unknown.update(
+                usage.reference_label
+                for usage in plan.reference_usage
+                if usage.reference_label not in allowed
+            )
+            unknown.update(
+                label
+                for shot in plan.shots
+                for label in shot.reference_labels
+                if label not in allowed
+            )
+            mapped_visuals = [
+                label
+                for subject in plan.subjects
+                for label in subject.source_references
+                if label in visual_labels
+            ]
+            unmapped_visual = visual_labels - set(mapped_visuals)
+            duplicate_visual = {
+                label for label in mapped_visuals if mapped_visuals.count(label) > 1
+            }
+            if not unknown and not unmapped_visual and not duplicate_visual:
+                break
+            error = "Planner reference contract mismatch: " + "; ".join((
+                f"unknown={sorted(unknown)!r}",
+                f"unmapped_visual={sorted(unmapped_visual)!r}",
+                f"multiply_mapped_visual={sorted(duplicate_visual)!r}",
+                f"allowed={sorted(allowed)!r}",
+            ))
+            if attempt >= 2 and not unknown and unmapped_visual and not duplicate_visual:
+                mapped_subjects = [
+                    subject for subject in plan.subjects
+                    if any(label in visual_labels for label in subject.source_references)
+                ]
+                missing_refs = [ref for ref in refs if ref.label in unmapped_visual]
+                mapped_subjects.extend(
+                    PlannedSubject(
+                        name=ref.name or ref.label.strip("<>"),
+                        description=ref.description,
+                        source_references=[ref.label],
+                    )
+                    for ref in missing_refs
+                )
+                plan.subjects = mapped_subjects
+                logger.warning(
+                    "H3 planner reference serialization failed after %d attempts; "
+                    "reconstructed visual subject mappings from reference metadata: %s",
+                    attempt,
+                    ", ".join(f"{ref.label} -> {ref.name or ref.label}" for ref in missing_refs),
+                )
+                break
+            if attempt == 3:
+                raise ValueError(error)
+            logger.warning("H3 planner retry %d/3: %s", attempt + 1, error)
+            mapping_contract = "; ".join(
+                f'{ref.label} -> subject "{ref.name or ref.label.strip("<>")}" '
+                f'with role "{ref.role.value}" and description "{ref.description}"'
+                for ref in refs
+                if ref.kind is ReferenceKind.PICTURE
+            )
+            notes = (
+                f"{request.notes or ''}\n\n"
+                f"The previous plan was invalid ({error}). Retry using only the exact "
+                "reference labels listed in allowed. Map every Picture and Video to exactly "
+                "one subject; do not combine, rename, omit, or invent labels. "
+                f"Required visual mapping contract: {mapping_contract}."
+            ).strip()
         subjects = []
         seen = set()
         for index, subject in enumerate(plan.subjects, 1):
@@ -113,6 +211,83 @@ class VideoPromptGenerator:
             alignment_instruction=plan.alignment_instruction,
         )
 
+    def _render_reference(
+        self,
+        request: VideoPromptRequest,
+        plan: ResolvedPromptPlan,
+        refs: list[ResolvedReference],
+    ) -> Any:
+        """Render within the resolved slot contract, retrying structural drift."""
+        allowed_subjects = {subject.label for subject in plan.subjects}
+        allowed_references = {reference.label for reference in refs}
+        notes = request.notes or ""
+        for attempt in range(1, 4):
+            output = self.reference_renderer(
+                guide=self._read(self.reference_guide_path),
+                user_prompt=request.user_prompt,
+                plan=plan,
+                references=refs,
+                notes=notes,
+                strict_fidelity=request.strict_fidelity,
+                music_intent=plan.music_intent.value,
+                relay_segments=request.relay_segments,
+            )
+            rendered_fields = "\n".join(str(getattr(output, field, "") or "") for field in (
+                "summary",
+                "detailed_description",
+                "overall_soundscape",
+                "non_diegetic_music",
+            ))
+            used_subjects = set(re.findall(r"<Subject\s+\d+>", rendered_fields))
+            used_references = set(re.findall(r"<(?:Picture|Video|Audio)\s+\d+>", rendered_fields))
+            retention = list(getattr(output, "retention_analysis", ()) or ())
+            retention_targets = [str(item.target_label) for item in retention]
+            undefined_subjects = used_subjects - allowed_subjects
+            unknown_references = used_references - allowed_references
+            duplicate_retention = {
+                label for label in retention_targets if retention_targets.count(label) > 1
+            }
+            unknown_retention = set(retention_targets) - allowed_subjects - allowed_references
+            missing_subject_retention = allowed_subjects - set(retention_targets)
+            fully_instrumental = bool(request.relay_segments) and all(
+                str(segment.get("state") or "").strip().lower() == "instrumental"
+                for segment in request.relay_segments
+            )
+            active_vocal_language = bool(
+                fully_instrumental
+                and _contains_active_vocal_language(rendered_fields)
+            )
+            if not any((
+                undefined_subjects,
+                unknown_references,
+                duplicate_retention,
+                unknown_retention,
+                missing_subject_retention,
+                active_vocal_language,
+            )):
+                return output
+            error = "Renderer reference contract mismatch: " + "; ".join((
+                f"undefined_subjects={sorted(undefined_subjects)!r}",
+                f"unknown_references={sorted(unknown_references)!r}",
+                f"duplicate_retention={sorted(duplicate_retention)!r}",
+                f"unknown_retention={sorted(unknown_retention)!r}",
+                f"missing_subject_retention={sorted(missing_subject_retention)!r}",
+                f"active_vocal_language={active_vocal_language!r}",
+            ))
+            if attempt == 3:
+                raise ValueError(error)
+            logger.warning("H3 renderer retry %d/3: %s", attempt + 1, error)
+            subject_map = ", ".join(
+                f"{subject.label}={subject.name} from {subject.source_references}"
+                for subject in plan.subjects
+            )
+            notes = (
+                f"{request.notes or ''}\n\nThe previous rendered prompt was invalid ({error}). "
+                f"Use only these exact subject mappings: {subject_map}. Use only reference "
+                f"labels {sorted(allowed_references)!r}. Emit exactly one retention entry per subject."
+            ).strip()
+        raise AssertionError("unreachable")
+
     def __call__(self, request_data: dict[str, Any]) -> GeneratedVideoPrompt:
         if request_data.get("mode") == "ref":
             request_data = {**request_data, "mode": PromptMode.R2V.value}
@@ -125,13 +300,7 @@ class VideoPromptGenerator:
             refs = self._resolve_references(request.references)
             plan = self._plan(request, refs)
             if request.mode == PromptMode.R2V:
-                output = self.reference_renderer(
-                    guide=self._read(self.reference_guide_path), user_prompt=request.user_prompt,
-                    plan=plan, references=refs,
-                    notes=request.notes or "",
-                    strict_fidelity=request.strict_fidelity, music_intent=plan.music_intent.value,
-                    relay_segments=request.relay_segments,
-                )
+                output = self._render_reference(request, plan, refs)
                 prompt = ReferenceVideoPrompt(
                     subject_definitions=plan.subjects, summary=output.summary,
                     retention_analysis=output.retention_analysis,

@@ -97,6 +97,10 @@ class SceneArtifactLayout:
         return self.final_dir / "video_audio.mp4"
 
     @property
+    def video_only_facefix(self) -> Path:
+        return self.final_dir / "video_only_facefix.mp4"
+
+    @property
     def video_only_upscaled(self) -> Path:
         return self.final_dir / "video_only_upscaled.mp4"
 
@@ -111,6 +115,10 @@ class SceneArtifactLayout:
     @property
     def movie(self) -> Path:
         return self.final_dir / "movie.mp4"
+
+    @property
+    def movie_facefix(self) -> Path:
+        return self.final_dir / "movie_facefix.mp4"
 
     @property
     def movie_upscaled(self) -> Path:

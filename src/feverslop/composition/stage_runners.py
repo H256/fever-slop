@@ -74,6 +74,8 @@ from feverslop.tools.storyboard_page import generate_storyboard_page
 from .arg_parser import PipelineStage
 from .config_loader import PipelineRunContext, PipelineRunState, count_render_plan_items, runner_root
 
+VIDEO_SCENE_PROGRESS_LABEL = "Rendering video scenes"
+
 _REFERENCE_BIBLE_PARSER = None
 
 
@@ -141,7 +143,13 @@ def _selected_video_workflows(state: PipelineRunState) -> tuple[Path, ...]:
     elif state.args.video_pipeline == "ltx_ingredients":
         candidates = (state.ingredients_workflow,)
     elif state.args.render_mode == "single_prompt":
-        candidates = (state.single_prompt_workflow,)
+        workflow = state.single_prompt_workflow
+        if (
+            state.args.video_pipeline == "minimax-h3-r2v"
+            and Path(workflow).name == "video_ltxv_i2v_v2.json"
+        ):
+            workflow = Path("workflows/video_minimax_h3_r2v_v1.json")
+        candidates = (workflow,)
     elif state.args.render_mode == "relay":
         candidates = (state.relay_workflow,)
     else:
@@ -198,22 +206,74 @@ def _read_h3_input(path: Path, label: str):
     return JsonArtifactStore().read_json(path)
 
 
-def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
-    """Ensure reference stages have actor/location IDs to resolve from config."""
+def _select_pipeline_scenes(scenes: list[dict], scene_spec: str | None) -> list[dict]:
+    selected = parse_scene_list(scene_spec)
+    if selected is None:
+        return scenes
+    return [scene for scene in scenes if int(scene.get("scene") or scene.get("scene_number")) in selected]
+
+
+def _report_reference_fallbacks(warnings: list[str]) -> None:
+    for warning in warnings:
+        console.print(f"[yellow]Reference fallback:[/yellow] {warning}")
+
+
+def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> list[str]:
+    """Ensure every scene has actor/location IDs resolvable from the bible."""
     if not plan_path.is_file():
-        return
+        return []
     store = JsonArtifactStore()
     plan = store.read_json(plan_path)
     actors = list(config.actors)
     locations = list(config.structured_locations)
-    if not actors or not locations:
-        return
+    reference_root = config.project_dir / "output" / "references"
+    actor_ids = [actor.id for actor in actors]
+    if not actor_ids:
+        actor_ids = sorted(
+            path.name
+            for path in (reference_root / "actors").iterdir()
+            if path.is_dir()
+        ) if (reference_root / "actors").is_dir() else []
+    location_candidates: list[tuple[str, str]] = [
+        (location.id, " ".join((location.id, location.name, location.visual_description, location.image_prompt)))
+        for location in locations
+    ]
+    locations_root = reference_root / "locations"
+    if locations_root.is_dir():
+        for location_dir in sorted(path for path in locations_root.iterdir() if path.is_dir()):
+            manifest_path = location_dir / "manifest.json"
+            manifest: dict = {}
+            if manifest_path.is_file():
+                try:
+                    loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    manifest = loaded if isinstance(loaded, dict) else {}
+                except (OSError, json.JSONDecodeError):
+                    manifest = {}
+            location_candidates.append((
+                location_dir.name,
+                " ".join(
+                    str(manifest.get(key, ""))
+                    for key in ("id", "name", "visual_description", "image_prompt")
+                ) + " " + location_dir.name,
+            ))
+    existing_actor_ids = [
+        str(actor_id)
+        for scene in plan
+        for actor_id in (scene.get("references") or {}).get("actor_ids") or []
+        if str(actor_id).strip()
+    ]
+    actor_ids = list(dict.fromkeys([*actor_ids, *existing_actor_ids]))
+    if not actor_ids or not location_candidates:
+        return []
     changed = False
+    warnings: list[str] = []
     for scene in plan:
         references = scene.setdefault("references", {})
+        fallback_fields: list[str] = []
         if not references.get("actor_ids"):
-            references["actor_ids"] = [actor.id for actor in actors[: config.max_scene_actors]]
+            references["actor_ids"] = actor_ids[: config.max_scene_actors]
             changed = True
+            fallback_fields.append(f"actor_ids={references['actor_ids']!r}")
         if not references.get("location_id"):
             text = " ".join(
                 str(value)
@@ -227,15 +287,25 @@ def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> None:
             matching = next(
                 (
                     location
-                    for location in locations
-                    if location.id.lower() in text or location.name.lower() in text
+                    for location in location_candidates
+                    if any(
+                        part.strip() and part.strip().lower() in text
+                        for part in location[1].split()
+                    )
                 ),
-                locations[0],
+                location_candidates[0],
             )
-            references["location_id"] = matching.id
+            references["location_id"] = matching[0]
             changed = True
+            fallback_fields.append(f"location_id={matching[0]!r}")
+        if fallback_fields:
+            warnings.append(
+                f"scene {scene.get('scene')}: structured reference serialization missing; "
+                f"using {' and '.join(fallback_fields)} from the existing reference bible."
+            )
     if changed:
         store.write_json(plan_path, plan)
+    return warnings
 
 
 def _discover_stem_files(
@@ -294,6 +364,20 @@ def _merge_reference_paths_into_h3_segments(
     return enriched
 
 
+def _select_h3_segments(
+    stage1_segments: list[dict],
+    selected_scene_spec: str | None,
+) -> tuple[set[int], list[dict]]:
+    if not selected_scene_spec:
+        return set(), stage1_segments
+    selected = parse_scene_list(selected_scene_spec) or set()
+    return selected, [
+        segment
+        for segment in stage1_segments
+        if int(segment.get("scene") or 0) in selected
+    ]
+
+
 def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     """Regenerate only stage 8.5 from the existing stage 7/8 artifacts."""
     config = ProjectConfig.load(state.context.project_config_path)
@@ -309,8 +393,10 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     artifact_store = JsonArtifactStore()
     paths = config.paths
     stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
+    selected_scene_spec = getattr(state.args, "scenes", None)
+    selected, stage1_segments = _select_h3_segments(stage1_segments, selected_scene_spec)
     if state.args.video_pipeline == "minimax-h3-r2v":
-        _seed_reference_bindings(state.plan_for_next_step, config)
+        _report_reference_fallbacks(_seed_reference_bindings(state.plan_for_next_step, config))
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
             state.plan_for_next_step,
             state.context.references_dir,
@@ -322,6 +408,18 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         )
     concept_prompts = _read_h3_input(state.context.concept_prompts, "concept prompts")
     scene_details = _read_h3_input(state.context.scene_details, "scene details")
+    if selected_scene_spec:
+        selected_ids = {str(segment.get("segment_id")) for segment in stage1_segments}
+        concept_prompts = {
+            key: value for key, value in concept_prompts.items() if str(key) in selected_ids
+        }
+        scene_details = {
+            key: value for key, value in scene_details.items() if str(key) in selected_ids
+        }
+        console.print(
+            f"[cyan]Scene selection active: H3 generation limited to "
+            f"{', '.join(str(number) for number in sorted(selected))}[/cyan]"
+        )
     global_context = _read_h3_input(state.context.resolved_context, "resolved context")
     h3_prompts_json = paths.prompts_dir / f"h3_prompts_{config.song_id}.json"
     paths.prompts_dir.mkdir(parents=True, exist_ok=True)
@@ -344,6 +442,8 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         scene_prompts_json=state.context.scene_prompts,
         h3_prompts_json=h3_prompts_json,
         stem_files=_discover_stem_files(paths.stems_dir, config.input_audio),
+        ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{config.song_id}.json",
+        beat_json=paths.timeline_dir / f"beat_data_{config.song_id}.json",
     )
     pipeline = H3PromptPipeline(
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(
@@ -395,6 +495,17 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         _preserve_enriched_reference_paths(
             output_path=state.context.render_plan,
             reference_plan_path=state.context.reference_plan,
+        )
+    selected_scene_spec = getattr(state.args, "scenes", None)
+    if selected_scene_spec:
+        selected_plan = _select_pipeline_scenes(
+            JsonArtifactStore().read_json(state.context.render_plan),
+            selected_scene_spec,
+        )
+        JsonArtifactStore().write_json(state.context.render_plan, selected_plan)
+        console.print(
+            f"[cyan]Scene selection active: render plan limited to "
+            f"{len(selected_plan)} selected scene(s)[/cyan]"
         )
     state.plan_for_next_step = state.context.render_plan
     console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
@@ -574,10 +685,10 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         )
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
-        _seed_reference_bindings(
+        _report_reference_fallbacks(_seed_reference_bindings(
             state.plan_for_next_step,
             ProjectConfig.load(project_config_path),
-        )
+        ))
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
@@ -611,10 +722,10 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
         _run_render_plan_stage(state)
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
-        _seed_reference_bindings(
+        _report_reference_fallbacks(_seed_reference_bindings(
             state.plan_for_next_step,
             ProjectConfig.load(project_config_path),
-        )
+        ))
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
@@ -1478,7 +1589,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
     ltx_scene_numbers = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
     ltx_total = count_render_plan_items(state.plan_for_next_step, scene_numbers=ltx_scene_numbers)
     with RenderProgressReporter(
-        "Rendering LTX scenes", ltx_total, emit_scene_progress=True
+        VIDEO_SCENE_PROGRESS_LABEL, ltx_total, emit_scene_progress=True
     ) as ltx_progress:
         video_use_case.execute(
             RenderVideoScenesRequest(
@@ -1507,27 +1618,67 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         rewrite_concat_list,
         write_concat_list,
     )
-    render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
     layout = state.context.artifact_layout
-    use_upscaled = any(
-        layout.scene_upscaled_video(int(entry.get("scene") or entry.get("scene_number"))).is_file()
-        for entry in render_plan
-    )
-    clips = collect_render_plan_scene_clips(
+    render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+    scene_numbers = [int(entry["scene"]) for entry in render_plan]
+    canonical_clips = [layout.scene_final_video(scene_number) for scene_number in scene_numbers]
+    canonical_available = [clip for clip in canonical_clips if clip.is_file()]
+    if canonical_available and len(canonical_available) != len(canonical_clips):
+        missing = [clip.parent.name for clip in canonical_clips if not clip.is_file()]
+        raise FileNotFoundError(
+            "Cannot build base variant without mixing artifact layouts; missing canonical "
+            f"final.mp4 for {', '.join(missing[:10])}"
+        )
+    if canonical_available:
+        clips = canonical_clips
+    else:
+        console.print(
+            "[yellow]No canonical final.mp4 scene artifacts found; using the complete legacy "
+            "scene layout for the base movie.[/yellow]"
+        )
+        clips = collect_render_plan_scene_clips(
             state.plan_for_next_step,
             state.context.ltx_dir,
-            layout=layout,
-            prefer_upscaled=use_upscaled,
-    )
+            layout=None,
+        )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
-    video_only_output = layout.video_only_upscaled if use_upscaled else layout.video_only
-    video_audio_output = layout.video_audio_upscaled if use_upscaled else layout.video_audio
+    console.print(f"Concatenating base variant: {len(clips)} scene clips")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
-        output_file=video_only_output,
+        output_file=layout.video_only,
         video_only=True,
     )
+    state.video_only_variants = {"base": state.video_only_path}
+
+    optional_variants = (
+        ("facefix", layout.scene_final_facefix_video, layout.video_only_facefix),
+        ("upscaled", layout.scene_upscaled_video, layout.video_only_upscaled),
+    )
+    for variant, scene_path, output_path in optional_variants:
+        variant_clips = [scene_path(scene_number) for scene_number in scene_numbers]
+        available = [clip for clip in variant_clips if clip.is_file()]
+        if not available:
+            continue
+        if len(available) != len(variant_clips):
+            missing = [clip.parent.name for clip in variant_clips if not clip.is_file()]
+            console.print(
+                f"[yellow]Skipping {variant} movie: found {len(available)}/{len(variant_clips)} "
+                f"scene clips; missing {', '.join(missing[:10])}.[/yellow]"
+            )
+            continue
+        concat_list = write_concat_list(
+            variant_clips,
+            layout.final_dir,
+            f"concat_{variant}.txt",
+        )
+        console.print(f"Concatenating {variant} variant: {len(variant_clips)} scene clips")
+        state.video_only_variants[variant] = postprocessor.concat_clips(
+            concat_list=concat_list,
+            output_file=output_path,
+            video_only=True,
+        )
+
     try:
         raw_clips = collect_render_plan_scene_raw_clips(
             state.plan_for_next_step,
@@ -1544,12 +1695,56 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         )
     postprocessor.concat_clips(
         concat_list=state.context.concat_raw,
-        output_file=video_audio_output,
+        output_file=layout.video_audio,
         video_only=False,
     )
 
 
 def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
+    layout = getattr(state.context, "artifact_layout", None)
+    variants = getattr(state, "video_only_variants", None)
+    if layout is not None and not variants:
+        variants = {}
+        if layout.video_only.is_file():
+            variants["base"] = layout.video_only
+        render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+        scene_numbers = [int(entry["scene"]) for entry in render_plan]
+        optional_variants = (
+            ("facefix", layout.scene_final_facefix_video, layout.video_only_facefix),
+            ("upscaled", layout.scene_upscaled_video, layout.video_only_upscaled),
+        )
+        for variant, scene_path, aggregate_path in optional_variants:
+            if not aggregate_path.is_file():
+                continue
+            scene_clips = [scene_path(scene_number) for scene_number in scene_numbers]
+            if all(clip.is_file() for clip in scene_clips):
+                variants[variant] = aggregate_path
+            else:
+                console.print(
+                    f"[yellow]Ignoring stale {aggregate_path.name}: the current render plan "
+                    f"does not have a complete {variant} scene set.[/yellow]"
+                )
+    if variants:
+        output_paths = {
+            "base": layout.movie,
+            "facefix": layout.movie_facefix,
+            "upscaled": layout.movie_upscaled,
+        }
+        postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+        results: dict[str, Path] = {}
+        for variant in ("base", "facefix", "upscaled"):
+            video_file = variants.get(variant)
+            if video_file is None:
+                continue
+            console.print(f"Muxing original audio into {variant} movie")
+            results[variant] = postprocessor.mux_original_audio(
+                video_file=video_file,
+                audio_file=state.context.input_audio,
+                output_file=output_paths[variant],
+            )
+        state.final_video_path = results.get("base") or next(iter(results.values()))
+        return
+
     video_only_path = state.video_only_path or state.context.final_concat_video
     if state.video_only_path is None and not Path(video_only_path).exists():
         raise FileNotFoundError(f"Video-only concat not found: {video_only_path}")
@@ -1696,38 +1891,9 @@ def _run_facefix_stage(state: PipelineRunState) -> None:
 
 
 def _run_facefix_concat_stage(state: PipelineRunState) -> None:
-    from .config_loader import rewrite_concat_list, collect_render_plan_scene_clips
-
-    clips = collect_render_plan_scene_clips(
-        state.plan_for_next_step,
-        state.context.ltx_dir,
-        layout=state.context.artifact_layout,
-        prefer_facefix=True,
-    )
-    rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
-
-    facefix_video_only = state.context.final_concat_video.with_stem(
-        state.context.final_concat_video.stem + "_facefix"
-    )
-    facefix_final = state.context.final_concat.with_stem(
-        state.context.final_concat.stem + "_facefix"
-    )
-
-    console.print("==> FaceFix concat video-only")
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
-    state.video_only_path = postprocessor.concat_clips(
-        concat_list=state.context.concat_list,
-        output_file=facefix_video_only,
-        video_only=True,
-    )
-
-    console.print("==> FaceFix mux original audio")
-    state.final_video_path = postprocessor.mux_original_audio(
-        video_file=facefix_video_only,
-        audio_file=state.context.input_audio,
-        output_file=facefix_final,
-    )
-    console.print(f"[green]FaceFix final output: {facefix_final}[/green]")
+    console.print("FaceFix final concat uses the shared artifact-variant assembler.")
+    _run_concat_video_only_stage(state)
+    _run_mux_original_audio_stage(state)
 
 
 STAGE_RUNNERS = {
@@ -1773,7 +1939,7 @@ STAGE_LABELS = {
     PipelineStage.MSR_PROMPT_ENRICH: "MSR prompt enrichment",
     PipelineStage.INGREDIENTS_SHEETS: "Ingredients scene sheets",
     PipelineStage.LTX_PREPARE_WORKFLOWS: "Prepare LTX workflows",
-    PipelineStage.LTX_RENDER_SCENES: "LTX render",
+    PipelineStage.LTX_RENDER_SCENES: "Video render",
     PipelineStage.PREPARE_WORKFLOWS: "Prepare workflows",
     PipelineStage.RENDER_SCENES: "Render scenes",
     PipelineStage.UPSCALE: "SeedVR2 upscale",
@@ -1835,7 +2001,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         else:
             console.print("Skipping MSR reference rendering; using existing reference manifests.")
         stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
-        if args.video_pipeline == "minimax-h3-r2v" and not args.skip_main_pipeline:
+        if args.video_pipeline == "minimax-h3-r2v":
             stages.append(PipelineStage.H3_PROMPTS)
             stages.append(PipelineStage.RENDER_PLAN)
         if args.video_pipeline == "ltx_msr" and not args.skip_msr_prompt_enrichment:
@@ -1875,15 +2041,11 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         upscale_enabled = bool(getattr(args, "upscale", False)) or config_upscale_enabled
         if not args.skip_facefix:
             stages.append(PipelineStage.FACEFIX)
-            stages.append(PipelineStage.FACEFIX_CONCAT)
-            if upscale_enabled:
-                stages.append(PipelineStage.UPSCALE)
-                stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         else:
             console.print("Skipping FaceFix postprocessing.")
-            if upscale_enabled:
-                stages.append(PipelineStage.UPSCALE)
-            stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
+        if upscale_enabled:
+            stages.append(PipelineStage.UPSCALE)
+        stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         stages.append(PipelineStage.MUX_ORIGINAL_AUDIO)
         if args.diagnostic_original_audio_mux:
             stages.append(PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT)

@@ -98,6 +98,9 @@ def build_runner_argv(project_config_path: Path, options: dict[str, object]) -> 
         elif action == "store_false" and value is False:
             argv.append(flags[0])
         elif action is None and value not in (None, ""):
-            serialized = value.value if isinstance(value, PreflightMode) else str(value)
+            if isinstance(value, ResolutionTuple):
+                serialized = f"{value.width}x{value.height}"
+            else:
+                serialized = value.value if isinstance(value, PreflightMode) else str(value)
             argv.extend([flags[0], serialized])
     return argv

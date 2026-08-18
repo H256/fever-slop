@@ -25,6 +25,7 @@ class FakeBriefGenerator:
             keyscale="C major",
             visual_story_idea="friends walking into sunlight",
             visual_style="warm realistic pop video",
+            music_style="bright synth-pop",
         )
 
 
@@ -88,6 +89,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
                 FullAutoRequest(
                     idea="friendship and joy",
                     style="bright pop",
+                    music_style="explicit anthem",
                     project_name="Joy Demo!",
                     projects_dir=Path(temp_dir),
                     duration_seconds=120.0,
@@ -110,8 +112,9 @@ class FullAutoUseCaseTests(unittest.TestCase):
             self.assertEqual("input/joy-demo.mp3", config["input_audio"])
             self.assertEqual("[Verse]\nhello", config["lyrics"])
             self.assertEqual({"fps": 24, "width": 1024, "height": 576}, config["video"])
-            self.assertEqual("friends walking into sunlight", config["story_idea"])
-            self.assertEqual("warm realistic pop video", config["style"])
+            self.assertEqual("friendship and joy", config["story_idea"])
+            self.assertEqual("bright pop", config["style"])
+            self.assertEqual("explicit anthem", config["music_style"])
             self.assertTrue((project_dir / "lyrics.txt").exists())
             self.assertTrue((project_dir / "full_auto_song_spec.json").exists())
 

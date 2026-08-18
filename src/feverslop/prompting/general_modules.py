@@ -7,10 +7,11 @@ from feverslop.prompting.general_signatures import (
     LyricCorrections,
     PromptResult,
     SongBriefResult,
+    StoryboardPromptResult,
     build_general_signature_bundle,
 )
 from feverslop.prompting.guide_loader import load_markdown_guide
-from feverslop.prompting.llm_policy import policy_for
+from feverslop.prompting.llm_policy import lyric_alignment_max_tokens, policy_for
 
 
 def _value(result: Any, name: str) -> Any:
@@ -38,10 +39,20 @@ class GeneralPromptModules:
             for name, signature in build_general_signature_bundle(dspy).items()
         }
 
-    def _call(self, name: str, guide_name: str, payload: dict[str, Any], output_type: Any, *, timeout=None, **extra):
+    def _call(
+        self,
+        name: str,
+        guide_name: str,
+        payload: dict[str, Any],
+        output_type: Any,
+        *,
+        timeout=None,
+        max_tokens: int | None = None,
+        **extra,
+    ):
         guide = load_markdown_guide(guide_name)
         kwargs = {"guide": guide, **payload, **extra}
-        config = {"max_tokens": policy_for(name).max_tokens}
+        config = {"max_tokens": max_tokens or policy_for(name).max_tokens}
         if timeout is not None:
             config["timeout"] = timeout
         kwargs["config"] = config
@@ -53,7 +64,15 @@ class GeneralPromptModules:
         return self._call("song_brief", "song-brief", {"request": request}, SongBriefResult, timeout=timeout)
 
     def lyric_alignment(self, request: dict[str, Any], *, timeout=None) -> LyricCorrections:
-        return self._call("lyric_alignment", "lyric-alignment", {"request": request}, LyricCorrections, timeout=timeout)
+        segment_count = len(request.get("WHISPER_SEGMENTS", []))
+        return self._call(
+            "lyric_alignment",
+            "lyric-alignment",
+            {"request": request},
+            LyricCorrections,
+            timeout=timeout,
+            max_tokens=lyric_alignment_max_tokens(segment_count),
+        )
 
     def zimage_prompt(self, payload: dict[str, Any], *, timeout=None) -> PromptResult:
         return self._call("zimage_prompt", "music-video-t2i", {"payload": payload}, PromptResult, timeout=timeout)
@@ -67,5 +86,11 @@ class GeneralPromptModules:
         with self._context(lm=self._lm):
             return PromptResult.model_validate(_value(self._predictors["i2v_prompt"](**kwargs), "result"))
 
-    def storyboard_transform(self, payload: dict[str, Any], *, timeout=None) -> PromptResult:
-        return self._call("storyboard_transform", "storyboard-transform", payload, PromptResult, timeout=timeout)
+    def storyboard_transform(self, payload: dict[str, Any], *, timeout=None) -> StoryboardPromptResult:
+        return self._call(
+            "storyboard_transform",
+            "storyboard-transform",
+            payload,
+            StoryboardPromptResult,
+            timeout=timeout,
+        )

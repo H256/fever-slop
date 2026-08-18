@@ -9,6 +9,64 @@ from tests.prompt_fakes import GeneralModulesFake
 
 
 class ScenePromptBuilderTests(unittest.TestCase):
+    def test_scene_prompt_overflow_is_trimmed_with_scene_aware_diagnostic(self):
+        modules = GeneralModulesFake(i2v="word " * 151)
+        messages = []
+        builder = ScenePromptBuilder(object(), modules=modules)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_011", "scene": 11, "type": "instrumental"}],
+                concept_prompts={"segment_011": "A camera crosses the battlefield."},
+                scene_details={"segment_011": {}},
+                global_context={
+                    "subject": "a stone statue",
+                    "story_idea": "A battle.",
+                    "style": "cinematic",
+                    "locations": ["battlefield"],
+                    "prompt_guidance": {},
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+                status_callback=messages.append,
+            )
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(150, len(data[0]["i2v_prompt_from_t2i"].split()))
+        self.assertEqual(1, len(messages))
+        self.assertIn("Scene 11 I2V prompt", messages[0])
+        self.assertIn("151 words", messages[0])
+        self.assertIn("trimmed to 150 words", messages[0])
+
+    def test_scene_prompt_uses_configured_word_count_max(self):
+        modules = GeneralModulesFake(i2v="word " * 51)
+        messages = []
+        builder = ScenePromptBuilder(object(), modules=modules)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_003", "scene": 3, "type": "instrumental"}],
+                concept_prompts={"segment_003": "A camera crosses the battlefield."},
+                scene_details={"segment_003": {}},
+                global_context={
+                    "subject": "a stone statue",
+                    "story_idea": "A battle.",
+                    "style": "cinematic",
+                    "locations": ["battlefield"],
+                    "prompt_guidance": {"word_count_min": 40, "word_count_max": 50},
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+                status_callback=messages.append,
+            )
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(50, len(data[0]["i2v_prompt_from_t2i"].split()))
+        self.assertIn("51 words", messages[0])
+        self.assertIn("trimmed to 50 words", messages[0])
+
     def test_scene_prompts_report_progress_after_each_scene(self):
         modules = GeneralModulesFake()
         progress = []

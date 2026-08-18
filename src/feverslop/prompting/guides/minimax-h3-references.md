@@ -72,6 +72,7 @@ When an image acts as a storyboard or shot-planning reference, state which shots
 ```text
 <Picture 3> is a storyboard reference for [Shot 1] and [Shot 2], defining their viewpoint, subject placement, and shot order.
 ```
+Supported by the model is currently up to 9 Picture Sources `<Picture 1>` ,`<Picture 2>` ,`<Picture 3>` ,`<Picture 4>` ,`<Picture 5>` ,`<Picture 6>` ,`<Picture 7>` ,`<Picture 8>` ,`<Picture 9>`
 
 ### 2.3 `<Video N>`
 
@@ -86,6 +87,7 @@ When an image acts as a storyboard or shot-planning reference, state which shots
 ```
 
 If a person, object, scene, action, or effect from a reference video is reused as visible content, it still belongs under `<Subject N>`. `<Video N>` identifies the asset or structural source and does not replace subject labels.
+Supported by the model is currently up to 2 Video Sources `<Video 1>` ,`<Video 2>`
 
 ### 2.4 `<Audio N>`
 
@@ -104,6 +106,7 @@ When an `<Audio N>` explicitly corresponds to a target speaker, reuse that speak
 ```
 
 When one audio asset serves multiple roles, describe those roles in one natural sentence rather than creating additional subsections.
+Supported by the model is currently up to 2 Audio Sources `<Audio 1>` ,`<Audio 2>`
 
 ### 2.5 Visual and Audio Tracks from the Same Reference Video
 
@@ -117,6 +120,7 @@ An `<Audio N>` definition primarily states the audio's role and does not have to
 <Video 1> is the source video for the target video edit.
 <Audio 2> is the synchronized audio track of <Video 1> and is reused in the target video.
 ```
+
 
 ## 3. `summary`
 
@@ -313,6 +317,8 @@ subject_definitions:
 <Subject 2> is the fluffy white Samoyed in <Picture 2>, <Picture 3>, and <Picture 4>, with thick white fur, pointed ears, a dark nose, and a curved tail.
 <Subject 3> is the young blonde woman in <Video 1>, with long blonde hair and a light-pink button-down shirt with rolled-up sleeves.
 <Subject 4> is the young man in <Video 2>, with short wavy brown hair and a dark-grey hoodie with drawstrings.
+<Subject 5> is the bar of the coffeeshop, in <Picture 5>, a large barista machine on a wooden counter.
+
 <Audio 1> is the voice-timbre reference for <Subject 3> (S1), containing a spoken English vocal layer.
 
 summary:
@@ -323,12 +329,14 @@ retention_analysis:
 <Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the Samoyed's thick white fur, pointed ears, dark nose, and curved tail are retained.
 <Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the blonde woman's identity, long hair, and light-pink shirt are retained.
 <Subject 4> (appears in [Shot 1], [Shot 2]): fully_preserved - the young man's short wavy brown hair and dark-grey hoodie are retained.
+<Subject 5> (appears in [Shot 2]): fully_preserved - the machine is preserved.
+
 <Audio 1>: reference - its vocal timbre guides the dialogue delivery of <Subject 3> without copying the original signal.
 
 detailed_description:
 The target video uses a realistic multi-camera sitcom style with warm indoor lighting.
 [Shot 1] A medium shot establishes <Subject 1>, the coffee shop with its exposed brick wall, orange tufted sofa, patterned pillows, neon sign, and wooden coffee table. <Subject 3> (S1), the young woman with long blonde hair and a light-pink button-down shirt with rolled-up sleeves, sits on the sofa holding a chocolate-chip cookie. From the left, <Subject 4>, the young man with short wavy brown hair and a dark-grey hoodie with drawstrings, enters holding the leash of <Subject 2>, the thick-furred white Samoyed with pointed ears, a dark nose, and a curved tail. The dog lunges toward the cookie and pulls the leash taut. <Subject 3> (S1) jerks her hand back and, using the clear youthful voice timbre referenced from <Audio 1>, exclaims with light annoyance, <d>[English] Hey! Watch your dog!</d> She closes her lips and guards the cookie while <Subject 4> pulls the dog back.
-[Shot 2] At 00:03.000, the shot cuts to a close-up of <Subject 4> (S2), the young man in the dark-grey hoodie from Shot 1, sitting beside <Subject 3> on the sofa and holding <Subject 2> securely in his arms. <Subject 4> (S2) says in a casual young male voice with a playful tone and an easy conversational pace, <d>[English] He just likes cookies more than me.</d> He closes his mouth into an apologetic smile and strokes the dog's thick white fur.
+[Shot 2] At 00:03.000, the shot cuts to a close-up of <Subject 4> (S2), the young man in the dark-grey hoodie from Shot 1, sitting beside <Subject 3> on the sofa and holding <Subject 2> securely in his arms. In the background the <Subject 5> steams. <Subject 4> (S2) says in a casual young male voice with a playful tone and an easy conversational pace, <d>[English] He just likes cookies more than me.</d> He closes his mouth into an apologetic smile and strokes the dog's thick white fur.
 [Shot 3] At 00:05.000, the shot cuts to a close-up of <Subject 3> (S1), the blonde woman in the light-pink shirt from Shot 1. Her annoyance softens as she looks toward the Samoyed. <Subject 3> (S1) replies in the same clear youthful voice referenced from <Audio 1> with an amused cadence, <d>[English] Well, he has good taste at least.</d> She smiles and raises the cookie in a small toast-like gesture. A classic canned audience laugh begins immediately after the line and continues through the final frame.
 
 overall_soundscape:

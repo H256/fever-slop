@@ -4,7 +4,7 @@ from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
-from feverslop.prompting.llm_policy import policy_for
+from feverslop.prompting.llm_policy import concept_batch_max_tokens, policy_for
 
 
 def _value(result: Any, name: str) -> Any:
@@ -37,9 +37,18 @@ class MusicVideoPromptModules:
             for name, signature in signatures.items():
                 self._predictors[name] = runtime.predict(signature)
 
-    def _call(self, name: str, guide: str, payload: dict[str, Any], output: str, *, timeout=None):
+    def _call(
+        self,
+        name: str,
+        guide: str,
+        payload: dict[str, Any],
+        output: str,
+        *,
+        timeout=None,
+        max_tokens: int | None = None,
+    ):
         predictor_kwargs = {"guide": guide, **payload}
-        config = {"max_tokens": policy_for(name).max_tokens}
+        config = {"max_tokens": max_tokens or policy_for(name).max_tokens}
         if timeout is not None:
             config["timeout"] = timeout
         predictor_kwargs["config"] = config
@@ -57,11 +66,21 @@ class MusicVideoPromptModules:
 
     def concepts(self, payload: dict[str, Any], *, batch: bool = False, silent_mode: bool = False, timeout=None) -> Any:
         guide = load_markdown_guide("music-video-concepts")
+        batch_size = len(payload.get("CURRENT_BATCH_SEGMENTS", [])) if batch else 0
+        if not batch:
+            batch_size = len(payload.get("SEGMENT_TIMELINE_JSON", []))
         if batch:
             guide += "\n\nThis request contains one batch only; preserve continuity with prior progress."
         if silent_mode:
             guide += "\n\nSilent mode is active: do not create singing, lip-sync, vocal performance, mouth performance, or dialogue delivery."
-        return self._call("concept_map", guide, {"payload": payload}, "concepts", timeout=timeout)
+        return self._call(
+            "concept_map",
+            guide,
+            {"payload": payload},
+            "concepts",
+            timeout=timeout,
+            max_tokens=concept_batch_max_tokens(batch_size) if batch_size else None,
+        )
 
     def repair_concepts(self, payload: dict[str, Any], *, timeout=None) -> Any:
         return self._call("repair_concepts", load_markdown_guide("music-video-concept-repair"), {"payload": payload}, "concepts", timeout=timeout)

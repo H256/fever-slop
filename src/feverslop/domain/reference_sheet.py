@@ -30,6 +30,7 @@ class CompiledReferenceSheetPlan:
     anchor_rule: str
     identity_constraints: str
     negative_constraints: str
+    anchor_description: str = ""
 
     def to_prompt_payload(self) -> dict[str, Any]:
         return {
@@ -44,11 +45,13 @@ class CompiledReferenceSheetPlan:
             "anchor_rule": self.anchor_rule,
             "identity_constraints": self.identity_constraints,
             "negative_constraints": self.negative_constraints,
+            "anchor_description": self.anchor_description,
         }
 
 
 class ReferenceSheetPlan(BaseModel):
     kind: str
+    anchor_description: str = ""
     view_count: int = 0
     view_labels: list[str] = Field(default_factory=list)
     framing: str = ""

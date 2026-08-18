@@ -842,7 +842,7 @@ class StudioBackendTests(unittest.TestCase):
         registry._advance_step_from_log(job, "Rendered scene 1/3")
 
         step = job["steps"][0]
-        self.assertEqual("LTX render", step["name"])
+        self.assertEqual("Video render", step["name"])
         self.assertEqual("running", step["status"])
         self.assertEqual(33, step["progress"])
 
@@ -859,7 +859,7 @@ class StudioBackendTests(unittest.TestCase):
         registry._advance_step_from_log(job, "==> Stage Main pipeline")
         registry._advance_step_from_log(job, "==> Stage Storyboard frames")
 
-        self.assertEqual(["Main pipeline", "Storyboard", "LTX render", "Final concat"], [step["name"] for step in job["steps"]])
+        self.assertEqual(["Main pipeline", "Storyboard", "Video render", "Final concat"], [step["name"] for step in job["steps"]])
         self.assertEqual("completed", job["steps"][0]["status"])
         self.assertEqual("running", job["steps"][1]["status"])
         self.assertEqual(25, job["overall_progress"])
@@ -879,11 +879,11 @@ class StudioBackendTests(unittest.TestCase):
         t2v_steps = registry._initial_steps("full-pipeline", pipeline_mode="minimax_h3_t2v")
 
         r2v_step_names = [step["name"] for step in r2v_steps]
-        self.assertEqual(["Main pipeline", "MSR references", "LTX render", "Final concat"], r2v_step_names)
+        self.assertEqual(["Main pipeline", "MSR references", "Video render", "Final concat"], r2v_step_names)
         self.assertNotIn("Storyboard", r2v_step_names)
 
         t2v_step_names = [step["name"] for step in t2v_steps]
-        self.assertEqual(["Main pipeline", "LTX render", "Final concat"], t2v_step_names)
+        self.assertEqual(["Main pipeline", "Video render", "Final concat"], t2v_step_names)
         self.assertNotIn("MSR references", t2v_step_names)
         self.assertNotIn("Storyboard", t2v_step_names)
 

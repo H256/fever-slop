@@ -60,6 +60,40 @@ class ReferenceSheetPlanningTests(unittest.TestCase):
 
         self.assertAlmostEqual(124 / 24, compiled.duration_seconds)
 
+    def test_character_anchor_sanitizes_action_and_location_without_losing_later_identity(self):
+        compiled = compile_reference_sheet_plan(
+            {
+                "anchor_description": (
+                    "A woman singing passionately, with long silver hair and dark leather armor "
+                    "on a black stone altar"
+                ),
+            },
+            kind="character",
+            description="A singer",
+        )
+
+        self.assertIn("long silver hair", compiled.anchor_description)
+        self.assertIn("dark leather armor", compiled.anchor_description)
+        self.assertNotIn("sing", compiled.anchor_description.lower())
+        self.assertNotIn("altar", compiled.anchor_description.lower())
+
+    def test_character_anchor_preserves_unpunctuated_identity_after_action(self):
+        compiled = compile_reference_sheet_plan(
+            {
+                "anchor_description": (
+                    "A woman singing with long silver hair and dark leather armor "
+                    "in a smoky nightclub"
+                ),
+            },
+            kind="character",
+            description="A singer",
+        )
+
+        self.assertIn("long silver hair", compiled.anchor_description)
+        self.assertIn("dark leather armor", compiled.anchor_description)
+        self.assertNotIn("sing", compiled.anchor_description.lower())
+        self.assertNotIn("nightclub", compiled.anchor_description.lower())
+
     def test_h3_location_serializer_emits_anchor_rule(self):
         backend = ComfyUISequenceToSheetBackend(
             client=object(),
@@ -94,6 +128,7 @@ class ReferenceSheetPlanningTests(unittest.TestCase):
         self.assertEqual("character", plan.kind)
         self.assertEqual(6, plan.view_count)
         self.assertIn("white suit", plan.identity_constraints)
+        self.assertIn("silver astronaut", plan.anchor_description.lower())
 
     def test_dspy_module_returns_structured_plan(self):
         class Result:

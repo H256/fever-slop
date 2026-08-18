@@ -16,6 +16,11 @@ from feverslop.utils.rich_progress import build_progress
 
 
 class RichProgressTests(unittest.TestCase):
+    def test_backend_neutral_video_scene_progress_label(self):
+        from feverslop.composition import stage_runners
+
+        self.assertEqual("Rendering video scenes", stage_runners.VIDEO_SCENE_PROGRESS_LABEL)
+
     def test_build_progress_uses_standard_pipeline_columns(self):
         progress = build_progress(console=Console(record=True))
 

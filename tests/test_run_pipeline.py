@@ -11,6 +11,7 @@ import run_pipeline
 from feverslop.composition.stage_runners import (
     _initial_render_plan,
     _read_h3_input,
+    _run_concat_video_only_stage,
     _run_main_pipeline_stage,
     _run_mux_original_audio_stage,
     _run_msr_reference_sheets_stage,
@@ -68,6 +69,45 @@ class RunPipelinePathTests(unittest.TestCase):
         self.assertEqual(["singer"], scene["references"]["actor_ids"])
         self.assertEqual("cathedral", scene["references"]["location_id"])
 
+    def test_seed_reference_bindings_fills_unstructured_scenes_from_existing_bible(self):
+        with TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "base.json"
+            plan_path.write_text(
+                json.dumps([
+                    {"scene": 1, "references": {"actor_ids": ["actor_cat_01"], "location_id": "loc_kitchen_dawn"}},
+                    {"scene": 2, "z_image": {"prompt": "A sunlit kitchen in the morning."}, "references": {}},
+                ]),
+                encoding="utf-8",
+            )
+            locations_dir = temp / "output" / "references" / "locations" / "loc_kitchen_morning"
+            locations_dir.mkdir(parents=True)
+            (locations_dir / "manifest.json").write_text(
+                json.dumps({"name": "Sunlit Kitchen", "visual_description": "warm morning kitchen"}),
+                encoding="utf-8",
+            )
+            config = ProjectConfig(
+                project_dir=temp,
+                project_name="test",
+                input_audio=temp / "song.wav",
+            )
+
+            warnings = _seed_reference_bindings(plan_path, config)
+            scene = json.loads(plan_path.read_text(encoding="utf-8"))[1]
+
+        self.assertEqual(["actor_cat_01"], scene["references"]["actor_ids"])
+        self.assertEqual("loc_kitchen_morning", scene["references"]["location_id"])
+        self.assertEqual(1, len(warnings))
+        self.assertIn("structured reference serialization missing", warnings[0])
+
+    def test_selected_pipeline_scenes_filters_render_plan(self):
+        from feverslop.composition.stage_runners import _select_pipeline_scenes
+
+        scenes = [{"scene": 1}, {"scene": 3}, {"scene": 5}]
+
+        self.assertEqual([{"scene": 3}], _select_pipeline_scenes(scenes, "3"))
+        self.assertEqual(scenes, _select_pipeline_scenes(scenes, None))
+
     @patch("feverslop.composition.stage_runners.VideoPostProcessor")
     def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
@@ -95,6 +135,194 @@ class RunPipelinePathTests(unittest.TestCase):
             video_file=video_only,
             audio_file=input_audio,
             output_file=final,
+        )
+
+    @patch("feverslop.composition.stage_runners.VideoPostProcessor")
+    def test_concat_and_mux_build_each_complete_scene_variant(self, postprocessor_class):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.plans_dir.mkdir(parents=True)
+            layout.base_plan.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}]),
+                encoding="utf-8",
+            )
+            for scene_number in (1, 2):
+                layout.scene_dir(scene_number).mkdir(parents=True)
+                layout.scene_final_video(scene_number).touch()
+                layout.scene_final_facefix_video(scene_number).touch()
+                layout.scene_upscaled_video(scene_number).touch()
+
+            input_audio = project / "song.mp3"
+            input_audio.touch()
+            context = Namespace(
+                artifact_layout=layout,
+                ltx_dir=layout.scenes_dir,
+                concat_list=layout.final_dir / "concat_list.txt",
+                concat_raw=layout.concat_raw,
+                final_concat_video=layout.video_only,
+                final_concat=layout.movie,
+                input_audio=input_audio,
+            )
+            state = Namespace(
+                plan_for_next_step=layout.base_plan,
+                context=context,
+                video_only_path=None,
+                final_video_path=None,
+            )
+            processor = postprocessor_class.return_value
+
+            def create_output(*, output_file, **_kwargs):
+                Path(output_file).touch()
+                return Path(output_file)
+
+            processor.concat_clips.side_effect = create_output
+            processor.mux_original_audio.side_effect = create_output
+
+            _run_concat_video_only_stage(state)
+            _run_mux_original_audio_stage(state)
+
+            video_only_outputs = {
+                call.kwargs["output_file"]
+                for call in processor.concat_clips.call_args_list
+                if call.kwargs["video_only"]
+            }
+            self.assertEqual(
+                {layout.video_only, layout.video_only_facefix, layout.video_only_upscaled},
+                video_only_outputs,
+            )
+            mux_outputs = {
+                call.kwargs["output_file"]
+                for call in processor.mux_original_audio.call_args_list
+            }
+            self.assertEqual(
+                {layout.movie, layout.movie_facefix, layout.movie_upscaled},
+                mux_outputs,
+            )
+            self.assertEqual(layout.movie, state.final_video_path)
+
+    @patch("feverslop.composition.stage_runners.VideoPostProcessor")
+    def test_concat_skips_partial_upscaled_variant_instead_of_mixing_clips(self, postprocessor_class):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.plans_dir.mkdir(parents=True)
+            layout.base_plan.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}]),
+                encoding="utf-8",
+            )
+            for scene_number in (1, 2):
+                layout.scene_dir(scene_number).mkdir(parents=True)
+                layout.scene_final_video(scene_number).touch()
+            layout.scene_upscaled_video(1).touch()
+            layout.scene_final_facefix_video(1).touch()
+            context = Namespace(
+                artifact_layout=layout,
+                ltx_dir=layout.scenes_dir,
+                concat_list=layout.final_dir / "concat_list.txt",
+                concat_raw=layout.concat_raw,
+            )
+            state = Namespace(
+                plan_for_next_step=layout.base_plan,
+                context=context,
+                video_only_path=None,
+            )
+            processor = postprocessor_class.return_value
+            processor.concat_clips.side_effect = lambda *, output_file, **_kwargs: Path(output_file)
+
+            _run_concat_video_only_stage(state)
+
+            video_only_outputs = [
+                call.kwargs["output_file"]
+                for call in processor.concat_clips.call_args_list
+                if call.kwargs["video_only"]
+            ]
+            self.assertEqual([layout.video_only], video_only_outputs)
+
+    @patch("feverslop.composition.stage_runners.VideoPostProcessor")
+    def test_concat_does_not_mix_canonical_and_legacy_base_clips(self, postprocessor_class):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.plans_dir.mkdir(parents=True)
+            layout.base_plan.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}]),
+                encoding="utf-8",
+            )
+            layout.scene_dir(1).mkdir(parents=True)
+            layout.scene_final_video(1).touch()
+            layout.scenes_dir.mkdir(parents=True, exist_ok=True)
+            (layout.scenes_dir / "scene_0002.mp4").touch()
+            state = Namespace(
+                plan_for_next_step=layout.base_plan,
+                context=Namespace(
+                    artifact_layout=layout,
+                    ltx_dir=layout.scenes_dir,
+                    concat_list=layout.final_dir / "concat_list.txt",
+                    concat_raw=layout.concat_raw,
+                ),
+                video_only_path=None,
+            )
+
+            with self.assertRaisesRegex(FileNotFoundError, "base variant"):
+                _run_concat_video_only_stage(state)
+
+        postprocessor_class.assert_not_called()
+
+    def test_default_facefix_flow_still_runs_shared_base_concat(self):
+        from feverslop.composition.stage_runners import resolve_pipeline_stages
+
+        args = run_pipeline.build_arg_parser().parse_args(["--skip-tests", "--skip-ltx"])
+        args.skip_facefix = False
+
+        stages = resolve_pipeline_stages(args)
+
+        self.assertNotIn(PipelineStage.FACEFIX_CONCAT, stages)
+        self.assertLess(stages.index(PipelineStage.FACEFIX), stages.index(PipelineStage.CONCAT_VIDEO_ONLY))
+        self.assertLess(
+            stages.index(PipelineStage.CONCAT_VIDEO_ONLY),
+            stages.index(PipelineStage.MUX_ORIGINAL_AUDIO),
+        )
+
+    @patch("feverslop.composition.stage_runners.VideoPostProcessor")
+    def test_standalone_mux_ignores_stale_incomplete_optional_aggregate(self, postprocessor_class):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.plans_dir.mkdir(parents=True)
+            layout.final_dir.mkdir(parents=True)
+            layout.base_plan.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}]),
+                encoding="utf-8",
+            )
+            layout.video_only.touch()
+            layout.video_only_upscaled.touch()
+            layout.scene_dir(1).mkdir(parents=True)
+            layout.scene_upscaled_video(1).touch()
+            input_audio = project / "song.mp3"
+            input_audio.touch()
+            state = Namespace(
+                plan_for_next_step=layout.base_plan,
+                context=Namespace(
+                    artifact_layout=layout,
+                    final_concat_video=layout.video_only,
+                    final_concat=layout.movie,
+                    input_audio=input_audio,
+                ),
+                video_only_path=None,
+                final_video_path=None,
+            )
+            processor = postprocessor_class.return_value
+            processor.mux_original_audio.side_effect = (
+                lambda *, output_file, **_kwargs: Path(output_file)
+            )
+
+            _run_mux_original_audio_stage(state)
+
+        processor.mux_original_audio.assert_called_once_with(
+            video_file=layout.video_only,
+            audio_file=input_audio,
+            output_file=layout.movie,
         )
 
     def test_minimax_r2v_prefers_base_plan_with_h3_prompts(self):
