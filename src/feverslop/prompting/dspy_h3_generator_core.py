@@ -76,24 +76,51 @@ class VideoPromptGenerator:
         return result
 
     def _plan(self, request: VideoPromptRequest, refs: list[ResolvedReference]) -> ResolvedPromptPlan:
-        prediction = self.planner(
-            mode=request.mode.value, user_prompt=request.user_prompt, duration_seconds=request.duration_seconds,
-            references=refs, notes=request.notes or "", strict_fidelity=request.strict_fidelity,
-            requested_music_intent=request.music_intent.value if request.music_intent else "",
-            relay_segments=request.relay_segments,
-        )
-        plan = prediction.plan
-        if request.music_intent is not None:
-            plan.music_intent = request.music_intent
-        if plan.music_intent == MusicIntent.NONE:
-            plan.non_diegetic_music = None
         allowed = {ref.label for ref in refs}
-        for subject in plan.subjects:
-            if any(label not in allowed for label in subject.source_references):
-                raise ValueError("Planner invented an unknown reference")
-        for usage in plan.reference_usage:
-            if usage.reference_label not in allowed:
-                raise ValueError("Planner invented an unknown reference")
+        notes = request.notes or ""
+        for attempt in range(1, 4):
+            prediction = self.planner(
+                mode=request.mode.value, user_prompt=request.user_prompt,
+                duration_seconds=request.duration_seconds, references=refs, notes=notes,
+                strict_fidelity=request.strict_fidelity,
+                requested_music_intent=request.music_intent.value if request.music_intent else "",
+                relay_segments=request.relay_segments,
+            )
+            plan = prediction.plan
+            if request.music_intent is not None:
+                plan.music_intent = request.music_intent
+            if plan.music_intent == MusicIntent.NONE:
+                plan.non_diegetic_music = None
+            unknown = {
+                label
+                for subject in plan.subjects
+                for label in subject.source_references
+                if label not in allowed
+            }
+            unknown.update(
+                usage.reference_label
+                for usage in plan.reference_usage
+                if usage.reference_label not in allowed
+            )
+            unknown.update(
+                label
+                for shot in plan.shots
+                for label in shot.reference_labels
+                if label not in allowed
+            )
+            if not unknown:
+                break
+            error = (
+                "Planner invented an unknown reference: "
+                f"unknown={sorted(unknown)!r}; allowed={sorted(allowed)!r}"
+            )
+            if attempt == 3:
+                raise ValueError(error)
+            notes = (
+                f"{request.notes or ''}\n\n"
+                f"The previous plan was invalid ({error}). Retry using only the exact "
+                "reference labels listed in allowed; do not combine, rename, or invent labels."
+            ).strip()
         subjects = []
         seen = set()
         for index, subject in enumerate(plan.subjects, 1):

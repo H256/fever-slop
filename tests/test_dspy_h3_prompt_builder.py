@@ -15,11 +15,17 @@ from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_models import (
+    MusicIntent,
+    PlannedShot,
+    PlannedSubject,
+    PromptPlan,
     PromptMode,
     ReferenceAsset,
     ReferenceKind,
     ReferenceLimits,
+    ReferenceUsage,
     ReferenceVideoPrompt,
+    ResolvedReference,
     VideoPromptRequest,
 )
 from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator as CoreVideoPromptGenerator
@@ -480,6 +486,106 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         ])
 
         self.assertEqual([item.label for item in resolved], ["<Picture 1>", "<Picture 2>"])
+
+    def test_persistent_unknown_planner_references_fail_after_three_attempts_with_all_labels(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        plan = PromptPlan(
+            creative_intent="Invalid",
+            subjects=[PlannedSubject(
+                name="Singer",
+                description="A singer",
+                source_references=["<Picture 9>"],
+            )],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 9>",
+                purpose="sync",
+                details="invalid",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A shot",
+                reference_labels=["<Video 9>"],
+            )],
+            overall_soundscape="A song",
+            music_intent=MusicIntent.NONE,
+        )
+        calls = []
+
+        def planner(**kwargs):
+            calls.append(kwargs)
+            return type("Prediction", (), {"plan": plan})()
+
+        generator.planner = planner
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A scene",
+            duration_seconds=5.0,
+        )
+        references = [ResolvedReference(
+            label="<Picture 1>",
+            kind="picture",
+            source="actor.png",
+            role="subject",
+            description="A singer",
+        )]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"unknown=\['<Audio 9>', '<Picture 9>', '<Video 9>'\].*allowed=\['<Picture 1>'\]",
+        ):
+            generator._plan(request, references)
+        self.assertEqual(3, len(calls))
+
+    def test_retries_planner_after_unknown_reference(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        plans = [
+            PromptPlan(
+                creative_intent="Invalid attempt",
+                subjects=[PlannedSubject(
+                    name="Singer",
+                    description="A singer",
+                    source_references=["<Picture 9>"],
+                )],
+                overall_soundscape="A song",
+                music_intent=MusicIntent.NONE,
+            ),
+            PromptPlan(
+                creative_intent="Valid attempt",
+                subjects=[PlannedSubject(
+                    name="Singer",
+                    description="A singer",
+                    source_references=["<Picture 1>"],
+                )],
+                overall_soundscape="A song",
+                music_intent=MusicIntent.NONE,
+            ),
+        ]
+        calls = []
+
+        def planner(**kwargs):
+            calls.append(kwargs)
+            return type("Prediction", (), {"plan": plans[len(calls) - 1]})()
+
+        generator.planner = planner
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A scene",
+            duration_seconds=5.0,
+        )
+        references = [ResolvedReference(
+            label="<Picture 1>",
+            kind="picture",
+            source="actor.png",
+            role="subject",
+            description="A singer",
+        )]
+
+        result = generator._plan(request, references)
+
+        self.assertEqual("Valid attempt", result.creative_intent)
+        self.assertEqual(2, len(calls))
+        self.assertIn("<Picture 9>", calls[1]["notes"])
+        self.assertIn("<Picture 1>", calls[1]["notes"])
 
     def test_generator_components_have_dedicated_modules(self):
         self.assertEqual(VideoPromptGenerator.__module__, "feverslop.prompting.dspy_h3_generator")
