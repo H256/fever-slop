@@ -1,10 +1,40 @@
 import unittest
 from pathlib import Path
 
+from feverslop.adapters.pipeline_runner_options import ResolutionTuple
 from feverslop.composition.pipeline_runner import build_arg_parser
 
 
 class FullAutoPipelineRunnerTests(unittest.TestCase):
+    def test_run_pipeline_adapter_serializes_parsed_resolution_options(self):
+        from feverslop.adapters.pipeline_runner import RunPipelineAdapter
+
+        captured = {}
+
+        class Result:
+            final_video_path = Path("final.mp4")
+
+        def fake_run(args):
+            captured.update(vars(args))
+            return Result()
+
+        options = {
+            "resolution": ResolutionTuple(960, 544),
+            "upscale_resolution": ResolutionTuple(1920, 1088),
+            "set_resolution": ResolutionTuple(1280, 704),
+        }
+
+        RunPipelineAdapter(
+            run_pipeline=fake_run,
+            build_arg_parser=build_arg_parser,
+        ).run(
+            project_config_path=Path("project/config.json"),
+            options=options,
+        )
+
+        for key, expected in options.items():
+            self.assertEqual(expected, captured[key], key)
+
     def test_run_pipeline_adapter_forwards_full_runner_override_surface(self):
         from feverslop.adapters.pipeline_runner import RunPipelineAdapter
 
