@@ -2001,7 +2001,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         else:
             console.print("Skipping MSR reference rendering; using existing reference manifests.")
         stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
-        if args.video_pipeline == "minimax-h3-r2v" and not args.skip_main_pipeline:
+        if args.video_pipeline == "minimax-h3-r2v":
             stages.append(PipelineStage.H3_PROMPTS)
             stages.append(PipelineStage.RENDER_PLAN)
         if args.video_pipeline == "ltx_msr" and not args.skip_msr_prompt_enrichment:

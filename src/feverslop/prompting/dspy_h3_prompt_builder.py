@@ -82,15 +82,15 @@ def _scene_references(
 
     actor_paths = references.get("actor_sheet_paths") or references.get("actor_msr_paths") or []
     actor_ids = references.get("actor_ids") or []
-    actor_descriptions = {
-        str(item.get("id") or item.get("name") or ""): str(
-            item.get("visual_description") or item.get("image_prompt") or ""
-        ).strip()
+    actor_metadata = {
+        str(item.get("id") or item.get("name") or ""): item
         for item in references.get("actor_reference_descriptions") or []
         if isinstance(item, dict)
     }
     for index, source in enumerate(actor_paths, start=1):
-        name = str(actor_ids[index - 1]) if index <= len(actor_ids) else f"Actor {index}"
+        actor_id = str(actor_ids[index - 1]) if index <= len(actor_ids) else f"Actor {index}"
+        metadata = actor_metadata.get(actor_id) or {}
+        name = str(metadata.get("name") or actor_id)
         path = Path(source)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
         add_reference(_reference(
@@ -99,8 +99,8 @@ def _scene_references(
             kind="picture",
             name=name,
             description=(
-                actor_descriptions[name]
-                if actor_descriptions.get(name)
+                str(metadata.get("visual_description") or metadata.get("image_prompt") or "").strip()
+                if metadata
                 else ("" if image_path.is_file() else None)
             ),
             role="subject",
@@ -115,7 +115,11 @@ def _scene_references(
             label=f"<Picture {len(result) + 1}>",
             source=path,
             kind="picture",
-            name=str(references.get("location_id") or "Location"),
+            name=str(
+                location_description.get("name")
+                or references.get("location_id")
+                or "Location"
+            ),
             description=(
                 str(
                     location_description.get("visual_description")

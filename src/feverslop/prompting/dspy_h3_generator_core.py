@@ -11,6 +11,7 @@ from feverslop.prompting.dspy_h3_models import (
     GeneratedVideoPrompt,
     ImageAnalysisMode,
     MusicIntent,
+    PlannedSubject,
     PromptMode,
     ReferenceAsset,
     ReferenceKind,
@@ -153,14 +154,43 @@ class VideoPromptGenerator:
                 f"multiply_mapped_visual={sorted(duplicate_visual)!r}",
                 f"allowed={sorted(allowed)!r}",
             ))
+            if attempt >= 2 and not unknown and unmapped_visual and not duplicate_visual:
+                mapped_subjects = [
+                    subject for subject in plan.subjects
+                    if any(label in visual_labels for label in subject.source_references)
+                ]
+                missing_refs = [ref for ref in refs if ref.label in unmapped_visual]
+                mapped_subjects.extend(
+                    PlannedSubject(
+                        name=ref.name or ref.label.strip("<>"),
+                        description=ref.description,
+                        source_references=[ref.label],
+                    )
+                    for ref in missing_refs
+                )
+                plan.subjects = mapped_subjects
+                logger.warning(
+                    "H3 planner reference serialization failed after %d attempts; "
+                    "reconstructed visual subject mappings from reference metadata: %s",
+                    attempt,
+                    ", ".join(f"{ref.label} -> {ref.name or ref.label}" for ref in missing_refs),
+                )
+                break
             if attempt == 3:
                 raise ValueError(error)
             logger.warning("H3 planner retry %d/3: %s", attempt + 1, error)
+            mapping_contract = "; ".join(
+                f'{ref.label} -> subject "{ref.name or ref.label.strip("<>")}" '
+                f'with role "{ref.role.value}" and description "{ref.description}"'
+                for ref in refs
+                if ref.kind is ReferenceKind.PICTURE
+            )
             notes = (
                 f"{request.notes or ''}\n\n"
                 f"The previous plan was invalid ({error}). Retry using only the exact "
                 "reference labels listed in allowed. Map every Picture and Video to exactly "
-                "one subject; do not combine, rename, omit, or invent labels."
+                "one subject; do not combine, rename, omit, or invent labels. "
+                f"Required visual mapping contract: {mapping_contract}."
             ).strip()
         subjects = []
         seen = set()

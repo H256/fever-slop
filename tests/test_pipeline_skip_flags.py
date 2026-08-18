@@ -27,6 +27,21 @@ class PipelineSkipFlagTests(unittest.TestCase):
             resolve_pipeline_stages(args),
         )
 
+    def test_minimax_resume_rebuilds_h3_prompts_before_rendering(self):
+        args = build_arg_parser().parse_args([
+            "project",
+            "--skip-main-pipeline",
+            "--video-pipeline", "minimax-h3-r2v",
+            "--reference-generation", "sequence_sheet",
+            "--skip-tests",
+        ])
+
+        stages = resolve_pipeline_stages(args)
+
+        self.assertLess(stages.index(PipelineStage.MSR_REFERENCE_SHEETS), stages.index(PipelineStage.H3_PROMPTS))
+        self.assertLess(stages.index(PipelineStage.H3_PROMPTS), stages.index(PipelineStage.RENDER_PLAN))
+        self.assertLess(stages.index(PipelineStage.RENDER_PLAN), stages.index(PipelineStage.LTX_RENDER_SCENES))
+
 
 if __name__ == "__main__":
     unittest.main()

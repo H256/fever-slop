@@ -158,12 +158,13 @@ non_diegetic_music: N/A"""
                     "actor_msr_paths": ["actor.png"],
                     "actor_ids": ["leo"],
                     "actor_reference_descriptions": [
-                        {"id": "leo", "visual_description": "A weathered hiker."},
+                        {"id": "leo", "name": "Leo", "visual_description": "A weathered hiker."},
                     ],
                     "location_msr_path": "forest.png",
                     "location_id": "forest",
                     "location_reference_description": {
                         "id": "forest",
+                        "name": "Ancient Forest",
                         "visual_description": "A dark ancient forest.",
                     },
                 }
@@ -174,6 +175,8 @@ non_diegetic_music: N/A"""
 
         self.assertEqual("A weathered hiker.", references[0]["description"])
         self.assertEqual("A dark ancient forest.", references[1]["description"])
+        self.assertEqual("Leo", references[0]["name"])
+        self.assertEqual("Ancient Forest", references[1]["name"])
 
     def test_scene_references_deduplicate_audio_paths_from_scene_and_global_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -749,15 +752,48 @@ non_diegetic_music: N/A"""
         generator.planner = planner
         request = VideoPromptRequest(mode=PromptMode.R2V, user_prompt="A scene", duration_seconds=5.0)
         references = [
-            ResolvedReference(label="<Picture 1>", kind="picture", source="actor.png", role="subject", description="A drummer"),
-            ResolvedReference(label="<Picture 2>", kind="picture", source="stage.png", role="environment", description="A stage"),
+            ResolvedReference(label="<Picture 1>", kind="picture", source="actor.png", role="subject", name="Drummer", description="A drummer"),
+            ResolvedReference(label="<Picture 2>", kind="picture", source="stage.png", role="environment", name="Stage", description="A stage"),
         ]
 
         result = generator._plan(request, references)
 
         self.assertEqual(2, len(calls))
         self.assertIn("unmapped_visual=['<Picture 2>']", calls[1]["notes"])
+        self.assertIn('<Picture 2> -> subject "Stage"', calls[1]["notes"])
         self.assertEqual(["<Subject 1>", "<Subject 2>"], [subject.label for subject in result.subjects])
+
+    def test_planner_reconstructs_persistently_unmapped_visuals_with_warning(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        invalid = PromptPlan(
+            creative_intent="Performance",
+            subjects=[],
+            overall_soundscape="A song",
+            music_intent=MusicIntent.NONE,
+        )
+        calls = []
+
+        def planner(**kwargs):
+            calls.append(kwargs)
+            return type("Prediction", (), {"plan": invalid.model_copy(deep=True)})()
+
+        generator.planner = planner
+        request = VideoPromptRequest(mode=PromptMode.R2V, user_prompt="A scene", duration_seconds=5.0)
+        references = [
+            ResolvedReference(label="<Picture 1>", kind="picture", source="actor.png", role="subject", name="Lead Singer", description="Silver-haired singer"),
+            ResolvedReference(label="<Picture 2>", kind="picture", source="reef.png", role="environment", name="The Azure Reef", description="Blue crystalline reef"),
+        ]
+
+        with self.assertLogs("feverslop.prompting.dspy_h3_generator_core", level="WARNING") as captured:
+            result = generator._plan(request, references)
+
+        self.assertEqual(2, len(calls))
+        self.assertEqual(
+            [["<Picture 1>"], ["<Picture 2>"]],
+            [subject.source_references for subject in result.subjects],
+        )
+        self.assertEqual(["Lead Singer", "The Azure Reef"], [subject.name for subject in result.subjects])
+        self.assertTrue(any("reconstructed" in message for message in captured.output))
 
     def test_reference_renderer_retries_unknown_subject_with_mismatch_details(self):
         generator = object.__new__(CoreVideoPromptGenerator)
