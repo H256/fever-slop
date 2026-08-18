@@ -101,6 +101,8 @@ class SequenceReferencePipelineTests(unittest.TestCase):
             self.assertNotIn("sing", prompt.lower())
             self.assertNotIn("altar", prompt.lower())
             self.assertEqual(prompt, result.anchor_prompt)
+            render_call = next(call for call in sequence_backend.calls if call[0] == "render")
+            self.assertNotIn("anchor_prompt", render_call[4])
 
     def test_reference_phase_log_labels_are_english(self):
         self.assertEqual(

@@ -142,7 +142,6 @@ class SequenceReferencePipeline:
                 output_path=sequence,
                 seed=request.seed,
                 frames=request.frames,
-                anchor_prompt=anchor_prompt,
             )
             sequence = Path(rendered)
             if not sequence.is_file():
