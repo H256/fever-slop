@@ -362,6 +362,20 @@ def _merge_reference_paths_into_h3_segments(
     return enriched
 
 
+def _select_h3_segments(
+    stage1_segments: list[dict],
+    selected_scene_spec: str | None,
+) -> tuple[set[int], list[dict]]:
+    if not selected_scene_spec:
+        return set(), stage1_segments
+    selected = parse_scene_list(selected_scene_spec) or set()
+    return selected, [
+        segment
+        for segment in stage1_segments
+        if int(segment.get("scene") or 0) in selected
+    ]
+
+
 def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     """Regenerate only stage 8.5 from the existing stage 7/8 artifacts."""
     config = ProjectConfig.load(state.context.project_config_path)
@@ -377,6 +391,8 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     artifact_store = JsonArtifactStore()
     paths = config.paths
     stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
+    selected_scene_spec = getattr(state.args, "scenes", None)
+    selected, stage1_segments = _select_h3_segments(stage1_segments, selected_scene_spec)
     if state.args.video_pipeline == "minimax-h3-r2v":
         _report_reference_fallbacks(_seed_reference_bindings(state.plan_for_next_step, config))
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
@@ -388,10 +404,6 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             stage1_segments,
             state.plan_for_next_step,
         )
-    selected_scene_spec = getattr(state.args, "scenes", None)
-    if selected_scene_spec:
-        selected = parse_scene_list(selected_scene_spec) or set()
-        stage1_segments = [segment for segment in stage1_segments if int(segment.get("scene") or 0) in selected]
     concept_prompts = _read_h3_input(state.context.concept_prompts, "concept prompts")
     scene_details = _read_h3_input(state.context.scene_details, "scene details")
     if selected_scene_spec:
@@ -428,6 +440,8 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         scene_prompts_json=state.context.scene_prompts,
         h3_prompts_json=h3_prompts_json,
         stem_files=_discover_stem_files(paths.stems_dir, config.input_audio),
+        ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{config.song_id}.json",
+        beat_json=paths.timeline_dir / f"beat_data_{config.song_id}.json",
     )
     pipeline = H3PromptPipeline(
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(

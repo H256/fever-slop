@@ -57,6 +57,7 @@ class SequenceReferenceResult:
     workflow_profile: str = ""
     seed: int = 0
     frames: int = 124
+    anchor_prompt: str = ""
 
 
 class SequenceReferencePipeline:
@@ -79,16 +80,36 @@ class SequenceReferencePipeline:
         final_dir = Path(request.output_dir) / ("actors" if kind == "character" else "locations") / request.asset_id
         staging_dir = Path(tempfile.mkdtemp(prefix=f"sequence-reference-{request.asset_id}-", dir=request.output_dir))
         try:
+            semantic_plan = self.planner.plan(
+                kind=kind,
+                description=request.description,
+                asset_context=dict(request.asset_context or {}),
+            )
+            compiled_plan = compile_reference_sheet_plan(
+                semantic_plan,
+                kind=kind,
+                description=request.description,
+                frames=request.frames,
+            )
             anchor_dir = staging_dir / "anchor"
             anchor_dir.mkdir(parents=True)
             style = " ".join(str(request.visual_style or "").split())
             style_suffix = f" Visual style: {style}." if style else ""
+            if kind == "character":
+                anchor_prompt = (
+                    f"{compiled_plan.anchor_description}. One character only, neutral relaxed pose, "
+                    "plain seamless studio backdrop. Prioritize face, hair, body proportions, "
+                    "wardrobe, materials, and colors. No performance action, no instrument, "
+                    f"no handheld prop, no scene location.{style_suffix}"
+                )
+            else:
+                anchor_prompt = f"{request.image_prompt or compiled_plan.anchor_description}{style_suffix}"
             self._report_phase(request, "anchor_start")
             anchor = self.anchor_backend.render_image(
                 ImageRenderRequest(
                     scene={"reference_id": request.asset_id, "kind": kind, "view": "anchor"},
                     scene_number=1,
-                    prompt=f"{request.image_prompt or request.description}{style_suffix}",
+                    prompt=anchor_prompt,
                     workflow_path=Path(""),
                     output_dir=anchor_dir,
                     width=1920,
@@ -101,17 +122,6 @@ class SequenceReferencePipeline:
                 raise FileNotFoundError(f"anchor backend did not create an image: {anchor}")
             self._report_phase(request, "anchor_complete", path=anchor)
 
-            semantic_plan = self.planner.plan(
-                kind=kind,
-                description=request.description,
-                asset_context=dict(request.asset_context or {}),
-            )
-            compiled_plan = compile_reference_sheet_plan(
-                semantic_plan,
-                kind=kind,
-                description=request.description,
-                frames=request.frames,
-            )
             if hasattr(self.sequence_backend, "build_sheet_prompt_from_plan"):
                 prompt = self.sequence_backend.build_sheet_prompt_from_plan(compiled_plan)
             else:
@@ -132,6 +142,7 @@ class SequenceReferencePipeline:
                 output_path=sequence,
                 seed=request.seed,
                 frames=request.frames,
+                anchor_prompt=anchor_prompt,
             )
             sequence = Path(rendered)
             if not sequence.is_file():
@@ -205,6 +216,7 @@ class SequenceReferencePipeline:
                 workflow_profile=str(getattr(getattr(self.sequence_backend, "profile", None), "workflow_filename", "")),
                 seed=request.seed,
                 frames=request.frames,
+                anchor_prompt=anchor_prompt,
             )
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)

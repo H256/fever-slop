@@ -8,6 +8,7 @@ from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
 from feverslop.errors import FeverSlopDataError
+from feverslop.domain.performance_sync import select_performance_stems
 
 
 CAMERA_MOTION_DETAILS = [
@@ -480,15 +481,22 @@ def build_render_plan(
         h3_entry = h3_by_segment.get(scene.get("segment_id", ""))
         if h3_entry and h3_entry.get("prompt"):
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
+            if h3_entry.get("performance_timing"):
+                render_scene["performance_timing"] = h3_entry["performance_timing"]
         # -- stem audio paths (MiniMax H3 R2V) --
         if stem_list is not None and stem_files is not None:
-            # Priority ordering: lip-sync-critical stems first, so they occupy
-            # the first audio reference slots in the workflow.
-            priority_stems = ["vocals", "full_mix"]
-            priority_first = [s for s in priority_stems if s in stem_list]
-            for s in stem_list:
-                if s not in priority_first:
-                    priority_first.append(s)
+            available_stems = set(stem_files)
+            if input_audio is not None:
+                available_stems.add("full_mix")
+            priority_first = (
+                select_performance_stems(
+                    {**scene, "ltx": {"prompt_relay": prompt_relay}},
+                    available_stems=available_stems,
+                    max_stems=2,
+                )
+                if stem_list
+                else []
+            )
             resolved_stem_paths: dict[str, str] = {}
             for stem_name in priority_first:
                 if _scene_silent_mode(scene) and stem_name == "vocals":
@@ -512,7 +520,24 @@ def build_render_plan(
                 # Merge stem audio into reference_audio_paths so prompt generators
                 # (H3, R2V style builder) can produce <Audio N> tags for stems.
                 refs = render_scene.setdefault("references", {})
-                existing: list[str] = list(refs.get("reference_audio_paths", []))
+                all_stem_paths: set[str] = set()
+                for stem_name, stem_path in stem_files.items():
+                    all_stem_paths.add(
+                        _project_relative_path(stem_path, project_dir)
+                        if project_dir is not None
+                        else stem_path.as_posix()
+                    )
+                if input_audio is not None:
+                    all_stem_paths.add(
+                        _project_relative_path(input_audio, project_dir)
+                        if project_dir is not None
+                        else input_audio.as_posix()
+                    )
+                selected_paths = set(resolved_stem_paths.values())
+                existing: list[str] = [
+                    path for path in refs.get("reference_audio_paths", [])
+                    if str(path) not in all_stem_paths or str(path) in selected_paths
+                ]
                 stem_tag_map = {
                     "vocals": "audio_transfer - vocal singing lip-synced to the audio signal",
                     "full_mix": "full_mix - original song for beat and rhythm continuity",

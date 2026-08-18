@@ -16,15 +16,53 @@ def _attach_relay_segments(stage1_segments: list[dict], relay_scenes: list[dict]
         for scene in relay_scenes
         if scene.get("metadata", {}).get("segment_id") or scene.get("segment_id")
     }
+    relay_by_scene = {
+        int(scene["scene"]): scene
+        for scene in relay_scenes
+        if scene.get("scene") is not None
+    }
     enriched = []
     for segment in stage1_segments:
         result = dict(segment)
         relay_scene = relay_by_segment.get(str(segment.get("segment_id")))
+        if relay_scene is None and segment.get("scene") is not None:
+            relay_scene = relay_by_scene.get(int(segment["scene"]))
         if relay_scene:
             result.setdefault("fps", relay_scene.get("fps"))
             result.setdefault("duration_seconds", relay_scene.get("duration_seconds"))
-            if "ltx" not in result and relay_scene.get("ltx"):
-                result["ltx"] = relay_scene["ltx"]
+            relay = relay_scene.get("prompt_relay") or (relay_scene.get("ltx") or {}).get("prompt_relay")
+            if relay:
+                ltx = dict(result.get("ltx") or {})
+                ltx.setdefault("prompt_relay", relay)
+                result["ltx"] = ltx
+        enriched.append(result)
+    return enriched
+
+
+def _attach_beat_events(stage1_segments: list[dict], beat_data: dict[str, Any]) -> list[dict]:
+    """Attach bounded scene-local beat events to H3 input segments."""
+    beats = beat_data.get("beats") or []
+    bpm = float(beat_data.get("bpm") or 0)
+    enriched = []
+    for segment in stage1_segments:
+        start = float(segment.get("start") or segment.get("abs_start_seconds") or 0)
+        end_value = segment.get("end") or segment.get("abs_end_seconds")
+        if end_value is None:
+            end_value = start + float(segment.get("duration") or segment.get("duration_seconds") or 0)
+        end = float(end_value)
+        local_beats = []
+        for beat in beats:
+            absolute = float(beat.get("time") or 0)
+            if absolute < start or absolute >= end:
+                continue
+            local_beats.append({
+                "time_seconds": round(absolute - start, 4),
+                "downbeat": bool(beat.get("downbeat")),
+                "impact": float(beat.get("impact") or 0),
+            })
+        result = dict(segment)
+        if local_beats:
+            result["performance_timing"] = {"bpm": bpm, "beats": local_beats}
         enriched.append(result)
     return enriched
 
@@ -105,6 +143,14 @@ class H3PromptPipeline:
                 stage1_segments,
                 artifact_store.read_json(relay_path),
             )
+        beat_path = context.setdefault("beat_json", None)
+        if beat_path is not None:
+            try:
+                beat_data = artifact_store.read_json(beat_path)
+            except FileNotFoundError:
+                beat_data = None
+            if isinstance(beat_data, dict):
+                stage1_segments = _attach_beat_events(stage1_segments, beat_data)
 
         log_step("8.5. H3 Structured Prompts")
         llm = self.llm_factory(app_config)
@@ -119,11 +165,13 @@ class H3PromptPipeline:
 
         mode = model_spec.prompt_mode.value if model_spec else PromptMode.T2V.value
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
-        audio_paths = (
-            _configured_audio_paths(config, stem_files, getattr(config, "input_audio", None))
-            if model_spec and model_spec.prompt_mode is PromptMode.R2V
-            else stem_files
-        )
+        audio_paths = stem_files
+        if model_spec and model_spec.prompt_mode is PromptMode.R2V:
+            configured = _configured_audio_paths(config, stem_files, getattr(config, "input_audio", None))
+            if configured:
+                audio_paths = dict(stem_files or {})
+                if getattr(config, "input_audio", None) is not None:
+                    audio_paths["full_mix"] = config.input_audio
 
         reporter = context["reporter"] if "reporter" in context.keys() else None
         progress = SubStepProgress(reporter, "H3 prompts", len(stage1_segments))

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import random
+import re
 import subprocess
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -704,25 +705,25 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         Returns empty list if no stem audio available.
         """
         stem_audio = (scene.get("stem_audio") or {})
-        stem_names: list[str] = self.audio_ref_stems or list(stem_audio.get("stems", []))
+        stem_names: list[str] = (
+            list(stem_audio.get("stems", []))
+            if stem_audio
+            else list(self.audio_ref_stems or [])
+        )
         paths_map: dict[str, str] = stem_audio.get("paths", {})
         if not stem_audio and self.audio_ref_stems:
             paths_map = self._fallback_stem_paths()
         if not paths_map or not stem_names:
             return []
 
-        # Priority ordering: lip-sync-critical stems (vocals, full_mix) first,
-        # then any additional stems in original order.
-        priority_order = ["vocals", "full_mix"]
         silent_mode = bool(
             scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode")
         )
         if silent_mode:
             stem_names = [name for name in stem_names if name != "vocals"]
-        ordered_names = [n for n in priority_order if n in stem_names and n in paths_map]
-        for name in stem_names:
-            if name not in ordered_names and name in paths_map:
-                ordered_names.append(name)
+        ordered_names = list(dict.fromkeys(
+            name for name in stem_names if name in paths_map
+        ))
 
         result: list[Path] = []
         for stem_name in ordered_names:
@@ -782,6 +783,68 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             scene_number = scene.get("scene", "?")
             raise FeverSlopValidationError(
                 f"Scene {scene_number} requires at least one actor reference"
+            )
+        self._validate_h3_reference_contract(scene)
+
+    def _validate_h3_reference_contract(self, scene: dict) -> None:
+        """Reject structured H3 prompts that do not match bound workflow slots."""
+        prompt = str(((scene.get("h3") or {}).get("prompt")) or "").strip()
+        if not prompt.startswith("subject_definitions:"):
+            return
+        scene_number = scene.get("scene", "?")
+        definitions = prompt.split("summary:", 1)[0]
+        defined_subjects = set(re.findall(r"<Subject\s+\d+>", definitions))
+        used_subjects = set(re.findall(r"<Subject\s+\d+>", prompt))
+        undefined_subjects = used_subjects - defined_subjects
+
+        picture_count = len(self._resolve_ref_image_paths(scene))
+        expected_pictures = {f"<Picture {index}>" for index in range(1, picture_count + 1)}
+        bound_picture_list = re.findall(r"<Picture\s+\d+>", definitions)
+        bound_pictures = set(bound_picture_list)
+        duplicate_picture_mappings = {
+            label for label in bound_picture_list if bound_picture_list.count(label) > 1
+        }
+        used_pictures = set(re.findall(r"<Picture\s+\d+>", prompt))
+        unbound_pictures = expected_pictures - bound_pictures
+        unknown_pictures = used_pictures - expected_pictures
+
+        video_count = len(self._resolve_ref_video_paths(scene))
+        expected_videos = {f"<Video {index}>" for index in range(1, video_count + 1)}
+        used_videos = set(re.findall(r"<Video\s+\d+>", prompt))
+        missing_videos = expected_videos - used_videos
+        unknown_videos = used_videos - expected_videos
+
+        audio_paths = [
+            *self._resolve_stem_audio_paths(scene),
+            *self._resolve_ref_audio_paths(scene),
+        ]
+        audio_count = min(len(dict.fromkeys(Path(path) for path in audio_paths)), self.MAX_REF_AUDIOS)
+        expected_audio = {f"<Audio {index}>" for index in range(1, audio_count + 1)}
+        used_audio = set(re.findall(r"<Audio\s+\d+>", prompt))
+        defined_audio = set(re.findall(r"<Audio\s+\d+>", definitions))
+        missing_audio = expected_audio - defined_audio
+        unknown_audio = used_audio - expected_audio
+
+        if any((
+            undefined_subjects,
+            unbound_pictures,
+            duplicate_picture_mappings,
+            unknown_pictures,
+            missing_videos,
+            unknown_videos,
+            missing_audio,
+            unknown_audio,
+        )):
+            raise FeverSlopValidationError(
+                f"Scene {scene_number} H3 reference contract mismatch: "
+                f"undefined_subjects={sorted(undefined_subjects)!r}; "
+                f"unbound_pictures={sorted(unbound_pictures)!r}; "
+                f"duplicate_picture_mappings={sorted(duplicate_picture_mappings)!r}; "
+                f"unknown_pictures={sorted(unknown_pictures)!r}; "
+                f"missing_videos={sorted(missing_videos)!r}; "
+                f"unknown_videos={sorted(unknown_videos)!r}; "
+                f"missing_audio={sorted(missing_audio)!r}; "
+                f"unknown_audio={sorted(unknown_audio)!r}"
             )
 
     # -----------------------------------------------------------------------

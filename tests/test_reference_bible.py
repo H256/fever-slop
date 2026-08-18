@@ -45,6 +45,7 @@ class ReferenceBibleTests(unittest.TestCase):
                 anchor_path=files["anchor.png"], sequence_path=files["sequence.mp4"],
                 contact_sheet_path=files["contact-sheet.png"], sheet_path=files["sheet.png"],
                 selected_frames=6,
+                anchor_prompt="Identity-only Mara anchor",
             )
             generator = ReferenceBibleGenerator(
                 backend=FakeImageBackend(),
@@ -63,6 +64,7 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("output/references/actors/singer/sheet.png", manifest["sheet_path"])
             self.assertEqual("output/references/actors/singer/contact-sheet.png", manifest["contact_sheet_path"])
             self.assertEqual("output/references/actors/singer/sheet.png", manifest["msr_input_path"])
+            self.assertEqual("Identity-only Mara anchor", manifest["anchor_prompt"])
 
     def test_generator_writes_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:

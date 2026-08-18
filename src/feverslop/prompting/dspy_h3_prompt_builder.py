@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.prompting.dspy_h3_models import MusicIntent
+from feverslop.domain.performance_sync import (
+    select_performance_audio_paths,
+    visible_performance_roles,
+)
 
 
 def _reference(
@@ -46,6 +50,21 @@ def _scene_references(
     mode: str = "r2v",
 ) -> tuple[list[dict[str, str]], list[Path]]:
     references = segment.get("references") or {}
+    selected_audio_paths = (
+        select_performance_audio_paths(segment, audio_paths, max_stems=2)
+        if audio_paths
+        else {}
+    )
+    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    fully_instrumental = bool(relay) and all(
+        str(item.get("state") or "").strip().lower() == "instrumental"
+        for item in relay
+    )
+    audio_tags = references.get("_stem_audio_tags") or {}
+    audio_tags_by_key = {
+        _reference_source_key(source, reference_root): str(description)
+        for source, description in audio_tags.items()
+    }
     result: list[dict[str, str]] = []
     images: list[Path] = []
     seen: dict[str, set[str]] = {"picture": set(), "video": set(), "audio": set()}
@@ -61,7 +80,7 @@ def _scene_references(
         if image_path is not None and image_path.is_file():
             images.append(image_path)
 
-    actor_paths = references.get("actor_msr_paths") or references.get("actor_sheet_paths") or []
+    actor_paths = references.get("actor_sheet_paths") or references.get("actor_msr_paths") or []
     actor_ids = references.get("actor_ids") or []
     actor_descriptions = {
         str(item.get("id") or item.get("name") or ""): str(
@@ -87,7 +106,7 @@ def _scene_references(
             role="subject",
         ), image_path)
 
-    location = references.get("location_msr_path") or references.get("location_sheet_path")
+    location = references.get("location_sheet_path") or references.get("location_msr_path")
     if location:
         path = Path(location)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
@@ -139,18 +158,29 @@ def _scene_references(
             role="motion",
         ))
 
+    pending_audio_references: list[dict[str, str]] = []
     for path_value in references.get("reference_audio_paths") or []:
         path = Path(path_value)
-        add_reference(_reference(
+        tag = audio_tags_by_key.get(_reference_source_key(path, reference_root), "")
+        if selected_audio_paths and tag:
+            # Re-add managed stems below in the exact role-specific order so
+            # H3 labels match the render-plan/backend slot order.
+            continue
+        if fully_instrumental and "vocal" in tag.casefold() and "full_mix" not in tag.casefold():
+            continue
+        copy_mode = "fully_copy" if "full_mix" in tag.casefold() else "partially_copy"
+        pending_audio_references.append(_reference(
             label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
             source=path,
             kind="audio",
             name=path.stem,
-            description="Use this synchronized reference for the scene's audio behavior.",
+            description=tag or "Use this synchronized reference for the scene's audio behavior.",
             role="audio_reuse",
-        ))
+        ) | {"copy_mode": copy_mode})
 
-    for index, (name, source) in enumerate((audio_paths or {}).items(), start=1):
+    for index, (name, source) in enumerate(selected_audio_paths.items(), start=1):
+        if fully_instrumental and name == "vocals":
+            continue
         add_reference(_reference(
             label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
             source=source,
@@ -158,7 +188,11 @@ def _scene_references(
             name=name,
             description="Use this synchronized stem for the scene's audio behavior.",
             role="audio_reuse",
-        ))
+        ) | {"copy_mode": "fully_copy" if name == "full_mix" else "partially_copy"})
+
+    for reference in pending_audio_references:
+        reference["label"] = f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>"
+        add_reference(reference)
 
     return result, images
 
@@ -245,6 +279,32 @@ def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _format_performance_timing(segment: dict[str, Any]) -> str:
+    timing = segment.get("performance_timing") or {}
+    beats = timing.get("beats") or []
+    if not beats:
+        return ""
+    beat_times = ", ".join(f"{float(beat['time_seconds']):.2f}s" for beat in beats)
+    downbeats = ", ".join(
+        f"{float(beat['time_seconds']):.2f}s" for beat in beats if beat.get("downbeat")
+    ) or "none in this shot"
+    lines = [
+        f"Performance timing (scene-local): BPM {float(timing.get('bpm') or 0):g}; "
+        f"beats at {beat_times}; downbeats at {downbeats}."
+    ]
+    roles = visible_performance_roles(segment)
+    if "drums" in roles:
+        lines.append(
+            "Drummer motion: prepare before each event, make stick contact exactly on each listed beat, "
+            "emphasize downbeats, then rebound immediately; avoid random arm flailing."
+        )
+    if "bass" in roles:
+        lines.append("Bassist motion: finger or pick contact lands on listed beats, with restrained release between notes.")
+    if "other" in roles:
+        lines.append("Guitarist motion: pick contact and chord changes land on listed beats, emphasizing downbeats.")
+    return "\n".join(lines)
+
+
 def _repair_audio_references(prompt: str, references: list[dict[str, str]]) -> str:
     """Restore audio_reuse semantics omitted by a sectioned DSPy H3 prompt."""
     audio_references = [
@@ -275,20 +335,18 @@ def _repair_audio_references(prompt: str, references: list[dict[str, str]]) -> s
         label = reference["label"]
         definition = f"{label} is the synchronized {reference['name']} audio reference and is reused for the scene."
         definition_pattern = re.compile(rf"(?m)^{re.escape(label)}[^\n]*(?:\n|$)")
-        definition_lines = definition_pattern.findall(sections["subject_definitions"])
-        if not any("reused" in line.lower() for line in definition_lines):
-            sections["subject_definitions"] = definition_pattern.sub("", sections["subject_definitions"])
-            append(
-                "subject_definitions",
-                definition,
-            )
-        retention_pattern = re.compile(rf"(?m)^{re.escape(label)}:[^\n]*(?:\n|$)")
+        sections["subject_definitions"] = definition_pattern.sub("", sections["subject_definitions"])
+        append("subject_definitions", definition)
+        retention_pattern = re.compile(
+            rf"(?m)^{re.escape(label)}(?:\s+\([^\n]*?\))?:[^\n]*(?:\n|$)"
+        )
+        copy_mode = reference.get("copy_mode", "partially_copy")
         retention_lines = retention_pattern.findall(sections["retention_analysis"])
-        if not any("partially_copy" in line for line in retention_lines):
+        if len(retention_lines) != 1 or copy_mode not in retention_lines[0]:
             sections["retention_analysis"] = retention_pattern.sub("", sections["retention_analysis"])
             append(
                 "retention_analysis",
-                f"{label}: partially_copy - the synchronized {reference['name']} audio is reused for this scene.",
+                f"{label}: {copy_mode} - the synchronized {reference['name']} audio is reused for this scene.",
             )
 
     if "audio reuse" not in sections["summary"].lower():
@@ -405,11 +463,14 @@ class DspyH3PromptBuilder:
                 generated = {"dspy_error": safe_error}
         rendered_prompt = _repair_audio_references(str(prompt).strip(), references)
         relay_prompt = _format_relay_shots(relay_segments) if append_relay_prompt else ""
-        prompt_parts = [rendered_prompt, relay_prompt]
+        performance_prompt = _format_performance_timing(segment)
+        prompt_parts = [rendered_prompt, relay_prompt, performance_prompt]
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
+        if segment.get("performance_timing"):
+            result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):
             result["dspy_error"] = generated["dspy_error"]
         return result

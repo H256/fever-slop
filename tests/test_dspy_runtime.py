@@ -5,6 +5,7 @@ from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_models import (
     BaseVideoPrompt,
     MusicIntent,
+    PlannedSubject,
     PromptPlan,
     ResolvedPromptPlan,
     ResolvedReference,
@@ -61,6 +62,11 @@ class DspyRuntimeTests(unittest.TestCase):
                     return type("Prediction", (), {
                         "plan": PromptPlan(
                             creative_intent="intent",
+                            subjects=[PlannedSubject(
+                                name="Dancer",
+                                description="A dancer",
+                                source_references=["<Picture 1>"],
+                            )],
                             overall_soundscape="quiet",
                             music_intent=MusicIntent.NONE,
                         )

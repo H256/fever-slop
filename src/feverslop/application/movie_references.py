@@ -168,6 +168,7 @@ class MovieReferenceSheetGenerator:
             "workflow_profile": result.workflow_profile,
             "seed": result.seed,
             "frames": result.frames,
+            "anchor_prompt": result.anchor_prompt,
         }
         if background_path is not None:
             manifest["msr_background_path"] = artifact_path(background_path)

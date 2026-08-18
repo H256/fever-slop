@@ -41,6 +41,67 @@ class FakeSequenceBackend:
 
 
 class SequenceReferencePipelineTests(unittest.TestCase):
+    def test_character_anchor_uses_identity_plan_instead_of_action_prompt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            anchor_backend = FakeAnchorBackend()
+            sequence_backend = FakeSequenceBackend()
+
+            class Planner:
+                source = "test"
+                fallback_reason = None
+
+                def plan(self, **_kwargs):
+                    from feverslop.domain.reference_sheet import ReferenceSheetPlan
+
+                    return ReferenceSheetPlan(
+                        kind="character",
+                        anchor_description=(
+                            "A woman with long silver hair, pale skin, and dark leather armor"
+                        ),
+                    )
+
+            pipeline = SequenceReferencePipeline(
+                anchor_backend=anchor_backend,
+                sequence_backend=sequence_backend,
+                planner=Planner(),
+            )
+            request = SequenceReferenceRequest(
+                kind="character",
+                asset_id="singer",
+                name="Singer",
+                description="A woman with long silver hair singing intensely.",
+                image_prompt=(
+                    "A woman with long silver hair singing passionately on a black stone altar."
+                ),
+                visual_style="dark gothic cinematic fantasy",
+                output_dir=Path(temp),
+            )
+
+            def fake_extract(_video, output_dir, sample_count):
+                output_dir.mkdir(parents=True, exist_ok=True)
+                paths = []
+                for index in range(sample_count):
+                    path = output_dir / f"frame_{index:04}.png"
+                    Image.new("RGB", (64, 36), "white").save(path)
+                    paths.append(path)
+                return tuple(paths)
+
+            with patch(
+                "feverslop.application.sequence_reference_pipeline.extract_video_frames",
+                fake_extract,
+            ), patch(
+                "feverslop.application.sequence_reference_pipeline.select_orbitsheet_frames",
+                lambda paths, **_: tuple(paths[:6]),
+            ):
+                result = pipeline.generate(request)
+
+            prompt = anchor_backend.calls[0].prompt
+            self.assertIn("A woman with long silver hair, pale skin, and dark leather armor", prompt)
+            self.assertIn("dark gothic cinematic fantasy", prompt)
+            self.assertNotIn("sing", prompt.lower())
+            self.assertNotIn("altar", prompt.lower())
+            self.assertEqual(prompt, result.anchor_prompt)
+
     def test_reference_phase_log_labels_are_english(self):
         self.assertEqual(
             {

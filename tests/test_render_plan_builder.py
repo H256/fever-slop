@@ -449,6 +449,80 @@ class BuildRenderPlanTests(unittest.TestCase):
             stems = scene["stem_audio"]["stems"]
             self.assertEqual(stems[0], "vocals")
             self.assertEqual(stems[1], "full_mix")
+
+    def test_render_plan_routes_drummer_scene_to_drums_and_full_mix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+            paths = {}
+            for name in ("vocals", "drums", "bass", "other", "full_mix"):
+                path = temp / f"{name}.wav"
+                path.write_bytes(b"audio")
+                paths[name] = path
+            scene_prompts_path.write_text(json.dumps([{
+                "scene": 1,
+                "segment_id": "s1",
+                "type": "instrumental",
+                "start": 0.0,
+                "end": 2.0,
+                "duration": 2.0,
+                "lyrics": "",
+                "base_concept": "The drummer performs.",
+                "zimage_prompt": "A drummer performs.",
+                "references": {"actor_reference_descriptions": [
+                    {"name": "Drummer", "role": "Percussionist"},
+                ]},
+            }]), encoding="utf-8")
+            relay_path.write_text(json.dumps([{
+                "scene": 1,
+                "prompt_relay": [{"frame_start": 0, "frame_end": 48, "state": "instrumental"}],
+            }]), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                stem_list=["vocals", "full_mix"],
+                input_audio=paths["full_mix"],
+                stem_files=paths,
+                project_dir=temp,
+            )
+
+            scene = json.loads(output_path.read_text(encoding="utf-8"))[0]
+            self.assertEqual(["drums", "full_mix"], scene["stem_audio"]["stems"])
+            self.assertNotIn("vocals.wav", scene["references"]["reference_audio_paths"])
+
+    def test_render_plan_persists_h3_performance_timing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts = temp / "scenes.json"
+            relay = temp / "relay.json"
+            h3 = temp / "h3.json"
+            output = temp / "plan.json"
+            scene_prompts.write_text(json.dumps([{
+                "scene": 1, "segment_id": "s1", "type": "instrumental",
+                "start": 0.0, "end": 2.0, "duration": 2.0,
+                "zimage_prompt": "A drummer", "base_concept": "A drummer",
+            }]), encoding="utf-8")
+            relay.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
+            timing = {"bpm": 120.0, "beats": [{"time_seconds": 0.5, "downbeat": True, "impact": 0.8}]}
+            h3.write_text(json.dumps([{"segment_id": "s1", "prompt": "H3", "performance_timing": timing}]), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts,
+                ltx_prompt_relay_json=relay,
+                output_json_file=output,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                h3_prompts_json=h3,
+            )
+
+            scene = json.loads(output.read_text(encoding="utf-8"))[0]
+            self.assertEqual(timing, scene["performance_timing"])
     def test_render_plan_prefers_explicit_i2v_prompt_from_t2i(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

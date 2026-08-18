@@ -156,6 +156,7 @@ class ReferenceBibleGenerator:
             "workflow_profile": result.workflow_profile,
             "seed": result.seed,
             "frames": result.frames,
+            "anchor_prompt": result.anchor_prompt,
         }
         manifest_path = self.output_dir / "actors" / subject.id / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -319,6 +320,7 @@ class ReferenceBibleGenerator:
             "workflow_profile": result.workflow_profile,
             "seed": result.seed,
             "frames": result.frames,
+            "anchor_prompt": result.anchor_prompt,
         }
         manifest_path = self.output_dir / "locations" / location.id / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
