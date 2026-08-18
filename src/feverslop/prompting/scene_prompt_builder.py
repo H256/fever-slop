@@ -26,18 +26,28 @@ def limit_scene_prompt_words(
     *,
     scene_number: int,
     prompt_kind: str,
+    max_words: int,
     status_callback: Callable[[str], None] | None,
 ) -> str:
     words = prompt.split()
-    if len(words) <= _SCENE_PROMPT_MAX_WORDS:
+    if len(words) <= max_words:
         return prompt
     if status_callback is not None:
         status_callback(
             f"[yellow]Scene {scene_number} {prompt_kind} prompt exceeded the "
-            f"{_SCENE_PROMPT_MAX_WORDS}-word limit ({len(words)} words); "
-            f"trimmed to {_SCENE_PROMPT_MAX_WORDS} words.[/yellow]"
+            f"{max_words}-word limit ({len(words)} words); "
+            f"trimmed to {max_words} words.[/yellow]"
         )
-    return " ".join(words[:_SCENE_PROMPT_MAX_WORDS])
+    return " ".join(words[:max_words])
+
+
+def scene_prompt_word_limit(global_context: dict) -> int:
+    guidance = global_context.get("prompt_guidance") or {}
+    try:
+        configured = int(guidance.get("word_count_max", _SCENE_PROMPT_MAX_WORDS))
+    except (TypeError, ValueError):
+        return _SCENE_PROMPT_MAX_WORDS
+    return configured if configured > 0 else _SCENE_PROMPT_MAX_WORDS
 
 
 def normalize_scene_references(references: dict, global_context: dict) -> dict:
@@ -210,6 +220,7 @@ class ScenePromptBuilder:
     ) -> Path:
         output = []
         total = len(stage1_segments)
+        max_prompt_words = scene_prompt_word_limit(global_context)
 
         for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
@@ -243,6 +254,7 @@ class ScenePromptBuilder:
                 t2i_prompt,
                 scene_number=scene_number,
                 prompt_kind="T2I",
+                max_words=max_prompt_words,
                 status_callback=status_callback,
             )
 
@@ -259,6 +271,7 @@ class ScenePromptBuilder:
                 i2v_prompt_from_t2i,
                 scene_number=scene_number,
                 prompt_kind="I2V",
+                max_words=max_prompt_words,
                 status_callback=status_callback,
             )
 
