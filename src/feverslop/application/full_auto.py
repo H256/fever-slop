@@ -188,7 +188,7 @@ class FullAutoUseCase:
             duration_seconds=float(request.duration_seconds),
             language=str(request.language or spec.language),
             keyscale=str(request.keyscale or spec.keyscale),
-            visual_story_idea=spec.visual_story_idea,
-            visual_style=spec.visual_style,
-            music_style=str(spec.music_style or request.music_style or request.style or "").strip(),
+            visual_story_idea=str(request.idea).strip(),
+            visual_style=str(request.style).strip(),
+            music_style=str(request.music_style or spec.music_style or request.style or "").strip(),
         )
