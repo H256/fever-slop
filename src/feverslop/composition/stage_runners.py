@@ -1602,27 +1602,67 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         rewrite_concat_list,
         write_concat_list,
     )
-    render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
     layout = state.context.artifact_layout
-    use_upscaled = any(
-        layout.scene_upscaled_video(int(entry.get("scene") or entry.get("scene_number"))).is_file()
-        for entry in render_plan
-    )
-    clips = collect_render_plan_scene_clips(
+    render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+    scene_numbers = [int(entry["scene"]) for entry in render_plan]
+    canonical_clips = [layout.scene_final_video(scene_number) for scene_number in scene_numbers]
+    canonical_available = [clip for clip in canonical_clips if clip.is_file()]
+    if canonical_available and len(canonical_available) != len(canonical_clips):
+        missing = [clip.parent.name for clip in canonical_clips if not clip.is_file()]
+        raise FileNotFoundError(
+            "Cannot build base variant without mixing artifact layouts; missing canonical "
+            f"final.mp4 for {', '.join(missing[:10])}"
+        )
+    if canonical_available:
+        clips = canonical_clips
+    else:
+        console.print(
+            "[yellow]No canonical final.mp4 scene artifacts found; using the complete legacy "
+            "scene layout for the base movie.[/yellow]"
+        )
+        clips = collect_render_plan_scene_clips(
             state.plan_for_next_step,
             state.context.ltx_dir,
-            layout=layout,
-            prefer_upscaled=use_upscaled,
-    )
+            layout=None,
+        )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
-    video_only_output = layout.video_only_upscaled if use_upscaled else layout.video_only
-    video_audio_output = layout.video_audio_upscaled if use_upscaled else layout.video_audio
+    console.print(f"Concatenating base variant: {len(clips)} scene clips")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
-        output_file=video_only_output,
+        output_file=layout.video_only,
         video_only=True,
     )
+    state.video_only_variants = {"base": state.video_only_path}
+
+    optional_variants = (
+        ("facefix", layout.scene_final_facefix_video, layout.video_only_facefix),
+        ("upscaled", layout.scene_upscaled_video, layout.video_only_upscaled),
+    )
+    for variant, scene_path, output_path in optional_variants:
+        variant_clips = [scene_path(scene_number) for scene_number in scene_numbers]
+        available = [clip for clip in variant_clips if clip.is_file()]
+        if not available:
+            continue
+        if len(available) != len(variant_clips):
+            missing = [clip.parent.name for clip in variant_clips if not clip.is_file()]
+            console.print(
+                f"[yellow]Skipping {variant} movie: found {len(available)}/{len(variant_clips)} "
+                f"scene clips; missing {', '.join(missing[:10])}.[/yellow]"
+            )
+            continue
+        concat_list = write_concat_list(
+            variant_clips,
+            layout.final_dir,
+            f"concat_{variant}.txt",
+        )
+        console.print(f"Concatenating {variant} variant: {len(variant_clips)} scene clips")
+        state.video_only_variants[variant] = postprocessor.concat_clips(
+            concat_list=concat_list,
+            output_file=output_path,
+            video_only=True,
+        )
+
     try:
         raw_clips = collect_render_plan_scene_raw_clips(
             state.plan_for_next_step,
@@ -1639,12 +1679,56 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         )
     postprocessor.concat_clips(
         concat_list=state.context.concat_raw,
-        output_file=video_audio_output,
+        output_file=layout.video_audio,
         video_only=False,
     )
 
 
 def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
+    layout = getattr(state.context, "artifact_layout", None)
+    variants = getattr(state, "video_only_variants", None)
+    if layout is not None and not variants:
+        variants = {}
+        if layout.video_only.is_file():
+            variants["base"] = layout.video_only
+        render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+        scene_numbers = [int(entry["scene"]) for entry in render_plan]
+        optional_variants = (
+            ("facefix", layout.scene_final_facefix_video, layout.video_only_facefix),
+            ("upscaled", layout.scene_upscaled_video, layout.video_only_upscaled),
+        )
+        for variant, scene_path, aggregate_path in optional_variants:
+            if not aggregate_path.is_file():
+                continue
+            scene_clips = [scene_path(scene_number) for scene_number in scene_numbers]
+            if all(clip.is_file() for clip in scene_clips):
+                variants[variant] = aggregate_path
+            else:
+                console.print(
+                    f"[yellow]Ignoring stale {aggregate_path.name}: the current render plan "
+                    f"does not have a complete {variant} scene set.[/yellow]"
+                )
+    if variants:
+        output_paths = {
+            "base": layout.movie,
+            "facefix": layout.movie_facefix,
+            "upscaled": layout.movie_upscaled,
+        }
+        postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+        results: dict[str, Path] = {}
+        for variant in ("base", "facefix", "upscaled"):
+            video_file = variants.get(variant)
+            if video_file is None:
+                continue
+            console.print(f"Muxing original audio into {variant} movie")
+            results[variant] = postprocessor.mux_original_audio(
+                video_file=video_file,
+                audio_file=state.context.input_audio,
+                output_file=output_paths[variant],
+            )
+        state.final_video_path = results.get("base") or next(iter(results.values()))
+        return
+
     video_only_path = state.video_only_path or state.context.final_concat_video
     if state.video_only_path is None and not Path(video_only_path).exists():
         raise FileNotFoundError(f"Video-only concat not found: {video_only_path}")
@@ -1791,38 +1875,9 @@ def _run_facefix_stage(state: PipelineRunState) -> None:
 
 
 def _run_facefix_concat_stage(state: PipelineRunState) -> None:
-    from .config_loader import rewrite_concat_list, collect_render_plan_scene_clips
-
-    clips = collect_render_plan_scene_clips(
-        state.plan_for_next_step,
-        state.context.ltx_dir,
-        layout=state.context.artifact_layout,
-        prefer_facefix=True,
-    )
-    rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
-
-    facefix_video_only = state.context.final_concat_video.with_stem(
-        state.context.final_concat_video.stem + "_facefix"
-    )
-    facefix_final = state.context.final_concat.with_stem(
-        state.context.final_concat.stem + "_facefix"
-    )
-
-    console.print("==> FaceFix concat video-only")
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
-    state.video_only_path = postprocessor.concat_clips(
-        concat_list=state.context.concat_list,
-        output_file=facefix_video_only,
-        video_only=True,
-    )
-
-    console.print("==> FaceFix mux original audio")
-    state.final_video_path = postprocessor.mux_original_audio(
-        video_file=facefix_video_only,
-        audio_file=state.context.input_audio,
-        output_file=facefix_final,
-    )
-    console.print(f"[green]FaceFix final output: {facefix_final}[/green]")
+    console.print("FaceFix final concat uses the shared artifact-variant assembler.")
+    _run_concat_video_only_stage(state)
+    _run_mux_original_audio_stage(state)
 
 
 STAGE_RUNNERS = {
@@ -1970,15 +2025,11 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         upscale_enabled = bool(getattr(args, "upscale", False)) or config_upscale_enabled
         if not args.skip_facefix:
             stages.append(PipelineStage.FACEFIX)
-            stages.append(PipelineStage.FACEFIX_CONCAT)
-            if upscale_enabled:
-                stages.append(PipelineStage.UPSCALE)
-                stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         else:
             console.print("Skipping FaceFix postprocessing.")
-            if upscale_enabled:
-                stages.append(PipelineStage.UPSCALE)
-            stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
+        if upscale_enabled:
+            stages.append(PipelineStage.UPSCALE)
+        stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
         stages.append(PipelineStage.MUX_ORIGINAL_AUDIO)
         if args.diagnostic_original_audio_mux:
             stages.append(PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT)
