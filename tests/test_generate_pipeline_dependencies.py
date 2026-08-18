@@ -398,6 +398,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             reporter.table = lambda title, columns, rows: reporter.messages.append(title)
             reporter.run_progress = lambda description, func: func()
             context = _prompt_context(temp, concept_batch_size=0)
+            context.config.video_pipeline = "minimax-h3-r2v"
             context.reporter = reporter
             context.log_step = reporter.step
             pipeline = PromptGenerationPipeline(
@@ -409,8 +410,15 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
 
             pipeline.execute(context)
 
-            self.assertIn("8. Scene Prompt Pack (T2I Startframe + I2V)", reporter.steps)
+            self.assertIn("8. Scene Prompt Pack (Startframe + Base Motion Prompts)", reporter.steps)
             self.assertTrue(any("Scene prompt pack started" in message for message in reporter.messages))
+            self.assertTrue(
+                any(
+                    "H3 structured prompts will be generated after reference sheets" in message
+                    for message in reporter.messages
+                )
+            )
+            self.assertFalse(any("I2V" in step for step in reporter.steps))
             self.assertTrue(any("Scene prompt pack finished" in message for message in reporter.messages))
 
     def test_prompt_pipeline_uses_injected_concept_batcher_when_batching(self):

@@ -249,11 +249,16 @@ class PromptGenerationPipeline:
         )
         log_file("Scene Details JSON", scene_details_json)
 
-        log_step("8. Scene Prompt Pack (T2I Startframe + I2V)")
+        log_step("8. Scene Prompt Pack (Startframe + Base Motion Prompts)")
         reporter.message(
             f"[cyan]Scene prompt pack started: {len(stage1_segments)} scenes; "
-            "building still-image startframe and image-to-video prompts[/cyan]"
+            "building still-image startframe and backend-neutral base motion prompts[/cyan]"
         )
+        if get_config_value(config, "video_pipeline") == "minimax-h3-r2v":
+            reporter.message(
+                "[cyan]MiniMax H3 R2V selected: H3 structured prompts will be "
+                "generated after reference sheets.[/cyan]"
+            )
         scene_prompt_builder = self.scene_prompt_builder_factory(llm)
         scene_prompts_progress = SubStepProgress(reporter, "Scene prompts", len(stage1_segments))
         scene_prompt_builder.build_scene_prompts(
