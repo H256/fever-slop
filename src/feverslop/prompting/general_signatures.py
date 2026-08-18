@@ -23,11 +23,13 @@ class LyricCorrections(BaseModel):
 class PromptResult(BaseModel):
     prompt: str
 
+
+class StoryboardPromptResult(PromptResult):
     @field_validator("prompt")
     @classmethod
     def prompt_must_be_bounded(cls, value: str) -> str:
         if len(value.split()) > 150:
-            raise ValueError("prompt must contain at most 150 words")
+            raise ValueError("storyboard prompt must contain at most 150 words")
         return value
 
 
@@ -67,7 +69,7 @@ def build_general_signature_bundle(dspy_module: Any | None = None):
         width: int = dspy_module.InputField()
         height: int = dspy_module.InputField()
         original_prompt: str = dspy_module.InputField()
-        result: PromptResult = dspy_module.OutputField()
+        result: StoryboardPromptResult = dspy_module.OutputField()
 
     return {
         "song_brief": SongBrief,

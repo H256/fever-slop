@@ -7,6 +7,7 @@ from feverslop.prompting.general_signatures import (
     LyricCorrections,
     PromptResult,
     SongBriefResult,
+    StoryboardPromptResult,
     build_general_signature_bundle,
 )
 from feverslop.prompting.guide_loader import load_markdown_guide
@@ -85,5 +86,11 @@ class GeneralPromptModules:
         with self._context(lm=self._lm):
             return PromptResult.model_validate(_value(self._predictors["i2v_prompt"](**kwargs), "result"))
 
-    def storyboard_transform(self, payload: dict[str, Any], *, timeout=None) -> PromptResult:
-        return self._call("storyboard_transform", "storyboard-transform", payload, PromptResult, timeout=timeout)
+    def storyboard_transform(self, payload: dict[str, Any], *, timeout=None) -> StoryboardPromptResult:
+        return self._call(
+            "storyboard_transform",
+            "storyboard-transform",
+            payload,
+            StoryboardPromptResult,
+            timeout=timeout,
+        )

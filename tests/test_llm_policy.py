@@ -33,11 +33,18 @@ class LLMPolicyTests(unittest.TestCase):
         self.assertEqual(4352, lyric_alignment_max_tokens(13))
         self.assertEqual(3072, msr_segments_max_tokens(4))
 
-    def test_short_prompt_result_rejects_unbounded_text(self):
+    def test_prompt_result_allows_scene_layer_to_handle_overlength_text(self):
         from feverslop.prompting.general_signatures import PromptResult
 
+        result = PromptResult(prompt="word " * 151)
+
+        self.assertEqual(151, len(result.prompt.split()))
+
+    def test_storyboard_prompt_result_keeps_its_separate_safety_limit(self):
+        from feverslop.prompting.general_signatures import StoryboardPromptResult
+
         with self.assertRaises(ValueError):
-            PromptResult(prompt="word " * 151)
+            StoryboardPromptResult(prompt="word " * 151)
 
 
 if __name__ == "__main__":

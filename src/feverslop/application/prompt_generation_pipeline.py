@@ -272,6 +272,7 @@ class PromptGenerationPipeline:
             trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
             artifact_store=artifact_store,
             progress_callback=lambda current, total: scene_prompts_progress.update(current),
+            status_callback=reporter.message,
         )
         reporter.message("[green]Scene prompt pack finished.[/green]")
         log_file("Scene Prompts JSON", scene_prompts_json)
