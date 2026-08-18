@@ -29,6 +29,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate a full FeverSlop project from an idea and style.")
     parser.add_argument("--idea", required=True)
     parser.add_argument("--style", required=True)
+    parser.add_argument("--music-style", default=None)
     parser.add_argument("--project-name", default=None)
     parser.add_argument("--projects-dir", default="projects")
     parser.add_argument("--workflow", default=str(Path("workflows") / "audio_song_v2.json"))
@@ -57,6 +58,7 @@ def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
     return FullAutoRequest(
         idea=args.idea,
         style=args.style,
+        music_style=args.music_style,
         project_name=args.project_name,
         projects_dir=Path(args.projects_dir),
         duration_seconds=float(args.duration_seconds),

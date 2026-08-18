@@ -128,6 +128,23 @@ class FullAutoCliTests(unittest.TestCase):
 
         self.assertFalse(args.silent_mode)
 
+    def test_request_maps_explicit_music_style(self):
+        args = full_auto.build_arg_parser().parse_args(
+            [
+                "--idea",
+                "water beings fight fire",
+                "--style",
+                "dark gothic visual fantasy",
+                "--music-style",
+                "epic fantasy power metal",
+            ]
+        )
+
+        request = full_auto.request_from_args(args)
+
+        self.assertEqual("dark gothic visual fantasy", request.style)
+        self.assertEqual("epic fantasy power metal", request.music_style)
+
     def test_request_from_args_maps_runner_options(self):
         args = full_auto.build_arg_parser().parse_args(
             [
