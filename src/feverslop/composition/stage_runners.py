@@ -74,6 +74,8 @@ from feverslop.tools.storyboard_page import generate_storyboard_page
 from .arg_parser import PipelineStage
 from .config_loader import PipelineRunContext, PipelineRunState, count_render_plan_items, runner_root
 
+VIDEO_SCENE_PROGRESS_LABEL = "Rendering video scenes"
+
 _REFERENCE_BIBLE_PARSER = None
 
 
@@ -1587,7 +1589,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
     ltx_scene_numbers = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
     ltx_total = count_render_plan_items(state.plan_for_next_step, scene_numbers=ltx_scene_numbers)
     with RenderProgressReporter(
-        "Rendering LTX scenes", ltx_total, emit_scene_progress=True
+        VIDEO_SCENE_PROGRESS_LABEL, ltx_total, emit_scene_progress=True
     ) as ltx_progress:
         video_use_case.execute(
             RenderVideoScenesRequest(
@@ -1937,7 +1939,7 @@ STAGE_LABELS = {
     PipelineStage.MSR_PROMPT_ENRICH: "MSR prompt enrichment",
     PipelineStage.INGREDIENTS_SHEETS: "Ingredients scene sheets",
     PipelineStage.LTX_PREPARE_WORKFLOWS: "Prepare LTX workflows",
-    PipelineStage.LTX_RENDER_SCENES: "LTX render",
+    PipelineStage.LTX_RENDER_SCENES: "Video render",
     PipelineStage.PREPARE_WORKFLOWS: "Prepare workflows",
     PipelineStage.RENDER_SCENES: "Render scenes",
     PipelineStage.UPSCALE: "SeedVR2 upscale",
