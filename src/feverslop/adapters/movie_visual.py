@@ -25,21 +25,40 @@ from feverslop.domain.visual_consistency_runtime import (
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.movie_utils import transition_from_previous
 from feverslop.ports.rendering import VideoRenderRequest
+from feverslop.errors import FeverSlopAdaptationError
+
+PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS = 30
 
 
 def write_local_placeholder_clip(path: Path, *, duration_seconds: float = 1.0) -> None:
     """Write a tiny valid MP4 for offline pipeline and export tests."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-f", "lavfi", "-i",
-            f"color=c=black:s=16x16:r=1:d={max(0.1, duration_seconds):.3f}",
-            "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path),
-        ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-f", "lavfi", "-i",
+                f"color=c=black:s=16x16:r=1:d={max(0.1, duration_seconds):.3f}",
+                "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise FeverSlopAdaptationError(
+            f"FFmpeg timed out after {PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS}s while writing placeholder clip: {path}"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        details = (
+            (exc.stderr or "").strip()
+            if isinstance(exc.stderr, str)
+            else "no stderr output"
+        )
+        raise FeverSlopAdaptationError(
+            f"FFmpeg failed (exit {exc.returncode}) while writing placeholder clip {path}: {details}"
+        ) from exc
 
 
 class LocalMovieVisualAdapter:

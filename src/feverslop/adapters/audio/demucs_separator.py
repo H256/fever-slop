@@ -1,5 +1,6 @@
 import gc
 from pathlib import Path
+from typing import Any
 
 import torch
 import torchaudio
@@ -20,10 +21,15 @@ class DemucsSeparator:
 
         self.device = device
         self.shifts = shifts
+        self.model_name = model_name
+        self.model = None  # loaded lazily on first separate()
 
-        self.model = pretrained.get_model(model_name)
-        self.model.to(device)
-        self.model.eval()
+    def _ensure_model(self) -> "Any":
+        if self.model is None:
+            self.model = pretrained.get_model(self.model_name)
+            self.model.to(self.device)
+            self.model.eval()
+        return self.model
 
     def close(self) -> None:
         model = getattr(self, "model", None)
@@ -41,6 +47,7 @@ class DemucsSeparator:
         input_file: str | Path,
         output_dir: str | Path,
     ) -> dict[str, Path]:
+        self._ensure_model()
         input_file = Path(input_file).resolve()
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)

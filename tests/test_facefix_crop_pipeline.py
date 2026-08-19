@@ -1,3 +1,4 @@
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -185,10 +186,11 @@ class TestFaceVideoEncoder(unittest.TestCase):
     @patch("feverslop.adapters.face_video_encoder.subprocess")
     def test_encode_missing_output_raises(self, mock_subprocess):
         from feverslop.adapters.face_video_encoder import encode_face_crop_mp4
+        from feverslop.errors import FeverSlopAdaptationError
 
         mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
 
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(FeverSlopAdaptationError) as ctx:
             encode_face_crop_mp4(Path("/tmp/crops"), 24.0, Path("/tmp/does_not_exist.mp4"))
 
         self.assertIn("no output file", str(ctx.exception))
@@ -196,6 +198,7 @@ class TestFaceVideoEncoder(unittest.TestCase):
     @patch("feverslop.adapters.face_video_encoder.subprocess")
     def test_encode_empty_output_raises(self, mock_subprocess):
         from feverslop.adapters.face_video_encoder import encode_face_crop_mp4
+        from feverslop.errors import FeverSlopAdaptationError
 
         mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
 
@@ -205,7 +208,7 @@ class TestFaceVideoEncoder(unittest.TestCase):
         output.parent.mkdir(parents=True, exist_ok=True)
         output.touch()
 
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(FeverSlopAdaptationError) as ctx:
             encode_face_crop_mp4(frames_dir, 24.0, output)
 
         self.assertIn("empty", str(ctx.exception))
@@ -213,16 +216,55 @@ class TestFaceVideoEncoder(unittest.TestCase):
     @patch("feverslop.adapters.face_video_encoder.subprocess")
     def test_encode_failure_surfaces_stderr(self, mock_subprocess):
         from feverslop.adapters.face_video_encoder import encode_face_crop_mp4
+        from feverslop.errors import FeverSlopAdaptationError
 
         mock_subprocess.run.return_value = MagicMock(
             returncode=1, stderr="Invalid input format"
         )
 
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(FeverSlopAdaptationError) as ctx:
             encode_face_crop_mp4(Path("/tmp/crops"), 24.0, Path("/tmp/out.mp4"))
 
         self.assertIn("exit 1", str(ctx.exception))
         self.assertIn("Invalid input format", str(ctx.exception))
+
+    @patch("feverslop.adapters.face_video_encoder.subprocess.run")
+    def test_encode_timeout_raises_adaptation_error(self, mock_run):
+        from feverslop.adapters.face_video_encoder import encode_face_crop_mp4
+        from feverslop.errors import FeverSlopAdaptationError
+
+        # Narrow run patch keeps subprocess.TimeoutExpired the real class
+        # for the except clause in encode_face_crop_mp4.
+        mock_run.side_effect = subprocess.TimeoutExpired(["ffmpeg"], 120)
+
+        with self.assertRaises(FeverSlopAdaptationError) as ctx:
+            encode_face_crop_mp4(Path("/tmp/crops"), 24.0, Path("/tmp/timeout_out.mp4"))
+
+        self.assertIn("timed out", str(ctx.exception))
+
+    @patch("feverslop.adapters.face_video_encoder.subprocess.run")
+    def test_encode_passes_ffmpeg_timeout_to_subprocess(self, mock_run):
+        from feverslop.adapters.face_video_encoder import encode_face_crop_mp4
+        from feverslop.adapters.video_postprocessor import FFMPEG_TIMEOUT_SECONDS
+
+        output = Path("/tmp/face_crop_timeout_param.mp4")
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        # Mock subprocess callback creates the output file so integrity check passes
+        def _fake_run(*args, **kwargs):
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"fake_mp4_data")
+            return mock_run.return_value
+
+        mock_run.side_effect = _fake_run
+
+        result = encode_face_crop_mp4(Path("/tmp/crops"), 24.0, output)
+        self.assertEqual(result, output)
+        self.assertEqual(
+            mock_run.call_args.kwargs["timeout"],
+            FFMPEG_TIMEOUT_SECONDS,
+        )
+        output.unlink(missing_ok=True)
 
 
 class TestFaceMaskAdapter(unittest.TestCase):
