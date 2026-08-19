@@ -76,7 +76,15 @@ def _scene_references(
         if source_key in seen[kind]:
             return
         seen[kind].add(source_key)
-        result.append(reference)
+
+        # Labels must be derived from the references that actually survive
+        # deduplication. The DSPy generator resolves labels in this same per-kind
+        # order, so canonicalizing here guarantees that the returned backend
+        # reference slots and the labels embedded in the generated prompt agree.
+        canonical_reference = dict(reference)
+        kind_number = 1 + sum(item["kind"] == kind for item in result)
+        canonical_reference["label"] = f"<{kind.title()} {kind_number}>"
+        result.append(canonical_reference)
         if image_path is not None and image_path.is_file():
             images.append(image_path)
 
@@ -144,7 +152,7 @@ def _scene_references(
         elif mode == "l2v" and index == 0:
             role = "last_frame"
         add_reference(_reference(
-            label=f"<Picture {sum(kind == 'picture' for kind in seen['picture']) + 1}>",
+            label="<Picture pending>",
             source=path,
             kind="picture",
             name=path.stem,
@@ -195,7 +203,6 @@ def _scene_references(
         ) | {"copy_mode": "fully_copy" if name == "full_mix" else "partially_copy"})
 
     for reference in pending_audio_references:
-        reference["label"] = f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>"
         add_reference(reference)
 
     return result, images

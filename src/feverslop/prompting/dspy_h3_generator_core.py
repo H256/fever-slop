@@ -16,6 +16,7 @@ from feverslop.prompting.dspy_h3_models import (
     ReferenceAsset,
     ReferenceKind,
     ReferenceLimits,
+    ReferenceRole,
     ReferenceVideoPrompt,
     ResolvedPromptPlan,
     ResolvedReference,
@@ -24,7 +25,6 @@ from feverslop.prompting.dspy_h3_models import (
 )
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
-
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +101,13 @@ class VideoPromptGenerator:
 
     def _plan(self, request: VideoPromptRequest, refs: list[ResolvedReference]) -> ResolvedPromptPlan:
         allowed = {ref.label for ref in refs}
-        visual_labels = {
+        # Only references that semantically define reusable visible content must
+        # be mapped to a PlannedSubject. Frame anchors, composition/style refs,
+        # camera/motion refs, etc. are valid without becoming subjects.
+        subject_reference_labels = {
             ref.label for ref in refs
             if ref.kind is ReferenceKind.PICTURE
+            and ref.role in {ReferenceRole.SUBJECT, ReferenceRole.ENVIRONMENT, ReferenceRole.GENERAL}
         }
         notes = request.notes or ""
         for attempt in range(1, 4):
@@ -136,42 +140,46 @@ class VideoPromptGenerator:
                 for label in shot.reference_labels
                 if label not in allowed
             )
-            mapped_visuals = [
+            mapped_subject_references = {
                 label
                 for subject in plan.subjects
                 for label in subject.source_references
-                if label in visual_labels
-            ]
-            unmapped_visual = visual_labels - set(mapped_visuals)
-            duplicate_visual = {
-                label for label in mapped_visuals if mapped_visuals.count(label) > 1
+                if label in subject_reference_labels
             }
-            if not unknown and not unmapped_visual and not duplicate_visual:
+            unmapped_subject_references = subject_reference_labels - mapped_subject_references
+            if not unknown and not unmapped_subject_references:
                 break
             error = "Planner reference contract mismatch: " + "; ".join((
                 f"unknown={sorted(unknown)!r}",
-                f"unmapped_visual={sorted(unmapped_visual)!r}",
-                f"multiply_mapped_visual={sorted(duplicate_visual)!r}",
+                f"unmapped_subject_references={sorted(unmapped_subject_references)!r}",
                 f"allowed={sorted(allowed)!r}",
             ))
-            if attempt >= 2 and not unknown and unmapped_visual and not duplicate_visual:
-                mapped_subjects = [
-                    subject for subject in plan.subjects
-                    if any(label in visual_labels for label in subject.source_references)
+            if attempt >= 2 and not unknown and unmapped_subject_references:
+                # Preserve every valid subject the planner already produced and
+                # only synthesize subjects for required subject/environment refs
+                # that the LM failed to serialize. A single source image may
+                # legitimately contribute to more than one subject, so duplicate
+                # source-reference usage is not an error.
+                missing_refs = [
+                    ref for ref in refs if ref.label in unmapped_subject_references
                 ]
-                missing_refs = [ref for ref in refs if ref.label in unmapped_visual]
-                mapped_subjects.extend(
-                    PlannedSubject(
-                        name=ref.name or ref.label.strip("<>"),
+                existing_names = {subject.name.strip().casefold() for subject in plan.subjects}
+                for ref in missing_refs:
+                    base_name = ref.name or ref.label.strip("<>")
+                    name = base_name
+                    suffix = 2
+                    while name.strip().casefold() in existing_names:
+                        name = f"{base_name} {suffix}"
+                        suffix += 1
+                    existing_names.add(name.strip().casefold())
+                    plan.subjects.append(PlannedSubject(
+                        name=name,
                         description=ref.description,
                         source_references=[ref.label],
-                    )
-                    for ref in missing_refs
-                )
-                plan.subjects = mapped_subjects
+                    ))
                 logger.warning(
-                    "H3 planner reference serialization failed after %d attempts; "
-                    "reconstructed visual subject mappings from reference metadata: %s",
+                    "H3 planner omitted required subject reference mappings after %d attempts; "
+                    "reconstructed them from reference metadata: %s",
                     attempt,
                     ", ".join(f"{ref.label} -> {ref.name or ref.label}" for ref in missing_refs),
                 )
@@ -180,17 +188,25 @@ class VideoPromptGenerator:
                 raise ValueError(error)
             logger.warning("H3 planner retry %d/3: %s", attempt + 1, error)
             mapping_contract = "; ".join(
-                f'{ref.label} -> subject "{ref.name or ref.label.strip("<>")}" '
+                f'{ref.label} -> reusable subject "{ref.name or ref.label.strip("<>")}" '
                 f'with role "{ref.role.value}" and description "{ref.description}"'
                 for ref in refs
-                if ref.kind is ReferenceKind.PICTURE
+                if ref.label in subject_reference_labels
+            )
+            non_subject_contract = "; ".join(
+                f'{ref.label} -> role "{ref.role.value}" (use according to its role; do not force it into a subject)'
+                for ref in refs
+                if ref.label not in subject_reference_labels
             )
             notes = (
                 f"{request.notes or ''}\n\n"
                 f"The previous plan was invalid ({error}). Retry using only the exact "
-                "reference labels listed in allowed. Map every Picture and Video to exactly "
-                "one subject; do not combine, rename, omit, or invent labels. "
-                f"Required visual mapping contract: {mapping_contract}."
+                "reference labels listed in allowed. Do not rename, omit, or invent labels. "
+                "Map each subject/environment/general picture reference to at least one reusable subject. "
+                "Do not force frame, style, composition, camera, motion, temporal, video, or audio references "
+                "into subjects; represent them through reference_usage and/or the relevant shots instead. "
+                f"Required subject mappings: {mapping_contract or 'none'}. "
+                f"Role-only references: {non_subject_contract or 'none'}."
             ).strip()
         subjects = []
         seen = set()
