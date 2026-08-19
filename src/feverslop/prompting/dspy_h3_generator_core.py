@@ -26,22 +26,95 @@ from feverslop.prompting.dspy_h3_models import (
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
 
+
 logger = logging.getLogger(__name__)
 
 _ACTIVE_VOCAL_PATTERN = re.compile(
-    r"\b(?:sings|singing|lip[- ]sync(?:s|ing)?|mouth\s+(?:moves|moving|opens?))\b",
+    r"\b(?:sing|sings|singing|lip[- ]sync(?:s|ing)?|mouth\s+(?:moves|moving|opens?))\b",
     re.IGNORECASE,
 )
 _VOCAL_NEGATION_PATTERN = re.compile(
-    r"\b(?:no|not|without|avoid|avoids|avoiding|prohibit|prohibits|forbid|forbids)\b[^.!?;]{0,80}$",
+    r"\b(?:"
+    r"no|not|never|without|"
+    r"does\s+not|doesn't|do\s+not|don't|"
+    r"is\s+not|isn't|are\s+not|aren't|"
+    r"avoid|avoids|avoiding|prohibit|prohibits|forbid|forbids|"
+    r"absent|inactive|closed|still"
+    r")\b",
     re.IGNORECASE,
 )
 
 
+_REFERENCE_LABEL_PATTERN = re.compile(r"<(?:Picture|Video|Audio)\s+\d+>")
+
+
+def _split_reference_labels(value: str) -> list[str]:
+    """Return individual H3 reference labels from an LM-serialized value.
+
+    Small instruction models sometimes serialize a list element as one string,
+    e.g. "<Picture 2>, <Picture 3>, <Picture 4>".  Treat that as three labels
+    rather than as one unknown reference.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return []
+    labels = _REFERENCE_LABEL_PATTERN.findall(text)
+    return labels if labels else [text]
+
+
+def _normalize_plan_reference_labels(plan: Any) -> None:
+    """Normalize LM reference-label serialization before contract validation."""
+    for subject in plan.subjects:
+        normalized: list[str] = []
+        for value in subject.source_references:
+            normalized.extend(_split_reference_labels(value))
+        subject.source_references = list(dict.fromkeys(normalized))
+
+    normalized_usages = []
+    for usage in plan.reference_usage:
+        labels = _split_reference_labels(usage.reference_label)
+        for label in labels:
+            normalized_usages.append(usage.model_copy(update={"reference_label": label}))
+    plan.reference_usage = normalized_usages
+
+    for shot in plan.shots:
+        normalized: list[str] = []
+        for value in shot.reference_labels:
+            normalized.extend(_split_reference_labels(value))
+        shot.reference_labels = list(dict.fromkeys(normalized))
+
+
 def _contains_active_vocal_language(text: str) -> bool:
+    """Detect an affirmative visible vocal-performance instruction.
+
+    This check is deliberately clause-local. Small instruction models often use
+    phrases such as "is not singing", "no lip-sync", or "singing is absent".
+    Those are valid instrumental constraints and must not trigger a retry.
+    """
     for match in _ACTIVE_VOCAL_PATTERN.finditer(text):
-        prefix = text[max(0, match.start() - 100):match.start()]
-        if _VOCAL_NEGATION_PATTERN.search(prefix):
+        # Restrict the negation check to the current clause/sentence so an
+        # unrelated "not" elsewhere cannot mask a real vocal instruction.
+        left_boundary = max(
+            text.rfind(".", 0, match.start()),
+            text.rfind("!", 0, match.start()),
+            text.rfind("?", 0, match.start()),
+            text.rfind(";", 0, match.start()),
+            text.rfind("\n", 0, match.start()),
+        )
+        right_candidates = [
+            pos for pos in (
+                text.find(".", match.end()),
+                text.find("!", match.end()),
+                text.find("?", match.end()),
+                text.find(";", match.end()),
+                text.find("\n", match.end()),
+            )
+            if pos >= 0
+        ]
+        right_boundary = min(right_candidates) if right_candidates else len(text)
+        clause = text[left_boundary + 1:right_boundary]
+
+        if _VOCAL_NEGATION_PATTERN.search(clause):
             continue
         return True
     return False
@@ -107,7 +180,7 @@ class VideoPromptGenerator:
         subject_reference_labels = {
             ref.label for ref in refs
             if ref.kind is ReferenceKind.PICTURE
-            and ref.role in {ReferenceRole.SUBJECT, ReferenceRole.ENVIRONMENT, ReferenceRole.GENERAL}
+            and ref.role in {ReferenceRole.SUBJECT, ReferenceRole.ENVIRONMENT}
         }
         notes = request.notes or ""
         for attempt in range(1, 4):
@@ -119,10 +192,14 @@ class VideoPromptGenerator:
                 relay_segments=request.relay_segments,
             )
             plan = prediction.plan
+            _normalize_plan_reference_labels(plan)
             if request.music_intent is not None:
                 plan.music_intent = request.music_intent
             if plan.music_intent == MusicIntent.NONE:
                 plan.non_diegetic_music = None
+            missing_music_description = bool(
+                plan.music_intent != MusicIntent.NONE and not plan.non_diegetic_music
+            )
             unknown = {
                 label
                 for subject in plan.subjects
@@ -147,19 +224,13 @@ class VideoPromptGenerator:
                 if label in subject_reference_labels
             }
             unmapped_subject_references = subject_reference_labels - mapped_subject_references
-            if not unknown and not unmapped_subject_references:
-                break
-            error = "Planner reference contract mismatch: " + "; ".join((
-                f"unknown={sorted(unknown)!r}",
-                f"unmapped_subject_references={sorted(unmapped_subject_references)!r}",
-                f"allowed={sorted(allowed)!r}",
-            ))
-            if attempt >= 2 and not unknown and unmapped_subject_references:
-                # Preserve every valid subject the planner already produced and
-                # only synthesize subjects for required subject/environment refs
-                # that the LM failed to serialize. A single source image may
-                # legitimately contribute to more than one subject, so duplicate
-                # source-reference usage is not an error.
+
+            # Subject/environment reference membership is deterministic metadata,
+            # not a creative LM decision. If the planner describes a reference in
+            # reference_usage/shots but omits the corresponding PlannedSubject,
+            # repair that serialization immediately instead of spending another
+            # LM call asking it to reproduce information we already know.
+            if unmapped_subject_references:
                 missing_refs = [
                     ref for ref in refs if ref.label in unmapped_subject_references
                 ]
@@ -177,13 +248,23 @@ class VideoPromptGenerator:
                         description=ref.description,
                         source_references=[ref.label],
                     ))
-                logger.warning(
-                    "H3 planner omitted required subject reference mappings after %d attempts; "
-                    "reconstructed them from reference metadata: %s",
-                    attempt,
+                logger.info(
+                    "H3 planner normalized required subject mappings from reference metadata: %s",
                     ", ".join(f"{ref.label} -> {ref.name or ref.label}" for ref in missing_refs),
                 )
+                mapped_subject_references.update(unmapped_subject_references)
+                unmapped_subject_references.clear()
+
+            if not unknown and not unmapped_subject_references and not missing_music_description:
                 break
+            error = "Planner contract mismatch: " + "; ".join((
+                f"unknown={sorted(unknown)!r}",
+                f"unmapped_subject_references={sorted(unmapped_subject_references)!r}",
+                f"missing_music_description={missing_music_description!r}",
+                f"music_intent={plan.music_intent.value!r}",
+                f"requested_music_intent={(request.music_intent.value if request.music_intent else '')!r}",
+                f"allowed={sorted(allowed)!r}",
+            ))
             if attempt == 3:
                 raise ValueError(error)
             logger.warning("H3 planner retry %d/3: %s", attempt + 1, error)
@@ -202,11 +283,17 @@ class VideoPromptGenerator:
                 f"{request.notes or ''}\n\n"
                 f"The previous plan was invalid ({error}). Retry using only the exact "
                 "reference labels listed in allowed. Do not rename, omit, or invent labels. "
-                "Map each subject/environment/general picture reference to at least one reusable subject. "
+                "Map each subject/environment picture reference to at least one reusable subject. "
                 "Do not force frame, style, composition, camera, motion, temporal, video, or audio references "
                 "into subjects; represent them through reference_usage and/or the relevant shots instead. "
                 f"Required subject mappings: {mapping_contract or 'none'}. "
-                f"Role-only references: {non_subject_contract or 'none'}."
+                f"Role-only references: {non_subject_contract or 'none'}. "
+                + (
+                    "The previous plan enabled non-diegetic music but omitted its description. "
+                    "If requested_music_intent is 'none', set music_intent='none' and omit non_diegetic_music. "
+                    "Otherwise keep the enabled music intent and provide a concrete non_diegetic_music description."
+                    if missing_music_description else ""
+                )
             ).strip()
         subjects = []
         seen = set()
@@ -254,6 +341,7 @@ class VideoPromptGenerator:
                 "overall_soundscape",
                 "non_diegetic_music",
             ))
+            detailed_description = str(getattr(output, "detailed_description", "") or "")
             used_subjects = set(re.findall(r"<Subject\s+\d+>", rendered_fields))
             used_references = set(re.findall(r"<(?:Picture|Video|Audio)\s+\d+>", rendered_fields))
             retention = list(getattr(output, "retention_analysis", ()) or ())
@@ -269,9 +357,12 @@ class VideoPromptGenerator:
                 str(segment.get("state") or "").strip().lower() == "instrumental"
                 for segment in request.relay_segments
             )
+            # Only visible performance instructions belong in this contract check.
+            # Summary/soundscape/music may legitimately mention vocals or singing as
+            # source-audio context without instructing the on-screen subject to sing.
             active_vocal_language = bool(
                 fully_instrumental
-                and _contains_active_vocal_language(rendered_fields)
+                and _contains_active_vocal_language(detailed_description)
             )
             if not any((
                 undefined_subjects,
