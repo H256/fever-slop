@@ -24,13 +24,77 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         analysis: ImageAnalysis = dspy_module.OutputField()
 
     class BuildPromptPlan(dspy_module.Signature):
-        """Create a strict plan using only supplied references.
+        """Create a strict, generation-ready video plan from the supplied user instruction,
+        references, relay segments, and metadata.
+
+        The plan is shared by all generation modes. Do not assume full-reference output
+        syntax here. Plan the requested video faithfully; the downstream renderer will
+        apply the mode-specific output guide.
+
+        Preserve explicit input requirements instead of summarizing them away.
+
+        Priority:
+        1. explicit user and relay-segment directions,
+        2. subject identity and appearance,
+        3. clothing, accessories, props, and environment,
+        4. requested action and performance direction,
+        5. composition and camera direction,
+        6. temporal and shot continuity,
+        7. optional stylistic elaboration.
+
+        Treat supplied references according to their declared roles. A reference role is
+        a semantic constraint, not merely metadata.
+
+        For subject references, preserve identity-critical visible attributes such as
+        face, hair, body characteristics, clothing, footwear, accessories, and props
+        when provided.
+
+        For environment references, preserve defining spatial and visual characteristics.
+
+        For composition, motion, camera, keyframe, first-frame, last-frame, storyboard,
+        temporal-structure, edit-source, continuation, and audio references, preserve
+        the concrete effect appropriate to that role.
+
+        Do not invent, rename, renumber, merge, or silently omit reference labels.
+
+        Directing instructions are executable constraints. Preserve concrete information
+        such as:
+        - who is visible,
+        - subject position and orientation,
+        - pose and action,
+        - action order,
+        - required props,
+        - wardrobe state,
+        - facial/performance state,
+        - environment,
+        - framing,
+        - camera angle and movement,
+        - movement direction and speed,
+        - lighting,
+        - timing and shot boundaries.
+
+        Do not replace specific directions with generic equivalents. For example,
+        "slow truck right" must not become "cinematic camera movement", and a specified
+        outfit must not become "casual clothing".
+
+        If relay_segments are supplied, preserve their temporal ordering and attach each
+        action, prop, state, and camera instruction to the corresponding planned shot.
+
+        Across shots, preserve identity, wardrobe, props, environment, spatial state, and
+        action continuity unless the input explicitly changes them.
+
+        When strict_fidelity=true, explicit source information is authoritative. Creativity
+        may fill unspecified details but must not overwrite specified ones.
+
+        Before returning the plan, verify internally that no explicit action, outfit,
+        prop, environment, camera instruction, composition constraint, or relevant
+        reference role has been lost.
 
         `music_intent=none` means no audience-only score and requires
-        `non_diegetic_music` to be omitted or N/A. For `generate` or
-        `reference`, provide a concrete non-diegetic music description.
-        Scene vocals, instruments, and referenced soundtrack audio belong in
-        the detailed description and audio references, not in this field.
+        `non_diegetic_music` to be omitted or N/A. For `generate` or `reference`,
+        provide a concrete non-diegetic music description. Scene vocals, instruments,
+        and referenced soundtrack audio belong in the detailed description and audio
+        references, not in this field.
         """
         mode: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
@@ -43,7 +107,43 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         plan: PromptPlan = dspy_module.OutputField()
 
     class RenderBasePrompt(dspy_module.Signature):
-        """Render a production-ready MiniMax base prompt; the guide is authoritative."""
+        """Render a production-ready MiniMax base-mode prompt from the resolved plan.
+
+        The supplied base-mode guide is authoritative for output syntax and mode-specific
+        formatting. The resolved plan is authoritative for the requested visual content,
+        actions, continuity, composition, and camera direction.
+
+        Do not summarize away concrete plan constraints.
+
+        Preserve explicitly specified subject appearance, clothing, accessories, props,
+        environment, pose, action sequence, composition, framing, camera angle, camera
+        motion, lighting, and timing.
+
+        For T2VA, follow the guide's text-to-video structure directly. For I2VA, FL2VA,
+        and L2VA, preserve the exact first-frame, first-and-last-frame, or last-frame
+        relationship defined by the plan and guide. Do not treat frame anchors as generic
+        visual inspiration.
+
+        When a reference image determines an initial or final state, preserve identity,
+        clothing, colors, key objects, spatial relationships, pose, and composition as
+        required by that mode. Describe the visible transition path rather than replacing
+        it with a static summary.
+
+        Do not replace specific instructions with generic cinematic prose. Preserve
+        distinctions such as pan vs. truck, tilt vs. pedestal, zoom vs. push/dolly, and
+        static vs. moving camera whenever the plan specifies them.
+
+        Across shots or temporal phases, preserve wardrobe, props, environment, identity,
+        and physical state unless an explicit change is requested.
+
+        When strict_fidelity=true, the plan's concrete requirements are hard constraints.
+        Creativity may elaborate unspecified details but must not override specified ones.
+
+        Before returning the result, internally verify that every explicit action, wardrobe
+        detail, prop, environment constraint, composition requirement, frame-anchor
+        relationship, and camera instruction from the plan is represented in the generated
+        prompt.
+        """
         guide: str = dspy_module.InputField()
         mode: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
@@ -56,7 +156,99 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         result: BaseVideoPrompt = dspy_module.OutputField()
 
     class RenderReferencePrompt(dspy_module.Signature):
-        """Render all generated portions of a MiniMax full-reference prompt."""
+        """Render a valid MiniMax H3 full-reference prompt from the supplied resolved plan.
+
+        The Full-Reference guide is authoritative for output syntax, label semantics,
+        section structure, dialogue formatting, retention markers, and audio handling.
+        The resolved plan is authoritative for what must happen in the generated video.
+
+        Your task is to compile the plan into explicit, generation-ready H3 prose without
+        losing constraints. Do not reinterpret or simplify concrete requirements merely
+        to make the prose shorter, smoother, or more cinematic.
+
+        Hard rule: no silent information loss. Never silently omit or generalize subject
+        identity, face, hairstyle, clothing, footwear, accessories, props, environment
+        identity, spatial layout, pose, action, action order, interactions, performance
+        state, composition, framing, camera angle, camera motion, movement direction,
+        timing, lighting, continuity state, or reference role.
+
+        Use this precedence:
+        1. explicit user instruction and relay-segment direction,
+        2. resolved plan,
+        3. supplied reference descriptions and roles,
+        4. Full-Reference guide,
+        5. optional cinematic elaboration.
+
+        Every defined <Subject N> that appears in the target must be concretely anchored
+        in detailed_description. At its first appearance, state the exact label, relevant
+        identity and appearance characteristics, current clothing and important accessories
+        when defined, its position or composition in frame, and its current pose/action/state.
+        Do not merely write the label and assume the reference will supply all details.
+
+        Treat clothing, footwear, jewelry, accessories, makeup, and wearable props as
+        persistent subject state. Establish concrete wardrobe at the first clear appearance
+        and preserve it across later shots unless an explicit wardrobe change occurs. Do not
+        replace concrete wardrobe with vague phrases such as "same outfit", "reference
+        outfit", or "casual clothing".
+
+        Referenced environments are persistent anchors. Instantiate identity-critical
+        architecture, room geometry, materials, furniture, distinctive objects, landscape
+        features, lighting sources, and spatial layout where defined. Do not reduce a
+        concrete referenced environment to a generic location.
+
+        Translate directing instructions into literal visible shot behavior. For each shot,
+        preserve all relevant planned information: framing, camera angle, visible subjects,
+        subject position and orientation, wardrobe/appearance state, initial pose/state,
+        exact action progression, required props and interactions, facial/performance state,
+        environment, camera movement including direction/speed/amplitude when specified,
+        lighting/atmosphere, and the ending state relevant to continuity.
+
+        Preserve left/right, toward/away, up/down, entering/exiting direction, hand choice,
+        posture, and prop interaction whenever specified. Do not collapse action sequences
+        into a plot summary.
+
+        When relay_segments are present, treat them as binding temporal direction. Represent
+        each segment in the corresponding shot or temporal portion. Do not skip a relay
+        instruction, move its action into another segment, replace it with a merely similar
+        action, omit a required prop, change instrumental/vocal state, or invent a conflicting
+        action. If a relay segment contains a preserved source instruction, action, or prop
+        requirement, keep it attached to that segment.
+
+        Preserve explicit camera semantics. Distinguish pan from truck, tilt from pedestal or
+        crane, zoom from physical push/dolly, arc/orbit from pan, static from moving camera,
+        and rack focus from camera motion. Preserve direction, speed, amplitude, tracking, and
+        framing behavior when specified. Do not reduce a specific camera instruction to
+        generic prose such as "cinematic camera movement".
+
+        Apply every reference according to its role: subject preserves visible identity and
+        attributes; environment preserves location identity and layout; style transfers only
+        stylistic characteristics; composition controls framing/spatial arrangement; frame
+        roles provide concrete shot anchors; motion controls referenced movement/action;
+        camera controls camera behavior; temporal_structure controls ordering/cuts/pacing;
+        edit_source and continuation preserve the source-video relationship; audio roles
+        preserve their exact copy/reference relationship.
+
+        A reference is not successfully used merely because its label appears. Its assigned
+        characteristics must affect the target description. When several constraints apply to
+        one shot, combine them in that shot rather than leaving important anchors only in
+        summary or retention_analysis.
+
+        Emit retention entries as required by the guide and resolved plan. Retention claims
+        must agree with what is actually written in detailed_description; do not claim full
+        preservation when defining attributes were replaced or omitted.
+
+        Before returning, audit continuity across shots. Unless explicitly changed, preserve
+        person identity, face, hair, clothing, accessories, props, environment, spatial
+        relationships, physical/action state, and lighting/time state. A cut does not reset
+        these attributes.
+
+        Finally, verify every planned shot and supplied reference: all involved subjects are
+        present, required actions occur in order, props are present and used correctly,
+        clothing and environment constraints are retained, composition/framing and camera
+        instructions are retained, timing/relay instructions are retained, and relevant
+        reference labels are actually applied. A label-only mention does not pass this audit.
+        Repair missing coverage before returning. Do not expose the internal audit.
+        """
         guide: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
         plan: ResolvedPromptPlan = dspy_module.InputField()
