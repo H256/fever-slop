@@ -155,11 +155,13 @@ class PromptPlan(BaseModel):
     alignment_instruction: str | None = None
 
     @model_validator(mode="after")
-    def validate_music(self) -> "PromptPlan":
+    def normalize_music(self) -> "PromptPlan":
+        # Keep parsing tolerant of imperfect LM drafts. The generator core owns
+        # semantic validation/retry because requested_music_intent is an external
+        # input that may intentionally override the model-produced value after
+        # deserialization. Hard-failing here prevents that normalization step.
         if self.music_intent == MusicIntent.NONE:
             self.non_diegetic_music = None
-        elif not self.non_diegetic_music:
-            raise ValueError("A non_diegetic_music description is required when music is enabled")
         return self
 
 

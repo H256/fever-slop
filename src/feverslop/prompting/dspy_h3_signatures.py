@@ -90,10 +90,13 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         prop, environment, camera instruction, composition constraint, or relevant
         reference role has been lost.
 
-        `music_intent=none` means no audience-only score and requires
-        `non_diegetic_music` to be omitted or N/A. For `generate` or `reference`,
-        provide a concrete non-diegetic music description. Scene vocals, instruments,
-        and referenced soundtrack audio belong in the detailed description and audio
+        `requested_music_intent` is authoritative when it is non-empty. In particular,
+        `requested_music_intent=none` means the soundtrack/scene audio is already
+        supplied elsewhere and you MUST return `music_intent=none` with
+        `non_diegetic_music` omitted or null. Do not reinterpret referenced song audio
+        as non-diegetic music. For requested/enabled `generate` or `reference`, provide
+        a concrete non-diegetic music description. Scene vocals, instruments, and
+        referenced soundtrack audio belong in the detailed description and audio
         references, not in this field.
         """
         mode: str = dspy_module.InputField()
