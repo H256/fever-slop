@@ -13,6 +13,7 @@ from feverslop.application.reference_workspace import (
     SaveSceneAssignmentsUseCase,
 )
 from feverslop.domain.reference_workspace import (
+    PropInteraction,
     ReferenceAsset,
     ReferenceKind,
     ReferenceWorkspaceSnapshot,
@@ -250,6 +251,8 @@ def _assignment_to_dict(a: SceneReferenceAssignment) -> dict[str, Any]:
         "background_ids": list(a.background_ids),
         "style_ids": list(a.style_ids),
         "actor_look_ids": dict(a.actor_look_ids or {}),
+        "prop_ids": list(a.prop_ids),
+        "prop_interactions": [item.to_dict() for item in a.prop_interactions],
     }
 
 
@@ -261,6 +264,8 @@ def _assignment_from_dict(d: dict[str, Any]) -> SceneReferenceAssignment:
         background_ids=tuple(d.get("background_ids") or ()),
         style_ids=tuple(d.get("style_ids") or ()),
         actor_look_ids=dict(d.get("actor_look_ids") or {}),
+        prop_ids=tuple(d.get("prop_ids") or ()),
+        prop_interactions=tuple(PropInteraction.from_dict(item) for item in d.get("prop_interactions") or []),
     )
 
 

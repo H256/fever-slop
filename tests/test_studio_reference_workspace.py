@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.domain.reference_workspace import (
+    PropInteraction,
     ReferenceAsset,
     ReferenceKind,
     ReferenceProvenance,
@@ -23,15 +24,18 @@ from feverslop.studio.reference_workspace_service import (
 
 
 class _MockLibrary:
-    def __init__(self):
+    def __init__(self, props: list[str] | None = None):
         self.snapshots: dict[str, ReferenceWorkspaceSnapshot] = {}
         self.assignments_data: dict[str, list[dict]] = {}
         self.import_results: dict[str, ReferenceAsset] = {}
+        self._props = list(props or [])
+        self.saved_assignments: dict[str, tuple] = {}
 
     def load(self, project_id: str) -> ReferenceWorkspaceSnapshot:
         return self.snapshots.get(project_id, ReferenceWorkspaceSnapshot(assets=(), assignments=()))
 
     def save_assignments(self, project_id: str, assignments: tuple[SceneReferenceAssignment, ...], expected_revision: str) -> str:
+        self.saved_assignments[project_id] = assignments
         return "r2"
 
     def add_asset(self, project_id: str, asset: ReferenceAsset) -> ReferenceAsset:
@@ -45,6 +49,9 @@ class _MockLibrary:
 
     def get_background_ids(self, project_id: str) -> list[str]:
         return []
+
+    def get_known_prop_ids(self, project_id: str) -> list[str]:
+        return list(self._props)
 
     def get_max_scene_actors(self, project_id: str) -> int:
         return 4
@@ -74,6 +81,30 @@ class AssignmentSerializationTests(unittest.TestCase):
         a = SceneReferenceAssignment(scene_number=1, actor_ids=("hero",))
         d = _assignment_to_dict(a)
         self.assertEqual({}, d["actor_look_ids"])
+
+    def test_roundtrip_preserves_props(self):
+        a = SceneReferenceAssignment(
+            scene_number=3,
+            actor_ids=("hero",),
+            prop_ids=("guitar",),
+            prop_interactions=(PropInteraction(
+                actor_id="hero", prop_id="guitar", action="holds", relationship="grabs",
+            ),),
+        )
+        d = _assignment_to_dict(a)
+        self.assertEqual(["guitar"], d["prop_ids"])
+        self.assertEqual(
+            [{"actor_id": "hero", "prop_id": "guitar", "action": "holds", "relationship": "grabs"}],
+            d["prop_interactions"],
+        )
+        restored = _assignment_from_dict(d)
+        self.assertEqual(a.prop_ids, restored.prop_ids)
+        self.assertEqual(a.prop_interactions, restored.prop_interactions)
+
+    def test_from_dict_without_prop_keys(self):
+        restored = _assignment_from_dict({"scene_number": 1})
+        self.assertEqual((), restored.prop_ids)
+        self.assertEqual((), restored.prop_interactions)
 
 
 class AssetDictTests(unittest.TestCase):
@@ -162,6 +193,48 @@ class ReferenceWorkspaceServiceTests(unittest.TestCase):
         ), "r1")
         self.assertTrue(result.success)
         self.assertEqual("r2", result.data["new_revision"])
+
+    def test_save_assignments_roundtrip_preserves_props(self):
+        self._mock = _MockLibrary(props=["guitar"])
+        hero = ReferenceAsset(id="hero", kind=ReferenceKind.ACTOR, label="Hero")
+        lab = ReferenceAsset(id="lab", kind=ReferenceKind.LOCATION, label="Lab")
+        self._mock.snapshots["proj"] = ReferenceWorkspaceSnapshot(
+            assets=(hero, lab),
+            assignments=(SceneReferenceAssignment(scene_number=3, actor_ids=("hero",)),),
+            revision="r1",
+            project_id="proj",
+        )
+        svc = self._service_with_mock()
+        result = svc.save_assignments("proj", (
+            {
+                "scene_number": 5,
+                "actor_ids": ["hero"],
+                "prop_ids": ["guitar"],
+                "prop_interactions": [{"actor_id": "hero", "prop_id": "guitar", "action": "holds"}],
+            },
+        ), "r1")
+        self.assertTrue(result.success)
+        self.assertEqual("r2", result.data["new_revision"])
+        saved = self._mock.saved_assignments["proj"]
+        a = [item for item in saved if item.scene_number == 5][0]
+        self.assertEqual(("guitar",), a.prop_ids)
+        self.assertEqual(
+            (PropInteraction(actor_id="hero", prop_id="guitar", action="holds"),),
+            a.prop_interactions,
+        )
+
+    def test_save_assignments_unknown_prop_rejected(self):
+        svc = self._service_with_mock()
+        result = svc.save_assignments("proj", (
+            {
+                "scene_number": 5,
+                "actor_ids": ["hero"],
+                "prop_ids": ["guitar"],
+            },
+        ), "r1")
+        self.assertFalse(result.success)
+        self.assertEqual("validation_errors", result.error.code if result.error else None)
+        self.assertNotIn("proj", self._mock.saved_assignments)
 
     def test_import_asset(self):
         svc = self._service_with_mock()
