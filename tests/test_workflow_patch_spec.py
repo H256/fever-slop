@@ -144,5 +144,72 @@ class WorkflowPatchSpecTests(unittest.TestCase):
         self.assertNotIn("1", patcher.workflow)
         self.assertIn("2", patcher.workflow)
 
+    def test_insert_node_between_same_node_by_title_raises(self):
+        """Inserting between a node and itself raises before any mutation."""
+        patcher = WorkflowPatcher({
+            "1": {"inputs": {"model": ["9", 0]}, "_meta": {"title": "#MODEL"}},
+        })
+        spec = [
+            {
+                "op": "insert_node_between",
+                "new_node_id": "2",
+                "node": {"class_type": "LoraLoader", "inputs": {"strength_model": 1.0}},
+                "source": {"title": "#MODEL", "output": 0},
+                "target": {"title": "#MODEL", "input": "model"},
+                "new_node_input": "model",
+                "new_node_output": 0,
+            },
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            patcher.apply_patch_spec(spec)
+        self.assertIn("Cannot insert node between a node and itself", str(ctx.exception))
+        self.assertNotIn("2", patcher.get())
+        self.assertEqual({"model": ["9", 0]}, patcher.get()["1"]["inputs"])
+
+    def test_insert_node_between_same_node_by_id_and_title_raises(self):
+        """Mixed addressing modes that resolve to the same node raise."""
+        patcher = WorkflowPatcher({
+            "1": {"inputs": {"model": ["9", 0]}, "_meta": {"title": "#MODEL"}},
+        })
+        spec = [
+            {
+                "op": "insert_node_between",
+                "new_node_id": "2",
+                "node": {"class_type": "LoraLoader", "inputs": {"strength_model": 1.0}},
+                "source": {"id": "1"},
+                "target": {"node_id": "1", "input": "model"},
+                "new_node_input": "model",
+                "new_node_output": 0,
+            },
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            patcher.apply_patch_spec(spec)
+        self.assertIn("Cannot insert node between a node and itself", str(ctx.exception))
+        self.assertNotIn("2", patcher.get())
+        self.assertEqual({"model": ["9", 0]}, patcher.get()["1"]["inputs"])
+
+    def test_insert_node_between_distinct_nodes_by_id_succeeds(self):
+        """Distinct source and target ids (mixed addressing) still insert."""
+        patcher = WorkflowPatcher({
+            "1": {"inputs": {}, "_meta": {"title": "#MODEL"}},
+            "3": {"inputs": {"model": ["1", 0]}, "_meta": {"title": "#SAMPLER"}},
+        })
+        patcher.apply_patch_spec(
+            [
+                {
+                    "op": "insert_node_between",
+                    "new_node_id": "2",
+                    "node": {"class_type": "LoraLoader", "inputs": {"strength_model": 1.0}},
+                    "source": {"id": "1"},
+                    "target": {"node_id": "3", "input": "model"},
+                    "new_node_input": "model",
+                    "new_node_output": 0,
+                }
+            ],
+            {},
+        )
+        self.assertEqual(["1", 0], patcher.get()["2"]["inputs"]["model"])
+        self.assertEqual(["2", 0], patcher.get()["3"]["inputs"]["model"])
+
 if __name__ == "__main__":
     unittest.main()
