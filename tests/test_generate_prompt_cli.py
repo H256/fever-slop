@@ -1,9 +1,11 @@
 import json
+import os
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 from tools import generate_prompt
@@ -104,7 +106,6 @@ class GeneratePromptCliTests(unittest.TestCase):
                     "--description", "A dancer.",
                     "--reference", '{"kind":"picture","source":"style.png","role":"style"}',
                     "--duration", "5",
-                    "--api-key", "injected-secret",
                 ],
                 config_loader=lambda path: FakeConfig(),
                 client_factory=client_factory,
@@ -115,7 +116,7 @@ class GeneratePromptCliTests(unittest.TestCase):
         self.assertEqual(0, result)
         self.assertEqual(FakeResult.rendered_prompt + "\n", stdout.getvalue())
         self.assertEqual("", stderr.getvalue())
-        self.assertEqual("injected-secret", calls["client"]["api_key"])
+        self.assertEqual("config-secret", calls["client"]["api_key"])
         self.assertEqual("http://config.example/v1", calls["client"]["base_url"])
         self.assertEqual(("minimax-h3-t2v", "A dancer.", {
             "references": [{"kind": "picture", "source": "style.png", "role": "style"}],
@@ -128,17 +129,88 @@ class GeneratePromptCliTests(unittest.TestCase):
     def test_invalid_model_type_returns_concise_error_without_secret(self):
         stdout = StringIO()
         stderr = StringIO()
-        with redirect_stdout(stdout), redirect_stderr(stderr):
-            result = generate_prompt.main([
-                "--model-type", "invalid-model",
-                "--description", "A dancer.",
-                "--api-key", "never-print-this-secret",
-            ])
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "never-print-this-secret"}):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = generate_prompt.main([
+                    "--model-type", "invalid-model",
+                    "--description", "A dancer.",
+                ])
 
         self.assertNotEqual(0, result)
         self.assertEqual("", stdout.getvalue())
         self.assertIn("invalid-model", stderr.getvalue())
         self.assertNotIn("never-print-this-secret", stderr.getvalue())
+
+    def test_main_prefers_llm_api_key_environment_over_app_config(self):
+        calls = {}
+
+        def client_factory(**kwargs):
+            calls["client"] = kwargs
+            return object()
+
+        class RecordingService:
+            def __init__(self, generator):
+                calls["service_generator"] = generator
+
+            def generate(self, model_type, description, **kwargs):
+                return FakeResult()
+
+        stdout = StringIO()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"llm": {"api_key": "config-secret"}}),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"LLM_API_KEY": "env-secret"}):
+                with redirect_stdout(stdout):
+                    result = generate_prompt.main(
+                        [
+                            "--model-type", "minimax-h3-t2v",
+                            "--description", "A dancer.",
+                            "--app-config", str(config_path),
+                        ],
+                        client_factory=client_factory,
+                        generator_factory=lambda client: object(),
+                        service_factory=RecordingService,
+                    )
+
+        self.assertEqual(0, result)
+        self.assertEqual(FakeResult.rendered_prompt + "\n", stdout.getvalue())
+        self.assertEqual("env-secret", calls["client"]["api_key"])
+        self.assertEqual("http://localhost:8080/v1", calls["client"]["base_url"])
+        self.assertEqual("default", calls["client"]["model"])
+
+    def test_error_message_redacts_environment_and_config_secrets(self):
+        def client_factory(**kwargs):
+            raise RuntimeError("connect failed never-print-this-secret config-secret")
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "never-print-this-secret"}):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = generate_prompt.main(
+                    [
+                        "--model-type", "minimax-h3-t2v",
+                        "--description", "A dancer.",
+                    ],
+                    config_loader=lambda path: FakeConfig(),
+                    client_factory=client_factory,
+                )
+
+        self.assertNotEqual(0, result)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[redacted]", stderr.getvalue())
+        self.assertNotIn("never-print-this-secret", stderr.getvalue())
+        self.assertNotIn("config-secret", stderr.getvalue())
+
+    def test_parser_rejects_legacy_api_key_flag(self):
+        with self.assertRaises(SystemExit):
+            generate_prompt.build_arg_parser().parse_args([
+                "--model-type", "minimax-h3-t2v",
+                "--description", "A dancer.",
+                "--api-key", "x",
+            ])
 
 
 if __name__ == "__main__":

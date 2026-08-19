@@ -321,6 +321,31 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     )
 
 
+
+def _h3_audio_references(h3_entry: dict | None) -> list[dict]:
+    """Return H3 audio references in canonical <Audio N> slot order."""
+    if not h3_entry:
+        return []
+    refs = h3_entry.get("references") or []
+    audio_refs = [
+        ref for ref in refs
+        if isinstance(ref, dict) and str(ref.get("kind") or "").strip().lower() == "audio"
+    ]
+
+    def slot_number(ref: dict) -> int:
+        match = re.fullmatch(r"<Audio\s+(\d+)>", str(ref.get("label") or "").strip())
+        return int(match.group(1)) if match else 10**9
+
+    return sorted(audio_refs, key=slot_number)
+
+
+def _render_audio_path(path_value: str | Path, project_dir: Path | None) -> str:
+    """Render an audio path using the plan's project-relative convention."""
+    path = Path(path_value)
+    if project_dir is not None:
+        return _project_relative_path(path, project_dir)
+    return path.as_posix()
+
 def build_render_plan(
     scene_prompts_json: str | Path,
     ltx_prompt_relay_json: str | Path,
@@ -479,12 +504,54 @@ def build_render_plan(
         if references:
             render_scene["references"] = references
         h3_entry = h3_by_segment.get(scene.get("segment_id", ""))
+        canonical_h3_audio_refs = _h3_audio_references(h3_entry)
         if h3_entry and h3_entry.get("prompt"):
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
             if h3_entry.get("performance_timing"):
                 render_scene["performance_timing"] = h3_entry["performance_timing"]
+
         # -- stem audio paths (MiniMax H3 R2V) --
-        if stem_list is not None and stem_files is not None:
+        # If H3 prompts already exist, their resolved <Audio N> references are
+        # authoritative. Do not independently re-select stems here, otherwise
+        # the render plan can drift from the prompt's audio-slot count/order.
+        if canonical_h3_audio_refs:
+            resolved_stem_paths: dict[str, str] = {}
+            ordered_audio_paths: list[str] = []
+            stem_tags: dict[str, str] = {}
+
+            for audio_ref in canonical_h3_audio_refs:
+                source = str(audio_ref.get("source") or "").strip()
+                if not source:
+                    raise FeverSlopDataError(
+                        f"Scene {scene_number} H3 audio reference "
+                        f"{audio_ref.get('label')!r} has no source"
+                    )
+
+                rendered_path = _render_audio_path(source, project_dir)
+                name = str(audio_ref.get("name") or audio_ref.get("label") or "audio").strip()
+                unique_name = name
+                suffix = 2
+                while unique_name in resolved_stem_paths:
+                    unique_name = f"{name}_{suffix}"
+                    suffix += 1
+
+                resolved_stem_paths[unique_name] = rendered_path
+                ordered_audio_paths.append(rendered_path)
+                stem_tags[rendered_path] = str(
+                    audio_ref.get("description")
+                    or audio_ref.get("copy_mode")
+                    or f"{name} audio reference"
+                )
+
+            render_scene["stem_audio"] = {
+                "stems": list(resolved_stem_paths.keys()),
+                "paths": resolved_stem_paths,
+            }
+            refs = render_scene.setdefault("references", {})
+            refs["reference_audio_paths"] = ordered_audio_paths
+            refs["_stem_audio_tags"] = stem_tags
+
+        elif stem_list is not None and stem_files is not None:
             available_stems = set(stem_files)
             if input_audio is not None:
                 available_stems.add("full_mix")
