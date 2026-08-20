@@ -611,6 +611,80 @@ class BuildRenderPlanTests(unittest.TestCase):
 
             self.assertEqual([60, 60, 59], [scene["frame_count"] for scene in plan])
 
+    def test_duration_seconds_is_derived_from_scene_span_not_prompt_duration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+            scene_prompts_path.write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "segment_id": "s1",
+                        "type": "instrumental",
+                        "start": 0.0,
+                        "end": 2.0,
+                        "duration": 3.0,
+                        "zimage_prompt": "z1",
+                        "ltx_base_prompt": "scene one",
+                    },
+                ]),
+                encoding="utf-8",
+            )
+            relay_path.write_text(
+                json.dumps([{"scene": 1, "prompt_relay": []}]),
+                encoding="utf-8",
+            )
+
+            build_render_plan(
+                scene_prompts_json=scene_prompts_path,
+                ltx_prompt_relay_json=relay_path,
+                output_json_file=output_path,
+                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+            )
+
+            entry = json.loads(output_path.read_text(encoding="utf-8"))[0]
+            self.assertEqual(entry["abs_start_seconds"], 0.0)
+            self.assertEqual(entry["abs_end_seconds"], 2.0)
+            self.assertEqual(entry["duration_seconds"], 2.0)
+
+    def test_rejects_non_positive_scene_span(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+            scene_prompts_path.write_text(
+                json.dumps([
+                    {
+                        "scene": 1,
+                        "segment_id": "s1",
+                        "type": "instrumental",
+                        "start": 5.0,
+                        "end": 5.0,
+                        "duration": 1.0,
+                        "zimage_prompt": "z1",
+                        "ltx_base_prompt": "scene one",
+                    },
+                ]),
+                encoding="utf-8",
+            )
+            relay_path.write_text(
+                json.dumps([{"scene": 1, "prompt_relay": []}]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "non-positive scene span"):
+                build_render_plan(
+                    scene_prompts_json=scene_prompts_path,
+                    ltx_prompt_relay_json=relay_path,
+                    output_json_file=output_path,
+                    video_settings=VideoSettings(fps=24, width=1280, height=704),
+                    artifact_store=JsonArtifactStore(),
+                )
+
 
 class FrameBoundaryTests(unittest.TestCase):
     def test_clamp_relay_segment_exclusive_frame_end(self):

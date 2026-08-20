@@ -10,7 +10,7 @@ def _write_overlapping_plan(root):
     plan = root / "plan.json"
     plan.write_text(json.dumps([
         {"scene": 1, "duration_seconds": 2.0, "abs_start_seconds": 0.0},
-        {"scene": 2, "duration_seconds": 2.0, "abs_start_seconds": 1.0},
+        {"scene": 2, "duration_seconds": 0.4, "abs_start_seconds": 0.5},
     ]), encoding="utf-8")
     clips = [root / "scene_0001.mp4", root / "scene_0002.mp4"]
     for clip in clips:
@@ -168,7 +168,7 @@ class OpenShotExporterTests(unittest.TestCase):
                 )
 
         self.assertEqual(str(openshot_error.exception), str(mlt_error.exception))
-        self.assertIn("scene 2 starts at frame 24, before frame 48", str(openshot_error.exception))
+        self.assertIn("scene 2 ends at frame 22, before frame 48", str(openshot_error.exception))
 
     def test_tolerates_one_frame_boundary_rounding_difference(self):
         from feverslop.application.openshot_exporter import export_render_plan_to_openshot
@@ -196,6 +196,32 @@ class OpenShotExporterTests(unittest.TestCase):
             project = json.loads((root / "movie.osp").read_text(encoding="utf-8"))
             self.assertEqual([clip["position"] for clip in project["clips"]], [0.0, 23 / 24])
             self.assertEqual(project["duration"], 23 / 24 + 1.0)
+
+    def test_repairs_accumulated_rounding_drift_with_absolute_plan(self):
+        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0217, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.0433, "abs_start_seconds": 1.02},
+                {"scene": 3, "duration_seconds": 1.0, "abs_start_seconds": 2.0616},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4", root / "three.mp4"]
+            for clip in clips:
+                clip.touch()
+
+            export_render_plan_to_openshot(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "movie.osp",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            self.assertTrue((root / "movie.osp").is_file())
 
     def test_mlt_orders_absolute_entries_by_timeline_position(self):
         from feverslop.application.mlt_exporter import export_render_plan_to_mlt
@@ -368,6 +394,37 @@ class MltExporterTests(unittest.TestCase):
                 fps=24,
             )
 
+    def test_repairs_accumulated_rounding_drift_with_absolute_plan(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0217, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.0433, "abs_start_seconds": 1.02},
+                {"scene": 3, "duration_seconds": 1.0, "abs_start_seconds": 2.0616},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4", root / "three.mp4"]
+            for clip in clips:
+                clip.touch()
+
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            root_element = ET.parse(root / "timeline.mlt").getroot()
+            video_playlist = root_element.find("playlist[@id='playlist0']")
+            entries = video_playlist.findall("entry")
+            self.assertEqual([entry.attrib["in"] for entry in entries], ["0", "0", "0"])
+            self.assertEqual([entry.attrib["out"] for entry in entries], ["24", "24", "22"])
+            self.assertEqual(root_element.find("tractor[@id='main']").attrib["out"], "72")
+
     def test_rejects_mismatched_plan_and_clip_counts(self):
         from feverslop.application.mlt_exporter import export_render_plan_to_mlt
 
@@ -439,7 +496,7 @@ class MltExporterTests(unittest.TestCase):
                 "Timeline export cannot represent overlapping render-plan entries: ",
                 message,
             )
-            self.assertIn("scene 2 starts at frame 24, before frame 48", message)
+            self.assertIn("scene 2 ends at frame 22, before frame 48", message)
             self.assertIn(f"Render plan: {plan}", message)
 
 
