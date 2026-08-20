@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import shutil
 
+from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX, SCENE_PROMPT_WORD_COUNT_MIN
 from feverslop.domain.full_auto import GeneratedSong, ProjectScaffoldResult, SongSpec
 from feverslop.domain.security import guard_path_under_root, is_safe_identifier, sanitize_path_component
 
@@ -110,8 +111,8 @@ class LocalProjectScaffold:
                         "outfit_rules": "",
                         "prompt_structure": "",
                         "list_handling": "",
-                        "word_count_min": 40,
-                        "word_count_max": 50,
+                        "word_count_min": SCENE_PROMPT_WORD_COUNT_MIN,
+                        "word_count_max": SCENE_PROMPT_WORD_COUNT_MAX,
                     },
                     "lora_1": {
                         "enabled": False,

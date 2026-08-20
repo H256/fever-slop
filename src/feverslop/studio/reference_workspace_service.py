@@ -13,6 +13,7 @@ from feverslop.application.reference_workspace import (
     SaveSceneAssignmentsUseCase,
 )
 from feverslop.domain.reference_workspace import (
+    PropInteraction,
     ReferenceAsset,
     ReferenceKind,
     ReferenceWorkspaceSnapshot,
@@ -110,16 +111,20 @@ class ReferenceWorkspaceService:
         background_ids: tuple[str, ...] = (),
         style_ids: tuple[str, ...] = (),
         actor_look_ids: dict[str, str] | None = None,
+        prop_ids: tuple[str, ...] = (),
+        prop_interactions: tuple[dict[str, Any], ...] = (),
     ) -> CommandResult:
         try:
             assignment = SceneReferenceAssignment(
                 scene_number=scene_number,
                 actor_ids=actor_ids,
                 location_ids=location_ids,
-                background_ids=background_ids or (),
-                style_ids=style_ids,
-                actor_look_ids=actor_look_ids,
-            )
+                  background_ids=background_ids or (),
+                  style_ids=style_ids,
+                  actor_look_ids=actor_look_ids,
+                  prop_ids=prop_ids,
+                  prop_interactions=tuple(PropInteraction.from_dict(item) for item in prop_interactions),
+              )
         except ValueError as e:
             return CommandResult(success=False, error=CommandError("invalid_assignment", str(e)))
 
@@ -250,6 +255,8 @@ def _assignment_to_dict(a: SceneReferenceAssignment) -> dict[str, Any]:
         "background_ids": list(a.background_ids),
         "style_ids": list(a.style_ids),
         "actor_look_ids": dict(a.actor_look_ids or {}),
+        "prop_ids": list(a.prop_ids),
+        "prop_interactions": [item.to_dict() for item in a.prop_interactions],
     }
 
 
@@ -261,6 +268,8 @@ def _assignment_from_dict(d: dict[str, Any]) -> SceneReferenceAssignment:
         background_ids=tuple(d.get("background_ids") or ()),
         style_ids=tuple(d.get("style_ids") or ()),
         actor_look_ids=dict(d.get("actor_look_ids") or {}),
+        prop_ids=tuple(d.get("prop_ids") or ()),
+        prop_interactions=tuple(PropInteraction.from_dict(item) for item in d.get("prop_interactions") or []),
     )
 
 

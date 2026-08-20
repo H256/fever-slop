@@ -38,6 +38,13 @@ class FrameSelectionConfig:
     diversity_weight: float = 0.25
     coverage_weight: float = 0.15
 
+    def __post_init__(self) -> None:
+        if type(self.view_count) is not int or self.view_count < 1:
+            raise ValueError("view_count must be a positive integer")
+        weights = (self.sharpness_weight, self.diversity_weight, self.coverage_weight)
+        if any(value < 0 for value in weights) or sum(weights) <= 0:
+            raise ValueError("selection weights must be non-negative and not all zero")
+
 
 def generate_sequence_to_sheet(
     library: Any,
@@ -110,13 +117,6 @@ def generate_sequence_to_sheet(
         "backend": backend,
         "profile": profile,
     }
-
-    def __post_init__(self) -> None:
-        if type(self.view_count) is not int or self.view_count < 1:
-            raise ValueError("view_count must be a positive integer")
-        weights = (self.sharpness_weight, self.diversity_weight, self.coverage_weight)
-        if any(value < 0 for value in weights) or sum(weights) <= 0:
-            raise ValueError("selection weights must be non-negative and not all zero")
 
 
 @dataclass(frozen=True, slots=True)
