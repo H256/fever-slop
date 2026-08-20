@@ -6,6 +6,18 @@ import unittest
 from pathlib import Path
 
 
+def _write_overlapping_plan(root):
+    plan = root / "plan.json"
+    plan.write_text(json.dumps([
+        {"scene": 1, "duration_seconds": 2.0, "abs_start_seconds": 0.0},
+        {"scene": 2, "duration_seconds": 2.0, "abs_start_seconds": 1.0},
+    ]), encoding="utf-8")
+    clips = [root / "scene_0001.mp4", root / "scene_0002.mp4"]
+    for clip in clips:
+        clip.touch()
+    return plan, clips
+
+
 class OpenShotExporterTests(unittest.TestCase):
     @patch("subprocess.run")
     def test_uses_rendered_clip_profile_for_project(self, run_probe):
@@ -110,6 +122,80 @@ class OpenShotExporterTests(unittest.TestCase):
             )
 
             self.assertEqual(progress, [(1, 2, "scene 1"), (2, 2, "audio")])
+
+    def test_rejects_empty_render_plan(self):
+        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Render plan is empty:"):
+                export_render_plan_to_openshot(
+                    render_plan_path=plan,
+                    clip_paths=[],
+                    output_path=root / "movie.osp",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
+
+    def test_rejects_overlapping_absolute_render_plan_entries(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan, clips = _write_overlapping_plan(root)
+
+            with self.assertRaises(ValueError) as openshot_error:
+                export_render_plan_to_openshot(
+                    render_plan_path=plan,
+                    clip_paths=clips,
+                    output_path=root / "movie.osp",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
+            with self.assertRaises(ValueError) as mlt_error:
+                export_render_plan_to_mlt(
+                    render_plan_path=plan,
+                    clip_paths=clips,
+                    output_path=root / "timeline.mlt",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
+
+        self.assertEqual(str(openshot_error.exception), str(mlt_error.exception))
+        self.assertIn("scene 2 starts at frame 24, before frame 48", str(openshot_error.exception))
+
+    def test_tolerates_one_frame_boundary_rounding_difference(self):
+        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 23 / 24},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4"]
+            for clip in clips:
+                clip.touch()
+
+            export_render_plan_to_openshot(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "movie.osp",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            project = json.loads((root / "movie.osp").read_text(encoding="utf-8"))
+            self.assertEqual([clip["position"] for clip in project["clips"]], [0.0, 23 / 24])
+            self.assertEqual(project["duration"], 23 / 24 + 1.0)
 
 
 class MltExporterTests(unittest.TestCase):
@@ -268,6 +354,63 @@ class MltExporterTests(unittest.TestCase):
                     height=672,
                     fps=24,
                 )
+
+    def test_rejects_empty_render_plan(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Render plan is empty:"):
+                export_render_plan_to_mlt(
+                    render_plan_path=plan,
+                    clip_paths=[],
+                    output_path=root / "timeline.mlt",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
+
+    def test_rejects_empty_dict_render_plan(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps({"shots": []}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Render plan is empty:"):
+                export_render_plan_to_mlt(
+                    render_plan_path=plan,
+                    clip_paths=[],
+                    output_path=root / "timeline.mlt",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
+
+    def test_rejects_overlapping_absolute_render_plan_entries(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan, clips = _write_overlapping_plan(root)
+            with self.assertRaises(ValueError) as error:
+                export_render_plan_to_mlt(
+                    render_plan_path=plan,
+                    clip_paths=clips,
+                    output_path=root / "timeline.mlt",
+                    width=1216,
+                    height=672,
+                    fps=24,
+                )
+            message = str(error.exception)
+            self.assertIn(
+                "Timeline export cannot represent overlapping render-plan entries: ",
+                message,
+            )
+            self.assertIn("scene 2 starts at frame 24, before frame 48", message)
+            self.assertIn(f"Render plan: {plan}", message)
 
 
 if __name__ == "__main__":

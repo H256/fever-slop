@@ -7,6 +7,11 @@ import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+from feverslop.application.render_plan_validation import (
+    require_non_empty_render_plan,
+    validate_render_plan_timeline,
+)
+
 
 def export_render_plan_to_mlt(
     *,
@@ -30,6 +35,9 @@ def export_render_plan_to_mlt(
             "MLT export requires one rendered clip per render-plan entry "
             f"(got {len(clip_paths)} clips for {len(plan)} entries)"
         )
+
+    require_non_empty_render_plan(plan, render_plan_path=render_plan_path)
+    validate_render_plan_timeline(plan, fps=fps, render_plan_path=render_plan_path)
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
