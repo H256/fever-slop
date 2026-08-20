@@ -119,7 +119,9 @@ class WorkflowPatcher:
             raise ValueError(f"Node id already exists: {new_node_id}")
 
         source_id, _ = self._resolve_target(operation["source"])
-        _, target_node = self._resolve_target(operation["target"])
+        target_id, target_node = self._resolve_target(operation["target"])
+        if source_id == target_id:
+            raise ValueError(f"Cannot insert node between a node and itself: {source_id}")
         new_node = deepcopy(operation["node"])
         new_node.setdefault("inputs", {})[str(operation["new_node_input"])] = [
             source_id,
