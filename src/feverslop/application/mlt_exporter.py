@@ -72,7 +72,15 @@ def export_render_plan_to_mlt(
     total_frames = 0
     timeline_cursor = 0
 
-    for index, (entry, clip_path) in enumerate(zip(plan, clip_paths, strict=True), start=1):
+    indexed_entries = list(enumerate(zip(plan, clip_paths, strict=True), start=1))
+    indexed_entries.sort(
+        key=lambda item: (
+            item[1][0].get("abs_start_seconds") is None if isinstance(item[1][0], dict) else True,
+            float(item[1][0].get("abs_start_seconds", 0.0)) if isinstance(item[1][0], dict) else 0.0,
+            item[0],
+        )
+    )
+    for index, (entry, clip_path) in indexed_entries:
         if not isinstance(entry, dict):
             raise ValueError(f"Render plan entry {index} must be an object")
         scene_number = int(entry.get("scene") or entry.get("scene_number") or index)

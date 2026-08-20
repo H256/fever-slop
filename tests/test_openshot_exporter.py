@@ -197,6 +197,35 @@ class OpenShotExporterTests(unittest.TestCase):
             self.assertEqual([clip["position"] for clip in project["clips"]], [0.0, 23 / 24])
             self.assertEqual(project["duration"], 23 / 24 + 1.0)
 
+    def test_mlt_orders_absolute_entries_by_timeline_position(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 1.0},
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+            ]), encoding="utf-8")
+            clips = [root / "two.mp4", root / "one.mp4"]
+            for clip in clips:
+                clip.touch()
+
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            playlist = ET.parse(root / "timeline.mlt").getroot().find("playlist[@id='playlist0']")
+            self.assertEqual(
+                [entry.attrib["producer"] for entry in playlist.findall("entry")],
+                ["video_0002", "video_0001"],
+            )
+
 
 class MltExporterTests(unittest.TestCase):
     def test_exports_ordered_video_and_original_audio_as_mlt_xml(self):
