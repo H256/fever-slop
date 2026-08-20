@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any, Callable
@@ -15,7 +16,8 @@ from feverslop.prompting.model_types import resolve_model_type
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate a MiniMax H3 video prompt from a description."
+        description="Generate a MiniMax H3 video prompt from a description.",
+        epilog="LLM key: set the LLM_API_KEY environment variable or llm.api_key in the app config.",
     )
     parser.add_argument("--model-type", required=True, help="Supported model type, such as minimax-h3-t2v")
     parser.add_argument("--description", required=True, help="Natural-language description of the video")
@@ -32,7 +34,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--app-config", default="app_config.json", help="Path to app_config.json")
     parser.add_argument("--base-url", help="Override the configured LLM base URL")
     parser.add_argument("--model", help="Override the configured LLM model")
-    parser.add_argument("--api-key", help="Override the configured LLM API key")
     fidelity = parser.add_mutually_exclusive_group()
     fidelity.add_argument("--strict-fidelity", dest="strict_fidelity", action="store_true")
     fidelity.add_argument("--no-strict-fidelity", dest="strict_fidelity", action="store_false")
@@ -85,7 +86,7 @@ def main(
         references = load_references(args.reference)
         config = config_loader(args.app_config)
         llm = config.llm
-        api_key = args.api_key if args.api_key is not None else llm.api_key
+        api_key = llm.api_key
         client = client_factory(
             base_url=args.base_url or llm.base_url,
             api_key=api_key,
@@ -108,7 +109,7 @@ def main(
         print(_render_prompt(result))
         return 0
     except Exception as exc:
-        secrets = [args.api_key]
+        secrets = [os.environ.get("LLM_API_KEY")]
         try:
             secrets.append(config.llm.api_key)
         except (UnboundLocalError, AttributeError):

@@ -216,6 +216,7 @@ class BaseVideoPrompt(BaseModel):
 
 class ReferenceVideoPrompt(BaseModel):
     subject_definitions: list[SubjectDefinition]
+    reference_definitions: list[str] = []
     summary: str
     retention_analysis: list[RetentionAnalysis]
     detailed_description: str
@@ -224,9 +225,13 @@ class ReferenceVideoPrompt(BaseModel):
 
     def render(self) -> str:
         subjects = "\n".join(item.render() for item in self.subject_definitions)
+        reference_defs = "\n".join(
+            str(item).strip() for item in self.reference_definitions if str(item).strip()
+        )
+        definitions = "\n".join(part for part in (subjects, reference_defs) if part)
         retention = "\n".join(item.render() for item in self.retention_analysis)
         return "\n\n".join([
-            f"subject_definitions:\n{subjects}",
+            f"subject_definitions:\n{definitions}",
             f"summary: {self.summary.strip()}",
             f"retention_analysis:\n{retention}",
             "detailed_description: " + self.detailed_description.strip(),

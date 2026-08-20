@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.workflow_patcher import WorkflowPatcher, _workflow_dependency_ids
 
 
 class MovieWorkflowPatcher:
@@ -61,8 +61,11 @@ class MovieWorkflowPatcher:
             if not isinstance(inputs, dict):
                 continue
             for key, value in list(inputs.items()):
-                if _links_removed_node(value, removed):
+                cleaned = _without_removed_links(value, removed)
+                if cleaned is None:
                     del inputs[key]
+                elif cleaned is not value:
+                    inputs[key] = cleaned
         return patched
 
     def _is_empty_audio_latent(self, workflow: dict[str, Any], value: Any) -> bool:
@@ -188,8 +191,20 @@ class MovieWorkflowPatcher:
         return patcher.get()
 
 
-def _links_removed_node(value: Any, removed: set[str]) -> bool:
-    return isinstance(value, list) and bool(value) and str(value[0]) in removed
+def _without_removed_links(value: Any, removed: set[str]) -> Any | None:
+    """Return value without wires to removed nodes; None means delete the input."""
+    if not isinstance(value, list):
+        return value
+    if bool(value) and str(value[0]) in removed:
+        return None
+    kept: list[Any] = []
+    for item in value:
+        if _workflow_dependency_ids(item) & removed:
+            continue
+        kept.append(item)
+    if kept == value:
+        return value
+    return kept or None
 
 
 def _is_link(value: Any) -> bool:

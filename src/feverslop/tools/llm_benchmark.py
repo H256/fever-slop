@@ -44,21 +44,21 @@ def benchmark_prompts(client: Any, prompts: list[str], *, system_prompt: str = "
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Benchmark one configured LLM endpoint.")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Benchmark one configured LLM endpoint.", epilog="Authenticate with the LLM_API_KEY environment variable.")
     parser.add_argument("--base-url", default="http://localhost:8080/v1")
     parser.add_argument("--model", default="default")
     parser.add_argument("--dspy-temperature", type=float, default=0.4)
-    parser.add_argument("--api-key", default=os.environ.get("LLM_API_KEY"))
     parser.add_argument("--prompt-file", required=True, help="UTF-8 file with one prompt per line")
     parser.add_argument("--system-prompt", default="Return a concise answer.")
-    args = parser.parse_args()
-    if not args.api_key:
-        parser.error("--api-key or LLM_API_KEY is required")
+    args = parser.parse_args(argv)
+    api_key = os.environ.get("LLM_API_KEY")
+    if not api_key:
+        parser.error("LLM_API_KEY environment variable is required")
     prompts = [line.strip() for line in open(args.prompt_file, encoding="utf-8") if line.strip()]
     client = OpenAICompatibleLLMClient(
         base_url=args.base_url,
-        api_key=args.api_key,
+        api_key=api_key,
         model=args.model,
         dspy_temperature=args.dspy_temperature,
         max_tokens=2048,
