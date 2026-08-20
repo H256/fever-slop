@@ -100,18 +100,16 @@ def export_render_plan_to_mlt(
             start_frame = timeline_cursor
             frames = max(1, math.ceil(duration * int(fps)))
         if start_frame < timeline_cursor:
-            overlap = timeline_cursor - start_frame
-            if overlap <= 1:
-                # Render-plan seconds are floating point values while MLT is
-                # frame-based. Treat a one-frame boundary discrepancy as a
-                # contiguous cut instead of a real overlap.
-                start_frame = timeline_cursor
-            else:
+            if end_frame <= timeline_cursor:
                 raise ValueError(
                     "MLT export cannot represent overlapping render-plan entries: "
-                    f"scene {scene_number} starts at frame {start_frame}, "
+                    f"scene {scene_number} ends at frame {end_frame}, "
                     f"before frame {timeline_cursor}"
                 )
+            # Mirrors the shared validation's accumulated-drift correction:
+            # trim the overlapping tail so the cut stays contiguous.
+            start_frame = timeline_cursor
+            frames = end_frame - start_frame
         if start_frame > timeline_cursor:
             ET.SubElement(video_playlist, "blank", {"length": str(start_frame - timeline_cursor)})
         producer_id = f"video_{index:04}"
