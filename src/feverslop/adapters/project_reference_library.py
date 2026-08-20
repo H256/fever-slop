@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.reference_workspace import (
     PropInteraction,
     ReferenceAsset,
@@ -208,6 +209,16 @@ class ProjectReferenceLibrary(
 
     def get_background_ids(self, project_id: str) -> list[str]:
         return []
+
+    def get_known_prop_ids(self, project_id: str) -> list[str]:
+        config_path = self._project_root / "config.json"
+        if not config_path.is_file():
+            return []
+        try:
+            config = ProjectConfig.load(config_path)
+        except (FileNotFoundError, ValueError, KeyError):
+            return []
+        return [prop.asset_id for prop in config.global_props]
 
     # -- SceneCastPort --
 
