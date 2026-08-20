@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 from openai import APIConnectionError, RateLimitError
@@ -10,6 +11,21 @@ from PIL import Image
 from feverslop.adapters.llm_client import LocalOpenAIClient
 from feverslop.adapters.api_observability import APIMetrics
 from feverslop.errors import FeverSlopLMLError
+
+_saved_allowed_api_hosts = None
+
+
+def setUpModule():
+    # validate_api_url falls back to FEVERSLOP_ALLOWED_API_HOSTS when no
+    # allowlist is passed explicitly; keep the ambient value out of these tests.
+    global _saved_allowed_api_hosts
+    _saved_allowed_api_hosts = os.environ.pop("FEVERSLOP_ALLOWED_API_HOSTS", None)
+
+
+def tearDownModule():
+    global _saved_allowed_api_hosts
+    if _saved_allowed_api_hosts is not None:
+        os.environ["FEVERSLOP_ALLOWED_API_HOSTS"] = _saved_allowed_api_hosts
 
 
 class LLMModelCapabilityTests(unittest.TestCase):
