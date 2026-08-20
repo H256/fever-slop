@@ -27,6 +27,7 @@ from feverslop.domain.visual_consistency_runtime import (
 )
 from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
 from feverslop.application.sequence_reference_pipeline import SequenceReferencePipeline, SequenceReferenceRequest
+from feverslop.utils.io import atomic_write_json
 
 
 INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
@@ -160,7 +161,7 @@ class ReferenceBibleGenerator:
             "anchor_prompt": result.anchor_prompt,
         }
         manifest_path = self.output_dir / "actors" / subject.id / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(manifest_path, manifest)
         return manifest_path
 
     def _generate_subject_bible(self, subject: ReferenceSubject, subject_dir: Path) -> Path:
@@ -325,7 +326,7 @@ class ReferenceBibleGenerator:
             "anchor_prompt": result.anchor_prompt,
         }
         manifest_path = self.output_dir / "locations" / location.id / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(manifest_path, manifest)
         return manifest_path
 
     def _generate_location_bible(self, location: ReferenceLocation, location_dir: Path) -> Path:

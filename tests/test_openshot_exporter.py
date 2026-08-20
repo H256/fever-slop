@@ -320,6 +320,7 @@ class MltExporterTests(unittest.TestCase):
                 root_element.find("tractor/track[@producer='playlist1']").attrib["hide"],
                 "video",
             )
+            self.assertEqual([], [p for p in root.rglob("*") if p.name.endswith(".tmp")])
 
     def test_preserves_gaps_from_absolute_render_plan_positions(self):
         from feverslop.application.mlt_exporter import export_render_plan_to_mlt

@@ -12,6 +12,7 @@ import tempfile
 from typing import Iterator
 
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
+from feverslop.utils.io import atomic_write_json
 
 
 class GlobalLibraryAdapter:
@@ -244,7 +245,7 @@ class GlobalLibraryAdapter:
             target = destination / Path(relative).name
             shutil.copy2(source, target)
         snapshot = {"asset_id": asset.id, "kind": asset.kind.value, "look_id": look.id, "revision": asset.revision}
-        (destination / "manifest.json").write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+        atomic_write_json(destination / "manifest.json", snapshot)
         return destination
 
     def snapshot_revision(self, snapshot_dir: str | Path) -> int:
