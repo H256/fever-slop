@@ -267,6 +267,46 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                 self.assertEqual(self.fallback_invariants, result.shot_invariants)
                 self.assertEqual("vision unavailable", result.fallback_reason)
 
+    def test_probe_failure_reports_probe_failed_reason(self):
+        test_case = self
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+            def model_supports_vision(self):
+                raise ConnectionError("probe outage")
+
+            def complete_prompt_with_images(self, *args, **kwargs):
+                test_case.last_module_calls.append({"unexpected_vision_call": True})
+                raise AssertionError("vision call attempted despite failing probe")
+
+        with self.assertLogs(
+            "feverslop.application.ingredients_vision_prompt", level="WARNING"
+        ) as logs:
+            result = self.build(LLM())
+
+        self.assertEqual("vision probe failed", result.fallback_reason)
+        self.assertEqual([], self.last_module_calls)
+        self.assertTrue(any("ConnectionError" in line for line in logs.output))
+
+    def test_probe_true_proceeds_to_vision_call(self):
+        llm = FakeVisionLLM(
+            json.dumps({
+                "references": [
+                    {"id": "mara", "type": "actor", "t2i_description": "Cropped black hair, silver ear cuff, charcoal coat."},
+                    {"id": "archive", "type": "location", "t2i_description": "Narrow stone archive with dusty shelves."},
+                ],
+                "shot_invariants": self.shot_invariants(),
+            })
+        )
+        llm.model_supports_vision = lambda: True
+
+        result = self.build(llm)
+
+        self.assertEqual(1, len(self.last_module_calls))
+        self.assertIsNone(result.fallback_reason)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -693,6 +693,21 @@ class BuildWorkflowTests(unittest.TestCase):
         # Save prefix patched
         self.assertEqual("scene_0003/raw", result["70"]["inputs"]["filename_prefix"])
 
+    def test_marks_last_reference_as_continuity_anchor(self):
+        backend = self._backend(workflow=_native_r2v_workflow())
+        result = backend.build_workflow(
+            {
+                "scene": 3,
+                "references": {"actor_sheet_paths": ["refs/actor.png"]},
+                "keyframes": {"continuity_anchor_path": "keyframes/scene_0002_last.png"},
+            },
+            prompt="cinematic shot",
+            ref_image_paths=["/tmp/actor.png", "/tmp/loc.png", "/tmp/scene_0002_last.png"],
+        )
+
+        self.assertIn("Continuity anchor: <Picture 3>", result["40"]["inputs"]["value"])
+        self.assertIn("previous scene", result["40"]["inputs"]["value"])
+
     def test_seed_set(self):
         backend = self._backend(workflow=_native_r2v_workflow())
         backend.seed_offset = 50000
@@ -953,6 +968,48 @@ class RenderVideoTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class ResolveRefImagePathsTests(unittest.TestCase):
+    def test_resolves_continuity_anchor_after_declared_reference_images(self):
+        backend = object.__new__(ComfyUIMiniMaxH3R2VBackend)
+        backend.project_dir = Path("E:/project")
+
+        paths = backend._resolve_ref_image_paths({
+            "references": {
+                "actor_msr_paths": ["refs/actor.png"],
+                "location_msr_path": "refs/location.png",
+            },
+            "keyframes": {"continuity_anchor_path": "keyframes/scene_0001_last.png"},
+        })
+
+        self.assertEqual(
+            [
+                Path("E:/project/refs/actor.png"),
+                Path("E:/project/refs/location.png"),
+                Path("E:/project/keyframes/scene_0001_last.png"),
+            ],
+            paths,
+        )
+
+    def test_uses_previous_scene_lastframe_for_continuous_transition(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            previous_frame = output_dir / "scene_0002" / "lastframe.png"
+            previous_frame.parent.mkdir()
+            previous_frame.write_bytes(b"frame")
+            backend = object.__new__(ComfyUIMiniMaxH3R2VBackend)
+            backend.project_dir = output_dir
+            backend.output_dir = output_dir
+
+            paths = backend._resolve_ref_image_paths({
+                "scene": 3,
+                "references": {"actor_msr_paths": ["refs/actor.png"]},
+                "visual_consistency": {"transition_from_previous": "continuous"},
+            })
+
+            self.assertEqual(
+                output_dir / "scene_0002" / "lastframe.png",
+                paths[-1],
+            )
+
     def test_actors_and_location(self):
         backend = ComfyUIMiniMaxH3R2VBackend(
             client=FakeClient(),

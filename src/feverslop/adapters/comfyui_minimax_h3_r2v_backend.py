@@ -121,6 +121,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         """
         self._validate_scene(scene)
         scene_number = int(scene.get("scene", 0))
+        continuity_anchor = self._resolve_continuity_anchor_path(scene)
+        if continuity_anchor:
+            scene = dict(scene)
+            keyframes = dict(scene.get("keyframes") or {})
+            keyframes["continuity_anchor_path"] = continuity_anchor.as_posix()
+            scene["keyframes"] = keyframes
 
         patcher = WorkflowPatcher(self.load_workflow())
 
@@ -130,7 +136,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self._remove_legacy_main_audio_chain(patcher)
 
         # -- prompt -----------------------------------------------------------
-        patcher.set_input_by_title("#PROMPT", "value", str(prompt).strip())
+        resolved_prompt = self._append_continuity_anchor_prompt(
+            str(prompt).strip(), scene, len(ref_image_paths or [])
+        )
+        patcher.set_input_by_title("#PROMPT", "value", resolved_prompt)
 
         # -- seed -------------------------------------------------------------
         self._patch_seed(patcher, self._seed_for_scene(scene))
@@ -171,6 +180,36 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         patcher.prune_unreachable_nodes(root_titles=("#SAVE_VIDEO",))
 
         return patcher.get()
+
+    @staticmethod
+    def _append_continuity_anchor_prompt(
+        prompt: str,
+        scene: dict,
+        reference_count: int,
+    ) -> str:
+        """Declare the reserved final R2V image slot as a prior-scene anchor."""
+        keyframes = scene.get("keyframes") or {}
+        if not keyframes.get("continuity_anchor_path") or reference_count < 1:
+            return prompt
+        return (
+            f"{prompt}\n\nContinuity anchor: <Picture {reference_count}> is the final frame "
+            "from the previous scene. Preserve its established composition, subject identity, "
+            "spatial layout, lighting, and motion direction at the start of this scene."
+        ).strip()
+
+    def _resolve_continuity_anchor_path(self, scene: dict) -> Path | None:
+        keyframes = scene.get("keyframes") or {}
+        explicit = keyframes.get("continuity_anchor_path")
+        if explicit:
+            return self._resolve_project_path(explicit)
+
+        transition = (scene.get("visual_consistency") or {}).get("transition_from_previous")
+        scene_number = int(scene.get("scene") or 0)
+        output_dir = getattr(self, "output_dir", None)
+        if transition != "continuous" or scene_number <= 1 or output_dir is None:
+            return None
+        candidate = Path(output_dir) / f"scene_{scene_number - 1:04}" / "lastframe.png"
+        return candidate if candidate.is_file() else None
 
     def render_video(self, request: VideoRenderRequest) -> Path:
         """Complete render flow for one R2V scene."""
@@ -792,6 +831,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if not prompt.startswith("subject_definitions:"):
             return
         scene_number = scene.get("scene", "?")
+        profile = str((scene.get("h3") or {}).get("reference_profile") or "").strip()
+        if profile and re.search(r"<Picture\s+\d+>|<Video\s+\d+>", prompt):
+            if "Reference identity and continuity contract:" not in prompt:
+                raise FeverSlopValidationError(
+                    f"Scene {scene_number} H3 reference contract mismatch: "
+                    f"profile={profile!r}; missing_deterministic_contract=True"
+                )
         definitions = prompt.split("summary:", 1)[0]
         defined_subjects = set(re.findall(r"<Subject\s+\d+>", definitions))
         used_subjects = set(re.findall(r"<Subject\s+\d+>", prompt))
@@ -880,6 +926,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if self.project_dir is not None:
             style_paths = [self.project_dir / p for p in style_paths]
         paths.extend(str(p) for p in style_paths)
+
+        anchor_path = self._resolve_continuity_anchor_path(scene)
+        if anchor_path:
+            paths = paths[: self.MAX_REF_IMAGES - 1]
+            paths.append(anchor_path)
+            return paths
 
         return paths[: self.MAX_REF_IMAGES]
 

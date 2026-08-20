@@ -7,6 +7,7 @@ from typing import Any, Callable
 from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.composition.movie_planner import build_movie_planner
+from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX, SCENE_PROMPT_WORD_COUNT_MIN
 from feverslop.ports.reporting import Reporter
 from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE, validate_full_auto_inputs, validate_pipeline_mode
 from feverslop.domain.slug_utils import slugify_project_name
@@ -286,8 +287,8 @@ def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, widt
             "outfit_rules": "",
             "prompt_structure": "",
             "list_handling": "",
-            "word_count_min": 40,
-            "word_count_max": 50,
+            "word_count_min": SCENE_PROMPT_WORD_COUNT_MIN,
+            "word_count_max": SCENE_PROMPT_WORD_COUNT_MAX,
         },
         "lora_1": {
             "enabled": False,

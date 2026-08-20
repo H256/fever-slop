@@ -758,9 +758,7 @@ non_diegetic_music: N/A"""
 
         result = generator._plan(request, references)
 
-        self.assertEqual(2, len(calls))
-        self.assertIn("unmapped_visual=['<Picture 2>']", calls[1]["notes"])
-        self.assertIn('<Picture 2> -> subject "Stage"', calls[1]["notes"])
+        self.assertEqual(1, len(calls))
         self.assertEqual(["<Subject 1>", "<Subject 2>"], [subject.label for subject in result.subjects])
 
     def test_planner_reconstructs_persistently_unmapped_visuals_with_warning(self):
@@ -784,16 +782,16 @@ non_diegetic_music: N/A"""
             ResolvedReference(label="<Picture 2>", kind="picture", source="reef.png", role="environment", name="The Azure Reef", description="Blue crystalline reef"),
         ]
 
-        with self.assertLogs("feverslop.prompting.dspy_h3_generator_core", level="WARNING") as captured:
+        with self.assertLogs("feverslop.prompting.dspy_h3_generator_core", level="INFO") as captured:
             result = generator._plan(request, references)
 
-        self.assertEqual(2, len(calls))
+        self.assertEqual(1, len(calls))
         self.assertEqual(
             [["<Picture 1>"], ["<Picture 2>"]],
             [subject.source_references for subject in result.subjects],
         )
         self.assertEqual(["Lead Singer", "The Azure Reef"], [subject.name for subject in result.subjects])
-        self.assertTrue(any("reconstructed" in message for message in captured.output))
+        self.assertTrue(any("normalized required subject mappings" in message for message in captured.output))
 
     def test_reference_renderer_retries_unknown_subject_with_mismatch_details(self):
         generator = object.__new__(CoreVideoPromptGenerator)
@@ -1107,6 +1105,62 @@ non_diegetic_music: N/A"""
         self.assertEqual(references[2]["label"], "<Audio 1>")
         self.assertEqual(request["music_intent"], "none")
         self.assertEqual(result["prompt"], FakeGeneratedPrompt.rendered_prompt)
+
+    def test_appends_opt_in_reference_contract_without_global_band_rules(self):
+        builder = DspyH3PromptBuilder(FakeGenerator())
+        result = builder.build_h3_prompt(
+            segment={
+                "segment_id": "concert-1",
+                "reference_profile": "live_concert",
+                "references": {
+                    "actor_ids": ["singer", "drummer"],
+                    "actor_msr_paths": ["singer.png", "drummer.png"],
+                    "location_msr_path": "stage.png",
+                    "actor_reference_descriptions": [
+                        {"id": "singer", "name": "Singer", "role": "Lead singer"},
+                        {"id": "drummer", "name": "Drummer", "role": "Drummer"},
+                    ],
+                    "prop_bindings": {
+                        "Singer": ["microphone"],
+                        "Drummer": ["drum kit"],
+                    },
+                },
+            },
+            concept="A band performs on stage.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertIn("exactly one persistent physical individual", result["prompt"])
+        self.assertIn("main festival stage", result["prompt"])
+        self.assertIn("Singer remains bound to microphone", result["prompt"])
+        self.assertIn("Drummer remains bound to drum kit", result["prompt"])
+
+    def test_generic_profile_does_not_receive_live_concert_contract(self):
+        result = DspyH3PromptBuilder(FakeGenerator()).build_h3_prompt(
+            segment={
+                "segment_id": "tavern-1",
+                "reference_profile": "crowded_tavern",
+                "references": {
+                    "actor_ids": ["singer"],
+                    "actor_msr_paths": ["singer.png"],
+                    "location_msr_path": "tavern.png",
+                    "actor_reference_descriptions": [
+                        {"id": "singer", "name": "Singer", "role": "Lead singer"},
+                    ],
+                    "prop_bindings": {"Singer": ["microphone"]},
+                },
+            },
+            concept="A singer performs in a crowded tavern.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertIn("exactly one persistent physical individual", result["prompt"])
+        self.assertNotIn("catwalk", result["prompt"].lower())
+        self.assertNotIn("main festival stage", result["prompt"].lower())
 
     def test_does_not_force_music_mode_without_scene_audio(self):
         generator = FakeGenerator()

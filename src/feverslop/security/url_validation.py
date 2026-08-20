@@ -19,10 +19,23 @@ def validate_api_url(
 ) -> str:
     """Validate an HTTP API endpoint before it is used for a request.
 
-    Literal private, link-local, multicast and reserved addresses are rejected
-    to prevent accidental SSRF. Local loopback endpoints remain available for
-    the default ComfyUI/LLM services. ``FEVERSLOP_ALLOWED_API_HOSTS`` can be
-    used to restrict hostnames further (comma-separated, case-insensitive).
+    The URL must use ``http`` or ``https`` and may not contain embedded
+    credentials, a query string, or a fragment.
+
+    By default (``allow_private_addresses=True``) no address filtering is
+    applied: local-network and loopback services are the normal deployment
+    model. With ``allow_private_addresses=False`` (strict mode), literal
+    private, link-local, multicast, reserved, and unspecified addresses are
+    rejected; non-literal hostnames are resolved via DNS, and when DNS
+    returns addresses, every resolved address is checked the same way while
+    unresolvable hostnames are left to the HTTP client. Loopback stays
+    available in both modes while ``allow_loopback`` is true.
+
+    An allowlist (``allowed_hosts`` or the comma-separated, case-insensitive
+    ``FEVERSLOP_ALLOWED_API_HOSTS`` environment variable when no explicit
+    allowlist is given) restricts hostnames in both modes. A host that is on
+    the allowlist is explicitly trusted and skips the address checks
+    entirely, including in strict mode.
     """
     if not isinstance(url, str) or not url.strip():
         raise APIURLValidationError("API URL must be a non-empty string")

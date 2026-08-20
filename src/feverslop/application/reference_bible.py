@@ -137,6 +137,7 @@ class ReferenceBibleGenerator:
                 visual_style=self.visual_style,
                 asset_context=asdict(subject),
                 output_dir=self.output_dir,
+                reference_image_size=self.actor_hero_size,
             )
         )
         manifest = {
@@ -301,6 +302,7 @@ class ReferenceBibleGenerator:
                 visual_style=self.visual_style,
                 asset_context=asdict(location),
                 output_dir=self.output_dir,
+                reference_image_size=self.location_hero_size,
             )
         )
         manifest = {

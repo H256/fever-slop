@@ -48,6 +48,12 @@ class _FixtureProject:
         ref_dir.mkdir(parents=True, exist_ok=True)
         (ref_dir / f"{name}.png").write_bytes(content)
 
+    def add_config(self, props=None):
+        data = {"input_audio": "song.mp3"}
+        if props:
+            data["global_props"] = [{"asset_id": p} for p in props]
+        (self.root / "config.json").write_text(json.dumps(data), encoding="utf-8")
+
 
 class NextRevisionTests(unittest.TestCase):
     def test_basic(self):
@@ -119,6 +125,23 @@ class ProjectReferenceLibraryLoadTests(unittest.TestCase):
         self.fixture.add_manifest(locations=["lab", "office"])
         lib = ProjectReferenceLibrary(self.fixture.root)
         self.assertEqual(["lab", "office"], lib.get_known_location_ids("proj"))
+
+    def test_movie_bible_prop_ids(self):
+        self.fixture.add_config(props=["guitar", "mic"])
+        lib = ProjectReferenceLibrary(self.fixture.root)
+        self.assertEqual(["guitar", "mic"], lib.get_known_prop_ids("proj"))
+
+    def test_movie_bible_prop_ids_without_config(self):
+        lib = ProjectReferenceLibrary(self.fixture.root)
+        self.assertEqual([], lib.get_known_prop_ids("proj"))
+
+    def test_movie_bible_prop_ids_invalid_config(self):
+        (self.fixture.root / "config.json").write_text(
+            json.dumps({"input_audio": "song.mp3", "global_props": "not-a-list"}),
+            encoding="utf-8",
+        )
+        lib = ProjectReferenceLibrary(self.fixture.root)
+        self.assertEqual([], lib.get_known_prop_ids("proj"))
 
     def test_max_scene_actors(self):
         lib = ProjectReferenceLibrary(self.fixture.root, max_scene_actors=3)
