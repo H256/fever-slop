@@ -6,9 +6,11 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import tempfile
 from typing import Any, Callable
+import uuid
 
 from feverslop.application.reference_sheet_planning import (
     DeterministicReferenceSheetPlanner,
@@ -23,6 +25,9 @@ from feverslop.application.sequence_to_sheet import (
     recommended_view_count,
 )
 from feverslop.ports.rendering import ImageRenderRequest
+
+# LLM-generated ids must remain single, opaque path components.
+_ASSET_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +81,8 @@ class SequenceReferencePipeline:
             raise ValueError("sequence reference kind must be character or location")
         if not request.asset_id.strip():
             raise ValueError("sequence reference asset_id is required")
+        if not _ASSET_ID_PATTERN.fullmatch(request.asset_id):
+            raise ValueError(f"sequence reference asset_id is not a safe path component: {request.asset_id!r}")
         view_count = recommended_view_count(kind)
         Path(request.output_dir).mkdir(parents=True, exist_ok=True)
         final_dir = Path(request.output_dir) / ("actors" if kind == "character" else "locations") / request.asset_id
@@ -184,21 +191,42 @@ class SequenceReferencePipeline:
             )
 
             final_dir.parent.mkdir(parents=True, exist_ok=True)
-            if final_dir.exists():
-                shutil.rmtree(final_dir)
-            final_dir.mkdir(parents=True)
-            destinations = {
-                "anchor.png": anchor,
-                "sequence.mp4": sequence,
-                "contact-sheet.png": contact_sheet,
-                "sheet.png": sheet,
-            }
-            for name, source in destinations.items():
-                shutil.copy2(source, final_dir / name)
-            frame_destination = final_dir / "frames"
-            frame_destination.mkdir()
-            for index, source in enumerate(selected):
-                shutil.copy2(source, frame_destination / f"frame_{index:04}.png")
+            out_staging = Path(
+                tempfile.mkdtemp(
+                    prefix=f".sequence-reference-{request.asset_id}-swap-",
+                    dir=final_dir.parent,
+                )
+            )
+            backup_dir: Path | None = None
+            try:
+                destinations = {
+                    "anchor.png": anchor,
+                    "sequence.mp4": sequence,
+                    "contact-sheet.png": contact_sheet,
+                    "sheet.png": sheet,
+                }
+                for name, source in destinations.items():
+                    shutil.copy2(source, out_staging / name)
+                frame_destination = out_staging / "frames"
+                frame_destination.mkdir()
+                for index, source in enumerate(selected):
+                    shutil.copy2(source, frame_destination / f"frame_{index:04}.png")
+                if not all((out_staging / name).is_file() for name in destinations):
+                    raise OSError("staged reference artifacts are incomplete")
+                if len(list(frame_destination.iterdir())) != len(selected):
+                    raise OSError("staged reference frames are incomplete")
+                if final_dir.exists():
+                    backup_dir = final_dir.with_name(f".{final_dir.name}.previous-{uuid.uuid4().hex}")
+                    final_dir.replace(backup_dir)
+                out_staging.replace(final_dir)
+            except BaseException:
+                if backup_dir is not None and backup_dir.exists() and not final_dir.exists():
+                    backup_dir.replace(final_dir)
+                raise
+            finally:
+                shutil.rmtree(out_staging, ignore_errors=True)
+                if backup_dir is not None:
+                    shutil.rmtree(backup_dir, ignore_errors=True)
             return SequenceReferenceResult(
                 kind=kind,
                 asset_id=request.asset_id,

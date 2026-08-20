@@ -7,6 +7,9 @@ import json
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
 
+SCENE_PROMPT_WORD_COUNT_MIN = 40
+SCENE_PROMPT_WORD_COUNT_MAX = 50
+
 
 @dataclass(frozen=True)
 class VideoConfig:
@@ -121,8 +124,8 @@ class PromptGuidanceConfig:
     outfit_rules: str = ""
     prompt_structure: str = ""
     list_handling: str = ""
-    word_count_min: int = 40
-    word_count_max: int = 50
+    word_count_min: int = SCENE_PROMPT_WORD_COUNT_MIN
+    word_count_max: int = SCENE_PROMPT_WORD_COUNT_MAX
 
     def as_prompt_context(self) -> dict:
         return {
@@ -471,8 +474,8 @@ class ProjectConfig:
                 outfit_rules=guidance_raw.get("outfit_rules", ""),
                 prompt_structure=guidance_raw.get("prompt_structure", ""),
                 list_handling=guidance_raw.get("list_handling", ""),
-                word_count_min=int(guidance_raw.get("word_count_min", 40)),
-                word_count_max=int(guidance_raw.get("word_count_max", 50)),
+                word_count_min=int(guidance_raw.get("word_count_min", SCENE_PROMPT_WORD_COUNT_MIN)),
+                word_count_max=int(guidance_raw.get("word_count_max", SCENE_PROMPT_WORD_COUNT_MAX)),
             ),
             video_pipeline=str(raw.get("video_pipeline", "ltx_i2v")).strip() or "ltx_i2v",
             lora_1=lora_1,
