@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,6 +8,8 @@ from feverslop.ports.llm import VisionLLMPort
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.errors import FeverSlopLMLError
 from feverslop.prompting.ingredients_modules import IngredientsPromptModules
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,15 +46,26 @@ def build_ingredients_vision_prompt(
     invalid_fallback = IngredientsPromptResult(
         fallback_reference_description, fallback_shot_invariants, "invalid response"
     )
+    probe_failed_fallback = IngredientsPromptResult(
+        fallback_reference_description, fallback_shot_invariants, "vision probe failed"
+    )
     if llm is None:
         return unavailable_fallback
 
     capability_check = getattr(llm, "model_supports_vision", None)
     if callable(capability_check):
         try:
-            if not capability_check():
-                return unavailable_fallback
-        except Exception:
+            supports_vision = capability_check()
+        except Exception as exc:
+            logger.warning(
+                "Vision capability probe failed (%s); using text-only fallback",
+                type(exc).__name__,
+            )
+            return probe_failed_fallback
+        if not supports_vision:
+            logger.warning(
+                "Vision capability probe reports no vision support; using text-only fallback"
+            )
             return unavailable_fallback
 
     try:
