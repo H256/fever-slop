@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 from pathlib import Path
 
@@ -71,6 +72,15 @@ class AtomicWriteTextTests(unittest.TestCase):
 
 
 class AtomicWriteBytesTests(unittest.TestCase):
+
+    def test_concurrent_writes_to_same_path_do_not_collide(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "shared.bin"
+            payloads = [bytes([index]) * 128 for index in range(16)]
+            with ThreadPoolExecutor(max_workers=len(payloads)) as executor:
+                list(executor.map(lambda payload: atomic_write_bytes(path, payload), payloads))
+            self.assertIn(path.read_bytes(), payloads)
+            self.assertEqual([], list(Path(d).glob("*.tmp")))
 
     def test_writes_exact_bytes(self):
         with tempfile.TemporaryDirectory() as d:
