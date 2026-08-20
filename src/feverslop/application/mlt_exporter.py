@@ -7,6 +7,11 @@ import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+from feverslop.application.render_plan_validation import (
+    require_non_empty_render_plan,
+    validate_render_plan_timeline,
+)
+
 
 def export_render_plan_to_mlt(
     *,
@@ -30,6 +35,9 @@ def export_render_plan_to_mlt(
             "MLT export requires one rendered clip per render-plan entry "
             f"(got {len(clip_paths)} clips for {len(plan)} entries)"
         )
+
+    require_non_empty_render_plan(plan, render_plan_path=render_plan_path)
+    validate_render_plan_timeline(plan, fps=fps, render_plan_path=render_plan_path)
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +72,15 @@ def export_render_plan_to_mlt(
     total_frames = 0
     timeline_cursor = 0
 
-    for index, (entry, clip_path) in enumerate(zip(plan, clip_paths, strict=True), start=1):
+    indexed_entries = list(enumerate(zip(plan, clip_paths, strict=True), start=1))
+    indexed_entries.sort(
+        key=lambda item: (
+            item[1][0].get("abs_start_seconds") is None if isinstance(item[1][0], dict) else True,
+            float(item[1][0].get("abs_start_seconds", 0.0)) if isinstance(item[1][0], dict) else 0.0,
+            item[0],
+        )
+    )
+    for index, (entry, clip_path) in indexed_entries:
         if not isinstance(entry, dict):
             raise ValueError(f"Render plan entry {index} must be an object")
         scene_number = int(entry.get("scene") or entry.get("scene_number") or index)
