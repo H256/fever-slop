@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
@@ -45,6 +46,7 @@ class ComfyUISequenceToSheetBackend:
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
         self.render_queue = render_queue or ComfyUIRenderQueue(client)
         self.model_resolver = model_resolver
+        self._aspect_ratio_options: tuple[str, ...] | None = None
 
     @staticmethod
     def _profile_for(backend: str) -> SequenceToSheetWorkflowProfile:
@@ -143,7 +145,11 @@ class ComfyUISequenceToSheetBackend:
         patcher.set_input_by_title("#STARTFRAME", "image", uploaded[0])
         patcher.set_input_by_title("#MEGAPIXELS", "megapixels", round(width * height / 1_000_000, 2))
         if aspect_ratio is not None:
-            patcher.set_input_by_title("#MEGAPIXELS", "aspect_ratio", aspect_ratio)
+            patcher.set_input_by_title(
+                "#MEGAPIXELS",
+                "aspect_ratio",
+                self._resolve_aspect_ratio(aspect_ratio),
+            )
         patcher.set_input_by_title("#FRAMECOUNT", "value", int(frames))
         patcher.set_input_by_title("#PROMPT", "prompt", prompt)
         patcher.set_input_by_title(
@@ -158,6 +164,39 @@ class ComfyUISequenceToSheetBackend:
         if self.model_resolver is not None:
             workflow = self.model_resolver.resolve_workflow_models(workflow, workflow_path=self.workflow_path)
         return workflow
+
+    def _resolve_aspect_ratio(self, requested: str) -> str:
+        if requested not in {"portrait", "landscape"}:
+            return requested
+
+        target = (9, 16) if requested == "portrait" else (16, 9)
+        options = self._load_aspect_ratio_options()
+        for option in options:
+            match = re.match(r"\s*(\d+)\s*:\s*(\d+)", option)
+            if match and (int(match.group(1)), int(match.group(2))) == target:
+                return option
+
+        fallback = "9:16 (Portrait Widescreen)" if requested == "portrait" else "16:9 (Widescreen)"
+        return fallback
+
+    def _load_aspect_ratio_options(self) -> tuple[str, ...]:
+        if self._aspect_ratio_options is not None:
+            return self._aspect_ratio_options
+
+        get_object_info = getattr(self.client, "get_object_info", None)
+        if not callable(get_object_info):
+            self._aspect_ratio_options = ()
+            return self._aspect_ratio_options
+
+        try:
+            selector = get_object_info().get("ResolutionSelector", {})
+            required = selector.get("input", {}).get("required", {})
+            raw_options = required.get("aspect_ratio", [[]])
+            options = raw_options[0] if raw_options and isinstance(raw_options[0], list) else raw_options
+            self._aspect_ratio_options = tuple(str(option) for option in options)
+        except (AttributeError, IndexError, TypeError, ValueError):
+            self._aspect_ratio_options = ()
+        return self._aspect_ratio_options
 
     def render(
         self,

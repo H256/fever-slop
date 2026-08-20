@@ -128,7 +128,7 @@ class SequenceReferencePipelineTests(unittest.TestCase):
             self.assertEqual(prompt, result.anchor_prompt)
             render_call = next(call for call in sequence_backend.calls if call[0] == "render")
             self.assertNotIn("anchor_prompt", render_call[4])
-            self.assertEqual("9:16 (Portrait Widescreen)", render_call[4]["aspect_ratio"])
+            self.assertEqual("portrait", render_call[4]["aspect_ratio"])
 
     def test_reference_phase_log_labels_are_english(self):
         self.assertEqual(

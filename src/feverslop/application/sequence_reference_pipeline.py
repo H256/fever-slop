@@ -168,9 +168,9 @@ class SequenceReferencePipeline:
             sequence = staging_dir / "sequence.mp4"
             self._report_phase(request, "sequence_start")
             aspect_ratio = (
-                "9:16 (Portrait Widescreen)"
+                "portrait"
                 if kind == "character"
-                else "16:9 (Widescreen)"
+                else "landscape"
             )
             rendered = self.sequence_backend.render(
                 anchor_images=[anchor],
