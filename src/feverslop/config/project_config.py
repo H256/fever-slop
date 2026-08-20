@@ -159,6 +159,7 @@ class StructuredLocationConfig:
     name: str
     visual_description: str = ""
     image_prompt: str = ""
+    reference_mode: str = "empty_environment"
 
 
 @dataclass(frozen=True)
@@ -253,6 +254,7 @@ def _load_structured_location(raw, index: int) -> StructuredLocationConfig:
             name=name,
             visual_description=str(raw.get("visual_description", "") or "").strip(),
             image_prompt=str(raw.get("image_prompt", "") or "").strip(),
+            reference_mode=str(raw.get("reference_mode", "empty_environment") or "empty_environment").strip(),
         )
 
     name = str(raw or f"Location {index}").strip()

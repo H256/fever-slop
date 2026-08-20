@@ -43,6 +43,7 @@ class SequenceReferenceRequest:
     frames: int = 124
     asset_context: dict[str, Any] | None = None
     reference_image_size: tuple[int, int] | None = None
+    reference_mode: str = "empty_environment"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +75,24 @@ class SequenceReferencePipeline:
         self.sequence_backend = sequence_backend
         self.planner = planner or DeterministicReferenceSheetPlanner()
         self.on_phase = on_phase
+
+    @staticmethod
+    def _build_location_anchor_prompt(*, image_prompt: str, visual_style: str, reference_mode: str) -> str:
+        style = " ".join(str(visual_style or "").split())
+        base = str(image_prompt or "").strip()
+        if reference_mode == "ambient_population":
+            constraint = (
+                "This is an ambient population reference, not a performance shot. "
+                "The population is the primary subject; keep the venue secondary and show no stage as the dominant background, "
+                "no named performers, and no competing focal subject."
+            )
+        else:
+            constraint = (
+                "This is an empty environment reference. Preserve the fixed architecture, set dressing, and lighting, "
+                "but show no performers, no named characters, no crowd, and no temporary action."
+            )
+        suffix = f" Visual style: {style}." if style else ""
+        return f"{base}. {constraint}{suffix}".strip()
 
     def generate(self, request: SequenceReferenceRequest) -> SequenceReferenceResult:
         kind = request.kind.strip().lower()
@@ -111,7 +130,11 @@ class SequenceReferencePipeline:
                     f"no handheld prop, no scene location.{style_suffix}"
                 )
             else:
-                anchor_prompt = f"{request.image_prompt or compiled_plan.anchor_description}{style_suffix}"
+                anchor_prompt = self._build_location_anchor_prompt(
+                    image_prompt=request.image_prompt or compiled_plan.anchor_description,
+                    visual_style=request.visual_style,
+                    reference_mode=request.reference_mode,
+                )
             self._report_phase(request, "anchor_start")
             anchor = self.anchor_backend.render_image(
                 ImageRenderRequest(

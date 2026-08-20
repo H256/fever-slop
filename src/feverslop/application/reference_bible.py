@@ -58,6 +58,7 @@ class ReferenceLocation:
     name: str
     visual_description: str = ""
     image_prompt: str = ""
+    reference_mode: str = "empty_environment"
 
 
 class ReferenceBibleGenerator:
@@ -302,6 +303,7 @@ class ReferenceBibleGenerator:
                 asset_context=asdict(location),
                 output_dir=self.output_dir,
                 reference_image_size=self.location_hero_size,
+                reference_mode=location.reference_mode,
             )
         )
         manifest = {
