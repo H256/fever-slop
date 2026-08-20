@@ -111,16 +111,20 @@ class ReferenceWorkspaceService:
         background_ids: tuple[str, ...] = (),
         style_ids: tuple[str, ...] = (),
         actor_look_ids: dict[str, str] | None = None,
+        prop_ids: tuple[str, ...] = (),
+        prop_interactions: tuple[dict[str, Any], ...] = (),
     ) -> CommandResult:
         try:
             assignment = SceneReferenceAssignment(
                 scene_number=scene_number,
                 actor_ids=actor_ids,
                 location_ids=location_ids,
-                background_ids=background_ids or (),
-                style_ids=style_ids,
-                actor_look_ids=actor_look_ids,
-            )
+                  background_ids=background_ids or (),
+                  style_ids=style_ids,
+                  actor_look_ids=actor_look_ids,
+                  prop_ids=prop_ids,
+                  prop_interactions=tuple(PropInteraction.from_dict(item) for item in prop_interactions),
+              )
         except ValueError as e:
             return CommandResult(success=False, error=CommandError("invalid_assignment", str(e)))
 

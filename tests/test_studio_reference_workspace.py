@@ -175,6 +175,20 @@ class ReferenceWorkspaceServiceTests(unittest.TestCase):
         result = svc.preview_assignment("proj", 5, actor_ids=("hero",))
         self.assertTrue(result.success)
 
+    def test_preview_assignment_validates_props(self):
+        self._mock = _MockLibrary(props=["guitar"])
+        svc = self._service_with_mock()
+        result = svc.preview_assignment(
+            "proj",
+            5,
+            actor_ids=("hero",),
+            prop_ids=("guitar",),
+            prop_interactions=(
+                {"actor_id": "hero", "prop_id": "guitar", "action": "holds"},
+            ),
+        )
+        self.assertTrue(result.success)
+
     def test_preview_invalid_actor(self):
         svc = self._service_with_mock()
         result = svc.preview_assignment("proj", 5, actor_ids=("unknown",))
