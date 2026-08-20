@@ -36,8 +36,11 @@ class APIURLValidationTests(unittest.TestCase):
         with patch.dict(os.environ, {"FEVERSLOP_ALLOWED_API_HOSTS": "192.168.1.10"}):
             self.assertEqual(
                 "http://192.168.1.10:8188",
-                validate_api_url("http://192.168.1.10:8188"),
+                validate_api_url("http://192.168.1.10:8188", allow_private_addresses=False),
             )
+        with patch.dict(os.environ, {"FEVERSLOP_ALLOWED_API_HOSTS": ""}):
+            with self.assertRaisesRegex(APIURLValidationError, "private"):
+                validate_api_url("http://192.168.1.10:8188", allow_private_addresses=False)
 
     def test_rejects_query_and_fragment_on_base_url(self):
         for suffix in ("?token=secret", "#fragment"):

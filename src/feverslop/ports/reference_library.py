@@ -76,6 +76,10 @@ class MovieBiblePort(Protocol):
         """Return known background IDs from render-plan metadata."""  # noqa: D402
         ...
 
+    def get_known_prop_ids(self, project_id: str) -> list[str]:
+        """Return known prop IDs from project global asset config."""  # noqa: D402
+        ...
+
 
 class SceneCastPort(Protocol):
     """Access to scene cast resolution for validation."""

@@ -4,13 +4,13 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
+from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder, scene_prompt_word_limit
 from tests.prompt_fakes import GeneralModulesFake
 
 
 class ScenePromptBuilderTests(unittest.TestCase):
     def test_scene_prompt_overflow_is_trimmed_with_scene_aware_diagnostic(self):
-        modules = GeneralModulesFake(i2v="word " * 151)
+        modules = GeneralModulesFake(i2v="word " * 60)
         messages = []
         builder = ScenePromptBuilder(object(), modules=modules)
 
@@ -33,11 +33,22 @@ class ScenePromptBuilderTests(unittest.TestCase):
             )
             data = json.loads(output_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(150, len(data[0]["i2v_prompt_from_t2i"].split()))
+        self.assertEqual(50, len(data[0]["i2v_prompt_from_t2i"].split()))
         self.assertEqual(1, len(messages))
         self.assertIn("Scene 11 I2V prompt", messages[0])
-        self.assertIn("151 words", messages[0])
-        self.assertIn("trimmed to 150 words", messages[0])
+        self.assertIn("60 words", messages[0])
+        self.assertIn("trimmed to 50 words", messages[0])
+
+    def test_scene_prompt_word_limit_uses_shared_default_for_missing_or_invalid_guidance(self):
+        from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX
+
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, scene_prompt_word_limit({}))
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, scene_prompt_word_limit({"prompt_guidance": {}}))
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, scene_prompt_word_limit({"prompt_guidance": {"word_count_max": None}}))
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, scene_prompt_word_limit({"prompt_guidance": {"word_count_max": "many"}}))
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, scene_prompt_word_limit({"prompt_guidance": {"word_count_max": 0}}))
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, scene_prompt_word_limit({"prompt_guidance": {"word_count_max": -10}}))
+        self.assertEqual(42, scene_prompt_word_limit({"prompt_guidance": {"word_count_max": 42}}))
 
     def test_scene_prompt_uses_configured_word_count_max(self):
         modules = GeneralModulesFake(i2v="word " * 51)

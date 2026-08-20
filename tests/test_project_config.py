@@ -757,5 +757,83 @@ class AudioRefsStemValidationTests(unittest.TestCase):
         self.assertEqual(["vocals", "full_mix"], config.minimax_h3_audio_refs.stems)
 
 
+class ScenePromptWordCountDefaultsTests(unittest.TestCase):
+    def test_word_count_defaults_are_shared_across_builder_loader_and_scaffolds(self):
+        from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
+        from feverslop.config.project_config import (
+            ProjectConfig,
+            PromptGuidanceConfig,
+            SCENE_PROMPT_WORD_COUNT_MAX,
+            SCENE_PROMPT_WORD_COUNT_MIN,
+        )
+        from feverslop.domain.full_auto import GeneratedSong, SongSpec
+        from feverslop.prompting.scene_prompt_builder import scene_prompt_word_limit
+        from feverslop.studio.project_repository import movie_default_config
+        from feverslop.studio.projects import ProjectCreateRequest
+
+        # Pin the behavior-preserving decision explicitly (must not drift to 150).
+        self.assertEqual((40, 50), (SCENE_PROMPT_WORD_COUNT_MIN, SCENE_PROMPT_WORD_COUNT_MAX))
+
+        # Builder bare-context fallback == dataclass default.
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, scene_prompt_word_limit({}))
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MAX, PromptGuidanceConfig().word_count_max)
+        self.assertEqual(SCENE_PROMPT_WORD_COUNT_MIN, PromptGuidanceConfig().word_count_min)
+
+        # Loader default for a config WITHOUT a prompt_guidance section.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({"input_audio": "song.mp3"}), encoding="utf-8")
+            config = ProjectConfig.load(config_path)
+        self.assertEqual(
+            (SCENE_PROMPT_WORD_COUNT_MIN, SCENE_PROMPT_WORD_COUNT_MAX),
+            (config.prompt_guidance.word_count_min, config.prompt_guidance.word_count_max),
+        )
+        self.assertEqual(
+            SCENE_PROMPT_WORD_COUNT_MAX,
+            scene_prompt_word_limit({"prompt_guidance": config.prompt_guidance.as_prompt_context()}),
+        )
+
+        # Studio (movie) scaffold default.
+        studio_guidance = movie_default_config(
+            ProjectCreateRequest(project_type="movie", name="demo")
+        )["prompt_guidance"]
+        self.assertEqual(
+            (SCENE_PROMPT_WORD_COUNT_MIN, SCENE_PROMPT_WORD_COUNT_MAX),
+            (studio_guidance["word_count_min"], studio_guidance["word_count_max"]),
+        )
+
+        # Full-auto scaffold default.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "source.mp3"
+            audio.write_bytes(b"")
+            LocalProjectScaffold().create_project(
+                projects_dir=temp,
+                project_slug="demo",
+                spec=SongSpec(
+                    title="Demo",
+                    tags="pop",
+                    lyrics="la la la",
+                    bpm=120,
+                    duration_seconds=120.0,
+                    language="en",
+                    keyscale="C major",
+                    visual_story_idea="a demo story",
+                    visual_style="cinematic",
+                ),
+                generated_song=GeneratedSong(audio_path=audio, manifest={}),
+            )
+            scaffold_config = json.loads((temp / "demo" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            (SCENE_PROMPT_WORD_COUNT_MIN, SCENE_PROMPT_WORD_COUNT_MAX),
+            (
+                scaffold_config["prompt_guidance"]["word_count_min"],
+                scaffold_config["prompt_guidance"]["word_count_max"],
+            ),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
