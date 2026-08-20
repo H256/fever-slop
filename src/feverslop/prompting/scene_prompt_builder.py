@@ -4,13 +4,12 @@ from pathlib import Path
 import re
 from typing import Callable
 
+from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX
 from feverslop.prompting.music_video_prompt_style import build_i2v_system_prompt, build_video_payload
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 from feverslop.prompting.general_modules import GeneralPromptModules
-
-_SCENE_PROMPT_MAX_WORDS = 150
 
 
 def clean_llm_text(text: str) -> str:
@@ -44,10 +43,10 @@ def limit_scene_prompt_words(
 def scene_prompt_word_limit(global_context: dict) -> int:
     guidance = global_context.get("prompt_guidance") or {}
     try:
-        configured = int(guidance.get("word_count_max", _SCENE_PROMPT_MAX_WORDS))
+        configured = int(guidance.get("word_count_max", SCENE_PROMPT_WORD_COUNT_MAX))
     except (TypeError, ValueError):
-        return _SCENE_PROMPT_MAX_WORDS
-    return configured if configured > 0 else _SCENE_PROMPT_MAX_WORDS
+        return SCENE_PROMPT_WORD_COUNT_MAX
+    return configured if configured > 0 else SCENE_PROMPT_WORD_COUNT_MAX
 
 
 def normalize_scene_references(references: dict, global_context: dict) -> dict:

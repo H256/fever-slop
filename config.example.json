@@ -3,6 +3,7 @@
   "input_audio": "input/comfyui_00056_.mp3",
   "lyrics": "",
   "video_pipeline": "ltx_msr",
+  "reference_profile": "generic",
 
   "video": {
     "fps": 24,
