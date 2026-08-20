@@ -86,6 +86,19 @@ def atomic_write_text(path: Path, text: str) -> Path:
     return path
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> Path:
+    """Write binary data atomically: temp file in same dir, sync, then os.replace()."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    return path
+
+
 def file_is_valid(path: Path) -> bool:
     """Check that path exists as a file with non-zero size."""
     return path.is_file() and path.stat().st_size > 0

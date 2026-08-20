@@ -11,6 +11,7 @@ from feverslop.ports.reporting import Reporter
 from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE, validate_full_auto_inputs, validate_pipeline_mode
 from feverslop.domain.slug_utils import slugify_project_name
 from feverslop.studio.projects import ProjectCreateRequest, StudioPathError
+from feverslop.utils.io import atomic_write_json
 
 
 class ProjectRepository:
@@ -146,7 +147,7 @@ class ProjectRepository:
         path = root / "config.json"
         if path.exists():
             return
-        path.write_text(json.dumps(movie_default_config_from_metadata(metadata), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_json(path, movie_default_config_from_metadata(metadata))
 
 
 def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:

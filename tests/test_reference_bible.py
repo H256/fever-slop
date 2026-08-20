@@ -65,6 +65,54 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("output/references/actors/singer/contact-sheet.png", manifest["contact_sheet_path"])
             self.assertEqual("output/references/actors/singer/sheet.png", manifest["msr_input_path"])
             self.assertEqual("Identity-only Mara anchor", manifest["anchor_prompt"])
+            self.assertEqual("Mara", json.loads(manifest_path.read_text(encoding="utf-8"))["name"])
+            self.assertEqual([], [p for p in actor_dir.rglob("*") if p.name.endswith(".tmp")])
+
+    def test_generator_can_publish_sequence_location_bible(self):
+        from feverslop.application.sequence_reference_pipeline import SequenceReferenceResult
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "output" / "references"
+            location_dir = output_dir / "locations" / "stage"
+            location_dir.mkdir(parents=True)
+            files = {}
+            for name in ("anchor.png", "sequence.mp4", "contact-sheet.png", "sheet.png"):
+                path = location_dir / name
+                path.write_bytes(b"artifact")
+                files[name] = path
+            result = SequenceReferenceResult(
+                kind="location", asset_id="stage",
+                anchor_path=files["anchor.png"], sequence_path=files["sequence.mp4"],
+                contact_sheet_path=files["contact-sheet.png"], sheet_path=files["sheet.png"],
+                selected_frames=6,
+                anchor_prompt="Station environment anchor",
+            )
+            generator = ReferenceBibleGenerator(
+                backend=FakeImageBackend(),
+                output_dir=output_dir,
+                sequence_backend=object(),
+            )
+            with patch(
+                "feverslop.application.reference_bible.SequenceReferencePipeline.generate",
+                return_value=result,
+            ):
+                manifest_path = generator.generate_location_bible(
+                    ReferenceLocation(id="stage", name="Mirror Stage", image_prompt="wide mirror stage")
+                )
+
+            self.assertTrue(manifest_path.is_relative_to(output_dir))
+            self.assertEqual("manifest.json", manifest_path.name)
+            self.assertEqual("stage", manifest_path.parent.name)
+            self.assertEqual("locations", manifest_path.parent.parent.name)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual("stage", manifest["id"])
+            self.assertEqual("Mirror Stage", manifest["name"])
+            self.assertEqual("wide mirror stage", manifest["image_prompt"])
+            self.assertEqual("output/references/locations/stage/anchor.png", manifest["anchor_path"])
+            self.assertEqual("output/references/locations/stage/sequence.mp4", manifest["sequence_path"])
+            self.assertEqual("output/references/locations/stage/anchor.png", manifest["msr_background_path"])
+            self.assertEqual("output/references/locations/stage/sheet.png", manifest["sheet_path"])
+            self.assertEqual([], [p for p in location_dir.rglob("*") if p.name.endswith(".tmp")])
 
     def test_generator_writes_manifest_views_and_sheet(self):
         with tempfile.TemporaryDirectory() as temp_dir:

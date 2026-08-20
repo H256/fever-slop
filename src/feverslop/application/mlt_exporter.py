@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+from feverslop.utils.io import atomic_write_text
+
 
 def export_render_plan_to_mlt(
     *,
@@ -175,7 +177,8 @@ def export_render_plan_to_mlt(
         ET.SubElement(tractor, "track", {"producer": "playlist1", "hide": "video"})
 
     ET.indent(root, space="  ")
-    ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
+    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
+    atomic_write_text(output, payload)
     return output
 
 
