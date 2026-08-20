@@ -351,6 +351,58 @@ class LLMConfigValidationTests(unittest.TestCase):
                 AppConfig.load(config_path)
 
 
+class ComfyUIPromptTimeoutValidationTests(unittest.TestCase):
+    """Test ComfyUIConfig prompt_timeout_seconds validation."""
+
+    def test_rejects_negative_prompt_timeout(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"comfyui": {"prompt_timeout_seconds": -1}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "comfyui.prompt_timeout_seconds must be greater than zero"):
+                AppConfig.load(config_path)
+
+    def test_rejects_zero_prompt_timeout(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"comfyui": {"prompt_timeout_seconds": 0}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "comfyui.prompt_timeout_seconds must be greater than zero"):
+                AppConfig.load(config_path)
+
+    def test_accepts_small_positive_prompt_timeout(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"comfyui": {"prompt_timeout_seconds": 0.5}}',
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path)
+        self.assertEqual(0.5, config.comfyui.prompt_timeout_seconds)
+
+    def test_prompt_timeout_default_unchanged(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"comfyui": {}}',
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path)
+        self.assertEqual(1800.0, config.comfyui.prompt_timeout_seconds)
+
+
 class RecursiveRequiredKeysTests(unittest.TestCase):
     """Test recursive required_keys validation with dot-notation paths."""
 

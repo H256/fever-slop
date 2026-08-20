@@ -365,6 +365,17 @@ class ProjectConfig:
             raise ValueError("max_scene_actors must be between 1 and 4")
         if subject_mode == "single":
             max_scene_actors = 1
+        word_count_min = int(guidance_raw.get("word_count_min", SCENE_PROMPT_WORD_COUNT_MIN))
+        word_count_max = int(guidance_raw.get("word_count_max", SCENE_PROMPT_WORD_COUNT_MAX))
+        if word_count_min < 1:
+            raise ValueError(f"prompt_guidance.word_count_min must be >= 1, got {word_count_min}")
+        if word_count_max < 1:
+            raise ValueError(f"prompt_guidance.word_count_max must be >= 1, got {word_count_max}")
+        if word_count_min > word_count_max:
+            raise ValueError(
+                f"prompt_guidance.word_count_min ({word_count_min}) "
+                f"must be <= prompt_guidance.word_count_max ({word_count_max})"
+            )
 
         return cls(
             project_dir=project_dir,
@@ -474,8 +485,8 @@ class ProjectConfig:
                 outfit_rules=guidance_raw.get("outfit_rules", ""),
                 prompt_structure=guidance_raw.get("prompt_structure", ""),
                 list_handling=guidance_raw.get("list_handling", ""),
-                word_count_min=int(guidance_raw.get("word_count_min", SCENE_PROMPT_WORD_COUNT_MIN)),
-                word_count_max=int(guidance_raw.get("word_count_max", SCENE_PROMPT_WORD_COUNT_MAX)),
+                word_count_min=word_count_min,
+                word_count_max=word_count_max,
             ),
             video_pipeline=str(raw.get("video_pipeline", "ltx_i2v")).strip() or "ltx_i2v",
             lora_1=lora_1,

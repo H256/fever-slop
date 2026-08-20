@@ -198,6 +198,9 @@ class AppConfig:
             not math.isfinite(default_max_render_duration) or default_max_render_duration <= 0
         ):
             raise ValueError("default_max_render_duration_seconds must be greater than zero")
+        prompt_timeout = float(comfyui_raw.get("prompt_timeout_seconds", 1800.0))
+        if not math.isfinite(prompt_timeout) or prompt_timeout <= 0:
+            raise ValueError("comfyui.prompt_timeout_seconds must be greater than zero")
 
         video_workflow_limits = tuple(
             VideoWorkflowLimitConfig.from_dict(item)
@@ -254,7 +257,7 @@ class AppConfig:
             ),
             comfyui=ComfyUIConfig(
                 base_url=comfyui_raw.get("base_url", "http://127.0.0.1:8188"),
-                prompt_timeout_seconds=float(comfyui_raw.get("prompt_timeout_seconds", 1800.0)),
+                prompt_timeout_seconds=prompt_timeout,
                 model_overrides=[
                     ComfyUIModelOverride.from_dict(item)
                     for item in comfyui_raw.get("model_overrides") or []
