@@ -42,6 +42,7 @@ class SequenceReferenceRequest:
     seed: int = 0
     frames: int = 124
     asset_context: dict[str, Any] | None = None
+    reference_image_size: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +102,7 @@ class SequenceReferencePipeline:
             anchor_dir = staging_dir / "anchor"
             anchor_dir.mkdir(parents=True)
             style = " ".join(str(request.visual_style or "").split())
-            style_suffix = f" Visual style: {style}." if style else ""
+            style_suffix = f" Visual style: {style}." if style and kind == "location" else ""
             if kind == "character":
                 anchor_prompt = (
                     f"{compiled_plan.anchor_description}. One character only, neutral relaxed pose, "
@@ -119,8 +120,8 @@ class SequenceReferencePipeline:
                     prompt=anchor_prompt,
                     workflow_path=Path(""),
                     output_dir=anchor_dir,
-                    width=1920,
-                    height=1080,
+                    width=(request.reference_image_size or (1920, 1080))[0],
+                    height=(request.reference_image_size or (1920, 1080))[1],
                     reference_image=None,
                 )
             )
@@ -139,7 +140,7 @@ class SequenceReferencePipeline:
                     frames=request.frames,
                 )
             sequence_prompt = prompt.prompt
-            if style:
+            if style and kind == "location":
                 sequence_prompt = f"{sequence_prompt}\n\nVisual style: {style}. Preserve this style throughout the sequence."
             sequence = staging_dir / "sequence.mp4"
             self._report_phase(request, "sequence_start")
