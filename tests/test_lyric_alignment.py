@@ -31,7 +31,7 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         self.assertIn("hello world", modules.calls[0].payload["REFERENCE_LYRICS"])
         self.assertEqual("segment1", modules.calls[0].payload["WHISPER_SEGMENTS"][0]["key"])
 
-    def test_lyrics_are_reconstructed_from_word_timestamps(self):
+    def test_project_lyrics_are_preserved_when_word_timestamps_are_incomplete(self):
         timeline = [
             TimelineSegment(
                 start=4.76,
@@ -54,7 +54,7 @@ class LyricTimelineAlignerTests(unittest.TestCase):
 
         corrected = aligner.align(timeline, "Das ist unser letztes Lied für heute Nacht.")
 
-        self.assertEqual("ihr seid unglaublich!", corrected[0].text)
+        self.assertEqual("Das ist unser letztes Lied für heute Nacht.", corrected[0].text)
 
     def test_raises_when_llm_returns_wrong_segment_count(self):
         timeline = [
