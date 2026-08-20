@@ -94,6 +94,27 @@ class LyricTimelineAligner:
             boundaries[index] = value
 
         anchor_indexes = sorted(anchors)
+        if anchor_indexes:
+            first_anchor = anchor_indexes[0]
+            last_anchor = anchor_indexes[-1]
+            invalid_prefix = (
+                first_anchor > 0
+                and anchors[first_anchor][0] <= segment.start
+            )
+            invalid_suffix = (
+                last_anchor < len(words) - 1
+                and anchors[last_anchor][1] >= segment.end
+            )
+            invalid_gap = any(
+                right > left + 1
+                and anchors[right][0] <= anchors[left][1]
+                for left, right in zip(anchor_indexes, anchor_indexes[1:], strict=False)
+            )
+            if invalid_prefix or invalid_suffix or invalid_gap:
+                anchor_indexes = []
+                anchors = {}
+                boundaries = [None] * len(words)
+
         runs = []
         if anchor_indexes:
             runs.append((0, anchor_indexes[0], segment.start, anchors[anchor_indexes[0]][0]))
