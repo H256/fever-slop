@@ -55,6 +55,12 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         corrected = aligner.align(timeline, "Das ist unser letztes Lied für heute Nacht.")
 
         self.assertEqual("Das ist unser letztes Lied für heute Nacht.", corrected[0].text)
+        self.assertEqual(
+            ["Das", "ist", "unser", "letztes", "Lied", "für", "heute", "Nacht."],
+            [item["word"] for item in corrected[0].word_timestamps],
+        )
+        self.assertEqual(4.76, corrected[0].word_timestamps[0]["start"])
+        self.assertEqual(6.94, corrected[0].word_timestamps[-1]["end"])
 
     def test_raises_when_llm_returns_wrong_segment_count(self):
         timeline = [

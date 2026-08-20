@@ -71,13 +71,7 @@ def lyrics_for_time_range(
 ) -> str:
     """Return words assigned to a subrange using Whisper timestamps when available."""
     words_with_timestamps = word_timestamps or ()
-    lyrics_words = str(lyrics or "").split()
-    timestamp_word_count = sum(
-        bool(str(item.get("word", "")).strip())
-        for item in words_with_timestamps
-        if isinstance(item, dict)
-    )
-    if words_with_timestamps and timestamp_word_count == len(lyrics_words):
+    if words_with_timestamps:
         selected = []
         for item in words_with_timestamps:
             try:
@@ -93,7 +87,7 @@ def lyrics_for_time_range(
         return " ".join(selected)
 
     # Legacy timeline files do not contain word timestamps.
-    words = lyrics_words
+    words = str(lyrics or "").split()
     source_duration = float(source_end) - float(source_start)
     if not words or source_duration <= 0 or range_end <= range_start:
         return ""

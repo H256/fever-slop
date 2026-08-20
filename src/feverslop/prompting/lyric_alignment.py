@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from feverslop.domain.timeline import TimelineSegment
 from feverslop.ports.llm import LLMPort
 from feverslop.prompting.general_modules import GeneralPromptModules
@@ -40,14 +42,85 @@ class LyricTimelineAligner:
 
         corrected_segments = {}
         for segment, key in zip(vocal_segments, expected_keys, strict=True):
+            aligned_text = str(corrected[key]).strip()
             corrected_segments[id(segment)] = TimelineSegment(
                 start=segment.start,
                 end=segment.end,
                 kind=segment.kind,
-                text=str(corrected[key]).strip(),
-                word_timestamps=segment.word_timestamps,
+                text=aligned_text,
+                word_timestamps=self._complete_word_timestamps(
+                    aligned_text,
+                    segment,
+                ),
             )
 
         return [
             corrected_segments.get(id(seg), seg) for seg in timeline
         ]
+
+    @staticmethod
+    def _complete_word_timestamps(
+        text: str,
+        segment: TimelineSegment,
+    ) -> tuple[dict[str, object], ...]:
+        words = text.split()
+        if not words:
+            return ()
+
+        def normalize(value: object) -> str:
+            return re.sub(r"[^\w]+", "", str(value).casefold())
+
+        timestamp_items = [
+            item
+            for item in segment.word_timestamps
+            if normalize(item.get("word", ""))
+        ]
+        anchors: dict[int, tuple[float, float]] = {}
+        cursor = 0
+        for item in timestamp_items:
+            token = normalize(item.get("word", ""))
+            while cursor < len(words) and normalize(words[cursor]) != token:
+                cursor += 1
+            if cursor == len(words):
+                break
+            try:
+                anchors[cursor] = (float(item["start"]), float(item["end"]))
+            except (KeyError, TypeError, ValueError):
+                pass
+            cursor += 1
+
+        boundaries: list[tuple[float, float] | None] = [None] * len(words)
+        for index, value in anchors.items():
+            boundaries[index] = value
+
+        anchor_indexes = sorted(anchors)
+        runs = []
+        if anchor_indexes:
+            runs.append((0, anchor_indexes[0], segment.start, anchors[anchor_indexes[0]][0]))
+            for left, right in zip(anchor_indexes, anchor_indexes[1:], strict=False):
+                runs.append((left + 1, right, anchors[left][1], anchors[right][0]))
+            runs.append((anchor_indexes[-1] + 1, len(words), anchors[anchor_indexes[-1]][1], segment.end))
+        else:
+            runs.append((0, len(words), segment.start, segment.end))
+
+        for start, end, range_start, range_end in runs:
+            count = end - start
+            if count <= 0:
+                continue
+            duration = max(0.0, range_end - range_start)
+            step = duration / count if count else 0.0
+            for offset in range(count):
+                index = start + offset
+                if boundaries[index] is None:
+                    word_start = range_start + step * offset
+                    boundaries[index] = (word_start, word_start + step)
+
+        return tuple(
+            {
+                "word": word,
+                "start": round(boundary[0], 3),
+                "end": round(boundary[1], 3),
+            }
+            for word, boundary in zip(words, boundaries, strict=True)
+            if boundary is not None
+        )

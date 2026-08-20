@@ -34,7 +34,7 @@ class FakeArtifactStore:
 
 
 class ArtifactStorePipelineIoTests(unittest.TestCase):
-    def test_prompt_relay_falls_back_to_full_lyrics_when_word_timestamps_are_incomplete(self):
+    def test_prompt_relay_uses_only_available_timestamped_words(self):
         result = lyrics_for_time_range(
             "Ich trug mein Name wie ein Messer",
             0.0,
@@ -47,7 +47,7 @@ class ArtifactStorePipelineIoTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual("Ich trug mein Name wie ein Messer", result)
+        self.assertEqual("mein Name", result)
 
     def _write_scene_srt(self, directory: Path) -> Path:
         path = directory / "scenes.srt"
