@@ -129,6 +129,7 @@ class ComfyUISequenceToSheetBackend:
         seed: int,
         width: int = 1216,
         height: int = 672,
+        aspect_ratio: str | None = None,
         frames: int = 124,
         output_prefix: str = "sequence_to_sheet/output",
     ) -> dict:
@@ -141,6 +142,8 @@ class ComfyUISequenceToSheetBackend:
         ]
         patcher.set_input_by_title("#STARTFRAME", "image", uploaded[0])
         patcher.set_input_by_title("#MEGAPIXELS", "megapixels", round(width * height / 1_000_000, 2))
+        if aspect_ratio is not None:
+            patcher.set_input_by_title("#MEGAPIXELS", "aspect_ratio", aspect_ratio)
         patcher.set_input_by_title("#FRAMECOUNT", "value", int(frames))
         patcher.set_input_by_title("#PROMPT", "prompt", prompt)
         patcher.set_input_by_title(

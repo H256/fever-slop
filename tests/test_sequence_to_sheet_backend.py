@@ -88,6 +88,26 @@ class SequenceToSheetBackendTests(unittest.TestCase):
 
             self.assertEqual(0.85, patched["115"]["inputs"]["megapixels"])
 
+    def test_patches_portrait_aspect_ratio_for_character_sequences(self):
+        with tempfile.TemporaryDirectory() as temp:
+            anchor = Path(temp) / "anchor.png"
+            anchor.write_bytes(b"anchor")
+            backend = ComfyUISequenceToSheetBackend(
+                client=object(),
+                workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+                backend="minimax",
+                asset_uploader=FakeUploader(),
+            )
+
+            patched = backend.build_workflow(
+                anchor_images=[anchor],
+                prompt="portrait turnaround",
+                seed=7,
+                aspect_ratio="9:16 (Portrait)",
+            )
+
+            self.assertEqual("9:16 (Portrait)", patched["115"]["inputs"]["aspect_ratio"])
+
 
 if __name__ == "__main__":
     unittest.main()
