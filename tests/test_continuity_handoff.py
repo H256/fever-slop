@@ -109,6 +109,10 @@ class ContinuityHandoffTests(unittest.TestCase):
             result["keyframes"]["startframe_source_clip_path"],
         )
         self.assertEqual("last-frame-v1", result["keyframes"]["startframe_extractor"])
+        handoff = result["keyframes"]["continuity_handoff"]
+        self.assertEqual(1, handoff["source_scene"])
+        self.assertEqual("continuous", handoff["transition"])
+        self.assertEqual(result["keyframes"]["startframe_path"], handoff["last_frame_path"])
         self.assertEqual(64, len(result["keyframes"]["startframe_source_clip_sha256"]))
         self.assertTrue(result["keyframes"]["kept"])
         self.assertEqual(18, result["ltx"]["msr_continuity_handoff_frames"])
