@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 
-def save_timeline_json(timeline, output_file: str | Path):
+def save_timeline_json(timeline, output_file: str | Path, *, whisper_raw=None):
     output_file = Path(output_file)
 
     data = [
@@ -22,5 +22,10 @@ def save_timeline_json(timeline, output_file: str | Path):
             ensure_ascii=False,
             indent=2,
         )
+
+    if whisper_raw is not None:
+        raw_output_file = output_file.with_name(f"{output_file.stem}_whisper_raw.json")
+        with raw_output_file.open("w", encoding="utf-8") as f:
+            json.dump(whisper_raw, f, ensure_ascii=False, indent=2)
 
     return output_file

@@ -37,6 +37,27 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
 
         self.assertTrue(analyzer.model.kwargs["word_timestamps"])
 
+    def test_raw_whisper_segments_are_retained_before_filtering(self):
+        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+
+        class FakeWhisper:
+            def transcribe(self, _path, **_kwargs):
+                return {
+                    "segments": [
+                        {"start": 1.0, "end": 2.0, "text": "hello", "no_speech_prob": 0.9},
+                    ]
+                }
+
+        analyzer = VocalTimelineAnalyzer.__new__(VocalTimelineAnalyzer)
+        analyzer.model = FakeWhisper()
+        analyzer.language = "de"
+
+        self.assertEqual([], analyzer._transcribe(Path("vocals.wav")))
+        self.assertEqual(
+            [{"start": 1.0, "end": 2.0, "text": "hello", "no_speech_prob": 0.9}],
+            analyzer.raw_whisper_segments,
+        )
+
     def test_boundary_words_are_assigned_once_to_best_overlapping_vocal_range(self):
         from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
 

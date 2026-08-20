@@ -139,7 +139,11 @@ class AudioTimelinePipeline:
                 f"[green]OK[/green] LLM lyric alignment finished: "
                 f"{vocal_segments} vocal segments checked"
             )
-        self.save_timeline_json(timeline, timeline_json)
+        raw_whisper = getattr(analyzer, "raw_whisper_segments", None) if not skip_whisper else None
+        if raw_whisper is None:
+            self.save_timeline_json(timeline, timeline_json)
+        else:
+            self.save_timeline_json(timeline, timeline_json, whisper_raw=raw_whisper)
         log_file("Timeline JSON", timeline_json)
 
         vocal_count = sum(1 for seg in timeline if seg.kind == "vocals")

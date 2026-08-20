@@ -36,6 +36,7 @@ class VocalTimelineAnalyzer:
     ):
         self.whisper_model = whisper_model
         self.model = None
+        self.raw_whisper_segments: list[dict] = []
         self.language = language
         self.merge_gap = merge_gap
         self.min_vocal_duration = min_vocal_duration
@@ -90,9 +91,11 @@ class VocalTimelineAnalyzer:
             word_timestamps=True,
         )
 
+        raw_segments = list(result.get("segments") or [])
+        self.raw_whisper_segments = raw_segments
         segments = []
 
-        for s in result["segments"]:
+        for s in raw_segments:
             text = s["text"].strip()
             lower = text.lower()
 
