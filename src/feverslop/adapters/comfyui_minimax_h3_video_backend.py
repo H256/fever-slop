@@ -4,6 +4,7 @@ from pathlib import Path
 from copy import deepcopy
 from dataclasses import replace
 import json
+import math
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
@@ -125,7 +126,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         Tries the plural anchor first (R2V convention), then falls back to
         the singular anchor (T2V convention).
         """
-        rounded = round(megapixels, 1)
+        rounded = math.floor(float(megapixels) * 10) / 10
         if patcher.try_set_existing_input_by_title("#MEGAPIXELS", "megapixels", rounded):
             return
         if patcher.try_set_existing_input_by_title("#MEGAPIXEL", "megapixels", rounded):

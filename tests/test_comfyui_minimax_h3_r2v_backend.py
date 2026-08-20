@@ -418,11 +418,11 @@ class PatchMegapixelsTests(unittest.TestCase):
         ComfyUIMiniMaxH3R2VBackend._patch_megapixels(patcher, 0.5)
         self.assertEqual(0.5, patcher.get()["10"]["inputs"]["megapixels"])
 
-    def test_rounds_to_one_decimal(self):
+    def test_floors_to_one_decimal_to_avoid_overshooting_resolution(self):
         wf = _native_r2v_workflow()
         patcher = WorkflowPatcher(wf)
         ComfyUIMiniMaxH3R2VBackend._patch_megapixels(patcher, 0.786432)
-        self.assertEqual(0.8, patcher.get()["10"]["inputs"]["megapixels"])
+        self.assertEqual(0.7, patcher.get()["10"]["inputs"]["megapixels"])
 
     def test_computation_from_resolution(self):
         """Verify the formula: (width * height) / 1_000_000, rounded to 0.1."""
@@ -684,8 +684,8 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertEqual("cinematic shot", result["40"]["inputs"]["value"])
         # Frame count patched: round(5.0 * 24) = 120
         self.assertEqual(120, result["30"]["inputs"]["value"])
-        # Megapixels patched: round(1024 * 768 / 1_000_000, 1) = round(0.786432, 1) = 0.8
-        expected_mp = round(1024 * 768 / 1_000_000, 1)
+        # Megapixels patched conservatively: floor(0.786432, 1) = 0.7
+        expected_mp = 0.7
         self.assertEqual(expected_mp, result["10"]["inputs"]["megapixels"])
         # Ref images patched
         self.assertIn("actor", result["50"]["inputs"]["image"])

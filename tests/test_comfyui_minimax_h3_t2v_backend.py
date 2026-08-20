@@ -347,8 +347,8 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertEqual("cinematic vaporwave scene", result["131"]["inputs"]["prompt"])
         # Frame count patched: round(5.0 * 24) = 120
         self.assertEqual(120, result["133"]["inputs"]["value"])
-        # Megapixels patched: round(1024 * 768 / 1_000_000, 1) = 0.8
-        expected_mp = round(1024 * 768 / 1_000_000, 1)
+        # Megapixels patched: floor(1024 * 768 / 1_000_000, 1) = 0.7
+        expected_mp = 0.7
         self.assertEqual(expected_mp, result["115"]["inputs"]["megapixels"])
         # Start frame patched
         self.assertIn("start", result["136"]["inputs"]["image"])
