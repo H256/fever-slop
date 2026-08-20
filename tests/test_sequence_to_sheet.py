@@ -35,7 +35,7 @@ class SequenceToSheetTests(unittest.TestCase):
         self.assertEqual(5, recommended_view_count("location"))
 
     def test_recommended_layout_preserves_video_aspect_ratio(self):
-        self.assertEqual((2, (512, 288)), recommended_sheet_layout("character"))
+        self.assertEqual((2, (288, 512)), recommended_sheet_layout("character"))
         self.assertEqual((3, (512, 288)), recommended_sheet_layout("location"))
 
     def test_select_frames_is_deterministic_and_prefers_sharp_frames(self):

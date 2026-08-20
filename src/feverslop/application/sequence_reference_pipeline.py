@@ -171,15 +171,15 @@ class SequenceReferencePipeline:
                 count=view_count,
                 subject=request.description,
             )
+            columns, panel_size = recommended_sheet_layout(kind)
             contact_sheet = staging_dir / "contact-sheet.png"
             compose_contact_sheet(
                 selected,
                 contact_sheet,
                 columns=3,
-                panel_size=(512, 288),
+                panel_size=panel_size,
                 include_labels=False,
             )
-            columns, panel_size = recommended_sheet_layout(kind)
             sheet = staging_dir / "sheet.png"
             compose_sheet_from_contact_sheet(
                 contact_sheet,
