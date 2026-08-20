@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.prompting.dspy_h3_models import MusicIntent
+from feverslop.domain.reference_contracts import render_reference_contract
 from feverslop.domain.performance_sync import (
     select_performance_audio_paths,
     visible_performance_roles,
@@ -316,6 +317,36 @@ def _format_performance_timing(segment: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_reference_contract(
+    *,
+    references: list[dict[str, str]],
+    segment: dict[str, Any],
+    global_context: dict[str, Any],
+) -> str:
+    metadata = segment.get("references") or {}
+    actor_roles = {
+        str(item.get("name") or item.get("id") or "").strip(): item.get("role") or ""
+        for item in metadata.get("actor_reference_descriptions") or []
+        if isinstance(item, dict)
+    }
+    raw_bindings = metadata.get("prop_bindings") or segment.get("prop_bindings") or {}
+    prop_bindings = raw_bindings if isinstance(raw_bindings, dict) else {}
+    profile = (
+        segment.get("reference_profile")
+        or metadata.get("reference_profile")
+        or global_context.get("reference_profile")
+        or ""
+    )
+    if not str(profile).strip():
+        return ""
+    return render_reference_contract(
+        references,
+        profile=str(profile),
+        actor_roles=actor_roles,
+        prop_bindings=prop_bindings,
+    )
+
+
 def _repair_audio_references(prompt: str, references: list[dict[str, str]]) -> str:
     """Restore audio_reuse semantics omitted by a sectioned DSPy H3 prompt."""
     audio_references = [
@@ -481,11 +512,29 @@ class DspyH3PromptBuilder:
         rendered_prompt = _repair_audio_references(str(prompt).strip(), references)
         relay_prompt = _format_relay_shots(relay_segments) if append_relay_prompt else ""
         performance_prompt = _format_performance_timing(segment)
-        prompt_parts = [rendered_prompt, relay_prompt, performance_prompt]
+        has_visual_reference = any(reference["kind"] in {"picture", "video"} for reference in references)
+        contract_prompt = (
+            _format_reference_contract(
+                references=references,
+                segment=segment,
+                global_context=global_context,
+            )
+            if str(mode).strip().lower() in {"ref", "r2v"} and has_visual_reference
+            else ""
+        )
+        prompt_parts = [rendered_prompt, contract_prompt, relay_prompt, performance_prompt]
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
+        profile = (
+            segment.get("reference_profile")
+            or (segment.get("references") or {}).get("reference_profile")
+            or global_context.get("reference_profile")
+            or ""
+        )
+        if str(profile).strip():
+            result["reference_profile"] = str(profile).strip()
         if segment.get("performance_timing"):
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):

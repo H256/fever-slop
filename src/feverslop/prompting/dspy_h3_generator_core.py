@@ -120,6 +120,23 @@ def _contains_active_vocal_language(text: str) -> bool:
     return False
 
 
+def _deterministic_reference_definitions(refs: list[ResolvedReference]) -> list[str]:
+    """Render structural non-picture reference declarations deterministically.
+
+    The LM may use an <Audio N> anchor correctly in summary/shots/retention while
+    omitting the boilerplate declaration from the header.  These declarations are
+    pure serialization from already-resolved metadata and must not depend on the LM.
+    """
+    definitions: list[str] = []
+    for ref in refs:
+        if ref.kind is ReferenceKind.AUDIO:
+            name = (ref.name or "audio").strip()
+            definitions.append(
+                f"{ref.label} is the synchronized {name} audio reference and is reused for the scene."
+            )
+    return definitions
+
+
 class VideoPromptGenerator:
     """Integrated DSPy planner, analyzer, and renderer."""
 
@@ -409,7 +426,9 @@ class VideoPromptGenerator:
             if request.mode == PromptMode.R2V:
                 output = self._render_reference(request, plan, refs)
                 prompt = ReferenceVideoPrompt(
-                    subject_definitions=plan.subjects, summary=output.summary,
+                    subject_definitions=plan.subjects,
+                    reference_definitions=_deterministic_reference_definitions(refs),
+                    summary=output.summary,
                     retention_analysis=output.retention_analysis,
                     detailed_description=output.detailed_description,
                     overall_soundscape=output.overall_soundscape,

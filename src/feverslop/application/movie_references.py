@@ -40,6 +40,12 @@ class MovieReferenceSheetGenerator:
         if project_config_path.is_file():
             project_config = ProjectConfig.load(project_config_path)
             reference_image_size = project_config.reference_images.resolve(project_config.video)
+        actor_reference_size = (
+            (reference_image_size[1], reference_image_size[0])
+            if reference_image_size
+            else ReferenceBibleGenerator.actor_hero_size
+        )
+        location_reference_size = reference_image_size or ReferenceBibleGenerator.location_hero_size
         generator = ReferenceBibleGenerator(
             backend=self.backend,
             edit_backend=self.edit_backend,
@@ -59,7 +65,7 @@ class MovieReferenceSheetGenerator:
             actor["image_prompt"] = build_movie_actor_reference_prompt(subject.name, subject.visual_description)
             actor["prompt"] = actor["image_prompt"]
             path = (
-                self._generate_sequence_subject(subject, output_dir)
+                self._generate_sequence_subject(subject, output_dir, actor_reference_size)
                 if self.sequence_backend is not None
                 else generator.generate_subject_bible(subject)
             )
@@ -78,7 +84,7 @@ class MovieReferenceSheetGenerator:
         for location in manifest.get("locations") or []:
             location_model = _location_from_manifest(location)
             path = (
-                self._generate_sequence_location(location_model, output_dir)
+                self._generate_sequence_location(location_model, output_dir, location_reference_size)
                 if self.sequence_backend is not None
                 else generator.generate_location_bible(location_model)
             )
@@ -97,7 +103,12 @@ class MovieReferenceSheetGenerator:
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return manifest_path
 
-    def _generate_sequence_subject(self, subject: ReferenceSubject, output_dir: Path) -> Path:
+    def _generate_sequence_subject(
+        self,
+        subject: ReferenceSubject,
+        output_dir: Path,
+        reference_image_size: tuple[int, int] | None = None,
+    ) -> Path:
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
@@ -111,6 +122,7 @@ class MovieReferenceSheetGenerator:
                 image_prompt=subject.image_prompt,
                 asset_context=asdict(subject),
                 output_dir=output_dir,
+                reference_image_size=reference_image_size or ReferenceBibleGenerator.actor_hero_size,
             )
         )
         return self._write_sequence_manifest(
@@ -122,7 +134,12 @@ class MovieReferenceSheetGenerator:
             subject=subject,
         )
 
-    def _generate_sequence_location(self, location: ReferenceLocation, output_dir: Path) -> Path:
+    def _generate_sequence_location(
+        self,
+        location: ReferenceLocation,
+        output_dir: Path,
+        reference_image_size: tuple[int, int] | None = None,
+    ) -> Path:
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
@@ -136,6 +153,7 @@ class MovieReferenceSheetGenerator:
                 image_prompt=location.image_prompt,
                 asset_context=asdict(location),
                 output_dir=output_dir,
+                reference_image_size=reference_image_size or ReferenceBibleGenerator.location_hero_size,
             )
         )
         return self._write_sequence_manifest(
