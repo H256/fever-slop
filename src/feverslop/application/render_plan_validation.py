@@ -20,13 +20,18 @@ def validate_render_plan_timeline(
     fps: int,
     render_plan_path: object,
 ) -> None:
-    """Reject render plans whose scene frames overlap by more than one frame.
+    """Reject render plans whose scenes cannot form a contiguous timeline.
 
-    Shared by the timeline exporters. Uses the same frame math and one-frame
-    boundary tolerance as the MLT exporter's in-loop check, so plans the loop
-    rejects as overlapping are rejected here before any project file is
-    written. Entries without ``abs_start_seconds`` are anchored to the running
-    cursor like the exporters' sequential entries.
+    Shared by the timeline exporters. Uses the same frame math and overlap
+    rule as the exporters' in-loop checks, so plans the loops reject are
+    rejected here before any project file is written. Scene prompts store
+    start, duration, and end as floating point seconds that drift apart by
+    sub-frame amounts, so accumulated boundary drift makes a scene start
+    before the running cursor; such a scene is auto-corrected by trimming its
+    tail at the cursor (a one-frame boundary overlap is the simplest case).
+    Only a scene fully covered by earlier scenes, with its end at or before
+    the cursor, is rejected. Entries without ``abs_start_seconds`` are
+    anchored to the running cursor like the exporters' sequential entries.
     """
     fps = int(fps)
     cursor = 0
@@ -54,15 +59,17 @@ def validate_render_plan_timeline(
     ):
         frames = end_frame - start_frame
         if start_frame < cursor:
-            overlap = cursor - start_frame
-            if overlap > 1:
+            if end_frame <= cursor:
+                # Fully covered by earlier scenes: no contiguous placement left.
                 raise ValueError(
                     "Timeline export cannot represent overlapping render-plan entries: "
-                    f"scene {scene_number} starts at frame {start_frame}, "
+                    f"scene {scene_number} ends at frame {end_frame}, "
                     f"before frame {cursor}. Render plan: {render_plan_path}"
                 )
-            # Render-plan seconds are floating point values while the timeline
-            # is frame-based. Treat a one-frame boundary discrepancy as a
-            # contiguous cut instead of a real overlap.
+            # Scene-prompt seconds are floating point while the timeline is
+            # frame-based: sub-frame boundary drift accumulates across scenes
+            # until a scene starts before the cursor. Trim its tail so the cut
+            # stays contiguous (one-frame overlaps are a special case).
             start_frame = cursor
+            frames = end_frame - cursor
         cursor = start_frame + frames

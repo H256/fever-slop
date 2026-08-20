@@ -370,7 +370,9 @@ def build_render_plan(
 
     Rule:
     - One scene == one cut == one LTX render pass.
-    - frame_count == round(fps * duration_seconds).
+    - duration_seconds is derived from the same clamped start/end used for
+      frame_count (scene_frame_count_between) and the exporter frame math, so
+      frame_count == round(fps * duration_seconds) holds within one frame.
     """
 
     scene_prompts = artifact_store.read_json(scene_prompts_json)
@@ -397,11 +399,17 @@ def build_render_plan(
         if relay_scene is None:
             raise ValueError(f"No relay data found for scene {scene_number}")
 
-        duration_seconds = float(_require_key(scene, "duration", f"scene prompts, scene {scene_number}"))
-        frame_count = video_settings.scene_frame_count_between(
-            float(_require_key(scene, "start", f"scene prompts, scene {scene_number}")),
-            float(_require_key(scene, "end", f"scene prompts, scene {scene_number}")),
-        )
+        # Only presence of the prompt duration is validated here; the plan
+        # stores the span end - start, which the timeline frame math uses.
+        _ = float(_require_key(scene, "duration", f"scene prompts, scene {scene_number}"))
+        ab_start = float(_require_key(scene, "start", f"scene prompts, scene {scene_number}"))
+        ab_end = float(_require_key(scene, "end", f"scene prompts, scene {scene_number}"))
+        if ab_end <= ab_start:
+            raise ValueError(
+                f"Render plan builder received a non-positive scene span for scene {scene_number}: "
+                f"start {ab_start}, end {ab_end}"
+            )
+        frame_count = video_settings.scene_frame_count_between(ab_start, ab_end)
 
         zimage_prompt = _require_key(scene, "zimage_prompt", f"scene prompts, scene {scene_number}")
         t2i_prompt = str(scene.get("t2i_prompt") or scene.get("zimage_prompt") or scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
@@ -474,7 +482,7 @@ def build_render_plan(
             "cut": True,
             "abs_start_seconds": _require_key(scene, "start", f"scene prompts, scene {scene_number}"),
             "abs_end_seconds": _require_key(scene, "end", f"scene prompts, scene {scene_number}"),
-            "duration_seconds": round(duration_seconds, 3),
+            "duration_seconds": round(ab_end - ab_start, 3),
             "fps": video_settings.fps,
             "width": video_settings.width,
             "height": video_settings.height,
