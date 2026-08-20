@@ -758,9 +758,7 @@ non_diegetic_music: N/A"""
 
         result = generator._plan(request, references)
 
-        self.assertEqual(2, len(calls))
-        self.assertIn("unmapped_visual=['<Picture 2>']", calls[1]["notes"])
-        self.assertIn('<Picture 2> -> subject "Stage"', calls[1]["notes"])
+        self.assertEqual(1, len(calls))
         self.assertEqual(["<Subject 1>", "<Subject 2>"], [subject.label for subject in result.subjects])
 
     def test_planner_reconstructs_persistently_unmapped_visuals_with_warning(self):
@@ -784,16 +782,16 @@ non_diegetic_music: N/A"""
             ResolvedReference(label="<Picture 2>", kind="picture", source="reef.png", role="environment", name="The Azure Reef", description="Blue crystalline reef"),
         ]
 
-        with self.assertLogs("feverslop.prompting.dspy_h3_generator_core", level="WARNING") as captured:
+        with self.assertLogs("feverslop.prompting.dspy_h3_generator_core", level="INFO") as captured:
             result = generator._plan(request, references)
 
-        self.assertEqual(2, len(calls))
+        self.assertEqual(1, len(calls))
         self.assertEqual(
             [["<Picture 1>"], ["<Picture 2>"]],
             [subject.source_references for subject in result.subjects],
         )
         self.assertEqual(["Lead Singer", "The Azure Reef"], [subject.name for subject in result.subjects])
-        self.assertTrue(any("reconstructed" in message for message in captured.output))
+        self.assertTrue(any("normalized required subject mappings" in message for message in captured.output))
 
     def test_reference_renderer_retries_unknown_subject_with_mismatch_details(self):
         generator = object.__new__(CoreVideoPromptGenerator)

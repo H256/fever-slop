@@ -132,6 +132,7 @@ class ComfyUIIngredientsVideoRenderBackend:
                 trim_front_frames=int(rolling["trim_front_frames"]),
                 keep_frames=int(rolling["scene_frame_count"]),
                 scene=scene_number,
+                extract_boundary_frames=True,
             )
         )
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from feverslop.domain.artifact_hash import sha256_file
+from feverslop.domain.continuity import ContinuityHandoffPayload
 from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
     can_handoff,
@@ -62,6 +63,15 @@ class ContinuityHandoffUseCase:
         )
         scene = deepcopy(dict(current_scene))
         keyframes = dict(scene.get("keyframes") or {})
+        handoff: ContinuityHandoffPayload = {
+            "source_scene": previous.scene,
+            "last_frame_path": extracted.as_posix(),
+            "last_frame_sha256": sha256_file(extracted),
+            "transition": "continuous",
+            "source_clip_path": stored_source_clip,
+            "source_clip_sha256": sha256_file(source_clip),
+            "extractor": "last-frame-v1",
+        }
         keyframes.update(
             {
                 "startframe_path": extracted.as_posix(),
@@ -71,6 +81,7 @@ class ContinuityHandoffUseCase:
                 "startframe_source_clip_path": stored_source_clip,
                 "startframe_source_clip_sha256": sha256_file(source_clip),
                 "startframe_extractor": "last-frame-v1",
+                "continuity_handoff": handoff,
             }
         )
         scene["keyframes"] = keyframes
