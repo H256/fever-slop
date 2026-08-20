@@ -5,6 +5,7 @@ from pathlib import Path
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.domain.srt import SrtScene
 from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
+from feverslop.pipeline.prompt_relay_builder import lyrics_for_time_range
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.pipeline.scene_duration_enforcer import write_scene_srt
 from feverslop.pipeline.stage1_segment_builder import build_stage1_segment_json
@@ -33,6 +34,21 @@ class FakeArtifactStore:
 
 
 class ArtifactStorePipelineIoTests(unittest.TestCase):
+    def test_prompt_relay_falls_back_to_full_lyrics_when_word_timestamps_are_incomplete(self):
+        result = lyrics_for_time_range(
+            "Ich trug mein Name wie ein Messer",
+            0.0,
+            4.0,
+            0.0,
+            4.0,
+            (
+                {"word": "mein", "start": 1.5, "end": 2.0},
+                {"word": "Name", "start": 2.0, "end": 2.5},
+            ),
+        )
+
+        self.assertEqual("Ich trug mein Name wie ein Messer", result)
+
     def _write_scene_srt(self, directory: Path) -> Path:
         path = directory / "scenes.srt"
         path.write_text(
