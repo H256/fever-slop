@@ -1,10 +1,26 @@
 from __future__ import annotations
 
+import os
 import unittest
 from threading import Event
 from unittest.mock import MagicMock, patch
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
+
+_saved_allowed_api_hosts = None
+
+
+def setUpModule():
+    # validate_api_url falls back to FEVERSLOP_ALLOWED_API_HOSTS when no
+    # allowlist is passed explicitly; keep the ambient value out of these tests.
+    global _saved_allowed_api_hosts
+    _saved_allowed_api_hosts = os.environ.pop("FEVERSLOP_ALLOWED_API_HOSTS", None)
+
+
+def tearDownModule():
+    global _saved_allowed_api_hosts
+    if _saved_allowed_api_hosts is not None:
+        os.environ["FEVERSLOP_ALLOWED_API_HOSTS"] = _saved_allowed_api_hosts
 
 
 class ComfyUIClientSessionTest(unittest.TestCase):
@@ -26,6 +42,7 @@ class ComfyUIClientSessionTest(unittest.TestCase):
             params={"filename": "song.wav", "subfolder": "feverslop/audio", "type": "input"},
             timeout=60,
             stream=True,
+            allow_redirects=False,
         )
         response.close.assert_called_once_with()
 

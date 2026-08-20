@@ -395,6 +395,7 @@ class PromptGenerationPipeline:
             "global_asset_snapshots": list(global_resolution.snapshots) if global_resolution else [],
             "subject_mode": subject_mode,
             "max_scene_actors": max_scene_actors,
+            "reference_profile": str(get_config_value(config, "reference_profile", "generic") or "generic").strip(),
             "silent_mode": silent_mode,
             "location_constraint": build_location_constraint(locations),
             "steering": {

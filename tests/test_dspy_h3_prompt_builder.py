@@ -1108,6 +1108,62 @@ non_diegetic_music: N/A"""
         self.assertEqual(request["music_intent"], "none")
         self.assertEqual(result["prompt"], FakeGeneratedPrompt.rendered_prompt)
 
+    def test_appends_opt_in_reference_contract_without_global_band_rules(self):
+        builder = DspyH3PromptBuilder(FakeGenerator())
+        result = builder.build_h3_prompt(
+            segment={
+                "segment_id": "concert-1",
+                "reference_profile": "live_concert",
+                "references": {
+                    "actor_ids": ["singer", "drummer"],
+                    "actor_msr_paths": ["singer.png", "drummer.png"],
+                    "location_msr_path": "stage.png",
+                    "actor_reference_descriptions": [
+                        {"id": "singer", "name": "Singer", "role": "Lead singer"},
+                        {"id": "drummer", "name": "Drummer", "role": "Drummer"},
+                    ],
+                    "prop_bindings": {
+                        "Singer": ["microphone"],
+                        "Drummer": ["drum kit"],
+                    },
+                },
+            },
+            concept="A band performs on stage.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertIn("exactly one persistent physical individual", result["prompt"])
+        self.assertIn("main festival stage", result["prompt"])
+        self.assertIn("Singer remains bound to microphone", result["prompt"])
+        self.assertIn("Drummer remains bound to drum kit", result["prompt"])
+
+    def test_generic_profile_does_not_receive_live_concert_contract(self):
+        result = DspyH3PromptBuilder(FakeGenerator()).build_h3_prompt(
+            segment={
+                "segment_id": "tavern-1",
+                "reference_profile": "crowded_tavern",
+                "references": {
+                    "actor_ids": ["singer"],
+                    "actor_msr_paths": ["singer.png"],
+                    "location_msr_path": "tavern.png",
+                    "actor_reference_descriptions": [
+                        {"id": "singer", "name": "Singer", "role": "Lead singer"},
+                    ],
+                    "prop_bindings": {"Singer": ["microphone"]},
+                },
+            },
+            concept="A singer performs in a crowded tavern.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertIn("exactly one persistent physical individual", result["prompt"])
+        self.assertNotIn("catwalk", result["prompt"].lower())
+        self.assertNotIn("main festival stage", result["prompt"].lower())
+
     def test_does_not_force_music_mode_without_scene_audio(self):
         generator = FakeGenerator()
 

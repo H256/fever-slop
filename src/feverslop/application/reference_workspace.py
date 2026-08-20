@@ -77,6 +77,7 @@ class PreviewSceneAssignmentUseCase:
         known_actor_ids: list[str] | None = None,
         known_location_ids: list[str] | None = None,
         known_background_ids: list[str] | None = None,
+        known_prop_ids: list[str] | None = None,
         max_scene_actors: int | None = None,
     ) -> list[str]:
         if known_actor_ids is None:
@@ -85,6 +86,8 @@ class PreviewSceneAssignmentUseCase:
             known_location_ids = self._bible.get_known_location_ids(project_id)
         if known_background_ids is None:
             known_background_ids = self._bible.get_background_ids(project_id)
+        if known_prop_ids is None:
+            known_prop_ids = self._bible.get_known_prop_ids(project_id)
         if max_scene_actors is None:
             max_scene_actors = self._scene_cast.get_max_scene_actors(project_id)
 
@@ -92,6 +95,7 @@ class PreviewSceneAssignmentUseCase:
             known_actor_ids=known_actor_ids,
             known_location_ids=known_location_ids,
             known_background_ids=known_background_ids,
+            known_prop_ids=known_prop_ids,
             max_scene_actors=max_scene_actors,
         )
         return issues
