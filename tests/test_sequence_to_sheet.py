@@ -159,6 +159,33 @@ class SequenceToSheetTests(unittest.TestCase):
                 (root / "library" / "location" / "room" / "looks" / "default" / "sheet.png").read_bytes(),
             )
 
+    def test_frame_selection_config_rejects_invalid_values(self):
+        invalid = [
+            {"view_count": 0},
+            {"view_count": -3},
+            {"view_count": "4"},
+            {"view_count": None},
+            {"sharpness_weight": -0.1},
+            {"sharpness_weight": 0.0, "diversity_weight": 0.0, "coverage_weight": 0.0},
+        ]
+        for kwargs in invalid:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(ValueError):
+                    FrameSelectionConfig(**kwargs)
+
+    def test_frame_selection_config_accepts_default_and_valid_configs(self):
+        self.assertEqual(4, FrameSelectionConfig().view_count)
+        config = FrameSelectionConfig(
+            view_count=2,
+            sharpness_weight=1.0,
+            diversity_weight=0.0,
+            coverage_weight=0.0,
+        )
+        self.assertEqual(2, config.view_count)
+        self.assertEqual(1.0, config.sharpness_weight)
+        self.assertEqual(0.0, config.diversity_weight)
+        self.assertEqual(0.0, config.coverage_weight)
+
 
 if __name__ == "__main__":
     unittest.main()
