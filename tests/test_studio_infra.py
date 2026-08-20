@@ -135,5 +135,71 @@ class TestReadJsonFileHandlesBadJson(unittest.TestCase):
         self.assertEqual("fallback_value", result)
 
 
+class MediaStoreAtomicWriteTests(unittest.TestCase):
+    """INFRA-2001/INFRA-2002: media store writes route through atomic writers."""
+
+    def test_write_media_data_url_writes_bytes_and_leaves_no_tmp(self):
+        import base64
+        from feverslop.studio.media_store import MediaStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "project"
+            store = MediaStore(
+                project_root=lambda project_id: root,
+                resolve_project_path=lambda project_id, rel: root / rel,
+                read_json_file=lambda p: json.loads(Path(p).read_text(encoding="utf-8")),
+            )
+            data_url = "data:image/png;base64," + base64.b64encode(b"\x89PNGfake").decode()
+            result = store.write_media_data_url("p1", "sub/a.png", data_url)
+
+            self.assertEqual({"path": "sub/a.png"}, result)
+            self.assertEqual(b"\x89PNGfake", (root / "sub" / "a.png").read_bytes())
+            self.assertEqual([], [p for p in root.rglob("*") if p.name.endswith(".tmp")])
+
+    def test_store_audio_upload_updates_config_and_leaves_no_tmp(self):
+        import io
+        from feverslop.studio.media_store import MediaStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "project"
+            root.mkdir(parents=True)
+            (root / "config.json").write_text(json.dumps({"existing": 1}), encoding="utf-8")
+            store = MediaStore(
+                project_root=lambda project_id: root,
+                resolve_project_path=lambda project_id, rel: root / rel,
+                read_json_file=lambda p: json.loads(Path(p).read_text(encoding="utf-8")),
+            )
+            result = store.store_audio_upload("p1", "song.wav", "audio/wav", io.BytesIO(b"RIFF-bytes"))
+
+            self.assertEqual({"path": "input/song.wav"}, result)
+            self.assertTrue((root / "input" / "song.wav").is_file())
+            config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual({"existing": 1, "input_audio": "input/song.wav"}, config)
+            self.assertEqual([], [p for p in root.rglob("*") if p.name.endswith(".tmp")])
+
+
+class EnsureMovieConfigAtomicTests(unittest.TestCase):
+    """INFRA-2003: ensure_movie_config writes are atomic and non-destructive."""
+
+    def test_ensure_movie_config_creates_config_and_leaves_no_tmp(self):
+        from feverslop.studio.project_repository import ProjectRepository
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "project"
+            root.mkdir(parents=True)
+            metadata = {"title": "T"}
+
+            ProjectRepository.ensure_movie_config(root, metadata)
+
+            self.assertTrue((root / "config.json").is_file())
+            self.assertIsInstance(json.loads((root / "config.json").read_text(encoding="utf-8")), dict)
+
+            (root / "config.json").write_text(json.dumps({"keep": True}), encoding="utf-8")
+            ProjectRepository.ensure_movie_config(root, metadata)
+
+            self.assertEqual({"keep": True}, json.loads((root / "config.json").read_text(encoding="utf-8")))
+            self.assertEqual([], [p for p in root.rglob("*") if p.name.endswith(".tmp")])
+
+
 if __name__ == "__main__":
     unittest.main()

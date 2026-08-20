@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import os
 import shutil
 import tempfile
@@ -9,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.studio.projects import AUDIO_EXTENSIONS, AUDIO_MIME_TYPES, StudioPathError, sanitize_audio_filename
+from feverslop.utils.io import atomic_write_bytes, atomic_write_json
 
 
 class MediaStore:
@@ -37,7 +37,7 @@ class MediaStore:
             raise StudioPathError(
                 f"Media upload exceeds size limit ({len(raw)} bytes > {self.max_upload_size} bytes)"
             )
-        media_path.write_bytes(raw)
+        atomic_write_bytes(media_path, raw)
         return {"path": path}
 
     def store_audio_upload(self, project_id: str, filename: str, content_type: str, source) -> dict[str, str]:
@@ -69,5 +69,5 @@ class MediaStore:
             if not isinstance(config, dict):
                 config = {}
             config["input_audio"] = relative_path
-            config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            atomic_write_json(config_path, config)
         return {"path": relative_path}

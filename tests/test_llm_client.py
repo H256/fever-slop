@@ -49,7 +49,7 @@ class LLMModelCapabilityTests(unittest.TestCase):
         llm = LocalOpenAIClient(api_key="test-key", model="vision-model")
 
         self.assertTrue(llm.model_supports_vision())
-        client.models.retrieve.assert_called_once_with("vision-model")
+        client.models.retrieve.assert_called_once_with("vision-model", timeout=10.0)
 
 
 class LLMClientRetryTests(unittest.TestCase):
