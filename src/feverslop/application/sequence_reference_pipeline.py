@@ -167,7 +167,11 @@ class SequenceReferencePipeline:
                 sequence_prompt = f"{sequence_prompt}\n\nVisual style: {style}. Preserve this style throughout the sequence."
             sequence = staging_dir / "sequence.mp4"
             self._report_phase(request, "sequence_start")
-            aspect_ratio = "9:16 (Portrait)" if kind == "character" else "16:9 (Widescreen)"
+            aspect_ratio = (
+                "9:16 (Portrait Widescreen)"
+                if kind == "character"
+                else "16:9 (Widescreen)"
+            )
             rendered = self.sequence_backend.render(
                 anchor_images=[anchor],
                 prompt=sequence_prompt,

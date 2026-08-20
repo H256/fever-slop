@@ -103,10 +103,10 @@ class SequenceToSheetBackendTests(unittest.TestCase):
                 anchor_images=[anchor],
                 prompt="portrait turnaround",
                 seed=7,
-                aspect_ratio="9:16 (Portrait)",
+                aspect_ratio="9:16 (Portrait Widescreen)",
             )
 
-            self.assertEqual("9:16 (Portrait)", patched["115"]["inputs"]["aspect_ratio"])
+            self.assertEqual("9:16 (Portrait Widescreen)", patched["115"]["inputs"]["aspect_ratio"])
 
 
 if __name__ == "__main__":
