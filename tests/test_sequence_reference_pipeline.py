@@ -74,6 +74,7 @@ class SequenceReferencePipelineTests(unittest.TestCase):
                     "A woman with long silver hair singing passionately on a black stone altar."
                 ),
                 visual_style="dark gothic cinematic fantasy",
+                reference_image_size=(1088, 1920),
                 output_dir=Path(temp),
             )
 
@@ -97,9 +98,10 @@ class SequenceReferencePipelineTests(unittest.TestCase):
 
             prompt = anchor_backend.calls[0].prompt
             self.assertIn("A woman with long silver hair, pale skin, and dark leather armor", prompt)
-            self.assertIn("dark gothic cinematic fantasy", prompt)
+            self.assertNotIn("dark gothic cinematic fantasy", prompt)
             self.assertNotIn("sing", prompt.lower())
             self.assertNotIn("altar", prompt.lower())
+            self.assertEqual((1088, 1920), (anchor_backend.calls[0].width, anchor_backend.calls[0].height))
             self.assertEqual(prompt, result.anchor_prompt)
             render_call = next(call for call in sequence_backend.calls if call[0] == "render")
             self.assertNotIn("anchor_prompt", render_call[4])
@@ -143,6 +145,7 @@ class SequenceReferencePipelineTests(unittest.TestCase):
                 output_dir=Path(temp) / "references",
                 seed=7,
                 visual_style="comic, bright colors, anime style",
+                reference_image_size=(1088, 1920),
             )
             with patch(
                 "feverslop.application.sequence_reference_pipeline.extract_video_frames",
@@ -160,8 +163,9 @@ class SequenceReferencePipelineTests(unittest.TestCase):
             self.assertTrue(Path(result.sheet_path).is_file())
             self.assertEqual(1, len(anchor_backend.calls))
             self.assertEqual(1, len([call for call in sequence_backend.calls if call[0] == "render"]))
-            self.assertIn("comic, bright colors, anime style", anchor_backend.calls[0].prompt)
-            self.assertIn("comic, bright colors, anime style", sequence_backend.calls[1][2])
+            self.assertNotIn("comic, bright colors, anime style", anchor_backend.calls[0].prompt)
+            self.assertNotIn("comic, bright colors, anime style", sequence_backend.calls[1][2])
+            self.assertEqual((1088, 1920), (anchor_backend.calls[0].width, anchor_backend.calls[0].height))
             self.assertEqual(
                 ["anchor_start", "anchor_complete", "sequence_start", "sequence_complete"],
                 [event["phase"] for event in events],

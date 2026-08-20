@@ -300,6 +300,7 @@ class ProjectConfig:
     global_props: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
     subject_mode: str = "multi"
     max_scene_actors: int = 4
+    reference_profile: str = "generic"
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
@@ -446,6 +447,7 @@ class ProjectConfig:
             global_props=_load_global_assets(raw.get("global_props", global_raw.get("props")), "global_props"),
             subject_mode=subject_mode,
             max_scene_actors=max_scene_actors,
+            reference_profile=str(raw.get("reference_profile") or "generic").strip(),
 
             steering=SteeringConfig(
                 global_=steering_raw.get("global", ""),

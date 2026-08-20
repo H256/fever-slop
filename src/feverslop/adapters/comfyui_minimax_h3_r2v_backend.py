@@ -792,6 +792,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if not prompt.startswith("subject_definitions:"):
             return
         scene_number = scene.get("scene", "?")
+        profile = str((scene.get("h3") or {}).get("reference_profile") or "").strip()
+        if profile and re.search(r"<Picture\s+\d+>|<Video\s+\d+>", prompt):
+            if "Reference identity and continuity contract:" not in prompt:
+                raise FeverSlopValidationError(
+                    f"Scene {scene_number} H3 reference contract mismatch: "
+                    f"profile={profile!r}; missing_deterministic_contract=True"
+                )
         definitions = prompt.split("summary:", 1)[0]
         defined_subjects = set(re.findall(r"<Subject\s+\d+>", definitions))
         used_subjects = set(re.findall(r"<Subject\s+\d+>", prompt))
