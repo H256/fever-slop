@@ -40,11 +40,17 @@ class LyricTimelineAligner:
 
         corrected_segments = {}
         for segment, key in zip(vocal_segments, expected_keys, strict=True):
+            timestamp_words = tuple(
+                str(item.get("word", "")).strip()
+                for item in segment.word_timestamps
+                if str(item.get("word", "")).strip()
+            )
+            aligned_text = " ".join(timestamp_words) or str(corrected[key]).strip()
             corrected_segments[id(segment)] = TimelineSegment(
                 start=segment.start,
                 end=segment.end,
                 kind=segment.kind,
-                text=str(corrected[key]).strip(),
+                text=aligned_text,
                 word_timestamps=segment.word_timestamps,
             )
 
