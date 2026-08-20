@@ -149,6 +149,7 @@ class LocalOpenAIClient:
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.request_timeout_seconds = float(request_timeout_seconds)
+        self._vision_capability: bool | None = None
         self.dspy_cache = dspy_cache
         self.max_concurrent_requests = int(max_concurrent_requests)
         self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
@@ -272,9 +273,14 @@ class LocalOpenAIClient:
 
     def model_supports_vision(self) -> bool:
         """Return the server's explicit vision capability for the selected model."""
+        if self._vision_capability is not None:
+            return self._vision_capability
         self.request_rate_limiter.wait()
-        model_info = self.client.models.retrieve(self.model)
-        return model_supports_vision(model_info)
+        model_info = self.client.models.retrieve(
+            self.model, timeout=min(self.request_timeout_seconds, 10.0)
+        )
+        self._vision_capability = model_supports_vision(model_info)
+        return self._vision_capability
 
     def health_check(self) -> bool:
         """Run a read-only, bounded probe against the configured model server."""
