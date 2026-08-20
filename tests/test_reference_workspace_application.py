@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.domain.reference_workspace import (
+    PropInteraction,
     ReferenceAsset,
     ReferenceKind,
     ReferenceProvenance,
@@ -74,10 +75,11 @@ class FakeLibrary(ReferenceLibraryPort):
 
 
 class FakeBible(MovieBiblePort):
-    def __init__(self, actors=None, locations=None, backgrounds=None):
+    def __init__(self, actors=None, locations=None, backgrounds=None, props=None):
         self._actors = actors or []
         self._locations = locations or []
         self._backgrounds = backgrounds or []
+        self._props = list(props or [])
 
     def get_known_actor_ids(self, project_id: str) -> list[str]:
         return list(self._actors)
@@ -87,6 +89,9 @@ class FakeBible(MovieBiblePort):
 
     def get_background_ids(self, project_id: str) -> list[str]:
         return list(self._backgrounds)
+
+    def get_known_prop_ids(self, project_id: str) -> list[str]:
+        return list(self._props)
 
 
 class FakeSceneCast(SceneCastPort):
@@ -252,6 +257,51 @@ class PreviewSceneAssignmentUseCaseTests(unittest.TestCase):
         issues = uc.preview(assignment)
         self.assertTrue(any("unknown" in i.lower() for i in issues))
 
+    def test_known_prop_assignment_valid(self):
+        uc = self._use_case(
+            bible=FakeBible(actors=["hero"], props=["guitar"]),
+            scene_cast=FakeSceneCast(4),
+        )
+        assignment = SceneReferenceAssignment(
+            scene_number=3,
+            actor_ids=("hero",),
+            prop_ids=("guitar",),
+            prop_interactions=(PropInteraction(actor_id="hero", prop_id="guitar", action="holds"),),
+        )
+        issues = uc.preview(assignment)
+        self.assertEqual([], issues)
+
+    def test_unknown_prop_rejected(self):
+        uc = self._use_case(
+            bible=FakeBible(actors=["hero"], props=["guitar"]),
+            scene_cast=FakeSceneCast(4),
+        )
+        assignment = SceneReferenceAssignment(scene_number=3, actor_ids=("hero",), prop_ids=("mic",))
+        issues = uc.preview(assignment)
+        self.assertTrue(any("Unknown prop ID: mic" in i for i in issues))
+
+    def test_prop_interaction_unknown_prop_rejected(self):
+        uc = self._use_case(
+            bible=FakeBible(actors=["hero"], props=["guitar"]),
+            scene_cast=FakeSceneCast(4),
+        )
+        assignment = SceneReferenceAssignment(
+            scene_number=3,
+            actor_ids=("hero",),
+            prop_interactions=(PropInteraction(actor_id="hero", prop_id="mic", action="holds"),),
+        )
+        issues = uc.preview(assignment)
+        self.assertTrue(any("Unknown interaction prop ID: mic" in i for i in issues))
+
+    def test_prop_rejected_when_no_props_configured(self):
+        uc = self._use_case(
+            bible=FakeBible(actors=["hero"]),
+            scene_cast=FakeSceneCast(4),
+        )
+        assignment = SceneReferenceAssignment(scene_number=3, actor_ids=("hero",), prop_ids=("guitar",))
+        issues = uc.preview(assignment)
+        self.assertTrue(any("Unknown prop ID: guitar" in i for i in issues))
+
 
 class SaveSceneAssignmentsUseCaseTests(unittest.TestCase):
     def _use_case(self, **kwargs):
@@ -304,6 +354,56 @@ class SaveSceneAssignmentsUseCaseTests(unittest.TestCase):
         result = uc.save("proj", assignments, "r1")
         self.assertTrue(any("unknown" in i.lower() for i in result.issues))
         self.assertEqual("r1", result.new_revision)
+
+    def test_save_prop_assignment_persists(self):
+        lib = FakeLibrary()
+        lib._snapshots["proj"] = ReferenceWorkspaceSnapshot(
+            assets=(), assignments=(), revision="r1", project_id="proj",
+        )
+        uc = self._use_case(
+            library=lib,
+            bible=FakeBible(actors=["hero"], locations=["lab"], props=["guitar"]),
+            scene_cast=FakeSceneCast(4),
+            invalidation=FakeInvalidation(),
+        )
+        assignments = (
+            SceneReferenceAssignment(
+                scene_number=3,
+                actor_ids=("hero",),
+                prop_ids=("guitar",),
+                prop_interactions=(PropInteraction(actor_id="hero", prop_id="guitar", action="holds"),),
+            ),
+        )
+        result = uc.save("proj", assignments, "r1")
+        self.assertEqual((), result.issues)
+        self.assertEqual("r2", result.new_revision)
+        self.assertIn(3, result.affected_scenes)
+        saved = lib.load("proj").assignments
+        self.assertEqual(1, len(saved))
+        self.assertEqual(("guitar",), saved[0].prop_ids)
+        self.assertEqual(
+            (PropInteraction(actor_id="hero", prop_id="guitar", action="holds"),),
+            saved[0].prop_interactions,
+        )
+
+    def test_save_unknown_prop_not_persisted(self):
+        lib = FakeLibrary()
+        lib._snapshots["proj"] = ReferenceWorkspaceSnapshot(
+            assets=(), assignments=(), revision="r1", project_id="proj",
+        )
+        uc = self._use_case(
+            library=lib,
+            bible=FakeBible(actors=["hero"], locations=["lab"], props=["guitar"]),
+            scene_cast=FakeSceneCast(4),
+            invalidation=FakeInvalidation(),
+        )
+        assignments = (
+            SceneReferenceAssignment(scene_number=3, actor_ids=("hero",), prop_ids=("mic",)),
+        )
+        result = uc.save("proj", assignments, "r1")
+        self.assertTrue(result.issues)
+        self.assertEqual("r1", result.new_revision)
+        self.assertEqual((), lib.load("proj").assignments)
 
     def test_returns_invalidated_artifacts(self):
         lib = FakeLibrary()
