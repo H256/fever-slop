@@ -14,6 +14,7 @@ from feverslop.application.sequence_to_sheet import (
     recommended_sheet_layout,
     compose_sheet_from_contact_sheet,
 )
+from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
@@ -73,6 +74,27 @@ class SequenceToSheetTests(unittest.TestCase):
             self.assertGreaterEqual(positions[1], 3)
             self.assertGreaterEqual(positions[2], 7)
             self.assertGreaterEqual(positions[3], 11)
+
+    def test_orbitsheet_selection_uses_late_temporal_slot_for_each_view(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            paths = []
+            for index in range(24):
+                path = root / f"frame_{index:04}.png"
+                make_frame(path, marker=index)
+                paths.append(path)
+
+            selected = select_orbitsheet_frames(paths, count=6, subject="singer")
+            positions = [paths.index(path) for path in selected]
+
+            self.assertEqual(6, len(selected))
+            self.assertNotIn(0, positions)
+            self.assertNotIn(23, positions)
+            for slot, position in enumerate(positions):
+                window_start = 1 + round(slot * 22 / 6)
+                window_end = 1 + round((slot + 1) * 22 / 6) - 1
+                self.assertGreaterEqual(position, window_start)
+                self.assertLessEqual(position, window_end)
 
     def test_compose_contact_sheet_creates_requested_grid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
