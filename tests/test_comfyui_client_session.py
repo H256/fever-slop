@@ -42,6 +42,7 @@ class ComfyUIClientSessionTest(unittest.TestCase):
             params={"filename": "song.wav", "subfolder": "feverslop/audio", "type": "input"},
             timeout=60,
             stream=True,
+            allow_redirects=False,
         )
         response.close.assert_called_once_with()
 
