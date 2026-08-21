@@ -1242,6 +1242,8 @@ non_diegetic_music: N/A"""
         self.assertNotIn("main festival stage", result["prompt"])
         self.assertNotIn("Singer remains bound to microphone", result["prompt"])
         self.assertNotIn("Drummer remains bound to drum kit", result["prompt"])
+        self.assertIn("Reference identity and continuity contract:", result["deterministic_contract"])
+        self.assertIn("Singer remains bound to microphone", result["deterministic_contract"])
 
     def test_builder_does_not_reintroduce_inactive_actor_contracts(self):
         builder = DspyH3PromptBuilder(FakeGenerator())

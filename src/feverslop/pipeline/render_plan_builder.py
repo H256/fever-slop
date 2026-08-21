@@ -517,6 +517,10 @@ def build_render_plan(
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
             if h3_entry.get("reference_profile"):
                 render_scene["h3"]["reference_profile"] = str(h3_entry["reference_profile"]).strip()
+            if h3_entry.get("deterministic_contract"):
+                render_scene["h3"]["deterministic_contract"] = str(
+                    h3_entry["deterministic_contract"]
+                ).strip()
             if h3_entry.get("performance_timing"):
                 render_scene["performance_timing"] = h3_entry["performance_timing"]
 

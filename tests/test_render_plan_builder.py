@@ -510,7 +510,14 @@ class BuildRenderPlanTests(unittest.TestCase):
             }]), encoding="utf-8")
             relay.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
             timing = {"bpm": 120.0, "beats": [{"time_seconds": 0.5, "downbeat": True, "impact": 0.8}]}
-            h3.write_text(json.dumps([{"segment_id": "s1", "prompt": "H3", "performance_timing": timing}]), encoding="utf-8")
+            contract = "Reference identity and continuity contract:\nExactly one persistent instance."
+            h3.write_text(json.dumps([{
+                "segment_id": "s1",
+                "prompt": "H3",
+                "reference_profile": "live_concert",
+                "deterministic_contract": contract,
+                "performance_timing": timing,
+            }]), encoding="utf-8")
 
             build_render_plan(
                 scene_prompts_json=scene_prompts,

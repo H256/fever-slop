@@ -544,6 +544,13 @@ class DspyH3PromptBuilder:
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
+        deterministic_contract = _format_reference_contract(
+            references=references,
+            segment=segment,
+            global_context=global_context,
+        )
+        if deterministic_contract:
+            result["deterministic_contract"] = deterministic_contract
         profile = (
             segment.get("reference_profile")
             or (segment.get("references") or {}).get("reference_profile")
