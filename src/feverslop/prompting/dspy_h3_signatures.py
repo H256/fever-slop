@@ -77,7 +77,10 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         For every planned active subject, record whether and where it is visible in each
         relevant shot. Preserve explicit spatial relations literally, including stage versus
         audience, foreground versus background, left/center/right, front/behind, and the
-        subject's relation to required props. Anonymous people in an environment reference
+        subject's relation to required props. When a subject's declared role identifies a
+        tool, instrument, vehicle, or other role-defining prop used by the scene, bind that
+        prop explicitly to the same subject and do not transfer it to another subject.
+        Anonymous people in an environment reference
         must never absorb, replace, or spatially relocate a named subject.
 
         Unless the scene explicitly says an actor is absent or off-screen, every actor
@@ -229,6 +232,11 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         required prop in the same shot and bind it to the correct subject. If a subject is
         required across multiple planned shots, mention it in each such shot; do not rely on
         retention_analysis to imply visual presence.
+
+        Role-defining props are identity-and-action bindings: a subject who is identified as
+        operating a tool, instrument, vehicle, or other prop must remain visibly attached to
+        that prop in the relevant shot unless the plan explicitly changes the binding. Do
+        not let another referenced subject inherit it merely because both appear together.
 
         Resolve crowded compositions explicitly. An environment or crowd reference supplies
         setting and anonymous extras; it does not replace, duplicate, or absorb a named subject.

@@ -73,6 +73,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("exact frame position", instructions)
         self.assertIn("Never place a subject inside an audience", instructions)
         self.assertIn("required prop", instructions)
+        self.assertIn("Role-defining props", instructions)
+        self.assertIn("not let another referenced subject inherit it", instructions)
         self.assertIn("each such shot", instructions)
         self.assertIn("does not count as showing the actor", instructions)
         self.assertIn("visual shot", instructions)

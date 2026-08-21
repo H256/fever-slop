@@ -50,6 +50,8 @@ def build_detail_system_prompt(label: str, *, segment_type: str = "", silent_mod
             "For Spatial Relations, describe only generic shot-level spatial facts: camera side or viewpoint, "
             "subject position and orientation, foreground/midground/background layer, relations between "
             "subjects and environment, visibility across the shot, and required prop bindings. "
+            "For every active subject with a role-defining prop, explicitly bind that prop to the same subject "
+            "and state where it remains visible; if no prop is specified, do not invent one. "
             "Do not invent genre-specific staging rules."
         ),
         "lighting": "For Lighting, output only lighting descriptions.",
