@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-import json
 import logging
 import re
 from typing import Any
@@ -342,17 +341,6 @@ class VideoPromptGenerator:
         allowed_subjects = {subject.label for subject in plan.subjects}
         allowed_references = {reference.label for reference in refs}
         notes = request.notes or ""
-        active_visible_subject_names: set[str] = set()
-        try:
-            notes_payload = json.loads(notes)
-        except (TypeError, ValueError):
-            notes_payload = {}
-        if isinstance(notes_payload, dict):
-            active_visible_subject_names = {
-                str(name).strip().casefold()
-                for name in notes_payload.get("active_visible_subjects") or []
-                if str(name).strip()
-            }
         for attempt in range(1, 4):
             output = self.reference_renderer(
                 guide=self._read(self.reference_guide_path),
@@ -382,41 +370,6 @@ class VideoPromptGenerator:
             }
             unknown_retention = set(retention_targets) - allowed_subjects - allowed_references
             missing_subject_retention = allowed_subjects - set(retention_targets)
-            missing_active_subject_descriptions = {
-                subject.label
-                for subject in plan.subjects
-                if (
-                    subject.name.strip().casefold() in active_visible_subject_names
-                    and subject.label not in detailed_description
-                )
-            }
-            missing_active_subject_visual_cues = {
-                subject.label
-                for subject in plan.subjects
-                if (
-                    subject.name.strip().casefold() in active_visible_subject_names
-                    and subject.label in detailed_description
-                    and not re.search(
-                        rf"{re.escape(subject.label)}.*\b(?:visible|seen|stands?|appears?|on stage|"
-                        r"foreground|background|performs?|leans?|gestures?|reaches?)\b",
-                        detailed_description,
-                        re.IGNORECASE | re.DOTALL,
-                    )
-                )
-            }
-            weak_active_subjects = {
-                item.target_label
-                for item in retention
-                if (
-                    item.target_label in allowed_subjects
-                    and str(item.mode).strip().casefold() == "weak_reference"
-                    and any(
-                        subject.label == item.target_label
-                        and subject.name.strip().casefold() in active_visible_subject_names
-                        for subject in plan.subjects
-                    )
-                )
-            }
             fully_instrumental = bool(request.relay_segments) and all(
                 str(segment.get("state") or "").strip().lower() == "instrumental"
                 for segment in request.relay_segments
@@ -434,9 +387,6 @@ class VideoPromptGenerator:
                 duplicate_retention,
                 unknown_retention,
                 missing_subject_retention,
-                missing_active_subject_descriptions,
-                missing_active_subject_visual_cues,
-                weak_active_subjects,
                 active_vocal_language,
             )):
                 return output
@@ -446,9 +396,6 @@ class VideoPromptGenerator:
                 f"duplicate_retention={sorted(duplicate_retention)!r}",
                 f"unknown_retention={sorted(unknown_retention)!r}",
                 f"missing_subject_retention={sorted(missing_subject_retention)!r}",
-                f"missing_active_subject_descriptions={sorted(missing_active_subject_descriptions)!r}",
-                f"missing_active_subject_visual_cues={sorted(missing_active_subject_visual_cues)!r}",
-                f"weak_active_subjects={sorted(weak_active_subjects)!r}",
                 f"active_vocal_language={active_vocal_language!r}",
             ))
             if attempt == 3:
@@ -461,8 +408,7 @@ class VideoPromptGenerator:
             notes = (
                 f"{request.notes or ''}\n\nThe previous rendered prompt was invalid ({error}). "
                 f"Use only these exact subject mappings: {subject_map}. Use only reference "
-                f"labels {sorted(allowed_references)!r}. Emit exactly one retention entry per subject. "
-                "Any active visible subject must be fully preserved and visibly described in at least one shot."
+                f"labels {sorted(allowed_references)!r}. Emit exactly one retention entry per subject."
             ).strip()
         raise AssertionError("unreachable")
 
