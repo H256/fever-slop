@@ -462,6 +462,11 @@ class DspyH3PromptBuilder:
         )
         relay_segments = _normalize_relay_segments(segment)
         generator_references = [dict(reference) for reference in references]
+        active_visible_subjects = [
+            reference["name"]
+            for reference in generator_references
+            if reference.get("role") == "subject"
+        ]
         resolved_root = reference_root or self.reference_root
         if resolved_root is not None:
             for reference in generator_references:
@@ -486,6 +491,13 @@ class DspyH3PromptBuilder:
                     "Preserve lyric text verbatim and do not infer language from proper names, "
                     "fantasy names, or isolated tokens."
                 ),
+                "visibility_policy": (
+                    "If scene-local action or motion explicitly names an active referenced subject, "
+                    "that subject must be visible in at least one described shot. Do not mark it "
+                    "weak_reference or describe it as off-screen unless the scene explicitly says "
+                    "the subject is off-screen or not visible."
+                ),
+                "active_visible_subjects": active_visible_subjects,
             }, ensure_ascii=False),
             "references": generator_references,
             "images": images,
@@ -523,19 +535,11 @@ class DspyH3PromptBuilder:
             else:
                 generated = {"dspy_error": safe_error}
         rendered_prompt = _repair_audio_references(str(prompt).strip(), references)
-        relay_prompt = _format_relay_shots(relay_segments) if append_relay_prompt else ""
-        performance_prompt = _format_performance_timing(segment)
-        has_visual_reference = any(reference["kind"] in {"picture", "video"} for reference in references)
-        contract_prompt = (
-            _format_reference_contract(
-                references=references,
-                segment=segment,
-                global_context=global_context,
-            )
-            if str(mode).strip().lower() in {"ref", "r2v"} and has_visual_reference
-            else ""
-        )
-        prompt_parts = [rendered_prompt, contract_prompt, relay_prompt, performance_prompt]
+        # The DSPy output is already the complete guide-conformant H3 prompt.
+        # Relay segments, performance timing, and continuity contracts remain
+        # structured inputs/validation data; appending them as free-form text
+        # creates extra sections outside minimax-h3-references.md.
+        prompt_parts = [rendered_prompt]
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,

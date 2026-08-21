@@ -1,3 +1,4 @@
+import json
 import unittest
 from importlib.resources import files
 import tempfile
@@ -317,7 +318,7 @@ non_diegetic_music: N/A"""
         DspyH3PromptBuilder(generator).build_h3_prompt(
             segment={"segment_id": "seg-1", "duration_seconds": 2, "fps": 24},
             concept="A singer performs.",
-            scene_details={},
+            scene_details={"character_motion": "Singer gestures toward the crowd."},
             global_context={
                 "story_idea": "A singer crosses a mountain.",
                 "style": "Cinematic dark fantasy.",
@@ -332,6 +333,7 @@ non_diegetic_music: N/A"""
         self.assertIn("Use only the configured locations.", notes)
         self.assertIn("Use deliberate tracking shots.", notes)
         self.assertIn("A singer crosses a mountain.", notes)
+        self.assertIn("must be visible in at least one described shot", notes)
 
     def test_passes_source_language_metadata_without_inferring_from_names(self):
         generator = FakeGenerator()
@@ -347,6 +349,29 @@ non_diegetic_music: N/A"""
         notes = generator.requests[0]["notes"]
         self.assertIn('"source_language": "de"', notes)
         self.assertIn("do not infer language from proper names", notes.lower())
+
+    def test_passes_active_visible_subjects_to_generator(self):
+        generator = FakeGenerator()
+
+        DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={
+                "segment_id": "seg-1",
+                "references": {
+                    "actor_ids": ["singer"],
+                    "actor_sheet_paths": ["singer.png"],
+                    "actor_reference_descriptions": [
+                        {"id": "singer", "name": "Singer", "role": "Lead singer"},
+                    ],
+                },
+            },
+            concept="The singer performs toward the audience.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        notes = generator.requests[0]["notes"]
+        self.assertIn('"active_visible_subjects": ["Singer"]', notes)
     def test_minimax_movie_prompt_preserves_r2v_prompt_and_adds_relay_shots(self):
         prompt = _h3_movie_prompt({
             "h3": {"prompt": "Use <Picture 1> for the actor."},
@@ -410,7 +435,7 @@ non_diegetic_music: N/A"""
 
         self.assertIn("cooks a rabbit", _format_relay_shots(shots))
 
-    def test_passes_relay_segments_to_generator_and_appends_timed_shots(self):
+    def test_passes_relay_segments_to_generator_without_appending_non_guide_sections(self):
         generator = FakeGenerator()
         builder = DspyH3PromptBuilder(generator)
 
@@ -431,7 +456,8 @@ non_diegetic_music: N/A"""
 
         self.assertNotIn("relay_segments_json", generator.requests[0])
         self.assertEqual(0.0, generator.requests[0]["relay_segments"][0]["start_seconds"])
-        self.assertIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
+        self.assertNotIn("Temporal shot directions:", result["prompt"])
+        self.assertNotIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
         self.assertIn("actor.png", " ".join(reference["source"] for reference in result["references"]))
 
     def test_repairs_missing_audio_reuse_references_in_all_required_sections(self):
@@ -864,6 +890,55 @@ non_diegetic_music: N/A"""
         self.assertIn("undefined_subjects=['<Subject 3>']", calls[1]["notes"])
         self.assertEqual("<Subject 1> performs.", output.summary)
 
+    def test_reference_renderer_retries_active_subject_that_is_marked_weak(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        calls = []
+
+        def renderer(**kwargs):
+            calls.append(kwargs)
+            mode = "weak_reference" if len(calls) == 1 else "fully_preserved"
+            return type("Output", (), {
+                "summary": "<Subject 1> is shown.",
+                "retention_analysis": [RetentionAnalysis(
+                    target_label="<Subject 1>", mode=mode, details="stable"
+                )],
+                "detailed_description": (
+                    "The crowd reacts."
+                    if len(calls) == 1
+                    else "The crowd reacts while <Subject 1> performs from the stage."
+                ),
+                "overall_soundscape": "Music.",
+                "non_diegetic_music": None,
+            })()
+
+        generator.reference_renderer = renderer
+        generator.reference_guide_path = "minimax-h3-references.md"
+        plan = ResolvedPromptPlan(
+            creative_intent="Performance",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Singer", description="A singer",
+                source_references=["<Picture 1>"],
+            )],
+            overall_soundscape="Music.",
+            music_intent=MusicIntent.NONE,
+        )
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A singer performs toward the crowd",
+            duration_seconds=5,
+            notes=json.dumps({"active_visible_subjects": ["Singer"]}),
+        )
+        refs = [ResolvedReference(
+            label="<Picture 1>", kind="picture", source="actor.png",
+            role="subject", description="A singer",
+        )]
+
+        output = generator._render_reference(request, plan, refs)
+
+        self.assertEqual(2, len(calls))
+        self.assertIn("active_visible_subjects", calls[1]["notes"])
+        self.assertEqual("fully_preserved", output.retention_analysis[0].mode)
+
     def test_reference_renderer_retries_active_singing_in_instrumental_relay(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         calls = []
@@ -1137,7 +1212,7 @@ non_diegetic_music: N/A"""
         self.assertEqual(request["music_intent"], "none")
         self.assertEqual(result["prompt"], FakeGeneratedPrompt.rendered_prompt)
 
-    def test_appends_opt_in_reference_contract_without_global_band_rules(self):
+    def test_keeps_reference_contract_out_of_guide_prompt(self):
         builder = DspyH3PromptBuilder(FakeGenerator())
         result = builder.build_h3_prompt(
             segment={
@@ -1163,10 +1238,10 @@ non_diegetic_music: N/A"""
             mode="ref",
         )
 
-        self.assertIn("exactly one persistent physical individual", result["prompt"])
-        self.assertIn("main festival stage", result["prompt"])
-        self.assertIn("Singer remains bound to microphone", result["prompt"])
-        self.assertIn("Drummer remains bound to drum kit", result["prompt"])
+        self.assertNotIn("Reference identity and continuity contract:", result["prompt"])
+        self.assertNotIn("main festival stage", result["prompt"])
+        self.assertNotIn("Singer remains bound to microphone", result["prompt"])
+        self.assertNotIn("Drummer remains bound to drum kit", result["prompt"])
 
     def test_builder_does_not_reintroduce_inactive_actor_contracts(self):
         builder = DspyH3PromptBuilder(FakeGenerator())
@@ -1214,7 +1289,7 @@ non_diegetic_music: N/A"""
             mode="ref",
         )
 
-        self.assertIn("exactly one persistent physical individual", result["prompt"])
+        self.assertNotIn("Reference identity and continuity contract:", result["prompt"])
         self.assertNotIn("catwalk", result["prompt"].lower())
         self.assertNotIn("main festival stage", result["prompt"].lower())
 
