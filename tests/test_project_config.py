@@ -835,5 +835,71 @@ class ScenePromptWordCountDefaultsTests(unittest.TestCase):
         )
 
 
+class ScenePromptWordCountValidationTests(unittest.TestCase):
+    """Test ProjectConfig prompt_guidance word count bounds validation."""
+
+    def _mk_config(self, config_dict):
+        import json
+        from pathlib import Path
+        import tempfile
+        tmp = tempfile.mktemp(suffix=".json")
+        Path(tmp).write_text(json.dumps(config_dict))
+        return tmp
+
+    def test_rejects_negative_word_count_min(self):
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "prompt_guidance": {"word_count_min": -5},
+        })
+        with self.assertRaisesRegex(ValueError, "prompt_guidance.word_count_min must be >= 1, got -5"):
+            ProjectConfig.load(config_path)
+
+    def test_rejects_negative_word_count_max(self):
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "prompt_guidance": {"word_count_max": -5},
+        })
+        with self.assertRaisesRegex(ValueError, "prompt_guidance.word_count_max must be >= 1, got -5"):
+            ProjectConfig.load(config_path)
+
+    def test_rejects_zero_word_count_min(self):
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "prompt_guidance": {"word_count_min": 0},
+        })
+        with self.assertRaisesRegex(ValueError, "prompt_guidance.word_count_min must be >= 1, got 0"):
+            ProjectConfig.load(config_path)
+
+    def test_rejects_zero_word_count_max(self):
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "prompt_guidance": {"word_count_max": 0},
+        })
+        with self.assertRaisesRegex(ValueError, "prompt_guidance.word_count_max must be >= 1, got 0"):
+            ProjectConfig.load(config_path)
+
+    def test_rejects_crossed_word_count_bounds(self):
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "prompt_guidance": {"word_count_min": 60, "word_count_max": 40},
+        })
+        with self.assertRaisesRegex(
+            ValueError,
+            r"prompt_guidance.word_count_min \(60\) must be <= prompt_guidance.word_count_max \(40\)",
+        ):
+            ProjectConfig.load(config_path)
+
+    def test_accepts_equal_word_count_bounds_below_defaults(self):
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "prompt_guidance": {"word_count_min": 30, "word_count_max": 30},
+        })
+        config = ProjectConfig.load(config_path)
+        self.assertEqual(
+            (30, 30),
+            (config.prompt_guidance.word_count_min, config.prompt_guidance.word_count_max),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

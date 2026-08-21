@@ -82,14 +82,21 @@ class GuidedAssetGenerator:
                 if not source.startswith(_os.path.realpath(run_dir) + _os.sep) or not _os.path.isfile(source):
                     raise ValueError(f"workflow output '{relative}' is missing or escapes the run directory")
                 media[field_name] = source
-            asset_dir = _os.path.join(_os.fspath(self.library.root), AssetKind(idea.kind.strip().lower()).value, idea.asset_id.strip())
+            resolved_kind = AssetKind(idea.kind.strip().lower())
+            asset_dir = _os.path.join(_os.fspath(self.library.root), resolved_kind.value, idea.asset_id.strip())
+            if _os.path.isdir(asset_dir):
+                if not _os.path.isfile(_os.path.join(asset_dir, "manifest.json")):
+                    # Orphaned asset dir from an interrupted run; reclaim the asset id.
+                    shutil.rmtree(asset_dir)
+                else:
+                    raise FileExistsError(f"global asset already exists: {resolved_kind.value}/{idea.asset_id.strip()}")
             _os.makedirs(asset_dir, exist_ok=False)
             for field_name, source in media.items():
                 target = _os.path.join(asset_dir, _os.path.basename(source))
                 shutil.copy2(source, target)
             look = AssetLook("default", "Default", description=idea.visual_concept, hero_image=_os.path.basename(media.get("hero_image", "")))
             asset = GlobalAsset(
-                id=idea.asset_id.strip(), kind=AssetKind(idea.kind.strip().lower()), name=idea.name.strip(),
+                id=idea.asset_id.strip(), kind=resolved_kind, name=idea.name.strip(),
                 description=idea.visual_concept.strip(), looks=(look,),
                 metadata=(("generator_run_id", run_id), ("workflow_profile", profile_id)),
             )
