@@ -504,6 +504,7 @@ def build_render_plan(
                 "base_concept": scene.get("base_concept", ""),
                 "camera_motion": scene.get("camera_motion", ""),
                 "character_motion": scene.get("character_motion", ""),
+                "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
         references = _filter_silent_audio_references(_scene_references(scene), scene)

@@ -71,7 +71,8 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         - camera angle and movement,
         - movement direction and speed,
         - lighting,
-        - timing and shot boundaries.
+        - timing and shot boundaries,
+        - generic spatial relations and visibility scope.
 
         For every planned active subject, record whether and where it is visible in each
         relevant shot. Preserve explicit spatial relations literally, including stage versus

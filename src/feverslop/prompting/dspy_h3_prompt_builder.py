@@ -317,7 +317,7 @@ class DspyH3PromptBuilder:
         generator_references = [dict(reference) for reference in references]
         directing_lines = [
             f"{key.replace('_', ' ').title()}: {str(scene_details[key]).strip()}"
-            for key in ("camera_motion", "character_motion")
+            for key in ("camera_motion", "character_motion", "spatial_relations")
             if str(scene_details.get(key) or "").strip()
         ]
         user_prompt = str(concept or "").strip()

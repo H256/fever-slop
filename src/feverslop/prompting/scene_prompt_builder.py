@@ -280,6 +280,7 @@ class ScenePromptBuilder:
                 "silent_mode": bool(global_context.get("silent_mode", False)),
                 "camera_motion": details.get("camera_motion", ""),
                 "character_motion": details.get("character_motion", ""),
+                "spatial_relations": details.get("spatial_relations", ""),
                 "zimage_prompt": t2i_prompt,
                 "t2i_prompt": t2i_prompt,
                 "ltx_base_prompt": t2i_prompt,

@@ -46,6 +46,12 @@ def build_detail_system_prompt(label: str, *, segment_type: str = "", silent_mod
     category_rules = {
         "camera motion": "For Camera Motion, output only camera movement phrases.",
         "character motion": "For Character Motion, output only visible body movement or performance movement.",
+        "spatial relations": (
+            "For Spatial Relations, describe only generic shot-level spatial facts: camera side or viewpoint, "
+            "subject position and orientation, foreground/midground/background layer, relations between "
+            "subjects and environment, visibility across the shot, and required prop bindings. "
+            "Do not invent genre-specific staging rules."
+        ),
         "lighting": "For Lighting, output only lighting descriptions.",
         "weather": "For Weather, output only weather descriptions.",
         "time of day": "For Time of Day, output only time-of-day phrases.",
@@ -71,5 +77,6 @@ def build_video_payload(*, segment: dict[str, Any], concept: str, scene_details:
         "t2i_prompt": t2i_prompt, "scene_concept": concept, "scene_cast": scene_cast or {},
         "camera_motion": scene_details.get("camera_motion", ""),
         "character_motion": scene_details.get("character_motion", ""),
+        "spatial_relations": scene_details.get("spatial_relations", ""),
         "custom_instructions": custom_instructions,
     }

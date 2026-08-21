@@ -91,6 +91,23 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
 
         self.assertEqual([(1, 1)], progress)
 
+    def test_scene_details_generate_generic_spatial_relations(self):
+        modules = MusicVideoModulesFake(detail="SPATIAL DETAIL")
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=modules)
+
+        details = pipeline.create_scene_details(
+            concept_prompts={"segment_001": "A person approaches a doorway."},
+            stage1_segments=[{"segment_id": "segment_001", "type": "instrumental"}],
+            global_context={},
+        )
+
+        self.assertEqual("SPATIAL DETAIL", details["segment_001"]["spatial_relations"])
+        spatial_calls = [call for call in modules.calls if call.payload.get("label") in {
+            "Camera Motion", "Character Motion", "Spatial Relations"
+        }]
+        self.assertEqual(3, len(spatial_calls))
+        self.assertEqual("Spatial Relations", spatial_calls[-1].payload["label"])
+
 
 if __name__ == "__main__":
     unittest.main()
