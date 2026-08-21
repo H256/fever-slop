@@ -56,6 +56,28 @@ class ReferenceContractTests(unittest.TestCase):
 
         self.assertIn("Lead remains bound to microphone", contract)
 
+    def test_live_concert_contract_ignores_roles_for_non_active_subjects(self):
+        contract = render_reference_contract(
+            [{"label": "<Picture 1>", "kind": "picture", "role": "environment", "name": "Crowd"}],
+            profile="live_concert",
+            actor_roles={"Singer": "Lead singer and frontman"},
+            prop_bindings={"Singer": ("microphone",)},
+        )
+
+        self.assertNotIn("Singer", contract)
+        self.assertNotIn("microphone", contract)
+
+    def test_live_concert_contract_matches_actor_ids_to_display_names(self):
+        contract = render_reference_contract(
+            [{"id": "singer-1", "name": "Singer", "role": "subject"}],
+            profile="live_concert",
+            actor_roles={"singer-1": "Lead singer"},
+            prop_bindings={"singer-1": ["microphone"]},
+        )
+
+        self.assertIn("Singer remains bound to microphone", contract)
+        self.assertIn("Singer retains the role Lead singer", contract)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -89,8 +89,13 @@ def _scene_references(
         if image_path is not None and image_path.is_file():
             images.append(image_path)
 
-    actor_paths = references.get("actor_sheet_paths") or references.get("actor_msr_paths") or []
+    actor_selection_present = "actor_ids" in references
     actor_ids = references.get("actor_ids") or []
+    actor_paths = (
+        references.get("actor_sheet_paths") or references.get("actor_msr_paths") or []
+        if not actor_selection_present or actor_ids
+        else []
+    )
     actor_metadata = {
         str(item.get("id") or item.get("name") or ""): item
         for item in references.get("actor_reference_descriptions") or []
@@ -102,7 +107,7 @@ def _scene_references(
         name = str(metadata.get("name") or actor_id)
         path = Path(source)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
-        add_reference(_reference(
+        actor_reference = _reference(
             label=f"<Picture {index}>",
             source=path,
             kind="picture",
@@ -113,7 +118,9 @@ def _scene_references(
                 else ("" if image_path.is_file() else None)
             ),
             role="subject",
-        ), image_path)
+        )
+        actor_reference["id"] = actor_id
+        add_reference(actor_reference, image_path)
 
     location = references.get("location_sheet_path") or references.get("location_msr_path")
     if location:
@@ -473,6 +480,12 @@ class DspyH3PromptBuilder:
                 "scene": segment,
                 "scene_details": scene_details,
                 "global_context": global_context,
+                "source_language": str(global_context.get("language") or "").strip(),
+                "language_policy": (
+                    "Use the supplied source language for lyric/dialogue labels. "
+                    "Preserve lyric text verbatim and do not infer language from proper names, "
+                    "fantasy names, or isolated tokens."
+                ),
             }, ensure_ascii=False),
             "references": generator_references,
             "images": images,

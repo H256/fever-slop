@@ -53,6 +53,7 @@ class PromptGenerationReferencesTests(unittest.TestCase):
         self.assertEqual("multi", context["subject_mode"])
         self.assertEqual(4, context["max_scene_actors"])
         self.assertEqual("live_concert", context["reference_profile"])
+        self.assertEqual("en", context["language"])
 
     def test_resolved_global_context_uses_llm_generated_actors_when_config_omits_them(self):
         config = ProjectConfig(

@@ -45,9 +45,35 @@ def render_reference_contract(
             "There is no catwalk, podium, or satellite platform unless the shot plan explicitly specifies one.",
             "The environment may contain an anonymous audience, but it must not contain identifiable duplicates of the referenced band members.",
         ])
+        active_subject_aliases = {
+            str(reference.get(alias) or "").strip().casefold()
+            for reference in items
+            if str(reference.get("role") or "").strip().lower() == "subject"
+            for alias in ("name", "id")
+            if str(reference.get(alias) or "").strip()
+        }
+
+        def display_name(actor: object) -> str:
+            actor_key = str(actor).strip().casefold()
+            for reference in items:
+                if str(reference.get("role") or "").strip().lower() != "subject":
+                    continue
+                if actor_key in {
+                    str(reference.get("name") or "").strip().casefold(),
+                    str(reference.get("id") or "").strip().casefold(),
+                }:
+                    return str(reference.get("name") or reference.get("label") or actor).strip()
+            return str(actor).strip()
+
         role_map = actor_roles or {}
-        binding_map = {str(actor): list(props) for actor, props in (prop_bindings or {}).items()}
+        binding_map = {
+            str(actor): list(props)
+            for actor, props in (prop_bindings or {}).items()
+            if str(actor).strip().casefold() in active_subject_aliases
+        }
         for actor, role in role_map.items():
+            if str(actor).strip().casefold() not in active_subject_aliases:
+                continue
             role_text = str(role).casefold()
             inferred_prop = next(
                 (
@@ -67,14 +93,15 @@ def render_reference_contract(
                 binding_map[str(actor)] = [inferred_prop]
         for actor, props in binding_map.items():
             actor_name = str(actor).strip()
+            rendered_name = display_name(actor)
             for prop in props:
                 prop_name = str(prop).strip()
                 if actor_name and prop_name:
-                    lines.append(f"{actor_name} remains bound to {prop_name} for the shot unless explicitly changed.")
+                    lines.append(f"{rendered_name} remains bound to {prop_name} for the shot unless explicitly changed.")
         for actor, role in role_map.items():
             actor_name = str(actor).strip()
             role_name = str(role).strip()
-            if actor_name and role_name:
-                lines.append(f"{actor_name} retains the role {role_name}; do not transfer that role to another subject.")
+            if actor_name.casefold() in active_subject_aliases and role_name:
+                lines.append(f"{display_name(actor)} retains the role {role_name}; do not transfer that role to another subject.")
 
     return "\n".join(lines)

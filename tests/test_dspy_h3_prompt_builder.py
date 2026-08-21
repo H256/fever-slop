@@ -178,6 +178,22 @@ non_diegetic_music: N/A"""
         self.assertEqual("Leo", references[0]["name"])
         self.assertEqual("Ancient Forest", references[1]["name"])
 
+    def test_scene_references_ignore_stale_actor_paths_for_explicit_empty_cast(self):
+        references, _images = _scene_references(
+            {
+                "references": {
+                    "actor_ids": [],
+                    "actor_msr_paths": ["stale-singer.png"],
+                    "location_msr_path": "crowd.png",
+                }
+            },
+            None,
+            None,
+        )
+
+        self.assertEqual(["crowd.png"], [reference["source"] for reference in references])
+        self.assertEqual(["environment"], [reference["role"] for reference in references])
+
     def test_scene_references_deduplicate_audio_paths_from_scene_and_global_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -316,6 +332,21 @@ non_diegetic_music: N/A"""
         self.assertIn("Use only the configured locations.", notes)
         self.assertIn("Use deliberate tracking shots.", notes)
         self.assertIn("A singer crosses a mountain.", notes)
+
+    def test_passes_source_language_metadata_without_inferring_from_names(self):
+        generator = FakeGenerator()
+
+        DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={"segment_id": "seg-1"},
+            concept="The singer says C'era Nocturna.",
+            scene_details={},
+            global_context={"language": "de"},
+            mode="base",
+        )
+
+        notes = generator.requests[0]["notes"]
+        self.assertIn('"source_language": "de"', notes)
+        self.assertIn("do not infer language from proper names", notes.lower())
     def test_minimax_movie_prompt_preserves_r2v_prompt_and_adds_relay_shots(self):
         prompt = _h3_movie_prompt({
             "h3": {"prompt": "Use <Picture 1> for the actor."},
@@ -1136,6 +1167,31 @@ non_diegetic_music: N/A"""
         self.assertIn("main festival stage", result["prompt"])
         self.assertIn("Singer remains bound to microphone", result["prompt"])
         self.assertIn("Drummer remains bound to drum kit", result["prompt"])
+
+    def test_builder_does_not_reintroduce_inactive_actor_contracts(self):
+        builder = DspyH3PromptBuilder(FakeGenerator())
+        result = builder.build_h3_prompt(
+            segment={
+                "segment_id": "crowd-only",
+                "reference_profile": "live_concert",
+                "references": {
+                    "actor_ids": [],
+                    "actor_msr_paths": ["stale-singer.png"],
+                    "location_msr_path": "crowd.png",
+                    "actor_reference_descriptions": [
+                        {"id": "singer", "name": "Singer", "role": "Lead singer"},
+                    ],
+                    "prop_bindings": {"singer": ["microphone"]},
+                },
+            },
+            concept="A crowd fills the frame.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertNotIn("Singer", result["prompt"])
+        self.assertNotIn("microphone", result["prompt"])
 
     def test_generic_profile_does_not_receive_live_concert_contract(self):
         result = DspyH3PromptBuilder(FakeGenerator()).build_h3_prompt(

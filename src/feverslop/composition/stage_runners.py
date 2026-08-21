@@ -270,7 +270,7 @@ def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> list[str
     for scene in plan:
         references = scene.setdefault("references", {})
         fallback_fields: list[str] = []
-        if not references.get("actor_ids"):
+        if "actor_ids" not in references:
             references["actor_ids"] = actor_ids[: config.max_scene_actors]
             changed = True
             fallback_fields.append(f"actor_ids={references['actor_ids']!r}")
