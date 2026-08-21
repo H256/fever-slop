@@ -361,9 +361,11 @@ class ProjectConfig:
         subject_mode = str(raw.get("subject_mode", "multi") or "multi").strip().lower()
         if subject_mode not in {"single", "multi"}:
             raise ValueError("subject_mode must be 'single' or 'multi'")
-        max_scene_actors = int(raw.get("max_scene_actors", 1 if subject_mode == "single" else 4))
-        if max_scene_actors < 1 or max_scene_actors > 4:
-            raise ValueError("max_scene_actors must be between 1 and 4")
+        video_pipeline = str(raw.get("video_pipeline", "ltx_i2v") or "ltx_i2v").strip()
+        max_actor_limit = 8 if video_pipeline in {"minimax-h3-r2v", "minimax-h3-i2v"} else 4
+        max_scene_actors = int(raw.get("max_scene_actors", 1 if subject_mode == "single" else max_actor_limit))
+        if max_scene_actors < 1 or max_scene_actors > max_actor_limit:
+            raise ValueError(f"max_scene_actors must be between 1 and {max_actor_limit}")
         if subject_mode == "single":
             max_scene_actors = 1
         word_count_min = int(guidance_raw.get("word_count_min", SCENE_PROMPT_WORD_COUNT_MIN))
@@ -488,7 +490,7 @@ class ProjectConfig:
                 word_count_min=word_count_min,
                 word_count_max=word_count_max,
             ),
-            video_pipeline=str(raw.get("video_pipeline", "ltx_i2v")).strip() or "ltx_i2v",
+            video_pipeline=video_pipeline or "ltx_i2v",
             lora_1=lora_1,
             loras=loras,
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),

@@ -401,6 +401,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             state.plan_for_next_step,
             state.context.references_dir,
             state.context.reference_plan,
+            **({"max_scene_actors": config.max_scene_actors} if config.max_scene_actors != 4 else {}),
         )
         stage1_segments = _merge_reference_paths_into_h3_segments(
             stage1_segments,
@@ -490,6 +491,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         input_audio=input_audio,
         stem_files=stem_files,
         project_dir=config.project_dir,
+        max_scene_actors=config.max_scene_actors,
     )
     if config.video_pipeline == "minimax-h3-r2v":
         _preserve_enriched_reference_paths(
@@ -721,19 +723,26 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
         )
         _run_render_plan_stage(state)
     project_config_path = getattr(state.context, "project_config_path", None)
-    if project_config_path is not None:
+    project_config = ProjectConfig.load(project_config_path) if project_config_path is not None else None
+    if project_config is not None:
         _report_reference_fallbacks(_seed_reference_bindings(
             state.plan_for_next_step,
-            ProjectConfig.load(project_config_path),
+            project_config,
         ))
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     msr_reference_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
+        enrichment_options = (
+            {"max_scene_actors": project_config.max_scene_actors}
+            if project_config is not None and project_config.max_scene_actors != 4
+            else {}
+        )
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
             state.plan_for_next_step,
             state.context.references_dir,
             state.context.reference_plan,
             on_scene_complete=_scene_progress_callback(reference_progress),
+            **enrichment_options,
         )
 
 
