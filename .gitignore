@@ -31,3 +31,8 @@ Historical internal branch reference removed for the public history.
 
 # Generated codebase graph
 graphify-out/
+
+# understand-anything scratch (keep knowledge-graph.json, meta.json,
+# fingerprints.json, config.json, .understandignore tracked)
+.ua/.trash-*/
+.ua/intermediate/
