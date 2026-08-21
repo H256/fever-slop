@@ -1,5 +1,8 @@
 import json
+import os
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -148,6 +151,89 @@ class GlobalLibraryAdapterTests(unittest.TestCase):
         self.assertEqual(("looks/default/frame_0001.png",), stored.selected_frames)
         self.assertEqual("ltx", dict(stored.metadata)["backend"])
         self.assertEqual(b"sheet", (self.root / "location" / "room" / "looks" / "default" / "sheet.png").read_bytes())
+
+    def test_get_never_observes_a_half_deleted_asset(self):
+        media_rel = "looks/base/hero.png"
+        asset = GlobalAsset(
+            "ava", AssetKind.CHARACTER, "Ava",
+            looks=(AssetLook("base", "Base", hero_image=media_rel),),
+        )
+        self.adapter.create(asset)
+        media_path = self.root / "character" / "ava" / media_rel
+        media_path.parent.mkdir(parents=True)
+        media_path.write_bytes(b"hero")
+        asset_dir = self.root / "character" / "ava"
+        manifest = asset_dir / "manifest.json"
+        stop = threading.Event()
+        violations: list[str] = []
+
+        def reader():
+            while not stop.is_set():
+                try:
+                    current = self.adapter.get("character", "ava")
+                except FileNotFoundError:
+                    continue
+                # get() releases its shared lock before returning, so only a missing
+                # media file under a still-present manifest counts as a half-deleted view.
+                if manifest.is_file():
+                    for look in current.looks:
+                        if look.hero_image and not (asset_dir / look.hero_image).is_file():
+                            violations.append(f"manifest present but {look.hero_image} missing")
+                time.sleep(0.001)
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+        time.sleep(0.05)
+        self.adapter.delete("character", "ava")
+        stop.set()
+        thread.join()
+        self.assertEqual([], violations)
+        self.assertFalse(asset_dir.exists())
+
+    def test_delete_removes_lock_file_and_second_delete_fails_without_side_effects(self):
+        self.adapter.create(GlobalAsset("lamp", AssetKind.PROP, "Lamp"))
+        asset_dir = self.root / "prop" / "lamp"
+        self.assertTrue((asset_dir / ".lock").is_file())
+        self.adapter.delete(AssetKind.PROP, "lamp")
+        self.assertFalse(asset_dir.exists())
+        with self.assertRaises(FileNotFoundError):
+            self.adapter.delete(AssetKind.PROP, "lamp")
+        self.assertFalse(asset_dir.exists())
+
+    @unittest.skipIf(os.name == "nt", "flock-based test")
+    def test_materialize_blocks_while_exclusive_lock_held(self):
+        import fcntl
+        media_rel = "looks/base/hero.png"
+        asset = GlobalAsset(
+            "ava", AssetKind.CHARACTER, "Ava",
+            looks=(AssetLook("base", "Base", hero_image=media_rel),),
+        )
+        self.adapter.create(asset)
+        media_path = self.root / "character" / "ava" / media_rel
+        media_path.parent.mkdir(parents=True)
+        media_path.write_bytes(b"materialize-me")
+        lock_handle = (self.root / "character" / "ava" / ".lock").open("a+b")
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        finished = threading.Event()
+        outcome: dict = {}
+
+        def materialize():
+            try:
+                outcome["path"] = self.adapter.materialize("character", "ava", "base", Path(self.temp_dir.name) / "project")
+            except Exception as exc:
+                outcome["error"] = exc
+            finally:
+                finished.set()
+
+        thread = threading.Thread(target=materialize, daemon=True)
+        thread.start()
+        try:
+            self.assertFalse(finished.wait(0.5), "materialize did not block on the held exclusive lock")
+        finally:
+            lock_handle.close()
+        self.assertTrue(finished.wait(5.0))
+        self.assertNotIn("error", outcome)
+        self.assertEqual(b"materialize-me", (outcome["path"] / "hero.png").read_bytes())
 
 
 if __name__ == "__main__":

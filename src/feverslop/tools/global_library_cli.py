@@ -1,7 +1,8 @@
 """Argparse CLI for global asset management.
 
 Run as ``python -m feverslop.tools.global_library_cli`` or embed the parser in
-the application's top-level CLI.
+the application's top-level CLI. Pruning of unreferenced assets is
+intentionally not implemented and therefore not exposed as a subcommand.
 """
 
 from __future__ import annotations
@@ -54,8 +55,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     delete.add_argument("--kind", type=_kind, required=True)
     delete.add_argument("--id", required=True)
     commands.add_parser("refresh").add_argument("--snapshot", type=Path, required=True)
-    prune = commands.add_parser("prune")
-    prune.add_argument("--kind", type=_kind)
     commands.add_parser("import-from-project").add_argument("--manifest", type=Path, required=True)
     generate = commands.add_parser("generate")
     generate.add_argument("--kind", type=_kind)
@@ -110,24 +109,56 @@ def main(argv: list[str] | None = None) -> int:
             print(f"created {asset.kind.value}/{asset.id}")
         elif args.command == "create-look":
             asset = library.get(args.kind, args.id)
+            asset_dir = library.root / asset.kind.value / asset.id
+            for field_name, raw_path in (("hero_image", args.hero_image), ("sheet_image", args.sheet_image)):
+                if raw_path and not (asset_dir / raw_path).is_file():
+                    raise FileNotFoundError(f"{field_name} media not found in asset directory: {raw_path}")
             look = AssetLook(args.look_id, args.name, hero_image=args.hero_image, sheet_image=args.sheet_image)
             library.update(GlobalAsset(asset.id, asset.kind, asset.name, asset.description, asset.looks + (look,), asset.revision + 1, asset.schema_version, asset.metadata), expected_revision=asset.revision)
             print(f"created look {args.kind.value}/{args.id}/{args.look_id}")
         elif args.command == "validate":
             assets = library.list(args.kind)
+            dangling: list[str] = []
+            for asset in assets:
+                asset_dir = Path(library.root) / asset.kind.value / asset.id
+                for look in asset.looks:
+                    for field_name, relative in (
+                        ("hero_image", look.hero_image),
+                        ("sheet_image", look.sheet_image),
+                        ("contact_sheet_image", look.contact_sheet_image),
+                        ("anchor_image", look.anchor_image),
+                        ("sequence_video", look.sequence_video),
+                        *[(f"reference:{i}", ref) for i, ref in enumerate(look.references)],
+                        *[(f"selected_frame:{i}", ref) for i, ref in enumerate(look.selected_frames)],
+                    ):
+                        if relative and not (asset_dir / relative).is_file():
+                            dangling.append(f"{asset.kind.value}/{asset.id}: look {look.id}: {field_name} -> {relative}")
+            if dangling:
+                print(f"validation failed: {len(dangling)} dangling media reference(s)", file=sys.stderr)
+                for line in dangling:
+                    print(f"  {line}", file=sys.stderr)
+                return 2
             print(f"validated {len(assets)} asset manifest(s)")
         elif args.command == "delete":
             library.delete(args.kind, args.id)
             print(f"deleted {args.kind.value}/{args.id}")
         elif args.command == "refresh":
-            snapshot = json.loads((args.snapshot / "manifest.json").read_text(encoding="utf-8"))
-            target = library.materialize(snapshot["kind"], snapshot["asset_id"], snapshot["look_id"], args.snapshot.parents[3])
-            if target != args.snapshot:
-                shutil.rmtree(args.snapshot)
-                shutil.move(target, args.snapshot)
-            print(f"refreshed {args.snapshot}")
-        elif args.command == "prune":
-            print("prune completed; no unreferenced assets were removed")
+            snapshot = args.snapshot.resolve()
+            # base = parents[3] must have >= 2 components; shallower snapshots would materialize
+            # into the filesystem root or a top-level dir, which is never a valid base.
+            if len(snapshot.parents) < 5:
+                raise ValueError(
+                    f"snapshot {snapshot} is shallower than the canonical layout "
+                    "<base>/global_assets/<kind>/<id>/<look>; refusing to materialize"
+                )
+            payload = json.loads((snapshot / "manifest.json").read_text(encoding="utf-8"))
+            target = library.materialize(payload["kind"], payload["asset_id"], payload["look_id"], snapshot.parents[3])
+            if target != snapshot:
+                if not (snapshot / "manifest.json").is_file():
+                    raise ValueError(f"snapshot {snapshot} changed before refresh; refusing to replace it")
+                shutil.rmtree(snapshot)
+                shutil.move(target, snapshot)
+            print(f"refreshed {snapshot}")
         elif args.command == "import-from-project":
             asset = GlobalAsset.from_dict(json.loads(args.manifest.read_text(encoding="utf-8")))
             library.create(asset)
