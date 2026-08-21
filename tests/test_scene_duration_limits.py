@@ -1,5 +1,6 @@
 import math
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -13,9 +14,21 @@ from feverslop.errors import FeverSlopValidationError
 from feverslop.pipeline.scene_duration_enforcer import (
     enforce_scene_srt_file,
     parse_scene_srt,
+    parse_srt_scenes,
     validate_scene_durations,
     write_scene_srt,
 )
+
+
+TWO_SCENE_SRT = textwrap.dedent("""\
+    1
+    00:00:00,000 --> 00:00:02,000
+    Scene 1 text
+
+    2
+    00:00:02,000 --> 00:00:04,000
+    Scene 2 text
+""")
 
 
 class SceneDurationLimitTests(unittest.TestCase):
@@ -65,7 +78,7 @@ class SceneDurationLimitTests(unittest.TestCase):
                 max_duration=policy.effective_max_seconds,
                 artifact_store=store,
             )
-            repaired = parse_scene_srt(output_srt)
+            repaired = parse_srt_scenes(output_srt)
 
         self.assertEqual(
             [],
@@ -97,7 +110,7 @@ class SceneDurationLimitTests(unittest.TestCase):
                 ],
                 artifact_store=store,
             )
-            repaired = parse_scene_srt(path)
+            repaired = parse_srt_scenes(path)
 
         self.assertEqual(
             [],
@@ -300,6 +313,30 @@ class SceneDurationLimitTests(unittest.TestCase):
                 max_render_frames=31,
                 max_render_duration_seconds=0.58,
             )
+
+    def test_parse_srt_scenes_returns_list_of_srt_scenes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "scene.srt"
+            srt_path.write_text(TWO_SCENE_SRT)
+            result = parse_srt_scenes(srt_path)
+
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+        for scene in result:
+            self.assertIsInstance(scene, SrtScene)
+        self.assertEqual(result[0].scene, 1)
+        self.assertEqual(result[0].start, 0.0)
+        self.assertEqual(result[0].end, 2.0)
+
+    def test_parse_scene_srt_alias_emits_deprecation_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            srt_path = Path(temp_dir) / "scene.srt"
+            srt_path.write_text(TWO_SCENE_SRT)
+            with self.assertWarns(FutureWarning) as cm:
+                aliased = parse_scene_srt(srt_path)
+            self.assertIs(type(cm.warning), FutureWarning)
+            self.assertIn("parse_srt_scenes", str(cm.warning))
+            self.assertEqual(aliased, parse_srt_scenes(srt_path))
 
 
 if __name__ == "__main__":
