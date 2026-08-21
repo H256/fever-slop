@@ -528,6 +528,7 @@ class BuildRenderPlanTests(unittest.TestCase):
 
             scene = json.loads(output.read_text(encoding="utf-8"))[0]
             self.assertEqual(timing, scene["performance_timing"])
+            self.assertNotIn("reference_profile", scene["h3"])
     def test_render_plan_prefers_explicit_i2v_prompt_from_t2i(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

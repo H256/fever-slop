@@ -390,14 +390,6 @@ class DspyH3PromptBuilder:
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
-        profile = (
-            segment.get("reference_profile")
-            or (segment.get("references") or {}).get("reference_profile")
-            or global_context.get("reference_profile")
-            or ""
-        )
-        if str(profile).strip():
-            result["reference_profile"] = str(profile).strip()
         if segment.get("performance_timing"):
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):

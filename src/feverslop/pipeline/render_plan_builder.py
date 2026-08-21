@@ -516,8 +516,6 @@ def build_render_plan(
         canonical_h3_audio_refs = _h3_audio_references(h3_entry)
         if h3_entry and h3_entry.get("prompt"):
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
-            if h3_entry.get("reference_profile"):
-                render_scene["h3"]["reference_profile"] = str(h3_entry["reference_profile"]).strip()
             if h3_entry.get("performance_timing"):
                 render_scene["performance_timing"] = h3_entry["performance_timing"]
 

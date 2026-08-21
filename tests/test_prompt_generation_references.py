@@ -30,7 +30,6 @@ class PromptGenerationReferencesTests(unittest.TestCase):
             locations=["Mirror Stage"],
             actors=(ActorConfig(id="singer", name="Mara", image_prompt="portrait"),),
             structured_locations=(StructuredLocationConfig(id="stage", name="Mirror Stage", image_prompt="stage"),),
-            reference_profile="live_concert",
         )
         pipeline = PromptGenerationPipeline(
             llm_factory=lambda app_config: None,
@@ -52,7 +51,7 @@ class PromptGenerationReferencesTests(unittest.TestCase):
         self.assertEqual("stage", context["structured_locations"][0]["id"])
         self.assertEqual("multi", context["subject_mode"])
         self.assertEqual(4, context["max_scene_actors"])
-        self.assertEqual("live_concert", context["reference_profile"])
+        self.assertNotIn("reference_profile", context)
         self.assertEqual("en", context["language"])
 
     def test_resolved_global_context_uses_llm_generated_actors_when_config_omits_them(self):

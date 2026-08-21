@@ -1076,6 +1076,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("Singer remains bound to microphone", result["prompt"])
         self.assertNotIn("Drummer remains bound to drum kit", result["prompt"])
         self.assertNotIn("deterministic_contract", result)
+        self.assertNotIn("reference_profile", result)
 
     def test_builder_does_not_reintroduce_inactive_actor_contracts(self):
         builder = DspyH3PromptBuilder(FakeGenerator())

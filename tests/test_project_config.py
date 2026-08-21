@@ -7,7 +7,7 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
-    def test_reference_profile_is_loaded(self):
+    def test_reference_profile_is_not_part_of_project_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             (temp / "song.mp3").write_bytes(b"")
@@ -19,7 +19,7 @@ class ProjectConfigTests(unittest.TestCase):
 
             config = ProjectConfig.load(config_path)
 
-        self.assertEqual("live_concert", config.reference_profile)
+        self.assertFalse(hasattr(config, "reference_profile"))
 
     def test_upscale_config_defaults_to_conservative_seedvr2_3b_profile(self):
         with tempfile.TemporaryDirectory() as temp_dir:
