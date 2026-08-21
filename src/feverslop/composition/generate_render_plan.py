@@ -32,7 +32,7 @@ from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.pipeline.scene_duration_enforcer import (
     enforce_scene_srt_file,
-    parse_scene_srt,
+    parse_srt_scenes,
     validate_scene_durations,
 )
 from feverslop.pipeline.stage1_segment_builder import build_stage1_segment_json
@@ -64,7 +64,7 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
             SceneTimelinePipeline(
                 scene_generator_factory=_build_scene_generator,
                 enforce_scene_srt_file=enforce_scene_srt_file,
-                parse_scene_srt=parse_scene_srt,
+                parse_scene_srt=parse_srt_scenes,
                 validate_scene_durations=validate_scene_durations,
                 build_stage1_segment_json=build_stage1_segment_json,
                 build_scene_prompt_relay=build_scene_prompt_relay,
@@ -154,7 +154,7 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
             SceneTimelinePipeline(
                 scene_generator_factory=_build_scene_generator,
                 enforce_scene_srt_file=enforce_scene_srt_file,
-                parse_scene_srt=parse_scene_srt,
+                parse_scene_srt=parse_srt_scenes,
                 validate_scene_durations=validate_scene_durations,
                 build_stage1_segment_json=build_stage1_segment_json,
                 build_scene_prompt_relay=build_scene_prompt_relay,
