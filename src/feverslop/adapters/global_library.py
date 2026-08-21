@@ -35,16 +35,17 @@ class GlobalLibraryAdapter:
         return self._directory(kind, asset_id) / "manifest.json"
 
     @contextmanager
-    def _lock(self, directory: Path) -> Iterator[None]:
+    def _lock(self, directory: Path, *, shared: bool = False) -> Iterator[None]:
         directory.mkdir(parents=True, exist_ok=True)
         lock_path = directory / ".lock"
         with lock_path.open("a+b") as handle:
             if os.name == "nt":
                 import msvcrt
+                # msvcrt has no shared lock mode; shared degrades to exclusive (documented no-op)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
             else:
                 import fcntl
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                fcntl.flock(handle.fileno(), fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
             try:
                 yield
             finally:
@@ -69,6 +70,12 @@ class GlobalLibraryAdapter:
                 os.unlink(temporary)
 
     def get(self, kind: AssetKind | str, asset_id: str) -> GlobalAsset:
+        if not self._manifest_path(kind, asset_id).is_file():
+            raise FileNotFoundError(f"global asset not found: {self._kind(kind).value}/{asset_id}")
+        with self._lock(self._directory(kind, asset_id), shared=True):
+            return self._get_locked(kind, asset_id)
+
+    def _get_locked(self, kind: AssetKind | str, asset_id: str) -> GlobalAsset:
         path = self._manifest_path(kind, asset_id)
         if not path.is_file():
             raise FileNotFoundError(f"global asset not found: {self._kind(kind).value}/{asset_id}")
@@ -96,7 +103,7 @@ class GlobalLibraryAdapter:
     def update(self, asset: GlobalAsset, *, expected_revision: int) -> GlobalAsset:
         directory = self._directory(asset.kind, asset.id)
         with self._lock(directory):
-            current = self.get(asset.kind, asset.id)
+            current = self._get_locked(asset.kind, asset.id)
             if current.revision != expected_revision:
                 raise ValueError(
                     f"revision conflict for {asset.kind.value}/{asset.id}: expected {expected_revision}, "
@@ -130,7 +137,7 @@ class GlobalLibraryAdapter:
         if not look_id or Path(look_id).name != look_id or look_id in {".", ".."}:
             raise ValueError("look id must be a single safe path component")
         with self._lock(directory):
-            current = self.get(kind, asset_id)
+            current = self._get_locked(kind, asset_id)
             if current.revision != expected_revision:
                 raise ValueError(
                     f"revision conflict for {current.kind.value}/{current.id}: expected {expected_revision}, "
@@ -203,9 +210,32 @@ class GlobalLibraryAdapter:
 
     def delete(self, kind: AssetKind | str, asset_id: str) -> None:
         directory = self._directory(kind, asset_id)
-        if not (directory / "manifest.json").is_file():
+        manifest = directory / "manifest.json"
+        if not manifest.is_file():
             raise FileNotFoundError(f"global asset not found: {self._kind(kind).value}/{asset_id}")
-        shutil.rmtree(directory)
+        # Manifest first, media second: interleaved readers see "not found", never a half-removed asset.
+        with self._lock(directory):
+            if not manifest.is_file():
+                raise FileNotFoundError(f"global asset not found: {self._kind(kind).value}/{asset_id}")
+            manifest.unlink()
+            for entry in sorted(directory.iterdir()):
+                if entry.name == ".lock":
+                    continue
+                if entry.is_dir():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+        with self._lock(directory):
+            # A concurrent create may republish a new asset while the old one was removed;
+            # leave any newly published state intact.
+            if manifest.is_file() or any(entry.name != ".lock" for entry in directory.iterdir()):
+                return
+            # Unlink the lock file LAST so a reader locking afterwards sees an absent dir.
+            (directory / ".lock").unlink()
+        try:
+            directory.rmdir()
+        except FileNotFoundError:
+            pass
 
     def materialize(
         self,
@@ -214,39 +244,40 @@ class GlobalLibraryAdapter:
         look_id: str,
         project_reference_dir: str | Path,
     ) -> Path:
-        asset = self.get(kind, asset_id)
-        look = next((item for item in asset.looks if item.id == look_id), None)
-        if look is None:
-            if asset.looks:
-                raise ValueError(f"look not found for {asset.kind.value}/{asset.id}: {look_id}")
-            look = AssetLook(look_id, look_id)
-        source_dir = self._directory(asset.kind, asset.id)
-        destination = Path(project_reference_dir).resolve() / "global_assets" / asset.kind.value / asset.id / look.id
-        destination.mkdir(parents=True, exist_ok=True)
-        files = tuple(
-            path
-            for path in (
-                look.hero_image,
-                look.sheet_image,
-                look.contact_sheet_image,
-                look.anchor_image,
-                look.sequence_video,
-                *look.selected_frames,
-                *look.references,
+        source_dir = self._directory(kind, asset_id)
+        with self._lock(source_dir, shared=True):
+            asset = self._get_locked(kind, asset_id)
+            look = next((item for item in asset.looks if item.id == look_id), None)
+            if look is None:
+                if asset.looks:
+                    raise ValueError(f"look not found for {asset.kind.value}/{asset.id}: {look_id}")
+                look = AssetLook(look_id, look_id)
+            destination = Path(project_reference_dir).resolve() / "global_assets" / asset.kind.value / asset.id / look.id
+            destination.mkdir(parents=True, exist_ok=True)
+            files = tuple(
+                path
+                for path in (
+                    look.hero_image,
+                    look.sheet_image,
+                    look.contact_sheet_image,
+                    look.anchor_image,
+                    look.sequence_video,
+                    *look.selected_frames,
+                    *look.references,
+                )
+                if path
             )
-            if path
-        )
-        for relative in files:
-            source = (source_dir / relative).resolve()
-            if source != source_dir and source_dir not in source.parents:
-                raise ValueError("asset media path escapes asset directory")
-            if not source.is_file():
-                raise FileNotFoundError(f"global asset media not found: {relative}")
-            target = destination / Path(relative).name
-            shutil.copy2(source, target)
-        snapshot = {"asset_id": asset.id, "kind": asset.kind.value, "look_id": look.id, "revision": asset.revision}
-        atomic_write_json(destination / "manifest.json", snapshot)
-        return destination
+            for relative in files:
+                source = (source_dir / relative).resolve()
+                if source != source_dir and source_dir not in source.parents:
+                    raise ValueError("asset media path escapes asset directory")
+                if not source.is_file():
+                    raise FileNotFoundError(f"global asset media not found: {relative}")
+                target = destination / Path(relative).name
+                shutil.copy2(source, target)
+            snapshot = {"asset_id": asset.id, "kind": asset.kind.value, "look_id": look.id, "revision": asset.revision}
+            atomic_write_json(destination / "manifest.json", snapshot)
+            return destination
 
     def snapshot_revision(self, snapshot_dir: str | Path) -> int:
         payload = json.loads((Path(snapshot_dir) / "manifest.json").read_text(encoding="utf-8"))
