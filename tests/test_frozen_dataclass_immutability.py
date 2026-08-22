@@ -2,6 +2,12 @@
 import unittest
 import types
 
+from feverslop.domain.movie import (
+    CinematicShot,
+    MovieBible,
+    MovieProject,
+    StoryArch,
+)
 from feverslop.domain.movie_continuity import (
     MovieContinuityCharacterState,
     MovieContinuityLedger,
@@ -86,6 +92,65 @@ class MovieContinuityLedgerImmutabilityTest(unittest.TestCase):
         )
         self.assertIsInstance(ledger.characters, types.MappingProxyType)
         self.assertIsInstance(ledger.locations, types.MappingProxyType)
+
+
+class MovieProjectConfigImmutabilityTest(unittest.TestCase):
+    def _make_project(self, config=None):
+        story_arch = StoryArch(title="Test", premise="Test", beats=("beat",))
+        bible = MovieBible(
+            title="Test",
+            premise="Test",
+            story_arch=story_arch,
+            actors=(),
+            locations=(),
+            continuity=(),
+            style_constraints=(),
+            runtime_constraints={},
+        )
+        return MovieProject(
+            slug="test",
+            name="Test",
+            bible=bible,
+            story_arch=story_arch,
+            shots=(
+                CinematicShot(
+                    shot_id="s1",
+                    description="Test shot",
+                    duration_seconds=5.0,
+                    camera="static",
+                    action="test",
+                    expression="neutral",
+                    location="Test location",
+                ),
+            ),
+            duration_seconds=12.0,
+            width=1280,
+            height=704,
+            mode="scaffold",
+            config=config,
+        )
+
+    def test_config_is_mapping_proxy_type(self):
+        project = self._make_project(config={"a": 1})
+        self.assertIsInstance(project.config, types.MappingProxyType)
+
+    def test_config_none_is_allowed(self):
+        project = self._make_project()
+        self.assertIsNone(project.config)
+
+    def test_config_inplace_mutation_fails(self):
+        project = self._make_project(config={"a": 1})
+        with self.assertRaises(TypeError):
+            project.config["x"] = 1
+
+    def test_movie_config_helper_returns_plain_dict_copy(self):
+        from feverslop.application.movie_bible import movie_config
+
+        project = self._make_project(config={"a": 1})
+        result = movie_config(project)
+        self.assertIsInstance(result, dict)
+        result["x"] = 2
+        self.assertNotIn("x", project.config)
 
 
 class RenderPlanImmutabilityTest(unittest.TestCase):
