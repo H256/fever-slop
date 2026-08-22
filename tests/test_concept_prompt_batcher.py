@@ -140,9 +140,44 @@ class ConceptPromptBatcherTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "Concept batch: repairing 2 missing scene keys: seg_2, seg_3",
+            "Concept batch: repairing 2 missing or invalid scene keys: seg_2, seg_3",
             progress,
         )
+
+    def test_repairs_concept_when_selected_actor_is_not_named(self):
+        modules = FakeConceptModules([
+            json.dumps({
+                "seg_1": {
+                    "concept": "The singer performs on stage.",
+                    "references": {"actor_ids": ["singer", "bass"], "location_id": "stage"},
+                }
+            }),
+            json.dumps({
+                "seg_1": {
+                    "concept": "The singer and Bass Player perform together on stage; the Bass Player holds the bass.",
+                    "references": {"actor_ids": ["singer", "bass"], "location_id": "stage"},
+                }
+            }),
+            "summary",
+        ])
+        batcher = ConceptPromptBatcher(llm=object(), prompt_modules=modules, batch_size=1)
+
+        result = batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "seg_1", "type": "vocals"}],
+            story_idea="idea",
+            global_context={
+                "actors": [
+                    {"id": "singer", "name": "Goth Singer"},
+                    {"id": "bass", "name": "Bass Player"},
+                ]
+            },
+        )
+
+        repair_calls = [call for call in modules.calls if call[0] == "repair_concepts"]
+        self.assertEqual(1, len(repair_calls))
+        self.assertEqual("seg_1", repair_calls[0][1]["INVALID_SEGMENTS"][0]["segment_id"])
+        self.assertIn("bass player", repair_calls[0][1]["INVALID_SEGMENTS"][0]["reason"])
+        self.assertIn("Bass Player", result["seg_1"]["concept"])
 
 if __name__ == "__main__":
     unittest.main()

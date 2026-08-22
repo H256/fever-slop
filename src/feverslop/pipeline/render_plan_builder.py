@@ -205,11 +205,13 @@ def _filter_silent_audio_references(references: dict, scene: dict) -> dict:
     return filtered
 
 
-def _scene_references(scene: dict) -> dict:
+def _scene_references(scene: dict, max_scene_actors: int = 4) -> dict:
     references = dict(scene.get("references") or {})
     actor_ids = list(references.get("actor_ids") or [])
-    if len(actor_ids) > 4:
-        raise ValueError(f"Scene {scene.get('scene')} references at most 4 actors for ltx_msr")
+    if len(actor_ids) > max_scene_actors:
+        raise ValueError(
+            f"Scene {scene.get('scene')} references at most {max_scene_actors} actors"
+        )
     if actor_ids:
         references["actor_ids"] = [str(actor_id) for actor_id in actor_ids]
     if "location_id" in references and references["location_id"] is not None:
@@ -359,6 +361,7 @@ def build_render_plan(
     stem_files: dict[str, Path] | None = None,
     project_dir: Path | None = None,
     seed: int = 0,
+    max_scene_actors: int = 4,
 ) -> Path:
     """
     Combines:
@@ -504,9 +507,12 @@ def build_render_plan(
                 "base_concept": scene.get("base_concept", ""),
                 "camera_motion": scene.get("camera_motion", ""),
                 "character_motion": scene.get("character_motion", ""),
+                "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
-        references = _filter_silent_audio_references(_scene_references(scene), scene)
+        references = _filter_silent_audio_references(
+            _scene_references(scene, max_scene_actors), scene
+        )
         if references and project_dir is not None:
             _portable_audio_references(references, project_dir)
         if references:
@@ -515,8 +521,6 @@ def build_render_plan(
         canonical_h3_audio_refs = _h3_audio_references(h3_entry)
         if h3_entry and h3_entry.get("prompt"):
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
-            if h3_entry.get("reference_profile"):
-                render_scene["h3"]["reference_profile"] = str(h3_entry["reference_profile"]).strip()
             if h3_entry.get("performance_timing"):
                 render_scene["performance_timing"] = h3_entry["performance_timing"]
 

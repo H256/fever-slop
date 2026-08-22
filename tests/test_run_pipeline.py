@@ -100,6 +100,32 @@ class RunPipelinePathTests(unittest.TestCase):
         self.assertEqual(1, len(warnings))
         self.assertIn("structured reference serialization missing", warnings[0])
 
+    def test_seed_reference_bindings_preserves_explicit_empty_actor_selection(self):
+        with TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "base.json"
+            plan_path.write_text(
+                json.dumps([{
+                    "scene": 1,
+                    "references": {"actor_ids": [], "location_id": "crowd"},
+                }]),
+                encoding="utf-8",
+            )
+            config = ProjectConfig(
+                project_dir=temp,
+                project_name="test",
+                input_audio=temp / "song.wav",
+                actors=(ActorConfig(id="singer", name="Singer"),),
+                structured_locations=(
+                    StructuredLocationConfig(id="crowd", name="Crowd"),
+                ),
+            )
+
+            _seed_reference_bindings(plan_path, config)
+            scene = json.loads(plan_path.read_text(encoding="utf-8"))[0]
+
+        self.assertEqual([], scene["references"]["actor_ids"])
+
     def test_selected_pipeline_scenes_filters_render_plan(self):
         from feverslop.composition.stage_runners import _select_pipeline_scenes
 

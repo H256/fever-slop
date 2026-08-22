@@ -92,7 +92,7 @@ class OrbitSheetsVisionJudgeTests(unittest.TestCase):
             self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint
         )
 
-        self.assertEqual((self.paths[0], self.paths[2]), selected)
+        self.assertEqual((self.paths[1], self.paths[2]), selected)
         mocked_post.assert_called_once()
         self.assertTrue(mocked_post.call_args.args[0].endswith("/v1/chat/completions"))
 
@@ -116,7 +116,7 @@ class OrbitSheetsVisionJudgeTests(unittest.TestCase):
             self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint
         )
 
-        self.assertEqual((self.paths[0], self.paths[1]), selected)
+        self.assertEqual((self.paths[1], self.paths[2]), selected)
 
     @patch("requests.post")
     def test_vision_insufficient_valid_picks_fall_back_to_deterministic_selection(self, mocked_post):

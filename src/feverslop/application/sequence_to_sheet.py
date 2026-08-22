@@ -25,7 +25,7 @@ def recommended_sheet_layout(kind: Any) -> tuple[int, tuple[int, int]]:
     """Return a compact layout while preserving the H3 frame aspect ratio."""
     value = getattr(kind, "value", kind)
     if str(value) == "character":
-        return 2, (512, 288)
+        return 2, (288, 512)
     if str(value) == "location":
         return 3, (512, 288)
     return 2, (512, 288)
@@ -82,10 +82,10 @@ def generate_sequence_to_sheet(
             subject=subject,
             vision_endpoint=vision_endpoint,
             )
-        contact_sheet = run_dir / "contact-sheet.png"
-        compose_contact_sheet(selected, contact_sheet, columns=3, panel_size=(512, 288), include_labels=False)
-        sheet = run_dir / "sheet.png"
         columns, panel_size = recommended_sheet_layout(kind)
+        contact_sheet = run_dir / "contact-sheet.png"
+        compose_contact_sheet(selected, contact_sheet, columns=3, panel_size=panel_size, include_labels=False)
+        sheet = run_dir / "sheet.png"
         compose_sheet_from_contact_sheet(
             contact_sheet,
             sheet,

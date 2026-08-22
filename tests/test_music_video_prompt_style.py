@@ -137,6 +137,13 @@ class PromptInstructionTests(unittest.TestCase):
         self.assertIn("do not combine multiple categories", prompt)
         self.assertIn("singing with passion", prompt)
 
+    def test_spatial_detail_prompt_binds_role_defining_props_to_subjects(self):
+        prompt = build_detail_system_prompt("Spatial Relations", segment_type="instrumental").lower()
+
+        self.assertIn("role-defining prop", prompt)
+        self.assertIn("same subject", prompt)
+        self.assertIn("do not invent one", prompt)
+
     def test_detail_prompt_silent_mode_removes_vocal_performance_policy(self):
         prompt = build_detail_system_prompt("Character Motion", segment_type="vocals", silent_mode=True).lower()
 

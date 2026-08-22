@@ -91,6 +91,7 @@ def load_reference_subjects(project_config_path: str | Path) -> tuple[list[Refer
                 or _item_value(location, "visual_description")
                 or _item_value(location, "name")
             ),
+            reference_mode=_item_value(location, "reference_mode") or "empty_environment",
         )
         for location in location_source
     ]

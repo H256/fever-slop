@@ -31,6 +31,60 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         self.assertIn("hello world", modules.calls[0].payload["REFERENCE_LYRICS"])
         self.assertEqual("segment1", modules.calls[0].payload["WHISPER_SEGMENTS"][0]["key"])
 
+    def test_project_lyrics_are_preserved_when_word_timestamps_are_incomplete(self):
+        timeline = [
+            TimelineSegment(
+                start=4.76,
+                end=6.94,
+                kind="vocals",
+                text="wrong corrected phrase",
+                word_timestamps=(
+                    {"word": "ihr", "start": 3.92, "end": 5.54},
+                    {"word": "seid", "start": 5.54, "end": 5.76},
+                    {"word": "unglaublich!", "start": 5.76, "end": 6.74},
+                ),
+            )
+        ]
+        aligner = LyricTimelineAligner(
+            object(),
+            modules=GeneralModulesFake(
+                lyric_alignment={"segments": {"segment1": "Das ist unser letztes Lied für heute Nacht."}}
+            ),
+        )
+
+        corrected = aligner.align(timeline, "Das ist unser letztes Lied für heute Nacht.")
+
+        self.assertEqual("Das ist unser letztes Lied für heute Nacht.", corrected[0].text)
+        self.assertEqual(
+            ["Das", "ist", "unser", "letztes", "Lied", "für", "heute", "Nacht."],
+            [item["word"] for item in corrected[0].word_timestamps],
+        )
+        self.assertEqual(4.76, corrected[0].word_timestamps[0]["start"])
+        self.assertEqual(6.94, corrected[0].word_timestamps[-1]["end"])
+
+    def test_inferred_word_timestamps_never_have_zero_duration(self):
+        segment = TimelineSegment(
+            start=41.69,
+            end=44.01,
+            kind="vocals",
+            text="mein Name wie ein Messer",
+            word_timestamps=(
+                {"word": "mein", "start": 41.64, "end": 41.84},
+                {"word": "Name", "start": 41.84, "end": 42.3},
+                {"word": "wie", "start": 42.3, "end": 42.7},
+                {"word": "ein", "start": 42.7, "end": 43.06},
+                {"word": "Messer", "start": 43.06, "end": 43.88},
+            ),
+        )
+
+        timestamps = LyricTimelineAligner._complete_word_timestamps(
+            "Ich trug mein Name wie ein Messer", segment
+        )
+
+        self.assertTrue(all(item["end"] > item["start"] for item in timestamps))
+        self.assertEqual(41.69, timestamps[0]["start"])
+        self.assertEqual(44.01, timestamps[-1]["end"])
+
     def test_raises_when_llm_returns_wrong_segment_count(self):
         timeline = [
             TimelineSegment(start=0.0, end=2.0, kind="vocals", text="one"),

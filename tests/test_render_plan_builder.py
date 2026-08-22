@@ -510,7 +510,12 @@ class BuildRenderPlanTests(unittest.TestCase):
             }]), encoding="utf-8")
             relay.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
             timing = {"bpm": 120.0, "beats": [{"time_seconds": 0.5, "downbeat": True, "impact": 0.8}]}
-            h3.write_text(json.dumps([{"segment_id": "s1", "prompt": "H3", "performance_timing": timing}]), encoding="utf-8")
+            h3.write_text(json.dumps([{
+                "segment_id": "s1",
+                "prompt": "H3",
+                "reference_profile": "live_concert",
+                "performance_timing": timing,
+            }]), encoding="utf-8")
 
             build_render_plan(
                 scene_prompts_json=scene_prompts,
@@ -523,6 +528,7 @@ class BuildRenderPlanTests(unittest.TestCase):
 
             scene = json.loads(output.read_text(encoding="utf-8"))[0]
             self.assertEqual(timing, scene["performance_timing"])
+            self.assertNotIn("reference_profile", scene["h3"])
     def test_render_plan_prefers_explicit_i2v_prompt_from_t2i(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

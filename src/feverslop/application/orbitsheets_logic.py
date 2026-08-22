@@ -67,64 +67,41 @@ def select_orbitsheet_frames(
     paths = tuple(frame_paths)
     if not paths or count < 1:
         raise ValueError("frame paths and positive count are required")
-    candidates = paths[:16]
+    usable_paths = paths
+    if len(paths) > 2 and len(paths) - 2 >= count:
+        usable_paths = paths[1:-1]
+    vision_candidates = usable_paths
+    if len(usable_paths) > 16:
+        vision_indices = np.linspace(0, len(usable_paths) - 1, 16, dtype=int)
+        vision_candidates = tuple(usable_paths[index] for index in vision_indices)
     if vision_endpoint:
-        picks = _vision_picks(candidates, count, vision_endpoint, subject)
+        picks = _vision_picks(vision_candidates, count, vision_endpoint, subject)
         if picks is not None:
-            return tuple(candidates[index] for index in picks)
+            return tuple(vision_candidates[index] for index in picks)
 
-    descriptors = []
-    sharpness = []
-    for path in candidates:
-        image = cv2.imread(str(path))
-        if image is None:
-            raise ValueError(f"could not read frame image: {path}")
-        small = cv2.resize(image, (32, 32), interpolation=cv2.INTER_AREA).astype(np.float32)
-        small = (small - small.mean()) / (small.std() + 1e-6)
-        descriptors.append(small.reshape(-1))
-        sharpness.append(float(cv2.Laplacian(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()))
-    descriptors = np.asarray(descriptors, dtype=np.float32)
+    return _select_temporal_frames(paths, count)
+
+
+def _select_temporal_frames(paths: tuple[Any, ...], count: int) -> tuple[Any, ...]:
+    """Select one late-biased frame from each temporal view slot."""
+    candidates = paths[1:-1] if len(paths) > 2 and len(paths) - 2 >= count else paths
     target_count = min(count, len(candidates))
     if target_count == len(candidates):
         return candidates
 
-    # OrbitSheets' fallback is view-oriented: cluster the montage, then keep
-    # the sharpest member of each appearance cluster. This avoids selecting
-    # several adjacent sharp frames from the same turn.
-    if target_count > 1:
-        compact = descriptors.reshape(len(candidates), -1)
-        seeds = [0]
-        while len(seeds) < target_count:
-            distances = np.min(
-                np.linalg.norm(compact[:, None] - compact[seeds][None, :], axis=2), axis=1
-            )
-            distances[seeds] = -1
-            seeds.append(int(np.argmax(distances)))
-        centers = compact[seeds].copy()
-        labels = np.zeros(len(candidates), dtype=np.int32)
-        for _ in range(12):
-            labels = np.argmin(
-                np.linalg.norm(compact[:, None] - centers[None, :], axis=2), axis=1
-            )
-            for cluster in range(target_count):
-                members = compact[labels == cluster]
-                if len(members):
-                    centers[cluster] = members.mean(axis=0)
-        sharp = np.asarray(sharpness)
-        chosen = []
-        for cluster in range(target_count):
-            members = np.flatnonzero(labels.ravel() == cluster)
-            if len(members):
-                chosen.append(int(members[np.argmax(sharp[members])]))
-        if len(chosen) == target_count:
-            return tuple(candidates[index] for index in sorted(chosen))
+    sharpness = []
+    for path in candidates:
+        image = cv2.imread(str(path))
+        if image is None:
+            raise ValueError(f"could not read video frame image: {path}")
+        sharpness.append(float(cv2.Laplacian(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()))
 
-    chosen = [0]
-    while len(chosen) < target_count:
-        distances = np.min(np.linalg.norm(descriptors[:, None] - descriptors[chosen][None, :], axis=2), axis=1)
-        distances[chosen] = -1
-        score = distances / max(float(distances.max()), 1e-6) * 0.65
-        normalized = (np.asarray(sharpness) - min(sharpness)) / max(max(sharpness) - min(sharpness), 1e-6)
-        score += normalized * 0.35
-        chosen.append(int(np.argmax(score)))
-    return tuple(candidates[index] for index in sorted(chosen))
+    selected = []
+    for slot in range(target_count):
+        start = round(slot * len(candidates) / target_count)
+        end = max(start, round((slot + 1) * len(candidates) / target_count) - 1)
+        target = start + (end - start) * 0.65
+        available = [index for index in range(start, end + 1) if index not in selected]
+        selected.append(max(available, key=lambda index: (-abs(index - target), sharpness[index])))
+
+    return tuple(candidates[index] for index in sorted(selected))

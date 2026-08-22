@@ -322,6 +322,8 @@ class PromptGenerationPipeline:
         subject_mode = str(get_config_value(config, "subject_mode", "multi") or "multi")
         max_scene_actors = int(get_config_value(config, "max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
         silent_mode = bool(get_config_value(config, "silent_mode", False))
+        audio_config = getattr(config, "audio", None)
+        language = str(getattr(audio_config, "language", "") or "").strip()
 
         story_idea = resolve_text_override(
             configured_value=config_story_idea,
@@ -349,12 +351,21 @@ class PromptGenerationPipeline:
             ),
         )
 
-        subject_locations = run_spinner(
-            "Generating subject and locations fallback...",
-            lambda: prompt_pipeline.create_subject_and_locations(
-                story_idea=story_idea,
-                notes=subject_location_notes,
-            ),
+        has_configured_subject_assets = bool(
+            config_subject
+            and config_items_as_dicts(config_actors)
+            and config_items_as_dicts(config_structured_locations)
+        )
+        subject_locations = (
+            {}
+            if has_configured_subject_assets
+            else run_spinner(
+                "Generating subject and locations fallback...",
+                lambda: prompt_pipeline.create_subject_and_locations(
+                    story_idea=story_idea,
+                    notes=subject_location_notes,
+                ),
+            )
         )
 
         subject = resolve_text_override(
@@ -365,7 +376,7 @@ class PromptGenerationPipeline:
         )
         locations = resolve_locations_override(
             configured_locations=config_locations,
-            generated_locations=subject_locations["locations"],
+            generated_locations=subject_locations.get("locations", []),
             reporter=reporter,
         )
 
@@ -395,7 +406,8 @@ class PromptGenerationPipeline:
             "global_asset_snapshots": list(global_resolution.snapshots) if global_resolution else [],
             "subject_mode": subject_mode,
             "max_scene_actors": max_scene_actors,
-            "reference_profile": str(get_config_value(config, "reference_profile", "generic") or "generic").strip(),
+            "video_pipeline": str(get_config_value(config, "video_pipeline", "ltx_i2v") or "ltx_i2v").strip(),
+            "language": language,
             "silent_mode": silent_mode,
             "location_constraint": build_location_constraint(locations),
             "steering": {

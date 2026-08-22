@@ -71,7 +71,28 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         - camera angle and movement,
         - movement direction and speed,
         - lighting,
-        - timing and shot boundaries.
+        - timing and shot boundaries,
+        - generic spatial relations and visibility scope.
+
+        For every planned active subject, record whether and where it is visible in each
+        relevant shot. Preserve explicit spatial relations literally, including stage versus
+        audience, foreground versus background, left/center/right, front/behind, and the
+        subject's relation to required props. When a subject's declared role identifies a
+        tool, instrument, vehicle, or other role-defining prop used by the scene, bind that
+        prop explicitly to the same subject and do not transfer it to another subject.
+        Anonymous people in an environment reference
+        must never absorb, replace, or spatially relocate a named subject.
+
+        Unless the scene explicitly says an actor is absent or off-screen, every actor
+        reference declared in the input is an active named subject. Include it in the plan
+        and keep it visibly distinct from anonymous environment people. If the input gives no
+        exact position, choose a coherent separate layer rather than placing the named actor
+        inside the crowd or silently dropping the actor.
+
+        A subject mentioned only as an audio source, voice, reaction, or implied stage
+        presence does not count as visible coverage. For every actor action in character
+        motion, create a visual subject entry and attach that actor to the corresponding shot
+        with a concrete position, visible pose, and action.
 
         Do not replace specific directions with generic equivalents. For example,
         "slow truck right" must not become "cinematic camera movement", and a specified
@@ -187,6 +208,48 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         identity and appearance characteristics, current clothing and important accessories
         when defined, its position or composition in frame, and its current pose/action/state.
         Do not merely write the label and assume the reference will supply all details.
+
+        Every actor reference declared in the input is an active named subject unless the
+        scene explicitly marks it absent or off-screen. It must appear in subject_definitions
+        and in detailed_description at every shot where its action is planned. A crowd or
+        environment reference supplies anonymous extras only; it must never absorb or replace
+        the named actor. If the plan does not state an exact position, keep the actor visibly
+        separate from the crowd in a coherent foreground, midground, or stage layer rather
+        than inventing that the actor stands among the audience.
+
+        When a referenced actor represents one physical individual, preserve exactly one
+        persistent visible instance unless the resolved plan explicitly requires multiple
+        instances, cloning, mirroring, reflection, or another deliberate multi-instance
+        effect. Without such an explicit plan, an actor must not appear in two positions at
+        once, such as one instance at the front of the frame and another at that actor's
+        instrument. Keep each role-defining instrument or prop attached to that actor's
+        single planned instance.
+
+        An audio mention, lyric source, crowd reaction, or phrase such as "stage presence"
+        does not count as showing the actor. The actor label must occur in the visual shot
+        prose itself with a concrete position and visible action. Do not omit the actor from
+        later shots merely because the camera is moving through the environment.
+
+        Spatial visibility is a hard generation requirement, not background metadata. If a
+        subject is part of the planned action, describe that subject visibly in the shot where
+        the action occurs. State its exact frame position and spatial relation to other subjects
+        and the environment: foreground/midground/background, left/center/right, on stage,
+        behind the crowd, in front of the crowd, or another relation explicitly supplied by
+        the plan. Never place a subject inside an audience, off-screen, or in the wrong spatial
+        layer merely because the environment reference contains similar people. Preserve every
+        required prop in the same shot and bind it to the correct subject. If a subject is
+        required across multiple planned shots, mention it in each such shot; do not rely on
+        retention_analysis to imply visual presence.
+
+        Role-defining props are identity-and-action bindings: a subject who is identified as
+        operating a tool, instrument, vehicle, or other prop must remain visibly attached to
+        that prop in the relevant shot unless the plan explicitly changes the binding. Do
+        not let another referenced subject inherit it merely because both appear together.
+
+        Resolve crowded compositions explicitly. An environment or crowd reference supplies
+        setting and anonymous extras; it does not replace, duplicate, or absorb a named subject.
+        When the plan distinguishes a performer from an audience, keep the performer visibly
+        separate from the audience and preserve the stated stage/front/back relationship.
 
         Treat clothing, footwear, jewelry, accessories, makeup, and wearable props as
         persistent subject state. Establish concrete wardrobe at the first clear appearance
