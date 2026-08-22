@@ -4,6 +4,8 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from openai import OpenAI
+
 from feverslop.llm_concurrency import limit_dspy_lm
 
 
@@ -49,13 +51,24 @@ class DspyRuntime:
         api_base = getattr(client, "base_url", None)
         if api_base is not None and not isinstance(api_base, str):
             api_base = str(api_base)
+        inject = isinstance(client, OpenAI)
+        cache = bool(getattr(llm, "dspy_cache", False))
+        if inject and cache:
+            # dspy's request cache pickles request kwargs; the injected
+            # hardened client is not picklable.
+            cache = False
         kwargs = {
             "api_base": api_base,
             "api_key": getattr(client, "api_key", None),
             "temperature": getattr(llm, "dspy_temperature", 0.4),
             "max_tokens": llm.max_tokens,
-            "cache": getattr(llm, "dspy_cache", False),
+            "cache": cache,
+            # Explicit instead of dspy's implicit 3, mirroring the direct
+            # path retry budget (SDK max_retries=0 + app-level backoff).
+            "num_retries": getattr(llm, "max_retries", 3),
         }
+        if inject:
+            kwargs["client"] = client
         timeout = getattr(llm, "request_timeout_seconds", None)
         if timeout is not None:
             kwargs["timeout"] = timeout

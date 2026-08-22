@@ -22,6 +22,14 @@ class SrtScene:
     end: float
     text: str = ""
 
+    def __post_init__(self) -> None:
+        if self.start < 0:
+            raise ValueError(f"SrtScene.start must be >= 0 (got {self.start})")
+        if self.end < self.start:
+            raise ValueError(
+                f"SrtScene.end must be >= SrtScene.start (start={self.start}, end={self.end})"
+            )
+
     @property
     def duration(self) -> float:
         return self.end - self.start

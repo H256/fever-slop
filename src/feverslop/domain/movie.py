@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import types
 from dataclasses import dataclass
 
 from feverslop.domain.movie_continuity import (
@@ -205,3 +206,15 @@ class MovieProject:
     height: int
     mode: str
     config: dict | None = None
+
+    def __post_init__(self) -> None:
+        if not self.slug.strip():
+            raise ValueError("MovieProject.slug must be non-blank")
+        if not self.name.strip():
+            raise ValueError("MovieProject.name must be non-blank")
+        if not self.shots:
+            raise ValueError("MovieProject.shots must not be empty")
+        if not self.mode.strip():
+            raise ValueError("MovieProject.mode must be non-blank")
+        if self.config is not None:
+            object.__setattr__(self, "config", types.MappingProxyType(self.config))
