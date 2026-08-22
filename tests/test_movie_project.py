@@ -5123,7 +5123,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
 
     def test_reference_manifest_prefers_image_prompt(self):
         from feverslop.application.movie import _reference_manifest
-        from feverslop.domain.movie import MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
+        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
 
         bible = MovieBible(
             title="Test",
@@ -5140,7 +5140,17 @@ class TestRefineLocationPrompts(unittest.TestCase):
             name="Test",
             bible=bible,
             story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
-            shots=(),
+            shots=(
+                CinematicShot(
+                    shot_id="s1",
+                    description="Test shot",
+                    duration_seconds=5.0,
+                    camera="static",
+                    action="test",
+                    expression="neutral",
+                    location="Test location",
+                ),
+            ),
             duration_seconds=12,
             width=1280,
             height=704,
@@ -5154,7 +5164,7 @@ class TestRefineLocationPrompts(unittest.TestCase):
 
     def test_reference_manifest_falls_back_to_visual_description(self):
         from feverslop.application.movie import _reference_manifest
-        from feverslop.domain.movie import MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
+        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
 
         bible = MovieBible(
             title="Test",
@@ -5171,7 +5181,17 @@ class TestRefineLocationPrompts(unittest.TestCase):
             name="Test",
             bible=bible,
             story_arch=StoryArch(title="Test", premise="Test", beats=("beat",)),
-            shots=(),
+            shots=(
+                CinematicShot(
+                    shot_id="s1",
+                    description="Test shot",
+                    duration_seconds=5.0,
+                    camera="static",
+                    action="test",
+                    expression="neutral",
+                    location="Test location",
+                ),
+            ),
             duration_seconds=12,
             width=1280,
             height=704,

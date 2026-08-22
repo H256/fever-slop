@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from feverslop.errors import FeverSlopDataError
+
 
 @dataclass(frozen=True)
 class PromptSet:
@@ -35,6 +37,8 @@ class RenderScene:
 
     @property
     def scene_number(self) -> int:
+        if "scene" not in self.data:
+            raise FeverSlopDataError("render scene is missing required key: 'scene'")
         return int(self.data["scene"])
 
     @property

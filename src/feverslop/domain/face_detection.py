@@ -112,7 +112,8 @@ class FaceLandmarks:
 
     def __post_init__(self):
         # Ensure exactly 5 points
-        assert len(self.points) == 5, f"Expected 5 landmarks, got {len(self.points)}"
+        if len(self.points) != 5:
+            raise ValueError(f"Expected 5 landmarks, got {len(self.points)}")
 
 
 @dataclass(frozen=True)
