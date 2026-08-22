@@ -9,7 +9,36 @@ class LLMPolicyTests(unittest.TestCase):
 
         self.assertEqual("structured", policy.profile)
         self.assertEqual(512, policy.max_tokens)
-        self.assertEqual(150, policy.max_words)
+
+    def test_long_form_music_video_tasks_use_creative_budget(self):
+        from feverslop.prompting.llm_policy import policy_for
+
+        for name in ("story_idea", "style_block"):
+            policy = policy_for(name)
+            self.assertEqual("creative", policy.profile, name)
+            self.assertEqual(2048, policy.max_tokens, name)
+
+    def test_batched_tasks_are_budgeted_by_call_site_multipliers(self):
+        from feverslop.prompting.llm_policy import BATCHED_TASK_NAMES
+
+        self.assertIn("concept_map", BATCHED_TASK_NAMES)
+        self.assertIn("lyric_alignment", BATCHED_TASK_NAMES)
+
+    def test_signature_bundle_task_names_have_explicit_policies(self):
+        from feverslop.prompting.general_signatures import build_general_signature_bundle
+        from feverslop.prompting.llm_policy import BATCHED_TASK_NAMES, known_task_names
+        from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
+
+        known = known_task_names()
+        bundles = (
+            build_music_video_signature_bundle(),
+            build_general_signature_bundle(),
+        )
+        for bundle in bundles:
+            for name in bundle:
+                if name in BATCHED_TASK_NAMES:
+                    continue
+                self.assertIn(name, known)
 
     def test_creative_tasks_have_a_larger_budget(self):
         from feverslop.prompting.llm_policy import policy_for

@@ -46,9 +46,35 @@ class DspyRuntimeTests(unittest.TestCase):
                 "max_tokens": 2048,
                 "timeout": 42.0,
                 "cache": True,
+                "num_retries": 3,
             },
             calls[0][1],
         )
+
+    def test_make_lm_injects_hardened_openai_client(self):
+        from openai import OpenAI
+
+        calls = []
+        hardened_client = OpenAI(base_url="http://localhost:9/v1", api_key="k")
+
+        class LLM:
+            client = hardened_client
+            model = "gemma4-26b-a4b"
+            max_tokens = 2048
+            max_retries = 2
+            dspy_cache = True
+
+        runtime = DspyRuntime(
+            signatures=H3SignatureBundle(object, object, object, object),
+            lm_factory=lambda *args, **kwargs: calls.append((args, kwargs)) or "lm",
+            predict_factory=lambda signature: signature,
+            context_factory=lambda **kwargs: nullcontext(kwargs),
+        )
+
+        self.assertEqual("lm", runtime.make_lm(LLM()))
+        self.assertIs(hardened_client, calls[0][1]["client"])
+        self.assertEqual(2, calls[0][1]["num_retries"])
+        self.assertFalse(calls[0][1]["cache"])
 
     def test_generator_accepts_fake_runtime_and_loads_h3_guides_without_live_endpoint(self):
         class FakePredict:
@@ -116,6 +142,71 @@ class DspyRuntimeTests(unittest.TestCase):
         self.assertNotIn("references_json", base_call)
         self.assertNotIn("relay_segments_json", base_call)
         self.assertIn("integrated_multimodal_description", base_call["guide"])
+
+    def test_dspy_lm_does_not_follow_redirects(self):
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        import dspy
+        import httpx
+        from openai import OpenAI
+
+        class Handler(BaseHTTPRequestHandler):
+            seen_paths: list[str] = []
+
+            def do_POST(self):
+                Handler.seen_paths.append(self.path)
+                self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+                if self.path == "/v1/chat/completions":
+                    self.send_response(307)
+                    self.send_header("Location", "/target")
+                    self.end_headers()
+                    return
+                body = json.dumps({
+                    "id": "cmpl-redirect",
+                    "object": "chat.completion",
+                    "model": "fake-model",
+                    "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                    ],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                }).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        hardened_client = OpenAI(
+            base_url=f"http://127.0.0.1:{server.server_address[1]}/v1",
+            api_key="k",
+            http_client=httpx.Client(follow_redirects=False),
+            max_retries=0,
+        )
+
+        class LLM:
+            client = hardened_client
+            model = "fake-model"
+            max_tokens = 64
+            # Small budget keeps the litellm retry backoff short in tests.
+            max_retries = 1
+            dspy_cache = False
+
+        try:
+            lm = DspyRuntime.create(dspy).make_lm(LLM())
+            with self.assertRaises(dspy.LMProviderError) as caught:
+                lm("hi")
+        finally:
+            server.shutdown()
+
+        self.assertIn("307", str(caught.exception))
+        self.assertNotIn("/target", Handler.seen_paths)
 
 
 if __name__ == "__main__":
