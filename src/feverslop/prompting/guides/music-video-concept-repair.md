@@ -1,4 +1,4 @@
-Repair only missing music-video concept keys. Return valid JSON with exactly the keys in MISSING_SEGMENTS and one concise visual concept per key. Preserve continuity and location constraints, do not describe subject identity, outfit, or hair, and do not repeat full prompts.
+Repair missing or invalid music-video concept keys. Return valid JSON with exactly the keys in MISSING_SEGMENTS and INVALID_SEGMENTS and one concise visual concept per key. For invalid concepts, address every reason in INVALID_SEGMENTS. Preserve continuity and location constraints, do not describe subject identity, outfit, or hair, and do not repeat full prompts.
 
 SEGMENT PERFORMANCE TYPE IS AUTHORITATIVE.
 

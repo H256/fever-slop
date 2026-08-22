@@ -176,16 +176,18 @@ class ConceptPromptBatcher:
         }
 
         missing = [segment_id for segment_id in expected_ids if segment_id not in repaired]
+        invalid = self._invalid_concepts(repaired, global_context)
+        repair_ids = list(dict.fromkeys(missing + [item["segment_id"] for item in invalid]))
 
-        if not missing:
+        if not repair_ids:
             return {
                 segment_id: repaired[segment_id]
                 for segment_id in expected_ids
             }
 
         self._report(
-            f"Concept batch: repairing {len(missing)} missing scene "
-            f"{'key' if len(missing) == 1 else 'keys'}: {', '.join(missing)}",
+            f"Concept batch: repairing {len(repair_ids)} missing or invalid scene "
+            f"{'key' if len(repair_ids) == 1 else 'keys'}: {', '.join(repair_ids)}",
             progress_callback,
         )
 
@@ -193,7 +195,7 @@ class ConceptPromptBatcher:
         missing_segments = [
             seg
             for seg in batch
-            if seg["segment_id"] in missing
+            if seg["segment_id"] in repair_ids
         ]
 
         payload = {
@@ -203,7 +205,8 @@ class ConceptPromptBatcher:
             "PREVIOUS_PROGRESS_SUMMARY": previous_summary,
             "PREVIOUS_CONCEPTS": previous_concepts,
             "MISSING_SEGMENTS": missing_segments,
-            "EXPECTED_KEYS": missing,
+            "INVALID_SEGMENTS": invalid,
+            "EXPECTED_KEYS": repair_ids,
         }
 
         response = self.prompt_modules.repair_concepts(
@@ -212,16 +215,52 @@ class ConceptPromptBatcher:
         )
         repair = response if isinstance(response, dict) else extract_json_object(str(response))
 
-        for segment_id in missing:
+        for segment_id in repair_ids:
             value = repair.get(segment_id)
             if value is None:
-                value = self._fallback_concept(segment_id, global_context)
-            repaired[segment_id] = str(value)
+                value = self._fallback_concept(segment_id, global_context) if segment_id in missing else repaired[segment_id]
+            repaired[segment_id] = value
 
         return {
             segment_id: repaired[segment_id]
             for segment_id in expected_ids
         }
+
+    @staticmethod
+    def _invalid_concepts(result: dict, global_context: dict) -> list[dict[str, Any]]:
+        actors = {
+            str(actor.get("id") or "").strip().lower(): str(actor.get("name") or "").strip().lower()
+            for actor in global_context.get("actors") or []
+            if isinstance(actor, dict) and str(actor.get("id") or "").strip()
+        }
+        if not actors:
+            return []
+
+        invalid = []
+        for segment_id, value in result.items():
+            if not isinstance(value, dict):
+                continue
+            concept = str(value.get("concept") or value.get("prompt") or "").lower()
+            references = value.get("references") or {}
+            selected = [str(actor_id).strip().lower() for actor_id in references.get("actor_ids") or []]
+            missing_names = [
+                actors[actor_id]
+                for actor_id in selected
+                if actor_id in actors and actors[actor_id] and actors[actor_id] not in concept
+            ]
+            if any(phrase in concept for phrase in ("full band", "entire band", "whole band", "all band members")):
+                missing_names.extend(
+                    actors[actor_id]
+                    for actor_id in actors
+                    if actor_id not in selected and actors[actor_id]
+                )
+            if missing_names:
+                invalid.append({
+                    "segment_id": segment_id,
+                    "reason": "Concept must name every selected actor; missing: " + ", ".join(dict.fromkeys(missing_names)),
+                    "current_concept": value,
+                })
+        return invalid
 
     def _last_concepts(self, concepts: dict[str, str]) -> dict[str, str]:
         if self.max_previous_concepts <= 0:

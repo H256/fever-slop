@@ -217,6 +217,14 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         separate from the crowd in a coherent foreground, midground, or stage layer rather
         than inventing that the actor stands among the audience.
 
+        When a referenced actor represents one physical individual, preserve exactly one
+        persistent visible instance unless the resolved plan explicitly requires multiple
+        instances, cloning, mirroring, reflection, or another deliberate multi-instance
+        effect. Without such an explicit plan, an actor must not appear in two positions at
+        once, such as one instance at the front of the frame and another at that actor's
+        instrument. Keep each role-defining instrument or prop attached to that actor's
+        single planned instance.
+
         An audio mention, lyric source, crowd reaction, or phrase such as "stage presence"
         does not count as showing the actor. The actor label must occur in the visual shot
         prose itself with a concrete position and visible action. Do not omit the actor from

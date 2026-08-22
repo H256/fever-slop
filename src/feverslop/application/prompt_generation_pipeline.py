@@ -351,12 +351,21 @@ class PromptGenerationPipeline:
             ),
         )
 
-        subject_locations = run_spinner(
-            "Generating subject and locations fallback...",
-            lambda: prompt_pipeline.create_subject_and_locations(
-                story_idea=story_idea,
-                notes=subject_location_notes,
-            ),
+        has_configured_subject_assets = bool(
+            config_subject
+            and config_items_as_dicts(config_actors)
+            and config_items_as_dicts(config_structured_locations)
+        )
+        subject_locations = (
+            {}
+            if has_configured_subject_assets
+            else run_spinner(
+                "Generating subject and locations fallback...",
+                lambda: prompt_pipeline.create_subject_and_locations(
+                    story_idea=story_idea,
+                    notes=subject_location_notes,
+                ),
+            )
         )
 
         subject = resolve_text_override(
@@ -367,7 +376,7 @@ class PromptGenerationPipeline:
         )
         locations = resolve_locations_override(
             configured_locations=config_locations,
-            generated_locations=subject_locations["locations"],
+            generated_locations=subject_locations.get("locations", []),
             reporter=reporter,
         )
 

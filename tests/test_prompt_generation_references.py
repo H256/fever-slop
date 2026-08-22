@@ -6,6 +6,9 @@ from feverslop.config.project_config import ActorConfig, ProjectConfig, Structur
 
 
 class FakePromptPipeline:
+    def __init__(self):
+        self.subject_locations_calls = 0
+
     def create_story_idea(self, lyrics, notes):
         return "story"
 
@@ -13,6 +16,7 @@ class FakePromptPipeline:
         return "style"
 
     def create_subject_and_locations(self, story_idea, notes):
+        self.subject_locations_calls += 1
         return {
             "subject": "fallback subject",
             "actors": [{"id": "fallback_actor", "name": "Fallback"}],
@@ -38,9 +42,10 @@ class PromptGenerationReferencesTests(unittest.TestCase):
             scene_prompt_builder_factory=lambda llm: None,
         )
 
+        prompt_pipeline = FakePromptPipeline()
         context = pipeline.build_resolved_global_context(
             config=config,
-            prompt_pipeline=FakePromptPipeline(),
+            prompt_pipeline=prompt_pipeline,
             all_lyrics="",
             run_spinner=lambda _description, func: func(),
             console=None,
@@ -53,6 +58,7 @@ class PromptGenerationReferencesTests(unittest.TestCase):
         self.assertEqual(4, context["max_scene_actors"])
         self.assertNotIn("reference_profile", context)
         self.assertEqual("en", context["language"])
+        self.assertEqual(0, prompt_pipeline.subject_locations_calls)
 
     def test_resolved_global_context_uses_llm_generated_actors_when_config_omits_them(self):
         config = ProjectConfig(
