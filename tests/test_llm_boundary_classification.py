@@ -15,6 +15,12 @@ APPROVED_DIRECT_LLM_CALLS = {
     },
 }
 
+# The benchmark exercises the direct completion path only and makes no DSPy
+# calls, so it passes the client temperature instead of dspy_temperature.
+DSPY_TEMPERATURE_EXEMPT_FILES = {
+    "src/feverslop/tools/llm_benchmark.py",
+}
+
 
 class LLMBoundaryClassificationTests(unittest.TestCase):
     def test_direct_llm_transport_is_explicitly_classified(self):
@@ -35,6 +41,8 @@ class LLMBoundaryClassificationTests(unittest.TestCase):
     def test_all_openai_compatible_client_construction_passes_dspy_temperature(self):
         missing = []
         for path in PRODUCTION_ROOT.rglob("*.py"):
+            if path.as_posix() in DSPY_TEMPERATURE_EXEMPT_FILES:
+                continue
             tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):

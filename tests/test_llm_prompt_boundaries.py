@@ -16,7 +16,7 @@ class LlmPromptBoundaryTests(unittest.TestCase):
             root / "feverslop" / "adapters" / "llm_client.py",
         }
         benchmark_path = root / "feverslop" / "tools" / "llm_benchmark.py"
-        allowed_direct_calls = {(benchmark_path.as_posix(), 17, "complete_prompt")}
+        allowed_direct_calls = {(benchmark_path.as_posix(), 28, "complete_prompt")}
         violations = []
         for path in root.rglob("*.py"):
             if path in allowed:

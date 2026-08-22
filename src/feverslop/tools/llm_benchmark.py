@@ -3,18 +3,32 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from time import perf_counter
 from typing import Any
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from feverslop.errors import FeverSlopLMLError
 
 
-def benchmark_prompts(client: Any, prompts: list[str], *, system_prompt: str = "Return a concise answer.") -> dict[str, Any]:
+def benchmark_prompts(
+    client: Any,
+    prompts: list[str],
+    *,
+    system_prompt: str = "Return a concise answer.",
+    model: str | None = None,
+    temperature: float | None = None,
+) -> dict[str, Any]:
     samples: list[dict[str, Any]] = []
+    error: str | None = None
     started_total = perf_counter()
     for prompt in prompts:
-        started = perf_counter()
-        result = str(client.complete_prompt(system_prompt=system_prompt, prompt=prompt))
+        try:
+            started = perf_counter()
+            result = str(client.complete_prompt(system_prompt=system_prompt, prompt=prompt))
+        except FeverSlopLMLError as exc:
+            error = str(exc)
+            break
         duration_ms = (perf_counter() - started) * 1000
         telemetry = getattr(client, "last_response_telemetry", None)
         sample = {
@@ -29,7 +43,8 @@ def benchmark_prompts(client: Any, prompts: list[str], *, system_prompt: str = "
         samples.append(sample)
     total_ms = (perf_counter() - started_total) * 1000
     requests = len(samples)
-    return {
+    report = {
+        "completed": error is None,
         "requests": requests,
         "latency_ms": {
             "total": total_ms,
@@ -42,13 +57,20 @@ def benchmark_prompts(client: Any, prompts: list[str], *, system_prompt: str = "
         },
         "samples": samples,
     }
+    if error is not None:
+        report["error"] = error
+    if model is not None:
+        report["model"] = model
+    if temperature is not None:
+        report["temperature"] = temperature
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Benchmark one configured LLM endpoint.", epilog="Authenticate with the LLM_API_KEY environment variable.")
     parser.add_argument("--base-url", default="http://localhost:8080/v1")
     parser.add_argument("--model", default="default")
-    parser.add_argument("--dspy-temperature", type=float, default=0.4)
+    parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--prompt-file", required=True, help="UTF-8 file with one prompt per line")
     parser.add_argument("--system-prompt", default="Return a concise answer.")
     args = parser.parse_args(argv)
@@ -60,11 +82,21 @@ def main(argv: list[str] | None = None) -> int:
         base_url=args.base_url,
         api_key=api_key,
         model=args.model,
-        dspy_temperature=args.dspy_temperature,
+        temperature=args.temperature,
         max_tokens=2048,
         max_concurrent_requests=1,
     )
-    print(json.dumps(benchmark_prompts(client, prompts, system_prompt=args.system_prompt), indent=2))
+    report = benchmark_prompts(
+        client,
+        prompts,
+        system_prompt=args.system_prompt,
+        model=args.model,
+        temperature=args.temperature,
+    )
+    print(json.dumps(report, indent=2))
+    if report["completed"] is False:
+        print(f"benchmark incomplete: {report['error']} - partial report above", file=sys.stderr)
+        return 1
     return 0
 
 
