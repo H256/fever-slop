@@ -10,6 +10,23 @@ class FakeUploader:
         return f"uploaded/{Path(path).name}"
 
 
+class FakeSchemaClient:
+    def get_object_info(self):
+        return {
+            "ResolutionSelector": {
+                "input": {
+                    "required": {
+                        "aspect_ratio": [[
+                            "1:1 (Square)",
+                            "9:16 (Vertical)",
+                            "16:9 (Wide)",
+                        ]]
+                    }
+                }
+            }
+        }
+
+
 class SequenceToSheetBackendTests(unittest.TestCase):
     def test_builds_neutral_character_prompt_with_hard_cut_views(self):
         backend = ComfyUISequenceToSheetBackend(
@@ -87,6 +104,46 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             )
 
             self.assertEqual(0.85, patched["115"]["inputs"]["megapixels"])
+
+    def test_patches_portrait_aspect_ratio_for_character_sequences(self):
+        with tempfile.TemporaryDirectory() as temp:
+            anchor = Path(temp) / "anchor.png"
+            anchor.write_bytes(b"anchor")
+            backend = ComfyUISequenceToSheetBackend(
+                client=object(),
+                workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+                backend="minimax",
+                asset_uploader=FakeUploader(),
+            )
+
+            patched = backend.build_workflow(
+                anchor_images=[anchor],
+                prompt="portrait turnaround",
+                seed=7,
+                aspect_ratio="9:16 (Portrait Widescreen)",
+            )
+
+            self.assertEqual("9:16 (Portrait Widescreen)", patched["115"]["inputs"]["aspect_ratio"])
+
+    def test_resolves_semantic_portrait_ratio_from_current_comfyui_enum(self):
+        with tempfile.TemporaryDirectory() as temp:
+            anchor = Path(temp) / "anchor.png"
+            anchor.write_bytes(b"anchor")
+            backend = ComfyUISequenceToSheetBackend(
+                client=FakeSchemaClient(),
+                workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+                backend="minimax",
+                asset_uploader=FakeUploader(),
+            )
+
+            patched = backend.build_workflow(
+                anchor_images=[anchor],
+                prompt="portrait turnaround",
+                seed=7,
+                aspect_ratio="portrait",
+            )
+
+            self.assertEqual("9:16 (Vertical)", patched["115"]["inputs"]["aspect_ratio"])
 
 
 if __name__ == "__main__":

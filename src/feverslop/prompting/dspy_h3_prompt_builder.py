@@ -6,11 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from feverslop.prompting.dspy_h3_models import MusicIntent
-from feverslop.domain.reference_contracts import render_reference_contract
-from feverslop.domain.performance_sync import (
-    select_performance_audio_paths,
-    visible_performance_roles,
-)
+from feverslop.domain.performance_sync import select_performance_audio_paths
 
 
 def _reference(
@@ -89,8 +85,13 @@ def _scene_references(
         if image_path is not None and image_path.is_file():
             images.append(image_path)
 
-    actor_paths = references.get("actor_sheet_paths") or references.get("actor_msr_paths") or []
+    actor_selection_present = "actor_ids" in references
     actor_ids = references.get("actor_ids") or []
+    actor_paths = (
+        references.get("actor_sheet_paths") or references.get("actor_msr_paths") or []
+        if not actor_selection_present or actor_ids
+        else []
+    )
     actor_metadata = {
         str(item.get("id") or item.get("name") or ""): item
         for item in references.get("actor_reference_descriptions") or []
@@ -102,7 +103,7 @@ def _scene_references(
         name = str(metadata.get("name") or actor_id)
         path = Path(source)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
-        add_reference(_reference(
+        actor_reference = _reference(
             label=f"<Picture {index}>",
             source=path,
             kind="picture",
@@ -113,7 +114,9 @@ def _scene_references(
                 else ("" if image_path.is_file() else None)
             ),
             role="subject",
-        ), image_path)
+        )
+        actor_reference["id"] = actor_id
+        add_reference(actor_reference, image_path)
 
     location = references.get("location_sheet_path") or references.get("location_msr_path")
     if location:
@@ -229,21 +232,6 @@ def _safe_error_message(error: BaseException) -> str:
     return message[:1000]
 
 
-_H3_PROMPT_SECTIONS = (
-    "subject_definitions",
-    "summary",
-    "retention_analysis",
-    "detailed_description",
-    "overall_soundscape",
-    "non_diegetic_music",
-)
-_H3_SECTION_PATTERN = re.compile(
-    r"^(subject_definitions|summary|retention_analysis|detailed_description|"
-    r"overall_soundscape|non_diegetic_music):",
-    re.MULTILINE,
-)
-
-
 def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert LTX frame relays into bounded, model-neutral timed shots."""
     relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
@@ -291,133 +279,6 @@ def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _format_performance_timing(segment: dict[str, Any]) -> str:
-    timing = segment.get("performance_timing") or {}
-    beats = timing.get("beats") or []
-    if not beats:
-        return ""
-    beat_times = ", ".join(f"{float(beat['time_seconds']):.2f}s" for beat in beats)
-    downbeats = ", ".join(
-        f"{float(beat['time_seconds']):.2f}s" for beat in beats if beat.get("downbeat")
-    ) or "none in this shot"
-    lines = [
-        f"Performance timing (scene-local): BPM {float(timing.get('bpm') or 0):g}; "
-        f"beats at {beat_times}; downbeats at {downbeats}."
-    ]
-    roles = visible_performance_roles(segment)
-    if "drums" in roles:
-        lines.append(
-            "Drummer motion: prepare before each event, make stick contact exactly on each listed beat, "
-            "emphasize downbeats, then rebound immediately; avoid random arm flailing."
-        )
-    if "bass" in roles:
-        lines.append("Bassist motion: finger or pick contact lands on listed beats, with restrained release between notes.")
-    if "other" in roles:
-        lines.append("Guitarist motion: pick contact and chord changes land on listed beats, emphasizing downbeats.")
-    return "\n".join(lines)
-
-
-def _format_reference_contract(
-    *,
-    references: list[dict[str, str]],
-    segment: dict[str, Any],
-    global_context: dict[str, Any],
-) -> str:
-    metadata = segment.get("references") or {}
-    actor_roles = {
-        str(item.get("name") or item.get("id") or "").strip(): item.get("role") or ""
-        for item in metadata.get("actor_reference_descriptions") or []
-        if isinstance(item, dict)
-    }
-    raw_bindings = metadata.get("prop_bindings") or segment.get("prop_bindings") or {}
-    prop_bindings = raw_bindings if isinstance(raw_bindings, dict) else {}
-    profile = (
-        segment.get("reference_profile")
-        or metadata.get("reference_profile")
-        or global_context.get("reference_profile")
-        or ""
-    )
-    if not str(profile).strip():
-        return ""
-    return render_reference_contract(
-        references,
-        profile=str(profile),
-        actor_roles=actor_roles,
-        prop_bindings=prop_bindings,
-    )
-
-
-def _repair_audio_references(prompt: str, references: list[dict[str, str]]) -> str:
-    """Restore audio_reuse semantics omitted by a sectioned DSPy H3 prompt."""
-    audio_references = [
-        reference
-        for reference in references
-        if reference["kind"] == "audio" and reference["role"] == "audio_reuse"
-    ]
-    if not audio_references:
-        return prompt
-
-    matches = list(_H3_SECTION_PATTERN.finditer(prompt))
-    if [match.group(1) for match in matches] != list(_H3_PROMPT_SECTIONS):
-        return prompt
-
-    sections: dict[str, str] = {}
-    for index, match in enumerate(matches):
-        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(prompt)
-        sections[match.group(1)] = prompt[match.end():next_start]
-    labels = [reference["label"] for reference in audio_references]
-    label_text = " and ".join(labels)
-
-    def append(section: str, text: str, *, inline: bool = False) -> None:
-        if text not in sections[section]:
-            separator = " " if inline else "\n"
-            sections[section] = f"{sections[section].rstrip()}{separator}{text}\n\n"
-
-    for reference in audio_references:
-        label = reference["label"]
-        definition = f"{label} is the synchronized {reference['name']} audio reference and is reused for the scene."
-        definition_pattern = re.compile(rf"(?m)^{re.escape(label)}[^\n]*(?:\n|$)")
-        sections["subject_definitions"] = definition_pattern.sub("", sections["subject_definitions"])
-        append("subject_definitions", definition)
-        retention_pattern = re.compile(
-            rf"(?m)^{re.escape(label)}(?:\s+\([^\n]*?\))?:[^\n]*(?:\n|$)"
-        )
-        copy_mode = reference.get("copy_mode", "partially_copy")
-        retention_lines = retention_pattern.findall(sections["retention_analysis"])
-        if len(retention_lines) != 1 or copy_mode not in retention_lines[0]:
-            sections["retention_analysis"] = retention_pattern.sub("", sections["retention_analysis"])
-            append(
-                "retention_analysis",
-                f"{label}: {copy_mode} - the synchronized {reference['name']} audio is reused for this scene.",
-            )
-
-    if "audio reuse" not in sections["summary"].lower():
-        summary = sections["summary"]
-        task_type = re.search(r"\[([^\]]+)\]", summary)
-        if task_type:
-            sections["summary"] = (
-                f"{summary[:task_type.start()]}[{task_type.group(1)} + audio reuse]"
-                f"{summary[task_type.end():]}"
-            )
-        else:
-            sections["summary"] = f"\n[audio reuse]{summary}"
-    if not all(label in sections["summary"] for label in labels):
-        append("summary", f"Audio reuse follows {label_text}.", inline=True)
-
-    behavior = f"The synchronized audio behavior follows {label_text}."
-    for section in ("detailed_description", "overall_soundscape"):
-        if not all(label in sections[section] for label in labels):
-            append(section, behavior, inline=True)
-
-    non_diegetic = f"The synchronized audio references are scene inputs, not non-diegetic music: {label_text}."
-    if non_diegetic not in sections["non_diegetic_music"]:
-        if sections["non_diegetic_music"].strip() == "N/A":
-            sections["non_diegetic_music"] = "\n"
-        append("non_diegetic_music", non_diegetic, inline=True)
-
-    return "".join(f"{section}:{sections[section]}" for section in _H3_PROMPT_SECTIONS).strip()
-
-
 class DspyH3PromptBuilder:
     """Adapter around the DSPy scene generator used by the H3 R2V pipeline."""
 
@@ -445,7 +306,6 @@ class DspyH3PromptBuilder:
         video_type: str = "music_video",
         audio_paths: dict[str, Path] | None = None,
         reference_root: Path | None = None,
-        append_relay_prompt: bool = True,
     ) -> dict[str, Any]:
         references, images = _scene_references(
             segment,
@@ -455,6 +315,14 @@ class DspyH3PromptBuilder:
         )
         relay_segments = _normalize_relay_segments(segment)
         generator_references = [dict(reference) for reference in references]
+        directing_lines = [
+            f"{key.replace('_', ' ').title()}: {str(scene_details[key]).strip()}"
+            for key in ("camera_motion", "character_motion", "spatial_relations")
+            if str(scene_details.get(key) or "").strip()
+        ]
+        user_prompt = str(concept or "").strip()
+        if directing_lines:
+            user_prompt = f"{user_prompt}\n\nScene-specific directing instructions:\n" + "\n".join(directing_lines)
         resolved_root = reference_root or self.reference_root
         if resolved_root is not None:
             for reference in generator_references:
@@ -468,11 +336,17 @@ class DspyH3PromptBuilder:
             "mode": mode,
             "video_type": video_type,
             "duration_seconds": segment.get("duration") or segment.get("duration_seconds"),
-            "user_prompt": concept,
+            "user_prompt": user_prompt,
             "notes": json.dumps({
                 "scene": segment,
                 "scene_details": scene_details,
                 "global_context": global_context,
+                "source_language": str(global_context.get("language") or "").strip(),
+                "language_policy": (
+                    "Use the supplied source language for lyric/dialogue labels. "
+                    "Preserve lyric text verbatim and do not infer language from proper names, "
+                    "fantasy names, or isolated tokens."
+                ),
             }, ensure_ascii=False),
             "references": generator_references,
             "images": images,
@@ -509,32 +383,13 @@ class DspyH3PromptBuilder:
                 generated.setdefault("dspy_error", safe_error)
             else:
                 generated = {"dspy_error": safe_error}
-        rendered_prompt = _repair_audio_references(str(prompt).strip(), references)
-        relay_prompt = _format_relay_shots(relay_segments) if append_relay_prompt else ""
-        performance_prompt = _format_performance_timing(segment)
-        has_visual_reference = any(reference["kind"] in {"picture", "video"} for reference in references)
-        contract_prompt = (
-            _format_reference_contract(
-                references=references,
-                segment=segment,
-                global_context=global_context,
-            )
-            if str(mode).strip().lower() in {"ref", "r2v"} and has_visual_reference
-            else ""
-        )
-        prompt_parts = [rendered_prompt, contract_prompt, relay_prompt, performance_prompt]
+        # DSPy is solely responsible for the guide-conformant prompt. Do not
+        # append or repair deterministic prose after generation.
+        prompt_parts = [str(prompt).strip()]
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
-        profile = (
-            segment.get("reference_profile")
-            or (segment.get("references") or {}).get("reference_profile")
-            or global_context.get("reference_profile")
-            or ""
-        )
-        if str(profile).strip():
-            result["reference_profile"] = str(profile).strip()
         if segment.get("performance_timing"):
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):

@@ -133,6 +133,8 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         self.assertIn("do not invent or assume character details", guide)
         self.assertIn('never write "the same character"', guide)
         self.assertIn('"from earlier"', guide)
+        self.assertIn("every available performer", guide)
+        self.assertIn("role-defining instrument", guide)
 
     def test_all_classic_guides_are_package_resources(self):
         for name in (

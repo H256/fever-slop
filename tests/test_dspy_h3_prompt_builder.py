@@ -8,9 +8,7 @@ from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.dspy_h3_prompt_builder import (
     DspyH3PromptBuilder,
     _format_relay_shots,
-    _format_performance_timing,
     _normalize_relay_segments,
-    _repair_audio_references,
     _scene_references,
 )
 from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
@@ -68,56 +66,21 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
-    def test_formats_instrument_specific_beat_contact_guidance(self):
-        prompt = _format_performance_timing({
-            "references": {"actor_reference_descriptions": [
-                {"name": "Drummer", "role": "Percussionist"},
-            ]},
-            "performance_timing": {
-                "bpm": 120,
-                "beats": [
-                    {"time_seconds": 0.5, "downbeat": True, "impact": 0.8},
-                    {"time_seconds": 1.0, "downbeat": False, "impact": 0.4},
-                ],
-            },
-        })
+    def test_reference_signature_requires_explicit_spatial_subject_placement(self):
+        signature = build_dspy_signatures()[3]
+        instructions = signature.__doc__ or ""
 
-        self.assertIn("BPM 120", prompt)
-        self.assertIn("downbeats at 0.50s", prompt)
-        self.assertIn("stick contact exactly on each listed beat", prompt)
-        self.assertIn("rebound", prompt)
-    def test_audio_repair_replaces_annotated_duplicates_with_canonical_copy_modes(self):
-        prompt = """subject_definitions:
-<Subject 1> (Drummer): A drummer. Source references: <Picture 1>.
-<Audio 1> is an old vocal definition.
-<Audio 2> is an old mix definition.
-
-summary: [reference generation] <Subject 1> performs.
-
-retention_analysis:
-<Subject 1> (appears in [Shot 1]): fully_preserved - stable.
-<Audio 1> (appears in [Shot 1]): partially_copy - vocals.
-<Audio 2> (appears in [Shot 1]): fully_copy - mix.
-<Audio 1>: partially_copy - duplicate vocals.
-<Audio 2>: partially_copy - contradictory duplicate mix.
-
-detailed_description: <Subject 1> performs.
-
-overall_soundscape: Music.
-
-non_diegetic_music: N/A"""
-        references = [
-            {"label": "<Audio 1>", "kind": "audio", "role": "audio_reuse", "name": "vocals", "copy_mode": "partially_copy"},
-            {"label": "<Audio 2>", "kind": "audio", "role": "audio_reuse", "name": "full_mix", "copy_mode": "fully_copy"},
-        ]
-
-        repaired = _repair_audio_references(prompt, references)
-
-        retention = repaired.split("retention_analysis:", 1)[1].split("detailed_description:", 1)[0]
-        self.assertEqual(1, retention.count("<Audio 1>"))
-        self.assertEqual(1, retention.count("<Audio 2>"))
-        self.assertIn("<Audio 1>: partially_copy", retention)
-        self.assertIn("<Audio 2>: fully_copy", retention)
+        self.assertIn("exact frame position", instructions)
+        self.assertIn("Never place a subject inside an audience", instructions)
+        self.assertIn("required prop", instructions)
+        self.assertIn("Role-defining props", instructions)
+        self.assertIn("not let another referenced subject inherit it", instructions)
+        self.assertIn("preserve exactly one\n        persistent visible instance", instructions)
+        self.assertIn("must not appear in two positions", instructions)
+        self.assertIn("unless the resolved plan explicitly requires", instructions)
+        self.assertIn("each such shot", instructions)
+        self.assertIn("does not count as showing the actor", instructions)
+        self.assertIn("visual shot", instructions)
 
     def test_movie_minimax_adapter_uses_structured_dspy_r2v_prompt(self):
         from feverslop.adapters.movie_minimax_visual import _build_movie_h3_prompt
@@ -148,7 +111,6 @@ non_diegetic_music: N/A"""
         self.assertIn("subject_definitions:", prompt)
         self.assertEqual("ref", builder.request["mode"])
         self.assertEqual("movie", builder.request["video_type"])
-        self.assertFalse(builder.request["append_relay_prompt"])
         self.assertIn("Leo runs through the forest", builder.request["concept"])
 
     def test_scene_references_pass_existing_visual_descriptions_to_dspy(self):
@@ -177,6 +139,22 @@ non_diegetic_music: N/A"""
         self.assertEqual("A dark ancient forest.", references[1]["description"])
         self.assertEqual("Leo", references[0]["name"])
         self.assertEqual("Ancient Forest", references[1]["name"])
+
+    def test_scene_references_ignore_stale_actor_paths_for_explicit_empty_cast(self):
+        references, _images = _scene_references(
+            {
+                "references": {
+                    "actor_ids": [],
+                    "actor_msr_paths": ["stale-singer.png"],
+                    "location_msr_path": "crowd.png",
+                }
+            },
+            None,
+            None,
+        )
+
+        self.assertEqual(["crowd.png"], [reference["source"] for reference in references])
+        self.assertEqual(["environment"], [reference["role"] for reference in references])
 
     def test_scene_references_deduplicate_audio_paths_from_scene_and_global_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -301,7 +279,7 @@ non_diegetic_music: N/A"""
         DspyH3PromptBuilder(generator).build_h3_prompt(
             segment={"segment_id": "seg-1", "duration_seconds": 2, "fps": 24},
             concept="A singer performs.",
-            scene_details={},
+            scene_details={"character_motion": "Singer gestures toward the crowd."},
             global_context={
                 "story_idea": "A singer crosses a mountain.",
                 "style": "Cinematic dark fantasy.",
@@ -316,6 +294,24 @@ non_diegetic_music: N/A"""
         self.assertIn("Use only the configured locations.", notes)
         self.assertIn("Use deliberate tracking shots.", notes)
         self.assertIn("A singer crosses a mountain.", notes)
+        self.assertNotIn("must be visible in at least one described shot", notes)
+        self.assertIn("Character Motion: Singer gestures toward the crowd.", generator.requests[0]["user_prompt"])
+
+    def test_passes_source_language_metadata_without_inferring_from_names(self):
+        generator = FakeGenerator()
+
+        DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={"segment_id": "seg-1"},
+            concept="The singer says C'era Nocturna.",
+            scene_details={},
+            global_context={"language": "de"},
+            mode="base",
+        )
+
+        notes = generator.requests[0]["notes"]
+        self.assertIn('"source_language": "de"', notes)
+        self.assertIn("do not infer language from proper names", notes.lower())
+
     def test_minimax_movie_prompt_preserves_r2v_prompt_and_adds_relay_shots(self):
         prompt = _h3_movie_prompt({
             "h3": {"prompt": "Use <Picture 1> for the actor."},
@@ -379,7 +375,7 @@ non_diegetic_music: N/A"""
 
         self.assertIn("cooks a rabbit", _format_relay_shots(shots))
 
-    def test_passes_relay_segments_to_generator_and_appends_timed_shots(self):
+    def test_passes_relay_segments_to_generator_without_appending_non_guide_sections(self):
         generator = FakeGenerator()
         builder = DspyH3PromptBuilder(generator)
 
@@ -400,61 +396,9 @@ non_diegetic_music: N/A"""
 
         self.assertNotIn("relay_segments_json", generator.requests[0])
         self.assertEqual(0.0, generator.requests[0]["relay_segments"][0]["start_seconds"])
-        self.assertIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
+        self.assertNotIn("Temporal shot directions:", result["prompt"])
+        self.assertNotIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
         self.assertIn("actor.png", " ".join(reference["source"] for reference in result["references"]))
-
-    def test_repairs_missing_audio_reuse_references_in_all_required_sections(self):
-        builder = DspyH3PromptBuilder(FakeGenerator(IncompleteAudioPrompt()))
-
-        result = builder.build_h3_prompt(
-            segment={"segment_id": "seg-1", "type": "vocals"},
-            concept="A singer performs.",
-            scene_details={},
-            global_context={},
-            mode="ref",
-            audio_paths={
-                "vocals": Path("output/stems/vocals.wav"),
-                "full_mix": Path("input/song.mp3"),
-            },
-        )
-
-        prompt = result["prompt"]
-        self.assertIn("<Audio 1> is the synchronized vocals audio reference and is reused for the scene.", prompt)
-        self.assertIn("<Audio 2> is the synchronized full_mix audio reference and is reused for the scene.", prompt)
-        self.assertIn("[reference generation + audio reuse]", prompt)
-        self.assertIn("<Audio 1>: partially_copy", prompt)
-        self.assertIn("<Audio 2>: fully_copy", prompt)
-        self.assertIn("<Audio 1> and <Audio 2>", prompt)
-        self.assertIn("overall_soundscape: A quiet room tone. The synchronized audio behavior follows <Audio 1> and <Audio 2>.", prompt)
-        self.assertIn("non_diegetic_music: The synchronized audio references are scene inputs, not non-diegetic music: <Audio 1> and <Audio 2>.", prompt)
-
-    def test_repairs_existing_audio_labels_with_wrong_role(self):
-        weak = IncompleteAudioPrompt.rendered_prompt.replace(
-            "<Subject 1> is a singer.",
-            "<Subject 1> is a singer.\n<Audio 1> is a reference track.\n<Audio 2> is a reference track.",
-        ).replace(
-            "[reference generation]",
-            "[reference generation + audio reuse]",
-        ).replace(
-            "<Subject 1>: fully_preserved - The singer remains recognizable.",
-            "<Subject 1>: fully_preserved - The singer remains recognizable.\n<Audio 1>: reference - do not copy.\n<Audio 2>: reference - do not copy.",
-        )
-        generated = type("Generated", (), {"rendered_prompt": weak})()
-        builder = DspyH3PromptBuilder(FakeGenerator(generated))
-
-        result = builder.build_h3_prompt(
-            segment={"segment_id": "seg-1", "type": "vocals"},
-            concept="A singer performs.",
-            scene_details={},
-            global_context={},
-            audio_paths={"vocals": Path("output/stems/vocals.wav"), "full_mix": Path("input/song.mp3")},
-        )
-
-        prompt = result["prompt"]
-        self.assertIn("<Audio 1> is the synchronized vocals audio reference and is reused for the scene.", prompt)
-        self.assertIn("<Audio 2>: fully_copy - the synchronized full_mix audio is reused for this scene.", prompt)
-        self.assertNotIn("is a reference track.", prompt)
-        self.assertNotIn("do not copy.", prompt)
 
     def test_keeps_complete_audio_references_unchanged(self):
         complete = IncompleteAudioPrompt.rendered_prompt.replace(
@@ -1106,7 +1050,7 @@ non_diegetic_music: N/A"""
         self.assertEqual(request["music_intent"], "none")
         self.assertEqual(result["prompt"], FakeGeneratedPrompt.rendered_prompt)
 
-    def test_appends_opt_in_reference_contract_without_global_band_rules(self):
+    def test_keeps_reference_contract_out_of_guide_prompt(self):
         builder = DspyH3PromptBuilder(FakeGenerator())
         result = builder.build_h3_prompt(
             segment={
@@ -1132,10 +1076,37 @@ non_diegetic_music: N/A"""
             mode="ref",
         )
 
-        self.assertIn("exactly one persistent physical individual", result["prompt"])
-        self.assertIn("main festival stage", result["prompt"])
-        self.assertIn("Singer remains bound to microphone", result["prompt"])
-        self.assertIn("Drummer remains bound to drum kit", result["prompt"])
+        self.assertNotIn("Reference identity and continuity contract:", result["prompt"])
+        self.assertNotIn("main festival stage", result["prompt"])
+        self.assertNotIn("Singer remains bound to microphone", result["prompt"])
+        self.assertNotIn("Drummer remains bound to drum kit", result["prompt"])
+        self.assertNotIn("deterministic_contract", result)
+        self.assertNotIn("reference_profile", result)
+
+    def test_builder_does_not_reintroduce_inactive_actor_contracts(self):
+        builder = DspyH3PromptBuilder(FakeGenerator())
+        result = builder.build_h3_prompt(
+            segment={
+                "segment_id": "crowd-only",
+                "reference_profile": "live_concert",
+                "references": {
+                    "actor_ids": [],
+                    "actor_msr_paths": ["stale-singer.png"],
+                    "location_msr_path": "crowd.png",
+                    "actor_reference_descriptions": [
+                        {"id": "singer", "name": "Singer", "role": "Lead singer"},
+                    ],
+                    "prop_bindings": {"singer": ["microphone"]},
+                },
+            },
+            concept="A crowd fills the frame.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertNotIn("Singer", result["prompt"])
+        self.assertNotIn("microphone", result["prompt"])
 
     def test_generic_profile_does_not_receive_live_concert_contract(self):
         result = DspyH3PromptBuilder(FakeGenerator()).build_h3_prompt(
@@ -1158,7 +1129,7 @@ non_diegetic_music: N/A"""
             mode="ref",
         )
 
-        self.assertIn("exactly one persistent physical individual", result["prompt"])
+        self.assertNotIn("Reference identity and continuity contract:", result["prompt"])
         self.assertNotIn("catwalk", result["prompt"].lower())
         self.assertNotIn("main festival stage", result["prompt"].lower())
 

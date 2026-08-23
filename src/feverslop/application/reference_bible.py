@@ -59,6 +59,7 @@ class ReferenceLocation:
     name: str
     visual_description: str = ""
     image_prompt: str = ""
+    reference_mode: str = "empty_environment"
 
 
 class ReferenceBibleGenerator:
@@ -303,6 +304,7 @@ class ReferenceBibleGenerator:
                 asset_context=asdict(location),
                 output_dir=self.output_dir,
                 reference_image_size=self.location_hero_size,
+                reference_mode=location.reference_mode,
             )
         )
         manifest = {
@@ -1078,6 +1080,7 @@ def enrich_render_plan_with_reference_sheets(
     references_dir: str | Path,
     output_path: str | Path,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
+    max_scene_actors: int = 4,
 ) -> Path:
     render_plan_path = Path(render_plan_path)
     references_dir = Path(references_dir)
@@ -1115,8 +1118,10 @@ def enrich_render_plan_with_reference_sheets(
     for index, scene in enumerate(render_plan, start=1):
         references = scene.setdefault("references", {})
         actor_ids = list(references.get("actor_ids") or [])
-        if len(actor_ids) > 4:
-            raise ValueError(f"Scene {scene.get('scene')} references at most 4 actors for ltx_msr")
+        if len(actor_ids) > max_scene_actors:
+            raise ValueError(
+                f"Scene {scene.get('scene')} references at most {max_scene_actors} actors"
+            )
         references["actor_sheet_paths"] = [
             _portable_manifest_path(actor_manifests[actor_id], "sheet_path", references_dir)
             for actor_id in actor_ids

@@ -66,6 +66,7 @@ class RenderPlanPipeline:
             seed=int(getattr(getattr(config, "scene_generation", None), "seed", 0))
             if config is not None
             else 0,
+            max_scene_actors=getattr(config, "max_scene_actors", 4) if config is not None else 4,
         )
         log_file("Render Plan JSON", render_plan_json)
         context["render_plan"] = artifact_store.read_json(render_plan_json)

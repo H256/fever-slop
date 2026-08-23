@@ -42,6 +42,28 @@ class FakeSequenceBackend:
 
 
 class SequenceReferencePipelineTests(unittest.TestCase):
+    def test_location_anchor_prompt_excludes_transient_occupants_by_default(self):
+        prompt = SequenceReferencePipeline._build_location_anchor_prompt(
+            image_prompt="An open-air festival stage with a band and crowd",
+            visual_style="Photorealistic concert video",
+            reference_mode="empty_environment",
+        )
+
+        self.assertIn("empty environment reference", prompt)
+        self.assertIn("no performers", prompt)
+        self.assertIn("no crowd", prompt)
+
+    def test_population_location_anchor_keeps_population_without_competing_scene(self):
+        prompt = SequenceReferencePipeline._build_location_anchor_prompt(
+            image_prompt="A dense crowd at the front row",
+            visual_style="Photorealistic concert video",
+            reference_mode="ambient_population",
+        )
+
+        self.assertIn("ambient population reference", prompt)
+        self.assertIn("population is the primary subject", prompt)
+        self.assertIn("no stage as the dominant background", prompt)
+
     def test_character_anchor_uses_identity_plan_instead_of_action_prompt(self):
         with tempfile.TemporaryDirectory() as temp:
             anchor_backend = FakeAnchorBackend()
@@ -106,6 +128,7 @@ class SequenceReferencePipelineTests(unittest.TestCase):
             self.assertEqual(prompt, result.anchor_prompt)
             render_call = next(call for call in sequence_backend.calls if call[0] == "render")
             self.assertNotIn("anchor_prompt", render_call[4])
+            self.assertEqual("portrait", render_call[4]["aspect_ratio"])
 
     def test_reference_phase_log_labels_are_english(self):
         self.assertEqual(

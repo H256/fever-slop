@@ -7,7 +7,7 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
-    def test_reference_profile_is_loaded(self):
+    def test_reference_profile_is_not_part_of_project_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             (temp / "song.mp3").write_bytes(b"")
@@ -19,7 +19,7 @@ class ProjectConfigTests(unittest.TestCase):
 
             config = ProjectConfig.load(config_path)
 
-        self.assertEqual("live_concert", config.reference_profile)
+        self.assertFalse(hasattr(config, "reference_profile"))
 
     def test_upscale_config_defaults_to_conservative_seedvr2_3b_profile(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -364,6 +364,35 @@ class ProjectConfigTests(unittest.TestCase):
 
             self.assertEqual("single", config.subject_mode)
             self.assertEqual(1, config.max_scene_actors)
+
+    def test_minimax_h3_allows_eight_scene_actors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "video_pipeline": "minimax-h3-r2v",
+                "max_scene_actors": 8,
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual(8, config.max_scene_actors)
+
+    def test_ltx_msr_rejects_more_than_four_scene_actors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "video_pipeline": "ltx_msr",
+                "max_scene_actors": 5,
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "between 1 and 4"):
+                ProjectConfig.load(config_path)
 
     def test_loras_array_tracks_omitted_optional_patch_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:

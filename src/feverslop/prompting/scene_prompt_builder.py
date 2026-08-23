@@ -67,7 +67,7 @@ def normalize_scene_references(references: dict, global_context: dict) -> dict:
     ]
     subject_mode = str(global_context.get("subject_mode", "multi") or "multi").strip().lower()
     max_scene_actors = int(global_context.get("max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
-    max_scene_actors = max(1, min(4, max_scene_actors))
+    max_scene_actors = max(1, max_scene_actors)
 
     output = dict(references or {})
     if actors:
@@ -280,6 +280,7 @@ class ScenePromptBuilder:
                 "silent_mode": bool(global_context.get("silent_mode", False)),
                 "camera_motion": details.get("camera_motion", ""),
                 "character_motion": details.get("character_motion", ""),
+                "spatial_relations": details.get("spatial_relations", ""),
                 "zimage_prompt": t2i_prompt,
                 "t2i_prompt": t2i_prompt,
                 "ltx_base_prompt": t2i_prompt,

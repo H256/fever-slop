@@ -36,6 +36,7 @@ class VocalTimelineAnalyzer:
     ):
         self.whisper_model = whisper_model
         self.model = None
+        self.raw_whisper_segments: list[dict] = []
         self.language = language
         self.merge_gap = merge_gap
         self.min_vocal_duration = min_vocal_duration
@@ -90,9 +91,11 @@ class VocalTimelineAnalyzer:
             word_timestamps=True,
         )
 
+        raw_segments = list(result.get("segments") or [])
+        self.raw_whisper_segments = raw_segments
         segments = []
 
-        for s in result["segments"]:
+        for s in raw_segments:
             text = s["text"].strip()
             lower = text.lower()
 
@@ -192,37 +195,70 @@ class VocalTimelineAnalyzer:
         whisper_segments: list[dict],
         vocal_ranges: list[tuple[float, float]],
     ) -> list[TimelineSegment]:
+        assigned_words: list[list[dict]] = [[] for _ in vocal_ranges]
+        fallback_texts: list[list[str]] = [[] for _ in vocal_ranges]
+
+        for ws in whisper_segments:
+            ws_start = float(ws["start"])
+            ws_end = float(ws["end"])
+            words = ws.get("words") or []
+
+            if not words:
+                for index, (start, end) in enumerate(vocal_ranges):
+                    if ws_start < end and ws_end > start:
+                        fallback_texts[index].append(str(ws.get("text", "")).strip())
+                continue
+
+            for word in words:
+                text = str(word.get("word", "")).strip()
+                if not text:
+                    continue
+
+                word_start = float(word.get("start", 0))
+                word_end = float(word.get("end", 0))
+                overlaps = [
+                    max(0.0, min(word_end, end) - max(word_start, start))
+                    for start, end in vocal_ranges
+                ]
+                best_overlap = max(overlaps, default=0.0)
+                if best_overlap <= 0:
+                    continue
+
+                best_index = min(
+                    (
+                        index
+                        for index, overlap in enumerate(overlaps)
+                        if overlap == best_overlap
+                    ),
+                    key=lambda index: abs(
+                        (word_start + word_end) / 2
+                        - (vocal_ranges[index][0] + vocal_ranges[index][1]) / 2
+                    ),
+                )
+                assigned_words[best_index].append(
+                    {
+                        "word": text,
+                        "start": round(word_start, 3),
+                        "end": round(word_end, 3),
+                    }
+                )
+
         result = []
-
-        for start, end in vocal_ranges:
-            texts = []
-            word_timestamps = []
-
-            for ws in whisper_segments:
-                ws_start = float(ws["start"])
-                ws_end = float(ws["end"])
-
-                if ws_start < end and ws_end > start:
-                    texts.append(ws["text"].strip())
-                    word_timestamps.extend(
-                        {
-                            "word": str(word.get("word", "")).strip(),
-                            "start": round(float(word["start"]), 3),
-                            "end": round(float(word["end"]), 3),
-                        }
-                        for word in (ws.get("words") or [])
-                        if word.get("word", "").strip()
-                        and float(word.get("end", 0)) > start
-                        and float(word.get("start", 0)) < end
-                    )
+        for index, (start, end) in enumerate(vocal_ranges):
+            words = sorted(
+                assigned_words[index], key=lambda word: (word["start"], word["end"])
+            )
+            text = " ".join(word["word"] for word in words)
+            if not words:
+                text = " ".join(fallback_texts[index]).strip()
 
             result.append(
                 TimelineSegment(
                     start=round(float(start), 2),
                     end=round(float(end), 2),
                     kind="vocals",
-                    text=" ".join(texts).strip(),
-                    word_timestamps=tuple(word_timestamps),
+                    text=text,
+                    word_timestamps=tuple(words),
                 )
             )
 

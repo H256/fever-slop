@@ -34,7 +34,7 @@ def resolve_scene_cast(
         for item in available_actors
         if (actor := _scene_actor(item)) is not None
     }
-    limit = 1 if str(subject_mode).strip().lower() == "single" else min(4, max(1, int(max_scene_actors)))
+    limit = 1 if str(subject_mode).strip().lower() == "single" else max(1, int(max_scene_actors))
     selected = tuple(dict.fromkeys(str(value).strip() for value in selected_actor_ids if str(value).strip()))
     valid = tuple(actor_id for actor_id in selected if actor_id in actors_by_id)[:limit]
     if not valid and actors_by_id:

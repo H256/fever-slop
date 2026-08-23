@@ -115,10 +115,16 @@ class MusicVideoPromptPipeline:
                 build_detail_system_prompt("Character Motion", segment_type=segment_type,
                     silent_mode=bool((global_context or {}).get("silent_mode", False))),
             )
+            spatial_relations = self.prompt_modules.detail(
+                "Spatial Relations", detail_payload,
+                build_detail_system_prompt("Spatial Relations", segment_type=segment_type,
+                    silent_mode=bool((global_context or {}).get("silent_mode", False))),
+            )
 
             details[segment_id] = {
                 "camera_motion": camera_motion,
                 "character_motion": character_motion,
+                "spatial_relations": spatial_relations,
             }
             if progress_callback is not None:
                 progress_callback(current, total)
@@ -192,6 +198,7 @@ class MusicVideoPromptPipeline:
                 "base_concept": concept,
                 "camera_motion": details["camera_motion"],
                 "character_motion": details["character_motion"],
+                "spatial_relations": details.get("spatial_relations", ""),
                 "zimage_prompt": t2i_prompt,
                 "t2i_prompt": t2i_prompt,
                 "ltx_base_prompt": t2i_prompt,

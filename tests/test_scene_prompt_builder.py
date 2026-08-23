@@ -315,6 +315,38 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertTrue(t2i_payload["scene_cast"]["requires_group_staging"])
         self.assertEqual(expected_ids, i2v_payload["scene_cast"]["visible_actor_ids"])
 
+    def test_h3_scene_prompt_builder_preserves_more_than_four_selected_actors(self):
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
+        actor_ids = ["actor_1", "actor_2", "actor_3", "actor_4", "actor_5", "actor_6"]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_006", "type": "mixed"}],
+                concept_prompts={
+                    "segment_006": {
+                        "concept": "The full band performs together.",
+                        "references": {"actor_ids": actor_ids, "location_id": "stage"},
+                    }
+                },
+                scene_details={},
+                global_context={
+                    "subject": "actor_1",
+                    "story_idea": "A band performs.",
+                    "style": "cinematic realism",
+                    "locations": ["Stage"],
+                    "actors": [{"id": actor_id, "name": actor_id} for actor_id in actor_ids],
+                    "structured_locations": [{"id": "stage", "name": "Stage"}],
+                    "subject_mode": "multi",
+                    "max_scene_actors": 8,
+                    "video_pipeline": "minimax-h3-r2v",
+                },
+                output_json_path=Path(temp_dir) / "scene_prompts.json",
+                artifact_store=JsonArtifactStore(),
+            )
+
+        self.assertEqual(actor_ids, modules.calls[0].payload["scene_cast"]["visible_actor_ids"])
+
     def test_single_subject_mode_forces_first_actor_reference(self):
         modules = GeneralModulesFake()
         builder = ScenePromptBuilder(object(), modules=modules)

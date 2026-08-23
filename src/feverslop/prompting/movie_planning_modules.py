@@ -65,6 +65,8 @@ class MoviePlanningModules:
         }
 
     def _call(self, name: str, payload: dict[str, Any], output: str, *, timeout: float | None = None, system_prompt: str = "") -> Any:
+        # Movie-planning outputs are intentionally NOT bounded by a static
+        # token policy (the endpoint default applies), per #529 LLM-302.
         guide_name = {
             "movie_bible": "movie-bible",
             "shot_plan_from_bible": "movie-shot-plan-bible",

@@ -66,8 +66,16 @@ class TestFaceLandmarks(unittest.TestCase):
         self.assertEqual(len(lm.points), 5)
 
     def test_invalid_point_count(self):
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             FaceLandmarks(points=[(0, 0), (10, 0)])
+
+    def test_invalid_point_count_message(self):
+        with self.assertRaisesRegex(ValueError, r"Expected 5 landmarks, got 2"):
+            FaceLandmarks(points=[(0, 0), (10, 0)])
+
+    def test_rejects_six_points(self):
+        with self.assertRaises(ValueError):
+            FaceLandmarks(points=[(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)])
 
 
 class TestValidLandmarkGeometry(unittest.TestCase):

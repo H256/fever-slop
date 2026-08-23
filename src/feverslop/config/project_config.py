@@ -159,6 +159,7 @@ class StructuredLocationConfig:
     name: str
     visual_description: str = ""
     image_prompt: str = ""
+    reference_mode: str = "empty_environment"
 
 
 @dataclass(frozen=True)
@@ -253,6 +254,7 @@ def _load_structured_location(raw, index: int) -> StructuredLocationConfig:
             name=name,
             visual_description=str(raw.get("visual_description", "") or "").strip(),
             image_prompt=str(raw.get("image_prompt", "") or "").strip(),
+            reference_mode=str(raw.get("reference_mode", "empty_environment") or "empty_environment").strip(),
         )
 
     name = str(raw or f"Location {index}").strip()
@@ -315,7 +317,6 @@ class ProjectConfig:
     global_props: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
     subject_mode: str = "multi"
     max_scene_actors: int = 4
-    reference_profile: str = "generic"
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
@@ -373,9 +374,11 @@ class ProjectConfig:
         subject_mode = str(raw.get("subject_mode", "multi") or "multi").strip().lower()
         if subject_mode not in {"single", "multi"}:
             raise ValueError("subject_mode must be 'single' or 'multi'")
-        max_scene_actors = int(raw.get("max_scene_actors", 1 if subject_mode == "single" else 4))
-        if max_scene_actors < 1 or max_scene_actors > 4:
-            raise ValueError("max_scene_actors must be between 1 and 4")
+        video_pipeline = str(raw.get("video_pipeline", "ltx_i2v") or "ltx_i2v").strip()
+        max_actor_limit = 8 if video_pipeline in {"minimax-h3-r2v", "minimax-h3-i2v"} else 4
+        max_scene_actors = int(raw.get("max_scene_actors", 1 if subject_mode == "single" else max_actor_limit))
+        if max_scene_actors < 1 or max_scene_actors > max_actor_limit:
+            raise ValueError(f"max_scene_actors must be between 1 and {max_actor_limit}")
         if subject_mode == "single":
             max_scene_actors = 1
         word_count_min = int(guidance_raw.get("word_count_min", SCENE_PROMPT_WORD_COUNT_MIN))
@@ -474,7 +477,6 @@ class ProjectConfig:
             global_props=_load_global_assets(raw.get("global_props", global_raw.get("props")), "global_props"),
             subject_mode=subject_mode,
             max_scene_actors=max_scene_actors,
-            reference_profile=str(raw.get("reference_profile") or "generic").strip(),
 
             steering=SteeringConfig(
                 global_=steering_raw.get("global", ""),
@@ -501,7 +503,7 @@ class ProjectConfig:
                 word_count_min=word_count_min,
                 word_count_max=word_count_max,
             ),
-            video_pipeline=str(raw.get("video_pipeline", "ltx_i2v")).strip() or "ltx_i2v",
+            video_pipeline=video_pipeline or "ltx_i2v",
             lora_1=lora_1,
             loras=loras,
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),

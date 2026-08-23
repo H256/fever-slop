@@ -37,6 +37,51 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
 
         self.assertTrue(analyzer.model.kwargs["word_timestamps"])
 
+    def test_raw_whisper_segments_are_retained_before_filtering(self):
+        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+
+        class FakeWhisper:
+            def transcribe(self, _path, **_kwargs):
+                return {
+                    "segments": [
+                        {"start": 1.0, "end": 2.0, "text": "hello", "no_speech_prob": 0.9},
+                    ]
+                }
+
+        analyzer = VocalTimelineAnalyzer.__new__(VocalTimelineAnalyzer)
+        analyzer.model = FakeWhisper()
+        analyzer.language = "de"
+
+        self.assertEqual([], analyzer._transcribe(Path("vocals.wav")))
+        self.assertEqual(
+            [{"start": 1.0, "end": 2.0, "text": "hello", "no_speech_prob": 0.9}],
+            analyzer.raw_whisper_segments,
+        )
+
+    def test_boundary_words_are_assigned_once_to_best_overlapping_vocal_range(self):
+        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+
+        analyzer = VocalTimelineAnalyzer.__new__(VocalTimelineAnalyzer)
+        result = analyzer._combine_whisper_and_energy(
+            [
+                {
+                    "start": 0.0,
+                    "end": 3.0,
+                    "text": "first second",
+                    "words": [
+                        {"word": "first", "start": 0.5, "end": 1.5},
+                        {"word": "second", "start": 1.8, "end": 2.8},
+                    ],
+                }
+            ],
+            [(0.0, 2.0), (1.9, 4.0)],
+        )
+
+        self.assertEqual(("first",), tuple(item["word"] for item in result[0].word_timestamps))
+        self.assertEqual(("second",), tuple(item["word"] for item in result[1].word_timestamps))
+        self.assertEqual("first", result[0].text)
+        self.assertEqual("second", result[1].text)
+
     def test_timeline_segment_is_frozen(self):
         seg = TimelineSegment(start=0.0, end=1.0, kind="vocals", text="hello")
         with self.assertRaises(Exception):

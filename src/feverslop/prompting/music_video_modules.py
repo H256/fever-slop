@@ -4,7 +4,19 @@ from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
-from feverslop.prompting.llm_policy import concept_batch_max_tokens, policy_for
+from feverslop.prompting.llm_policy import (
+    CONCEPT_MAP,
+    DETAIL,
+    I2V,
+    REPAIR_CONCEPTS,
+    STORY_IDEA,
+    STYLE_BLOCK,
+    SUBJECT_LOCATIONS,
+    SUMMARY,
+    T2I,
+    concept_batch_max_tokens,
+    policy_for,
+)
 
 
 def _value(result: Any, name: str) -> Any:
@@ -56,13 +68,13 @@ class MusicVideoPromptModules:
             return _value(self._predictors[name](**predictor_kwargs), output)
 
     def story_idea(self, lyrics: str, notes: str = "") -> str:
-        return str(self._call("story_idea", load_markdown_guide("music-video-story-idea"), {"lyrics": lyrics, "notes": notes}, "story_idea")).strip()
+        return str(self._call(STORY_IDEA, load_markdown_guide("music-video-story-idea"), {"lyrics": lyrics, "notes": notes}, "story_idea")).strip()
 
     def style_block(self, lyrics: str, notes: str = "") -> str:
-        return str(self._call("style_block", load_markdown_guide("music-video-style"), {"lyrics": lyrics, "notes": notes}, "style_block")).strip()
+        return str(self._call(STYLE_BLOCK, load_markdown_guide("music-video-style"), {"lyrics": lyrics, "notes": notes}, "style_block")).strip()
 
     def subject_locations(self, story_idea: str, notes: str = "") -> Any:
-        return self._call("subject_locations", load_markdown_guide("music-video-subject-locations"), {"story_idea": story_idea, "notes": notes}, "result")
+        return self._call(SUBJECT_LOCATIONS, load_markdown_guide("music-video-subject-locations"), {"story_idea": story_idea, "notes": notes}, "result")
 
     def concepts(self, payload: dict[str, Any], *, batch: bool = False, silent_mode: bool = False, timeout=None) -> Any:
         guide = load_markdown_guide("music-video-concepts")
@@ -74,7 +86,7 @@ class MusicVideoPromptModules:
         if silent_mode:
             guide += "\n\nSilent mode is active: do not create singing, lip-sync, vocal performance, mouth performance, or dialogue delivery."
         return self._call(
-            "concept_map",
+            CONCEPT_MAP,
             guide,
             {"payload": payload},
             "concepts",
@@ -83,16 +95,16 @@ class MusicVideoPromptModules:
         )
 
     def repair_concepts(self, payload: dict[str, Any], *, timeout=None) -> Any:
-        return self._call("repair_concepts", load_markdown_guide("music-video-concept-repair"), {"payload": payload}, "concepts", timeout=timeout)
+        return self._call(REPAIR_CONCEPTS, load_markdown_guide("music-video-concept-repair"), {"payload": payload}, "concepts", timeout=timeout)
 
     def summary(self, payload: dict[str, Any], *, timeout=None) -> str:
-        return str(self._call("summary", load_markdown_guide("music-video-summary"), {"payload": payload}, "summary", timeout=timeout)).strip()
+        return str(self._call(SUMMARY, load_markdown_guide("music-video-summary"), {"payload": payload}, "summary", timeout=timeout)).strip()
 
     def detail(self, label: str, payload: dict[str, Any], guide: str, *, timeout=None) -> str:
-        return str(self._call("detail", guide, {"label": label, "payload": payload}, "detail", timeout=timeout)).strip()
+        return str(self._call(DETAIL, guide, {"label": label, "payload": payload}, "detail", timeout=timeout)).strip()
 
     def t2i(self, payload: dict[str, Any], guide: str) -> str:
-        return str(self._call("t2i", guide, {"payload": payload}, "prompt")).strip()
+        return str(self._call(T2I, guide, {"payload": payload}, "prompt")).strip()
 
     def i2v(self, payload: dict[str, Any], guide: str, performance_policy: str) -> str:
-        return str(self._call("i2v", guide, {"performance_policy": performance_policy, "payload": payload}, "prompt")).strip()
+        return str(self._call(I2V, guide, {"performance_policy": performance_policy, "payload": payload}, "prompt")).strip()

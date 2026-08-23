@@ -348,11 +348,11 @@ class PatchMegapixelsTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             ComfyUIMiniMaxH3VideoRenderBackend._patch_megapixels(patcher, 1.0)
 
-    def test_rounds_to_one_decimal(self):
+    def test_floors_to_one_decimal(self):
         workflow = self._r2v_workflow()
         patcher = WorkflowPatcher(workflow)
         ComfyUIMiniMaxH3VideoRenderBackend._patch_megapixels(patcher, 0.786432)
-        self.assertEqual(0.8, patcher.get()["1"]["inputs"]["megapixels"])
+        self.assertEqual(0.7, patcher.get()["1"]["inputs"]["megapixels"])
 
 
 # ---------------------------------------------------------------------------
