@@ -1,6 +1,58 @@
 from __future__ import annotations
 
+from typing import Literal
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class DirectiveTemporalScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_seconds: float
+    end_seconds: float
+
+
+class DirectivePropBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prop_id: str
+    state: Literal["held", "played", "attached", "placed", "absent"]
+    detail: str = ""
+
+
+class DirectiveSubject(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: str
+    role: str
+    position: str
+    action: str
+    interactions: list[str] = Field(default_factory=list)
+    gaze_direction: str = ""
+    prop_bindings: list[DirectivePropBinding] = Field(default_factory=list)
+    visibility: str = "visible"
+    cardinality: int = 1
+    temporal_scope: DirectiveTemporalScope
+
+
+class DirectiveSpatialRelation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: str
+    relation: str
+    target_id: str
+    detail: str = ""
+
+
+class DirectiveStagingPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = "subject-directives/v1"
+    shot_id: str
+    temporal_scope: DirectiveTemporalScope
+    subjects: list[DirectiveSubject] = Field(default_factory=list)
+    spatial_relations: list[DirectiveSpatialRelation] = Field(default_factory=list)
 
 
 def build_subject_directive_signature(dspy_module: Any | None = None) -> Any:
@@ -23,9 +75,9 @@ def build_subject_directive_signature(dspy_module: Any | None = None) -> Any:
         """
 
         scene: dict[str, Any] = dspy_module.InputField()
-        staging_plan: dict[str, Any] = dspy_module.OutputField()
+        staging_plan: DirectiveStagingPlan = dspy_module.OutputField()
 
     return BuildSharedStagingPlan
 
 
-__all__ = ["build_subject_directive_signature"]
+__all__ = ["DirectiveStagingPlan", "build_subject_directive_signature"]

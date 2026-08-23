@@ -63,6 +63,8 @@ class DspySubjectDirectivePlanner:
             self.last_lm_history = list(getattr(self.lm, "history", []) or [])
         self.last_output = output
         payload = output.get("staging_plan") if isinstance(output, Mapping) else getattr(output, "staging_plan", output)
+        if hasattr(payload, "model_dump"):
+            payload = payload.model_dump()
         if isinstance(payload, str):
             payload = extract_json_object(payload)
         if not isinstance(payload, Mapping):
