@@ -100,7 +100,8 @@ def build_generate_render_plan_execution_request(
     app_config = AppConfig.load(request.app_config_path)
     video_settings = config.to_video_settings()
     preroll_frames, tail_frames, round_render_frames_to_8n1 = resolve_rolling_frame_profile(
-        request.rolling_frame_profile
+        request.rolling_frame_profile,
+        video_pipeline=config.video_pipeline,
     )
     workflow_limits = {
         limit.workflow: limit.max_render_duration_seconds
