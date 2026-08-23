@@ -253,6 +253,7 @@ class GeneratedVideoPrompt(BaseModel):
     plan: ResolvedPromptPlan
     references: list[ResolvedReference]
     judge: PromptJudgeResult | None = None
+    judge_attempts: list[PromptJudgeResult] = Field(default_factory=list)
 
     @property
     def rendered_prompt(self) -> str:

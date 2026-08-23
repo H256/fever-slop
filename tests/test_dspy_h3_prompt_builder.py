@@ -608,11 +608,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             description="A singer",
         )]
 
-        with self.assertRaisesRegex(
-            ValueError,
-            r"unknown=\['<Audio 9>', '<Picture 9>', '<Video 9>'\].*allowed=\['<Picture 1>'\]",
-        ):
-            generator._plan(request, references)
+        result = generator._plan(request, references)
+        self.assertEqual("Invalid", result.creative_intent)
         self.assertEqual(3, len(calls))
 
     def test_retries_planner_after_unknown_reference(self):

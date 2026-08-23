@@ -163,6 +163,7 @@ class VideoPromptGenerator:
             if getattr(signatures, "judge_final_prompt", None) is not None
             else None
         )
+        self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
         self.lm = self.dspy_runtime.make_lm(llm)
 
     def _judge_final_prompt(
@@ -316,7 +317,11 @@ class VideoPromptGenerator:
                 f"allowed={sorted(allowed)!r}",
             ))
             if attempt == 3:
-                raise ValueError(error)
+                logger.warning(
+                    "H3 planner contract warning after final attempt; continuing with result: %s",
+                    error,
+                )
+                break
             logger.warning("H3 planner retry %d/3: %s", attempt + 1, error)
             mapping_contract = "; ".join(
                 f'{ref.label} -> reusable subject "{ref.name or ref.label.strip("<>")}" '
@@ -432,7 +437,11 @@ class VideoPromptGenerator:
                 f"active_vocal_language={active_vocal_language!r}",
             ))
             if attempt == 3:
-                raise ValueError(error)
+                logger.warning(
+                    "H3 renderer contract warning after final attempt; continuing with result: %s",
+                    error,
+                )
+                return output
             logger.warning("H3 renderer retry %d/3: %s", attempt + 1, error)
             subject_map = ", ".join(
                 f"{subject.label}={subject.name} from {subject.source_references}"
@@ -456,31 +465,55 @@ class VideoPromptGenerator:
         with self.dspy_runtime.context(lm=self.lm):
             refs = self._resolve_references(request.references)
             plan = self._plan(request, refs)
-            if request.mode == PromptMode.R2V:
-                output = self._render_reference(request, plan, refs)
-                prompt = ReferenceVideoPrompt(
-                    subject_definitions=plan.subjects,
-                    reference_definitions=_deterministic_reference_definitions(refs),
-                    summary=output.summary,
-                    retention_analysis=output.retention_analysis,
-                    detailed_description=output.detailed_description,
-                    overall_soundscape=output.overall_soundscape,
-                    non_diegetic_music=output.non_diegetic_music,
+            effective_request = request
+            prompt = None
+            judge = None
+            judge_attempts = []
+            for attempt in range(1, self.judge_attempts + 1):
+                if request.mode == PromptMode.R2V:
+                    output = self._render_reference(effective_request, plan, refs)
+                    prompt = ReferenceVideoPrompt(
+                        subject_definitions=plan.subjects,
+                        reference_definitions=_deterministic_reference_definitions(refs),
+                        summary=output.summary,
+                        retention_analysis=output.retention_analysis,
+                        detailed_description=output.detailed_description,
+                        overall_soundscape=output.overall_soundscape,
+                        non_diegetic_music=output.non_diegetic_music,
+                    )
+                else:
+                    output = self.base_renderer(
+                        guide=self._read(self.base_guide_path), mode=request.mode.value,
+                        user_prompt=request.user_prompt, plan=plan,
+                        references=refs, notes=effective_request.notes or "",
+                        strict_fidelity=request.strict_fidelity,
+                        music_intent=plan.music_intent.value,
+                        relay_segments=request.relay_segments,
+                    )
+                    prompt = output.result
+                if plan.music_intent == MusicIntent.NONE:
+                    prompt.non_diegetic_music = None
+                judge = self._judge_final_prompt(effective_request, plan, refs, prompt)
+                if judge is not None:
+                    judge_attempts.append(judge)
+                if judge is None or judge.verdict == "good" or attempt == self.judge_attempts:
+                    break
+                feedback = "; ".join(judge.issues) or "the prompt did not satisfy the supplied guide and plan"
+                if judge.repair_instruction:
+                    feedback += f" Repair instruction: {judge.repair_instruction}"
+                logger.warning(
+                    "H3 final prompt judge retry %d/%d: %s",
+                    attempt + 1,
+                    self.judge_attempts,
+                    feedback,
                 )
-            else:
-                output = self.base_renderer(
-                    guide=self._read(self.base_guide_path), mode=request.mode.value,
-                    user_prompt=request.user_prompt, plan=plan,
-                    references=refs, notes=request.notes or "",
-                    strict_fidelity=request.strict_fidelity,
-                    music_intent=plan.music_intent.value,
-                    relay_segments=request.relay_segments,
-                )
-                prompt = output.result
-        if plan.music_intent == MusicIntent.NONE:
-            prompt.non_diegetic_music = None
-        with self.dspy_runtime.context(lm=self.lm):
-            judge = self._judge_final_prompt(request, plan, refs, prompt)
+                effective_request = effective_request.model_copy(update={
+                    "notes": (
+                        f"{effective_request.notes or ''}\n\n"
+                        "Try again. Here are the judge errors you must fix: "
+                        f"{feedback}"
+                    ).strip()
+                })
         if judge is not None and judge.verdict == "bad":
             logger.warning("H3 final prompt judge rejected prompt: %s", "; ".join(judge.issues))
         return GeneratedVideoPrompt(
@@ -489,4 +522,5 @@ class VideoPromptGenerator:
             plan=plan,
             references=refs,
             judge=judge,
+            judge_attempts=judge_attempts,
         )

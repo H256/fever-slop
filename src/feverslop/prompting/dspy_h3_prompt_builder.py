@@ -409,6 +409,9 @@ class DspyH3PromptBuilder:
         judge = getattr(generated, "judge", None)
         if judge is not None:
             result["prompt_judge"] = judge.model_dump()
+        judge_attempts = getattr(generated, "judge_attempts", None)
+        if judge_attempts:
+            result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
     def build_all_h3_prompts(

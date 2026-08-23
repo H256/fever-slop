@@ -125,6 +125,7 @@ class LocalOpenAIClient:
         request_timeout_seconds: float = 180.0,
         dspy_cache: bool = False,
         max_concurrent_requests: int = 1,
+        prompt_judge_attempts: int = 3,
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
         min_request_interval_seconds: float = 0.0,
@@ -152,6 +153,7 @@ class LocalOpenAIClient:
         self._vision_capability: bool | None = None
         self.dspy_cache = dspy_cache
         self.max_concurrent_requests = int(max_concurrent_requests)
+        self.prompt_judge_attempts = int(prompt_judge_attempts)
         self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics

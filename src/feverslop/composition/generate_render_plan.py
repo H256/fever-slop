@@ -214,6 +214,7 @@ def _build_llm(app_config):
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
         dspy_cache=app_config.llm.dspy_cache,
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
+        prompt_judge_attempts=app_config.llm.prompt_judge_attempts,
     )
 
 
