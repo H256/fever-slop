@@ -1,12 +1,11 @@
 import unittest
 
 from feverslop.adapters.media_store import MediaStore
-from feverslop.studio.media_store import MediaStore as LegacyMediaStore
 
 
 class MediaPersistenceAdapterTests(unittest.TestCase):
-    def test_media_store_has_canonical_adapter_owner(self):
-        self.assertIs(LegacyMediaStore, MediaStore)
+    def test_media_store_is_available_from_adapters(self):
+        self.assertTrue(callable(MediaStore))
 
 
 if __name__ == "__main__":

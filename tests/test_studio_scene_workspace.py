@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 
 from feverslop.ports.scene_documents import SceneLtxPromptField
-from feverslop.studio.job_service import StudioJobRequest
-from feverslop.studio.scene_workspace_service import (
+from feverslop.application.job_contracts import JobRequest as StudioJobRequest
+from feverslop.application.scene_workspace import (
     SceneWorkspaceService,
     normalize_scene_numbers,
 )

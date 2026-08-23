@@ -841,7 +841,7 @@ class SlugifyProjectNameTests(unittest.TestCase):
         from feverslop.application.full_auto import slugify_project_name as app_slug
         from feverslop.application.movie import slugify_project_name as movie_slug
         from feverslop.domain.slug_utils import slugify_project_name as domain_slug
-        from feverslop.studio.projects import slugify_project_name as studio_slug
+        from feverslop.domain.slug_utils import slugify_project_name as studio_slug
         test_cases = ["Hello World", "test_project", "My Song!", ""]
         for case in test_cases:
             self.assertEqual(domain_slug(case), studio_slug(case))
@@ -939,8 +939,8 @@ class ScenePromptWordCountDefaultsTests(unittest.TestCase):
         )
         from feverslop.domain.full_auto import GeneratedSong, SongSpec
         from feverslop.prompting.scene_prompt_builder import scene_prompt_word_limit
-        from feverslop.studio.project_repository import movie_default_config
-        from feverslop.studio.projects import ProjectCreateRequest
+        from feverslop.composition.project_repository import movie_default_config
+        from feverslop.composition.project_store import ProjectCreateRequest
 
         # Pin the behavior-preserving decision explicitly (must not drift to 150).
         self.assertEqual((40, 50), (SCENE_PROMPT_WORD_COUNT_MIN, SCENE_PROMPT_WORD_COUNT_MAX))

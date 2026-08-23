@@ -11,12 +11,12 @@ from feverslop.application.visual_consistency_preflight import (
 )
 from feverslop.config.app_config import AppConfig
 from feverslop.domain.visual_consistency import PreflightMode
-from feverslop.studio.job_service import (
+from feverslop.composition.job_service import (
     StudioJobRequest,
     StudioJobService,
     VisualConsistencyPreflightAction,
 )
-from feverslop.studio.jobs import JobRegistry
+from feverslop.composition.job_runtime import JobRegistry
 
 
 class _Store:

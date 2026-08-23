@@ -163,7 +163,7 @@ Run the desktop startup smoke test:
 ```powershell
 $env:QT_QPA_PLATFORM = "offscreen"
 $env:QT_QUICK_BACKEND = "software"
-uv run python -W error::RuntimeWarning -m feverslop.studio.desktop --smoke-test
+The deprecated Studio/QML package has been removed; no Studio startup smoke test is required.
 ```
 
 Run the default project helper:

@@ -13,7 +13,7 @@ from feverslop.domain.prompt_revisions import (
     PromptRevision,
 )
 from feverslop.infra.sqlite_adapter import SqliteRevisionStore
-from feverslop.studio.rebuild_service import (
+from feverslop.application.rebuild_service import (
     PromptSaveConflict,
     RebuildService,
     RevisionSaveResult,

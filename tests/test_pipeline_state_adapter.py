@@ -1,12 +1,11 @@
 import unittest
 
 from feverslop.adapters.pipeline_state_store import PipelineStateStore
-from feverslop.studio.pipeline_state_store import PipelineStateStore as LegacyPipelineStateStore
 
 
 class PipelineStateAdapterTests(unittest.TestCase):
-    def test_pipeline_state_store_has_canonical_adapter_owner(self):
-        self.assertIs(LegacyPipelineStateStore, PipelineStateStore)
+    def test_pipeline_state_store_is_available_from_adapters(self):
+        self.assertTrue(callable(PipelineStateStore))
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ from feverslop.domain.security import (
     sanitize_path_component,
 )
 from feverslop.path_utils import coerce_local_path
-from feverslop.studio.projects import (
+from feverslop.composition.project_store import (
     ProjectCreateRequest,
     ProjectStore,
     StudioPathError,
