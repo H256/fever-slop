@@ -1,10 +1,9 @@
 """FaceFix domain models."""
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
-
 
 DEFAULT_FACEFIX_WORKFLOW = "video_ltxv_facefix_v1.json"
 DEFAULT_KEYFRAME_INDICES = "0,16,32,48"
@@ -37,4 +36,4 @@ class FaceFixSceneRequest:
     scene_number: int
     source_video: Path
     reference_images: Sequence[Path] = ()
-    output_dir: Path = Path(".")
+    output_dir: Path = Path()

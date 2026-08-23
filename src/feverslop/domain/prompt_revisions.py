@@ -81,7 +81,7 @@ class PromptHistory:
                 new_value.splitlines(keepends=True),
                 fromfile="previous",
                 tofile="current",
-            )
+            ),
         )
         return "".join(lines)
 
@@ -103,7 +103,7 @@ def build_revision(
         raise ValueError("Prompt value must not be blank")
 
     revision_id = _compute_revision_id(
-        scene_number, field.value, value, parent_id, now
+        scene_number, field.value, value, parent_id, now,
     )
     content_hash = _compute_content_hash(value)
 

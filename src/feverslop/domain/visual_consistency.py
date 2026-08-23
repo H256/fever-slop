@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-import hashlib
-import json
 from typing import Any
 
 SCHEMA = "feverslop.visual-consistency/v1"
@@ -40,7 +40,7 @@ def _validate_sha256(value: str, field: str) -> None:
         or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(
-            f"{field} must be a lowercase SHA-256, 64-character hexadecimal hash"
+            f"{field} must be a lowercase SHA-256, 64-character hexadecimal hash",
         )
 
 
@@ -147,7 +147,7 @@ class SceneConsistencyContract:
                 actors=self.actors,
                 location=self.location,
                 transition_from_previous=self.transition_from_previous,
-            )
+            ),
         )
         if self.fingerprint != expected_fingerprint:
             raise ValueError("fingerprint does not match canonical payload")
@@ -285,11 +285,11 @@ def validate_scene_sequence(
     numbers = [scene.get("scene") for scene in items]
     if any(type(number) is not int or number <= 0 for number in numbers):
         raise ValueError(
-            "Scenes must use positive integers in consecutive order"
+            "Scenes must use positive integers in consecutive order",
         )
     if numbers and numbers != list(range(numbers[0], numbers[0] + len(numbers))):
         raise ValueError(
-            "Scenes must be in consecutive order without duplicates or gaps"
+            "Scenes must be in consecutive order without duplicates or gaps",
         )
     return items
 

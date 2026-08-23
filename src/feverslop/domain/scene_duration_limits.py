@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal, ROUND_FLOOR
 import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
-from typing import Mapping, Sequence
 
 from feverslop.domain.ltx_rendering import round_down_8n1
 from feverslop.errors import FeverSlopValidationError
@@ -66,7 +66,7 @@ def resolve_scene_duration_policy(
     requested_max = _positive_finite(requested_max_seconds, "requested_max_seconds")
     if requested_min > requested_max:
         raise FeverSlopValidationError(
-            "requested_min_seconds must be less than or equal to requested_max_seconds"
+            "requested_min_seconds must be less than or equal to requested_max_seconds",
         )
 
     resolved_fps = _nonnegative_integer(fps, "fps")
@@ -135,7 +135,7 @@ def resolve_scene_duration_policy(
     if max_scene_frames < 1:
         raise FeverSlopValidationError(
             f"Render budget for {limiting_workflow or 'the default workflow'} cannot fit "
-            f"{preroll} pre-roll frames, {tail} tail frames, and one scene frame"
+            f"{preroll} pre-roll frames, {tail} tail frames, and one scene frame",
         )
 
     capped_max_decimal = Decimal(max_scene_frames) / Decimal(resolved_fps)
@@ -147,7 +147,7 @@ def resolve_scene_duration_policy(
     )
     if effective_max_decimal <= 0:
         raise FeverSlopValidationError(
-            "Render budget cannot represent a positive scene duration at SRT millisecond precision"
+            "Render budget cannot represent a positive scene duration at SRT millisecond precision",
         )
     effective_max = float(effective_max_decimal)
     effective_min = min(requested_min, effective_max)
@@ -208,7 +208,7 @@ def validate_render_frame_budget(
         allowed_interval = Decimal(resolved_max_render_frames - 1) / Decimal(resolved_fps)
         if allowed_interval > Decimal(str(configured_duration)):
             raise FeverSlopValidationError(
-                "max_render_frames exceeds max_render_duration_seconds"
+                "max_render_frames exceeds max_render_duration_seconds",
             )
     if int(render_frame_count) <= resolved_max_render_frames:
         return
@@ -220,5 +220,5 @@ def validate_render_frame_budget(
         f"Scene {int(scene_number)} requires {int(render_frame_count)} render frames "
         f"({required_seconds:.3f}s), but {workflow} is limited to "
         f"{resolved_max_render_frames} frames ({allowed_seconds:.3f}s). "
-        "Regenerate the render plan with the active workflow limit."
+        "Regenerate the render plan with the active workflow limit.",
     )

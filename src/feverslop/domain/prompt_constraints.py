@@ -14,6 +14,6 @@ def build_location_constraint(locations: list[str] | tuple[str, ...] | None) -> 
             "Every scene concept and every Z-Image prompt must visibly take place in one of the allowed locations listed above.",
             "Each scene concept and Z-Image prompt must explicitly name one allowed location or a direct visual variant of it.",
             "Do not invent other locations.",
-        ]
+        ],
     )
     return "\n".join(lines)

@@ -39,7 +39,7 @@ def _validate_duration(seconds: float) -> None:
     if seconds < MINIMAX_H3_MIN_DURATION_SECONDS or seconds > MINIMAX_H3_MAX_DURATION_SECONDS:
         raise FeverSlopValidationError(
             f"MiniMax H3 duration {seconds}s is outside allowed range "
-            f"[{MINIMAX_H3_MIN_DURATION_SECONDS}s, {MINIMAX_H3_MAX_DURATION_SECONDS}s]"
+            f"[{MINIMAX_H3_MIN_DURATION_SECONDS}s, {MINIMAX_H3_MAX_DURATION_SECONDS}s]",
         )
 
 
@@ -47,5 +47,5 @@ def _validate_frames(frames: int) -> None:
     """Raise ``FeverSlopValidationError`` if *frames* violates the 17N+5 constraint."""
     if frames < 5 or frames % 17 != 5:
         raise FeverSlopValidationError(
-            f"Frame count {frames} does not satisfy 17N+5 constraint (minimum 5)"
+            f"Frame count {frames} does not satisfy 17N+5 constraint (minimum 5)",
         )

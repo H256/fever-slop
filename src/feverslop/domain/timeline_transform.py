@@ -17,7 +17,7 @@ def normalize_empty_vocals(
                     kind="instrumental",
                     text="",
                     word_timestamps=(),
-                )
+                ),
             )
         else:
             result.append(seg)

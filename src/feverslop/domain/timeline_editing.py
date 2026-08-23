@@ -43,7 +43,7 @@ class SceneBoundary:
         duration = self.end - self.start
         if duration < self.min_duration:
             raise ValueError(
-                f"duration ({duration}) must be >= min_duration ({self.min_duration})"
+                f"duration ({duration}) must be >= min_duration ({self.min_duration})",
             )
 
 
@@ -80,7 +80,7 @@ class TimelineSnapshot:
         import types
 
         object.__setattr__(
-            self, "metadata", types.MappingProxyType(dict(self.metadata))
+            self, "metadata", types.MappingProxyType(dict(self.metadata)),
         )
 
     def to_json(self) -> dict:
@@ -177,7 +177,7 @@ _BEAT_TIME_EPSILON = 1e-6
 
 
 def split_segment(
-    segment: EditableTimelineSegment, at: float
+    segment: EditableTimelineSegment, at: float,
 ) -> tuple[EditableTimelineSegment, EditableTimelineSegment]:
     """Split *segment* into two parts at time *at*.
 
@@ -185,11 +185,11 @@ def split_segment(
     """
     if at <= segment.start + _SEGMENT_TIME_EPSILON:
         raise ValueError(
-            f"split point {at} must be > start ({segment.start})"
+            f"split point {at} must be > start ({segment.start})",
         )
     if at >= segment.end - _SEGMENT_TIME_EPSILON:
         raise ValueError(
-            f"split point {at} must be < end ({segment.end})"
+            f"split point {at} must be < end ({segment.end})",
         )
     left = EditableTimelineSegment(
         start=segment.start,
@@ -223,7 +223,7 @@ def merge_segments(
     """
     if len(segments) < 2:
         raise ValueError(
-            f"merge requires at least 2 segments, got {len(segments)}"
+            f"merge requires at least 2 segments, got {len(segments)}",
         )
     for i in range(len(segments) - 1):
         gap = segments[i + 1].start - segments[i].end
@@ -232,11 +232,11 @@ def merge_segments(
         if gap < 0:
             raise ValueError(
                 f"segments overlap: [{segments[i].start}, {segments[i].end}] "
-                f"and [{segments[i + 1].start}, {segments[i + 1].end}]"
+                f"and [{segments[i + 1].start}, {segments[i + 1].end}]",
             )
         raise ValueError(
             f"gap between segments: [{segments[i].start}, {segments[i].end}] "
-            f"and [{segments[i + 1].start}, {segments[i + 1].end}]"
+            f"and [{segments[i + 1].start}, {segments[i + 1].end}]",
         )
     texts = [s.text for s in segments if s.text]
     merged_text = " ".join(texts)
@@ -262,7 +262,7 @@ def validate_scene_boundaries(
         if sorted_b[i].end > sorted_b[i + 1].start + _SEGMENT_TIME_EPSILON:
             raise ValueError(
                 f"scene boundaries overlap: [{sorted_b[i].start}, {sorted_b[i].end}] "
-                f"and [{sorted_b[i + 1].start}, {sorted_b[i + 1].end}]"
+                f"and [{sorted_b[i + 1].start}, {sorted_b[i + 1].end}]",
             )
     return list(sorted_b)
 
@@ -277,7 +277,7 @@ def validate_beat_markers(
     for i in range(len(sorted_m) - 1):
         if abs(sorted_m[i + 1].time_s - sorted_m[i].time_s) < _BEAT_TIME_EPSILON:
             raise ValueError(
-                f"duplicate beat time {sorted_m[i].time_s}"
+                f"duplicate beat time {sorted_m[i].time_s}",
             )
     return list(sorted_m)
 

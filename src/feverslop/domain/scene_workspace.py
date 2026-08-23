@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal
 
-
 SceneDisplayStatus = Literal["missing", "planned", "rendered", "failed"]
 
 
@@ -67,7 +66,7 @@ class SceneWorkspaceItem:
                 ltx.get("original_style_i2v_prompt")
                 or ltx.get("i2v_prompt_from_t2i")
                 or ltx.get("base_prompt")
-                or ""
+                or "",
             ),
             reference_ids=_reference_ids(raw_scene),
             media=media or SceneMedia(),
@@ -112,7 +111,7 @@ class SceneWorkspace:
                 SceneWorkspaceItem.from_scene(
                     scene,
                     media=media_by_scene.get(scene_number),
-                )
+                ),
             )
         return cls(items=tuple(items))
 

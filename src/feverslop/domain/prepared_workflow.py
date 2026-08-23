@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import asdict, dataclass
 import json
 import os
+from collections import Counter
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.visual_consistency import SceneConsistencyContract
-
 
 SCHEMA_V1 = "feverslop.scene-workflow/v1"
 SCHEMA_V2 = "feverslop.scene-workflow/v2"
@@ -386,7 +385,7 @@ class SceneWorkflowManifest:
         mismatches: list[str] = []
         if contract.scene != self.scene:
             mismatches.append(
-                "consistency: contract scene does not match manifest scene"
+                "consistency: contract scene does not match manifest scene",
             )
         expected_mode = {
             "ltx_ingredients": "ingredients",
@@ -395,7 +394,7 @@ class SceneWorkflowManifest:
         }.get(self.pipeline)
         if expected_mode is not None and contract.mode != expected_mode:
             mismatches.append(
-                "consistency: contract mode does not match manifest pipeline"
+                "consistency: contract mode does not match manifest pipeline",
             )
 
         by_role: dict[str, list[ManifestAsset]] = {}
@@ -411,7 +410,7 @@ class SceneWorkflowManifest:
         ]
         if Counter(actor_bindings) != Counter(expected_actor_bindings):
             mismatches.append(
-                "consistency: actor_sheet IDs, roles, or SHA-256 values do not match contract"
+                "consistency: actor_sheet IDs, roles, or SHA-256 values do not match contract",
             )
 
         location_bindings = [
@@ -425,12 +424,12 @@ class SceneWorkflowManifest:
         )
         if location_bindings != expected_location_bindings:
             mismatches.append(
-                "consistency: location_sheet ID, role, or SHA-256 does not match contract"
+                "consistency: location_sheet ID, role, or SHA-256 does not match contract",
             )
 
         if contract.mode == "ingredients" and len(by_role.get("ingredients_sheet", [])) != 1:
             mismatches.append(
-                "consistency: exactly one ingredients_sheet SHA-256 is required"
+                "consistency: exactly one ingredients_sheet SHA-256 is required",
             )
         if (
             contract.transition_from_previous == "continuous"
@@ -438,7 +437,7 @@ class SceneWorkflowManifest:
             and len(by_role.get("startframe", [])) != 1
         ):
             mismatches.append(
-                "consistency: continuous handoff requires exactly one startframe asset"
+                "consistency: continuous handoff requires exactly one startframe asset",
             )
         startframes = by_role.get("startframe", [])
         if (
@@ -451,7 +450,7 @@ class SceneWorkflowManifest:
             )
         ):
             mismatches.append(
-                "consistency: startframe SHA-256 does not match extracted frame"
+                "consistency: startframe SHA-256 does not match extracted frame",
             )
         if (
             contract.transition_from_previous == "continuous"
@@ -464,7 +463,7 @@ class SceneWorkflowManifest:
             )
         ):
             mismatches.append(
-                "consistency: continuous handoff startframe lineage is invalid"
+                "consistency: continuous handoff startframe lineage is invalid",
             )
         if (
             contract.transition_from_previous == "continuous"
@@ -477,6 +476,6 @@ class SceneWorkflowManifest:
             )
         ):
             mismatches.append(
-                "consistency: continuous handoff source clip path is invalid"
+                "consistency: continuous handoff source clip path is invalid",
             )
         return mismatches

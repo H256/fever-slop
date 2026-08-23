@@ -68,5 +68,5 @@ def extract_json_object(text: str) -> dict:
             pos = start + 1
 
     raise FeverSlopLMLError(
-        f"No valid JSON object found in LLM response:\n{text}"
+        f"No valid JSON object found in LLM response:\n{text}",
     ) from last_error

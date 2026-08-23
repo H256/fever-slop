@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+
 from feverslop.domain.scene_cast import resolve_scene_cast
 
 
@@ -70,7 +71,7 @@ class PropInteraction:
         }.items() if value}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, str]) -> "PropInteraction":
+    def from_dict(cls, payload: dict[str, str]) -> PropInteraction:
         return cls(
             actor_id=str(payload.get("actor_id", "")), prop_id=str(payload.get("prop_id", "")),
             action=str(payload.get("action", "")), relationship=str(payload.get("relationship", "")),
@@ -107,7 +108,7 @@ class SceneReferenceAssignment:
             {str(k): str(v) for k, v in (self.actor_look_ids or {}).items() if str(k) and str(v)},
         )
         if len(self.actor_ids) > 4:
-            raise ValueError("Scene {} has {} actors; at most 4 actors allowed".format(self.scene_number, len(self.actor_ids)))
+            raise ValueError(f"Scene {self.scene_number} has {len(self.actor_ids)} actors; at most 4 actors allowed")
 
     def validate_against(
         self,

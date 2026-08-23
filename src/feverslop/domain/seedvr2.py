@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ def plan_seedvr2_segments(
                     index,
                     round(start, 6),
                     round(end - start, 6),
-                )
+                ),
             )
             start = end
         return segments
@@ -128,7 +128,7 @@ def plan_seedvr2_passes(
     required_passes = math.ceil(math.log(target[0] / current[0], max_pass_scale))
     if required_passes > max_ai_passes:
         raise ValueError(
-            f"target requires {required_passes} SeedVR2 passes, exceeding max_ai_passes={max_ai_passes}"
+            f"target requires {required_passes} SeedVR2 passes, exceeding max_ai_passes={max_ai_passes}",
         )
 
     result: list[SeedVR2Pass] = []
@@ -138,7 +138,7 @@ def plan_seedvr2_passes(
         remaining_ratio = target[0] / current[0]
         scale = min(max_pass_scale, remaining_ratio)
         next_size = target if remaining_ratio <= max_pass_scale else (
-            _even(current[0] * scale), _even(current[1] * scale)
+            _even(current[0] * scale), _even(current[1] * scale),
         )
         result.append(SeedVR2Pass(current, next_size, next_size[0] / current[0]))
         current = next_size
