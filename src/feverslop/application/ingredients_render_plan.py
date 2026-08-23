@@ -8,6 +8,10 @@ from feverslop.domain.visual_consistency_runtime import (
     scrub_prior_context,
 )
 from feverslop.errors import FeverSlopValidationError
+from feverslop.prompting.subject_directive_planning import (
+    subject_directives_from_scene,
+)
+from feverslop.prompting.subject_directive_projections import project_subject_directives
 
 
 _CORE_SCENE_FIELDS = (
@@ -32,6 +36,9 @@ def project_ingredients_runtime_scene(scene: Mapping[str, Any]) -> dict[str, Any
         _ingredients_global_prompt(scene),
         visual_consistency,
     )
+    directive_plan = subject_directives_from_scene(scene)
+    if directive_plan is not None:
+        global_prompt = f"{global_prompt}\n\n{project_subject_directives(directive_plan, backend='ltx-ingredients').prompt}"
     scene_number = scene.get("scene", "?")
     if not global_prompt:
         raise FeverSlopValidationError(f"Scene {scene_number} is missing the Ingredients global prompt")

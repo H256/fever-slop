@@ -15,6 +15,7 @@ from feverslop.ports.generate_pipeline import (
 from feverslop.domain.prompt_constraints import build_location_constraint
 from feverslop.utils.sub_step_progress import SubStepProgress
 from feverslop.application.global_cast_resolver import materialize_global_assets
+from feverslop.prompting.subject_directive_planning import build_shared_staging_plan
 
 
 def join_notes(*parts: str) -> str:
@@ -275,6 +276,12 @@ class PromptGenerationPipeline:
             status_callback=reporter.message,
         )
         reporter.message("[green]Scene prompt pack finished.[/green]")
+        self._attach_subject_directives(
+            stage1_segments=stage1_segments,
+            scene_prompts_json=scene_prompts_json,
+            artifact_store=artifact_store,
+            reporter=reporter,
+        )
         log_file("Scene Prompts JSON", scene_prompts_json)
 
         context.update(
@@ -285,6 +292,44 @@ class PromptGenerationPipeline:
             }
         )
         return context
+
+    @staticmethod
+    def _attach_subject_directives(
+        *,
+        stage1_segments: list[dict],
+        scene_prompts_json: Path,
+        artifact_store: Any,
+        reporter: Any,
+    ) -> None:
+        """Persist shared staging when upstream scene input provides subjects."""
+        try:
+            prompts = artifact_store.read_json(scene_prompts_json)
+        except (FileNotFoundError, KeyError):
+            # Lightweight dependency fakes may only capture the builder call;
+            # there is no persisted scene pack to enrich in that mode.
+            return
+        by_segment = {str(item.get("segment_id")): item for item in stage1_segments}
+        changed = 0
+        for scene in prompts:
+            source = by_segment.get(str(scene.get("segment_id")))
+            if not source or not (source.get("subject_directives") or source.get("subjects")):
+                continue
+            plan = build_shared_staging_plan({
+                "shot_id": source.get("segment_id") or scene.get("scene"),
+                "duration_seconds": source.get("duration") or source.get("duration_seconds") or scene.get("duration"),
+                "subjects": source.get("subjects") or [],
+                "subject_directives": source.get("subject_directives"),
+                "spatial_relations": source.get("spatial_relations") or [],
+            }) if not source.get("subject_directives") else None
+            if plan is not None:
+                scene["subject_directives"] = plan.to_dict()
+                changed += 1
+            elif source.get("subject_directives"):
+                scene["subject_directives"] = source["subject_directives"]
+                changed += 1
+        if changed:
+            artifact_store.write_json(scene_prompts_json, prompts)
+            reporter.message(f"[green]Subject staging persisted for {changed} scenes.[/green]")
 
     def build_resolved_global_context(
         self,

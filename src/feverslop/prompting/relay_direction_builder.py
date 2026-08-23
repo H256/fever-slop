@@ -7,6 +7,10 @@ from typing import Any
 
 from feverslop.ports.llm import LLMPort
 from feverslop.prompting.relay_modules import RelayPromptModules
+from feverslop.prompting.subject_directive_planning import (
+    project_directives_to_prompt,
+    subject_directives_from_scene,
+)
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:
@@ -116,6 +120,8 @@ class RelayDirectionBuilder:
     def compact_scene_relays(self, scene: dict, relays: list[dict]) -> list[dict]:
         scene_type = scene.get("metadata", {}).get("type", "")
         has_vocals = scene_type in {"vocals", "mixed"}
+        directive_plan = subject_directives_from_scene(scene)
+        directive_text = project_directives_to_prompt(directive_plan) if directive_plan else ""
 
         payload = {
             "scene": scene.get("scene"),
@@ -136,6 +142,7 @@ class RelayDirectionBuilder:
                 }
                 for idx, relay in enumerate(relays)
             ],
+            "subject_directives": directive_text,
         }
 
         try:
@@ -164,6 +171,8 @@ class RelayDirectionBuilder:
             prompt = by_index.get(idx, fallback)
             prompt = self._safety_fix_prompt(scene, relay, prompt, has_vocals)
             prompt = _limit_words(_clean_direction(prompt), self.max_words) or fallback
+            if directive_text:
+                prompt = f"{prompt}. {directive_text}"
             new_relay["prompt"] = prompt
             result.append(new_relay)
 

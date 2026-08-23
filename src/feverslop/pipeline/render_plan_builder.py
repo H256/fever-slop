@@ -8,6 +8,7 @@ from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
 from feverslop.errors import FeverSlopDataError
+from feverslop.domain.subject_directives import SubjectDirectivePlan, validate_subject_directive_plan
 from feverslop.domain.performance_sync import select_performance_stems
 
 
@@ -510,6 +511,20 @@ def build_render_plan(
                 "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
+        if scene.get("subject_directives") is not None:
+            directive_plan = SubjectDirectivePlan.from_dict(scene["subject_directives"])
+            known_subject_ids = tuple((scene.get("references") or {}).get("actor_ids") or ())
+            known_prop_ids = tuple((scene.get("references") or {}).get("prop_ids") or ())
+            issues = validate_subject_directive_plan(
+                directive_plan,
+                known_subject_ids=known_subject_ids,
+                known_prop_ids=known_prop_ids,
+            )
+            if issues:
+                raise ValueError(
+                    f"Scene {scene_number} has invalid subject directives: {'; '.join(issues)}"
+                )
+            render_scene["subject_directives"] = directive_plan.to_dict()
         references = _filter_silent_audio_references(
             _scene_references(scene, max_scene_actors), scene
         )

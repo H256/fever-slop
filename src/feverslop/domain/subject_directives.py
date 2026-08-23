@@ -77,6 +77,7 @@ class SubjectDirective:
     visibility: str = "visible"
     cardinality: int = 1
     temporal_scope: TemporalScope | None = None
+    gaze_direction: str = ""
 
     def __post_init__(self) -> None:
         if not self.subject_id.strip():
@@ -95,6 +96,7 @@ class SubjectDirective:
             position=str(payload.get("position", "")).strip(),
             action=str(payload.get("action", "")).strip(),
             interactions=tuple(payload.get("interactions") or ()),
+            gaze_direction=str(payload.get("gaze_direction", "")).strip(),
             prop_bindings=tuple(PropBinding.from_dict(item) for item in payload.get("prop_bindings") or ()),
             visibility=str(payload.get("visibility", "visible")).strip(),
             cardinality=int(payload.get("cardinality", 1)),
@@ -113,6 +115,8 @@ class SubjectDirective:
         }
         if self.interactions:
             result["interactions"] = list(self.interactions)
+        if self.gaze_direction:
+            result["gaze_direction"] = self.gaze_direction
         if self.temporal_scope:
             result["temporal_scope"] = self.temporal_scope.to_dict()
         return result

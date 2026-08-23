@@ -7,6 +7,11 @@ from typing import Any, Callable
 
 from feverslop.prompting.dspy_h3_models import MusicIntent
 from feverslop.domain.performance_sync import select_performance_audio_paths
+from feverslop.prompting.subject_directive_planning import (
+    project_directives_to_prompt,
+    subject_directives_from_scene,
+    validate_projected_prompt,
+)
 
 
 def _reference(
@@ -314,6 +319,7 @@ class DspyH3PromptBuilder:
             mode=mode,
         )
         relay_segments = _normalize_relay_segments(segment)
+        directive_plan = subject_directives_from_scene(segment)
         generator_references = [dict(reference) for reference in references]
         directing_lines = [
             f"{key.replace('_', ' ').title()}: {str(scene_details[key]).strip()}"
@@ -321,6 +327,8 @@ class DspyH3PromptBuilder:
             if str(scene_details.get(key) or "").strip()
         ]
         user_prompt = str(concept or "").strip()
+        if directive_plan is not None:
+            user_prompt = f"{user_prompt}\n\n{project_directives_to_prompt(directive_plan)}".strip()
         if directing_lines:
             user_prompt = f"{user_prompt}\n\nScene-specific directing instructions:\n" + "\n".join(directing_lines)
         resolved_root = reference_root or self.reference_root
@@ -386,10 +394,14 @@ class DspyH3PromptBuilder:
         # DSPy is solely responsible for the guide-conformant prompt. Do not
         # append or repair deterministic prose after generation.
         prompt_parts = [str(prompt).strip()]
+        if directive_plan is not None:
+            validate_projected_prompt(directive_plan, prompt_parts[0])
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
+        if directive_plan is not None:
+            result["subject_directives"] = directive_plan.to_dict()
         if segment.get("performance_timing"):
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):
