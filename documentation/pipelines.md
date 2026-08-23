@@ -27,6 +27,76 @@ Rendering within those pipelines can use one of three render modes:
   scenes with multiple relay states or a `mixed` type get `relay`. Requires both
   `--single-prompt-workflow` and `--relay-workflow` to be configured.
 
+### One-machine LLM/ComfyUI workflow
+
+For `minimax-h3-r2v`, prompt generation is intentionally split around reference
+generation. The first prompt stage creates the timeline, scene prompts, and
+backend-neutral `subject_directives`. The H3-specific prompt stage runs only
+after reference sheets exist, because it must know the actual reference paths
+and `<Picture N>` ordering.
+
+This makes the following workflow suitable for a machine on which the LLM and
+ComfyUI models cannot remain loaded at the same time:
+
+```text
+LLM:  main_pipeline
+ComfyUI: msr_references + msr_reference_sheets
+LLM:  h3_prompts
+ComfyUI: render_plan + ltx_render_scenes
+```
+
+Run the stages as separate processes so the active model can be unloaded
+between phases. The artifacts under `output/` are the hand-off between them:
+
+```powershell
+# 1. LLM: timeline, scene prompts, and subject/action directives
+uv run python run_pipeline.py .\projects\my-song `
+  --app-config .\app_config.json `
+  --video-pipeline minimax-h3-r2v `
+  --stage main_pipeline `
+  --skip-tests
+
+# Unload the LLM model and load the ComfyUI reference workflows.
+
+# 2. ComfyUI: actor/location reference generation and reference sheets
+uv run python run_pipeline.py .\projects\my-song `
+  --app-config .\app_config.json `
+  --video-pipeline minimax-h3-r2v `
+  --stage msr_references `
+  --stage msr_reference_sheets `
+  --skip-tests
+
+# Unload ComfyUI models and load the LLM again.
+
+# 3. LLM: compose the reference-aware MiniMax H3 prompts
+uv run python run_pipeline.py .\projects\my-song `
+  --app-config .\app_config.json `
+  --video-pipeline minimax-h3-r2v `
+  --stage h3_prompts `
+  --skip-tests
+
+# Unload the LLM and load the ComfyUI video workflow again.
+
+# 4. Build the final render plan, then render the scenes
+uv run python run_pipeline.py .\projects\my-song `
+  --app-config .\app_config.json `
+  --video-pipeline minimax-h3-r2v `
+  --stage render_plan `
+  --skip-tests
+
+uv run python run_pipeline.py .\projects\my-song `
+  --app-config .\app_config.json `
+  --video-pipeline minimax-h3-r2v `
+  --stage ltx_render_scenes `
+  --skip-tests
+```
+
+The `h3_prompts` stage cannot be moved before reference generation in R2V
+mode: its output contains reference labels that depend on the generated
+reference artifacts. The backend-neutral subject/action planning itself does
+run in `main_pipeline`, so the expensive general prompting work is completed
+before the first ComfyUI phase.
+
 ## Available Pipeline Entry Points
 
 | Entry point | Use |

@@ -66,5 +66,35 @@ uv run python movie_pipeline.py ./projects/my-movie \
 See [the extended tutorial](sequence-reference-pipeline.md) for the artifact
 layout, direct `reference_bible` invocation, and review workflow.
 
+## One-machine MiniMax H3 workflow
+
+When the LLM and ComfyUI cannot keep their models loaded simultaneously, run
+the R2V pipeline in four resumable phases. This is also useful when debugging
+the hand-off artifacts:
+
+```powershell
+# LLM phase: general prompts and model-neutral subject directives
+uv run python run_pipeline.py .\projects\my-song `
+  --video-pipeline minimax-h3-r2v --stage main_pipeline --skip-tests
+
+# ComfyUI phase: generate actor/location references and sheets
+uv run python run_pipeline.py .\projects\my-song `
+  --video-pipeline minimax-h3-r2v `
+  --stage msr_references --stage msr_reference_sheets --skip-tests
+
+# LLM phase: generate reference-aware H3 prompts
+uv run python run_pipeline.py .\projects\my-song `
+  --video-pipeline minimax-h3-r2v --stage h3_prompts --skip-tests
+
+# ComfyUI phase: build the plan and render
+uv run python run_pipeline.py .\projects\my-song `
+  --video-pipeline minimax-h3-r2v `
+  --stage render_plan --stage ltx_render_scenes --skip-tests
+```
+
+The split is intentional: `main_pipeline` creates the shared scene/action
+plan, while `h3_prompts` must wait for the reference sheets so it can use the
+actual reference labels and paths.
+
 Every command supports `--help`. Generated artifacts and logs are written
 under the selected project's `output/` directory.

@@ -1085,7 +1085,12 @@ def enrich_render_plan_with_reference_sheets(
     render_plan_path = Path(render_plan_path)
     references_dir = Path(references_dir)
     output_path = Path(output_path)
-    render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
+    try:
+        render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FeverSlopValidationError(f"Cannot read render plan: {render_plan_path}: {exc}") from exc
+    if not isinstance(render_plan, list):
+        raise FeverSlopValidationError(f"Render plan must be a JSON array: {render_plan_path}")
     actor_manifests = _load_manifests_by_id(references_dir / "actors")
     location_manifests = _load_manifests_by_id(references_dir / "locations")
     project_base = _infer_reference_artifact_base_dir(references_dir)
@@ -1172,7 +1177,12 @@ def _load_manifests_by_id(root: Path) -> dict[str, dict]:
     if not root.exists():
         return manifests
     for manifest_path in root.glob("*/manifest.json"):
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FeverSlopValidationError(f"Cannot read reference manifest: {manifest_path}: {exc}") from exc
+        if not isinstance(manifest, dict) or "id" not in manifest:
+            raise FeverSlopValidationError(f"Reference manifest is missing an id: {manifest_path}")
         manifests[str(manifest["id"])] = manifest
     return manifests
 

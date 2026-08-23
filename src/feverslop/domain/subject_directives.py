@@ -162,27 +162,20 @@ def validate_subject_directive_plan(
     plan: SubjectDirectivePlan,
     *,
     known_subject_ids: Iterable[str] = (),
+    known_environment_ids: Iterable[str] = (),
     known_prop_ids: Iterable[str] = (),
 ) -> list[str]:
-    known_subjects = set(known_subject_ids)
-    known_props = set(known_prop_ids)
     issues: list[str] = []
     seen: set[str] = set()
     for subject in plan.subjects:
         if subject.subject_id in seen:
             issues.append(f"duplicate subject ID: {subject.subject_id}")
         seen.add(subject.subject_id)
-        if known_subjects and subject.subject_id not in known_subjects:
-            issues.append(f"Unknown subject ID: {subject.subject_id}")
         if subject.visibility == "visible" and (not subject.position or not subject.action):
             issues.append(f"subject {subject.subject_id} needs position and action")
         scope = subject.temporal_scope
         if scope is None or scope.start_seconds > plan.temporal_scope.start_seconds or scope.end_seconds < plan.temporal_scope.end_seconds:
             issues.append(f"subject {subject.subject_id} has incomplete temporal coverage")
-        for binding in subject.prop_bindings:
-            if known_props and binding.prop_id not in known_props:
-                issues.append(f"Unknown prop ID: {binding.prop_id}")
-
     relation_values: dict[tuple[str, str, str], str] = {}
     for relation in plan.spatial_relations:
         key = (relation.subject_id, relation.relation, relation.target_id)

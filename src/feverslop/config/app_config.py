@@ -21,6 +21,7 @@ class LLMConfig:
     request_timeout_seconds: float = 180.0
     dspy_cache: bool = False
     max_concurrent_requests: int = 1
+    prompt_judge_attempts: int = 3
     models: dict[str, str] = field(default_factory=dict)
     _local_api_key: str | None = field(default=None, repr=False)
 
@@ -37,6 +38,17 @@ class LLMConfig:
         return self._local_api_key
 
 
+def _require_float(raw: dict, key: str) -> float:
+    """Extract a required numeric config field; raises ValueError if missing or non-numeric."""
+    value = raw.get(key)
+    if value is None:
+        raise ValueError(f"Video workflow limit requires '{key}' field")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Video workflow limit '{key}' must be a number") from exc
+
+
 @dataclass(frozen=True)
 class VideoWorkflowLimitConfig:
     workflow: str
@@ -48,7 +60,7 @@ class VideoWorkflowLimitConfig:
         if not isinstance(raw_workflow, str):
             raise ValueError("Video workflow limit workflow must be a string")
         workflow = raw_workflow.strip()
-        duration = float(raw["max_render_duration_seconds"])
+        duration = _require_float(raw, "max_render_duration_seconds")
         if not workflow:
             raise ValueError("Video workflow limit requires a non-empty workflow")
         if not math.isfinite(duration) or duration <= 0:
@@ -220,6 +232,7 @@ class AppConfig:
         llm_temperature = float(llm_raw.get("temperature", 0.7))
         llm_max_tokens = int(llm_raw.get("max_tokens", 4096))
         llm_max_concurrent_requests = int(llm_raw.get("max_concurrent_requests", 1))
+        llm_prompt_judge_attempts = int(llm_raw.get("prompt_judge_attempts", 3))
         llm_models_raw = llm_raw.get("models", {})
         if not isinstance(llm_models_raw, dict):
             raise ValueError("llm.models must be an object")
@@ -236,6 +249,8 @@ class AppConfig:
             raise ValueError(f"llm.max_tokens must be > 0, got {llm_max_tokens}")
         if llm_max_concurrent_requests <= 0:
             raise ValueError("llm.max_concurrent_requests must be > 0")
+        if llm_prompt_judge_attempts <= 0:
+            raise ValueError("llm.prompt_judge_attempts must be > 0")
         library_raw = raw.get("global_library_path")
         if library_raw is None and isinstance(raw.get("global_library"), dict):
             library_raw = raw["global_library"].get("path")
@@ -252,6 +267,7 @@ class AppConfig:
                 request_timeout_seconds=float(llm_raw.get("request_timeout_seconds", 180.0)),
                 dspy_cache=_parse_bool(llm_raw.get("dspy_cache", False), "llm.dspy_cache"),
                 max_concurrent_requests=llm_max_concurrent_requests,
+                prompt_judge_attempts=llm_prompt_judge_attempts,
                 models=llm_models,
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),

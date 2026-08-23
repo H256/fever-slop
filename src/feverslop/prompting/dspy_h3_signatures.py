@@ -14,6 +14,7 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         ResolvedPromptPlan,
         ResolvedReference,
         RetentionAnalysis,
+        PromptJudgeResult,
     )
 
     class AnalyzeImage(dspy_module.Signature):
@@ -335,7 +336,27 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
             )
         )
 
-    return H3SignatureBundle(AnalyzeImage, BuildPromptPlan, RenderBasePrompt, RenderReferencePrompt)
+    class JudgeFinalPrompt(dspy_module.Signature):
+        """Judge the final prompt against the supplied plan and guide.
+
+        Use only the supplied inputs. Do not reject unfamiliar identifiers or
+        invent a semantic whitelist. Return observational feedback; do not
+        rewrite the prompt.
+        """
+
+        guide: str = dspy_module.InputField()
+        final_prompt: str = dspy_module.InputField()
+        authoritative_plan: str = dspy_module.InputField()
+        references: list[ResolvedReference] = dspy_module.InputField()
+        judge: PromptJudgeResult = dspy_module.OutputField()
+
+    return H3SignatureBundle(
+        AnalyzeImage,
+        BuildPromptPlan,
+        RenderBasePrompt,
+        RenderReferencePrompt,
+        JudgeFinalPrompt,
+    )
 
 
 def build_dspy_signatures():

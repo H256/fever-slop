@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 from rich.console import Console
+from rich.markup import escape
 
 T = TypeVar("T")
 
@@ -16,6 +17,9 @@ class NullReporter:
         pass
 
     def message(self, text: str) -> None:
+        pass
+
+    def warning(self, text: str, *, title: str | None = None) -> None:
         pass
 
     def panel(self, text: str, *, title: str | None = None) -> None:
@@ -41,6 +45,14 @@ class ConsoleReporter:
 
     def message(self, text: str) -> None:
         self.console.print(text)
+
+    def warning(self, text: str, *, title: str | None = None) -> None:
+        warning_title = escape(title or "Warning")
+        warning_text = escape(text)
+        self.panel(
+            f"[yellow]{warning_text}[/yellow]",
+            title=f"[bold yellow]{warning_title}[/bold yellow]",
+        )
 
     def panel(self, text: str, *, title: str | None = None) -> None:
         heading = f"{title}\n" if title else ""

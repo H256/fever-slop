@@ -10,6 +10,7 @@ from feverslop.domain.scene_duration_limits import (
     resolve_scene_duration_policy,
     validate_render_frame_budget,
 )
+from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
 from feverslop.errors import FeverSlopValidationError
 from feverslop.pipeline.scene_duration_enforcer import (
     enforce_scene_srt_file,
@@ -32,6 +33,12 @@ TWO_SCENE_SRT = textwrap.dedent("""\
 
 
 class SceneDurationLimitTests(unittest.TestCase):
+    def test_minimax_does_not_use_ltx_rolling_frame_overhead(self):
+        self.assertEqual(
+            (0, 0, False),
+            resolve_rolling_frame_profile("original", video_pipeline="minimax-h3-r2v"),
+        )
+
     def resolve(self, **overrides):
         arguments = {
             "requested_min_seconds": 2.0,

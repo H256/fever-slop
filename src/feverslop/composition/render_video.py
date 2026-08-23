@@ -337,7 +337,8 @@ def resolve_project_config_defaults(options: RenderVideoCompositionOptions) -> d
 
 def resolve_rolling_frames(options: RenderVideoCompositionOptions) -> tuple[int, int, bool]:
     profile_preroll, profile_tail, profile_rounding = resolve_rolling_frame_profile(
-        options.rolling_frame_profile
+        options.rolling_frame_profile,
+        video_pipeline=options.video_pipeline,
     )
     preroll = profile_preroll if options.preroll_frames is None else options.preroll_frames
     tail = profile_tail if options.tail_loss_frames is None else options.tail_loss_frames

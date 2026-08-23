@@ -457,6 +457,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             request_timeout_seconds=current_config.llm.request_timeout_seconds,
             dspy_cache=getattr(current_config.llm, "dspy_cache", False),
             max_concurrent_requests=current_config.llm.max_concurrent_requests,
+            prompt_judge_attempts=current_config.llm.prompt_judge_attempts,
         ),
         h3_prompt_builder_factory=H3PromptBuilder,
         dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(

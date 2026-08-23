@@ -21,17 +21,17 @@ DETAIL = "detail"
 T2I = "t2i"
 I2V = "i2v"
 
-_STRUCTURED = LLMTaskPolicy("structured", max_tokens=512)
+_STRUCTURED = LLMTaskPolicy("structured", max_tokens=2048)
 _CREATIVE = LLMTaskPolicy("creative", max_tokens=2048)
 
 # Concept batches return one structured value per scene. The per-scene budget
 # must be multiplied by the batch size because max_tokens limits the complete
 # response, not each item in the response. The overhead covers JSON keys and
 # delimiters; callers should not use the global llm.max_tokens for this.
-CONCEPT_PER_SCENE_TOKENS = 512
+CONCEPT_PER_SCENE_TOKENS = 2048
 CONCEPT_BATCH_JSON_OVERHEAD = 1024
 LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS = 256
-MSR_PER_RELAY_TOKENS = 512
+MSR_PER_RELAY_TOKENS = 2048
 
 # Batched tasks are budgeted by the per-call-site multiplier functions
 # (concept_batch_max_tokens / lyric_alignment_max_tokens), not by this

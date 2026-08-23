@@ -10,7 +10,6 @@ from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
     subject_directives_from_scene,
-    validate_projected_prompt,
 )
 
 
@@ -394,8 +393,9 @@ class DspyH3PromptBuilder:
         # DSPy is solely responsible for the guide-conformant prompt. Do not
         # append or repair deterministic prose after generation.
         prompt_parts = [str(prompt).strip()]
-        if directive_plan is not None:
-            validate_projected_prompt(directive_plan, prompt_parts[0])
+        # The final prompt is judged by the DSPy prompt judge. Do not apply a
+        # second deterministic semantic gate here: a rejected prompt must be
+        # persisted with the judge result so a long batch can continue.
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
@@ -406,6 +406,12 @@ class DspyH3PromptBuilder:
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):
             result["dspy_error"] = generated["dspy_error"]
+        judge = getattr(generated, "judge", None)
+        if judge is not None:
+            result["prompt_judge"] = judge.model_dump()
+        judge_attempts = getattr(generated, "judge_attempts", None)
+        if judge_attempts:
+            result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
     def build_all_h3_prompts(
@@ -423,7 +429,11 @@ class DspyH3PromptBuilder:
         reference_root: Path | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         status_callback: Callable[[int, int, str], None] | None = None,
+        warning_callback: Callable[..., None] | None = None,
     ) -> Path:
+        set_warning_callback = getattr(self.generator, "set_warning_callback", None)
+        if callable(set_warning_callback):
+            set_warning_callback(warning_callback)
         results = []
         total = len(stage1_segments)
         for current, segment in enumerate(stage1_segments, start=1):

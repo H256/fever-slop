@@ -34,6 +34,7 @@ omitted, the default shown below is used.
 | `request_timeout_seconds` | number | `180.0` | Timeout for an LLM request. |
 | `dspy_cache` | boolean | `false` | Whether DSPy may reuse cached LM responses. Set to `true` only when that behavior is wanted. |
 | `max_concurrent_requests` | integer | `1` | Process-local ceiling shared by direct OpenAI-compatible calls and DSPy/LiteLLM calls. Different values in one Python process are rejected so the shared budget stays explicit. |
+| `prompt_judge_attempts` | integer | `3` | Maximum number of final-prompt composer attempts after DSPy judge feedback. After the last bad result, the prompt and judge history are saved and rendering continues. |
 
 The API-key precedence is: process environment, `llm.api_key`, then
 `LLM_API_KEY` from the `.env` file next to `app_config.json`.

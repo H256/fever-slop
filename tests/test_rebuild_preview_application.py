@@ -117,6 +117,12 @@ class RequestRebuildUseCaseTests(unittest.TestCase):
         self.assertEqual(len(executor.requests), 1)
         self.assertEqual(executor.requests[0][0], "test")
 
+    def test_constructor_rejects_executor_without_request_rebuild(self):
+        with self.assertRaisesRegex(TypeError, "request_rebuild"):
+            RequestRebuildUseCase(executor=object())
+        with self.assertRaisesRegex(TypeError, "request_rebuild"):
+            RequestRebuildUseCase(executor=None)
+
     def test_empty_change_no_rebuild(self):
         use_case = PreviewRebuildUseCase()
         change = ChangeSet.empty()

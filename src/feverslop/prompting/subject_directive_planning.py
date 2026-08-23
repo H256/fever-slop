@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+import json
+import ast
 from typing import Any
 
 from feverslop.domain.subject_directives import (
@@ -41,19 +43,99 @@ class DspySubjectDirectivePlanner:
         import dspy
 
         self.predictor = self.runtime.predict(build_subject_directive_signature(dspy))
-        self.lm = self.runtime.make_lm(llm)
+        # A staging plan is compact. Do not inherit a project-wide generation
+        # budget (which may be 65k+) and let one malformed scene consume the
+        # whole response or get truncated before the JSON plan is complete.
+        self.lm = self.runtime.make_lm(llm, max_tokens=4096)
+        self.last_scene: dict[str, Any] | None = None
+        self.last_output: Any = None
+        self.last_lm_history: Any = None
+        self.last_repairs: list[str] = []
 
     def plan(self, scene: Mapping[str, Any]) -> SubjectDirectivePlan:
         from feverslop.domain.llm_parsing import extract_json_object
 
-        with self.runtime.context(lm=self.lm):
-            output = self.predictor(scene=dict(scene))
+        self.last_scene = dict(scene)
+        try:
+            with self.runtime.context(lm=self.lm):
+                output = self.predictor(scene=dict(scene))
+        finally:
+            self.last_lm_history = list(getattr(self.lm, "history", []) or [])
+        self.last_output = output
         payload = output.get("staging_plan") if isinstance(output, Mapping) else getattr(output, "staging_plan", output)
+        if hasattr(payload, "model_dump"):
+            payload = payload.model_dump()
         if isinstance(payload, str):
             payload = extract_json_object(payload)
         if not isinstance(payload, Mapping):
             raise ValueError("DSPy subject planner returned no structured staging plan")
-        return build_shared_staging_plan(scene, generator=lambda _payload: payload)
+        payload = _decode_nested_json(payload)
+        payload, self.last_repairs = _repair_zero_length_scopes(payload, scene)
+        plan = build_shared_staging_plan(scene, generator=lambda _payload: payload)
+        issues = validate_subject_directive_plan(
+            plan,
+            known_subject_ids=scene.get("allowed_subject_ids") or (),
+            known_environment_ids=scene.get("allowed_environment_ids") or (),
+            known_prop_ids=scene.get("allowed_prop_ids") or (),
+        )
+        if issues:
+            raise ValueError("Invalid subject staging: " + "; ".join(issues))
+        return plan
+
+
+def _decode_nested_json(value: Any) -> Any:
+    """Normalize DSPy JSON fields that LiteLLM may deserialize only partially."""
+    if isinstance(value, Mapping):
+        return {key: _decode_nested_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_decode_nested_json(item) for item in value]
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate[:1] in "[{":
+            try:
+                return _decode_nested_json(json.loads(candidate))
+            except json.JSONDecodeError:
+                try:
+                    return _decode_nested_json(ast.literal_eval(candidate))
+                except (SyntaxError, ValueError):
+                    pass
+    return value
+
+
+def _repair_zero_length_scopes(
+    payload: Mapping[str, Any], scene: Mapping[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """Repair only the unambiguous model error of a zero-length full-shot scope."""
+    duration = float(scene.get("duration_seconds") or scene.get("duration") or 1)
+    result = dict(payload)
+    repairs: list[str] = []
+
+    def repair_scope(scope: Any, label: str) -> dict[str, Any] | Any:
+        if not isinstance(scope, Mapping):
+            return scope
+        try:
+            start = float(scope.get("start_seconds"))
+            end = float(scope.get("end_seconds"))
+        except (TypeError, ValueError):
+            return scope
+        if start == 0 and end == 0:
+            repairs.append(f"{label}: temporal_scope 0..0s -> 0..{duration:g}s")
+            return {"start_seconds": 0, "end_seconds": duration}
+        return scope
+
+    result["temporal_scope"] = repair_scope(result.get("temporal_scope"), "plan")
+    subjects = []
+    for item in result.get("subjects") or ():
+        if not isinstance(item, Mapping):
+            subjects.append(item)
+            continue
+        subject = dict(item)
+        subject_id = str(subject.get("subject_id") or "unknown")
+        subject["temporal_scope"] = repair_scope(subject.get("temporal_scope"), subject_id)
+        subjects.append(subject)
+    if "subjects" in result:
+        result["subjects"] = subjects
+    return result, repairs
 
 
 def build_shared_staging_plan(
@@ -72,7 +154,8 @@ def build_shared_staging_plan(
         if isinstance(generated, SubjectDirectivePlan):
             return generated
         if isinstance(generated, Mapping):
-            return SubjectDirectivePlan.from_dict(generated.get("subject_directives", generated))
+            payload = generated.get("subject_directives", generated)
+            return SubjectDirectivePlan.from_dict(payload)
 
     duration = float(scene.get("duration_seconds") or scene.get("duration") or 1)
     scope = TemporalScope(0, duration)

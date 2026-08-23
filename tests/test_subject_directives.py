@@ -4,6 +4,7 @@ from feverslop.domain.render_plan import RenderPlan
 from feverslop.application.render_plan_validation import validate_render_plan_subject_directives
 from feverslop.domain.subject_directives import (
     PROP_STATES,
+    SpatialRelation,
     SubjectDirective,
     SubjectDirectivePlan,
     TemporalScope,
@@ -41,7 +42,7 @@ class SubjectDirectiveContractTests(unittest.TestCase):
         self.assertIsNone(plan.scenes[0].subject_directive_plan)
         self.assertEqual(scene, plan.to_dicts()[0])
 
-    def test_rejects_unknown_ids_duplicate_subjects_and_invalid_props(self):
+    def test_rejects_duplicate_subjects_and_invalid_props(self):
         plan = SubjectDirectivePlan(
             shot_id="shot-1",
             temporal_scope=TemporalScope(0, 4),
@@ -54,7 +55,54 @@ class SubjectDirectiveContractTests(unittest.TestCase):
             plan, known_subject_ids={"drummer"}, known_prop_ids={"microphone"}
         )
         self.assertTrue(any("duplicate subject" in issue for issue in issues))
-        self.assertTrue(any("Unknown subject ID" in issue for issue in issues))
+        self.assertFalse(any("Unknown subject ID" in issue for issue in issues))
+
+    def test_allows_explicit_environment_subjects_alongside_referenced_actors(self):
+        plan = SubjectDirectivePlan(
+            shot_id="shot-1",
+            temporal_scope=TemporalScope(0, 4),
+            subjects=(
+                SubjectDirective(
+                    "singer", "singer", "front", "sings", temporal_scope=TemporalScope(0, 4)
+                ),
+                SubjectDirective(
+                    "stage_haze",
+                    "atmospheric effect",
+                    "background",
+                    "drifts",
+                    temporal_scope=TemporalScope(0, 4),
+                ),
+            ),
+        )
+        issues = validate_subject_directive_plan(
+            plan,
+            known_subject_ids={"singer"},
+            known_environment_ids={"festival_stage"},
+        )
+        self.assertEqual([], issues)
+
+    def test_keeps_relation_consistency_checks_without_semantic_id_lists(self):
+        plan = SubjectDirectivePlan(
+            shot_id="shot-1",
+            temporal_scope=TemporalScope(0, 4),
+            subjects=(
+                SubjectDirective(
+                    "singer", "singer", "stage", "sings", temporal_scope=TemporalScope(0, 4)
+                ),
+                SubjectDirective(
+                    "front_row_crowd",
+                    "ambient_population",
+                    "foreground",
+                    "cheers",
+                    temporal_scope=TemporalScope(0, 4),
+                ),
+            ),
+            spatial_relations=(
+                SpatialRelation("white_light_and_fog", "framing", "singer"),
+            ),
+        )
+        issues = validate_subject_directive_plan(plan, known_subject_ids={"singer"})
+        self.assertFalse(any("Unknown subject ID" in issue for issue in issues))
 
     def test_rejects_incomplete_temporal_coverage_and_contradictory_relations(self):
         plan = SubjectDirectivePlan.from_dict(
@@ -83,13 +131,13 @@ class SubjectDirectiveContractTests(unittest.TestCase):
 
     def test_render_plan_validation_skips_legacy_and_rejects_directive_errors(self):
         validate_render_plan_subject_directives([{"scene": 1, "h3": {"prompt": "legacy"}}], render_plan_path="legacy.json")
-        with self.assertRaisesRegex(ValueError, "Unknown subject ID"):
+        with self.assertRaisesRegex(ValueError, "needs position and action"):
             validate_render_plan_subject_directives(
                 [{
                     "scene": 2,
                     "subject_directives": SubjectDirectivePlan(
                         shot_id="shot-2", temporal_scope=TemporalScope(0, 1),
-                        subjects=(SubjectDirective("missing", "role", "front", "acts", temporal_scope=TemporalScope(0, 1)),),
+                        subjects=(SubjectDirective("missing", "role", "", "", temporal_scope=TemporalScope(0, 1)),),
                     ).to_dict(),
                 }],
                 known_subject_ids=("known",),

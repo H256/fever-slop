@@ -11,6 +11,7 @@ from feverslop.domain.subject_directives import (
     TemporalScope,
 )
 from feverslop.prompting.subject_directive_planning import (
+    DspySubjectDirectivePlanner,
     build_shared_staging_plan,
     SubjectDirectivePlanner,
     project_directives_to_prompt,
@@ -74,6 +75,46 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
         self.assertIn("concept", calls[0]["scene"])
         self.assertEqual("singer", plan.subjects[0].subject_id)
+
+    def test_planner_rejects_zero_length_model_scopes(self):
+        with self.assertRaisesRegex(ValueError, "temporal scope requires"):
+            SubjectDirectivePlanner(predictor=lambda _payload: {
+                "shot_id": "shot-1",
+                "temporal_scope": {"start_seconds": 0, "end_seconds": 0},
+                "subjects": [{
+                    "subject_id": "singer", "role": "singer", "position": "front",
+                    "action": "sings", "temporal_scope": {"start_seconds": 0, "end_seconds": 0},
+                }],
+            }).plan({"shot_id": "shot-1", "duration_seconds": 4})
+
+    def test_dspy_planner_decodes_nested_json_fields(self):
+        class Runtime:
+            def predict(self, _signature):
+                return lambda **_kwargs: {
+                    "staging_plan": {
+                        "schema_version": "subject-directives/v1",
+                        "shot_id": "shot-1",
+                        "temporal_scope": '{"start_seconds": 0, "end_seconds": 0}',
+                        "subjects": '[{"subject_id":"singer","role":"singer","position":"front","action":"sings","temporal_scope":{"start_seconds":0,"end_seconds":0}}]',
+                        "spatial_relations": "[]",
+                    }
+                }
+
+            def make_lm(self, _llm, **_kwargs):
+                return object()
+
+            def context(self, **_kwargs):
+                from contextlib import nullcontext
+                return nullcontext()
+
+        with patch("dspy.Module", object):
+            with patch("feverslop.prompting.dspy_subject_directive_signatures.build_subject_directive_signature", return_value=object()):
+                planner = DspySubjectDirectivePlanner(object(), dspy_runtime=Runtime())
+        plan = planner.plan({"shot_id": "shot-1", "duration_seconds": 2})
+        self.assertEqual("singer", plan.subjects[0].subject_id)
+        self.assertEqual(2, plan.temporal_scope.end_seconds)
+        self.assertEqual(2, plan.subjects[0].temporal_scope.end_seconds)
+        self.assertEqual(2, len(planner.last_repairs))
 
     def test_projection_is_explicit_and_backend_neutral(self):
         text = project_directives_to_prompt(_plan())
@@ -171,6 +212,49 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
             )
         self.assertEqual("scene-47-shot-1", store.payload[0]["subject_directives"]["shot_id"])
         planner_type.assert_called_once()
+
+    def test_subject_staging_retry_uses_rich_panel_output(self):
+        generated = _plan()
+
+        class Store:
+            def read_json(self, _path):
+                return [{"segment_id": "seg-1"}]
+
+            def write_json(self, _path, _payload):
+                pass
+
+        class LLM:
+            model = "test-model"
+            client = object()
+
+        class Reporter:
+            def __init__(self):
+                self.warnings = []
+                self.messages = []
+
+            def warning(self, text, *, title=None):
+                self.warnings.append((title, text))
+
+            def message(self, text):
+                self.messages.append(text)
+
+        reporter = Reporter()
+        with patch(
+            "feverslop.application.prompt_generation_pipeline.DspySubjectDirectivePlanner"
+        ) as planner_type:
+            planner_type.return_value.plan.side_effect = [ValueError("malformed scope"), generated]
+            PromptGenerationPipeline._generate_subject_directives(
+                llm=LLM(), stage1_segments=[{"segment_id": "seg-1"}],
+                concept_prompts={}, scene_details={}, global_context={},
+                scene_prompts_json="scene-prompts.json", artifact_store=Store(),
+                reporter=reporter,
+            )
+
+        self.assertEqual(1, len(reporter.warnings))
+        title, text = reporter.warnings[0]
+        self.assertIn("Subject staging", title)
+        self.assertIn("Retry 2/3", title)
+        self.assertIn("malformed scope", text)
 
 
 if __name__ == "__main__":

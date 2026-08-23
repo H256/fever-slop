@@ -46,7 +46,7 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         self.assertEqual({"segment_001": "A forest path."}, result)
         self.assertIn("location_constraint", calls[0]["guide"])
         self.assertIn("CURRENT_BATCH_SEGMENTS", calls[0]["payload"])
-        self.assertEqual(512, calls[0]["config"]["max_tokens"])
+        self.assertEqual(2048, calls[0]["config"]["max_tokens"])
 
     def test_batched_concepts_scale_output_limit_per_segment(self):
         calls = []
@@ -74,7 +74,7 @@ class MusicVideoDspyContractTests(unittest.TestCase):
             batch=True,
         )
 
-        self.assertEqual(6144, calls[0]["config"]["max_tokens"])
+        self.assertEqual(21504, calls[0]["config"]["max_tokens"])
 
     def test_legacy_concepts_scale_output_limit_by_timeline_size(self):
         calls = []
@@ -98,7 +98,7 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
         modules.concepts({"SEGMENT_TIMELINE_JSON": [{"segment_id": str(i)} for i in range(10)]})
 
-        self.assertEqual(6144, calls[0]["config"]["max_tokens"])
+        self.assertEqual(21504, calls[0]["config"]["max_tokens"])
 
     def test_dspy_predictor_receives_caller_timeout_as_lm_config(self):
         calls = []
