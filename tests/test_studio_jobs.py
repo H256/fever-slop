@@ -79,10 +79,10 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
                 preflight_mode="strict",
             )
             with patch(
-                "feverslop.studio.jobs.AppConfig.load",
+                "feverslop.composition.job_runtime.AppConfig.load",
                 return_value=AppConfig.load(app_path),
             ), patch(
-                "feverslop.studio.jobs.preflight_visual_consistency",
+                "feverslop.composition.job_runtime.preflight_visual_consistency",
                 return_value=VisualConsistencyPreflightResult((), ()),
             ) as preflight:
                 result = action.build("demo", request, {})(lambda _message: None)
@@ -138,9 +138,9 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
             action = service.registry.resolve(request.action)
             before = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
             with patch(
-                "feverslop.studio.jobs.subprocess.run",
+                "feverslop.composition.job_runtime.subprocess.run",
             ) as subprocess_run, patch(
-                "feverslop.studio.jobs.pipeline_runner.run",
+                "feverslop.composition.job_runtime.pipeline_runner.run",
             ) as gpu_pipeline:
                 result = action.build("demo", request, {})(lambda _message: None)
             after = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
@@ -213,11 +213,11 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
             }
 
             with patch(
-                "feverslop.studio.jobs.ProjectConfig.load",
+                "feverslop.composition.job_runtime.ProjectConfig.load",
             ) as config_load, patch(
-                "feverslop.studio.jobs.ProjectReferenceManifestAdapter",
+                "feverslop.composition.job_runtime.ProjectReferenceManifestAdapter",
             ) as manifest_adapter, patch(
-                "feverslop.studio.jobs.subprocess.run",
+                "feverslop.composition.job_runtime.subprocess.run",
             ) as subprocess_run:
                 result = action.build("demo", request, {})(lambda _message: None)
             after = {
