@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  checks:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -23,11 +23,14 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install locked dependencies
         run: uv sync --frozen --extra test
 
       - name: Lint
         run: uv run --with ruff ruff check .
 
-      - name: Run tests
-        run: uv run python -m unittest discover -s tests
+      - name: Run unit tests
+        run: uv run python -m tests.suites.unit
