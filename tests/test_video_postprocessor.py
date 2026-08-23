@@ -1,7 +1,7 @@
-﻿import unittest
-from pathlib import Path
-import subprocess
+﻿import subprocess
 import tempfile
+import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
@@ -272,7 +272,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
             run.side_effect = [None, frame_count_result, None]
             outputs = processor.extract_first_and_last_frames(
-                "scene.mp4", "firstframe.png", "lastframe.png"
+                "scene.mp4", "firstframe.png", "lastframe.png",
             )
 
         self.assertEqual((Path("firstframe.png"), Path("lastframe.png")), outputs)

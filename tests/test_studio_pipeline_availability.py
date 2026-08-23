@@ -93,7 +93,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
             plans = root / "output" / "render" / "plans"
             plans.mkdir(parents=True)
             (plans / "references.json").write_text(
-                '[{"scene": 1}, {"scene": 3}]', encoding="utf-8"
+                '[{"scene": 1}, {"scene": 3}]', encoding="utf-8",
             )
 
             actions = {item["value"]: item for item in pipeline_action_availability(root)}
@@ -111,7 +111,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
             plans = root / "output" / "render" / "plans"
             plans.mkdir(parents=True)
             (plans / "references.json").write_text(
-                '[{"scene": 1}, {"scene": 3}]', encoding="utf-8"
+                '[{"scene": 1}, {"scene": 3}]', encoding="utf-8",
             )
             for scene in (1, 3):
                 prepared = root / "output" / "render" / "scenes" / f"scene_{scene:04d}"

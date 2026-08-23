@@ -20,7 +20,11 @@ from feverslop.domain.security import (
     sanitize_path_component,
 )
 from feverslop.path_utils import coerce_local_path
-from feverslop.studio.projects import ProjectCreateRequest, ProjectStore, StudioPathError
+from feverslop.studio.projects import (
+    ProjectCreateRequest,
+    ProjectStore,
+    StudioPathError,
+)
 
 
 class SecurityAuditTests(unittest.TestCase):
@@ -225,7 +229,7 @@ class PathContainmentTests(unittest.TestCase):
             store = ProjectStore(Path(tmp))
             # Create a real project
             store.create_project(
-                ProjectCreateRequest(project_type="standard_music_video", name="Test")
+                ProjectCreateRequest(project_type="standard_music_video", name="Test"),
             )
             # Try to resolve a path that escapes project root
             with self.assertRaises(StudioPathError):

@@ -416,7 +416,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
                 any(
                     "H3 structured prompts will be generated after reference sheets" in message
                     for message in reporter.messages
-                )
+                ),
             )
             self.assertFalse(any("I2V" in step for step in reporter.steps))
             self.assertTrue(any("Scene prompt pack finished" in message for message in reporter.messages))
@@ -469,14 +469,14 @@ def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanCo
                 ltx="",
                 final_prompts="",
             ),
-            prompt_guidance=SimpleNamespace(as_prompt_context=lambda: {}),
+            prompt_guidance=SimpleNamespace(as_prompt_context=dict),
         ),
         app_config=SimpleNamespace(llm=SimpleNamespace(
             base_url="http://fake",
             model="fake",
             temperature=0,
             max_tokens=100,
-            request_timeout_seconds=180.0
+            request_timeout_seconds=180.0,
         )),
         stage1_segments=[
             {
@@ -484,7 +484,7 @@ def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanCo
                 "scene": 1,
                 "type": "vocals",
                 "lyrics": "line",
-            }
+            },
         ],
         artifact_store=FakeArtifactStore(),
         console=FakeConsole(),

@@ -9,11 +9,11 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from feverslop.adapters.pipeline_runner_options import build_runner_argv
-from feverslop.composition.arg_parser import build_arg_parser as build_pipeline_parser
-from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
 )
+from feverslop.composition.arg_parser import build_arg_parser as build_pipeline_parser
+from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.tools.visual_consistency_preflight import (
     build_arg_parser,
     main,
@@ -29,7 +29,7 @@ class VisualConsistencyCliTests(unittest.TestCase):
             plan = project / "output/render/plans/ingredients.json"
             scenes = json.loads(plan.read_text(encoding="utf-8"))
             scenes[0]["visual_consistency"] = {
-                "workflow_profile": "custom-msr"
+                "workflow_profile": "custom-msr",
             }
             plan.write_text(json.dumps(scenes), encoding="utf-8")
             app_config = root / "app.json"
@@ -43,7 +43,7 @@ class VisualConsistencyCliTests(unittest.TestCase):
                     "output_scale": 1.0,
                     "supports_per_pass_loras": False,
                     "supports_start_frame": True,
-                }]
+                }],
             }), encoding="utf-8")
 
             with patch(
@@ -58,7 +58,7 @@ class VisualConsistencyCliTests(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertEqual("custom-msr", preflight.call_args.kwargs["workflow_profile"])
         self.assertTrue(
-            preflight.call_args.kwargs["supports_continuous_transitions"]
+            preflight.call_args.kwargs["supports_continuous_transitions"],
         )
 
     def test_structured_plan_rejects_mixed_stored_profiles(self):
@@ -271,7 +271,7 @@ class VisualConsistencyCliTests(unittest.TestCase):
         cli_args = build_arg_parser().parse_args(["demo", "--preflight-mode", "strict"])
         pipeline_default = build_pipeline_parser().parse_args([])
         pipeline_strict = build_pipeline_parser().parse_args(
-            ["--visual-consistency-preflight", "strict"]
+            ["--visual-consistency-preflight", "strict"],
         )
 
         self.assertIs(PreflightMode.STRICT, cli_args.preflight_mode)
@@ -313,7 +313,7 @@ class VisualConsistencyCliTests(unittest.TestCase):
                 "--json",
             ]
             with patch("sys.argv", argv), redirect_stdout(output), self.assertRaises(
-                SystemExit
+                SystemExit,
             ) as exited:
                 main()
             after = self._snapshot(project)

@@ -13,7 +13,9 @@ class TestMovieH3Preparation(unittest.TestCase):
         self.assertIn("Movie MiniMax H3 render", titles)
 
     def test_preparation_reuses_current_plan_without_building_dspy(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -39,7 +41,9 @@ class TestMovieH3Preparation(unittest.TestCase):
             self.assertIn("subject_definitions", result.read_text(encoding="utf-8"))
 
     def test_preparation_writes_h3_scene_list_when_missing(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -63,7 +67,9 @@ class TestMovieH3Preparation(unittest.TestCase):
             self.assertEqual("six sections", payload[0]["h3"]["prompt"])
 
     def test_preparation_reports_each_completed_scene(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -97,7 +103,9 @@ class TestMovieH3Preparation(unittest.TestCase):
             self.assertEqual([(1, 2, 1), (2, 2, 2)], progress)
 
     def test_preparation_reports_scene_before_building_prompt(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -126,7 +134,9 @@ class TestMovieH3Preparation(unittest.TestCase):
             self.assertEqual([(1, 1, 1), "built"], events)
 
     def test_preparation_rebuilds_legacy_hybrid_prompt(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -156,7 +166,9 @@ class TestMovieH3Preparation(unittest.TestCase):
             self.assertNotIn("Reference files:", prompt)
 
     def test_preparation_rebuilds_malformed_cached_scene(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -182,7 +194,9 @@ class TestMovieH3Preparation(unittest.TestCase):
             self.assertEqual("six sections", payload[0]["h3"]["prompt"])
 
     def test_preparation_rebuilds_cached_scene_with_malformed_h3(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)

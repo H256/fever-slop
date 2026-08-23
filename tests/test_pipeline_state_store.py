@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+import gc
 import json
-from pathlib import Path
 import tempfile
 import threading
 import time
-import gc
 import unittest
 import weakref
+from pathlib import Path
 from unittest.mock import patch
 
-from feverslop.studio.pipeline_state_store import PipelineStateStore
 from feverslop.studio import pipeline_state_store
+from feverslop.studio.pipeline_state_store import PipelineStateStore
 
 
 class PipelineStateStoreTests(unittest.TestCase):
@@ -53,8 +53,8 @@ class PipelineStateStoreTests(unittest.TestCase):
                             "diagnostic_scene_audio_concat",
                             "facefix",
                             "facefix_concat",
-                        ]
-                    }
+                        ],
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -104,7 +104,7 @@ class PipelineStateStoreTests(unittest.TestCase):
                 thread.join(2.0)
 
             state = json.loads(
-                (root / ".studio" / "pipeline_state.json").read_text(encoding="utf-8")
+                (root / ".studio" / "pipeline_state.json").read_text(encoding="utf-8"),
             )
 
         self.assertEqual({"stage-one", "stage-two"}, set(state["completed_stages"]))
@@ -145,7 +145,7 @@ class PipelineStateStoreTests(unittest.TestCase):
                 thread.join(2.0)
 
             state = json.loads(
-                (root / ".studio" / "pipeline_state.json").read_text(encoding="utf-8")
+                (root / ".studio" / "pipeline_state.json").read_text(encoding="utf-8"),
             )
 
         self.assertEqual({"stage-one", "stage-two"}, set(state["completed_stages"]))

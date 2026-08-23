@@ -2,8 +2,11 @@
 
 import unittest
 from unittest.mock import MagicMock
+
 import numpy as np
 
+from feverslop.adapters.face_mask import MaskValidationResult
+from feverslop.application.face_pipeline import FacePipeline
 from feverslop.domain.face_detection import (
     BoundingBox,
     FaceDetection,
@@ -11,8 +14,6 @@ from feverslop.domain.face_detection import (
     FaceProcessingPolicy,
     RejectReason,
 )
-from feverslop.adapters.face_mask import MaskValidationResult
-from feverslop.application.face_pipeline import FacePipeline
 
 
 class FakeDetectorPort:
@@ -122,7 +123,7 @@ class TestFacePipeline(unittest.TestCase):
             mask_port=FakeMaskPort(),
             debug_port=None,
             policy=FaceProcessingPolicy(
-                track_confirmation_frames=3, debug_output=False
+                track_confirmation_frames=3, debug_output=False,
             ),
         )
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)

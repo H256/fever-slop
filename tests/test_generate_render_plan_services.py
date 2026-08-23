@@ -3,7 +3,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
-from feverslop.application.generate_render_plan import GenerateRenderPlanExecutionRequest, GenerateRenderPlanUseCase
+from feverslop.application.generate_render_plan import (
+    GenerateRenderPlanExecutionRequest,
+    GenerateRenderPlanUseCase,
+)
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
@@ -283,7 +286,7 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
                 RecordingService(
                     "render_plan",
                     {"render_plan": [{"scene": 1, "frame_count": 24, "duration_seconds": 1.0}]},
-                )
+                ),
             ]
             config = SimpleNamespace(
                 project_name="demo",

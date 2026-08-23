@@ -1,25 +1,22 @@
+import tempfile
 import unittest
 from importlib.resources import files
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.prompting.dspy_h3_prompt_builder import (
-    DspyH3PromptBuilder,
-    _format_relay_shots,
-    _normalize_relay_segments,
-    _scene_references,
-)
 from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
+from feverslop.prompting.dspy_h3_generator_core import (
+    VideoPromptGenerator as CoreVideoPromptGenerator,
+)
 from feverslop.prompting.dspy_h3_models import (
     MusicIntent,
     PlannedShot,
     PlannedSubject,
-    PromptPlan,
     PromptMode,
+    PromptPlan,
     ReferenceAsset,
     ReferenceKind,
     ReferenceLimits,
@@ -31,7 +28,12 @@ from feverslop.prompting.dspy_h3_models import (
     SubjectDefinition,
     VideoPromptRequest,
 )
-from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator as CoreVideoPromptGenerator
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    _format_relay_shots,
+    _normalize_relay_segments,
+    _scene_references,
+)
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
 
 
@@ -152,7 +154,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                         "name": "Ancient Forest",
                         "visual_description": "A dark ancient forest.",
                     },
-                }
+                },
             },
             None,
             None,
@@ -170,7 +172,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                     "actor_ids": [],
                     "actor_msr_paths": ["stale-singer.png"],
                     "location_msr_path": "crowd.png",
-                }
+                },
             },
             None,
             None,
@@ -191,7 +193,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                             "output/stems/vocals.wav",
                             "input/song.wav",
                         ],
-                    }
+                    },
                 },
                 {"vocals": vocal, "full_mix": full_mix},
                 root,
@@ -288,7 +290,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                         "actor_msr_paths": ["actor.png"],
                         "actor_ids": ["leo"],
                         "actor_reference_descriptions": [{"id": "leo"}],
-                    }
+                    },
                 },
                 None,
                 root,
@@ -356,7 +358,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 "prompt_relay": [
                     {"frame_start": 36, "frame_end": 153, "state": "vocals", "prompt": "The singer turns."},
                     {"frame_start": 153, "frame_end": 240, "state": "instrumental", "prompt": "The camera pulls back."},
-                ]
+                ],
             },
         }
 
@@ -767,7 +769,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             return type("Output", (), {
                 "summary": f"{subject} performs.",
                 "retention_analysis": [RetentionAnalysis(
-                    target_label="<Subject 1>", mode="fully_preserved", details="stable"
+                    target_label="<Subject 1>", mode="fully_preserved", details="stable",
                 )],
                 "detailed_description": f"{subject} performs on beat.",
                 "overall_soundscape": "Music.",
@@ -811,7 +813,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             return type("Output", (), {
                 "summary": "<Subject 1> is shown.",
                 "retention_analysis": [RetentionAnalysis(
-                    target_label="<Subject 1>", mode="fully_preserved", details="stable"
+                    target_label="<Subject 1>", mode="fully_preserved", details="stable",
                 )],
                 "detailed_description": description,
                 "overall_soundscape": "Instrumental music.",
@@ -902,7 +904,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                     "actor_ids": ["actor"],
                     "actor_msr_paths": ["actor.png"],
                     "location_msr_path": "location.png",
-                }
+                },
             },
             {"vocals": Path("vocals.wav")},
             None,
@@ -924,7 +926,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                     "actor_msr_paths": ["actor.png"],
                     "location_id": "forest",
                     "location_msr_path": "forest.png",
-                }
+                },
             },
             {"vocals": Path("vocals.wav"), "full_mix": Path("full_mix.wav")},
             None,

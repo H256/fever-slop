@@ -7,7 +7,10 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
+from feverslop.application.render_video import (
+    RenderVideoScenesRequest,
+    RenderVideoScenesUseCase,
+)
 from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
     build_render_video_scenes_use_case,
@@ -96,7 +99,7 @@ class MiniMaxH3RenderContractTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "rendered",
                     upload_audio=False,
-                )
+                ),
             )
 
             self.assertEqual(2, len(rendered))
@@ -124,9 +127,9 @@ class MiniMaxH3RenderContractTests(unittest.TestCase):
                     output_dir=temp / "rendered",
                     upload_audio=False,
                     on_scene_complete=lambda output, completed, total: progress.append(
-                        (output.name, completed, total)
+                        (output.name, completed, total),
                     ),
-                )
+                ),
             )
 
             self.assertEqual(
@@ -155,7 +158,7 @@ class MiniMaxH3RenderContractTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "rendered",
                     upload_audio=False,
-                )
+                ),
             )
 
             self.assertEqual([existing], rendered)

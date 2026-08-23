@@ -246,6 +246,7 @@ class RunnerArgumentsTests(unittest.TestCase):
 
 class MockFullAuto:
     """Minimal mock for validate_full_auto_inputs checks."""
+
     duration_seconds = 4.0
     width = 1344
     height = 768
@@ -255,6 +256,7 @@ class MockFullAuto:
 
 class MockAppConfig:
     """Minimal mock AppConfig that satisfies the pipeline render function."""
+
     def __init__(self, path):
         self.comfyui = MagicMock()
         self.comfyui.base_url = "http://localhost:8188"
@@ -265,6 +267,7 @@ class MockAppConfig:
 
 class MockProjectConfig:
     """Minimal mock ProjectConfig that satisfies the pipeline render function."""
+
     def __init__(self, path):
         self.project_dir = "/tmp/test_project"
         self.scene_generation = MagicMock()

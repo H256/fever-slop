@@ -1,21 +1,22 @@
-import unittest
-import json
 import io
+import json
 import os
-from pathlib import Path
 import sys
 import tempfile
+import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from rich.console import Console
 
-from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
-from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
-from feverslop.prompting.msr_signatures import MSRPromptResult
-
-from tools.repair_scene_srt import main as repair_scene_srt_main
 import movie_pipeline
 import run_pipeline
+from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+from feverslop.application.msr_prompt_enrichment import (
+    enrich_render_plan_with_msr_prompts,
+)
+from feverslop.prompting.msr_signatures import MSRPromptResult
+from tools.repair_scene_srt import main as repair_scene_srt_main
 
 
 class RunnerScriptTests(unittest.TestCase):
@@ -153,7 +154,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "--skip-final-concat",
                 "--diagnostic-original-audio-mux",
                 "--no-original-audio-mux",
-            ]
+            ],
         )
 
         self.assertEqual("projects/song", args.project_root)
@@ -246,7 +247,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "--write-debug-workflows",
                 "--debug-workflows-dir",
                 "debug/workflows",
-            ]
+            ],
         )
 
         self.assertEqual("projects/tm3", args.project_dir)
@@ -285,7 +286,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "last-to-start",
                 "--msr-workflow",
                 "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json",
-            ]
+            ],
         )
 
         config = movie_pipeline.config_from_args(args)
@@ -299,7 +300,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "projects/demo",
                 "--movie-video-workflow",
                 "i2v-edit",
-            ]
+            ],
         )
 
         config = movie_pipeline.config_from_args(args)
@@ -316,7 +317,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "projects/demo",
                 "--movie-video-workflow",
                 "startframe-director",
-            ]
+            ],
         )
 
         config = movie_pipeline.config_from_args(args)
@@ -345,7 +346,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "http://your-llm-server.local/v1/",
                 "--startframe-validator-model",
                 "gemma4-26b-a4b",
-            ]
+            ],
         )
 
         config = movie_pipeline.config_from_args(args)
@@ -362,7 +363,7 @@ class RunnerScriptTests(unittest.TestCase):
                 "startframe-director",
                 "--startframe-director-backend",
                 "ideogram",
-            ]
+            ],
         )
 
         config = movie_pipeline.config_from_args(args)
@@ -383,8 +384,8 @@ class RunnerScriptTests(unittest.TestCase):
                         "--render-backend",
                         "local",
                         "--skip-movie-render",
-                    ]
-                )
+                    ],
+                ),
             )
 
             manifest = json.loads((project / "movie" / "references" / "manifest.json").read_text(encoding="utf-8"))
@@ -409,14 +410,14 @@ class RunnerScriptTests(unittest.TestCase):
                             "--render-backend",
                             "local",
                             "--skip-movie-references",
-                        ]
-                    )
+                        ],
+                    ),
                 )
 
             self.assertEqual(project / "output" / "movie" / "test-movie.mp4", result.final_video_path)
             self.assertTrue(result.final_video_path.exists())
             self.assertTrue(
-                any("Rendered movie clip 1/" in str(call.args[0]) for call in print_mock.call_args_list)
+                any("Rendered movie clip 1/" in str(call.args[0]) for call in print_mock.call_args_list),
             )
 
     def test_movie_pipeline_uses_deterministic_enrichment_without_llm_config(self):
@@ -429,7 +430,7 @@ class RunnerScriptTests(unittest.TestCase):
                     str(project), "--app-config", str(root / "missing-app-config.json"),
                     "--reference-backend", "local", "--render-backend", "local",
                     "--skip-movie-references",
-                ])
+                ]),
             )
 
             self.assertTrue(result.render_plan_msr_path.is_file())
@@ -458,8 +459,8 @@ class RunnerScriptTests(unittest.TestCase):
                         "--skip-movie-continuity",
                         "--skip-movie-plan",
                         "--skip-movie-references",
-                    ]
-                )
+                    ],
+                ),
             )
 
             self.assertEqual(project / "movie" / "visual_plan.json", result.visual_plan_path)
@@ -491,8 +492,8 @@ class RunnerScriptTests(unittest.TestCase):
                         "--skip-movie-continuity",
                         "--skip-movie-plan",
                         "--skip-movie-references",
-                    ]
-                )
+                    ],
+                ),
             )
 
             self.assertEqual(project / "movie" / "identity_ledger.json", result.identity_ledger_path)
@@ -533,8 +534,8 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-plan",
                             "--skip-movie-references",
                             "--skip-openshot-export",
-                        ]
-                    )
+                        ],
+                    ),
                 )
 
             output = buffer.getvalue()
@@ -573,8 +574,8 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-plan",
                             "--skip-movie-references",
                             "--skip-openshot-export",
-                        ]
-                    )
+                        ],
+                    ),
                 )
 
             output = buffer.getvalue()
@@ -627,8 +628,8 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-plan",
                             "--skip-movie-references",
                             "--skip-openshot-export",
-                        ]
-                    )
+                        ],
+                    ),
                 )
             output = buffer.getvalue()
 
@@ -681,8 +682,8 @@ class RunnerScriptTests(unittest.TestCase):
                             "--skip-movie-plan",
                             "--skip-movie-references",
                             "--skip-openshot-export",
-                        ]
-                    )
+                        ],
+                    ),
                 )
             output = buffer.getvalue()
 
@@ -730,8 +731,8 @@ class RunnerScriptTests(unittest.TestCase):
                             "--write-debug-workflows",
                             "--debug-workflows-dir",
                             str(debug_dir),
-                        ]
-                    )
+                        ],
+                    ),
                 )
 
         config = builder.call_args.args[1]
@@ -799,8 +800,8 @@ class RunnerScriptTests(unittest.TestCase):
                             "--write-debug-workflows",
                             "--debug-workflows-dir",
                             str(debug_dir),
-                        ]
-                    )
+                        ],
+                    ),
                 )
 
             self.assertEqual(captured["workflow_path"], captured["single_prompt_workflow_path"])
@@ -829,7 +830,7 @@ class RunnerScriptTests(unittest.TestCase):
                         "--debug-workflows-dir",
                         str(debug_dir),
                         "--skip-movie-render",
-                    ]
+                    ],
                 ))
 
     def test_movie_pipeline_cli_accepts_strict_scene_selection(self):
@@ -877,7 +878,7 @@ class RunnerScriptTests(unittest.TestCase):
                         "--debug-workflows-dir",
                         str(debug_dir),
                         "--skip-movie-render",
-                    ]
+                    ],
                 ))
             self.assertFalse((root / "debug_workflows").exists())
 
@@ -897,9 +898,9 @@ def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
                         "description": "Mara enters the archive",
                         "duration_seconds": 1,
                         "reference_ids": {"actors": ["mara"], "location": "archive"},
-                    }
+                    },
                 ],
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -914,7 +915,7 @@ def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
                     {"id": "archive", "name": "Archive", "visual_description": "dusty archive room"},
                 ],
                 "runtime_constraints": {"fps": 24},
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -936,7 +937,7 @@ def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
                 "image_prompt": "Full-body cinematic character reference sheet for Mara. gothic archivist. Four vertical panels in one image.",
                 "prompt": "Full-body cinematic character reference sheet for Mara. gothic archivist. Four vertical panels in one image.",
                 "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png" if ready else "",
-            }
+            },
         ],
         "locations": [
             {
@@ -944,7 +945,7 @@ def _write_movie_project(root: Path, *, ready: bool = False) -> Path:
                 "name": "Archive",
                 "prompt": "Archive",
                 "msr_sheet_path": "movie/references/locations/archive/views/hero.png" if ready else "",
-            }
+            },
         ],
         "generator_backend": "local" if ready else "",
     }

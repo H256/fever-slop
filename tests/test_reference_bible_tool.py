@@ -1,5 +1,5 @@
-import json
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,8 +8,12 @@ from unittest.mock import Mock, patch
 from rich.console import Console
 from rich.progress import SpinnerColumn
 
-from feverslop.tools.reference_bible import build_arg_parser, load_reference_subjects, resolve_view_names
-from feverslop.tools.reference_bible import run
+from feverslop.tools.reference_bible import (
+    build_arg_parser,
+    load_reference_subjects,
+    resolve_view_names,
+    run,
+)
 
 
 class ReferenceBibleToolTests(unittest.TestCase):
@@ -22,7 +26,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
                 "workflows/image_t2i_startframe_v1.json",
                 "--edit-workflow",
                 "workflows/image_edit_flux2_klein_1ref_v1.json",
-            ]
+            ],
         )
 
         self.assertEqual("projects/demo/config.json", args.project_config)
@@ -41,7 +45,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
                 "workflows/image_edit_flux2_klein_1ref_v1.json",
                 "--view-set",
                 "full",
-            ]
+            ],
         )
 
         self.assertEqual("full", args.view_set)
@@ -82,7 +86,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "image_prompt": "portrait"}],
                         "structured_locations": [{"id": "stage", "name": "Stage", "image_prompt": "stage"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -110,7 +114,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
                     "workflows/image_t2i_startframe_v1.json",
                     "--edit-workflow",
                     "workflows/image_edit_flux2_klein_1ref_v1.json",
-                ]
+                ],
             )
 
             with self.assertRaisesRegex(ValueError, "No reference actors or locations found"):
@@ -134,7 +138,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
                     "workflows/image_t2i_startframe_v1.json",
                     "--edit-workflow",
                     "workflows/image_edit_flux2_klein_1ref_v1.json",
-                ]
+                ],
             )
             fake_generator = Mock()
             fake_generator.view_names = ("hero", "front")
@@ -180,7 +184,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
                     "workflows/image_t2i_startframe_v1.json",
                     "--edit-workflow",
                     "workflows/image_edit_flux2_klein_1ref_v1.json",
-                ]
+                ],
             )
             fake_generator = Mock()
             fake_generator.generate_subject_bible.return_value = temp / "manifest.json"

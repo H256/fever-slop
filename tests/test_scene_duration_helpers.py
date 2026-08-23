@@ -53,7 +53,7 @@ class MergeRemainingShortScenesTests(unittest.TestCase):
         ]
         # This should terminate quickly and return a result without hanging
         result = merge_remaining_short_scenes(
-            scenes, min_duration=2.0, max_duration=3.0
+            scenes, min_duration=2.0, max_duration=3.0,
         )
         self.assertIsInstance(result, list)
         self.assertTrue(len(result) >= 1)
@@ -66,7 +66,7 @@ class MergeRemainingShortScenesTests(unittest.TestCase):
             SrtScene(scene=3, start=3.5, end=6.0, text="C"),
         ]
         result = merge_remaining_short_scenes(
-            scenes, min_duration=2.0, max_duration=4.0
+            scenes, min_duration=2.0, max_duration=4.0,
         )
         self.assertTrue(all(s.duration >= 2.0 for s in result[:-1]))
 
@@ -78,7 +78,7 @@ class SrtDomainTests(unittest.TestCase):
         self.assertAlmostEqual(61.5, parse_srt_timestamp("00:01:01,500"))
 
     def test_format_srt_timestamp_roundtrip(self):
-        from feverslop.domain.srt import parse_srt_timestamp, format_srt_timestamp
+        from feverslop.domain.srt import format_srt_timestamp, parse_srt_timestamp
         original = "01:23:45,678"
         seconds = parse_srt_timestamp(original)
         formatted = format_srt_timestamp(seconds)

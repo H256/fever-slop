@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 import shutil
+import sqlite3
 import tempfile
 import unittest
 from uuid import uuid4

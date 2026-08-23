@@ -1,8 +1,8 @@
 import hashlib
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from feverslop.adapters.project_visual_consistency import (
     ProjectReferenceManifestAdapter,
@@ -67,7 +67,7 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
                         "id": "winter",
                         "sheet_path": winter.relative_to(self.project).as_posix(),
                         "visual_description": "heavy white coat",
-                    }
+                    },
                 ],
             },
         )
@@ -104,7 +104,7 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
                     "id": "hero",
                     "msr_sheet_path": asset.relative_to(self.project).as_posix(),
                     "visual_description": "red leather jacket",
-                }
+                },
             ],
             "locations": [],
         }
@@ -116,7 +116,7 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
                 "locations": [],
                 "actors": decoded["actors"],
                 "project_type": "movie",
-            }
+            },
         )
         second = self.adapter.load("demo")
 
@@ -271,10 +271,10 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
                         "id": "hero",
                         "sheet_path": second.relative_to(self.project).as_posix(),
                         "visual_description": "blue jacket",
-                    }
+                    },
                 ],
                 "locations": [],
-            }
+            },
         )
 
         with self.assertRaisesRegex(ValueError, "Conflicting duplicate.*actor.*hero.*default"):
@@ -291,7 +291,7 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
             {
                 "actors": [item, dict(item)],
                 "locations": [],
-            }
+            },
         )
 
         with self.assertRaisesRegex(ValueError, "Duplicate.*actor.*hero.*default"):
@@ -324,7 +324,7 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
                             "id": 2,
                             "sheet_path": asset.relative_to(self.project).as_posix(),
                             "visual_description": "winter hero",
-                        }
+                        },
                     ],
                 },
                 "look id.*string",
@@ -354,10 +354,10 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
                         "id": "hero",
                         "sheet_path": asset.relative_to(self.project).as_posix(),
                         "visual_description": "red jacket",
-                    }
+                    },
                 ],
                 "locations": [],
-            }
+            },
         )
 
         with self.assertRaises(ValueError) as caught:

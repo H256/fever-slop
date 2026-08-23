@@ -23,10 +23,10 @@ class FakeComfyUIClient:
                             "filename": "Joy_Demo.mp3",
                             "subfolder": "audio",
                             "type": "output",
-                        }
-                    ]
-                }
-            }
+                        },
+                    ],
+                },
+            },
         }
 
     def extract_output_files(self, history):
@@ -40,7 +40,7 @@ class FakeComfyUIClient:
                             "filename": item["filename"],
                             "subfolder": item.get("subfolder", ""),
                             "type": item.get("type", "output"),
-                        }
+                        },
                     )
         return files
 
@@ -62,7 +62,9 @@ class FakeModelResolver:
 
 class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
     def test_workflow_validation_accepts_audio_song_contract(self):
-        from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
+        from feverslop.adapters.comfyui_acestep_song_generator import (
+            ComfyUIAceStepSongGenerator,
+        )
 
         generator = ComfyUIAceStepSongGenerator(
             client=FakeComfyUIClient(),
@@ -73,7 +75,9 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
         generator.validate_workflow()
 
     def test_generate_patches_musical_fields_synced_seed_duration_and_save_prefix(self):
-        from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
+        from feverslop.adapters.comfyui_acestep_song_generator import (
+            ComfyUIAceStepSongGenerator,
+        )
         from feverslop.domain.full_auto import SongSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -129,7 +133,9 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
             self.assertEqual(workflow_path, resolver.calls[0][1])
 
     def test_generate_writes_per_run_resolved_workflow_debug_json_under_project_output(self):
-        from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
+        from feverslop.adapters.comfyui_acestep_song_generator import (
+            ComfyUIAceStepSongGenerator,
+        )
         from feverslop.domain.full_auto import SongSpec
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -173,7 +179,9 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
             self.assertNotIn(str(temp), debug_path.read_text(encoding="utf-8"))
 
     def test_validation_reports_missing_required_anchor(self):
-        from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
+        from feverslop.adapters.comfyui_acestep_song_generator import (
+            ComfyUIAceStepSongGenerator,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             workflow_path = Path(temp_dir) / "bad.json"
@@ -192,8 +200,8 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
                                 "keyscale": "C major",
                             },
                             "_meta": {"title": "ACE_STEP"},
-                        }
-                    }
+                        },
+                    },
                 ),
                 encoding="utf-8",
             )

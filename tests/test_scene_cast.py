@@ -2,7 +2,6 @@ import unittest
 
 from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 
-
 ACTORS = [
     {"id": "warrior", "name": "Warrior"},
     {"id": "mage", "name": "Mage"},

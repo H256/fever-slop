@@ -3,20 +3,22 @@ import inspect
 import json
 import tempfile
 import unittest
-from unittest.mock import patch
 from pathlib import Path
+from unittest.mock import patch
 
 import compact_relay_prompts
 import fix_ltx_prompt_anchors
 import full_auto
 import ltx_video_renderer
 import main
-import run_pipeline
 import render_ltx
 import render_storyboard
+import run_pipeline
 import storyboard_renderer
 import workflow_patcher
-from feverslop.composition.generate_render_plan import build_generate_render_plan_execution_request
+from feverslop.composition.generate_render_plan import (
+    build_generate_render_plan_execution_request,
+)
 
 
 class PublicCompatibilityTests(unittest.TestCase):
@@ -55,7 +57,7 @@ class PublicCompatibilityTests(unittest.TestCase):
         self.assertNotIn("class StoryboardRenderer", text)
 
     def test_storyboard_page_package_module_exists(self):
-        import feverslop.tools.storyboard_page as storyboard_page
+        from feverslop.tools import storyboard_page
 
         self.assertIn(
             "src/feverslop/tools/storyboard_page.py",
@@ -89,7 +91,7 @@ class PublicCompatibilityTests(unittest.TestCase):
                 "storyboard",
                 "--output-dir",
                 "ltx",
-            ]
+            ],
         )
         self.assertEqual("single_prompt", ltx_args.render_mode)
         self.assertEqual("original", ltx_args.rolling_frame_profile)
@@ -102,7 +104,7 @@ class PublicCompatibilityTests(unittest.TestCase):
                 "workflow.json",
                 "--output-dir",
                 "storyboard",
-            ]
+            ],
         )
         self.assertEqual("#PROMPT_POSITIVE", storyboard_args.positive_title)
 
@@ -137,7 +139,7 @@ class PublicCompatibilityTests(unittest.TestCase):
                         "input_audio": "song.wav",
                         "video": {"fps": 24},
                         "scene_generation": {"min_duration": 2.0, "max_duration": 30.0},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -151,10 +153,10 @@ class PublicCompatibilityTests(unittest.TestCase):
                                 {
                                     "workflow": "optimized.json",
                                     "max_render_duration_seconds": 24.0,
-                                }
+                                },
                             ],
-                        }
-                    }
+                        },
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -229,7 +231,7 @@ class PublicCompatibilityTests(unittest.TestCase):
             "workflow_patcher.py",
             "debug_facefix.py",
         }
-        actual = {path.name for path in Path(".").glob("*.py")}
+        actual = {path.name for path in Path().glob("*.py")}
         unexpected = sorted(actual - allowed)
 
         self.assertEqual([], unexpected)

@@ -15,7 +15,6 @@ from pathlib import Path
 from feverslop.adapters.llm_song_brief_generator import LLMSongBriefGenerator
 from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
 from feverslop.domain.full_auto import GeneratedSong, SongSpec
-
 from tests.prompt_fakes import GeneralModulesFake
 
 
@@ -134,7 +133,7 @@ class FullAutoLLMChainTests(unittest.TestCase):
                 style="jazz",
                 duration_seconds=120.0,
                 language="ja",
-            )
+            ),
         )
 
         self.assertEqual(spec.title, "Custom Title")
@@ -182,7 +181,7 @@ class FullAutoLLMChainTests(unittest.TestCase):
                     language="en",
                     seed=42,
                     run_video_pipeline=False,
-                )
+                ),
             )
 
             self.assertEqual(result.song_spec.title, "End-to-End Test")
@@ -213,7 +212,7 @@ class FullAutoLLMChainTests(unittest.TestCase):
                 language="en",
                 bpm=140,
                 keyscale="E major",
-            )
+            ),
         )
 
         # LLM didn't return bpm → fallback to request.bpm

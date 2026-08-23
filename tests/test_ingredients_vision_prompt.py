@@ -8,12 +8,16 @@ from pathlib import Path
 
 import dspy
 
-from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
+from feverslop.application.ingredients_vision_prompt import (
+    build_ingredients_vision_prompt,
+)
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.ingredients_modules import IngredientsPromptModules
-from feverslop.prompting.ingredients_signatures import build_ingredients_signature_bundle
-from tests.fakellm import FakeVisionLLM, FailingVisionLLM
+from feverslop.prompting.ingredients_signatures import (
+    build_ingredients_signature_bundle,
+)
+from tests.fakellm import FailingVisionLLM, FakeVisionLLM
 
 
 class IngredientsVisionPromptTests(unittest.TestCase):
@@ -185,7 +189,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                     {"id": "archive", "type": "location", "t2i_description": "Narrow stone archive with dusty shelves."},
                 ],
                 "shot_invariants": self.shot_invariants(),
-            })
+            }),
         )
 
         result = self.build(llm)
@@ -282,7 +286,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                 raise AssertionError("vision call attempted despite failing probe")
 
         with self.assertLogs(
-            "feverslop.application.ingredients_vision_prompt", level="WARNING"
+            "feverslop.application.ingredients_vision_prompt", level="WARNING",
         ) as logs:
             result = self.build(LLM())
 
@@ -298,7 +302,7 @@ class IngredientsVisionPromptTests(unittest.TestCase):
                     {"id": "archive", "type": "location", "t2i_description": "Narrow stone archive with dusty shelves."},
                 ],
                 "shot_invariants": self.shot_invariants(),
-            })
+            }),
         )
         llm.model_supports_vision = lambda: True
 

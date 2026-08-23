@@ -1,8 +1,8 @@
 """Tests for ComfyUIMiniMaxH3T2VBackend."""
 
-import unittest
-import tempfile
 import json
+import tempfile
+import unittest
 from pathlib import Path
 
 from feverslop.adapters.comfyui_minimax_h3_t2v_backend import (
@@ -14,7 +14,6 @@ from feverslop.adapters.comfyui_minimax_h3_video_backend import (
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.ports.rendering import VideoRenderRequest
-
 
 # ---------------------------------------------------------------------------
 # Fake helpers
@@ -717,7 +716,7 @@ class ClassConstantsTests(unittest.TestCase):
 class InheritanceTests(unittest.TestCase):
     def test_inherits_from_base(self):
         self.assertTrue(
-            issubclass(ComfyUIMiniMaxH3T2VBackend, ComfyUIMiniMaxH3VideoRenderBackend)
+            issubclass(ComfyUIMiniMaxH3T2VBackend, ComfyUIMiniMaxH3VideoRenderBackend),
         )
 
     def test_uses_base_patch_megapixels(self):

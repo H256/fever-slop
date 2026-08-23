@@ -3,19 +3,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PIL import Image, ImageFilter, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
+from feverslop.adapters.global_library import GlobalLibraryAdapter
+from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 from feverslop.application.sequence_to_sheet import (
     FrameSelectionConfig,
     compose_contact_sheet,
-    generate_sequence_to_sheet,
-    select_frames,
-    recommended_view_count,
-    recommended_sheet_layout,
     compose_sheet_from_contact_sheet,
+    generate_sequence_to_sheet,
+    recommended_sheet_layout,
+    recommended_view_count,
+    select_frames,
 )
-from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
-from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
 
@@ -161,7 +161,7 @@ class SequenceToSheetTests(unittest.TestCase):
                 return output_path
 
             with patch("feverslop.application.sequence_to_sheet.extract_video_frames", fake_extract), patch(
-                "feverslop.application.sequence_to_sheet.compose_contact_sheet", fake_compose
+                "feverslop.application.sequence_to_sheet.compose_contact_sheet", fake_compose,
             ), patch("feverslop.application.sequence_to_sheet.compose_sheet_from_contact_sheet", fake_compose):
                 result = generate_sequence_to_sheet(
                     library,
@@ -191,9 +191,8 @@ class SequenceToSheetTests(unittest.TestCase):
             {"sharpness_weight": 0.0, "diversity_weight": 0.0, "coverage_weight": 0.0},
         ]
         for kwargs in invalid:
-            with self.subTest(kwargs=kwargs):
-                with self.assertRaises(ValueError):
-                    FrameSelectionConfig(**kwargs)
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                FrameSelectionConfig(**kwargs)
 
     def test_frame_selection_config_accepts_default_and_valid_configs(self):
         self.assertEqual(4, FrameSelectionConfig().view_count)

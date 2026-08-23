@@ -55,7 +55,7 @@ class MusicVideoModulesFake:
                  i2v: str = "I2V RESULT"):
         self.calls: list[PromptCall] = []
         self.subject_result = MusicVideoSubjectLocations.model_validate(
-            subject_locations or {"subject": "a singer", "actors": [], "locations": []}
+            subject_locations or {"subject": "a singer", "actors": [], "locations": []},
         )
         self.concepts_result = concepts or {}
         self.detail_result = detail

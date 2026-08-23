@@ -86,9 +86,9 @@ class TestSelectedVideoWorkflows(unittest.TestCase):
 
         state = MagicMock()
         state.args = args
-        state.msr_workflow = Path("")
-        state.relay_workflow = Path(".")
-        state.single_prompt_workflow = Path("")
+        state.msr_workflow = Path()
+        state.relay_workflow = Path()
+        state.single_prompt_workflow = Path()
 
         with self.assertRaises(ValueError) as ctx:
             _selected_video_workflows(state)
@@ -121,7 +121,7 @@ class TestSelectedVideoWorkflows(unittest.TestCase):
         state = MagicMock()
         state.args = args
         state.single_prompt_workflow = Path("workflows/video_ltxv_i2v_v2.json")
-        state.relay_workflow = Path("")
+        state.relay_workflow = Path()
 
         self.assertEqual(
             Path("workflows/video_minimax_h3_r2v_v1.json"),

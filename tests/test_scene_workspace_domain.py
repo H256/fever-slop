@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from feverslop.domain.scene_workspace import SceneMedia, SceneWorkspace, SceneWorkspaceItem
+from feverslop.domain.scene_workspace import (
+    SceneMedia,
+    SceneWorkspace,
+    SceneWorkspaceItem,
+)
 
 
 class SceneWorkspaceDomainTests(unittest.TestCase):
@@ -14,7 +18,7 @@ class SceneWorkspaceDomainTests(unittest.TestCase):
             "workflow_extension": {"model": "custom", "weights": [1, 2]},
         }
         workspace = SceneWorkspace.from_scenes(
-            [later_scene, {"scene": 1, "abs_start_seconds": 0.0, "abs_end_seconds": 4.0}]
+            [later_scene, {"scene": 1, "abs_start_seconds": 0.0, "abs_end_seconds": 4.0}],
         )
 
         later_scene["workflow_extension"]["weights"].append(3)
@@ -32,8 +36,8 @@ class SceneWorkspaceDomainTests(unittest.TestCase):
                 {
                     "scene": 1,
                     "workflow_extension": {"weights": [1, 2]},
-                }
-            ]
+                },
+            ],
         )
         item = workspace.items[0]
 
@@ -102,8 +106,8 @@ class SceneWorkspaceDomainTests(unittest.TestCase):
                         "location_id": "archive",
                         "metadata": {"confidence": 0.8},
                     },
-                }
-            ]
+                },
+            ],
         )
 
         self.assertEqual(("mara", "ivo", "archive"), workspace.items[0].reference_ids)
@@ -118,8 +122,8 @@ class SceneWorkspaceDomainTests(unittest.TestCase):
                         "location": "archive",
                         "metadata": {"confidence": 0.8},
                     },
-                }
-            ]
+                },
+            ],
         )
 
         self.assertEqual(("mara", "archive"), workspace.items[0].reference_ids)
@@ -164,7 +168,7 @@ class SceneWorkspaceDomainTests(unittest.TestCase):
                 [
                     {"scene": 2, "start": 0.0, "end": 4.0},
                     {"scene": 2, "start": 4.0, "end": 8.0},
-                ]
+                ],
             )
 
 

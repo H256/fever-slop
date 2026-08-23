@@ -39,10 +39,10 @@ class TestScaffoldMovieCli(unittest.TestCase):
 
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertTrue(
-                (Path(temp_dir) / "cli-regression-movie" / "movie" / "render_plan.json").exists()
+                (Path(temp_dir) / "cli-regression-movie" / "movie" / "render_plan.json").exists(),
             )
             config = json.loads(
-                (Path(temp_dir) / "cli-regression-movie" / "config.json").read_text(encoding="utf-8")
+                (Path(temp_dir) / "cli-regression-movie" / "config.json").read_text(encoding="utf-8"),
             )
             self.assertEqual({"width": 640, "height": 960, "fps": 24}, config["video"])
             self.assertEqual(

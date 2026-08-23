@@ -1,9 +1,9 @@
-import requests
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import requests
 from PIL import Image, ImageDraw
 
 from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
@@ -89,7 +89,7 @@ class OrbitSheetsVisionJudgeTests(unittest.TestCase):
         mocked_post.return_value = _FakeVisionResponse('{"picks": [1, 3], "why": "ok"}')
 
         selected = select_orbitsheet_frames(
-            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint
+            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint,
         )
 
         self.assertEqual((self.paths[1], self.paths[2]), selected)
@@ -103,7 +103,7 @@ class OrbitSheetsVisionJudgeTests(unittest.TestCase):
                 mocked_post.return_value = _FakeVisionResponse(content)
 
                 selected = select_orbitsheet_frames(
-                    self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint
+                    self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint,
                 )
 
                 self.assertEqual(self._fallback(2), selected)
@@ -113,7 +113,7 @@ class OrbitSheetsVisionJudgeTests(unittest.TestCase):
         mocked_post.return_value = _FakeVisionResponse('{"picks": [1, 2, 5, 9]}')
 
         selected = select_orbitsheet_frames(
-            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint
+            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint,
         )
 
         self.assertEqual((self.paths[1], self.paths[2]), selected)
@@ -123,7 +123,7 @@ class OrbitSheetsVisionJudgeTests(unittest.TestCase):
         mocked_post.return_value = _FakeVisionResponse('{"picks": [1, 5, 9]}')
 
         selected = select_orbitsheet_frames(
-            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint
+            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint,
         )
 
         self.assertEqual(self._fallback(2), selected)
@@ -133,7 +133,7 @@ class OrbitSheetsVisionJudgeTests(unittest.TestCase):
         mocked_post.side_effect = requests.exceptions.ConnectionError("probe outage")
 
         selected = select_orbitsheet_frames(
-            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint
+            self.paths, count=2, subject="a ship", vision_endpoint=self.endpoint,
         )
 
         self.assertEqual(self._fallback(2), selected)

@@ -5,7 +5,6 @@ from pathlib import Path
 
 from feverslop.pipeline.prompt_relay_builder import parse_scene_dicts, parse_scene_srt
 
-
 FAKE_SRT = textwrap.dedent("""\
     1
     00:00:00,000 --> 00:00:02,000

@@ -1,7 +1,9 @@
 import unittest
 
+from feverslop.application.render_plan_validation import (
+    validate_render_plan_subject_directives,
+)
 from feverslop.domain.render_plan import RenderPlan
-from feverslop.application.render_plan_validation import validate_render_plan_subject_directives
 from feverslop.domain.subject_directives import (
     PROP_STATES,
     SpatialRelation,
@@ -28,7 +30,7 @@ class SubjectDirectiveContractTests(unittest.TestCase):
                     "visibility": "visible",
                     "cardinality": 1,
                     "temporal_scope": {"start_seconds": 0.0, "end_seconds": 4.0},
-                }
+                },
             ],
         }
 
@@ -52,7 +54,7 @@ class SubjectDirectiveContractTests(unittest.TestCase):
             ),
         )
         issues = validate_subject_directive_plan(
-            plan, known_subject_ids={"drummer"}, known_prop_ids={"microphone"}
+            plan, known_subject_ids={"drummer"}, known_prop_ids={"microphone"},
         )
         self.assertTrue(any("duplicate subject" in issue for issue in issues))
         self.assertFalse(any("Unknown subject ID" in issue for issue in issues))
@@ -63,7 +65,7 @@ class SubjectDirectiveContractTests(unittest.TestCase):
             temporal_scope=TemporalScope(0, 4),
             subjects=(
                 SubjectDirective(
-                    "singer", "singer", "front", "sings", temporal_scope=TemporalScope(0, 4)
+                    "singer", "singer", "front", "sings", temporal_scope=TemporalScope(0, 4),
                 ),
                 SubjectDirective(
                     "stage_haze",
@@ -87,7 +89,7 @@ class SubjectDirectiveContractTests(unittest.TestCase):
             temporal_scope=TemporalScope(0, 4),
             subjects=(
                 SubjectDirective(
-                    "singer", "singer", "stage", "sings", temporal_scope=TemporalScope(0, 4)
+                    "singer", "singer", "stage", "sings", temporal_scope=TemporalScope(0, 4),
                 ),
                 SubjectDirective(
                     "front_row_crowd",
@@ -117,13 +119,13 @@ class SubjectDirectiveContractTests(unittest.TestCase):
                         "position": "front",
                         "action": "sings",
                         "temporal_scope": {"start_seconds": 1, "end_seconds": 3},
-                    }
+                    },
                 ],
                 "spatial_relations": [
                     {"subject_id": "singer", "relation": "left_of", "target_id": "band"},
                     {"subject_id": "singer", "relation": "left_of", "target_id": "band", "detail": "right"},
                 ],
-            }
+            },
         )
         issues = validate_subject_directive_plan(plan, known_subject_ids={"singer", "band"})
         self.assertTrue(any("temporal coverage" in issue for issue in issues))

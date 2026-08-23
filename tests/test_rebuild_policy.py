@@ -1,4 +1,5 @@
 import unittest
+
 from feverslop.domain.rebuild_policy import (
     ArtifactFingerprint,
     ArtifactKind,

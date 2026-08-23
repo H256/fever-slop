@@ -3,9 +3,12 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.composition.config_loader import (
+    collect_render_plan_scene_raw_clips,
+    write_concat_list,
+)
 from feverslop.config.project_config import ProjectConfig, ProjectPaths
-from feverslop.composition.config_loader import collect_render_plan_scene_raw_clips, write_concat_list
+from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class SceneArtifactLayoutTests(unittest.TestCase):

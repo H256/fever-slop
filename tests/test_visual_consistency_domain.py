@@ -1,5 +1,5 @@
-from dataclasses import replace
 import unittest
+from dataclasses import replace
 
 from feverslop.domain.visual_consistency import (
     ConsistencyIssue,
@@ -7,7 +7,6 @@ from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
     can_handoff,
 )
-
 
 ACTOR_HASH = "a" * 64
 LOCATION_HASH = "b" * 64
@@ -67,7 +66,7 @@ class ReferenceAnchorTests(unittest.TestCase):
 
         for field in fields:
             with self.subTest(field=field), self.assertRaisesRegex(
-                ValueError, field.replace("_", " ")
+                ValueError, field.replace("_", " "),
             ):
                 ReferenceAnchor(**(values | {field: "  "}))
 
@@ -123,7 +122,7 @@ class ConsistencyIssueTests(unittest.TestCase):
     def test_rejects_invalid_scene_numbers(self):
         for scene in (True, 0, -1, "1", 1.5):
             with self.subTest(scene=scene), self.assertRaisesRegex(
-                ValueError, "scene must be a positive integer"
+                ValueError, "scene must be a positive integer",
             ):
                 ConsistencyIssue(
                     code="missing-anchor",
@@ -154,7 +153,7 @@ class SceneConsistencyContractTests(unittest.TestCase):
 
     def test_rejects_duplicate_actor_ids_with_exact_error(self):
         with self.assertRaisesRegex(
-            ValueError, r"^duplicate actor id: hero$"
+            ValueError, r"^duplicate actor id: hero$",
         ):
             contract(actors=(actor("hero"), actor("hero")))
 
@@ -186,7 +185,7 @@ class SceneConsistencyContractTests(unittest.TestCase):
             lambda: replace(original, fingerprint="0" * 64),
         ):
             with self.subTest(stale=stale), self.assertRaisesRegex(
-                ValueError, "fingerprint does not match canonical payload"
+                ValueError, "fingerprint does not match canonical payload",
             ):
                 stale()
 
@@ -211,7 +210,7 @@ class SceneConsistencyContractTests(unittest.TestCase):
         )
         for overrides, message in invalid_cases:
             with self.subTest(overrides=overrides), self.assertRaisesRegex(
-                ValueError, message
+                ValueError, message,
             ):
                 contract(**overrides)
 
@@ -223,7 +222,7 @@ class SceneConsistencyContractTests(unittest.TestCase):
     def test_rejects_invalid_scene_numbers(self):
         for scene in (True, 0, -1, "1", 1.5):
             with self.subTest(scene=scene), self.assertRaisesRegex(
-                ValueError, "scene must be a positive integer"
+                ValueError, "scene must be a positive integer",
             ):
                 contract(scene=scene)
 

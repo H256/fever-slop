@@ -1,5 +1,5 @@
-﻿import unittest
-import ast
+﻿import ast
+import unittest
 from pathlib import Path
 
 
@@ -374,7 +374,10 @@ class ImportBoundaryTests(unittest.TestCase):
 
     def test_lyric_timeline_propagates_to_render_plan(self):
         """Editing lyrics on a timeline segment should propagate through the render plan."""
-        from feverslop.domain.timeline_editing import EditableTimelineSegment, TimelineSnapshot
+        from feverslop.domain.timeline_editing import (
+            EditableTimelineSegment,
+            TimelineSnapshot,
+        )
 
         segments = [
             EditableTimelineSegment(
@@ -395,7 +398,9 @@ class ImportBoundaryTests(unittest.TestCase):
 
     def test_instrumental_segments_trigger_closed_mouth_policy(self):
         """Render plan scenes with only instrumental segments must get closed-mouth policy."""
-        from feverslop.application.ingredients_render_plan import build_ingredients_static_prompt
+        from feverslop.application.ingredients_render_plan import (
+            build_ingredients_static_prompt,
+        )
 
         instrumental_relay = [
             {"state": "motion", "prompt": "Camera pans across stage"},
@@ -407,10 +412,10 @@ class ImportBoundaryTests(unittest.TestCase):
         ]
 
         instrumental_static = build_ingredients_static_prompt(
-            "Stage performance", instrumental_relay
+            "Stage performance", instrumental_relay,
         )
         singing_static = build_ingredients_static_prompt(
-            "Stage performance", singing_relay
+            "Stage performance", singing_relay,
         )
 
         self.assertIn("closed", instrumental_static.lower())

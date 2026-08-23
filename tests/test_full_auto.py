@@ -72,8 +72,8 @@ class FakeConsole:
 
 class FullAutoUseCaseTests(unittest.TestCase):
     def test_full_auto_prepares_project_without_running_video_pipeline(self):
-        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
+        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
 
         with tempfile.TemporaryDirectory() as temp_dir:
             runner = FakeRunner()
@@ -98,7 +98,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
                     language="en",
                     seed=42,
                     run_video_pipeline=False,
-                )
+                ),
             )
 
             project_dir = Path(temp_dir) / "joy-demo"
@@ -119,8 +119,8 @@ class FullAutoUseCaseTests(unittest.TestCase):
             self.assertTrue((project_dir / "full_auto_song_spec.json").exists())
 
     def test_full_auto_runs_video_pipeline_when_requested(self):
-        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
+        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
 
         with tempfile.TemporaryDirectory() as temp_dir:
             runner = FakeRunner()
@@ -143,7 +143,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
                     seed=7,
                     run_video_pipeline=True,
                     runner_options={"smoke_only": True},
-                )
+                ),
             )
 
             self.assertEqual(1, len(runner.calls))
@@ -155,8 +155,8 @@ class FullAutoUseCaseTests(unittest.TestCase):
             )
 
     def test_full_auto_logs_each_major_step_with_rich_console(self):
-        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
+        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
 
         with tempfile.TemporaryDirectory() as temp_dir:
             console = FakeConsole()
@@ -178,7 +178,7 @@ class FullAutoUseCaseTests(unittest.TestCase):
                     language="en",
                     seed=7,
                     run_video_pipeline=True,
-                )
+                ),
             )
 
             log_text = "\n".join(console.messages)

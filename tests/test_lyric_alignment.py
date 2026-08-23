@@ -1,8 +1,8 @@
 import unittest
 
 from feverslop.domain.timeline import TimelineSegment
-from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 from tests.prompt_fakes import GeneralModulesFake
 
 
@@ -43,12 +43,12 @@ class LyricTimelineAlignerTests(unittest.TestCase):
                     {"word": "seid", "start": 5.54, "end": 5.76},
                     {"word": "unglaublich!", "start": 5.76, "end": 6.74},
                 ),
-            )
+            ),
         ]
         aligner = LyricTimelineAligner(
             object(),
             modules=GeneralModulesFake(
-                lyric_alignment={"segments": {"segment1": "Das ist unser letztes Lied für heute Nacht."}}
+                lyric_alignment={"segments": {"segment1": "Das ist unser letztes Lied für heute Nacht."}},
             ),
         )
 
@@ -78,7 +78,7 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         )
 
         timestamps = LyricTimelineAligner._complete_word_timestamps(
-            "Ich trug mein Name wie ein Messer", segment
+            "Ich trug mein Name wie ein Messer", segment,
         )
 
         self.assertTrue(all(item["end"] > item["start"] for item in timestamps))

@@ -72,7 +72,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "--diagnostic-original-audio-mux",
                 "--no-original-audio-mux",
                 "--silent-mode",
-            ]
+            ],
         )
 
         self.assertEqual("friendship", args.idea)
@@ -123,7 +123,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "bright pop",
                 "--silent-mode",
                 "false",
-            ]
+            ],
         )
 
         self.assertFalse(args.silent_mode)
@@ -137,7 +137,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "dark gothic visual fantasy",
                 "--music-style",
                 "epic fantasy power metal",
-            ]
+            ],
         )
 
         request = full_auto.request_from_args(args)
@@ -180,7 +180,7 @@ class FullAutoCliTests(unittest.TestCase):
                 "--no-lora-split-enabled",
                 "--skip-ltx",
                 "--silent-mode",
-            ]
+            ],
         )
 
         request = full_auto.request_from_args(args)

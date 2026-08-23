@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import unittest
+from copy import deepcopy
 
-from feverslop.application.ingredients_render_plan import project_ingredients_runtime_scene
-from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
+from feverslop.application.ingredients_render_plan import (
+    project_ingredients_runtime_scene,
+)
+from feverslop.domain.visual_consistency import (
+    ReferenceAnchor,
+    SceneConsistencyContract,
+)
 from feverslop.domain.visual_consistency_runtime import scrub_prior_context
 from feverslop.errors import FeverSlopValidationError
 
@@ -14,19 +19,19 @@ class IngredientsRenderPlanProjectionTests(unittest.TestCase):
         self.assertEqual(
             "Silk enters the tunnel.",
             scrub_prior_context(
-                "Continue with same wardrobe from before; Silk enters the tunnel."
+                "Continue with same wardrobe from before; Silk enters the tunnel.",
             ),
         )
         self.assertEqual(
             "",
             scrub_prior_context(
-                "Continue with the same wardrobe from before."
+                "Continue with the same wardrobe from before.",
             ),
         )
         self.assertEqual(
             "Silk enters the tunnel.",
             scrub_prior_context(
-                "As before, Silk enters the tunnel."
+                "As before, Silk enters the tunnel.",
             ),
         )
 
@@ -165,7 +170,7 @@ class IngredientsRenderPlanProjectionTests(unittest.TestCase):
                 "frame_end": 257,
                 "state": "instrumental",
                 "prompt": "The performers walk through the tunnel.",
-            }
+            },
         ]
 
         projected = project_ingredients_runtime_scene(scene)

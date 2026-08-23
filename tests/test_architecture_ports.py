@@ -1,21 +1,39 @@
-﻿import json
-import inspect
+﻿import inspect
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-import main
 from rich.console import Console
-from feverslop.application.render_storyboard import RenderStoryboardRequest, RenderStoryboardUseCase
-from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
-from feverslop.application.generate_render_plan import GenerateRenderPlanRequest, GenerateRenderPlanUseCase
-from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend, ComfyUIVideoRenderBackend
+
+import main
+from feverslop.adapters.comfyui_rendering import (
+    ComfyUIImageBackend,
+    ComfyUIVideoRenderBackend,
+)
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.domain.render_plan import PromptSet, RenderPlan, RenderResult, RenderScene
+from feverslop.application.generate_render_plan import (
+    GenerateRenderPlanRequest,
+    GenerateRenderPlanUseCase,
+)
+from feverslop.application.render_storyboard import (
+    RenderStoryboardRequest,
+    RenderStoryboardUseCase,
+)
+from feverslop.application.render_video import (
+    RenderVideoScenesRequest,
+    RenderVideoScenesUseCase,
+)
+from feverslop.config.project_config import ProjectConfig, ProjectPaths
+from feverslop.domain.render_plan import (
+    PromptSet,
+    RenderPlan,
+    RenderResult,
+    RenderScene,
+)
 from feverslop.ports.rendering import ImageRenderRequest, VideoRenderRequest
 from feverslop.ports.workflow import WorkflowBackendPort
-from feverslop.config.project_config import ProjectConfig, ProjectPaths
 
 
 class FakeImageBackend:
@@ -58,7 +76,7 @@ class FakePromptTransformer:
                 "original_prompt": original_prompt,
                 "width": width,
                 "height": height,
-            }
+            },
         )
         return f"transformed {scene_number}"
 
@@ -80,7 +98,7 @@ class ArchitecturePortsTests(unittest.TestCase):
                     "original_style_i2v_prompt": "video prompt",
                     "render_mode_hint": "single_prompt",
                 },
-            }
+            },
         ]
 
     def test_project_config_load_does_not_create_output_directories(self):
@@ -206,7 +224,7 @@ class ArchitecturePortsTests(unittest.TestCase):
                     render_plan_path=render_plan,
                     workflow_path=temp / "workflow.json",
                     output_dir=temp / "storyboard",
-                )
+                ),
             )
 
             self.assertEqual([temp / "storyboard" / "scene_0001.png"], rendered)
@@ -232,7 +250,7 @@ class ArchitecturePortsTests(unittest.TestCase):
                     render_plan_path=render_plan,
                     workflow_path=temp / "workflow.json",
                     output_dir=temp / "storyboard",
-                )
+                ),
             )
 
             self.assertEqual("transformed 1", backend.requests[0].prompt)
@@ -243,7 +261,7 @@ class ArchitecturePortsTests(unittest.TestCase):
                         "original_prompt": "start frame prompt",
                         "width": 1280,
                         "height": 704,
-                    }
+                    },
                 ],
                 transformer.calls,
             )
@@ -267,7 +285,7 @@ class ArchitecturePortsTests(unittest.TestCase):
                     render_plan_path=render_plan,
                     workflow_path=temp / "workflow.json",
                     output_dir=temp / "storyboard",
-                )
+                ),
             )
 
             self.assertEqual([existing], rendered)
@@ -293,9 +311,9 @@ class ArchitecturePortsTests(unittest.TestCase):
                     workflow_path=temp / "workflow.json",
                     output_dir=temp / "storyboard",
                     on_frame_complete=lambda output, completed, total: progress.append(
-                        (output.name, completed, total)
+                        (output.name, completed, total),
                     ),
-                )
+                ),
             )
 
             self.assertEqual(2, len(rendered))
@@ -322,7 +340,7 @@ class ArchitecturePortsTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "ltx",
                     render_mode="single_prompt",
-                )
+                ),
             )
 
             self.assertEqual([temp / "ltx" / "final" / "scene_0001.mp4"], rendered)
@@ -353,9 +371,9 @@ class ArchitecturePortsTests(unittest.TestCase):
                     output_dir=temp / "ltx",
                     render_mode="single_prompt",
                     on_scene_complete=lambda output, completed, total: progress.append(
-                        (output.name, completed, total)
+                        (output.name, completed, total),
                     ),
-                )
+                ),
             )
 
             self.assertEqual(2, len(rendered))
@@ -383,7 +401,7 @@ class ArchitecturePortsTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "ltx",
                     render_mode="single_prompt",
-                )
+                ),
             )
 
             output = console.export_text()

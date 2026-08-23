@@ -3,10 +3,15 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
 from PIL import Image
 
-from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
-from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
+from feverslop.application.reference_bible import (
+    enrich_render_plan_with_reference_sheets,
+)
+from feverslop.application.render_plan_ingredients_sheets import (
+    enrich_render_plan_with_ingredients_sheets,
+)
 from feverslop.errors import FeverSlopValidationError
 from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
 
@@ -78,7 +83,7 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
             render_plan_path.parent.mkdir(parents=True)
             render_plan_path.write_text(
                 json.dumps([
-                    {"scene": 1, "references": {"actor_ids": ["singer"], "location_id": "stage"}}
+                    {"scene": 1, "references": {"actor_ids": ["singer"], "location_id": "stage"}},
                 ]),
                 encoding="utf-8",
             )
@@ -99,7 +104,7 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
                         {
                             "id": "singer",
                             "path": "output/references/actors/singer/views/hero.png",
-                        }
+                        },
                     ],
                     "location": {
                         "id": "stage",

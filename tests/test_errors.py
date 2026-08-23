@@ -74,13 +74,27 @@ class FeverSlopErrorHierarchyTests(unittest.TestCase):
         """Root-level imports resolve to same class objects as submodule."""
         import feverslop
         from feverslop.errors import (
-            FeverSlopError as SubModuleError,
             FeverSlopAdaptationError as SubModuleAdaptationError,
+        )
+        from feverslop.errors import (
             FeverSlopConfigError as SubModuleConfigError,
+        )
+        from feverslop.errors import (
             FeverSlopDataError as SubModuleDataError,
+        )
+        from feverslop.errors import (
+            FeverSlopError as SubModuleError,
+        )
+        from feverslop.errors import (
             FeverSlopLMLError as SubModuleLMLError,
+        )
+        from feverslop.errors import (
             FeverSlopRenderError as SubModuleRenderError,
+        )
+        from feverslop.errors import (
             FeverSlopValidationError as SubModuleValidationError,
+        )
+        from feverslop.errors import (
             FeverSlopWorkflowError as SubModuleWorkflowError,
         )
         self.assertIs(feverslop.FeverSlopError, SubModuleError)
@@ -112,14 +126,13 @@ class InternalSubmoduleBlockingTests(unittest.TestCase):
         import feverslop
 
         for name in ["config", "application", "path_utils", "domain", "ports", "errors"]:
-            with self.subTest(name=name):
-                with self.assertRaises(ImportError):
-                    feverslop.__getattr__(name)
+            with self.subTest(name=name), self.assertRaises(ImportError):
+                feverslop.__getattr__(name)
 
     def test_direct_submodule_imports_still_work(self):
         """Direct submodule imports must still work for internal code."""
-        from feverslop.errors import FeverSlopError
         from feverslop.config.app_config import AppConfig
+        from feverslop.errors import FeverSlopError
 
         self.assertTrue(issubclass(FeverSlopError, Exception))
         self.assertTrue(callable(AppConfig))

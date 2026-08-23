@@ -126,7 +126,7 @@ class SceneWorkspaceServiceTests(unittest.TestCase):
                     "changes": changes,
                     "expected_revision": "revision-1",
                     "selected_ltx_prompt_field": SceneLtxPromptField.I2V_PROMPT_FROM_T2I,
-                }
+                },
             ],
             self.patcher.calls,
         )

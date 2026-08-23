@@ -2,12 +2,12 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.h3_prompt_pipeline import (
     _attach_beat_events,
     _attach_relay_segments,
     _configured_audio_paths,
 )
+from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.performance_sync import select_performance_stems
 
 

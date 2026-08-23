@@ -77,7 +77,7 @@ class FakeLLM:
             if idx < 0 or idx >= len(self._canned_seq):
                 raise IndexError(
                     f"FakeLLM response sequence exhausted "
-                    f"(requested call {idx + 1}, only {len(self._canned_seq)} provided)"
+                    f"(requested call {idx + 1}, only {len(self._canned_seq)} provided)",
                 )
             return self._canned_seq[idx]
         if self._mode == "side_effect" and self._side_effect is not None:
@@ -146,7 +146,7 @@ class FailingVisionLLM(FakeLLM):
                 prompt=prompt,
                 image_paths=image_paths,
                 timeout=timeout,
-            )
+            ),
         )
         raise RuntimeError("vision failed")
 

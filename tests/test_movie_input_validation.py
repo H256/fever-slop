@@ -9,7 +9,6 @@ from pydantic import ValidationError
 from feverslop.application.movie_common import MovieInput
 from feverslop.domain.slug_utils import slugify_project_name
 
-
 _VALID_STORY = "Once upon a time in a place far away there was adventure."
 
 

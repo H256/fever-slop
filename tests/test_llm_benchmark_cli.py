@@ -1,9 +1,9 @@
-from contextlib import redirect_stderr, redirect_stdout
 import json
 import os
 import tempfile
-from io import StringIO
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from unittest import mock
 
 from feverslop.errors import FeverSlopLMLError

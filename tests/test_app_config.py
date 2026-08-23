@@ -1,10 +1,10 @@
+import json
+import os
 import tempfile
 import unittest
 from contextlib import contextmanager
 from dataclasses import FrozenInstanceError
 from pathlib import Path
-import os
-import json
 from unittest.mock import patch
 
 
@@ -135,7 +135,7 @@ class AppConfigTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / ".env").write_text(
-                'LLM_API_KEY="dotenv-secret" # local key\n', encoding="utf-8"
+                'LLM_API_KEY="dotenv-secret" # local key\n', encoding="utf-8",
             )
 
             config = AppConfig.load(config_path)
@@ -164,7 +164,7 @@ class AppConfigTests(unittest.TestCase):
         from feverslop.config.app_config import AppConfig
 
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
-            os.environ, {"LLM_API_KEY": "environment-secret"}, clear=True
+            os.environ, {"LLM_API_KEY": "environment-secret"}, clear=True,
         ):
             root = Path(temp_dir)
             config_path = root / "app_config.json"

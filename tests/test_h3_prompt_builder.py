@@ -5,13 +5,12 @@ from feverslop.domain.render_plan import RenderScene
 from feverslop.prompting.minimax_h3_prompt_style import (
     build_h3_video_system_prompt,
 )
-
-
 from tests.fakellm import FakeLLM
 
 
 class FakeArtifactStore:
     """Minimal artifact store mock for testing."""
+
     def __init__(self):
         self.writes = {}
         self.reads = {}
@@ -91,6 +90,7 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
 class H3PromptBuilderCompatibilityTests(unittest.TestCase):
     def test_compatibility_export_delegates_to_canonical_generator(self):
         from unittest.mock import patch
+
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 
         requests = []
@@ -115,6 +115,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
 
     def test_compatibility_export_keeps_explicit_fallback_policy(self):
         from unittest.mock import patch
+
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 
         def broken(_request):
@@ -135,6 +136,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
 class H3PromptBuilderBatchTests(unittest.TestCase):
     def test_batch_writes_all_scenes(self):
         from unittest.mock import patch
+
         from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
         store = FakeArtifactStore()
         with patch(
@@ -244,15 +246,15 @@ class BuildRenderPlanH3Tests(unittest.TestCase):
                 "duration": 5,
                 "zimage_prompt": "zimg",
                 "i2v_prompt_from_t2i": "i2v",
-            }
+            },
         ]
         store.reads["relay.json"] = [
             {
                 "scene": 1,
                 "prompt_relay": [
-                    {"frame_start": 0, "frame_end": 120, "state": "singing"}
-                ]
-            }
+                    {"frame_start": 0, "frame_end": 120, "state": "singing"},
+                ],
+            },
         ]
 
         class FakeVideoSettings:
@@ -288,18 +290,18 @@ class BuildRenderPlanH3Tests(unittest.TestCase):
                 "duration": 5,
                 "zimage_prompt": "zimg",
                 "i2v_prompt_from_t2i": "i2v",
-            }
+            },
         ]
         store.reads["relay.json"] = [
             {
                 "scene": 1,
                 "prompt_relay": [
-                    {"frame_start": 0, "frame_end": 120, "state": "singing"}
-                ]
-            }
+                    {"frame_start": 0, "frame_end": 120, "state": "singing"},
+                ],
+            },
         ]
         store.reads["h3.json"] = [
-            {"segment_id": "seg1", "prompt": "H3 prompt content"}
+            {"segment_id": "seg1", "prompt": "H3 prompt content"},
         ]
 
         class FakeVideoSettings:

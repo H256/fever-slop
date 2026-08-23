@@ -3,7 +3,9 @@ import unittest
 
 class TestMoviePipelineModes(unittest.TestCase):
     def test_minimax_h3_modes_do_not_use_ltx_msr_enrichment(self):
-        from feverslop.composition.movie_pipeline import _movie_uses_msr_reference_enrichment
+        from feverslop.composition.movie_pipeline import (
+            _movie_uses_msr_reference_enrichment,
+        )
 
         self.assertFalse(_movie_uses_msr_reference_enrichment("minimax-h3-r2v"))
         self.assertFalse(_movie_uses_msr_reference_enrichment("minimax-h3-t2v"))

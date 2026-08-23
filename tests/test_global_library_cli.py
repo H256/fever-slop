@@ -5,6 +5,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+
 from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 from feverslop.tools.global_library_cli import build_arg_parser, main
@@ -32,7 +33,7 @@ class GlobalLibraryCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             input_path = Path(temp) / "idea.json"
             input_path.write_text(json.dumps({
-                "kind": "character", "asset_id": "ava", "name": "Ava", "visual_concept": "silver bob"
+                "kind": "character", "asset_id": "ava", "name": "Ava", "visual_concept": "silver bob",
             }), encoding="utf-8")
             output = StringIO()
             with redirect_stdout(output):

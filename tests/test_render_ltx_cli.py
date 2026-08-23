@@ -1,8 +1,10 @@
+import json
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
-import json
 
+from feverslop.composition.render_video import namespace_to_options
+from feverslop.errors import FeverSlopValidationError
 from render_ltx import (
     build_arg_parser,
     final_concat_paths,
@@ -11,8 +13,6 @@ from render_ltx import (
     rewrite_concat_list,
     sanitize_file_stem,
 )
-from feverslop.composition.render_video import namespace_to_options
-from feverslop.errors import FeverSlopValidationError
 
 
 class RenderLTXCliTests(unittest.TestCase):
@@ -38,9 +38,9 @@ class RenderLTXCliTests(unittest.TestCase):
         self.assertEqual((50, 25, True), resolve_rolling_frames(args))
 
     def test_rolling_frame_profiles_delegate_to_render_video_composition(self):
-        import render_ltx
         import feverslop.composition.render_video as render_video_composition
-        import feverslop.domain.ltx_rendering as ltx_rendering
+        import render_ltx
+        from feverslop.domain import ltx_rendering
 
         self.assertIs(render_ltx.ROLLING_FRAME_PROFILES, render_video_composition.ROLLING_FRAME_PROFILES)
         self.assertIs(render_video_composition.ROLLING_FRAME_PROFILES, ltx_rendering.ROLLING_FRAME_PROFILES)
@@ -172,7 +172,7 @@ class RenderLTXCliTests(unittest.TestCase):
                             "strength_model": 0.8,
                             "strength_clip": 0.6,
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -236,7 +236,7 @@ class RenderLTXCliTests(unittest.TestCase):
                                 "strength_clip": 0.7,
                             },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -263,7 +263,7 @@ class RenderLTXCliTests(unittest.TestCase):
                         "project_name": "multi_lora",
                         "input_audio": "input/song.mp3",
                         "lora_split_enabled": True,
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -297,7 +297,7 @@ class RenderLTXCliTests(unittest.TestCase):
                                 "strength_clip": 0.5,
                             },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -340,7 +340,7 @@ class RenderLTXCliTests(unittest.TestCase):
                             "strength_model": 0.8,
                             "strength_clip": 0.6,
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -403,7 +403,7 @@ class RenderLTXCliTests(unittest.TestCase):
                             "strength_model": 0.8,
                             "strength_clip": 0.6,
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )

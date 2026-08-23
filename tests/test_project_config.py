@@ -111,7 +111,7 @@ class ProjectConfigTests(unittest.TestCase):
                     {
                         "project_name": "test",
                         "input_audio": "song.mp3",
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -131,7 +131,7 @@ class ProjectConfigTests(unittest.TestCase):
                     {
                         "project_name": "test",
                         "input_audio": "song.mp3",
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -153,7 +153,7 @@ class ProjectConfigTests(unittest.TestCase):
                         "project_name": "test",
                         "input_audio": "song.mp3",
                         "silent_mode": True,
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -174,7 +174,7 @@ class ProjectConfigTests(unittest.TestCase):
                         "project_name": "test",
                         "input_audio": "song.mp3",
                         "silent_mode": "true",
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -194,7 +194,7 @@ class ProjectConfigTests(unittest.TestCase):
                         "project_name": "test",
                         "input_audio": "song.mp3",
                         "silent_mode": None,
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -214,7 +214,7 @@ class ProjectConfigTests(unittest.TestCase):
                     {
                         "project_name": "test",
                         "input_audio": "song.mp3",
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -243,7 +243,7 @@ class ProjectConfigTests(unittest.TestCase):
                             "strength_model": 0.85,
                             "strength_clip": 0.65,
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -281,7 +281,7 @@ class ProjectConfigTests(unittest.TestCase):
                                 "strength_clip": 0.3,
                             },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -318,7 +318,7 @@ class ProjectConfigTests(unittest.TestCase):
                                 "role": "lead singer",
                                 "visual_description": "short silver hair",
                                 "image_prompt": "portrait of Mara",
-                            }
+                            },
                         ],
                         "locations": [
                             {
@@ -326,9 +326,9 @@ class ProjectConfigTests(unittest.TestCase):
                                 "name": "Mirror Stage",
                                 "visual_description": "black stage with mirrored floor",
                                 "image_prompt": "wide shot of mirror stage",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -355,7 +355,7 @@ class ProjectConfigTests(unittest.TestCase):
                         "input_audio": "song.mp3",
                         "subject_mode": "single",
                         "max_scene_actors": 1,
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -408,9 +408,9 @@ class ProjectConfigTests(unittest.TestCase):
                         "loras": [
                             {
                                 "enabled": True,
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -443,7 +443,7 @@ class ProjectConfigTests(unittest.TestCase):
                             "strength_model": 0.75,
                             "strength_clip": 0.5,
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -478,9 +478,9 @@ class ProjectConfigTests(unittest.TestCase):
                                 "name": "characters/new.safetensors",
                                 "strength_model": 0.9,
                                 "strength_clip": 0.7,
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -506,7 +506,7 @@ class ProjectConfigTests(unittest.TestCase):
                             "zimage": "z-image steering",
                             "ltx": "ltx steering",
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -534,7 +534,7 @@ class ProjectConfigTests(unittest.TestCase):
                             "facial_expression": "focused eyes",
                             "physical_interaction": "raises one hand",
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -558,7 +558,7 @@ class ProjectConfigTests(unittest.TestCase):
                     {
                         "project_name": "test",
                         "input_audio": "song.mp3",
-                    }
+                    },
                 ),
                 encoding="utf-8-sig",
             )
@@ -576,7 +576,7 @@ class ProjectConfigTests(unittest.TestCase):
                     {
                         "project_name": "test",
                         "input_audio": "input\\song.mp3",
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -596,7 +596,7 @@ class ProjectConfigLyricsTests(unittest.TestCase):
                     {
                         "input_audio": "input/song.wav",
                         "lyrics": "[Verse]\nfirst line\nsecond line",
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -614,7 +614,7 @@ class ProjectConfigLyricsTests(unittest.TestCase):
                     {
                         "input_audio": "input/song.wav",
                         "lyrics": ["[Verse]", "first line", "second line"],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -838,10 +838,10 @@ class SlugifyProjectNameTests(unittest.TestCase):
         self.assertEqual("my-project", slugify_project_name("my---project"))
 
     def test_slugify_imports_are_consistent(self):
-        from feverslop.domain.slug_utils import slugify_project_name as domain_slug
-        from feverslop.studio.projects import slugify_project_name as studio_slug
         from feverslop.application.full_auto import slugify_project_name as app_slug
         from feverslop.application.movie import slugify_project_name as movie_slug
+        from feverslop.domain.slug_utils import slugify_project_name as domain_slug
+        from feverslop.studio.projects import slugify_project_name as studio_slug
         test_cases = ["Hello World", "test_project", "My Song!", ""]
         for case in test_cases:
             self.assertEqual(domain_slug(case), studio_slug(case))
@@ -878,8 +878,8 @@ class VideoPipelineFieldTests(unittest.TestCase):
 
     def _mk_config(self):
         import json
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
         tmp = tempfile.mktemp(suffix=".json")
         Path(tmp).write_text(json.dumps(self.config))
         return tmp
@@ -890,8 +890,8 @@ class AudioRefsStemValidationTests(unittest.TestCase):
 
     def _mk_config(self, config_dict):
         import json
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
         tmp = tempfile.mktemp(suffix=".json")
         Path(tmp).write_text(json.dumps(config_dict))
         return tmp
@@ -932,10 +932,10 @@ class ScenePromptWordCountDefaultsTests(unittest.TestCase):
     def test_word_count_defaults_are_shared_across_builder_loader_and_scaffolds(self):
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
         from feverslop.config.project_config import (
-            ProjectConfig,
-            PromptGuidanceConfig,
             SCENE_PROMPT_WORD_COUNT_MAX,
             SCENE_PROMPT_WORD_COUNT_MIN,
+            ProjectConfig,
+            PromptGuidanceConfig,
         )
         from feverslop.domain.full_auto import GeneratedSong, SongSpec
         from feverslop.prompting.scene_prompt_builder import scene_prompt_word_limit
@@ -968,7 +968,7 @@ class ScenePromptWordCountDefaultsTests(unittest.TestCase):
 
         # Studio (movie) scaffold default.
         studio_guidance = movie_default_config(
-            ProjectCreateRequest(project_type="movie", name="demo")
+            ProjectCreateRequest(project_type="movie", name="demo"),
         )["prompt_guidance"]
         self.assertEqual(
             (SCENE_PROMPT_WORD_COUNT_MIN, SCENE_PROMPT_WORD_COUNT_MAX),
@@ -1011,8 +1011,8 @@ class ScenePromptWordCountValidationTests(unittest.TestCase):
 
     def _mk_config(self, config_dict):
         import json
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
         tmp = tempfile.mktemp(suffix=".json")
         Path(tmp).write_text(json.dumps(config_dict))
         return tmp

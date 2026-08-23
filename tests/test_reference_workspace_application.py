@@ -21,7 +21,6 @@ from feverslop.ports.reference_library import (
     SceneCastPort,
 )
 
-
 # ---- Fake ports ----
 
 
@@ -159,7 +158,9 @@ class FakeJobs(GenerationJobPort):
 
 class LoadReferenceWorkspaceUseCaseTests(unittest.TestCase):
     def _use_case(self, library, **kwargs):
-        from feverslop.application.reference_workspace import LoadReferenceWorkspaceUseCase
+        from feverslop.application.reference_workspace import (
+            LoadReferenceWorkspaceUseCase,
+        )
         return LoadReferenceWorkspaceUseCase(library, **kwargs)
 
     def test_load_empty_project(self):
@@ -218,7 +219,9 @@ class LoadReferenceWorkspaceUseCaseTests(unittest.TestCase):
 
 class PreviewSceneAssignmentUseCaseTests(unittest.TestCase):
     def _use_case(self, **kwargs):
-        from feverslop.application.reference_workspace import PreviewSceneAssignmentUseCase
+        from feverslop.application.reference_workspace import (
+            PreviewSceneAssignmentUseCase,
+        )
         return PreviewSceneAssignmentUseCase(**kwargs)
 
     def test_valid_assignment(self):
@@ -305,7 +308,9 @@ class PreviewSceneAssignmentUseCaseTests(unittest.TestCase):
 
 class SaveSceneAssignmentsUseCaseTests(unittest.TestCase):
     def _use_case(self, **kwargs):
-        from feverslop.application.reference_workspace import SaveSceneAssignmentsUseCase
+        from feverslop.application.reference_workspace import (
+            SaveSceneAssignmentsUseCase,
+        )
         return SaveSceneAssignmentsUseCase(**kwargs)
 
     def test_save_updates_assignments(self):

@@ -1,8 +1,8 @@
 """Tests for ComfyUIMiniMaxH3R2VBackend."""
 
-import unittest
-import tempfile
 import json
+import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,7 +13,6 @@ from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
-
 
 # ---------------------------------------------------------------------------
 # Fake helpers
@@ -396,14 +395,14 @@ class HasAnchorTests(unittest.TestCase):
         wf = _native_r2v_workflow()
         patcher = WorkflowPatcher(wf)
         self.assertTrue(
-            ComfyUIMiniMaxH3R2VBackend._has_anchor(patcher, "#PROMPT")
+            ComfyUIMiniMaxH3R2VBackend._has_anchor(patcher, "#PROMPT"),
         )
 
     def test_not_found(self):
         wf = _native_r2v_workflow()
         patcher = WorkflowPatcher(wf)
         self.assertFalse(
-            ComfyUIMiniMaxH3R2VBackend._has_anchor(patcher, "#DOES_NOT_EXIST")
+            ComfyUIMiniMaxH3R2VBackend._has_anchor(patcher, "#DOES_NOT_EXIST"),
         )
 
 
@@ -1092,7 +1091,7 @@ class PatchVideoInputsTests(unittest.TestCase):
         wf = _native_r2v_workflow()
         patcher = WorkflowPatcher(wf)
         backend._patch_reference_videos(patcher, [
-            "/tmp/clip1.mp4", "/tmp/clip2.mp4", "/tmp/clip3.mp4"
+            "/tmp/clip1.mp4", "/tmp/clip2.mp4", "/tmp/clip3.mp4",
         ])
         patched = patcher.get()
         self.assertIn("vid456", patched["61"]["inputs"]["video"])
@@ -1159,7 +1158,7 @@ class PatchReferenceAudioInputsTests(unittest.TestCase):
         wf = _native_r2v_workflow()
         patcher = WorkflowPatcher(wf)
         backend._patch_reference_audios(patcher, [
-            "/tmp/s1.wav", "/tmp/s2.wav", "/tmp/s3.wav"
+            "/tmp/s1.wav", "/tmp/s2.wav", "/tmp/s3.wav",
         ])
         patched = patcher.get()
         self.assertIn("aud789", patched["64"]["inputs"]["audio"])
@@ -1248,7 +1247,7 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
                 ],
             ):
                 result = backend._filter_audio_paths_for_window(
-                    [vocals, full_mix], start_seconds=122.45, duration_seconds=3.25
+                    [vocals, full_mix], start_seconds=122.45, duration_seconds=3.25,
                 )
 
         self.assertEqual([full_mix], result)
@@ -1521,7 +1520,7 @@ class ResolveRefVideoPathsTests(unittest.TestCase):
         scene = {
             "references": {
                 "reference_video_paths": ["clip1.mp4", "clip2.mp4"],
-            }
+            },
         }
         paths = backend._resolve_ref_video_paths(scene)
         self.assertEqual(2, len(paths))
@@ -1535,7 +1534,7 @@ class ResolveRefVideoPathsTests(unittest.TestCase):
         scene = {
             "references": {
                 "reference_video_paths": [f"v{i}.mp4" for i in range(5)],
-            }
+            },
         }
         paths = backend._resolve_ref_video_paths(scene)
         self.assertEqual(3, len(paths))
@@ -1565,7 +1564,7 @@ class ResolveRefAudioPathsTests(unittest.TestCase):
         scene = {
             "references": {
                 "reference_audio_paths": ["sound1.wav", "sound2.wav"],
-            }
+            },
         }
         paths = backend._resolve_ref_audio_paths(scene)
         self.assertEqual(2, len(paths))
@@ -1579,7 +1578,7 @@ class ResolveRefAudioPathsTests(unittest.TestCase):
         scene = {
             "references": {
                 "reference_audio_paths": [f"s{i}.wav" for i in range(5)],
-            }
+            },
         }
         paths = backend._resolve_ref_audio_paths(scene)
         self.assertEqual(3, len(paths))
@@ -1619,7 +1618,7 @@ class FindOccupiedRefSlotsTests(unittest.TestCase):
         wf = _r2v_core_workflow()
         patcher = WorkflowPatcher(wf)
         occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
-            patcher, "ref_images"
+            patcher, "ref_images",
         )
         self.assertEqual(set(), occupied)
 
@@ -1627,7 +1626,7 @@ class FindOccupiedRefSlotsTests(unittest.TestCase):
         wf = _r2v_core_workflow(occupied_indices=[0, 2])
         patcher = WorkflowPatcher(wf)
         occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
-            patcher, "ref_images"
+            patcher, "ref_images",
         )
         self.assertEqual({0, 2}, occupied)
 
@@ -1635,7 +1634,7 @@ class FindOccupiedRefSlotsTests(unittest.TestCase):
         wf = _r2v_core_workflow(occupied_indices=list(range(9)))
         patcher = WorkflowPatcher(wf)
         occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
-            patcher, "ref_images"
+            patcher, "ref_images",
         )
         self.assertEqual(set(range(9)), occupied)
 
@@ -1653,7 +1652,7 @@ class FindOccupiedRefSlotsTests(unittest.TestCase):
         }
         patcher = WorkflowPatcher(wf)
         occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
-            patcher, "ref_images"
+            patcher, "ref_images",
         )
         self.assertEqual(set(), occupied)
 
@@ -1667,7 +1666,7 @@ class FindOccupiedRefSlotsTests(unittest.TestCase):
         }
         patcher = WorkflowPatcher(wf)
         occupied = ComfyUIMiniMaxH3R2VBackend._find_occupied_ref_slots(
-            patcher, "ref_images"
+            patcher, "ref_images",
         )
         self.assertEqual(set(), occupied)
 
@@ -1692,7 +1691,7 @@ class AddRefNodeAndWireTests(unittest.TestCase):
         wf = backend.load_workflow()
         patcher = WorkflowPatcher(wf)
         tag = backend._add_ref_node_and_wire(
-            patcher, "ref_images", 0, "/tmp/actor.png"
+            patcher, "ref_images", 0, "/tmp/actor.png",
         )
         patched = patcher.get()
         # Check loader node was created
@@ -1707,7 +1706,7 @@ class AddRefNodeAndWireTests(unittest.TestCase):
         wf = backend.load_workflow()
         patcher = WorkflowPatcher(wf)
         tag = backend._add_ref_node_and_wire(
-            patcher, "ref_videos", 1, "/tmp/clip.mp4"
+            patcher, "ref_videos", 1, "/tmp/clip.mp4",
         )
         patched = patcher.get()
         loader_id = patched["42"]["inputs"]["ref_videos.ref_video_1"][0]
@@ -1719,7 +1718,7 @@ class AddRefNodeAndWireTests(unittest.TestCase):
         wf = backend.load_workflow()
         patcher = WorkflowPatcher(wf)
         tag = backend._add_ref_node_and_wire(
-            patcher, "ref_audios", 2, "/tmp/sound.wav"
+            patcher, "ref_audios", 2, "/tmp/sound.wav",
         )
         patched = patcher.get()
         loader_id = patched["42"]["inputs"]["ref_audios.ref_audio_2"][0]
@@ -1883,7 +1882,7 @@ class PatchDynamicRefInputsTests(unittest.TestCase):
         wf = backend.load_workflow()
         patcher = WorkflowPatcher(wf)
         tags = backend._patch_dynamic_ref_inputs(
-            patcher, self._scene(images=2, videos=1, audios=1)
+            patcher, self._scene(images=2, videos=1, audios=1),
         )
         self.assertEqual(["<Picture 1>", "<Picture 2>", "<Video 1>", "<Audio 1>"], tags)
 
@@ -2059,8 +2058,8 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
                     "paths": {
                         "vocals": str(vocal_path),
                         "full_mix": str(fullmix_path),
-                    }
-                }
+                    },
+                },
             }
             backend = self._backend(audio_ref_stems=["vocals", "full_mix"])
             result = backend._resolve_stem_audio_paths(scene)
@@ -2130,8 +2129,8 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
                     "paths": {
                         "vocals": str(vocal_path),
                         "drums": str(drums_path),
-                    }
-                }
+                    },
+                },
             }
             backend = self._backend(audio_ref_stems=["drums", "vocals"])
             result = backend._resolve_stem_audio_paths(scene)
@@ -2155,7 +2154,7 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
                 "stem_audio": {
                     "stems": stems,
                     "paths": paths,
-                }
+                },
             }
             backend = self._backend(audio_ref_stems=stems)
             result = backend._resolve_stem_audio_paths(scene)
@@ -2169,8 +2168,8 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
                 "stems": ["vocals", "drums"],
                 "paths": {
                     "vocals": "/nonexistent/vocals.wav",
-                }
-            }
+                },
+            },
         }
         backend = self._backend(audio_ref_stems=["vocals", "drums"])
         result = backend._resolve_stem_audio_paths(scene)
@@ -2192,7 +2191,7 @@ class ResolveStemAudioPathsTests(unittest.TestCase):
                 "stem_audio": {
                     "stems": ["drums", "bass", "vocals", "other", "full_mix"],
                     "paths": paths,
-                }
+                },
             }
             backend = self._backend()
             result = backend._resolve_stem_audio_paths(scene)
@@ -2239,11 +2238,11 @@ class StemAudioRenderVideoIntegrationTests(unittest.TestCase):
                     "paths": {
                         "vocals": str(vocal_path),
                         "drums": str(drums_path),
-                    }
+                    },
                 },
                 "references": {
-                    "reference_audio_paths": [str(ref_path)]
-                }
+                    "reference_audio_paths": [str(ref_path)],
+                },
             }
 
             stem_paths = backend._resolve_stem_audio_paths(scene)
@@ -2405,7 +2404,7 @@ class StemAudioTrimRenderVideoIntegrationTests(unittest.TestCase):
                     "paths": {
                         "vocals": str(vocal_path),
                         "full_mix": str(fullmix_path),
-                    }
+                    },
                 },
                 "duration_seconds": 5.0,
                 "references": {"actor_sheet_paths": ["/tmp/actor.png"]},

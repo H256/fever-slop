@@ -159,8 +159,8 @@ class TestConfigFlags(unittest.TestCase):
         self.assertTrue(req.movie_refine_actor_prompts)
 
     def test_movie_project_config_includes_refine_actor_prompts(self):
-        from feverslop.studio.projects import ProjectCreateRequest
         from feverslop.studio.project_repository import movie_project_config
+        from feverslop.studio.projects import ProjectCreateRequest
 
         req = ProjectCreateRequest(
             project_type="movie",
@@ -171,8 +171,8 @@ class TestConfigFlags(unittest.TestCase):
         self.assertTrue(config["refine_actor_prompts"])
 
     def test_movie_project_config_defaults_refine_actor_prompts_to_false(self):
-        from feverslop.studio.projects import ProjectCreateRequest
         from feverslop.studio.project_repository import movie_project_config
+        from feverslop.studio.projects import ProjectCreateRequest
 
         req = ProjectCreateRequest(
             project_type="movie",
@@ -199,8 +199,15 @@ class TestScaffoldWithRefineActors(unittest.TestCase):
     def test_scaffold_with_refine_actors_produces_detailed_descriptions(self):
         import tempfile
         from pathlib import Path
+
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
-        from feverslop.domain.movie import StoryArch, CinematicShot, MovieBible, MovieLocation, MovieContinuityRule
+        from feverslop.domain.movie import (
+            CinematicShot,
+            MovieBible,
+            MovieContinuityRule,
+            MovieLocation,
+            StoryArch,
+        )
 
         class RefineActorPlanner:
             def __init__(self):
@@ -269,7 +276,7 @@ class TestScaffoldWithRefineActors(unittest.TestCase):
                     story_text="A soldier in a trench during WWI.",
                     desired_length=12,
                     config={"refine_actor_prompts": True},
-                )
+                ),
             )
 
             self.assertTrue(planner.refine_called)

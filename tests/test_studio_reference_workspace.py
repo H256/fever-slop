@@ -17,9 +17,9 @@ from feverslop.domain.reference_workspace import (
 from feverslop.studio.reference_workspace_service import (
     GenerationCommand,
     ReferenceWorkspaceService,
+    _asset_to_dict,
     _assignment_from_dict,
     _assignment_to_dict,
-    _asset_to_dict,
 )
 
 
@@ -64,7 +64,7 @@ class _MockLibrary:
 
     def import_asset(self, project_id: str, source_path: Path, asset: ReferenceAsset) -> ReferenceAsset:
         return self.import_results.get(source_path.name, ReferenceAsset(
-            id=asset.id, kind=asset.kind, label=asset.label, path=f"movie/references/imported/{asset.id}.png", width=640, height=480
+            id=asset.id, kind=asset.kind, label=asset.label, path=f"movie/references/imported/{asset.id}.png", width=640, height=480,
         ))
 
 

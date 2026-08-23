@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.global_library import GlobalLibraryAdapter
-from feverslop.application.global_character_creator import AssetIdea, GuidedAssetGenerator
+from feverslop.application.global_character_creator import (
+    AssetIdea,
+    GuidedAssetGenerator,
+)
 from feverslop.domain.global_library import AssetKind, GlobalAsset
 
 

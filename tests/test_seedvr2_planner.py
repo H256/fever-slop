@@ -1,6 +1,10 @@
 import unittest
 
-from feverslop.domain.seedvr2 import plan_seedvr2_passes, plan_seedvr2_segments, resolve_target_resolution
+from feverslop.domain.seedvr2 import (
+    plan_seedvr2_passes,
+    plan_seedvr2_segments,
+    resolve_target_resolution,
+)
 
 
 class SeedVR2PlannerTests(unittest.TestCase):

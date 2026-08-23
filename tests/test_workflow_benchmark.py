@@ -1,5 +1,5 @@
-import io
 import hashlib
+import io
 import json
 import os
 import unittest
@@ -20,7 +20,6 @@ from feverslop.tools.workflow_benchmark import (
     run,
     validate_complete_matrix,
 )
-
 
 FIXTURE = (
     Path(__file__).parent
@@ -107,7 +106,7 @@ def _evidenced(
     dict,
 ]:
     review, mapping = create_blinded_review_artifact(
-        results, environment=ENVIRONMENT, seed=4707
+        results, environment=ENVIRONMENT, seed=4707,
     )
     profiles = {
         item["candidate_label"]: item["workflow_profile"]
@@ -123,7 +122,7 @@ def _evidenced(
         ]
     return (
         ingest_blinded_review_scores(
-            results, review, mapping, environment=ENVIRONMENT
+            results, review, mapping, environment=ENVIRONMENT,
         ),
         review,
         mapping,
@@ -204,7 +203,7 @@ class VisualConsistencyBenchmarkResultTests(unittest.TestCase):
 
     def test_records_required_provenance_runtime_and_optional_vram(self):
         result = VisualConsistencyBenchmarkResult.from_dict(
-            _result(peak_vram_mb=None)
+            _result(peak_vram_mb=None),
         )
         without_vram = _result()
         without_vram.pop("peak_vram_mb")
@@ -214,14 +213,14 @@ class VisualConsistencyBenchmarkResultTests(unittest.TestCase):
         self.assertEqual(100.0, result.wall_time_seconds)
         self.assertIsNone(result.peak_vram_mb)
         self.assertIsNone(
-            VisualConsistencyBenchmarkResult.from_dict(without_vram).peak_vram_mb
+            VisualConsistencyBenchmarkResult.from_dict(without_vram).peak_vram_mb,
         )
 
         for field in ("prepared_workflow_sha256", "contract_fingerprint"):
             payload = _result()
             payload[field] = "not-a-hash"
             with self.subTest(field=field), self.assertRaisesRegex(
-                ValueError, "SHA-256"
+                ValueError, "SHA-256",
             ):
                 VisualConsistencyBenchmarkResult.from_dict(payload)
 
@@ -251,7 +250,7 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
     def test_promotes_median_identity_improvement_without_regression(self):
         baseline = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label="baseline", scene=scene)
+                _result(label="baseline", scene=scene),
             )
             for scene in range(1, 7)
         ]
@@ -266,7 +265,7 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
                         "palette": 3,
                         "transition": 3,
                     },
-                )
+                ),
             )
             for scene in range(1, 7)
         ]
@@ -279,19 +278,19 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
     def test_equal_quality_requires_fifteen_percent_wall_time_reduction(self):
         baseline = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label="baseline", scene=scene, wall_time_seconds=100)
+                _result(label="baseline", scene=scene, wall_time_seconds=100),
             )
             for scene in range(1, 7)
         ]
         fast = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(scene=scene, wall_time_seconds=85)
+                _result(scene=scene, wall_time_seconds=85),
             )
             for scene in range(1, 7)
         ]
         slow = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(scene=scene, wall_time_seconds=85.01)
+                _result(scene=scene, wall_time_seconds=85.01),
             )
             for scene in range(1, 7)
         ]
@@ -302,7 +301,7 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
     def test_errors_regressions_and_new_supported_profile_oom_block_promotion(self):
         baseline = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label="baseline", scene=scene)
+                _result(label="baseline", scene=scene),
             )
             for scene in range(1, 7)
         ]
@@ -328,13 +327,13 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
     def test_incomplete_mixed_and_unmatched_matrices_are_inconclusive(self):
         complete_baseline = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label="baseline", scene=scene)
+                _result(label="baseline", scene=scene),
             )
             for scene in range(1, 7)
         ]
         complete_candidate = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(scene=scene, wall_time_seconds=80)
+                _result(scene=scene, wall_time_seconds=80),
             )
             for scene in range(1, 7)
         ]
@@ -342,17 +341,17 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
         mixed_payload = mixed_candidate[-1].to_dict()
         mixed_payload["workflow_profile"] = "msr-default"
         mixed_candidate[-1] = VisualConsistencyBenchmarkResult.from_dict(
-            mixed_payload
+            mixed_payload,
         )
         unmatched_candidate = list(complete_candidate)
         unmatched_payload = unmatched_candidate[-1].to_dict()
         unmatched_payload["scene"] = 7
         unmatched_candidate[-1] = VisualConsistencyBenchmarkResult.from_dict(
-            unmatched_payload
+            unmatched_payload,
         )
 
         evidenced, review, mapping = _evidenced(
-            [*complete_baseline, *complete_candidate]
+            [*complete_baseline, *complete_candidate],
         )
         evidenced_baseline = list(evidenced[:6])
         evidenced_candidate = list(evidenced[6:])
@@ -360,13 +359,13 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
         mixed_payload = mixed_evidenced[-1].to_dict()
         mixed_payload["workflow_profile"] = "msr-default"
         mixed_evidenced[-1] = VisualConsistencyBenchmarkResult.from_dict(
-            mixed_payload
+            mixed_payload,
         )
         unmatched_evidenced = list(evidenced_candidate)
         unmatched_payload = unmatched_evidenced[-1].to_dict()
         unmatched_payload["scene"] = 7
         unmatched_evidenced[-1] = VisualConsistencyBenchmarkResult.from_dict(
-            unmatched_payload
+            unmatched_payload,
         )
         decisions = (
             evaluate_promotion(
@@ -400,13 +399,13 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
     def test_promotion_without_review_artifacts_is_inconclusive(self):
         baseline = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label="baseline", scene=scene)
+                _result(label="baseline", scene=scene),
             )
             for scene in range(1, 7)
         ]
         candidate = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(scene=scene, wall_time_seconds=80)
+                _result(scene=scene, wall_time_seconds=80),
             )
             for scene in range(1, 7)
         ]
@@ -415,19 +414,19 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
 
         self.assertFalse(decision.promote)
         self.assertTrue(
-            any("blinded evidence artifacts" in item for item in decision.failures)
+            any("blinded evidence artifacts" in item for item in decision.failures),
         )
 
     def test_promotion_rejects_reversed_baseline_and_candidate_arguments(self):
         baseline = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label="baseline", scene=scene)
+                _result(label="baseline", scene=scene),
             )
             for scene in range(1, 7)
         ]
         candidate = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(scene=scene, wall_time_seconds=80)
+                _result(scene=scene, wall_time_seconds=80),
             )
             for scene in range(1, 7)
         ]
@@ -447,12 +446,12 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
     def test_complete_matrix_requires_fixture_profiles_and_consistent_opaque_labels(self):
         results = [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label="baseline", scene=scene)
+                _result(label="baseline", scene=scene),
             )
             for scene in range(1, 7)
         ] + [
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(scene=scene, wall_time_seconds=80)
+                _result(scene=scene, wall_time_seconds=80),
             )
             for scene in range(1, 7)
         ]
@@ -462,7 +461,7 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
             any(
                 "blinded evidence artifacts" in failure
                 for failure in validate_complete_matrix(results).failures
-            )
+            ),
         )
 
         mixed_label = [item.to_dict() for item in results]
@@ -471,7 +470,7 @@ class VisualConsistencyPromotionTests(unittest.TestCase):
             [
                 VisualConsistencyBenchmarkResult.from_dict(item)
                 for item in mixed_label
-            ]
+            ],
         )
         self.assertFalse(decision.valid)
         self.assertTrue(any("label" in failure for failure in decision.failures))
@@ -507,10 +506,10 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
 
     def test_blinded_labels_are_seeded_unique_and_do_not_reveal_names(self):
         first = blind_candidate_labels(
-            ("baseline-profile", "candidate-profile"), seed=4707
+            ("baseline-profile", "candidate-profile"), seed=4707,
         )
         second = blind_candidate_labels(
-            ("baseline-profile", "candidate-profile"), seed=4707
+            ("baseline-profile", "candidate-profile"), seed=4707,
         )
 
         self.assertEqual(first, second)
@@ -573,7 +572,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                         _result(label=label, scene=scene)
                         for label in ("baseline", "candidate")
                         for scene in range(1, 7)
-                    ]
+                    ],
                 }),
                 encoding="utf-8",
             )
@@ -609,17 +608,17 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
     def test_review_artifact_is_randomized_sanitized_and_round_trips_scores(self):
         source = tuple(
             VisualConsistencyBenchmarkResult.from_dict(
-                _result(label=label, scene=scene)
+                _result(label=label, scene=scene),
             )
             for label in ("baseline", "candidate")
             for scene in range(1, 7)
         )
 
         first_review, first_mapping = create_blinded_review_artifact(
-            source, environment=ENVIRONMENT, seed=4707
+            source, environment=ENVIRONMENT, seed=4707,
         )
         second_review, second_mapping = create_blinded_review_artifact(
-            source, environment=ENVIRONMENT, seed=4707
+            source, environment=ENVIRONMENT, seed=4707,
         )
 
         self.assertEqual(first_review, second_review)
@@ -642,7 +641,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
             set(first_review["entries"][0]),
         )
         self.assertEqual(
-            {name: None for name in SCORE_NAMES},
+            dict.fromkeys(SCORE_NAMES),
             first_review["entries"][0]["scores"],
         )
         self.assertNotEqual(
@@ -678,7 +677,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "feverslop.visual-consistency-evidence/v1"
+                "feverslop.visual-consistency-evidence/v1",
             },
             {item.blinded_evidence_schema for item in restored},
         )
@@ -712,7 +711,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                     label=label,
                     scene=scene,
                     evidence_digest=None,
-                )
+                ),
             )
             for label in ("baseline", "candidate")
             for scene in range(1, 7)
@@ -737,8 +736,8 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                             _unscored_result(label=label, scene=scene)
                             for label in ("baseline", "candidate")
                             for scene in range(1, 7)
-                        ]
-                    }
+                        ],
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -757,7 +756,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                         "--environment",
                         str(environment_path),
                         "--json",
-                    ]
+                    ],
                 )
 
             review = json.loads(review_path.read_text(encoding="utf-8"))
@@ -766,13 +765,13 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertEqual("review", json.loads(output.getvalue())["mode"])
         self.assertEqual(
-            "feverslop.visual-consistency-review/v1", review["schema"]
+            "feverslop.visual-consistency-review/v1", review["schema"],
         )
         self.assertEqual(
-            "feverslop.visual-consistency-review-map/v1", mapping["schema"]
+            "feverslop.visual-consistency-review-map/v1", mapping["schema"],
         )
         self.assertEqual(
-            {name: None for name in SCORE_NAMES},
+            dict.fromkeys(SCORE_NAMES),
             review["entries"][0]["scores"],
         )
 
@@ -788,8 +787,8 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                         _unscored_result(label=label, scene=scene)
                         for label in ("baseline", "candidate")
                         for scene in range(1, 7)
-                    ]
-                }
+                    ],
+                },
             )
             results_path.write_text(original, encoding="utf-8")
             output = io.StringIO()
@@ -807,7 +806,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                         "--environment",
                         str(environment_path),
                         "--json",
-                    ]
+                    ],
                 )
 
             self.assertEqual(1, status)
@@ -826,8 +825,8 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                             _unscored_result(label=label, scene=scene)
                             for label in ("baseline", "candidate")
                             for scene in range(1, 7)
-                        ]
-                    }
+                        ],
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -863,7 +862,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                                 "--environment",
                                 str(environment_path),
                                 "--json",
-                            ]
+                            ],
                         )
                     self.assertEqual(1, status)
                     self.assertEqual(
@@ -910,7 +909,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                         _unscored_result(label=label, scene=scene)
                         for label in ("baseline", "candidate")
                         for scene in range(1, 7)
-                    ]
+                    ],
                 }),
                 encoding="utf-8",
             )
@@ -992,7 +991,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
             retained = [
                 path for path in root.iterdir()
                 if path.name not in {
-                    "environment.json", "results.json", "sealed.json"
+                    "environment.json", "results.json", "sealed.json",
                 }
             ]
             self.assertEqual(1, len(retained))
@@ -1058,7 +1057,7 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
                         _unscored_result(label=label, scene=scene)
                         for label in ("baseline", "candidate")
                         for scene in range(1, 7)
-                    ]
+                    ],
                 }),
                 encoding="utf-8",
             )

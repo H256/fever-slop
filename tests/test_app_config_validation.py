@@ -270,7 +270,7 @@ class AppConfigValidationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "app_config.json"
-            config_path.write_text('{}', encoding="utf-8")
+            config_path.write_text("{}", encoding="utf-8")
 
             with self.assertRaises(ValueError) as ctx:
                 AppConfig.load(config_path, required_keys=["llm", "comfyui"])

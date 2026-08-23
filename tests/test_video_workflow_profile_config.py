@@ -42,7 +42,7 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
         self.assertIs(
             profile,
             config.resolve_video_workflow_profile(
-                pipeline="ltx_ingredients", purpose="final"
+                pipeline="ltx_ingredients", purpose="final",
             ),
         )
 
@@ -53,7 +53,7 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
         ])
 
         selected = config.resolve_video_workflow_profile(
-            pipeline="ltx_ingredients", purpose="final", name="second"
+            pipeline="ltx_ingredients", purpose="final", name="second",
         )
 
         self.assertEqual("second", selected.name)
@@ -63,8 +63,8 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
 
         self.assertIsNone(
             config.resolve_video_workflow_profile(
-                pipeline="ltx_ingredients", purpose="final"
-            )
+                pipeline="ltx_ingredients", purpose="final",
+            ),
         )
 
     def test_absent_section_preserves_backward_compatibility(self):
@@ -76,8 +76,8 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
         self.assertEqual((), config.video_workflow_profiles)
         self.assertIsNone(
             config.resolve_video_workflow_profile(
-                pipeline="ltx_ingredients", purpose="final"
-            )
+                pipeline="ltx_ingredients", purpose="final",
+            ),
         )
 
     def test_rejects_duplicate_profile_names(self):
@@ -108,7 +108,7 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "does not match pipeline/purpose"):
             config.resolve_video_workflow_profile(
-                pipeline="ltx_msr", purpose="final", name="ingredients-final"
+                pipeline="ltx_msr", purpose="final", name="ingredients-final",
             )
 
 

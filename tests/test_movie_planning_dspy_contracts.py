@@ -2,6 +2,7 @@ import unittest
 from contextlib import nullcontext
 from unittest.mock import patch
 
+from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.movie_planning_modules import MoviePlanningModules
 from feverslop.prompting.movie_planning_signatures import (
     MovieBiblePayload,
@@ -9,7 +10,6 @@ from feverslop.prompting.movie_planning_signatures import (
     StoryArchPayload,
     build_movie_planning_signature_bundle,
 )
-from feverslop.prompting.guide_loader import load_markdown_guide
 
 
 class MoviePlanningDspyContractTests(unittest.TestCase):

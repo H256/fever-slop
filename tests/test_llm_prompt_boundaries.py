@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from feverslop.prompting.general_signatures import build_general_signature_bundle
 from feverslop.prompting.guide_loader import load_markdown_guide

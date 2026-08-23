@@ -227,7 +227,10 @@ class ValidationFailureSurfaceTest(unittest.TestCase):
     """Validation failures from domain should surface clearly."""
 
     def test_negative_start_surfaces_in_edit(self):
-        from feverslop.application.edit_audio_timeline import EditAudioTimeline, EditError
+        from feverslop.application.edit_audio_timeline import (
+            EditAudioTimeline,
+            EditError,
+        )
 
         class OkReadPort:
             def read_timeline(self):
@@ -238,7 +241,7 @@ class ValidationFailureSurfaceTest(unittest.TestCase):
                         "scene_boundaries": [],
                         "beat_markers": [],
                         "metadata": {},
-                    }
+                    },
                 ]
             def read_scene_srt(self): return None
             def read_beat_json(self): return None
@@ -257,7 +260,10 @@ class ValidationFailureSurfaceTest(unittest.TestCase):
         self.assertIn("start", str(ctx.exception))
 
     def test_end_before_start_surfaces_in_edit(self):
-        from feverslop.application.edit_audio_timeline import EditAudioTimeline, EditError
+        from feverslop.application.edit_audio_timeline import (
+            EditAudioTimeline,
+            EditError,
+        )
 
         class OkReadPort:
             def read_timeline(self):
@@ -268,7 +274,7 @@ class ValidationFailureSurfaceTest(unittest.TestCase):
                         "scene_boundaries": [],
                         "beat_markers": [],
                         "metadata": {},
-                    }
+                    },
                 ]
             def read_scene_srt(self): return None
             def read_beat_json(self): return None

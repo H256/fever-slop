@@ -1,21 +1,24 @@
 import argparse
 import json
 import unittest
-from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from feverslop.application.visual_consistency_preflight import (
+    VisualConsistencyPreflightResult,
+)
 from feverslop.composition.arg_parser import PipelineStage
 from feverslop.composition.config_loader import PipelineRunState, build_run_context
 from feverslop.composition.stage_runners import (
     STAGE_RUNNERS,
     _load_continuity_dirty,
     _merge_reference_paths_into_h3_segments,
-    _select_h3_segments,
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
     _run_visual_consistency_preflight,
+    _select_h3_segments,
     resolve_pipeline_stages,
 )
 from feverslop.domain.visual_consistency import (
@@ -24,9 +27,6 @@ from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
 )
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
-from feverslop.application.visual_consistency_preflight import (
-    VisualConsistencyPreflightResult,
-)
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
@@ -107,7 +107,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
 
         self.assertEqual("custom-msr", preflight.call_args.kwargs["workflow_profile"])
         self.assertTrue(
-            preflight.call_args.kwargs["supports_continuous_transitions"]
+            preflight.call_args.kwargs["supports_continuous_transitions"],
         )
 
     def test_malformed_continuity_marker_fails_closed(self):
@@ -138,7 +138,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             storyboard_workflow=project / "storyboard.json",
             reference_hero_workflow=project / "hero.json", reference_edit_workflow=project / "edit.json",
             msr_workflow=project / "msr.json", ingredients_workflow=project / "ingredients.json",
-            relay_workflow=Path(""), single_prompt_workflow=project / "i2v.json",
+            relay_workflow=Path(), single_prompt_workflow=project / "i2v.json",
             facefix_workflow=project / "facefix.json",
             plan_for_next_step=context.ingredients_plan if pipeline == "ltx_ingredients" else context.reference_plan,
         )
@@ -248,7 +248,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "feverslop.composition.stage_runners.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight"
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
             ) as preflight:
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -271,7 +271,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             state.args.video_workflow_profile = "msr-startframe"
             state.context.input_audio.write_bytes(b"audio")
             state.msr_workflow = Path(
-                "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json"
+                "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json",
             ).resolve()
             state.app_config_path.write_text(
                 json.dumps(
@@ -286,9 +286,9 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                                 "output_scale": 1,
                                 "supports_per_pass_loras": False,
                                 "supports_start_frame": True,
-                            }
-                        ]
-                    }
+                            },
+                        ],
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -323,13 +323,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "feverslop.composition.stage_runners.PostprocessorFrameExtractor",
                 return_value=extractor,
             ), patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight"
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
             ):
                 _run_ltx_prepare_workflows_stage(state)
 
         materializer.prepare.assert_not_called()
         self.assertFalse(
-            state.context.artifact_layout.scene_manifest(2).exists()
+            state.context.artifact_layout.scene_manifest(2).exists(),
         )
         extractor.extract_last_frame.assert_not_called()
 
@@ -339,11 +339,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             state = self._state(project, pipeline="ltx_msr")
             _configure_startframe_music_state(state, project)
             source = json.loads(
-                state.plan_for_next_step.read_text(encoding="utf-8")
+                state.plan_for_next_step.read_text(encoding="utf-8"),
             )
             contracts = tuple(
                 SceneConsistencyContract.from_dict(
-                    scene.pop("visual_consistency")
+                    scene.pop("visual_consistency"),
                 )
                 for scene in source
             )
@@ -376,11 +376,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             self.assertEqual(
                 source,
                 json.loads(
-                    state.plan_for_next_step.read_text(encoding="utf-8")
+                    state.plan_for_next_step.read_text(encoding="utf-8"),
                 ),
             )
             self.assertFalse(
-                state.context.artifact_layout.scene_manifest(2).exists()
+                state.context.artifact_layout.scene_manifest(2).exists(),
             )
 
     def test_full_prepare_defers_continuous_manifest_until_sequential_render(self):
@@ -390,10 +390,10 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             _configure_startframe_music_state(state, project)
             contracts = tuple(
                 SceneConsistencyContract.from_dict(
-                    scene["visual_consistency"]
+                    scene["visual_consistency"],
                 )
                 for scene in json.loads(
-                    state.plan_for_next_step.read_text(encoding="utf-8")
+                    state.plan_for_next_step.read_text(encoding="utf-8"),
                 )
             )
             backend = _prepared_backend(_RecordingFramePostprocessor())
@@ -438,11 +438,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 ],
             )
             self.assertFalse(
-                state.context.artifact_layout.scene_manifest(2).exists()
+                state.context.artifact_layout.scene_manifest(2).exists(),
             )
             materializer.reset_mock()
             renderer = _SequentialPreparedRenderer(
-                state.context.artifact_layout
+                state.context.artifact_layout,
             )
 
             with patch(
@@ -469,7 +469,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 ],
             )
             self.assertTrue(
-                state.context.artifact_layout.scene_manifest(2).exists()
+                state.context.artifact_layout.scene_manifest(2).exists(),
             )
 
     def test_render_handoff_uses_fresh_or_required_immediate_predecessor(self):
@@ -514,7 +514,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 postprocessor = _RecordingFramePostprocessor()
                 backend = _prepared_backend(postprocessor)
                 renderer = _SequentialPreparedRenderer(
-                    state.context.artifact_layout
+                    state.context.artifact_layout,
                 )
                 materializer = Mock()
 
@@ -562,7 +562,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             ), patch(
                 "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
                 return_value=_SequentialPreparedRenderer(
-                    state.context.artifact_layout
+                    state.context.artifact_layout,
                 ),
             ), patch(
                 "feverslop.composition.stage_runners.WorkflowMaterializer",
@@ -578,7 +578,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             state = self._state(project, pipeline="ltx_msr")
             _configure_startframe_music_state(state, project)
             plan = json.loads(
-                state.plan_for_next_step.read_text(encoding="utf-8")
+                state.plan_for_next_step.read_text(encoding="utf-8"),
             )
             plan.append(
                 _consistent_music_scene(
@@ -586,7 +586,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                     project / "actor.png",
                     project / "location.png",
                     transition="continuous",
-                )
+                ),
             )
             state.plan_for_next_step.write_text(
                 json.dumps(plan),
@@ -606,7 +606,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             postprocessor = _RecordingFramePostprocessor()
             backend = _prepared_backend(postprocessor)
             renderer = _SequentialPreparedRenderer(
-                state.context.artifact_layout
+                state.context.artifact_layout,
             )
             materializer = Mock()
 
@@ -666,7 +666,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 ],
             )
             resumed = _SequentialPreparedRenderer(
-                state.context.artifact_layout
+                state.context.artifact_layout,
             )
             manifest = Mock(pipeline="ltx_msr")
             manifest.verify.return_value = []
@@ -694,7 +694,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             state = self._state(project, pipeline="ltx_msr")
             _configure_startframe_music_state(state, project)
             plan = json.loads(
-                state.plan_for_next_step.read_text(encoding="utf-8")
+                state.plan_for_next_step.read_text(encoding="utf-8"),
             )
             plan.append(
                 _consistent_music_scene(
@@ -702,7 +702,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                     project / "actor.png",
                     project / "location.png",
                     transition="continuous",
-                )
+                ),
             )
             state.plan_for_next_step.write_text(
                 json.dumps(plan),
@@ -711,7 +711,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             _write_prepared_placeholders(state, (1, 2, 3))
             for number in (2, 3):
                 state.context.artifact_layout.scene_final_video(
-                    number
+                    number,
                 ).write_bytes(b"stale")
             backend = _prepared_backend(_RecordingFramePostprocessor())
             failing = _SequentialPreparedRenderer(
@@ -742,7 +742,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 ],
             )
             resumed = _SequentialPreparedRenderer(
-                state.context.artifact_layout
+                state.context.artifact_layout,
             )
             manifest = Mock(pipeline="ltx_msr")
             manifest.verify.return_value = []
@@ -774,11 +774,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             state.msr_workflow = mismatched
 
             with patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight"
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
             ), patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case"
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
             ) as builder, patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer"
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
             ) as materializer, self.assertRaisesRegex(
                 ValueError,
                 "start-frame profile workflow",
@@ -810,11 +810,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             (project / "sheet.png").write_bytes(b"sheet")
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case"
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
             ) as use_case, patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer"
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
             ) as materializer, self.assertRaisesRegex(
-                ValueError, "missing_actor_reference"
+                ValueError, "missing_actor_reference",
             ):
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -850,7 +850,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "feverslop.composition.stage_runners.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners.console.print"
+                "feverslop.composition.stage_runners.console.print",
             ) as output:
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -860,7 +860,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                     "WARNING" in str(call.args[0])
                     and "missing_actor_reference" in str(call.args[0])
                     for call in output.call_args_list
-                )
+                ),
             )
 
     def test_off_preflight_bypasses_manifest_config_and_contract_loading(self):
@@ -886,11 +886,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "feverslop.composition.stage_runners.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners.ProjectConfig.load"
+                "feverslop.composition.stage_runners.ProjectConfig.load",
             ) as config_load, patch(
-                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter"
+                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter",
             ) as manifest_adapter, patch(
-                "feverslop.composition.stage_runners.preflight_visual_consistency"
+                "feverslop.composition.stage_runners.preflight_visual_consistency",
             ) as contract_preflight:
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -935,11 +935,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             }]), encoding="utf-8")
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case"
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
             ) as use_case, patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer"
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
             ) as materializer, self.assertRaisesRegex(
-                ValueError, "invalid_ingredients_sheet_path"
+                ValueError, "invalid_ingredients_sheet_path",
             ):
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -985,7 +985,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter",
                 return_value=adapter,
             ), patch(
-                "feverslop.composition.stage_runners.console.print"
+                "feverslop.composition.stage_runners.console.print",
             ) as output:
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -1158,7 +1158,7 @@ def _configure_startframe_music_state(
     state.args.video_workflow_profile = "msr-startframe"
     state.context.input_audio.write_bytes(b"audio")
     state.msr_workflow = Path(
-        "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json"
+        "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json",
     ).resolve()
     state.app_config_path.write_text(
         json.dumps(
@@ -1173,9 +1173,9 @@ def _configure_startframe_music_state(
                         "output_scale": 1,
                         "supports_per_pass_loras": False,
                         "supports_start_frame": True,
-                    }
-                ]
-            }
+                    },
+                ],
+            },
         ),
         encoding="utf-8",
     )
@@ -1194,7 +1194,7 @@ def _configure_startframe_music_state(
                     location,
                     transition="continuous",
                 ),
-            ]
+            ],
         ),
         encoding="utf-8",
     )

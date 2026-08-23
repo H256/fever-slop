@@ -2,7 +2,11 @@ import unittest
 from pathlib import Path
 
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
-from feverslop.config.project_config import ActorConfig, ProjectConfig, StructuredLocationConfig
+from feverslop.config.project_config import (
+    ActorConfig,
+    ProjectConfig,
+    StructuredLocationConfig,
+)
 
 
 class FakePromptPipeline:
@@ -27,7 +31,7 @@ class FakePromptPipeline:
 class PromptGenerationReferencesTests(unittest.TestCase):
     def test_resolved_global_context_includes_actors_and_structured_locations(self):
         config = ProjectConfig(
-            project_dir=Path("."),
+            project_dir=Path(),
             project_name="test",
             input_audio=Path("song.mp3"),
             subject="legacy subject",
@@ -62,7 +66,7 @@ class PromptGenerationReferencesTests(unittest.TestCase):
 
     def test_resolved_global_context_uses_llm_generated_actors_when_config_omits_them(self):
         config = ProjectConfig(
-            project_dir=Path("."),
+            project_dir=Path(),
             project_name="test",
             input_audio=Path("song.mp3"),
         )
@@ -88,7 +92,7 @@ class PromptGenerationReferencesTests(unittest.TestCase):
 
     def test_single_subject_mode_context_limits_scene_actor_count(self):
         config = ProjectConfig(
-            project_dir=Path("."),
+            project_dir=Path(),
             project_name="test",
             input_audio=Path("song.mp3"),
             subject_mode="single",

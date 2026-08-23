@@ -3,7 +3,11 @@ from dataclasses import FrozenInstanceError
 from types import MappingProxyType
 
 from feverslop.prompting.dspy_h3_models import PromptMode
-from feverslop.prompting.model_types import MODEL_TYPES, ModelTypeSpec, resolve_model_type
+from feverslop.prompting.model_types import (
+    MODEL_TYPES,
+    ModelTypeSpec,
+    resolve_model_type,
+)
 
 
 class PromptModelTypesTests(unittest.TestCase):

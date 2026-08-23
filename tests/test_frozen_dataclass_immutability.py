@@ -1,6 +1,6 @@
 """Tests for frozen dataclass immutability enforcement (issue #258)."""
-import unittest
 import types
+import unittest
 
 from feverslop.domain.movie import (
     CinematicShot,
@@ -22,7 +22,6 @@ from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
     validate_scene_sequence,
 )
-
 
 ACTOR_HASH = "a" * 64
 

@@ -34,8 +34,8 @@ class GeneratePipelineSmokeTests(unittest.TestCase):
                             "scene": 1,
                             "frame_count": 24,
                             "duration_seconds": 1.0,
-                        }
-                    ]
+                        },
+                    ],
                 },
             ),
         ]

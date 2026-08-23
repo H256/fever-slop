@@ -20,10 +20,10 @@ class FakeSchemaClient:
                             "1:1 (Square)",
                             "9:16 (Vertical)",
                             "16:9 (Wide)",
-                        ]]
-                    }
-                }
-            }
+                        ]],
+                    },
+                },
+            },
         }
 
 
@@ -36,7 +36,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
         )
 
         prompt = backend.build_sheet_prompt(
-            "a scarred pirate captain in a blue coat", kind="character", frames=124
+            "a scarred pirate captain in a blue coat", kind="character", frames=124,
         )
 
         self.assertEqual(6, prompt.shots)
@@ -100,7 +100,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             )
 
             patched = backend.build_workflow(
-                anchor_images=[anchor], prompt="turnaround", seed=7, width=850, height=1000
+                anchor_images=[anchor], prompt="turnaround", seed=7, width=850, height=1000,
             )
 
             self.assertEqual(0.85, patched["115"]["inputs"]["megapixels"])
