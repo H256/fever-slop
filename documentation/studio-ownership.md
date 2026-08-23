@@ -31,8 +31,8 @@ generic service file.
 | `studio/__init__.py` | Compatibility boundary | `studio/` temporary shim package | #605 |
 | `studio/artifact_catalog.py` | Adapter | `adapters/artifact_catalog.py` | #602, complete target |
 | `studio/artifact_locking.py` | Adapter | `adapters/artifact_locking.py` | #602, complete target |
-| `studio/job_service.py` | Application service | `application/job_service.py` (new) | #603 |
-| `studio/jobs.py` | Application job runtime | `application/job_runtime.py` (new) | #603 |
+| `studio/job_service.py` | Application contracts + composition | `application/job_contracts.py` (contract in #613); runtime split in #603 | #613, #603 |
+| `studio/jobs.py` | Runtime adapter | `adapters/job_runtime.py` (planned); no concrete runtime in `application/` | #613, #603 |
 | `studio/logging.py` | Utility | `utils/logging.py` (new) | #603 |
 | `studio/media_store.py` | Persistence adapter | `adapters/media_store.py` (new) | #604 |
 | `studio/movie_pipeline_jobs.py` | Composition | `composition/movie_pipeline_jobs.py` | #602, complete target |
@@ -51,6 +51,16 @@ The map deliberately separates project orchestration from persistence. A
 `ProjectStore` replacement belongs in the application layer, while repository,
 media, artifact, and pipeline-state file access belongs in adapters. No new
 `studio2`, `services`, or similarly broad package is part of this migration.
+
+## Job lifecycle split
+
+Issue #613 defines the transport-neutral application contracts in
+`application/job_contracts.py`: immutable submissions, snapshots, status values,
+log events, and the `JobRuntime` protocol. Concrete executors remain outside
+the application layer because they own subprocesses, thread pools, filesystem
+access, or Rich integration. The follow-up #603 move must adapt those runtime
+implementations behind the protocol before the legacy `studio` modules can be
+removed.
 
 ## Compatibility policy
 
