@@ -83,7 +83,7 @@ class TimelineAppService:
         segments = list(current.segments)
         if index < 0 or index >= len(segments):
             raise ValueError(
-                f"segment index {index} out of range [0, {len(segments)})"
+                f"segment index {index} out of range [0, {len(segments)})",
             )
 
         original = segments[index]
@@ -113,7 +113,7 @@ class TimelineAppService:
         current = self._load()
         if index < 0 or index >= len(current.segments):
             raise ValueError(
-                f"segment index {index} out of range [0, {len(current.segments)})"
+                f"segment index {index} out of range [0, {len(current.segments)})",
             )
 
         before = current
@@ -141,7 +141,7 @@ class TimelineAppService:
         if index < 0 or index + count > len(current.segments):
             raise ValueError(
                 f"segments [{index}:{index + count}] out of range "
-                f"[0, {len(current.segments)})"
+                f"[0, {len(current.segments)})",
             )
 
         before = current
@@ -161,7 +161,7 @@ class TimelineAppService:
         return self._impact(before, after)
 
     def add_scene_boundary(
-        self, start: float, end: float, reason: str
+        self, start: float, end: float, reason: str,
     ) -> AffectedArtifacts:
         """Add a scene boundary (validated against existing boundaries)."""
         current = self._load()

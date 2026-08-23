@@ -33,7 +33,7 @@ def write_startframe_i2v_render_plan(*, project_dir: Path, fps: int = 24) -> Pat
                     "startframe_source": f"output/movie/storyboard/final/scene_{scene_number:04}.png",
                     "startframe_validation_required": True,
                 },
-            }
+            },
         )
         cursor += duration
     output_path = project_dir / "movie" / "render_plan_i2v.json"

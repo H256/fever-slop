@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import ContinuityHandoffPayload
@@ -36,7 +37,7 @@ class ContinuityHandoffUseCase:
             or not can_handoff(previous, current)
         ):
             raise ValueError(
-                f"Scene {current.scene} does not support continuity handoff"
+                f"Scene {current.scene} does not support continuity handoff",
             )
 
         project_dir_raw = getattr(self.frame_extractor, "project_dir", None)
@@ -82,7 +83,7 @@ class ContinuityHandoffUseCase:
                 "startframe_source_clip_sha256": sha256_file(source_clip),
                 "startframe_extractor": "last-frame-v1",
                 "continuity_handoff": handoff,
-            }
+            },
         )
         scene["keyframes"] = keyframes
         ltx = dict(scene.get("ltx") or {})
@@ -95,7 +96,7 @@ class ContinuityHandoffUseCase:
                 "msr_continuity_handoff_frames": 18,
                 "msr_continuity_msr_frame_count": 17,
                 "msr_continuity_guide_frame_idx": 18,
-            }
+            },
         )
         scene["ltx"] = ltx
         return scene

@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
 import re
 import shutil
 import tempfile
-from typing import Any, Callable
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
+from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 from feverslop.application.reference_sheet_planning import (
     DeterministicReferenceSheetPlanner,
     compile_reference_sheet_plan,
 )
-from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 from feverslop.application.sequence_to_sheet import (
     compose_contact_sheet,
     compose_sheet_from_contact_sheet,
@@ -141,12 +142,12 @@ class SequenceReferencePipeline:
                     scene={"reference_id": request.asset_id, "kind": kind, "view": "anchor"},
                     scene_number=1,
                     prompt=anchor_prompt,
-                    workflow_path=Path(""),
+                    workflow_path=Path(),
                     output_dir=anchor_dir,
                     width=(request.reference_image_size or (1920, 1080))[0],
                     height=(request.reference_image_size or (1920, 1080))[1],
                     reference_image=None,
-                )
+                ),
             )
             anchor = Path(anchor)
             if not anchor.is_file():
@@ -185,7 +186,7 @@ class SequenceReferencePipeline:
                 raise FileNotFoundError(f"sequence backend did not create a video: {sequence}")
             self._report_phase(request, "sequence_complete", path=sequence)
             semantic_plan_hash = hashlib.sha256(
-                json.dumps(semantic_plan.model_dump() if hasattr(semantic_plan, "model_dump") else semantic_plan, sort_keys=True).encode()
+                json.dumps(semantic_plan.model_dump() if hasattr(semantic_plan, "model_dump") else semantic_plan, sort_keys=True).encode(),
             ).hexdigest()
             prompt_hash = hashlib.sha256(sequence_prompt.encode()).hexdigest()
 
@@ -224,7 +225,7 @@ class SequenceReferencePipeline:
                 tempfile.mkdtemp(
                     prefix=f".sequence-reference-{request.asset_id}-swap-",
                     dir=final_dir.parent,
-                )
+                ),
             )
             backup_dir: Path | None = None
             try:

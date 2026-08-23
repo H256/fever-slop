@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from feverslop.domain.reference_sheet import CompiledReferenceSheetPlan, ReferenceSheetPlan
-
+from feverslop.domain.reference_sheet import (
+    CompiledReferenceSheetPlan,
+    ReferenceSheetPlan,
+)
 
 CHARACTER_VIEWS = ("full_body", "front", "left_profile", "right_profile", "back", "closeup")
 LOCATION_VIEWS = ("front", "right_side", "rear", "left_side", "wide_establishing")
@@ -68,7 +70,7 @@ def compile_reference_sheet_plan(
         rotation = "none"
         backdrop = source.backdrop or "plain seamless neutral grey studio backdrop"
         anchor_description = _identity_anchor_description(
-            source.anchor_description or description
+            source.anchor_description or description,
         )
     else:
         labels = LOCATION_VIEWS
@@ -138,7 +140,9 @@ class ReferenceSheetPlanner:
         self.fallback_reason: str | None = None
         if llm is not None:
             try:
-                from feverslop.prompting.reference_sheet_modules import ReferenceSheetPlanningModules
+                from feverslop.prompting.reference_sheet_modules import (
+                    ReferenceSheetPlanningModules,
+                )
 
                 self._modules = ReferenceSheetPlanningModules(llm, dspy_runtime=dspy_runtime)
             except Exception:

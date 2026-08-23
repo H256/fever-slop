@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import FrozenSet
 
 from feverslop.domain.rebuild_policy import (
     ArtifactKind,
@@ -25,13 +24,13 @@ class RebuildStage(Enum):
 class ArtifactState:
     kind: ArtifactKind
     state: Freshness
-    scene_numbers: FrozenSet[int] = frozenset()
+    scene_numbers: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True)
 class RebuildPreviewResult:
     stages: tuple[RebuildStage, ...]
-    affected_scenes: FrozenSet[int]
+    affected_scenes: frozenset[int]
     reusable_artifacts: tuple[ArtifactState, ...]
     stale_artifacts: tuple[ArtifactState, ...]
     unknown_artifacts: tuple[ArtifactState, ...]

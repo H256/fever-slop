@@ -1,37 +1,41 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
-from typing import Any, Callable
 import json
 import logging
 import math
+from collections.abc import Callable
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
 
+from feverslop.application.ingredients_render_plan import (
+    project_ingredients_runtime_scene,
+)
+from feverslop.application.ingredients_vision_prompt import (
+    build_ingredients_vision_prompt,
+)
 from feverslop.application.reference_bible import (
     INGREDIENTS_SHEET_LAYOUT_VERSION,
     build_ingredients_target_binding,
     build_runtime_consistency_contract,
     compose_cached_ingredients_sheet,
-    generate_scene_sheet_description,
     generate_scene_sheet_anchors,
+    generate_scene_sheet_description,
+    ingredients_sheet_size,
     ingredients_signature_references,
     ingredients_signature_sources,
-    ingredients_sheet_size,
     snapshot_ingredients_sources,
     visual_consistency_sources,
 )
+from feverslop.domain.prepared_workflow import sha256_file
+from feverslop.domain.vision_references import ReferenceImage
 from feverslop.domain.visual_consistency_runtime import (
     bind_continuity_anchors,
     reference_look_id,
     resolve_reference_look,
 )
-from feverslop.domain.prepared_workflow import sha256_file
 from feverslop.ports.llm import VisionLLMPort
-from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
-from feverslop.application.ingredients_render_plan import project_ingredients_runtime_scene
-from feverslop.domain.vision_references import ReferenceImage
 from feverslop.scene_artifacts import SceneArtifactLayout
-
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +143,7 @@ def _enrich_scene(
                             manifest.get("msr_sheet_path")
                             or manifest.get("msr_input_path")
                             or sheet_path
-                        )
+                        ),
                     ).strip(),
                     "type": "actor",
                     "id": str(actor_id),
@@ -173,7 +177,7 @@ def _enrich_scene(
                             manifest.get("msr_sheet_path")
                             or manifest.get("msr_background_path")
                             or sheet_path
-                        )
+                        ),
                     ).strip(),
                     "type": "location",
                     "id": location_id,

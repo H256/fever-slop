@@ -6,8 +6,15 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
-from feverslop.application.sequence_reference_pipeline import SequenceReferencePipeline, SequenceReferenceRequest
+from feverslop.application.reference_bible import (
+    ReferenceBibleGenerator,
+    ReferenceLocation,
+    ReferenceSubject,
+)
+from feverslop.application.sequence_reference_pipeline import (
+    SequenceReferencePipeline,
+    SequenceReferenceRequest,
+)
 from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
@@ -123,7 +130,7 @@ class MovieReferenceSheetGenerator:
                 asset_context=asdict(subject),
                 output_dir=output_dir,
                 reference_image_size=reference_image_size or ReferenceBibleGenerator.actor_hero_size,
-            )
+            ),
         )
         return self._write_sequence_manifest(
             result,
@@ -154,7 +161,7 @@ class MovieReferenceSheetGenerator:
                 asset_context=asdict(location),
                 output_dir=output_dir,
                 reference_image_size=reference_image_size or ReferenceBibleGenerator.location_hero_size,
-            )
+            ),
         )
         return self._write_sequence_manifest(
             result,

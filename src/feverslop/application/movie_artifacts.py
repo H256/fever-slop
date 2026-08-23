@@ -1,24 +1,23 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from dataclasses import asdict, dataclass
+from pathlib import Path
+
 from feverslop.application.movie import (
     MovieInput,
+    _bible_dict,
     build_movie_actor_reference_prompt,
     generate_movie_bible,
-    _bible_dict,
     movie_bible_from_dict,
     movie_continuity_plan_to_dict,
 )
-from feverslop.domain.movie import MovieContinuityPlan
-from feverslop.utils.io import read_json_object
 from feverslop.application.movie_memory import (
     build_movie_narrative_plan_fallback,
     build_movie_scene_cards,
     build_movie_screenplay_fallback,
-    build_movie_story_design_fallback,
     build_movie_shot_cards,
+    build_movie_story_design_fallback,
     movie_narrative_plan_to_dict,
     movie_scene_cards_from_dict,
     movie_scene_cards_to_dict,
@@ -29,8 +28,9 @@ from feverslop.application.movie_memory import (
     movie_story_design_from_dict,
     movie_story_design_to_dict,
 )
-from feverslop.domain.movie import CinematicShot
+from feverslop.domain.movie import CinematicShot, MovieContinuityPlan
 from feverslop.domain.movie_utils import transition_from_previous
+from feverslop.utils.io import read_json_object
 
 
 @dataclass(frozen=True)

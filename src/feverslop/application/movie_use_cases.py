@@ -2,18 +2,28 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    pass
-
-from feverslop.domain.movie import MovieProject
-from feverslop.domain.slug_utils import slugify_project_name
+from feverslop.adapters.reporting import ConsoleReporter, NullReporter
+from feverslop.application.movie_bible import (
+    _bible_dict,
+    _reference_manifest,
+    _render_plan,
+    augment_movie_bible_from_shot_references,
+    constrain_movie_shots_to_bible,
+    generate_movie_bible,
+    generate_movie_continuity_plan,
+    plan_movie_shots_from_bible,
+)
 from feverslop.application.movie_common import (
     MovieInput,
     MovieProductionResult,
     MovieScaffoldResult,
     _planner_source_text,
+)
+from feverslop.application.movie_continuity import (
+    apply_movie_continuity_to_shots,
+    movie_continuity_plan_to_dict,
 )
 from feverslop.application.movie_memory import (
     build_movie_scene_cards,
@@ -28,27 +38,14 @@ from feverslop.application.movie_memory import (
     movie_shot_cards_to_dict,
     movie_story_design_to_dict,
 )
-from feverslop.application.movie_bible import (
-    _bible_dict,
-    _reference_manifest,
-    _render_plan,
-    augment_movie_bible_from_shot_references,
-    constrain_movie_shots_to_bible,
-    generate_movie_bible,
-    generate_movie_continuity_plan,
-    plan_movie_shots_from_bible,
-)
-from feverslop.application.movie_continuity import (
-    apply_movie_continuity_to_shots,
-    movie_continuity_plan_to_dict,
-)
+from feverslop.domain.movie import MovieProject
+from feverslop.domain.slug_utils import slugify_project_name
 from feverslop.ports.movie import (
     MovieArtifactWriter,
     ReferenceGenerationPort,
     VisualGenerationPort,
 )
 from feverslop.ports.reporting import Reporter
-from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 
 
 class ScaffoldMovieUseCase:

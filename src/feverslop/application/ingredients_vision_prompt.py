@@ -4,9 +4,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from feverslop.ports.llm import VisionLLMPort
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.errors import FeverSlopLMLError
+from feverslop.ports.llm import VisionLLMPort
 from feverslop.prompting.ingredients_modules import IngredientsPromptModules
 
 logger = logging.getLogger(__name__)
@@ -41,13 +41,13 @@ def build_ingredients_vision_prompt(
     image_factory=None,
 ) -> IngredientsPromptResult:
     unavailable_fallback = IngredientsPromptResult(
-        fallback_reference_description, fallback_shot_invariants, "vision unavailable"
+        fallback_reference_description, fallback_shot_invariants, "vision unavailable",
     )
     invalid_fallback = IngredientsPromptResult(
-        fallback_reference_description, fallback_shot_invariants, "invalid response"
+        fallback_reference_description, fallback_shot_invariants, "invalid response",
     )
     probe_failed_fallback = IngredientsPromptResult(
-        fallback_reference_description, fallback_shot_invariants, "vision probe failed"
+        fallback_reference_description, fallback_shot_invariants, "vision probe failed",
     )
     if llm is None:
         return unavailable_fallback
@@ -64,7 +64,7 @@ def build_ingredients_vision_prompt(
             return probe_failed_fallback
         if not supports_vision:
             logger.warning(
-                "Vision capability probe reports no vision support; using text-only fallback"
+                "Vision capability probe reports no vision support; using text-only fallback",
             )
             return unavailable_fallback
 
@@ -104,15 +104,15 @@ def build_ingredients_vision_prompt(
         label = _reference_label(reference.type)
         if pos:
             reference_lines.append(
-                f"{label} `{reference.id}` ({pos}): {desc}"
+                f"{label} `{reference.id}` ({pos}): {desc}",
             )
         else:
             reference_lines.append(
-                f"{label} `{reference.id}`: {desc}"
+                f"{label} `{reference.id}`: {desc}",
             )
     reference_lines.append(
         "The source images provide appearance only; do not reproduce their framing, composition, "
-        "borders, panels, or layout."
+        "borders, panels, or layout.",
     )
     return IngredientsPromptResult("\n".join(reference_lines), result.shot_invariants.strip())
 

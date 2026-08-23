@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 
@@ -90,7 +91,7 @@ class SceneTimelinePipeline:
         if duration_errors:
             raise ValueError(
                 "Scene duration constraints failed after repair:\n"
-                + "\n".join(duration_errors)
+                + "\n".join(duration_errors),
             )
         shortest_scene = min((scene.duration for scene in repaired_scenes), default=0.0)
         longest_scene = max((scene.duration for scene in repaired_scenes), default=0.0)
@@ -98,7 +99,7 @@ class SceneTimelinePipeline:
             f"[green]OK[/green] Scene duration range: "
             f"[yellow]{shortest_scene:.2f}s[/yellow].."
             f"[yellow]{longest_scene:.2f}s[/yellow] "
-            f"from [yellow]{len(repaired_scenes)}[/yellow] scenes"
+            f"from [yellow]{len(repaired_scenes)}[/yellow] scenes",
         )
 
         log_step("5. Stage 1 Segment Mapping")
@@ -115,7 +116,7 @@ class SceneTimelinePipeline:
             type_counts[seg["type"]] = type_counts.get(seg["type"], 0) + 1
         console.print(
             f"[green]OK[/green] Stage 1 segments: [yellow]{len(stage1_segments)}[/yellow] "
-            f"{type_counts}"
+            f"{type_counts}",
         )
 
         log_step("6. LTX Prompt Relay Skeleton")
@@ -132,6 +133,6 @@ class SceneTimelinePipeline:
             {
                 "repaired_scenes": repaired_scenes,
                 "stage1_segments": stage1_segments,
-            }
+            },
         )
         return context

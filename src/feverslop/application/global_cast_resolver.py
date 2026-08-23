@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
+
 from feverslop.domain.global_library import AssetKind
 
 
@@ -33,13 +35,13 @@ class GlobalCastResolver:
                 asset = self.library.get(kind, entry.asset_id)
             except FileNotFoundError as exc:
                 raise ValueError(
-                    f"global {kind.value} '{entry.asset_id}' is missing; create or import it first"
+                    f"global {kind.value} '{entry.asset_id}' is missing; create or import it first",
                 ) from exc
             look = next((item for item in asset.looks if item.id == entry.look_id), None)
             if look is None and asset.looks:
                 raise ValueError(
                     f"global {kind.value} '{entry.asset_id}' has no look '{entry.look_id}'; "
-                    "create-look or select an existing look"
+                    "create-look or select an existing look",
                 )
             snapshot_dir = self.library.materialize(kind, entry.asset_id, entry.look_id, project_reference_dir)
             record = {

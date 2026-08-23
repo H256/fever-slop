@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any, Mapping
+from typing import Any
 
 from feverslop.domain.visual_consistency_runtime import (
     bind_continuity_anchors,
@@ -12,7 +13,6 @@ from feverslop.prompting.subject_directive_planning import (
     subject_directives_from_scene,
 )
 from feverslop.prompting.subject_directive_projections import project_subject_directives
-
 
 _CORE_SCENE_FIELDS = (
     "scene",
@@ -63,17 +63,17 @@ def project_ingredients_runtime_scene(scene: Mapping[str, Any]) -> dict[str, Any
             "layout_version": str(scene.get("ingredients_sheet_layout_version") or ""),
             "size": deepcopy(list(scene.get("ingredients_sheet_size") or [])),
             "signature_references": deepcopy(
-                list(scene.get("ingredients_signature_references") or [])
+                list(scene.get("ingredients_signature_references") or []),
             ),
             "signature_sources": deepcopy(
-                list(scene.get("ingredients_signature_sources") or [])
+                list(scene.get("ingredients_signature_sources") or []),
             ),
             "sheet_sha256": str(scene.get("ingredients_sheet_sha256") or ""),
         })
     if visual_consistency is not None:
         projected["visual_consistency"] = visual_consistency
         projected["visual_consistency_sources"] = deepcopy(
-            scene.get("visual_consistency_sources") or {}
+            scene.get("visual_consistency_sources") or {},
         )
     projected["ltx"] = {
         "base_prompt": global_prompt,
@@ -107,7 +107,7 @@ def _ingredients_global_prompt(scene: Mapping[str, Any]) -> str:
         or scene.get("ingredients_scene_sheet_description")
         or ltx.get("ingredients_global_prompt")
         or ltx.get("ingredients_scene_sheet_description")
-        or ""
+        or "",
     ).strip()
 
 

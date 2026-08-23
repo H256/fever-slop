@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
 import shutil
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from typing import Any
 
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 

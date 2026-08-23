@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.domain.timeline import TimelineSegment
 from feverslop.ports.generate_pipeline import (
     BeatImpactAnalyzerFactory,
     LyricAlignerFactory,
     StemSeparatorFactory,
     VocalTimelineAnalyzerFactory,
 )
-from feverslop.domain.timeline import TimelineSegment
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +31,15 @@ def _close_audio_component(component: Any, model_name: str, reporter: Any) -> No
             raise
         try:
             reporter.message(
-                f"[yellow]WARNING[/yellow] {model_name} model cleanup failed: {exc}"
+                f"[yellow]WARNING[/yellow] {model_name} model cleanup failed: {exc}",
             )
-        except Exception:  # noqa: BLE001 - reporting must not replace the pipeline error
+        except Exception:
             logger.debug("Failed to report %s cleanup warning", model_name, exc_info=True)
         return
 
     try:
         reporter.message(f"[green]OK[/green] {model_name} model unloaded from memory")
-    except Exception:  # noqa: BLE001 - reporting is secondary to resource cleanup
+    except Exception:
         logger.debug("Failed to report %s model cleanup", model_name, exc_info=True)
 
 
@@ -129,7 +130,7 @@ class AudioTimelinePipeline:
             vocal_segments = sum(1 for seg in timeline if seg.kind == "vocals")
             reporter.message(
                 f"[cyan]LLM lyric alignment: correcting "
-                f"{vocal_segments} vocal segments against project lyrics...[/cyan]"
+                f"{vocal_segments} vocal segments against project lyrics...[/cyan]",
             )
             timeline = run_spinner(
                 "Correcting Whisper lyrics against project lyrics...",
@@ -137,7 +138,7 @@ class AudioTimelinePipeline:
             )
             reporter.message(
                 f"[green]OK[/green] LLM lyric alignment finished: "
-                f"{vocal_segments} vocal segments checked"
+                f"{vocal_segments} vocal segments checked",
             )
         raw_whisper = getattr(analyzer, "raw_whisper_segments", None) if not skip_whisper else None
         if raw_whisper is None:
@@ -152,7 +153,7 @@ class AudioTimelinePipeline:
             f"[green]OK[/green] Timeline segments: "
             f"[yellow]{len(timeline)}[/yellow] total, "
             f"[yellow]{vocal_count}[/yellow] vocals, "
-            f"[yellow]{instrumental_count}[/yellow] instrumental"
+            f"[yellow]{instrumental_count}[/yellow] instrumental",
         )
 
         log_step("3. Beat / Impact Analysis")
@@ -178,7 +179,7 @@ class AudioTimelinePipeline:
         reporter.message(
             f"[green]OK[/green] BPM: [yellow]{beat_data.get('bpm')}[/yellow], "
             f"beats: [yellow]{len(beat_data.get('beats', []))}[/yellow], "
-            f"source: [yellow]{beat_data.get('source_used_for_beats')}[/yellow]"
+            f"source: [yellow]{beat_data.get('source_used_for_beats')}[/yellow]",
         )
 
         context.update(
@@ -186,7 +187,7 @@ class AudioTimelinePipeline:
                 "stem_files": files,
                 "timeline": timeline,
                 "beat_data": beat_data,
-            }
+            },
         )
         return context
 

@@ -38,6 +38,6 @@ class PromptGenerationService:
                 "duration_seconds": duration_seconds,
                 "music_intent": music_intent,
                 "strict_fidelity": strict_fidelity,
-            }
+            },
         )
         return self._generator(request.model_dump(mode="json"))

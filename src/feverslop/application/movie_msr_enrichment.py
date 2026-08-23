@@ -6,19 +6,22 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from feverslop.application.msr_prompt_enrichment import (
+    _clean_segment_prompt,
+    _is_valid_segment_prompt,
+)
 from feverslop.application.reference_bible import (
     build_runtime_consistency_contract,
     visual_consistency_sources,
 )
+from feverslop.domain.screenplay import looks_like_screenplay
+from feverslop.domain.vision_references import ReferenceImage
 from feverslop.domain.visual_consistency_runtime import (
     bind_continuity_anchors,
     reference_look_id,
     resolve_reference_look,
 )
-from feverslop.application.msr_prompt_enrichment import _clean_segment_prompt, _is_valid_segment_prompt
 from feverslop.errors import FeverSlopLMLError
-from feverslop.domain.screenplay import looks_like_screenplay
-from feverslop.domain.vision_references import ReferenceImage
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.utils.io import atomic_write_json, read_json_object
@@ -124,7 +127,7 @@ def _enrich_shot(
                 "camera": str(shot.get("camera") or "").strip(),
                 "acting": str(shot.get("acting") or shot.get("expression") or "").strip(),
                 "dialogue": str(shot.get("dialogue") or "").strip(),
-            }
+            },
         ],
     }
     if keyframe_mode in {"start", "start-end"}:
@@ -190,7 +193,7 @@ def _project_relative_reference(
     if not path.is_relative_to(root):
         raise ValueError(
             f"Movie MSR reference {reference.id!r} path must be "
-            f"project-relative and inside the project: {reference.path}"
+            f"project-relative and inside the project: {reference.path}",
         )
     return path.relative_to(root).as_posix()
 
@@ -275,7 +278,7 @@ def _movie_relay_state(shot: dict) -> str:
     if str(shot.get("dialogue") or "").strip():
         return "dialogue"
     mode = str(
-        shot.get("performance_mode") or shot.get("state") or shot.get("type") or ""
+        shot.get("performance_mode") or shot.get("state") or shot.get("type") or "",
     ).strip().lower()
     if mode in {"singing", "vocals", "vocal"} or str(shot.get("lyrics") or "").strip():
         return "singing"
@@ -335,7 +338,7 @@ def _movie_reference_images(shot: dict, *, bible: dict, manifest: dict, project_
                 if item.get("look_id") != "default"
                 else item.get("msr_sheet_path") or item.get("sheet_path")
             )
-            or ""
+            or "",
         ).strip()
         path = Path(raw_path)
         if raw_path and not path.is_absolute() and project_dir is not None:
@@ -412,9 +415,9 @@ def _local_dialogue_direction(shot: dict, actor_names: list[str], *, dialogue_la
     speaker = _dialogue_speaker(dialogue, actor_names)
     verb = _dialogue_verb(spoken_text)
     if speaker:
-        return f"{speaker} {verb}{language_phrase}: \"{spoken_text}\""
+        return f'{speaker} {verb}{language_phrase}: "{spoken_text}"'
     fallback = actor_names[0] if actor_names else "The visible referenced actor"
-    return f"{fallback} {verb}{language_phrase}: \"{spoken_text}\""
+    return f'{fallback} {verb}{language_phrase}: "{spoken_text}"'
 
 
 def _dialogue_cue_and_text(dialogue: str) -> tuple[str, str]:
@@ -443,9 +446,9 @@ def _diegetic_audio_direction(*, device: str, spoken_text: str, shot: dict, lang
     action = _clean_movie_prompt_field(shot.get("action"))
     if action and ("voice" in action.casefold() or device in action.casefold()):
         phrase = action.rstrip(".")
-        return f"{phrase}{language_phrase}: \"{spoken_text}\""
+        return f'{phrase}{language_phrase}: "{spoken_text}"'
     if device == "speaker":
-        return f"The speaker emits a diegetic voice{language_phrase}: \"{spoken_text}\""
+        return f'The speaker emits a diegetic voice{language_phrase}: "{spoken_text}"'
     actor_name = actor_names[0] if actor_names else "the visible actor"
     return f"The radio plays a recording of {actor_name}'s own voice screaming{language_phrase}: \"{spoken_text}\""
 

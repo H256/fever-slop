@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-import tempfile
 from typing import Any
-from typing import Iterable
 
 import cv2
 import numpy as np
