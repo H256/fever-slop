@@ -6,10 +6,24 @@ FeverSlop is a local, CLI-first music-video generation pipeline. It turns an
 audio track, lyrics, and visual direction into project artifacts, render plans,
 ComfyUI image/video jobs, reviewable clips, and a final muxed video.
 
-The supported operator surface is the command line: `run_pipeline.py` and
-`full_auto.py`. Projects are ordinary directories containing JSON artifacts,
-media, and configuration, so they can be inspected and automated with standard
-shell tools.
+> [!WARNING]
+> FeverSlop is actively developed and is currently intended for experimenters
+> and tinkerers. It is not a finished, turnkey product, and the workflows,
+> model requirements, configuration, and CLI may change. Expect to inspect
+> artifacts, adjust prompts and workflows, and solve local ComfyUI/model setup
+> issues yourself.
+
+The goal is not to provide a polished end-to-end production system. FeverSlop
+provides building blocks that make prompt generation, render-plan creation,
+ComfyUI workflow preparation, and repeatable local rendering easier to inspect,
+combine, and automate. Use the parts that fit your setup and adapt the rest.
+
+The primary documented operator surface is the command line:
+`run_pipeline.py`, `full_auto.py`, and `movie_pipeline.py`. The former Studio
+application is deprecated and is not a supported user interface; a few older
+internal components may still be reused by the active code. Projects are
+ordinary directories containing JSON artifacts, media, and configuration, so
+they can be inspected and automated with standard shell tools.
 
 Core Python packages live under `src/feverslop`. Composition code such as
 `feverslop.composition.generate_render_plan` is kept separate from adapters
@@ -40,6 +54,27 @@ uv sync --no-sources
 
 Do not use the CUDA-specific ComfyUI/PyTorch workflow on macOS unless you have
 provided a separate, compatible local setup.
+
+#### Windows PowerShell: `litellm` file-lock error
+
+If `uv sync` fails on Windows with `Failed to install: litellm` and
+`os error 32` while renaming a file under `.venv\Lib\site-packages\litellm`,
+a running process or Windows scanning service is holding the file temporarily.
+Close ComfyUI, FeverSlop, and IDE terminals that use this environment, then
+recreate the disposable virtual environment:
+
+```powershell
+deactivate 2>$null
+Remove-Item -LiteralPath .venv -Recurse -Force
+uv cache clean litellm
+uv sync --link-mode=copy --refresh-package litellm --reinstall-package litellm
+```
+
+If `.venv` is still locked, close the IDE and all repository terminals, restart
+PowerShell (or Windows), and run the commands again. If the error keeps
+recurring after a restart, identify the locking process with Resource Monitor
+or Process Explorer before considering a narrowly scoped Windows Defender
+exclusion for the local `.venv` directory.
 
 ## Basic Workflows
 

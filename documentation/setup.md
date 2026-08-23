@@ -171,10 +171,13 @@ Each project should be a direct child directory:
 projects/my-song/
 ```
 
-Generated Studio metadata and thumbnail cache live under each project:
+Some legacy application components still use the following internal metadata
+and thumbnail-cache directory under a project:
 
 ```text
 projects/my-song/.studio/
 ```
 
-Studio excludes `.studio/` files from normal project artifact lists.
+The former Studio application is deprecated and is not a supported user
+interface. The `.studio/` directory is retained only for compatibility with
+those remaining components and is excluded from normal project artifact lists.
