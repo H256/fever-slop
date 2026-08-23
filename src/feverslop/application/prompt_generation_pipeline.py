@@ -6,8 +6,6 @@ import json
 from typing import Any, Callable
 from dataclasses import asdict, is_dataclass
 
-from rich.markup import escape
-
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import (
     ConceptBatcherFactory,
@@ -46,19 +44,20 @@ def _report_subject_staging_retry(
     error: Exception,
 ) -> None:
     """Render a visible, markup-safe retry diagnostic for the console reporter."""
-    title = (
-        f"[bold yellow]Subject staging · Retry {attempt}/{max_attempts} · "
-        f"{escape(str(segment_id))}[/bold yellow]"
-    )
+    title = f"Subject staging · Retry {attempt}/{max_attempts} · {segment_id}"
     text = (
-        "[yellow]The previous staging plan was rejected; retrying with repair feedback.[/yellow]\n"
-        f"[dim]Reason:[/dim] {escape(f'{type(error).__name__}: {error}')}"
+        "The previous staging plan was rejected; retrying with repair feedback.\n"
+        f"Reason: {type(error).__name__}: {error}"
     )
-    panel = getattr(reporter, "panel", None)
-    if callable(panel):
-        panel(text, title=title)
+    warning = getattr(reporter, "warning", None)
+    if callable(warning):
+        warning(text, title=title)
     else:
-        reporter.message(f"{title}\n{text}")
+        panel = getattr(reporter, "panel", None)
+        if callable(panel):
+            panel(text, title=title)
+        else:
+            reporter.message(f"{title}\n{text}")
 
 
 def _write_subject_directive_debug_artifact(

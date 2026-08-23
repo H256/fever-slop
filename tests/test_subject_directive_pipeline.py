@@ -229,11 +229,11 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
 
         class Reporter:
             def __init__(self):
-                self.panels = []
+                self.warnings = []
                 self.messages = []
 
-            def panel(self, text, *, title=None):
-                self.panels.append((title, text))
+            def warning(self, text, *, title=None):
+                self.warnings.append((title, text))
 
             def message(self, text):
                 self.messages.append(text)
@@ -250,8 +250,8 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
                 reporter=reporter,
             )
 
-        self.assertEqual(1, len(reporter.panels))
-        title, text = reporter.panels[0]
+        self.assertEqual(1, len(reporter.warnings))
+        title, text = reporter.warnings[0]
         self.assertIn("Subject staging", title)
         self.assertIn("Retry 2/3", title)
         self.assertIn("malformed scope", text)
