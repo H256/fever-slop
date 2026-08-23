@@ -11,15 +11,15 @@ import argparse
 import sys
 from pathlib import Path
 
-from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
+from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.path_utils import coerce_local_path
 from feverslop.studio.project_repository import build_movie_planner
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Scaffold a new movie project (creates render_plan.json and all planning artefacts)."
+        description="Scaffold a new movie project (creates render_plan.json and all planning artefacts).",
     )
     parser.add_argument(
         "--name",
@@ -167,7 +167,7 @@ def main() -> None:
                 "planner_backend": args.planner_backend,
                 "refine_actor_prompts": args.refine_actors,
             },
-        )
+        ),
     )
 
     print()

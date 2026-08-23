@@ -5,11 +5,13 @@ from pathlib import Path
 
 from rich.console import Console
 
-from feverslop.adapters.pipeline_runner_options import add_runner_options, runner_options_from_args
+from feverslop.adapters.pipeline_runner_options import (
+    add_runner_options,
+    runner_options_from_args,
+)
 from feverslop.application.full_auto import FullAutoRequest
 from feverslop.composition.full_auto import build_full_auto_use_case
 from feverslop.path_utils import coerce_local_path
-
 
 console = Console()
 

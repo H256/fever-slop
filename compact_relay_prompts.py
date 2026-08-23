@@ -4,20 +4,26 @@ import argparse
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.config.app_config import AppConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
 
-
 console = Console()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Compact verbose LTX PromptRelay prompts into short direction prompts."
+        description="Compact verbose LTX PromptRelay prompts into short direction prompts.",
     )
     parser.add_argument("--app-config", default="./app_config.json")
     parser.add_argument("--input-render-plan", required=True)

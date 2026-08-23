@@ -1,12 +1,19 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import json
+from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, BarColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
 from feverslop.application.render_video import RenderVideoScenesRequest
@@ -14,13 +21,14 @@ from feverslop.composition.render_video import (
     ROLLING_FRAME_PROFILES,
     build_render_video_scenes_use_case,
     namespace_to_options,
+)
+from feverslop.composition.render_video import (
     resolve_rolling_frames as resolve_composition_rolling_frames,
 )
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
-
 
 console = Console()
 
@@ -347,7 +355,7 @@ def main():
                     task,
                     completed=completed,
                 ),
-            )
+            ),
         )
         progress.update(task, completed=len(rendered))
 

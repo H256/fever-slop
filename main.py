@@ -10,7 +10,6 @@ from feverslop.cli.revision_commands import run_rebuild_preview, run_revisions
 from feverslop.cli.revisions import build_rebuild_preview_parser, build_revisions_parser
 from feverslop.composition.generate_render_plan import execute_generate_render_plan
 
-
 console = Console()
 
 
