@@ -39,7 +39,7 @@ class ProjectStore:
         self.projects_root = Path(projects_root).resolve()
         from feverslop.adapters.media_store import MediaStore
         from feverslop.adapters.pipeline_state_store import PipelineStateStore
-        from feverslop.studio.project_repository import ProjectRepository
+        from feverslop.composition.project_repository import ProjectRepository
 
         self.repository = ProjectRepository(
             projects_root=self.projects_root,

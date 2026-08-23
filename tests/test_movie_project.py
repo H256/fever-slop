@@ -4448,7 +4448,7 @@ class MovieProjectTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             fake_planner = FakeMoviePlanner()
-            with patch("feverslop.studio.project_repository.build_movie_planner", return_value=fake_planner):
+            with patch("feverslop.composition.project_repository.build_movie_planner", return_value=fake_planner):
                 client = NativeStudioHarness(temp_dir)
 
                 response = client.post(
