@@ -2,6 +2,11 @@
 
 Contributions are welcome through GitHub issues and pull requests.
 
+This project has no bug bounty program and does not provide monetary rewards
+or guaranteed compensation for bug reports, security reports, or other
+contributions. Security issues must follow the private reporting guidance in
+`SECURITY.md`, not a public issue.
+
 ## Before opening a pull request
 
 1. Read the relevant documentation under `documentation/`.
@@ -21,3 +26,7 @@ and external services in the pull request description.
 
 By submitting a contribution, you agree that it may be distributed under the
 MIT License used by this project.
+
+Maintainers may close or remove duplicate, automated, abusive, off-topic, or
+spam submissions, including reports that do not contain enough actionable
+information to investigate.
