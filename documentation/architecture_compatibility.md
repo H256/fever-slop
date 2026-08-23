@@ -25,7 +25,25 @@ Current architecture boundaries:
 - `feverslop.domain` contains render plan, LTX, and postprocessing domain types.
 - `feverslop.ports` defines protocols and shared request types; ports do not import adapters.
 - `feverslop.adapters` contains ComfyUI, local JSON artifacts, OpenAI-compatible LLM clients, and FFmpeg/postprocessing integration.
+- `feverslop.studio` contains transitional headless services only; it is not a supported GUI package.
 - repository-root Python files are public CLI scripts or compatibility facades only.
+
+## Headless Studio compatibility
+
+The following implementations have one canonical home outside the transitional
+`feverslop.studio` namespace:
+
+- `feverslop.adapters.artifact_catalog` - global/project artifact catalog access.
+- `feverslop.adapters.artifact_locking` - artifact write locking.
+- `feverslop.composition.movie_pipeline_jobs` - movie pipeline job builders and helpers.
+
+The old `feverslop.studio.artifact_catalog`,
+`feverslop.studio.artifact_locking`, and
+`feverslop.studio.movie_pipeline_jobs` paths remain as compatibility shims for
+older callers. New implementation code and tests must import the canonical
+modules directly. The on-disk `.studio/` project metadata directory is a
+separate compatibility format and is not a recommendation to use the Python
+package namespace.
 
 Allowed root Python files:
 
