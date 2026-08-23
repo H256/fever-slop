@@ -6,15 +6,17 @@ from rich.console import Console
 from rich.panel import Panel
 
 from feverslop.path_utils import coerce_local_path
-from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
-
+from feverslop.prompting.ltx_prompt_anchor_fixer import (
+    LTXPromptAnchorFixer,
+    validate_anchor_file,
+)
 
 console = Console()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Fix render_plan LTX prompts so I2V preserves the Z-Image startframe composition."
+        description="Fix render_plan LTX prompts so I2V preserves the Z-Image startframe composition.",
     )
     parser.add_argument("--input-render-plan", required=True)
     parser.add_argument("--output-render-plan", required=True)

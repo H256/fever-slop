@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import FrozenSet
 
 
 class ArtifactKind(Enum):
@@ -53,8 +52,8 @@ def _validate_no_cycles(graph: dict[ArtifactKind, frozenset[ArtifactKind]]) -> N
     means a cycle exists; the error message reports the full ring path.
     """
     WHITE, GRAY, BLACK = 0, 1, 2
-    color: dict[ArtifactKind, int] = {node: WHITE for node in graph}
-    parent: dict[ArtifactKind, ArtifactKind | None] = {node: None for node in graph}
+    color: dict[ArtifactKind, int] = dict.fromkeys(graph, WHITE)
+    parent: dict[ArtifactKind, ArtifactKind | None] = dict.fromkeys(graph)
 
     def _dfs(u: ArtifactKind) -> None:
         color[u] = GRAY
@@ -87,34 +86,34 @@ _ARTIFACT_DEPENDENCIES: dict[ArtifactKind, frozenset[ArtifactKind]] = {
     ArtifactKind.AUDIO_ANALYSIS: frozenset(),
     ArtifactKind.BEAT_MARKERS: frozenset({ArtifactKind.AUDIO_ANALYSIS}),
     ArtifactKind.AUDIO_TIMELINE: frozenset(
-        {ArtifactKind.AUDIO_ANALYSIS, ArtifactKind.BEAT_MARKERS}
+        {ArtifactKind.AUDIO_ANALYSIS, ArtifactKind.BEAT_MARKERS},
     ),
     ArtifactKind.PREPARED_WORKFLOW: frozenset(
-        {ArtifactKind.SCENE_RENDER}
+        {ArtifactKind.SCENE_RENDER},
     ),
     ArtifactKind.SCENE_RENDER: frozenset(
         {
             ArtifactKind.AUDIO_TIMELINE,
             ArtifactKind.PROMPT_GENERATION,
             ArtifactKind.REFERENCE_SHEETS,
-        }
+        },
     ),
     ArtifactKind.SCENE_STORYBOARD: frozenset(
-        {ArtifactKind.PROMPT_GENERATION, ArtifactKind.REFERENCE_SHEETS}
+        {ArtifactKind.PROMPT_GENERATION, ArtifactKind.REFERENCE_SHEETS},
     ),
     ArtifactKind.REFERENCE_SHEETS: frozenset(
-        {ArtifactKind.REFERENCE_SOURCES}
+        {ArtifactKind.REFERENCE_SOURCES},
     ),
     ArtifactKind.REFERENCE_SOURCES: frozenset(),
     ArtifactKind.FINAL_VIDEO: frozenset(
-        {ArtifactKind.PREPARED_WORKFLOW, ArtifactKind.REVIEW_ORDERING}
+        {ArtifactKind.PREPARED_WORKFLOW, ArtifactKind.REVIEW_ORDERING},
     ),
     ArtifactKind.REVIEW_ORDERING: frozenset(),
     ArtifactKind.RENDER_PLAN: frozenset(
-        {ArtifactKind.AUDIO_TIMELINE, ArtifactKind.PROMPT_GENERATION}
+        {ArtifactKind.AUDIO_TIMELINE, ArtifactKind.PROMPT_GENERATION},
     ),
     ArtifactKind.PROMPT_GENERATION: frozenset(
-        {ArtifactKind.AUDIO_TIMELINE, ArtifactKind.REFERENCE_SHEETS}
+        {ArtifactKind.AUDIO_TIMELINE, ArtifactKind.REFERENCE_SHEETS},
     ),
 }
 _validate_no_cycles(_ARTIFACT_DEPENDENCIES)
@@ -139,18 +138,18 @@ FINAL_STAGE = _RebuildStage("final", 4)
 
 @dataclass(frozen=True)
 class RebuildPlan:
-    rebuild: FrozenSet[ArtifactKind] = frozenset()
-    reuse: FrozenSet[ArtifactKind] = frozenset()
-    invalidate: FrozenSet[ArtifactKind] = frozenset()
-    unknown: FrozenSet[ArtifactKind] = frozenset()
-    affected_scenes: FrozenSet[int] = frozenset()
+    rebuild: frozenset[ArtifactKind] = frozenset()
+    reuse: frozenset[ArtifactKind] = frozenset()
+    invalidate: frozenset[ArtifactKind] = frozenset()
+    unknown: frozenset[ArtifactKind] = frozenset()
+    affected_scenes: frozenset[int] = frozenset()
     stages: tuple[_RebuildStage, ...] = ()
 
 
 @dataclass(frozen=True)
 class ChangeSet:
-    change_kinds: FrozenSet[ChangeKind] = frozenset()
-    scene_numbers: FrozenSet[int] | None = None
+    change_kinds: frozenset[ChangeKind] = frozenset()
+    scene_numbers: frozenset[int] | None = None
 
     @classmethod
     def prompt(cls, scene_numbers: set[int]) -> ChangeSet:
@@ -302,7 +301,7 @@ def preview_rebuild(
     reuse = all_kinds - rebuild
 
     # Determine affected scenes
-    affected_scenes = change.scene_numbers if change.scene_numbers else frozenset()
+    affected_scenes = change.scene_numbers or frozenset()
 
     # Determine stages
     stages: set[_RebuildStage] = set()

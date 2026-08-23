@@ -8,6 +8,7 @@ from importlib.resources import files as _files
 from pathlib import Path
 
 from jinja2 import BaseLoader, Environment, select_autoescape
+
 from feverslop.path_utils import coerce_local_path
 
 _RENDER_ENV = Environment(
@@ -94,7 +95,7 @@ def _relay_details(relay_prompts: list[dict]) -> str:
             '<div class="relay-row">'
             f'<div class="relay-meta">{frame_start}-{frame_end} / {state}</div>'
             f'<div class="code">{prompt}</div>'
-            "</div>"
+            "</div>",
         )
 
     return (
@@ -214,7 +215,7 @@ def generate_storyboard_page(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate a static HTML storyboard review page from render_plan.json."
+        description="Generate a static HTML storyboard review page from render_plan.json.",
     )
     parser.add_argument("--render-plan", required=True)
     parser.add_argument("--storyboard-dir", required=True)

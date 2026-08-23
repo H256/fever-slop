@@ -10,7 +10,9 @@ from feverslop.application.generate_render_plan import (
     GenerateRenderPlanRequest,
     GenerateRenderPlanUseCase,
 )
-from feverslop.composition.generate_render_plan import build_generate_render_plan_execution_request
+from feverslop.composition.generate_render_plan import (
+    build_generate_render_plan_execution_request,
+)
 
 
 class FakeArtifactStore:
@@ -49,14 +51,14 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
                         "input_audio": "song.wav",
                         "video": {"fps": 24},
                         "scene_generation": {"min_duration": 2.0, "max_duration": 30.0},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
             app_config_path = temp / "app_config.json"
             app_config_path.write_text(
                 json.dumps(
-                    {"comfyui": {"default_max_render_duration_seconds": 18.0}}
+                    {"comfyui": {"default_max_render_duration_seconds": 18.0}},
                 ),
                 encoding="utf-8",
             )
@@ -95,7 +97,7 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
                     project_config_path=config_path,
                     app_config_path=app_config_path,
                     video_workflow_paths=(Path("workflows/video.json"),),
-                )
+                ),
             )
 
             GenerateRenderPlanUseCase(
@@ -139,8 +141,8 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
                 artifact_store=FakeArtifactStore(),
             ).execute(
                 build_generate_render_plan_execution_request(
-                    GenerateRenderPlanRequest(config_path, app_config_path)
-                )
+                    GenerateRenderPlanRequest(config_path, app_config_path),
+                ),
             )
 
             self.assertNotIn("Scene duration limit", output.getvalue())
@@ -157,7 +159,7 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
                         "project_name": "demo",
                         "input_audio": "song.wav",
                         "video": {"fps": 24, "width": 1280, "height": 704},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -207,8 +209,8 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
                     GenerateRenderPlanRequest(
                         project_config_path=config_path,
                         app_config_path=app_config_path,
-                    )
-                )
+                    ),
+                ),
             )
 
             self.assertEqual(["audio", "scene", "prompt", "render_plan"], calls)
@@ -229,7 +231,7 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
                         "project_name": "demo",
                         "input_audio": "song.wav",
                         "video": {"fps": 24, "width": 1280, "height": 704},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -257,8 +259,8 @@ class GenerateRenderPlanE2EFakePortsTests(unittest.TestCase):
                     GenerateRenderPlanRequest(
                         project_config_path=config_path,
                         app_config_path=app_config_path,
-                    )
-                )
+                    ),
+                ),
             )
 
             self.assertEqual(1, result.scene_count)

@@ -40,7 +40,7 @@ class FakeSceneDocuments:
                 "scene_number": scene_number,
                 "changes": dict(changes),
                 "expected_revision": expected_revision,
-            }
+            },
         )
         return SceneDocumentSnapshot(scenes=self.snapshot.to_scenes(), revision="revision-2")
 
@@ -70,7 +70,7 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
                     {"scene": 2, "shot_description": "Close-up"},
                 ),
                 revision="revision-1",
-            )
+            ),
         )
 
     def test_document_snapshot_is_isolated_from_source_mutation(self):
@@ -147,7 +147,7 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
                     video_path="output/final/scene_0001.mp4",
                 ),
                 2: SceneMedia(workflow_path="scenes/0002/workflow.json"),
-            }
+            },
         )
 
         result = LoadSceneWorkspaceUseCase(
@@ -187,7 +187,7 @@ class SceneWorkspaceApplicationTests(unittest.TestCase):
                         "ltx": {"original_style_i2v_prompt": "Fast dolly"},
                     },
                     "expected_revision": "revision-1",
-                }
+                },
             ],
             self.documents.patch_calls,
         )

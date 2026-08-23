@@ -15,7 +15,6 @@ from feverslop.ports.timeline_documents import AffectedArtifacts
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.timeline_service import TimelineStudioService
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -24,7 +23,7 @@ def _seg(start: float, end: float, **kw) -> EditableTimelineSegment:
     return EditableTimelineSegment(
         start=start, end=end, kind=kw.pop("kind", "vocals"),
         text=kw.pop("text", "test"), lyrics_line=kw.pop("lyrics_line", None),
-        notes=kw.pop("notes", None), is_draft=kw.pop("is_draft", False), **kw
+        notes=kw.pop("notes", None), is_draft=kw.pop("is_draft", False), **kw,
     )
 
 def _bnd(start: float, end: float, reason: str = "test") -> SceneBoundary:
@@ -127,7 +126,7 @@ class LoadSaveTest(unittest.TestCase):
 
     def test_save_writes_timeline(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, read, write = _make_service(snap)
         service.load()
@@ -185,7 +184,7 @@ class EditSegmentTest(unittest.TestCase):
 
     def test_edit_segment_notes(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -194,7 +193,7 @@ class EditSegmentTest(unittest.TestCase):
 
     def test_edit_segment_out_of_range_raises(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -214,7 +213,7 @@ class EditSegmentTest(unittest.TestCase):
 
     def test_edit_segment_persists_via_write_port(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, write = _make_service(snap)
         service.load()
@@ -229,7 +228,7 @@ class EditSegmentTest(unittest.TestCase):
 class SplitSegmentTest(unittest.TestCase):
     def test_split_segment_doubles_count(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -239,7 +238,7 @@ class SplitSegmentTest(unittest.TestCase):
 
     def test_split_preserves_total_duration(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -249,7 +248,7 @@ class SplitSegmentTest(unittest.TestCase):
 
     def test_split_outside_raises(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -258,7 +257,7 @@ class SplitSegmentTest(unittest.TestCase):
 
     def test_split_negative_index_raises(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -285,7 +284,7 @@ class MergeSegmentsTest(unittest.TestCase):
 
     def test_merge_insufficient_raises(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -310,7 +309,7 @@ class MergeSegmentsTest(unittest.TestCase):
 class AddSceneBoundaryTest(unittest.TestCase):
     def test_add_boundary(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 10)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -332,7 +331,7 @@ class AddSceneBoundaryTest(unittest.TestCase):
 
     def test_add_too_short_boundary_raises(self):
         snap = TimelineSnapshot(
-            segments=[], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -347,7 +346,7 @@ class AddSceneBoundaryTest(unittest.TestCase):
 class AddBeatTest(unittest.TestCase):
     def test_add_beat(self):
         snap = TimelineSnapshot(
-            segments=[], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -357,7 +356,7 @@ class AddBeatTest(unittest.TestCase):
 
     def test_add_duplicate_beat_raises(self):
         snap = TimelineSnapshot(
-            segments=[], scene_boundaries=[], beat_markers=[_mk(1.0)], metadata={}
+            segments=[], scene_boundaries=[], beat_markers=[_mk(1.0)], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -366,7 +365,7 @@ class AddBeatTest(unittest.TestCase):
 
     def test_add_invalid_confidence_raises(self):
         snap = TimelineSnapshot(
-            segments=[], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, _, _ = _make_service(snap)
         service.load()
@@ -381,7 +380,7 @@ class AddBeatTest(unittest.TestCase):
 class RebuildPipelineTest(unittest.TestCase):
     def test_rebuild_schedules_job(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         registry = JobRegistry()
         service, *_ = _make_service(snap, job_registry=registry)
@@ -405,7 +404,7 @@ class RebuildPipelineTest(unittest.TestCase):
 class UndoRedoTest(unittest.TestCase):
     def test_can_undo_starts_false(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, *_ = _make_service(snap)
         service.load()
@@ -413,7 +412,7 @@ class UndoRedoTest(unittest.TestCase):
 
     def test_can_undo_becomes_true_after_edit(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, *_ = _make_service(snap)
         service.load()
@@ -422,7 +421,7 @@ class UndoRedoTest(unittest.TestCase):
 
     def test_undo_reverts_snapshot(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, read, _ = _make_service(snap)
         service.load()
@@ -433,7 +432,7 @@ class UndoRedoTest(unittest.TestCase):
 
     def test_undo_clears_redo_stack_on_new_edit(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, read, _ = _make_service(snap)
         service.load()
@@ -446,7 +445,7 @@ class UndoRedoTest(unittest.TestCase):
 
     def test_redo_reapplies(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, read, _ = _make_service(snap)
         service.load()
@@ -460,7 +459,7 @@ class UndoRedoTest(unittest.TestCase):
 
     def test_undo_exhausted(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, *_ = _make_service(snap)
         service.load()
@@ -470,7 +469,7 @@ class UndoRedoTest(unittest.TestCase):
 
     def test_redo_exhausted(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, *_ = _make_service(snap)
         service.load()
@@ -480,7 +479,7 @@ class UndoRedoTest(unittest.TestCase):
     def test_history_bounded_at_50(self):
         # Use a very wide segment so repeated deltas don't exceed end.
         snap = TimelineSnapshot(
-            segments=[_seg(0, 1000)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 1000)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, read, _ = _make_service(snap)
         service.load()
@@ -495,7 +494,7 @@ class UndoRedoTest(unittest.TestCase):
 
     def test_load_clears_redo(self):
         snap = TimelineSnapshot(
-            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[_seg(0, 5)], scene_boundaries=[], beat_markers=[], metadata={},
         )
         service, read, _ = _make_service(snap)
         service.load()

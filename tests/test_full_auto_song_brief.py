@@ -20,7 +20,7 @@ class SongBriefGeneratorTests(unittest.TestCase):
                 style="bright pop",
                 duration_seconds=90.5,
                 language="en",
-            )
+            ),
         )
 
         self.assertEqual("Joy Demo", spec.title)

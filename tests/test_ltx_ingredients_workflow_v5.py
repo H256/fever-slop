@@ -1,9 +1,8 @@
+import json
+import unittest
 from collections import Counter
 from dataclasses import dataclass
-import json
 from pathlib import Path
-import unittest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 

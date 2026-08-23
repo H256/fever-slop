@@ -1,10 +1,10 @@
 ﻿import unittest
 
 from feverslop.prompting.music_video_prompt_style import (
-    build_location_constraint,
     build_concept_mapper_system_prompt,
     build_detail_system_prompt,
     build_i2v_system_prompt,
+    build_location_constraint,
     build_t2i_system_prompt,
     build_video_payload,
     performance_policy,

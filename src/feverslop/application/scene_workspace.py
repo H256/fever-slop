@@ -97,6 +97,6 @@ class PatchSceneUseCase:
             canonical["z_image"] = {"prompt": changes["z_image.prompt"]}
         if selected_ltx_key in changes:
             canonical["ltx"] = {
-                selected_ltx_prompt_field.value: changes[selected_ltx_key]
+                selected_ltx_prompt_field.value: changes[selected_ltx_key],
             }
         return canonical

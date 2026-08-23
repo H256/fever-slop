@@ -55,7 +55,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                 "images": [],
                 "videos": [],
                 "generated_json": [],
-            }
+            },
         )
 
         snapshot = ProjectSceneDocuments(self._project_root, catalog=catalog).load("demo")
@@ -77,7 +77,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
 
     def test_load_rejects_missing_malformed_and_non_list_render_plans(self):
         missing_catalog = CatalogStub(
-            {"render_plans": [], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": [], "images": [], "videos": [], "generated_json": []},
         )
         with self.assertRaisesRegex(FileNotFoundError, "render plan"):
             ProjectSceneDocuments(self._project_root, catalog=missing_catalog).load("demo")
@@ -87,7 +87,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                 path = self.project / "plan.json"
                 path.write_bytes(contents)
                 catalog = CatalogStub(
-                    {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []}
+                    {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []},
                 )
                 with self.assertRaisesRegex(ValueError, message):
                     ProjectSceneDocuments(self._project_root, catalog=catalog).load("demo")
@@ -108,7 +108,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         ]
         path, payload = self._write_plan("output/render/plans/base.json", original)
         catalog = CatalogStub(
-            {"render_plans": [path.relative_to(self.project).as_posix()], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": [path.relative_to(self.project).as_posix()], "images": [], "videos": [], "generated_json": []},
         )
         adapter = ProjectSceneDocuments(self._project_root, catalog=catalog)
 
@@ -140,7 +140,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         ]
         path, payload = self._write_plan("output/render/plans/base.json", original)
         catalog = CatalogStub(
-            {"render_plans": [path.relative_to(self.project).as_posix()], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": [path.relative_to(self.project).as_posix()], "images": [], "videos": [], "generated_json": []},
         )
         documents = ProjectSceneDocuments(self._project_root, catalog=catalog)
 
@@ -161,12 +161,12 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
     def test_patch_rejects_missing_scene_without_writing(self):
         path, payload = self._write_plan("plan.json", [{"scene": 1}])
         catalog = CatalogStub(
-            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []},
         )
 
         with self.assertRaisesRegex(KeyError, "Scene 2"):
             ProjectSceneDocuments(self._project_root, catalog=catalog).patch_scene(
-                "demo", 2, {"shot_description": "missing"}, hashlib.sha256(payload).hexdigest()
+                "demo", 2, {"shot_description": "missing"}, hashlib.sha256(payload).hexdigest(),
             )
 
         self.assertEqual(payload, path.read_bytes())
@@ -174,7 +174,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
     def test_patch_detects_revision_conflict_from_bytes_immediately_before_write(self):
         path, payload = self._write_plan("plan.json", [{"scene": 1, "shot_description": "old"}])
         catalog = CatalogStub(
-            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []},
         )
         adapter = ProjectSceneDocuments(self._project_root, catalog=catalog)
         expected_revision = hashlib.sha256(payload).hexdigest()
@@ -190,7 +190,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
     def test_patch_rechecks_revision_after_merging_and_immediately_before_replace(self):
         path, payload = self._write_plan("plan.json", [{"scene": 1, "shot_description": "old"}])
         catalog = CatalogStub(
-            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []},
         )
         changed = b'[{"scene":1,"shot_description":"external-during-merge"}]'
 
@@ -213,7 +213,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
     def test_patch_reports_deleted_plan_as_conflict_and_removes_sibling_temp_file(self):
         path, payload = self._write_plan("plan.json", [{"scene": 1, "shot_description": "old"}])
         catalog = CatalogStub(
-            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": ["plan.json"], "images": [], "videos": [], "generated_json": []},
         )
         real_fsync = os.fsync
 
@@ -224,14 +224,13 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         with patch(
             "feverslop.adapters.project_scene_documents.os.fsync",
             side_effect=delete_plan_after_temp_write,
-        ):
-            with self.assertRaises(SceneDocumentConflict) as caught:
-                ProjectSceneDocuments(self._project_root, catalog=catalog).patch_scene(
-                    "demo",
-                    1,
-                    {"shot_description": "ours"},
-                    hashlib.sha256(payload).hexdigest(),
-                )
+        ), self.assertRaises(SceneDocumentConflict) as caught:
+            ProjectSceneDocuments(self._project_root, catalog=catalog).patch_scene(
+                "demo",
+                1,
+                {"shot_description": "ours"},
+                hashlib.sha256(payload).hexdigest(),
+            )
 
         self.assertIsNone(caught.exception.actual_revision)
         self.assertFalse(any(path.parent.glob(f".{path.name}.*.tmp")))
@@ -240,7 +239,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         outside = self.projects_root / "outside.json"
         outside.write_text("[]", encoding="utf-8")
         catalog = CatalogStub(
-            {"render_plans": ["../outside.json"], "images": [], "videos": [], "generated_json": []}
+            {"render_plans": ["../outside.json"], "images": [], "videos": [], "generated_json": []},
         )
 
         with self.assertRaisesRegex(ValueError, "outside project root"):
@@ -265,7 +264,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                 "images": [paths[0]],
                 "videos": [paths[1]],
                 "generated_json": [paths[2]],
-            }
+            },
         )
 
         media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
@@ -306,7 +305,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                     legacy_workflow,
                     canonical_workflow,
                 ],
-            }
+            },
         )
 
         media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
@@ -326,7 +325,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                 "images": [preview],
                 "videos": [legacy_video],
                 "generated_json": [legacy_workflow],
-            }
+            },
         )
 
         media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
@@ -356,7 +355,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                     "output/movie/references/scene_0004_workflow.json",
                     workflow,
                 ],
-            }
+            },
         )
 
         media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
@@ -382,7 +381,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                     "output/render/cache/scene_0005_workflow.json",
                     workflow,
                 ],
-            }
+            },
         )
 
         media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")
@@ -407,7 +406,7 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
                             video,
                         ],
                         "generated_json": [],
-                    }
+                    },
                 )
 
                 media = ProjectSceneDocuments(self._project_root, catalog=catalog).load_media("demo")

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from feverslop.ports.workflow import WorkflowMaterializationRequest
 from feverslop.scene_artifacts import SceneArtifactLayout
@@ -35,15 +36,15 @@ def prepare_movie_workflows(
                 or scene.get("ingredients_global_prompt")
                 or scene.get("ingredients_target_prompt")
                 or (scene.get("ltx") or {}).get("ingredients_target_prompt")
-                or ""
+                or "",
             )
             unbound = sorted(
                 str(anchor.get("id") or "") for anchor in anchors
-                if f"`{str(anchor.get('id') or '')}`" not in target
+                if f"`{anchor.get('id') or ''!s}`" not in target
             )
             if unbound:
                 errors.append(
-                    f"scene {number}: global prompt does not bind anchors {', '.join(unbound)}"
+                    f"scene {number}: global prompt does not bind anchors {', '.join(unbound)}",
                 )
     if errors:
         raise ValueError("Cannot prepare scene workflows:\n- " + "\n- ".join(errors))
@@ -66,7 +67,7 @@ def prepare_movie_workflows(
                     audio_file=None,
                     render_plan_path=Path(render_plan_path),
                     pipeline=pipeline,
-                )
+                ),
             )
     except Exception:
         for path, content in previous.items():
@@ -100,7 +101,7 @@ def render_prepared_movie_workflows(
     if missing:
         numbers = ", ".join(str(number) for number in missing)
         raise FileNotFoundError(
-            f"Prepared movie scenes missing: {numbers}; prepare them first with --write-debug-workflows"
+            f"Prepared movie scenes missing: {numbers}; prepare them first with --write-debug-workflows",
         )
 
     for completed, scene in enumerate(to_render, start=1):

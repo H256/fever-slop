@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -42,7 +42,7 @@ def build_service_probes(*, comfyui: object | None = None, llm: object | None = 
     """Build standard non-mutating probes for configured external clients."""
     probes: dict[str, Callable[[], object]] = {}
     if comfyui is not None:
-        probes["comfyui"] = getattr(comfyui, "health_check")
+        probes["comfyui"] = comfyui.health_check
     if llm is not None:
-        probes["llm"] = getattr(llm, "health_check")
+        probes["llm"] = llm.health_check
     return probes

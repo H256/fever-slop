@@ -18,9 +18,9 @@ def object_info_for(*, values, class_type="LoraLoader", input_name="lora_name"):
             "input": {
                 "required": {
                     input_name: [list(values)],
-                }
-            }
-        }
+                },
+            },
+        },
     }
 
 
@@ -36,9 +36,9 @@ def combo_object_info_for(*, values, class_type="LatentUpscaleModelLoader", inpu
                             "multiselect": False,
                         },
                     ],
-                }
-            }
-        }
+                },
+            },
+        },
     }
 
 
@@ -49,9 +49,9 @@ def object_info_with_fields(class_type: str, fields: dict[str, list[str]]):
                 "required": {
                     input_name: [list(values)]
                     for input_name, values in fields.items()
-                }
-            }
-        }
+                },
+            },
+        },
     }
 
 
@@ -64,7 +64,7 @@ def workflow_with(value, *, class_type="LoraLoader", node_id="12", title="#LORA_
                 "model": ["11", 0],
             },
             "_meta": {"title": title},
-        }
+        },
     }
 
 
@@ -73,7 +73,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["models/foo.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["models/foo.safetensors"])),
         )
 
         resolved = resolver.resolve_workflow_models(
@@ -87,7 +87,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["zimage/own/klw251209-v1_000001250.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["zimage/own/klw251209-v1_000001250.safetensors"])),
         )
 
         resolved = resolver.resolve_workflow_models(
@@ -104,7 +104,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["characters/foo.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["characters/foo.safetensors"])),
         )
 
         resolved = resolver.resolve_workflow_models(
@@ -118,7 +118,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(combo_object_info_for(values=["upscale/model.safetensors"]))
+            FakeObjectInfoClient(combo_object_info_for(values=["upscale/model.safetensors"])),
         )
 
         resolved = resolver.resolve_workflow_models(
@@ -136,7 +136,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["server.png"], class_type="LoadImage", input_name="image"))
+            FakeObjectInfoClient(object_info_for(values=["server.png"], class_type="LoadImage", input_name="image")),
         )
 
         resolved = resolver.resolve_workflow_models(
@@ -156,7 +156,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["ltxv"], class_type="DualCLIPLoaderGGUF", input_name="type"))
+            FakeObjectInfoClient(object_info_for(values=["ltxv"], class_type="DualCLIPLoaderGGUF", input_name="type")),
         )
 
         resolved = resolver.resolve_workflow_models(
@@ -186,8 +186,8 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                         "clip_name1": ["known_clip_1.safetensors"],
                         "clip_name2": ["known_clip_2.safetensors"],
                     },
-                )
-            )
+                ),
+            ),
         )
 
         with self.assertRaisesRegex(
@@ -203,7 +203,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                             "clip_name2": "missing_clip_2.safetensors",
                         },
                         "_meta": {"title": "DualCLIPLoader (GGUF)"},
-                    }
+                    },
                 },
                 workflow_path=Path("workflows/test.json"),
             )
@@ -215,7 +215,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         )
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["a/foo.safetensors", "b/foo.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["a/foo.safetensors", "b/foo.safetensors"])),
         )
 
         with self.assertRaisesRegex(
@@ -234,7 +234,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         )
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["known.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["known.safetensors"])),
         )
 
         with self.assertRaisesRegex(
@@ -253,7 +253,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         )
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=[], class_type="UnetLoaderGGUF", input_name="unet_name"))
+            FakeObjectInfoClient(object_info_for(values=[], class_type="UnetLoaderGGUF", input_name="unet_name")),
         )
 
         with self.assertRaisesRegex(
@@ -277,7 +277,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         )
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["known.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["known.safetensors"])),
         )
 
         with self.assertRaisesRegex(
@@ -304,7 +304,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         )
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["known.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["known.safetensors"])),
         )
 
         with self.assertRaisesRegex(
@@ -340,7 +340,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                     input="lora_name",
                     expected_value="old\\foo.safetensors",
                     replacement="server/foo.safetensors",
-                )
+                ),
             ],
         )
 
@@ -368,7 +368,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
                     input="lora_name",
                     expected_value="old\\foo.safetensors",
                     replacement="server/foo.safetensors",
-                )
+                ),
             ],
         )
 
@@ -410,7 +410,7 @@ class ComfyUIModelResolverTests(unittest.TestCase):
         from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 
         resolver = ComfyUIModelResolver(
-            FakeObjectInfoClient(object_info_for(values=["folder/foo.safetensors"]))
+            FakeObjectInfoClient(object_info_for(values=["folder/foo.safetensors"])),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             workflows = Path(temp_dir) / "workflows"
@@ -446,10 +446,10 @@ class ComfyUIConfigModelOverrideTests(unittest.TestCase):
                                     "input": "lora_name",
                                     "expected_value": "old\\foo.safetensors",
                                     "replacement": "new/foo.safetensors",
-                                }
+                                },
                             ],
-                        }
-                    }
+                        },
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -478,7 +478,9 @@ class ComfyUIWorkflowValidationCliTests(unittest.TestCase):
         self.assertEqual("workflows", args.workflows_dir)
 
     def test_validate_cli_run_returns_reports(self):
-        from feverslop.tools.validate_comfyui_workflows import validate_comfyui_workflows
+        from feverslop.tools.validate_comfyui_workflows import (
+            validate_comfyui_workflows,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -500,7 +502,9 @@ class ComfyUIWorkflowValidationCliTests(unittest.TestCase):
         self.assertEqual(1, reports[0]["patched_count"])
 
     def test_validate_cli_reports_errors_without_stopping_at_first_workflow(self):
-        from feverslop.tools.validate_comfyui_workflows import validate_comfyui_workflows
+        from feverslop.tools.validate_comfyui_workflows import (
+            validate_comfyui_workflows,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

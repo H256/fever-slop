@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
-from feverslop.prompting.movie_planning_signatures import build_movie_planning_signature_bundle
 from feverslop.prompting.movie_planning_signatures import (
     ContinuityPlanPayload,
     MovieBiblePayload,
@@ -15,8 +14,8 @@ from feverslop.prompting.movie_planning_signatures import (
     ShotPlanPayload,
     StoryArchPayload,
     StoryDesignPayload,
+    build_movie_planning_signature_bundle,
 )
-
 
 _PAYLOAD_TYPES = {
     "story_arch": StoryArchPayload,

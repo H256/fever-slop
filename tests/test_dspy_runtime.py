@@ -95,13 +95,13 @@ class DspyRuntimeTests(unittest.TestCase):
                             )],
                             overall_soundscape="quiet",
                             music_intent=MusicIntent.NONE,
-                        )
+                        ),
                     })()
                 return type("Prediction", (), {
                     "result": BaseVideoPrompt(
                         integrated_multimodal_description="generated",
                         overall_soundscape="quiet",
-                    )
+                    ),
                 })()
 
         predictions = []
@@ -168,7 +168,7 @@ class DspyRuntimeTests(unittest.TestCase):
                     "object": "chat.completion",
                     "model": "fake-model",
                     "choices": [
-                        {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                        {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"},
                     ],
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
                 }).encode("utf-8")

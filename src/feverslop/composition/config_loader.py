@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import argparse
 import json
 import os
 import re
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from feverslop.path_utils import coerce_local_path
@@ -104,12 +104,12 @@ def _validate_render_plan_entries(render_plan: list) -> None:
     """Validate that a render plan is a list of dicts with numeric 'scene' keys."""
     if not isinstance(render_plan, list):
         raise ValueError(
-            f"Render plan must be a JSON array, got {type(render_plan).__name__}"
+            f"Render plan must be a JSON array, got {type(render_plan).__name__}",
         )
     for i, entry in enumerate(render_plan):
         if not isinstance(entry, dict):
             raise ValueError(
-                f"Render plan entry {i} must be a dict, got {type(entry).__name__}"
+                f"Render plan entry {i} must be a dict, got {type(entry).__name__}",
             )
         scene = entry.get("scene")
         if scene is None:
@@ -118,7 +118,7 @@ def _validate_render_plan_entries(render_plan: list) -> None:
             int(scene)
         except (TypeError, ValueError):
             raise ValueError(
-                f"Render plan entry {i} 'scene' value is not numeric: {scene!r}"
+                f"Render plan entry {i} 'scene' value is not numeric: {scene!r}",
             ) from None
 
 
@@ -150,14 +150,14 @@ def collect_render_plan_scene_clips(
         ])
         clip = next((candidate for candidate in candidates if candidate.exists()), None)
         if clip is None:
-            missing.append((layout.scene_final_video(scene_number) if layout else candidates[0]))
+            missing.append(layout.scene_final_video(scene_number) if layout else candidates[0])
             continue
         clips.append(clip)
 
     if missing:
         raise FileNotFoundError(
             "Cannot build final concat; missing rendered scene clips: "
-            + ", ".join(str(path) for path in missing[:10])
+            + ", ".join(str(path) for path in missing[:10]),
         )
     return clips
 
@@ -190,7 +190,7 @@ def collect_render_plan_scene_raw_clips(
     if missing:
         raise FileNotFoundError(
             "Cannot build raw concat; missing raw scene clips: "
-            + ", ".join(str(path) for path in missing[:10])
+            + ", ".join(str(path) for path in missing[:10]),
         )
     return clips
 
@@ -250,10 +250,7 @@ def build_run_context(args: argparse.Namespace) -> PipelineRunContext:
     elif vp == "ltx_ingredients":
         ltx_dir = render_dir / "ltx_ingredients"
         ltx_debug_dir = render_dir / "ltx_ingredients_debug"
-    elif vp == "minimax-h3-r2v":
-        ltx_dir = artifact_layout.scenes_dir
-        ltx_debug_dir = None
-    elif vp == "minimax-h3-t2v":
+    elif vp == "minimax-h3-r2v" or vp == "minimax-h3-t2v":
         ltx_dir = artifact_layout.scenes_dir
         ltx_debug_dir = None
     else:

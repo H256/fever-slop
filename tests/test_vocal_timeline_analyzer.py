@@ -11,7 +11,10 @@ from feverslop.adapters.audio.vocal_timeline_analyzer import (
 class TimelineSegmentImmutabilityTests(unittest.TestCase):
     def test_whisper_model_load_is_deferred_until_transcription(self):
         from unittest.mock import patch
-        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+
+        from feverslop.adapters.audio.vocal_timeline_analyzer import (
+            VocalTimelineAnalyzer,
+        )
 
         with patch("feverslop.adapters.audio.vocal_timeline_analyzer.whisper.load_model") as load_model:
             analyzer = VocalTimelineAnalyzer()
@@ -19,7 +22,9 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
             self.assertIsNone(analyzer.model)
 
     def test_whisper_transcription_requests_word_timestamps(self):
-        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+        from feverslop.adapters.audio.vocal_timeline_analyzer import (
+            VocalTimelineAnalyzer,
+        )
 
         class FakeWhisper:
             def __init__(self):
@@ -38,14 +43,16 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
         self.assertTrue(analyzer.model.kwargs["word_timestamps"])
 
     def test_raw_whisper_segments_are_retained_before_filtering(self):
-        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+        from feverslop.adapters.audio.vocal_timeline_analyzer import (
+            VocalTimelineAnalyzer,
+        )
 
         class FakeWhisper:
             def transcribe(self, _path, **_kwargs):
                 return {
                     "segments": [
                         {"start": 1.0, "end": 2.0, "text": "hello", "no_speech_prob": 0.9},
-                    ]
+                    ],
                 }
 
         analyzer = VocalTimelineAnalyzer.__new__(VocalTimelineAnalyzer)
@@ -59,7 +66,9 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
         )
 
     def test_boundary_words_are_assigned_once_to_best_overlapping_vocal_range(self):
-        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+        from feverslop.adapters.audio.vocal_timeline_analyzer import (
+            VocalTimelineAnalyzer,
+        )
 
         analyzer = VocalTimelineAnalyzer.__new__(VocalTimelineAnalyzer)
         result = analyzer._combine_whisper_and_energy(
@@ -72,7 +81,7 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
                         {"word": "first", "start": 0.5, "end": 1.5},
                         {"word": "second", "start": 1.8, "end": 2.8},
                     ],
-                }
+                },
             ],
             [(0.0, 2.0), (1.9, 4.0)],
         )

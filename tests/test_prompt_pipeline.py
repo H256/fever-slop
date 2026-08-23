@@ -73,7 +73,7 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
                 "segment_001": {
                     "concept": "warrior leads mage through the gate",
                     "references": {"actor_ids": ["warrior", "mage"], "location_id": "gate"},
-                }
+                },
             },
             stage1_segments=[{"segment_id": "segment_001", "type": "instrumental"}],
             global_context={
@@ -103,7 +103,7 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
 
         self.assertEqual("SPATIAL DETAIL", details["segment_001"]["spatial_relations"])
         spatial_calls = [call for call in modules.calls if call.payload.get("label") in {
-            "Camera Motion", "Character Motion", "Spatial Relations"
+            "Camera Motion", "Character Motion", "Spatial Relations",
         }]
         self.assertEqual(3, len(spatial_calls))
         self.assertEqual("Spatial Relations", spatial_calls[-1].payload["label"])

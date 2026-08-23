@@ -137,7 +137,7 @@ class ContinuityHandoffTests(unittest.TestCase):
             use_case = ContinuityHandoffUseCase(extractor)
             for previous, current in cases:
                 with self.subTest(current=current), self.assertRaisesRegex(
-                    ValueError, "does not support continuity handoff"
+                    ValueError, "does not support continuity handoff",
                 ):
                     use_case.execute(
                         previous,
@@ -170,7 +170,7 @@ class ContinuityHandoffTests(unittest.TestCase):
                             postprocessor,
                             project_dir=project,
                             selected_rerender=True,
-                        )
+                        ),
                     ).execute(
                         _contract(1),
                         _contract(2, transition="continuous"),
@@ -239,7 +239,9 @@ class ContinuityHandoffTests(unittest.TestCase):
             mock_extract = _Extractor()
             mock_extract.project_dir = project
 
-            from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
+            from feverslop.application.continuity_handoff import (
+                ContinuityHandoffUseCase,
+            )
 
             result = ContinuityHandoffUseCase(mock_extract).execute(
                 _contract(1),

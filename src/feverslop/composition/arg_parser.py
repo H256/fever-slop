@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from enum import Enum
 import argparse
+from enum import Enum
 
 from feverslop.adapters.pipeline_runner_options import add_runner_options
 

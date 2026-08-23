@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from feverslop.domain.prompt_revisions import (
     DuplicateRevisionError,
@@ -13,7 +13,6 @@ from feverslop.domain.prompt_revisions import (
     restore_revision,
 )
 from feverslop.ports.revision_store import RevisionStorePort
-
 
 Clock = Callable[[], datetime.datetime]
 
@@ -51,7 +50,7 @@ class PatchPromptUseCase:
 
         if history.revisions and history.revisions[-1].value == value:
             raise PatchPromptError(
-                f"Value not changed from latest revision in scene {scene_number} {field.value}"
+                f"Value not changed from latest revision in scene {scene_number} {field.value}",
             )
 
         now = self._clock()

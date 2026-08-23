@@ -5,15 +5,17 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
+from feverslop.application.msr_prompt_enrichment import (
+    enrich_render_plan_with_msr_prompts,
+)
 from feverslop.prompting.guide_loader import load_markdown_guide
-from feverslop.prompting.msr_signatures import build_msr_signature_bundle
 from feverslop.prompting.msr_modules import MSRPromptModules
+from feverslop.prompting.msr_signatures import build_msr_signature_bundle
 from tests.fakellm import (
+    FailingVisionAndTextLLM,
+    FailingVisionLLM,
     FakeLLM,
     FakeVisionLLM,
-    FailingVisionLLM,
-    FailingVisionAndTextLLM,
     VisionOnlyLLM,
 )
 
@@ -55,7 +57,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
             image_path = Path(temp_dir) / "actor.png"
             image_path.write_bytes(
                 b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-                b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82"
+                b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82",
             )
             modules.vision(payload, [image_path], timeout=12.0)
 
@@ -261,7 +263,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                                         "Full body spectral wolf reference sheet, luminous blue mist fur, "
                                         "glowing white eyes, readable wolf silhouette."
                                     ),
-                                }
+                                },
                             ],
                             "location_reference_description": {
                                 "id": "megalith_circle",
@@ -293,7 +295,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                                 },
                             ],
                         },
-                    }
+                    },
                 ]),
                 encoding="utf-8",
             )
@@ -308,7 +310,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                 {
                     "index": 1,
                     "prompt": (
-                        "Spectral Wolf raises its glowing head and sings the phrase \"Durch Nebel und Dom\" "
+                        'Spectral Wolf raises its glowing head and sings the phrase "Durch Nebel und Dom" '
                         "with clear lip sync as its blue mist body tenses with each step."
                     ),
                 },
@@ -360,7 +362,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                         },
                         "references": {
                             "actor_reference_descriptions": [
-                                {"id": "wolf", "name": "Bactus", "visual_description": "Blue spectral wolf"}
+                                {"id": "wolf", "name": "Bactus", "visual_description": "Blue spectral wolf"},
                             ],
                             "location_reference_description": {
                                 "id": "circle",
@@ -376,10 +378,10 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                                     "frame_end": 24,
                                     "state": "instrumental",
                                     "prompt": "same scene",
-                                }
+                                },
                             ],
                         },
-                    }
+                    },
                 ]),
                 encoding="utf-8",
             )
@@ -413,7 +415,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
 
             with patch("feverslop.application.msr_prompt_enrichment.MSRPromptModules", return_value=BrokenModules()):
                 output = enrich_render_plan_with_msr_prompts(
-                    plan, temp / "out.json", llm=ConfiguredFakeLLM("unused")
+                    plan, temp / "out.json", llm=ConfiguredFakeLLM("unused"),
                 )
 
             result = json.loads(output.read_text(encoding="utf-8"))[0]
@@ -439,7 +441,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                         },
                         "references": {
                             "actor_reference_descriptions": [
-                                {"id": "warrior", "name": "Warrior", "visual_description": "Dark-haired warrior"}
+                                {"id": "warrior", "name": "Warrior", "visual_description": "Dark-haired warrior"},
                             ],
                             "location_reference_description": {"id": "void", "name": "Void", "visual_description": "Neon void"},
                         },
@@ -450,10 +452,10 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                                     "frame_end": 48,
                                     "state": "singing",
                                     "prompt": "same scene, character sings with expressive lip sync",
-                                }
+                                },
                             ],
                         },
-                    }
+                    },
                 ]),
                 encoding="utf-8",
             )
@@ -506,15 +508,15 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
         from feverslop.application.msr_prompt_enrichment import _extract_json_array
 
         # Well-formed array still works
-        result = _extract_json_array("[{\"index\": 0, \"prompt\": \"test\"}]")
+        result = _extract_json_array('[{"index": 0, "prompt": "test"}]')
         self.assertEqual(len(result), 1)
 
         # Trailing comma is handled
-        result = _extract_json_array("[{\"index\": 0, \"prompt\": \"test\"},]")
+        result = _extract_json_array('[{"index": 0, "prompt": "test"},]')
         self.assertEqual(len(result), 1)
 
         # Bracketed but invalid JSON raises ValueError with context
-        malformed = "[{\"index\": 0, \"prompt\": unquoted}]"
+        malformed = '[{"index": 0, "prompt": unquoted}]'
         with self.assertRaisesRegex(ValueError, "Could not parse JSON array"):
             _extract_json_array(malformed)
         # Also verify the error includes the original text
@@ -527,7 +529,7 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
         from feverslop.application.msr_prompt_enrichment import _extract_json_array
 
         # Non-JSON in between bracketed objects still extracts valid objects
-        mixed = "[{\"index\": 0, \"prompt\": \"alpha\"}, not-json, {\"index\": 1, \"prompt\": \"beta\"}]"
+        mixed = '[{"index": 0, "prompt": "alpha"}, not-json, {"index": 1, "prompt": "beta"}]'
         result = _extract_json_array(mixed)
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["prompt"], "alpha")

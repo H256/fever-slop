@@ -1,9 +1,9 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
-import subprocess
 import json
 import os
+import subprocess
+from pathlib import Path
 
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopAdaptationError
@@ -78,12 +78,12 @@ class VideoPostProcessor:
     def _validate_video_output(video_file: Path, expected_duration: float, operation: str) -> None:
         if not video_file.is_file():
             raise FeverSlopAdaptationError(
-                f"{operation} did not produce an output file: {video_file}"
+                f"{operation} did not produce an output file: {video_file}",
             )
         size = video_file.stat().st_size
         if size < 1024:
             raise FeverSlopAdaptationError(
-                f"{operation} produced a file that is too small ({size} bytes): {video_file}"
+                f"{operation} produced a file that is too small ({size} bytes): {video_file}",
             )
         try:
             result = subprocess.run(
@@ -104,14 +104,14 @@ class VideoPostProcessor:
                 duration = None
         except subprocess.TimeoutExpired as exc:
             raise FeverSlopAdaptationError(
-                f"{operation} timed out while probing video: {video_file}"
+                f"{operation} timed out while probing video: {video_file}",
             ) from exc
         except (subprocess.CalledProcessError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             duration = None
         if duration is None or duration < expected_duration * 0.5:
             raise FeverSlopAdaptationError(
                 f"{operation} produced an invalid video: expected about "
-                f"{expected_duration:.3f}s, got {duration!r}: {video_file}"
+                f"{expected_duration:.3f}s, got {duration!r}: {video_file}",
             )
 
     def _pad_short_clip(self, spec: TrimSpec) -> None:
@@ -197,7 +197,7 @@ class VideoPostProcessor:
             )
         except subprocess.TimeoutExpired as exc:
             raise FeverSlopAdaptationError(
-                f"Timed out while probing audio duration: {video_file}"
+                f"Timed out while probing audio duration: {video_file}",
             ) from exc
         except subprocess.CalledProcessError:
             return None
@@ -375,11 +375,11 @@ class VideoPostProcessor:
             )
         except subprocess.TimeoutExpired as exc:
             raise FeverSlopAdaptationError(
-                f"FFmpeg timed out after {FFMPEG_TIMEOUT_SECONDS}s: {' '.join(cmd)}"
+                f"FFmpeg timed out after {FFMPEG_TIMEOUT_SECONDS}s: {' '.join(cmd)}",
             ) from exc
         except subprocess.CalledProcessError as exc:
             details = str(exc.stderr or "").strip()
             raise FeverSlopAdaptationError(
                 f"FFmpeg failed: {exc.returncode} for command: {' '.join(cmd)}"
-                + (f"\n{details}" if details else "")
+                + (f"\n{details}" if details else ""),
             ) from exc

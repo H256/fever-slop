@@ -1,11 +1,11 @@
 import unittest
 
+from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
 from feverslop.application.reference_sheet_planning import (
     DeterministicReferenceSheetPlanner,
     ReferenceSheetPlanner,
     compile_reference_sheet_plan,
 )
-from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
 from feverslop.domain.reference_sheet import CompiledReferenceSheetPlan
 from feverslop.prompting.reference_sheet_modules import ReferenceSheetPlanningModules
 
@@ -55,7 +55,7 @@ class ReferenceSheetPlanningTests(unittest.TestCase):
 
     def test_compiler_uses_requested_frame_count_for_duration(self):
         compiled = compile_reference_sheet_plan(
-            {}, kind="character", description="A pilot", frames=124
+            {}, kind="character", description="A pilot", frames=124,
         )
 
         self.assertAlmostEqual(124 / 24, compiled.duration_seconds)
@@ -113,7 +113,7 @@ class ReferenceSheetPlanningTests(unittest.TestCase):
                 anchor_rule="the anchor image is fully referenced as the first frame",
                 identity_constraints="empty station",
                 negative_constraints="no people",
-            )
+            ),
         )
 
         self.assertIn("anchor image is fully referenced as the first frame", prompt.prompt)
@@ -209,7 +209,7 @@ class ReferenceSheetPlanningTests(unittest.TestCase):
                         "backdrop": "neutral studio",
                         "identity_constraints": ["preserve the suit"],
                         "negative_constraints": ["no logos"],
-                    }
+                    },
                 }
 
             def context(self, *, lm):

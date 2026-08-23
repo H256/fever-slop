@@ -1,3 +1,3 @@
 """Backward-compatible import location for the artifact catalog."""
 
-from feverslop.adapters.artifact_catalog import *  # noqa: F401,F403
+from feverslop.adapters.artifact_catalog import *  # noqa: F403

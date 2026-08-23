@@ -21,7 +21,6 @@ from feverslop.ports.timeline_documents import AffectedArtifacts
 from feverslop.studio.jobs import JobRegistry
 from feverslop.studio.timeline_service import TimelineStudioService
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -54,7 +53,7 @@ def _default_seed() -> list[dict[str, Any]]:
             "scene_boundaries": [],
             "beat_markers": [],
             "metadata": {"source": "test"},
-        }
+        },
     ]
 
 
@@ -329,7 +328,7 @@ class TestErrorPropagation(unittest.TestCase):
                     "scene_boundaries": [],
                     "beat_markers": [],
                     "metadata": {},
-                }
+                },
             ]
             _seed_timeline_json(project_dir, seed)
 
@@ -352,7 +351,7 @@ class TestErrorPropagation(unittest.TestCase):
                     ],
                     "beat_markers": [],
                     "metadata": {},
-                }
+                },
             ]
             _seed_timeline_json(project_dir, seed)
 
@@ -386,7 +385,7 @@ class TestErrorPropagation(unittest.TestCase):
                         {"time_s": 1.0, "label": "existing", "confidence": 0.9},
                     ],
                     "metadata": {},
-                }
+                },
             ]
             _seed_timeline_json(project_dir, seed)
 

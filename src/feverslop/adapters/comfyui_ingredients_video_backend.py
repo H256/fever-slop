@@ -1,24 +1,28 @@
 from __future__ import annotations
 
-from pathlib import Path
-from copy import deepcopy
 import json
 import random
+from copy import deepcopy
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
-from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.adapters.visual_consistency_runtime import (
     validate_backend_visual_consistency,
 )
-from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
-from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder, build_audio_window_spec
-from feverslop.domain.scene_duration_limits import validate_render_frame_budget
-from feverslop.errors import FeverSlopValidationError
+from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.ltx_rendering import (
+    AudioWindowSpec,
+    PromptRelayPayloadBuilder,
+    build_audio_window_spec,
+)
+from feverslop.domain.scene_duration_limits import validate_render_frame_budget
+from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
+from feverslop.errors import FeverSlopValidationError
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -133,7 +137,7 @@ class ComfyUIIngredientsVideoRenderBackend:
                 keep_frames=int(rolling["scene_frame_count"]),
                 scene=scene_number,
                 extract_boundary_frames=True,
-            )
+            ),
         )
 
     def build_workflow(
@@ -179,7 +183,7 @@ class ComfyUIIngredientsVideoRenderBackend:
             raise FeverSlopValidationError(f"Scene {scene.get('scene')} is missing ingredients_scene_sheet path")
 
         image_name = self.asset_uploader.resolve_reference_image_name(
-            self._resolve_project_path(sheet_path)
+            self._resolve_project_path(sheet_path),
         )
         patcher.set_input_by_title("#INGREDIENTS", "image", image_name)
 
@@ -232,7 +236,7 @@ class ComfyUIIngredientsVideoRenderBackend:
             or scene.get("ingredients_global_prompt")
             or scene.get("ingredients_scene_sheet_description")
             or ltx.get("ingredients_scene_sheet_description")
-            or ""
+            or "",
         ).strip()
         relay = ltx.get("msr_prompt_relay") or ltx.get("prompt_relay") or []
         scene_number = scene.get("scene", "?")

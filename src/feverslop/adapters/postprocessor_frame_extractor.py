@@ -31,7 +31,7 @@ class PostprocessorFrameExtractor:
             detail = " for selected re-render" if self.selected_rerender else ""
             raise ValueError(
                 f"Cannot use last-frame continuity{detail}; "
-                f"missing previous movie scene clip: {video_path}"
+                f"missing previous movie scene clip: {video_path}",
             )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with NamedTemporaryFile(
@@ -61,7 +61,7 @@ class PostprocessorFrameExtractor:
             if extracted != temporary.resolve():
                 raise ValueError(
                     "Continuity handoff extractor returned an unexpected "
-                    f"output frame: {extracted}"
+                    f"output frame: {extracted}",
                 )
             self._require_secure_temp(extracted)
             self._requested_output(output_path)
@@ -69,7 +69,7 @@ class PostprocessorFrameExtractor:
             final = self._contained(output_path, "output frame")
             if not self._regular_file(final):
                 raise ValueError(
-                    f"Continuity handoff did not produce output frame: {final}"
+                    f"Continuity handoff did not produce output frame: {final}",
                 )
             return final
         finally:
@@ -84,7 +84,7 @@ class PostprocessorFrameExtractor:
         )
         if not resolved.is_relative_to(self.project_dir):
             raise ValueError(
-                f"Continuity handoff {label} is outside project: {resolved}"
+                f"Continuity handoff {label} is outside project: {resolved}",
             )
         return resolved
 
@@ -94,11 +94,11 @@ class PostprocessorFrameExtractor:
         parent = absolute.parent.resolve()
         if not parent.is_relative_to(self.project_dir):
             raise ValueError(
-                f"Continuity handoff output frame is outside project: {absolute}"
+                f"Continuity handoff output frame is outside project: {absolute}",
             )
         if absolute.is_symlink():
             raise ValueError(
-                f"Continuity handoff output frame must not be a symlink: {absolute}"
+                f"Continuity handoff output frame must not be a symlink: {absolute}",
             )
         return parent / absolute.name
 
@@ -110,12 +110,12 @@ class PostprocessorFrameExtractor:
         resolved = self._contained(path, "previous clip")
         if resolved != path or not self._regular_file(path):
             raise ValueError(
-                f"Continuity handoff previous clip is not a regular file: {path}"
+                f"Continuity handoff previous clip is not a regular file: {path}",
             )
 
     def _require_secure_temp(self, path: Path) -> None:
         resolved = self._contained(path, "extracted frame")
         if resolved != path or not self._regular_file(path):
             raise ValueError(
-                f"Continuity handoff did not produce output frame: {path}"
+                f"Continuity handoff did not produce output frame: {path}",
             )

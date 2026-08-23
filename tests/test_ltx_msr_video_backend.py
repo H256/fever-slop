@@ -1,5 +1,5 @@
-import json
 import inspect
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,7 +8,10 @@ from unittest.mock import patch
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.prepared_workflow import sha256_file
-from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
+from feverslop.domain.visual_consistency import (
+    ReferenceAnchor,
+    SceneConsistencyContract,
+)
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -354,7 +357,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     audio_file=temp / "song.mp3",
                     storyboard_dir=temp,
-                )
+                ),
             )
 
             self.assertEqual(temp / "out" / "raw" / "scene_0007_raw.mp4", output)
@@ -411,7 +414,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     audio_file=temp / "song.mp3",
                     storyboard_dir=temp,
-                )
+                ),
             )
 
             self.assertEqual(424242, client.queued_workflow["4"]["inputs"]["noise_seed"])
@@ -462,7 +465,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     output_dir=project / "output" / "render" / "ltx_msr",
                     audio_file=project / "input" / "song.mp3",
                     storyboard_dir=project / "output" / "storyboard",
-                )
+                ),
             )
 
             self.assertEqual([actor, location], client.uploaded_paths)
@@ -787,7 +790,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                                 "role": "frost giant antagonist",
                                 "visual_description": "cracked blue ice skin, glowing white eyes, runic armor",
                                 "image_prompt": "full body frost giant reference with ancient runic armor and stone hammer",
-                            }
+                            },
                         ],
                         "location_reference_description": {
                             "id": "volcanic_mountain_pass",
@@ -813,7 +816,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                                     "Start frame: Thrym slams the frozen earth. Lock the first frame to this exact composition. "
                                     "Thrym raises one arm, ash swirls around him, camera pushes in slowly."
                                 ),
-                            }
+                            },
                         ],
                     },
                 },
@@ -880,7 +883,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                                 "frame_end": 48,
                                 "state": "singing",
                                 "prompt": "generic same subject sings",
-                            }
+                            },
                         ],
                         "msr_prompt_relay": [
                             {
@@ -888,7 +891,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                                 "frame_end": 48,
                                 "state": "singing",
                                 "prompt": "Spectral Wolf howls toward the glowing monolith with clear lip sync.",
-                            }
+                            },
                         ],
                     },
                 },
@@ -928,7 +931,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                         "frame_end": 48,
                         "state": "singing",
                         "prompt": "Spectral Wolf howls toward the glowing monolith with clear lip sync.",
-                    }
+                    },
                 ],
             },
         }
@@ -1014,7 +1017,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                                 "frame_start": 0,
                                 "frame_end": 47,
                                 "prompt": "Mara steps through the archive door.",
-                            }
+                            },
                         ],
                     },
                 },
@@ -1063,7 +1066,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                             "Dialogue for native audio: Ich komme. Audio contract: scripted dialogue only. "
                             "Dialogue language: German. Style: desaturated noir."
                         ),
-                    }
+                    },
                 ],
             },
         }
@@ -1138,7 +1141,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     audio_file=audio,
                     storyboard_dir=temp,
-                )
+                ),
             )
 
             audio_input = client.queued_workflow["5"]["inputs"]["audio"]
@@ -1201,7 +1204,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     audio_file=audio,
                     storyboard_dir=temp,
-                )
+                ),
             )
 
             raw_output = temp / "out" / "raw" / "scene_0002_raw.mp4"
@@ -1336,7 +1339,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     audio_file=audio,
                     storyboard_dir=temp,
-                )
+                ),
             )
 
             debug_workflow = json.loads((debug_dir / "scene_0002_workflow.json").read_text(encoding="utf-8"))

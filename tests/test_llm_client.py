@@ -1,15 +1,15 @@
 import os
-import unittest
-from unittest.mock import MagicMock, patch
-from openai import APIConnectionError, RateLimitError
-import httpx
-from pathlib import Path
 import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import httpx
+from openai import APIConnectionError, RateLimitError
 from PIL import Image
 
-from feverslop.adapters.llm_client import LocalOpenAIClient
 from feverslop.adapters.api_observability import APIMetrics
+from feverslop.adapters.llm_client import LocalOpenAIClient
 from feverslop.errors import FeverSlopLMLError
 
 _saved_allowed_api_hosts = None
@@ -81,7 +81,7 @@ class LLMClientRetryTests(unittest.TestCase):
         metrics = APIMetrics()
 
         client = LocalOpenAIClient(
-            api_key="test-key", max_retries=3, retry_base_delay=0.01, metrics=metrics
+            api_key="test-key", max_retries=3, retry_base_delay=0.01, metrics=metrics,
         )
         self.assertEqual("ok", client.complete_prompt("system", "prompt"))
 
@@ -95,7 +95,7 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
         mock_client.chat.completions.create.side_effect = APIConnectionError(
-            message="connect failed", request=httpx.Request("GET", "http://localhost")
+            message="connect failed", request=httpx.Request("GET", "http://localhost"),
         )
         metrics = APIMetrics()
         client = LocalOpenAIClient(api_key="test-key", max_retries=3, metrics=metrics)
@@ -246,7 +246,7 @@ class LLMClientRetryTests(unittest.TestCase):
         self.assertEqual(2, len(image_parts))
         for part in image_parts:
             self.assertTrue(
-                part["image_url"]["url"].startswith("data:image/jpeg;base64,")
+                part["image_url"]["url"].startswith("data:image/jpeg;base64,"),
             )
 
     @patch("time.sleep", return_value=None)
@@ -312,7 +312,7 @@ class LLMClientRetryTests(unittest.TestCase):
         mock_openai.return_value = mock_client
 
         mock_client.chat.completions.create.side_effect = RateLimitError(
-            "rate limited", response=MagicMock(), body=None
+            "rate limited", response=MagicMock(), body=None,
         )
 
         client = LocalOpenAIClient(api_key="test-key", max_retries=3, retry_base_delay=0.01)

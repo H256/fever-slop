@@ -25,9 +25,13 @@ class LLMPolicyTests(unittest.TestCase):
         self.assertIn("lyric_alignment", BATCHED_TASK_NAMES)
 
     def test_signature_bundle_task_names_have_explicit_policies(self):
-        from feverslop.prompting.general_signatures import build_general_signature_bundle
+        from feverslop.prompting.general_signatures import (
+            build_general_signature_bundle,
+        )
         from feverslop.prompting.llm_policy import BATCHED_TASK_NAMES, known_task_names
-        from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
+        from feverslop.prompting.music_video_signatures import (
+            build_music_video_signature_bundle,
+        )
 
         known = known_task_names()
         bundles = (

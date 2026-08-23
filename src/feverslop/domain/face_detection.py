@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import math
-
-import numpy as np
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,7 @@ class BoundingBox:
     def area(self) -> float:
         return max(0.0, self.width) * max(0.0, self.height)
 
-    def clamp(self, frame_width: int, frame_height: int) -> "BoundingBox":
+    def clamp(self, frame_width: int, frame_height: int) -> BoundingBox:
         x1 = max(0.0, min(self.x1, float(frame_width - 1)))
         y1 = max(0.0, min(self.y1, float(frame_height - 1)))
         x2 = max(x1 + 1.0, min(self.x2, float(frame_width)))
@@ -121,7 +121,7 @@ class FaceDetection:
     box: BoundingBox
     score: float
     landmarks: FaceLandmarks | None = None
-    embedding: "np.ndarray | None" = None  # type: ignore[name-defined]
+    embedding: np.ndarray | None = None  # type: ignore[name-defined]
 
 
 class TrackState(str, Enum):
@@ -199,7 +199,7 @@ class FaceProcessingDecision:
         track_id: int,
         detection_score: float,
         identity_score: float | None = None,
-    ) -> "FaceProcessingDecision":
+    ) -> FaceProcessingDecision:
         return cls(
             should_process=True,
             detection=detection,
@@ -210,7 +210,7 @@ class FaceProcessingDecision:
         )
 
     @classmethod
-    def reject(cls, reason: RejectReason) -> "FaceProcessingDecision":
+    def reject(cls, reason: RejectReason) -> FaceProcessingDecision:
         return cls(
             should_process=False,
             detection=None,
@@ -223,7 +223,7 @@ class FaceProcessingDecision:
 
 @dataclass(frozen=True)
 class FrameResult:
-    frame: "np.ndarray"  # type: ignore[name-defined]
+    frame: np.ndarray  # type: ignore[name-defined]
     processed: bool
     detection_score: float | None = None
     identity_score: float | None = None
@@ -233,7 +233,7 @@ class FrameResult:
     reject_reason: RejectReason | None = None
 
     @classmethod
-    def unchanged(cls, frame: "np.ndarray", reject_reason: RejectReason) -> "FrameResult":  # type: ignore[name-defined]
+    def unchanged(cls, frame: np.ndarray, reject_reason: RejectReason) -> FrameResult:  # type: ignore[name-defined]
         return cls(
             frame=frame,
             processed=False,
@@ -248,13 +248,13 @@ class FrameResult:
     @classmethod
     def processed(
         cls,
-        frame: "np.ndarray",  # type: ignore[name-defined]
+        frame: np.ndarray,  # type: ignore[name-defined]
         detection_score: float,
         identity_score: float | None,
         track_id: int,
         box: BoundingBox,
         expanded_box: BoundingBox,
-    ) -> "FrameResult":
+    ) -> FrameResult:
         return cls(
             frame=frame,
             processed=True,
@@ -498,7 +498,7 @@ def rank_face_candidates(
 # ---------------------------------------------------------------------------
 
 
-def cosine_similarity(a: "np.ndarray", b: "np.ndarray") -> float:  # type: ignore[name-defined]
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:  # type: ignore[name-defined]
     """Calculate cosine similarity between two vectors."""
     norm_a = float(np.linalg.norm(a))
     norm_b = float(np.linalg.norm(b))

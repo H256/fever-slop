@@ -40,7 +40,7 @@ class RenderVideoCompositionProfileTests(unittest.TestCase):
                         app_config_path=app_config,
                         video_pipeline="ltx_ingredients",
                         output_dir=temp / "out",
-                    )
+                    ),
                 )
 
         self.assertIs(use_case.backend, backend_type.return_value)
@@ -64,7 +64,7 @@ class RenderVideoCompositionProfileTests(unittest.TestCase):
                         video_pipeline="ltx_ingredients",
                         workflow_path=explicit,
                         output_dir=temp / "out",
-                    )
+                    ),
                 )
 
         self.assertEqual(explicit, backend_type.call_args.kwargs["workflow_path"])
@@ -83,7 +83,7 @@ class RenderVideoCompositionProfileTests(unittest.TestCase):
                         video_pipeline="ltx_ingredients",
                         video_workflow_profile="ingredients-final",
                         output_dir=temp / "out",
-                    )
+                    ),
                 )
 
         self.assertEqual(

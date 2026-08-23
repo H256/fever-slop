@@ -126,7 +126,7 @@ class ReferenceSheetRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ReferenceSheetRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> ReferenceSheetRequest:
         if not isinstance(payload, dict):
             raise ValueError("reference sheet request must be an object")
         return cls(**payload)
@@ -145,7 +145,7 @@ class ReferenceArtifact:
         return {"kind": self.kind, "path": self.path}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ReferenceArtifact":
+    def from_dict(cls, payload: dict[str, Any]) -> ReferenceArtifact:
         if not isinstance(payload, dict):
             raise ValueError("reference artifact must be an object")
         return cls(kind=payload.get("kind", ""), path=payload.get("path", ""))
@@ -174,7 +174,7 @@ class ReferenceSheetProvenance:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ReferenceSheetProvenance":
+    def from_dict(cls, payload: dict[str, Any]) -> ReferenceSheetProvenance:
         if not isinstance(payload, dict):
             raise ValueError("reference sheet provenance must be an object")
         return cls(
@@ -208,7 +208,7 @@ class ReferenceSheetResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ReferenceSheetResult":
+    def from_dict(cls, payload: dict[str, Any]) -> ReferenceSheetResult:
         if not isinstance(payload, dict):
             raise ValueError("reference sheet result must be an object")
         raw_artifacts = payload.get("artifacts", [])

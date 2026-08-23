@@ -3,7 +3,9 @@ from contextlib import nullcontext
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.music_video_modules import MusicVideoPromptModules
-from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
+from feverslop.prompting.music_video_signatures import (
+    build_music_video_signature_bundle,
+)
 
 
 class MusicVideoDspyContractTests(unittest.TestCase):

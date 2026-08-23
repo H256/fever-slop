@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 
-from feverslop.errors import FeverSlopLMLError
-from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieScreenplayArtifact, StoryArch
+from feverslop.adapters.movie_planning_bible import _movie_bible_from_data
 from feverslop.adapters.movie_planning_helpers import (
     _beat_text,
     _ensure_minimum_actors,
@@ -13,14 +13,20 @@ from feverslop.adapters.movie_planning_helpers import (
     _string_list,
     _transition_from_previous,
 )
-from feverslop.adapters.movie_planning_bible import _movie_bible_from_data
 from feverslop.adapters.movie_planning_prompts import (
     _krea_reference_guides,
     _sanitize_location_image_prompt,
 )
+from feverslop.domain.movie import (
+    CinematicShot,
+    MovieActor,
+    MovieBible,
+    MovieLocation,
+    MovieScreenplayArtifact,
+    StoryArch,
+)
+from feverslop.errors import FeverSlopLMLError
 from feverslop.prompting.movie_planning_modules import MoviePlanningModules
-import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +101,9 @@ class LLMMoviePlanner:
                         name=loc.name,
                         visual_description=str(refined.get("visual_description") or loc.visual_description).strip(),
                         image_prompt=_sanitize_location_image_prompt(
-                            str(refined.get("image_prompt") or loc.visual_description)
+                            str(refined.get("image_prompt") or loc.visual_description),
                         ),
-                    )
+                    ),
                 )
             else:
                 result.append(loc)
@@ -126,7 +132,7 @@ class LLMMoviePlanner:
                         name=actor.name,
                         role=actor.role,
                         visual_description=str(refined.get("visual_description") or actor.visual_description).strip(),
-                    )
+                    ),
                 )
             else:
                 result.append(actor)
@@ -173,7 +179,9 @@ class LLMMoviePlanner:
         }))
         shots = data.get("shots") or []
         if not isinstance(shots, list) or not shots:
-            from feverslop.adapters.movie_planning_deterministic import DeterministicMoviePlanner
+            from feverslop.adapters.movie_planning_deterministic import (
+                DeterministicMoviePlanner,
+            )
             return DeterministicMoviePlanner().plan_shots_from_bible(
                 bible=bible,
                 screenplay=screenplay,
@@ -206,7 +214,9 @@ class LLMMoviePlanner:
         }))
         shots = data.get("shots") or []
         if not isinstance(shots, list) or not shots:
-            from feverslop.adapters.movie_planning_deterministic import DeterministicMoviePlanner
+            from feverslop.adapters.movie_planning_deterministic import (
+                DeterministicMoviePlanner,
+            )
             return DeterministicMoviePlanner().plan_shots(
                 story_arch=story_arch,
                 desired_length=desired_length,
@@ -232,7 +242,7 @@ class LLMMoviePlanner:
                     actor_ids=tuple(_string_list(shot.get("actor_ids") or shot.get("actors"))),
                     location_id=_safe_id(shot.get("location_id") or shot.get("location")),
                     transition_from_previous=_transition_from_previous(shot.get("transition_from_previous")),
-                )
+                ),
             )
         planned = _ensure_minimum_actors(planned, story_arch)
         return _normalize_movie_shots(

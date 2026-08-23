@@ -1,13 +1,17 @@
 ﻿from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable
 
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import StoryboardPromptTransformerPort
-from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
+from feverslop.ports.rendering import (
+    ImageRenderBackend,
+    ImageRenderRequest,
+    WorkflowAnchorConfig,
+)
 from feverslop.utils.io import file_is_valid
 
 
@@ -40,7 +44,7 @@ class RenderStoryboardUseCase:
 
     def execute(self, request: RenderStoryboardRequest) -> list[Path]:
         plan = RenderPlan.from_dicts(
-            self.artifact_store.read_render_plan(request.render_plan_path)
+            self.artifact_store.read_render_plan(request.render_plan_path),
         ).select(
             scene_numbers=request.scene_numbers,
             limit=request.limit,
@@ -82,7 +86,7 @@ class RenderStoryboardUseCase:
                     negative_prompt=request.negative_prompt,
                     character_lora_strength=request.character_lora_strength,
                     anchors=anchors,
-                )
+                ),
             )
             rendered.append(rendered_path)
             if request.on_frame_complete:

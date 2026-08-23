@@ -6,19 +6,23 @@ from pathlib import Path
 from rich.console import Console
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
+from feverslop.adapters.comfyui_ingredients_video_backend import (
+    ComfyUIIngredientsVideoRenderBackend,
+)
+from feverslop.adapters.comfyui_minimax_h3_i2v_backend import ComfyUIMiniMaxH3I2VBackend
 from feverslop.adapters.comfyui_minimax_h3_r2v_backend import ComfyUIMiniMaxH3R2VBackend
 from feverslop.adapters.comfyui_minimax_h3_t2v_backend import ComfyUIMiniMaxH3T2VBackend
-from feverslop.adapters.comfyui_minimax_h3_i2v_backend import ComfyUIMiniMaxH3I2VBackend
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
-from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.application.render_video import RenderVideoScenesUseCase
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
-from feverslop.domain.ltx_rendering import ROLLING_FRAME_PROFILES  # noqa: F401
-from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
+from feverslop.domain.ltx_rendering import (
+    ROLLING_FRAME_PROFILES,  # noqa: F401
+    resolve_rolling_frame_profile,
+)
 from feverslop.domain.scene_duration_limits import resolve_scene_duration_policy
 from feverslop.path_utils import coerce_local_path
 
@@ -115,7 +119,7 @@ def build_render_video_scenes_use_case(
             max_render_duration_seconds=max_render_duration_seconds,
             render_budget_workflow_path=render_budget_workflow_path,
             workflow_profile=str(
-                options.video_workflow_profile or Path(workflow_path).stem
+                options.video_workflow_profile or Path(workflow_path).stem,
             ),
         )
     elif options.video_pipeline == "ltx_ingredients":
@@ -142,7 +146,7 @@ def build_render_video_scenes_use_case(
             max_render_duration_seconds=max_render_duration_seconds,
             render_budget_workflow_path=render_budget_workflow_path,
             workflow_profile=str(
-                options.video_workflow_profile or Path(workflow_path).stem
+                options.video_workflow_profile or Path(workflow_path).stem,
             ),
         )
     elif options.video_pipeline == "minimax-h3-r2v":
@@ -364,7 +368,7 @@ def _resolve_render_frame_budget(
         workflow_paths.append(single_prompt_workflow_path)
     if project_config is None:
         duration, limiting_workflow = _resolve_configured_workflow_duration(
-            app_config, workflow_paths
+            app_config, workflow_paths,
         )
         return None, duration, limiting_workflow
 

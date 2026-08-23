@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from feverslop.adapters.reporting import NullReporter
 from feverslop.domain.facefix_rendering import FaceFixConfig, FaceFixSceneRequest
 from feverslop.ports.reporting import Reporter
-from feverslop.adapters.reporting import NullReporter
 
 
 @dataclass(frozen=True)

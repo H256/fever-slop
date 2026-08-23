@@ -26,7 +26,7 @@ def validate_backend_visual_consistency(
         return
     if project_dir is None:
         raise ValueError(
-            "visual consistency source verification requires a project directory"
+            "visual consistency source verification requires a project directory",
         )
     root = Path(project_dir).resolve()
     if mode == "msr":
@@ -39,12 +39,12 @@ def validate_backend_visual_consistency(
         for reference, source in zip(references, sources):
             if Path(source["path"]).is_absolute():
                 raise ValueError(
-                    "Ingredients signature source path must be project-relative"
+                    "Ingredients signature source path must be project-relative",
                 )
             actual = sha256_file(_contained_source(root, source["path"]))
             if actual != reference["sha256"]:
                 raise ValueError(
-                    f"Ingredients source hash mismatch for {reference['id']!r}"
+                    f"Ingredients source hash mismatch for {reference['id']!r}",
                 )
         _validate_ingredients_sheet(ingredients, root=root)
     elif mode == "msr":
@@ -63,7 +63,7 @@ def validate_backend_visual_consistency(
             )
             if sha256_file(source) != anchor.asset_sha256:
                 raise ValueError(
-                    f"MSR actor reference hash mismatch for {anchor.id!r}"
+                    f"MSR actor reference hash mismatch for {anchor.id!r}",
                 )
         location_path = (
             references.get("location_msr_path")
@@ -76,13 +76,13 @@ def validate_backend_visual_consistency(
                     location_path,
                     reference_kind="location",
                     reference_id=contract.location.id,
-                )
+                ),
             )
             != contract.location.asset_sha256
         ):
             raise ValueError(
                 f"MSR location reference hash mismatch for "
-                f"{contract.location.id!r}"
+                f"{contract.location.id!r}",
             )
 
 
@@ -97,7 +97,7 @@ def _reject_absolute_msr_paths(scene: dict, contract) -> None:
         if Path(path).is_absolute():
             raise ValueError(
                 f"actor reference {anchor.id!r} path must be project-relative: "
-                f"{path}"
+                f"{path}",
             )
     location_path = (
         references.get("location_msr_path")
@@ -110,7 +110,7 @@ def _reject_absolute_msr_paths(scene: dict, contract) -> None:
     ):
         raise ValueError(
             f"location reference {contract.location.id!r} path must be "
-            f"project-relative: {location_path}"
+            f"project-relative: {location_path}",
         )
 
 
@@ -131,17 +131,17 @@ def _validate_contract_sources(scene: dict, contract, *, root: Path) -> None:
         if sha256_file(source) != anchor.asset_sha256:
             raise ValueError(
                 f"visual consistency contract source hash mismatch for actor "
-                f"{anchor.id!r}"
+                f"{anchor.id!r}",
             )
     location_source = metadata.get("location")
     if bool(location_source) != (contract.location is not None):
         raise ValueError(
-            "visual consistency location source binding does not match contract"
+            "visual consistency location source binding does not match contract",
         )
     if contract.location is not None:
         if location_source.get("id") != contract.location.id:
             raise ValueError(
-                "visual consistency location source binding does not match contract"
+                "visual consistency location source binding does not match contract",
             )
         source = _contained_source(
             root,
@@ -152,7 +152,7 @@ def _validate_contract_sources(scene: dict, contract, *, root: Path) -> None:
         if sha256_file(source) != contract.location.asset_sha256:
             raise ValueError(
                 f"visual consistency contract source hash mismatch for location "
-                f"{contract.location.id!r}"
+                f"{contract.location.id!r}",
             )
 
 
@@ -179,7 +179,7 @@ def _validate_ingredients_sheet(ingredients: dict, *, root: Path) -> None:
     )
     if sheet.parent not in allowed_roots:
         raise ValueError(
-            "Ingredients sheet must be in a canonical Ingredients cache"
+            "Ingredients sheet must be in a canonical Ingredients cache",
         )
     if not sheet.is_file():
         raise ValueError("Ingredients sheet is missing or not a file")
@@ -190,7 +190,7 @@ def _validate_ingredients_sheet(ingredients: dict, *, root: Path) -> None:
                 raise ValueError("Ingredients sheet must be a readable PNG")
             if image.size != expected_size:
                 raise ValueError(
-                    "Ingredients sheet dimensions do not match contract"
+                    "Ingredients sheet dimensions do not match contract",
                 )
             image.verify()
     except (OSError, SyntaxError) as exc:
@@ -209,23 +209,23 @@ def _contained_source(
 ) -> Path:
     if value is None:
         raise ValueError(
-            f"{reference_kind} reference {reference_id!r} source path is missing"
+            f"{reference_kind} reference {reference_id!r} source path is missing",
         )
     raw = Path(value)
     if raw.is_absolute():
         raise ValueError(
             f"{reference_kind} reference {reference_id!r} path must be "
-            f"project-relative: {raw}"
+            f"project-relative: {raw}",
         )
     resolved = (root / raw).resolve()
     if not resolved.is_relative_to(root):
         raise ValueError(
             f"{reference_kind} reference {reference_id!r} path escapes the "
-            f"project: {raw}"
+            f"project: {raw}",
         )
     if not resolved.is_file():
         raise ValueError(
             f"{reference_kind} reference {reference_id!r} path is missing or "
-            f"not a file: {raw}"
+            f"not a file: {raw}",
         )
     return resolved

@@ -4,7 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from feverslop.composition.seedvr2_pipeline import SeedVR2CompositionOptions, run_seedvr2
+from feverslop.composition.seedvr2_pipeline import (
+    SeedVR2CompositionOptions,
+    run_seedvr2,
+)
 from feverslop.domain.seedvr2 import plan_seedvr2_segments
 from feverslop.scene_artifacts import SceneArtifactLayout
 

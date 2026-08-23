@@ -4,7 +4,6 @@ from typing import Any
 
 import torch
 import torchaudio
-
 from demucs import pretrained
 from demucs.apply import apply_model
 

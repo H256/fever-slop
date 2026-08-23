@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
-from feverslop.domain.movie import CinematicShot, MovieBible, MovieContinuityPlan, MovieNarrativePlan, MovieScreenplayArtifact, MovieStoryDesign, StoryArch
+from feverslop.domain.movie import (
+    CinematicShot,
+    MovieBible,
+    MovieContinuityPlan,
+    MovieNarrativePlan,
+    MovieScreenplayArtifact,
+    MovieStoryDesign,
+    StoryArch,
+)
 
 
 class MovieArtifactWriter(Protocol):

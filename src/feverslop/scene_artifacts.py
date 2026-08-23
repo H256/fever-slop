@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -132,7 +132,7 @@ class SceneArtifactLayout:
                 (
                     directory / f"scene_{scene_number:04d}.mp4",
                     directory / "final" / f"scene_{scene_number:04d}.mp4",
-                )
+                ),
             )
         return next((path for path in candidates if path.exists()), None)
 

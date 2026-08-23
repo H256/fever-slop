@@ -133,9 +133,7 @@ class InsightFaceTracker:
             fallback_id = resolved_actor_id or FALLBACK_ACTOR_ID
             if fallback_mode and target_face is None and all_faces:
                 largest = max(all_faces, key=lambda f: (f.x2 - f.x1) * (f.y2 - f.y1))
-                if last_box is not None and _bbox_iou(largest, last_box) > 0.3:
-                    target_face = replace(largest, actor_id=fallback_id)
-                elif last_box is None:
+                if (last_box is not None and _bbox_iou(largest, last_box) > 0.3) or last_box is None:
                     target_face = replace(largest, actor_id=fallback_id)
 
             # If actor already resolved, find nearest face to last position.

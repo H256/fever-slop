@@ -6,9 +6,15 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from feverslop.adapters.project_visual_consistency import ProjectReferenceManifestAdapter
-from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
-from feverslop.application.visual_consistency_preflight import preflight_visual_consistency
+from feverslop.adapters.project_visual_consistency import (
+    ProjectReferenceManifestAdapter,
+)
+from feverslop.application.render_plan_ingredients_sheets import (
+    enrich_render_plan_with_ingredients_sheets,
+)
+from feverslop.application.visual_consistency_preflight import (
+    preflight_visual_consistency,
+)
 from feverslop.config.video_settings import VideoSettings
 from feverslop.errors import FeverSlopValidationError
 
@@ -140,7 +146,7 @@ class TestIngredientsEnrichment(unittest.TestCase):
                                 "frame_end": 95,
                                 "state": "singing",
                                 "prompt": "Artist sings immediately with precise lip sync.",
-                            }
+                            },
                         ],
                     },
                     "references": {
@@ -225,7 +231,7 @@ class TestIngredientsEnrichment(unittest.TestCase):
             self.assertEqual(
                 1,
                 scene["ingredients"]["global_prompt"].count(
-                    "Continuity anchors (keep unchanged):"
+                    "Continuity anchors (keep unchanged):",
                 ),
             )
             self.assertNotIn("ingredients_scene_sheet_description", scene)
@@ -233,7 +239,7 @@ class TestIngredientsEnrichment(unittest.TestCase):
             self.assertNotIn("msr_prompt_relay", scene["ltx"])
             self.assertNotIn("actor_reference_descriptions", scene["references"])
             snapshot = ProjectReferenceManifestAdapter(lambda _project_id: tmp).load(
-                tmp.name
+                tmp.name,
             )
             preflight = preflight_visual_consistency(
                 data,

@@ -61,8 +61,8 @@ class ComfyUIClientTests(unittest.TestCase):
                             "exception_message": "HIP out of memory. Tried to allocate 6.75 GiB.",
                         },
                     ]],
-                }
-            }
+                },
+            },
         })
 
         with self.assertRaisesRegex(

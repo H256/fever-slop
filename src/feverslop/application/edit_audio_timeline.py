@@ -32,10 +32,10 @@ from feverslop.ports.timeline_documents import (
 )
 
 __all__ = [
-    "EditAudioTimeline",
-    "SaveTimelines",
-    "RebuildDownstreamArtifacts",
     "ComputeEditImpact",
+    "EditAudioTimeline",
+    "RebuildDownstreamArtifacts",
+    "SaveTimelines",
 ]
 
 
@@ -176,7 +176,7 @@ class EditAudioTimeline:
         if segment_index < 0 or segment_index >= count:
             raise EditError(
                 f"segment_index {segment_index} out of range "
-                f"[0, {count})"
+                f"[0, {count})",
             )
 
         # 2. Apply changes to the target segment

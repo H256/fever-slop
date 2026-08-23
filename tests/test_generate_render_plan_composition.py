@@ -1,11 +1,13 @@
-import unittest
 import json
 import tempfile
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
-from feverslop.composition.generate_render_plan import build_generate_render_plan_execution_request
+from feverslop.composition.generate_render_plan import (
+    build_generate_render_plan_execution_request,
+)
 
 
 class GenerateRenderPlanCompositionTests(unittest.TestCase):
@@ -20,7 +22,7 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                         "input_audio": "song.wav",
                         "video": {"fps": 24},
                         "scene_generation": {"min_duration": 2.0, "max_duration": 30.0},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -34,10 +36,10 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                                 {
                                     "workflow": "optimized.json",
                                     "max_render_duration_seconds": 24.0,
-                                }
+                                },
                             ],
-                        }
-                    }
+                        },
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -46,8 +48,8 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                 GenerateRenderPlanRequest(
                     project_config_path=project_config_path,
                     app_config_path=app_config_path,
-                    video_workflow_paths=(Path(""), Path("."), "   ", Path("optimized.json")),
-                )
+                    video_workflow_paths=(Path(), Path(), "   ", Path("optimized.json")),
+                ),
             )
 
             policy = execution_request.scene_duration_policy
@@ -65,14 +67,14 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                         "input_audio": "song.wav",
                         "video": {"fps": 24},
                         "scene_generation": {"min_duration": 2.0, "max_duration": 30.0},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
             app_config_path = temp / "app_config.json"
             app_config_path.write_text(
                 json.dumps(
-                    {"comfyui": {"default_max_render_duration_seconds": 18.0}}
+                    {"comfyui": {"default_max_render_duration_seconds": 18.0}},
                 ),
                 encoding="utf-8",
             )
@@ -83,7 +85,7 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                     app_config_path=app_config_path,
                     video_workflow_paths=(Path("workflows/video.json"),),
                     rolling_frame_profile="original",
-                )
+                ),
             )
 
             policy = execution_request.scene_duration_policy
@@ -109,7 +111,7 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                 bias=0.7,
                 duration_preset="impact_weighted",
                 seed=-1,
-            )
+            ),
         )
 
         self.assertIsInstance(generator.seed, int)
@@ -125,7 +127,7 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                         "project_name": "demo",
                         "input_audio": "song.wav",
                         "scene_generation": {"seed": -1},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -136,7 +138,7 @@ class GenerateRenderPlanCompositionTests(unittest.TestCase):
                 GenerateRenderPlanRequest(
                     project_config_path=project_config_path,
                     app_config_path=app_config_path,
-                )
+                ),
             )
 
         self.assertEqual(-1, execution_request.config.scene_generation.seed)

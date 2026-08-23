@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import logging
 import shutil
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
@@ -134,7 +134,7 @@ class ComfyUIFaceFixCropBackend:
             except KeyError as exc:
                 raise RuntimeError(
                     f"Cannot patch video input for scene {scene_number}/{actor_id}: "
-                    "#LOAD_VIDEO node missing or neither 'video' nor 'videopath' input exists"
+                    "#LOAD_VIDEO node missing or neither 'video' nor 'videopath' input exists",
                 ) from exc
 
     def _patch_anchors(self, patcher: WorkflowPatcher, anchors_dir: Path) -> None:
@@ -157,7 +157,7 @@ class ComfyUIFaceFixCropBackend:
             indices = [str(i) for i in range(0, anchor_count, 16)]
             keyframes = ",".join(indices) if indices else "0"
             patcher.try_set_existing_input_by_title(
-                "#LOOPING_SAMPLER", "optional_cond_image_indices", keyframes
+                "#LOOPING_SAMPLER", "optional_cond_image_indices", keyframes,
             )
 
     def _patch_face_ref(
@@ -211,7 +211,7 @@ class ComfyUIFaceFixCropBackend:
         patcher.try_set_existing_input_by_title("#LOOPING_SAMPLER", "temporal_tile_size", cfg.temporal_tile_size)
         patcher.try_set_existing_input_by_title("#LOOPING_SAMPLER", "temporal_overlap", cfg.temporal_overlap)
         patcher.try_set_existing_input_by_title(
-            "#LOOPING_SAMPLER", "temporal_overlap_cond_strength", cfg.temporal_overlap_cond_strength
+            "#LOOPING_SAMPLER", "temporal_overlap_cond_strength", cfg.temporal_overlap_cond_strength,
         )
 
     def _patch_save_output(self, patcher: WorkflowPatcher, scene_number: int, actor_id: str) -> None:
@@ -223,7 +223,7 @@ class ComfyUIFaceFixCropBackend:
         except KeyError as exc:
             raise RuntimeError(
                 f"Cannot patch save output for scene {scene_number}/{actor_id}: "
-                "#SAVE_VIDEO node missing or lacks 'filename_prefix'"
+                "#SAVE_VIDEO node missing or lacks 'filename_prefix'",
             ) from exc
 
     def _upload_video(self, video_path: Path, scene_number: int, actor_id: str) -> str:

@@ -1,16 +1,21 @@
-import json
 import inspect
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from PIL import Image
 
-from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+from feverslop.adapters.comfyui_ingredients_video_backend import (
+    ComfyUIIngredientsVideoRenderBackend,
+)
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.ltx_rendering import build_audio_window_spec
 from feverslop.domain.prepared_workflow import sha256_file
-from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
+from feverslop.domain.visual_consistency import (
+    ReferenceAnchor,
+    SceneConsistencyContract,
+)
 from feverslop.domain.visual_consistency_runtime import ingredients_sheet_signature
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
@@ -126,7 +131,7 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             Image.new("RGB", (16, 16), "blue").save(contract_source)
             declared_hash = sha256_file(source)
             signature_references = [
-                {"id": "artist", "type": "actor", "sha256": declared_hash}
+                {"id": "artist", "type": "actor", "sha256": declared_hash},
             ]
             signature = ingredients_sheet_signature(
                 signature_references,
@@ -218,7 +223,7 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             Image.new("RGB", (16, 16), "red").save(source)
             source_hash = sha256_file(source)
             references = [
-                {"id": "artist", "type": "actor", "sha256": source_hash}
+                {"id": "artist", "type": "actor", "sha256": source_hash},
             ]
             signature = ingredients_sheet_signature(
                 references,
@@ -343,7 +348,7 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                     "layout_version": "scene-reference-grid/v1",
                     "size": [1280, 704],
                     "signature_references": [
-                        {"id": "artist", "type": "actor", "sha256": "a" * 64}
+                        {"id": "artist", "type": "actor", "sha256": "a" * 64},
                     ],
                 },
                 "visual_consistency": contract.to_dict(),
@@ -379,7 +384,7 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                            "ingredients_scene_sheet": "sheet.png",
                            "ltx": {"ingredients_target_prompt": "target"}},
                     scene_number=1, prompt="fallback", workflow_path=workflow_path,
-                    output_dir=temp / "out", audio_file=Path(""), storyboard_dir=Path(""),
+                    output_dir=temp / "out", audio_file=Path(), storyboard_dir=Path(),
                     upload_audio=False,
                 )
 
@@ -908,10 +913,10 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                     prompt="fallback",
                     workflow_path=workflow_path,
                     output_dir=temp / "out",
-                    audio_file=Path(""),
-                    storyboard_dir=Path(""),
+                    audio_file=Path(),
+                    storyboard_dir=Path(),
                     upload_audio=False,
-                )
+                ),
             )
 
             self.assertEqual(len(render_queue.calls), 1)
@@ -962,8 +967,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                     workflow_path=workflow_path,
                     output_dir=temp / "out",
                     audio_file=audio,
-                    storyboard_dir=Path(""),
-                )
+                    storyboard_dir=Path(),
+                ),
             )
 
             workflow = render_queue.calls[0]["workflow"]
@@ -1012,10 +1017,10 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                     prompt="prompt",
                     workflow_path=workflow_path,
                     output_dir=temp / "out",
-                    audio_file=Path(""),
-                    storyboard_dir=Path(""),
+                    audio_file=Path(),
+                    storyboard_dir=Path(),
                     upload_audio=False,
-                )
+                ),
             )
 
             debug_file = debug_dir / "scene_0007_workflow.json"

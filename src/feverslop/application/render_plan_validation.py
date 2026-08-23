@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 import math
+from collections.abc import Sequence
 
 from feverslop.domain.subject_directives import validate_subject_directive_plan
 
@@ -34,7 +34,7 @@ def validate_render_plan_subject_directives(
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError(
                 f"Render plan scene {entry.get('scene', index)} has invalid subject directives "
-                f"({render_plan_path}): {exc}"
+                f"({render_plan_path}): {exc}",
             ) from exc
         issues = validate_subject_directive_plan(
             directive_plan,
@@ -44,7 +44,7 @@ def validate_render_plan_subject_directives(
         if issues:
             raise ValueError(
                 f"Render plan scene {entry.get('scene', index)} has invalid subject directives "
-                f"({render_plan_path}): {'; '.join(issues)}"
+                f"({render_plan_path}): {'; '.join(issues)}",
             )
 
 
@@ -89,7 +89,7 @@ def validate_render_plan_timeline(
 
     cursor = 0
     for start_frame, end_frame, scene_number, _index in sorted(
-        intervals, key=lambda interval: (interval[0], interval[3])
+        intervals, key=lambda interval: (interval[0], interval[3]),
     ):
         frames = end_frame - start_frame
         if start_frame < cursor:
@@ -98,7 +98,7 @@ def validate_render_plan_timeline(
                 raise ValueError(
                     "Timeline export cannot represent overlapping render-plan entries: "
                     f"scene {scene_number} ends at frame {end_frame}, "
-                    f"before frame {cursor}. Render plan: {render_plan_path}"
+                    f"before frame {cursor}. Render plan: {render_plan_path}",
                 )
             # Scene-prompt seconds are floating point while the timeline is
             # frame-based: sub-frame boundary drift accumulates across scenes

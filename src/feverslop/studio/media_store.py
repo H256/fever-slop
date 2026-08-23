@@ -4,10 +4,16 @@ import base64
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from feverslop.studio.projects import AUDIO_EXTENSIONS, AUDIO_MIME_TYPES, StudioPathError, sanitize_audio_filename
+from feverslop.studio.projects import (
+    AUDIO_EXTENSIONS,
+    AUDIO_MIME_TYPES,
+    StudioPathError,
+    sanitize_audio_filename,
+)
 from feverslop.utils.io import atomic_write_bytes, atomic_write_json
 
 
@@ -35,7 +41,7 @@ class MediaStore:
         raw = base64.b64decode(encoded)
         if len(raw) > self.max_upload_size:
             raise StudioPathError(
-                f"Media upload exceeds size limit ({len(raw)} bytes > {self.max_upload_size} bytes)"
+                f"Media upload exceeds size limit ({len(raw)} bytes > {self.max_upload_size} bytes)",
             )
         atomic_write_bytes(media_path, raw)
         return {"path": path}

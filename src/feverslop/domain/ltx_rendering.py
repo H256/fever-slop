@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from feverslop.errors import FeverSlopValidationError
-
 from dataclasses import dataclass
 
+from feverslop.errors import FeverSlopValidationError
 
 ROLLING_FRAME_PROFILES = {
     "original": (50, 25, True),
@@ -24,7 +23,7 @@ def resolve_rolling_frame_profile(
     except KeyError as exc:
         supported = ", ".join(sorted(ROLLING_FRAME_PROFILES))
         raise FeverSlopValidationError(
-            f"rolling_frame_profile {profile!r} is invalid; expected one of: {supported}"
+            f"rolling_frame_profile {profile!r} is invalid; expected one of: {supported}",
         ) from exc
 
 
@@ -206,7 +205,7 @@ class PromptRelayPayloadBuilder:
                 f"PromptRelay segment length mismatch for scene {scene.get('scene')}: "
                 f"sum={total}, expected={timeline_frames}, mode={self.segment_length_mode}, "
                 f"render_frame_count={render_frame_count}, scene_frame_count={scene.get('frame_count')}, "
-                f"preroll={trim_front_frames}, tail={tail_loss_frames}"
+                f"preroll={trim_front_frames}, tail={tail_loss_frames}",
             )
 
         return PromptRelayPayload(

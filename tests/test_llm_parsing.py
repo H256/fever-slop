@@ -77,12 +77,12 @@ class LLMParsingTests(unittest.TestCase):
         """A JSON array is not a dict and should not be returned."""
         from feverslop.errors import FeverSlopLMLError
         with self.assertRaises(FeverSlopLMLError):
-            extract_json_object('[1, 2, 3]')
+            extract_json_object("[1, 2, 3]")
 
     def test_extract_json_object_deeply_nested(self):
         """Deeply nested JSON objects are handled."""
         nested = {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}}
-        text = f'Here is the data: {json.dumps(nested)}. Done.'
+        text = f"Here is the data: {json.dumps(nested)}. Done."
         result = extract_json_object(text)
         self.assertEqual(result, nested)
 

@@ -13,7 +13,6 @@ from feverslop.ports.timeline_documents import (
     TimelineWritePort,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fake port implementations for testing
 # ---------------------------------------------------------------------------

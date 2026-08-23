@@ -12,7 +12,7 @@ class ResolutionTuple(NamedTuple):
     height: int
 
     @staticmethod
-    def parse(value: str) -> "ResolutionTuple":
+    def parse(value: str) -> ResolutionTuple:
         parts = value.split("x")
         if len(parts) != 2:
             raise ValueError(f"Invalid resolution format '{value}': expected 'WxH' (e.g. 1280x720)")
@@ -95,9 +95,7 @@ def build_runner_argv(project_config_path: Path, options: dict[str, object]) -> 
     for name, flags, kwargs in RUNNER_ARGUMENTS:
         value = options.get(name)
         action = kwargs.get("action")
-        if action == "store_true" and value is True:
-            argv.append(flags[0])
-        elif action == "store_false" and value is False:
+        if (action == "store_true" and value is True) or (action == "store_false" and value is False):
             argv.append(flags[0])
         elif action is None and value not in (None, ""):
             if isinstance(value, ResolutionTuple):

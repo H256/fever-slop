@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-
 # ---------------------------------------------------------------------------
 # Path containment helpers
 # ---------------------------------------------------------------------------
@@ -17,7 +16,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 class SecurityError(ValueError):
     """Raised when a security guard detects a violation."""
-    pass
+
 
 
 def guard_path_under_root(
@@ -34,7 +33,7 @@ def guard_path_under_root(
     base = Path(root).resolve()
     if not target.is_relative_to(base):
         raise SecurityError(
-            f"Path escapes root: {target} is not under {base}"
+            f"Path escapes root: {target} is not under {base}",
         )
     return target
 
@@ -47,7 +46,7 @@ def sanitize_path_component(value: str) -> str:
     """
     # Remove all directory separators and traversal patterns while preserving
     # meaningful leading dots in names such as ``.env`` and ``.gitignore``.
-    cleaned = re.sub(r'[\\/]', "", value)
+    cleaned = re.sub(r"[\\/]", "", value)
     cleaned = re.sub(r"\.{2,}", "", cleaned)  # collapse ".." and longer
     cleaned = cleaned.rstrip("/")
     return cleaned

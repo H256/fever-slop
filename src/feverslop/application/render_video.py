@@ -1,15 +1,20 @@
 ﻿from __future__ import annotations
 
+import random
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import random
-from typing import Any, Callable
+from typing import Any
 
+from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
+from feverslop.ports.rendering import (
+    VideoRenderBackend,
+    VideoRenderRequest,
+    WorkflowAnchorConfig,
+)
 from feverslop.ports.reporting import Reporter
-from feverslop.adapters.reporting import ConsoleReporter
-from feverslop.ports.rendering import VideoRenderBackend, VideoRenderRequest, WorkflowAnchorConfig
 from feverslop.utils.io import file_is_valid
 
 
@@ -47,7 +52,7 @@ class RenderVideoScenesUseCase:
     def execute(self, request: RenderVideoScenesRequest) -> list[Path]:
         render_plan_data = self.artifact_store.read_render_plan(request.render_plan_path)
         plan = RenderPlan.from_dicts(
-            render_plan_data
+            render_plan_data,
         ).select(
             scene_numbers=request.scene_numbers,
             limit=request.limit,
@@ -124,5 +129,5 @@ class RenderVideoScenesUseCase:
             return
         verb = "Available" if skipped else "Rendered"
         self.reporter.message(
-            f"[green]OK[/green] {verb} scene {completed}/{total}: [cyan]{output_path}[/cyan]"
+            f"[green]OK[/green] {verb} scene {completed}/{total}: [cyan]{output_path}[/cyan]",
         )

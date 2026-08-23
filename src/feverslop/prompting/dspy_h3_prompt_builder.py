@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from feverslop.prompting.dspy_h3_models import MusicIntent
 from feverslop.domain.performance_sync import select_performance_audio_paths
+from feverslop.prompting.dspy_h3_models import MusicIntent
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
     subject_directives_from_scene,
@@ -134,13 +135,13 @@ def _scene_references(
             name=str(
                 location_description.get("name")
                 or references.get("location_id")
-                or "Location"
+                or "Location",
             ),
             description=(
                 str(
                     location_description.get("visual_description")
                     or location_description.get("image_prompt")
-                    or ""
+                    or "",
                 ).strip()
                 or ("" if image_path.is_file() else None)
             ),
@@ -151,13 +152,9 @@ def _scene_references(
         path = Path(path_value)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
         role = "subject"
-        if mode == "i2v" and index == 0:
+        if (mode == "i2v" and index == 0) or (mode == "fl2v" and index == 0):
             role = "first_frame"
-        elif mode == "fl2v" and index == 0:
-            role = "first_frame"
-        elif mode == "fl2v" and index == 1:
-            role = "last_frame"
-        elif mode == "l2v" and index == 0:
+        elif (mode == "fl2v" and index == 1) or (mode == "l2v" and index == 0):
             role = "last_frame"
         add_reference(_reference(
             label="<Picture pending>",
@@ -275,7 +272,7 @@ def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
         state = f" ({shot['state']})" if shot.get("state") else ""
         lines.append(
             f"[Shot {shot['shot']}, {shot['start_seconds']:.2f}-{shot['end_seconds']:.2f}sec]"
-            f"{state} {shot['prompt']}"
+            f"{state} {shot['prompt']}",
         )
         source_prompt = shot.get("source_prompt")
         if source_prompt and source_prompt != shot.get("prompt"):

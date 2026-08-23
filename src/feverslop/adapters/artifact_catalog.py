@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from feverslop.scene_artifacts import SceneArtifactLayout
 
@@ -31,7 +32,7 @@ class ArtifactCatalog:
             "images": self._relative_matches(root, files, lambda path: path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}),
             "audio": self._relative_matches(root, files, lambda path: path.suffix.lower() in {".mp3", ".wav", ".m4a", ".flac", ".ogg"}),
         }
-        totals = {key: 0 for key in ["configs", "render_plans", "references", "generated_json", "videos", "images", "audio", "other"]}
+        totals = dict.fromkeys(["configs", "render_plans", "references", "generated_json", "videos", "images", "audio", "other"], 0)
         for path in files:
             try:
                 totals[self._artifact_size_group(path, layout)] += path.stat().st_size

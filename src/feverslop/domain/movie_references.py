@@ -70,7 +70,7 @@ class MovieBible:
                     actor_ids=tuple(dict.fromkeys(valid_actors[:max_scene_actors])),
                     location_id=loc_id,
                     location=loc_name,
-                )
+                ),
             )
         return tuple(constrained)
 

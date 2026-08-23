@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # safe_id / string_list
 # ---------------------------------------------------------------------------
@@ -127,7 +126,7 @@ def configured_actors(config: dict) -> list:
                     actor.get("visual_description") or actor.get("image_prompt") or actor.get("prompt"),
                     name,
                 ),
-            )
+            ),
         )
     return actors
 
@@ -151,7 +150,7 @@ def configured_locations(config: dict) -> list:
                         location.get("visual_description") or location.get("image_prompt") or location.get("prompt"),
                         name,
                     ),
-                )
+                ),
             )
         elif str(location or "").strip():
             name = str(location).strip()

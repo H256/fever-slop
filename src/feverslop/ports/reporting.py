@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Protocol, TypeVar
+from typing import Protocol, TypeVar
 
 T = TypeVar("T")
 

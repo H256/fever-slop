@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
 from copy import deepcopy
+from pathlib import Path
 
 from feverslop.path_utils import coerce_local_path
 
@@ -21,12 +21,10 @@ def normalize_render_plan(
     max_duration: float,
     renumber: bool = True,
 ) -> list[dict]:
-    """
-    Repair render_plan durations using the same min/max scene_generation criteria.
+    """Repair render_plan durations using the same min/max scene_generation criteria.
 
     This is a safety net. The primary fix should happen earlier on scene_srt.
     """
-
     if not render_plan:
         return []
 
@@ -166,7 +164,7 @@ def _split_render_scene_to_max(scene: dict, fps: int, max_duration: float) -> li
                 "frame_end": max(1, int(part["frame_count"]) - 1),
                 "state": scene.get("metadata", {}).get("type", "instrumental"),
                 "prompt": "continue the same motion and emotional direction from the scene",
-            }
+            },
         ]
 
         result.append(part)

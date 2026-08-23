@@ -3,7 +3,10 @@ from __future__ import annotations
 import unittest
 
 from feverslop.domain.timeline import TimelineSegment
-from feverslop.domain.timeline_transform import merge_same_kind_segments, normalize_empty_vocals
+from feverslop.domain.timeline_transform import (
+    merge_same_kind_segments,
+    normalize_empty_vocals,
+)
 
 
 class NormalizeEmptyVocalsTest(unittest.TestCase):

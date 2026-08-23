@@ -13,14 +13,17 @@ New code should import from the canonical locations instead:
 from __future__ import annotations
 
 # CLI argument parsing (lives in cli/)
-from feverslop.cli.movie_cli import build_movie_arg_parser as build_arg_parser  # noqa: F401
+from feverslop.cli.movie_cli import (
+    build_movie_arg_parser as build_arg_parser,  # noqa: F401
+)
 from feverslop.cli.movie_cli import config_from_args  # noqa: F401
 
 # Pipeline execution and result type (lives in composition/)
-from feverslop.composition.movie_pipeline import MoviePipelineResult  # noqa: F401
-from feverslop.composition.movie_pipeline import main
-from feverslop.composition.movie_pipeline import run  # noqa: F401
-
+from feverslop.composition.movie_pipeline import (
+    MoviePipelineResult,  # noqa: F401
+    main,
+    run,  # noqa: F401
+)
 
 if __name__ == "__main__":
     main()

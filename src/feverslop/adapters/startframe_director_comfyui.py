@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable
-import shutil
+from typing import Any
 
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
@@ -73,7 +74,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
                 upload_startframes=True,
                 anchors=WorkflowAnchorConfig(),
                 on_scene_complete=on_clip_rendered,
-            )
+            ),
         )
         final = project_dir / "output" / "movie" / "startframe-director.mp4"
         final.parent.mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,5 @@
-from types import MappingProxyType
 import unittest
+from types import MappingProxyType
 
 from feverslop.application.visual_consistency import (
     build_scene_contract,
@@ -33,13 +33,13 @@ class NormalizeReferenceIdsTests(unittest.TestCase):
             "references": {
                 "actor_ids": [" hero ", "villain"],
                 "location_id": " rooftop ",
-            }
+            },
         }
         movie = {
             "reference_ids": {
                 "actors": [" hero ", "villain"],
                 "location": " rooftop ",
-            }
+            },
         }
 
         self.assertEqual(
@@ -53,7 +53,7 @@ class NormalizeReferenceIdsTests(unittest.TestCase):
             "references": {
                 "actor_ids": [" villain ", "hero", "villain", "", None, " hero "],
                 "location_id": " stage ",
-            }
+            },
         }
 
         self.assertEqual(
@@ -70,7 +70,7 @@ class NormalizeReferenceIdsTests(unittest.TestCase):
                     "references": "bad",
                     "actor_ids": (" hero ", 7, "villain"),
                     "location_id": " street ",
-                }
+                },
             ),
         )
         self.assertEqual(((), ""), normalize_reference_ids(None))
@@ -86,7 +86,7 @@ class NormalizeReferenceIdsTests(unittest.TestCase):
                     },
                     "actor_ids": ["hero"],
                     "location_id": "street",
-                }
+                },
             ),
         )
 
@@ -203,7 +203,7 @@ class BuildSceneContractTests(unittest.TestCase):
     def test_rejects_invalid_scene_numbers(self):
         for scene in (None, True, 0, -1, "1"):
             with self.subTest(scene=scene), self.assertRaisesRegex(
-                ValueError, "scene must be a positive integer"
+                ValueError, "scene must be a positive integer",
             ):
                 build_scene_contract(
                     {"scene": scene},

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from PIL import Image
 
 from feverslop.adapters.movie_visual import write_local_placeholder_clip
+
 
 class LocalStartframeDirectorVisualAdapter:
     def render_movie(

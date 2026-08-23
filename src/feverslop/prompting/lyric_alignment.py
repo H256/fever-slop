@@ -37,7 +37,7 @@ class LyricTimelineAligner:
         if actual_keys != expected_keys:
             raise ValueError(
                 f"Expected {len(expected_keys)} corrected lyric segments with keys "
-                f"{expected_keys}, got {actual_keys}"
+                f"{expected_keys}, got {actual_keys}",
             )
 
         corrected_segments = {}

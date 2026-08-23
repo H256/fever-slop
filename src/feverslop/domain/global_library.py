@@ -7,7 +7,6 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Any
 
-
 SCHEMA_VERSION = 1
 
 
@@ -79,7 +78,7 @@ class AssetLook:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AssetLook":
+    def from_dict(cls, payload: dict[str, Any]) -> AssetLook:
         if not isinstance(payload, dict):
             raise ValueError("look must be an object")
         raw_metadata = payload.get("metadata", {})
@@ -149,7 +148,7 @@ class GlobalAsset:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "GlobalAsset":
+    def from_dict(cls, payload: dict[str, Any]) -> GlobalAsset:
         if not isinstance(payload, dict):
             raise ValueError("asset manifest must be an object")
         raw_looks = payload.get("looks", [])

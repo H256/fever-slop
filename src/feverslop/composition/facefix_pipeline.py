@@ -16,6 +16,7 @@ from feverslop.adapters.face_debug import FaceDebugAdapter
 from feverslop.adapters.face_detector_insightface import InsightFaceDetectorAdapter
 from feverslop.adapters.face_identity import FaceIdentityAdapter
 from feverslop.adapters.face_mask import FaceMaskAdapter
+from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.application.face_pipeline import FacePipeline
 from feverslop.application.facefix_pipeline import FaceFixPipelineStep, FaceFixRequest
 from feverslop.config.app_config import AppConfig
@@ -28,7 +29,6 @@ from feverslop.domain.face_detection import (
 )
 from feverslop.domain.facefix_rendering import FaceFixConfig
 from feverslop.path_utils import coerce_local_path
-from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.utils.io import file_is_valid
 
 logger = logging.getLogger(__name__)
@@ -217,7 +217,7 @@ def _run_crop_facefix(
             if reporter:
                 reporter.message(
                     f"[yellow]WARN[/yellow] FaceFix: final.mp4 missing for scene "
-                    f"{scene_number}, skipping"
+                    f"{scene_number}, skipping",
                 )
             continue
 
@@ -226,7 +226,7 @@ def _run_crop_facefix(
             results.append(final_facefix)
             if reporter:
                 reporter.message(
-                    f"[green]OK[/green] FaceFix scene {scene_number}: already exists"
+                    f"[green]OK[/green] FaceFix scene {scene_number}: already exists",
                 )
             continue
 
@@ -235,7 +235,7 @@ def _run_crop_facefix(
             if reporter:
                 reporter.message(
                     f"[yellow]WARN[/yellow] FaceFix: cannot load frames for scene "
-                    f"{scene_number}"
+                    f"{scene_number}",
                 )
             continue
 
@@ -289,13 +289,13 @@ def _run_crop_facefix(
                     )
 
                 actor_frames.setdefault(matched_actor, []).append(
-                    (frame_idx, result)
+                    (frame_idx, result),
                 )
 
                 if reporter and frame_idx % max(1, total_frames // 40) == 0:
                     reporter.message(
                         f"FaceFix scene {scene_number}: frame "
-                        f"{frame_idx}/{total_frames}"
+                        f"{frame_idx}/{total_frames}",
                     )
 
         current_frames = original_frames.copy()
@@ -318,7 +318,7 @@ def _run_crop_facefix(
                 if reporter:
                     reporter.message(
                         f"[green]OK[/green] FaceFix scene {scene_number}/{actor_id}: "
-                        f"already exists"
+                        f"already exists",
                     )
                 # Rebuild track entries from pipeline results.
                 track_entries = [
@@ -342,7 +342,7 @@ def _run_crop_facefix(
                         repaired_frames_dir=repaired_dir,
                         track_entries=track_entries,
                         crop_size=options.crop_size,
-                    )
+                    ),
                 )
                 continue
 
@@ -352,7 +352,7 @@ def _run_crop_facefix(
             if reporter:
                 reporter.message(
                     f"FaceFix scene {scene_number}/{actor_id}: "
-                    f"extracting {len(frames_list)} crops..."
+                    f"extracting {len(frames_list)} crops...",
                 )
 
             # --- Extract and save face crops from original frames ---
@@ -386,7 +386,7 @@ def _run_crop_facefix(
                             actor_id=actor_id,
                         ),
                         crop_path=crop_path,
-                    )
+                    ),
                 )
 
                 # Anchor frames at regular intervals
@@ -399,7 +399,7 @@ def _run_crop_facefix(
                 if reporter:
                     reporter.message(
                         f"[yellow]WARN[/yellow] FaceFix scene {scene_number}/"
-                        f"{actor_id}: no tracks found, skipping"
+                        f"{actor_id}: no tracks found, skipping",
                     )
                 continue
 
@@ -411,7 +411,7 @@ def _run_crop_facefix(
             # --- Render through ComfyUI ---
             if reporter:
                 reporter.message(
-                    f"FaceFix scene {scene_number}/{actor_id}: rendering..."
+                    f"FaceFix scene {scene_number}/{actor_id}: rendering...",
                 )
 
             crop_backend.render_scene(
@@ -446,7 +446,7 @@ def _run_crop_facefix(
                         repaired_frames_dir=repaired_dir,
                         track_entries=track_entries,
                         crop_size=options.crop_size,
-                    )
+                    ),
                 )
 
         # -- Composite and save (unchanged) --
@@ -454,7 +454,7 @@ def _run_crop_facefix(
             if reporter:
                 reporter.message(
                     f"FaceFix scene {scene_number}: compositing "
-                    f"{len(face_repairs_for_composite)} actor(s)..."
+                    f"{len(face_repairs_for_composite)} actor(s)...",
                 )
 
             composite_result = compositor.composite(
@@ -473,7 +473,7 @@ def _run_crop_facefix(
 
             if reporter:
                 reporter.message(
-                    f"[green]OK[/green] FaceFix scene {scene_number}: {final_facefix}"
+                    f"[green]OK[/green] FaceFix scene {scene_number}: {final_facefix}",
                 )
         else:
             import shutil

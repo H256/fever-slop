@@ -58,9 +58,9 @@ class TestPipelineStateStoreTempFile(unittest.TestCase):
     """INFRA-005: Guard temp file unlink in finally."""
 
     def test_temp_file_guard_uses_except_not_finally(self):
-        from feverslop.studio.pipeline_state_store import PipelineStateStore
-
         import inspect
+
+        from feverslop.studio.pipeline_state_store import PipelineStateStore
 
         source = inspect.getsource(PipelineStateStore.record_pipeline_run)
         self.assertIn("except BaseException", source)
@@ -71,7 +71,9 @@ class TestDownstreamStagesNaming(unittest.TestCase):
     """INFRA-009: Standardize kebab/snake naming in downstream stages."""
 
     def test_snake_and_kebab_aliases_present(self):
-        from feverslop.studio.pipeline_state_store import _MAIN_PIPELINE_DOWNSTREAM_STAGES
+        from feverslop.studio.pipeline_state_store import (
+            _MAIN_PIPELINE_DOWNSTREAM_STAGES,
+        )
 
         # Verify that both conventions exist for known stages
         self.assertIn("full-pipeline", _MAIN_PIPELINE_DOWNSTREAM_STAGES)
@@ -140,6 +142,7 @@ class MediaStoreAtomicWriteTests(unittest.TestCase):
 
     def test_write_media_data_url_writes_bytes_and_leaves_no_tmp(self):
         import base64
+
         from feverslop.studio.media_store import MediaStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -158,6 +161,7 @@ class MediaStoreAtomicWriteTests(unittest.TestCase):
 
     def test_store_audio_upload_updates_config_and_leaves_no_tmp(self):
         import io
+
         from feverslop.studio.media_store import MediaStore
 
         with tempfile.TemporaryDirectory() as tmpdir:

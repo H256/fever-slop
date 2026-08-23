@@ -5,12 +5,18 @@ import json
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.path_utils import coerce_local_path
-
 
 console = Console()
 

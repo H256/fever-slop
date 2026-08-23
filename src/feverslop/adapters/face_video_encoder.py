@@ -30,6 +30,7 @@ def encode_face_crop_mp4(
         force: Overwrite output file if it exists (-y flag).
         timeout_seconds: FFmpeg wall-clock timeout in seconds before the
             process is force-killed and an adaptation error is raised.
+
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -50,7 +51,7 @@ def encode_face_crop_mp4(
     logger.info("Encoding face crop MP4: %s", output_path)
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout_seconds
+            cmd, capture_output=True, text=True, timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired as exc:
         logger.error(
@@ -59,13 +60,13 @@ def encode_face_crop_mp4(
             output_path,
         )
         raise FeverSlopAdaptationError(
-            f"FFmpeg timed out after {timeout_seconds}s while encoding {output_path}"
+            f"FFmpeg timed out after {timeout_seconds}s while encoding {output_path}",
         ) from exc
     if result.returncode != 0:
         stderr_msg = (result.stderr or "no stderr output").strip()
         logger.error("FFmpeg failed (code=%d) for %s: %s", result.returncode, output_path, stderr_msg)
         raise FeverSlopAdaptationError(
-            f"FFmpeg encoding failed for {output_path} (exit {result.returncode}): {stderr_msg}"
+            f"FFmpeg encoding failed for {output_path} (exit {result.returncode}): {stderr_msg}",
         )
 
     # Verify output integrity

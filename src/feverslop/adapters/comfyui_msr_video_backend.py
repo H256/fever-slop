@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-from pathlib import Path
-from copy import deepcopy
 import json
 import random
 import re
+from copy import deepcopy
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
-from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.adapters.visual_consistency_runtime import (
     validate_backend_visual_consistency,
 )
-from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
-from feverslop.errors import FeverSlopValidationError
+from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayload,
@@ -24,7 +23,8 @@ from feverslop.domain.ltx_rendering import (
     build_audio_window_spec,
 )
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
-from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
+from feverslop.errors import FeverSlopValidationError
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -143,7 +143,7 @@ class ComfyUIMSRVideoRenderBackend:
                 keep_frames=int(rolling["scene_frame_count"]),
                 scene=scene_number,
                 extract_boundary_frames=True,
-            )
+            ),
         )
 
     def build_workflow(
@@ -519,7 +519,7 @@ def _build_msr_prompt_relay_payload(
         raise ValueError(
             f"PromptRelay segment length mismatch for MSR scene {scene.get('scene')}: "
             f"sum={total}, expected={timeline_frames}, render_frame_count={render_frame_count}, "
-            f"scene_frame_count={scene.get('frame_count')}, preroll={trim_front_frames}, tail={tail_loss_frames}"
+            f"scene_frame_count={scene.get('frame_count')}, preroll={trim_front_frames}, tail={tail_loss_frames}",
         )
 
     return PromptRelayPayload(
@@ -664,7 +664,7 @@ def _build_msr_reference_global_prompt(references: dict) -> str:
         if actor_text:
             parts.append(
                 f"Reference image {index}: {actor_text}. "
-                f"Use reference image {index} for this subject's identity, face, body, wardrobe, and materials."
+                f"Use reference image {index} for this subject's identity, face, body, wardrobe, and materials.",
             )
 
     location = references.get("location_reference_description") or {}
@@ -672,7 +672,7 @@ def _build_msr_reference_global_prompt(references: dict) -> str:
     if location_text:
         parts.append(
             f"Background reference: {location_text}. "
-            "Use this image as the scene environment, lighting, color palette, atmosphere, and spatial setting."
+            "Use this image as the scene environment, lighting, color palette, atmosphere, and spatial setting.",
         )
 
     return " ".join(parts).strip()

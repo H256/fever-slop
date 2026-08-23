@@ -1,8 +1,7 @@
-from collections import Counter
 import json
-from pathlib import Path
 import unittest
-
+from collections import Counter
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = (
@@ -129,7 +128,7 @@ class IngredientsWorkflowFileTests(unittest.TestCase):
     @staticmethod
     def _only_node(workflow, *, class_type=None, title=None):
         _, node = IngredientsWorkflowFileTests._only_item(
-            workflow, class_type=class_type, title=title
+            workflow, class_type=class_type, title=title,
         )
         return node
 
@@ -143,7 +142,7 @@ class IngredientsWorkflowFileTests(unittest.TestCase):
         ]
         if len(matches) != 1:
             raise AssertionError(
-                f"Expected one node for class_type={class_type!r}, title={title!r}; got {len(matches)}"
+                f"Expected one node for class_type={class_type!r}, title={title!r}; got {len(matches)}",
             )
         return matches[0]
 

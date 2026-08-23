@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +9,6 @@ from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-
 
 DEFAULT_WORKFLOW_PATH = Path(__file__).resolve().parents[3] / "workflows" / "video_seedvr2_3b_api.json"
 

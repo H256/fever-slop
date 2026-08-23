@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-import json
 import ast
+import json
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from feverslop.domain.subject_directives import (
     SCHEMA_VERSION,
+    SpatialRelation,
     SubjectDirective,
     SubjectDirectivePlan,
     TemporalScope,
-    SpatialRelation,
     validate_subject_directive_plan,
 )
 
@@ -103,7 +103,7 @@ def _decode_nested_json(value: Any) -> Any:
 
 
 def _repair_zero_length_scopes(
-    payload: Mapping[str, Any], scene: Mapping[str, Any]
+    payload: Mapping[str, Any], scene: Mapping[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
     """Repair only the unambiguous model error of a zero-length full-shot scope."""
     duration = float(scene.get("duration_seconds") or scene.get("duration") or 1)
@@ -198,7 +198,7 @@ def project_directives_to_prompt(plan: SubjectDirectivePlan) -> str:
             f"Subject {subject.subject_id}: role={subject.role}; visibility={subject.visibility}; "
             f"cardinality={subject.cardinality}; position={subject.position}; action={subject.action}; "
             f"interactions={interactions}; gaze_direction={gaze}; props={props}; "
-            f"time={scope.start_seconds:.2f}-{scope.end_seconds:.2f}s."
+            f"time={scope.start_seconds:.2f}-{scope.end_seconds:.2f}s.",
         )
     for relation in plan.spatial_relations:
         detail = f" ({relation.detail})" if relation.detail else ""
@@ -267,8 +267,8 @@ def subject_directives_from_scene(scene: Mapping[str, Any]) -> SubjectDirectiveP
 
 
 __all__ = [
-    "SubjectDirectivePlanner",
     "DspySubjectDirectivePlanner",
+    "SubjectDirectivePlanner",
     "build_shared_staging_plan",
     "compose_directive_prompt",
     "judge_directive_prompt",

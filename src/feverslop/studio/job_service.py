@@ -1,12 +1,28 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import logging
 import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
+
+from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.ports.rebuild_execution import ArtifactProvenancePort
+from feverslop.studio.jobs import (
+    PIPELINE_ACTIONS,
+    JobHandler,
+    JobRegistry,
+    build_pipeline_handler,
+    build_pipeline_options,
+    build_recut_scene_handler,
+    build_reference_rerender_handler,
+    build_visual_consistency_preflight_handler,
+    run_with_stream_logging,
+)
+from feverslop.studio.logging import render_log_lines
 
 # Re-export movie pipeline functions for backward compatibility
 from feverslop.studio.movie_pipeline_jobs import (  # noqa: F401
@@ -27,24 +43,9 @@ from feverslop.studio.movie_pipeline_jobs import (  # noqa: F401
     sync_movie_manifest_with_render_plan,
     write_startframe_i2v_empty_audio_workflow,
 )
-from feverslop.studio.jobs import (
-    PIPELINE_ACTIONS,
-    JobHandler,
-    JobRegistry,
-    build_pipeline_handler,
-    build_pipeline_options,
-    build_recut_scene_handler,
-    build_reference_rerender_handler,
-    build_visual_consistency_preflight_handler,
-    run_with_stream_logging,
-)
-from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE
-from feverslop.studio.logging import render_log_lines
 from feverslop.studio.pipeline_actions import ensure_pipeline_action_available
+from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE
 from feverslop.studio.projects import ProjectStore
-from feverslop.domain.visual_consistency import PreflightMode
-from feverslop.ports.rebuild_execution import ArtifactProvenancePort
-
 
 FullAutoHandlerFactory = Callable[..., Any]
 PipelineHandlerFactory = Callable[..., Any]
@@ -135,7 +136,7 @@ class StudioJobService:
                 project_type=str(metadata.get("project_type", "standard_music_video")),
                 reject_if_project_active=request.action in PIPELINE_ACTIONS,
                 pipeline_mode=pipeline_mode,
-            )
+            ),
         )
 
 
@@ -171,7 +172,7 @@ class VisualConsistencyPreflightAction:
         mode = request.visual_consistency_mode or "ingredients"
         if mode not in {"ingredients", "msr", "i2v"}:
             raise ValueError(
-                "visual_consistency_mode must be ingredients, msr, or i2v"
+                "visual_consistency_mode must be ingredients, msr, or i2v",
             )
         project_dir = self.store.resolve_project_path(project_id, ".")
         plan_path = self.store.resolve_project_path(

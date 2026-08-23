@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import contextlib
 import copy
-from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import asdict
 import json
 import re
+import subprocess
 import threading
 import time
 import uuid
-import subprocess
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from feverslop.adapters.pipeline_runner import RunPipelineAdapter
 from feverslop.adapters.api_observability import api_observability_context
+from feverslop.adapters.pipeline_runner import RunPipelineAdapter
 from feverslop.adapters.project_visual_consistency import (
     ProjectReferenceManifestAdapter,
     validate_project_scene_artifacts,
@@ -24,16 +25,17 @@ from feverslop.application.visual_consistency_preflight import (
     preflight_visual_consistency,
     resolve_preflight_workflow_profile,
 )
-from feverslop.config.app_config import AppConfig
 from feverslop.composition import pipeline_runner
 from feverslop.composition.pipeline_runner import PipelineStage
+from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.ports.timeline_documents import AffectedArtifacts
 from feverslop.studio.logging import render_log_lines
-from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
+from feverslop.tools.reference_bible import (
+    build_arg_parser as build_reference_bible_arg_parser,
+)
 from feverslop.tools.reference_bible import run as render_reference_bible
-
 
 JobHandler = Callable[[Callable[[str], None]], Any]
 STREAM_CAPTURE_LOCK = threading.Lock()
@@ -630,14 +632,14 @@ def build_visual_consistency_preflight_handler(
             isinstance(scene, dict) for scene in scenes
         ):
             raise ValueError(
-                "Render plan must be a JSON array or contain scenes/shots"
+                "Render plan must be a JSON array or contain scenes/shots",
             )
         if preflight_mode is PreflightMode.OFF:
             result = VisualConsistencyPreflightResult((), ())
         else:
             config = ProjectConfig.load(project_dir / "config.json")
             snapshot = ProjectReferenceManifestAdapter(
-                lambda _project_id: project_dir
+                lambda _project_id: project_dir,
             ).load(project_dir.name)
             app_config = AppConfig.load("app_config.json")
             pipeline = {
@@ -695,12 +697,12 @@ def build_visual_consistency_preflight_handler(
         log(
             f"Visual consistency preflight: "
             f"{'renderable' if result.renderable else 'blocked'}; "
-            f"{len(result.issues)} issue(s)"
+            f"{len(result.issues)} issue(s)",
         )
         for issue in result.issues:
             log(
                 f"{issue.severity.upper()} scene {issue.scene} "
-                f"{issue.code}: {issue.message}"
+                f"{issue.code}: {issue.message}",
             )
         payload = VisualConsistencyJobPayload(
             renderable=result.renderable,
@@ -801,7 +803,7 @@ def build_reference_rerender_handler(project_config_path: Path, *, reference_kin
                 reference_kind,
                 "--only-id",
                 reference_id,
-            ]
+            ],
         )
         manifests = render_reference_bible(args)
         log(f"Finished {reference_kind} reference {reference_id}")

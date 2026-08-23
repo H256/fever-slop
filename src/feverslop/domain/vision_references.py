@@ -19,5 +19,5 @@ class ReferenceImage:
             raise ValueError(
                 "ReferenceImage.type must be one of: "
                 + ", ".join(sorted(VALID_REFERENCE_TYPES))
-                + f" (got {self.type!r})"
+                + f" (got {self.type!r})",
             )

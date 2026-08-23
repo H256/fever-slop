@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
+import json
 from copy import deepcopy
 from pathlib import PurePosixPath
-import json
 from typing import Any
 
 from feverslop.config.comfyui import ComfyUIModelOverride
@@ -159,7 +159,7 @@ class ComfyUIModelResolver:
             raise ComfyUIModelResolutionError(
                 f"ComfyUI workflow {workflow_path} uses node types that are not available on the "
                 f"configured server. Install the required custom nodes or use a ComfyUI server/workflow "
-                f"with matching custom-node support. Missing node types: {'; '.join(missing)}.{hint_suffix}"
+                f"with matching custom-node support. Missing node types: {'; '.join(missing)}.{hint_suffix}",
             )
 
     def _model_dropdowns(self) -> dict[str, dict[str, list[str]]]:
@@ -245,7 +245,7 @@ class ComfyUIModelResolver:
 
         raise ComfyUIModelResolutionError(
             f"ComfyUI model reference '{value}' for {class_type}.{input_name} in "
-            f"{workflow_path} node {node_id} was not found in server dropdown values."
+            f"{workflow_path} node {node_id} was not found in server dropdown values.",
         )
 
     def _apply_override(
@@ -258,24 +258,24 @@ class ComfyUIModelResolver:
         node = workflow.get(str(override.node_id))
         if not isinstance(node, dict):
             raise ComfyUIModelResolutionError(
-                f"Stale ComfyUI model override for {override.workflow}: node {override.node_id} was not found."
+                f"Stale ComfyUI model override for {override.workflow}: node {override.node_id} was not found.",
             )
         node_title = str(node.get("_meta", {}).get("title", ""))
         if node_title != override.node_title:
             raise ComfyUIModelResolutionError(
                 f"Stale ComfyUI model override for {override.workflow}: node {override.node_id} title is "
-                f"'{node_title}', expected '{override.node_title}'."
+                f"'{node_title}', expected '{override.node_title}'.",
             )
         inputs = node.get("inputs", {})
         if not isinstance(inputs, dict) or override.input not in inputs:
             raise ComfyUIModelResolutionError(
-                f"Stale ComfyUI model override for {override.workflow}: input '{override.input}' was not found."
+                f"Stale ComfyUI model override for {override.workflow}: input '{override.input}' was not found.",
             )
         current = inputs[override.input]
         if current != override.expected_value:
             raise ComfyUIModelResolutionError(
                 f"Stale ComfyUI model override for {override.workflow}: node {override.node_id} input "
-                f"'{override.input}' is '{current}', expected '{override.expected_value}'."
+                f"'{override.input}' is '{current}', expected '{override.expected_value}'.",
             )
         inputs[override.input] = override.replacement
         patched.append({
@@ -343,5 +343,5 @@ class ComfyUIModelResolver:
     ) -> ComfyUIModelResolutionError:
         return ComfyUIModelResolutionError(
             f"Ambiguous ComfyUI model reference '{value}' for {class_type}.{input_name} in "
-            f"{workflow_path} node {node_id}. Matches: {', '.join(matches)}"
+            f"{workflow_path} node {node_id}. Matches: {', '.join(matches)}",
         )

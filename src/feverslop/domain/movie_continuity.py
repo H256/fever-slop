@@ -126,7 +126,7 @@ class MovieContinuityPlan:
         )
 
     @classmethod
-    def fallback(cls, bible: "MovieBible", shots: tuple["CinematicShot", ...]) -> "MovieContinuityPlan":
+    def fallback(cls, bible: MovieBible, shots: tuple[CinematicShot, ...]) -> MovieContinuityPlan:
         """Build an entire continuity plan from a style bible and shot list.
 
         Derives character states from bible actors, location states from
@@ -207,7 +207,7 @@ class MovieContinuityPlan:
                     conflict_or_tension=shot.expression or "story tension continues",
                     turning_point=shot.action or shot.description,
                     sets_up_next=(next_shot.description if next_shot else "Final beat resolves the current movie arc."),
-                )
+                ),
             )
             previous_outgoing = outgoing
             previous_after = state_after
@@ -222,7 +222,7 @@ class MovieContinuityPlan:
             narrative_chain=tuple(narrative_chain),
         )
 
-    def normalize(self, bible: "MovieBible", shots: tuple["CinematicShot", ...]) -> "MovieContinuityPlan":
+    def normalize(self, bible: MovieBible, shots: tuple[CinematicShot, ...]) -> MovieContinuityPlan:
         """Merge this partial plan with a fallback built from bible and shots.
 
         Missing ledger sections, scene packets, or narrative beats are filled

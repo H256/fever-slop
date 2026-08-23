@@ -40,7 +40,7 @@ class LLMConcurrencyTests(unittest.TestCase):
     def test_limited_dspy_lm_is_accepted_by_dspy_context(self):
         import dspy
 
-        from feverslop.llm_concurrency import LLMConcurrencyLimiter, LimitedDspyLM
+        from feverslop.llm_concurrency import LimitedDspyLM, LLMConcurrencyLimiter
 
         underlying = dspy.LM("openai/fake-model", api_key="test", api_base="http://localhost")
         limited = LimitedDspyLM(underlying, LLMConcurrencyLimiter())

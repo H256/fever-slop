@@ -1,6 +1,5 @@
-from pathlib import Path
-
 import hashlib
+from pathlib import Path
 
 
 def sha256_bytes(data: bytes) -> str:

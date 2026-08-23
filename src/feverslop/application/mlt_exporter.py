@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 import json
 import math
 import os
-from pathlib import Path
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
+from pathlib import Path
 
 from feverslop.application.render_plan_validation import (
     require_non_empty_render_plan,
@@ -34,7 +34,7 @@ def export_render_plan_to_mlt(
     if len(plan) != len(clip_paths):
         raise ValueError(
             "MLT export requires one rendered clip per render-plan entry "
-            f"(got {len(clip_paths)} clips for {len(plan)} entries)"
+            f"(got {len(clip_paths)} clips for {len(plan)} entries)",
         )
 
     require_non_empty_render_plan(plan, render_plan_path=render_plan_path)
@@ -79,7 +79,7 @@ def export_render_plan_to_mlt(
             item[1][0].get("abs_start_seconds") is None if isinstance(item[1][0], dict) else True,
             float(item[1][0].get("abs_start_seconds", 0.0)) if isinstance(item[1][0], dict) else 0.0,
             item[0],
-        )
+        ),
     )
     for index, (entry, clip_path) in indexed_entries:
         if not isinstance(entry, dict):
@@ -104,7 +104,7 @@ def export_render_plan_to_mlt(
                 raise ValueError(
                     "MLT export cannot represent overlapping render-plan entries: "
                     f"scene {scene_number} ends at frame {end_frame}, "
-                    f"before frame {timeline_cursor}"
+                    f"before frame {timeline_cursor}",
                 )
             # Mirrors the shared validation's accumulated-drift correction:
             # trim the overlapping tail so the cut stays contiguous.

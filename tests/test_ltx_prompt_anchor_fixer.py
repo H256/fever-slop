@@ -10,7 +10,7 @@ class LTXPromptAnchorFixerTests(unittest.TestCase):
             {
                 "scene": 1,
                 "z_image": {
-                    "prompt": "A cinematic image of an old druid shaman man kneeling among moss and roots."
+                    "prompt": "A cinematic image of an old druid shaman man kneeling among moss and roots.",
                 },
                 "ltx": {
                     "base_prompt": "The old druid shaman man stands beside a gnarled tree.",
@@ -23,7 +23,7 @@ class LTXPromptAnchorFixerTests(unittest.TestCase):
                     "character_motion": "calm breathing",
                     "base_concept": "forest ritual",
                 },
-            }
+            },
         ]
 
         fixed = fixer.fix_render_plan(plan)
@@ -41,7 +41,7 @@ class LTXPromptAnchorFixerTests(unittest.TestCase):
             {
                 "scene": 1,
                 "z_image": {
-                    "prompt": "A cinematic image of an old druid shaman man kneeling among moss and roots."
+                    "prompt": "A cinematic image of an old druid shaman man kneeling among moss and roots.",
                 },
                 "ltx": {
                     "base_prompt": "The old druid shaman man stands beside a gnarled tree.",
@@ -55,7 +55,7 @@ class LTXPromptAnchorFixerTests(unittest.TestCase):
                     "character_motion": "calm breathing",
                     "base_concept": "forest ritual",
                 },
-            }
+            },
         ]
 
         fixed = fixer.fix_render_plan(plan)

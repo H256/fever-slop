@@ -1,6 +1,7 @@
 """Tests for face pipeline domain models and functions."""
 
 import unittest
+
 import numpy as np
 
 from feverslop.domain.face_detection import (
@@ -111,7 +112,7 @@ class TestValidLandmarkGeometry(unittest.TestCase):
 
     def test_nan_point(self):
         lm = FaceLandmarks(points=[
-            (float('nan'), 50.0),
+            (float("nan"), 50.0),
             (150.0, 50.0),
             (100.0, 100.0),
             (70.0, 150.0),
@@ -146,7 +147,7 @@ class TestNormalizedCenterDistance(unittest.TestCase):
     def test_identical(self):
         box = BoundingBox(x1=0.0, y1=0.0, x2=100.0, y2=100.0)
         self.assertAlmostEqual(
-            normalized_center_distance(box, box, 320, 240), 0.0
+            normalized_center_distance(box, box, 320, 240), 0.0,
         )
 
     def test_different(self):
@@ -158,7 +159,7 @@ class TestNormalizedCenterDistance(unittest.TestCase):
     def test_zero_frame(self):
         box = BoundingBox(x1=0.0, y1=0.0, x2=100.0, y2=100.0)
         self.assertAlmostEqual(
-            normalized_center_distance(box, box, 0, 0), 0.0
+            normalized_center_distance(box, box, 0, 0), 0.0,
         )
 
 
@@ -196,7 +197,7 @@ class TestIsValidFaceDetection(unittest.TestCase):
 
     def test_nan_coordinates(self):
         det = FaceDetection(
-            box=BoundingBox(x1=float('nan'), y1=50.0, x2=150.0, y2=150.0),
+            box=BoundingBox(x1=float("nan"), y1=50.0, x2=150.0, y2=150.0),
             score=0.9,
         )
         self.assertFalse(is_valid_face_detection(det, 320, 240, FaceProcessingPolicy()))
@@ -305,17 +306,17 @@ class TestDecideFaceProcessing(unittest.TestCase):
 
     def test_accepted(self):
         decision = decide_face_processing(
-            self._make_detection(), self._make_track(), None, FaceProcessingPolicy()
+            self._make_detection(), self._make_track(), None, FaceProcessingPolicy(),
         )
         self.assertTrue(decision.should_process)
         self.assertIsNone(decision.reject_reason)
 
     def test_identity_mismatch(self):
         policy = FaceProcessingPolicy(
-            enable_identity_check=True, min_identity_score=0.80
+            enable_identity_check=True, min_identity_score=0.80,
         )
         decision = decide_face_processing(
-            self._make_detection(), self._make_track(), 0.5, policy
+            self._make_detection(), self._make_track(), 0.5, policy,
         )
         self.assertFalse(decision.should_process)
         self.assertEqual(decision.reject_reason, RejectReason.IDENTITY_MISMATCH)

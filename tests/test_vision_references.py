@@ -1,7 +1,7 @@
-from io import BytesIO
-from pathlib import Path
 import tempfile
 import unittest
+from io import BytesIO
+from pathlib import Path
 
 from PIL import Image
 

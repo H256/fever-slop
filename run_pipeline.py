@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
+from feverslop.application.msr_prompt_enrichment import (
+    enrich_render_plan_with_msr_prompts,
+)
 from feverslop.composition.arg_parser import PipelineStage, build_arg_parser
 from feverslop.composition.config_loader import (
     PipelineRunContext,

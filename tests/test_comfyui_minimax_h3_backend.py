@@ -1,5 +1,5 @@
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
 
 from feverslop.adapters.comfyui_minimax_h3_video_backend import (
@@ -202,7 +202,7 @@ class PatchMiniMaxCoreTests(unittest.TestCase):
         }
         patcher = WorkflowPatcher(workflow)
         ComfyUIMiniMaxH3VideoRenderBackend._patch_minimax_core(
-            patcher, "test prompt", 1344, 768, 103
+            patcher, "test prompt", 1344, 768, 103,
         )
         node = patcher.get()["1"]
         self.assertEqual("test prompt", node["inputs"]["prompt"])
@@ -219,7 +219,7 @@ class PatchMiniMaxCoreTests(unittest.TestCase):
         }
         patcher = WorkflowPatcher(workflow)
         ComfyUIMiniMaxH3VideoRenderBackend._patch_minimax_core(
-            patcher, "r2v prompt", 1024, 1024, 120
+            patcher, "r2v prompt", 1024, 1024, 120,
         )
         node = patcher.get()["1"]
         self.assertEqual("r2v prompt", node["inputs"]["prompt"])
@@ -259,7 +259,7 @@ class PatchMiniMaxCoreTests(unittest.TestCase):
         }
         patcher = WorkflowPatcher(workflow)
         ComfyUIMiniMaxH3VideoRenderBackend._patch_minimax_core(
-            patcher, "the prompt", 1024, 1024, 103
+            patcher, "the prompt", 1024, 1024, 103,
         )
         # Node 2 should remain unpatched (zeros)
         node2 = patcher.get()["2"]
@@ -273,7 +273,7 @@ class PatchMiniMaxCoreTests(unittest.TestCase):
         patcher = WorkflowPatcher(workflow)
         with self.assertRaises(KeyError) as ctx:
             ComfyUIMiniMaxH3VideoRenderBackend._patch_minimax_core(
-                patcher, "prompt", 512, 512, 1
+                patcher, "prompt", 512, 512, 1,
             )
         self.assertIn("MiniMaxH3Video", str(ctx.exception))
         self.assertIn("MiniMaxH3ReferenceToVideo", str(ctx.exception))

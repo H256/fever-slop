@@ -4,6 +4,7 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageOps
+
 from feverslop.domain.vision_references import ReferenceImage
 
 __all__ = ["ReferenceImage", "prepare_vision_image"]

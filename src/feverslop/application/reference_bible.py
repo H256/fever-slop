@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from io import BytesIO
-from pathlib import Path
 import hashlib
 import json
 import math
 import os
 import shutil
-from tempfile import NamedTemporaryFile
 import time
 import uuid
-from typing import Callable, Any
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from io import BytesIO
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageOps
 
-from feverslop.errors import FeverSlopValidationError
-from feverslop.domain.prepared_workflow import sha256_file
+from feverslop.application.sequence_reference_pipeline import (
+    SequenceReferencePipeline,
+    SequenceReferenceRequest,
+)
 from feverslop.domain.movie_utils import transition_from_previous
+from feverslop.domain.prepared_workflow import sha256_file
 from feverslop.domain.visual_consistency import (
     ReferenceAnchor,
     SceneConsistencyContract,
@@ -25,10 +29,13 @@ from feverslop.domain.visual_consistency import (
 from feverslop.domain.visual_consistency_runtime import (
     ingredients_sheet_signature as _ingredients_sheet_signature,
 )
-from feverslop.ports.rendering import ImageRenderBackend, ImageRenderRequest, WorkflowAnchorConfig
-from feverslop.application.sequence_reference_pipeline import SequenceReferencePipeline, SequenceReferenceRequest
+from feverslop.errors import FeverSlopValidationError
+from feverslop.ports.rendering import (
+    ImageRenderBackend,
+    ImageRenderRequest,
+    WorkflowAnchorConfig,
+)
 from feverslop.utils.io import atomic_write_json
-
 
 INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
 _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS = 30.0
@@ -139,7 +146,7 @@ class ReferenceBibleGenerator:
                 asset_context=asdict(subject),
                 output_dir=self.output_dir,
                 reference_image_size=self.actor_hero_size,
-            )
+            ),
         )
         manifest = {
             **asdict(subject),
@@ -188,13 +195,13 @@ class ReferenceBibleGenerator:
                         if is_first_reference
                         else self._edit_view_prompt(subject, view_name)
                     ),
-                    workflow_path=Path(""),
+                    workflow_path=Path(),
                     output_dir=view_dir,
                     width=width,
                     height=height,
                     reference_image=hero_path,
                     anchors=anchors,
-                )
+                ),
             )
             target = view_dir / f"{view_name}.png"
             if Path(rendered) != target:
@@ -246,13 +253,13 @@ class ReferenceBibleGenerator:
                     if self.direct_msr_sheet_prompt_builder is not None
                     else self._direct_msr_sheet_prompt(subject)
                 ),
-                workflow_path=Path(""),
+                workflow_path=Path(),
                 output_dir=view_dir,
                 width=self.location_hero_size[0],
                 height=self.location_hero_size[1],
                 reference_image=None,
                 anchors=self.hero_anchors,
-            )
+            ),
         )
         target = view_dir / f"{view_name}.png"
         if Path(rendered) != target:
@@ -305,7 +312,7 @@ class ReferenceBibleGenerator:
                 output_dir=self.output_dir,
                 reference_image_size=self.location_hero_size,
                 reference_mode=location.reference_mode,
-            )
+            ),
         )
         manifest = {
             **asdict(location),
@@ -345,13 +352,13 @@ class ReferenceBibleGenerator:
                     scene={"reference_id": location.id, "view": view_name},
                     scene_number=index,
                     prompt=self._location_view_prompt(location, view_name),
-                    workflow_path=Path(""),
+                    workflow_path=Path(),
                     output_dir=view_dir,
                     width=self.location_hero_size[0] if view_name == "hero" else None,
                     height=self.location_hero_size[1] if view_name == "hero" else None,
                     reference_image=hero_path,
                     anchors=anchors,
-                )
+                ),
             )
             target = view_dir / f"{view_name}.png"
             if Path(rendered) != target:
@@ -481,7 +488,7 @@ class ReferenceBibleGenerator:
                 "item_completed": index,
                 "item_total": len(self.actor_view_names if kind == "actor" else self.location_view_names),
                 "path": path,
-            }
+            },
         )
 
 
@@ -745,7 +752,7 @@ def compose_cached_ingredients_sheet(
         ]
         if snapshot_references != references:
             raise ValueError(
-                "Ingredients source snapshots do not match signature references"
+                "Ingredients source snapshots do not match signature references",
             )
     signature = ingredients_sheet_signature(
         references,
@@ -811,7 +818,7 @@ def _acquire_cache_lock(lock_path: Path, output_path: Path) -> int:
         if time.monotonic() >= deadline:
             os.close(lock_fd)
             raise TimeoutError(
-                f"Timed out waiting for Ingredients cache entry: {output_path}"
+                f"Timed out waiting for Ingredients cache entry: {output_path}",
             )
         time.sleep(0.01)
 
@@ -872,7 +879,7 @@ def build_runtime_consistency_contract(
         actors=actor_anchors,
         location=location_anchor,
         transition_from_previous=transition_from_previous(
-            scene.get("transition_from_previous")
+            scene.get("transition_from_previous"),
         ),
     )
 
@@ -889,8 +896,8 @@ def _runtime_reference_anchor(
             image.get("visual_description")
             or image.get("image_prompt")
             or image.get("name")
-            or semantic_id
-        ).split()
+            or semantic_id,
+        ).split(),
     )
     return ReferenceAnchor(
         id=semantic_id,
@@ -902,7 +909,7 @@ def _runtime_reference_anchor(
             else "environment-reference"
         ),
         asset_sha256=sha256_file(
-            project_base / str(image.get("contract_path") or image["path"])
+            project_base / str(image.get("contract_path") or image["path"]),
         ),
         prompt_anchor=(
             f"Reference {kind} `{semantic_id}` (look "
@@ -938,17 +945,16 @@ def _panel_position_label(row: int, col: int, num_rows: int, num_cols: int, inde
         row_name = ""
     elif num_rows == 2:
         row_name = "Top" if row == 0 else "Bottom"
+    elif row == 0:
+        row_name = "Top"
+    elif row == num_rows - 1:
+        row_name = "Bottom"
     else:
-        if row == 0:
-            row_name = "Top"
-        elif row == num_rows - 1:
-            row_name = "Bottom"
-        else:
-            row_name = "Middle" if num_rows == 3 else f"Row {row + 1}"
+        row_name = "Middle" if num_rows == 3 else f"Row {row + 1}"
 
     if num_cols == 1:
         return row_name or "Full"
-    elif num_cols == 2:
+    if num_cols == 2:
         col_label = col_labels_2[col]
     elif num_cols == 3:
         col_label = col_labels_3[col]
@@ -1117,7 +1123,7 @@ def enrich_render_plan_with_reference_sheets(
             "Missing reference manifests for render plan ("
             + "; ".join(details)
             + "). Run --stage reference_render before --stage reference_sheets "
-            + "(legacy aliases: --stage msr_references, --stage msr_reference_sheets)."
+            + "(legacy aliases: --stage msr_references, --stage msr_reference_sheets).",
         )
 
     total = len(render_plan)
@@ -1126,7 +1132,7 @@ def enrich_render_plan_with_reference_sheets(
         actor_ids = list(references.get("actor_ids") or [])
         if len(actor_ids) > max_scene_actors:
             raise ValueError(
-                f"Scene {scene.get('scene')} references at most {max_scene_actors} actors"
+                f"Scene {scene.get('scene')} references at most {max_scene_actors} actors",
             )
         references["actor_sheet_paths"] = [
             _portable_manifest_path(actor_manifests[actor_id], "sheet_path", references_dir)
@@ -1182,7 +1188,7 @@ def _load_manifests_by_id(root: Path) -> dict[str, dict]:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError) as exc:
             raise FeverSlopValidationError(
-                f"Cannot read reference manifest: {manifest_path.as_posix()}: {exc}"
+                f"Cannot read reference manifest: {manifest_path.as_posix()}: {exc}",
             ) from exc
         if not isinstance(manifest, dict) or "id" not in manifest:
             raise FeverSlopValidationError(f"Reference manifest is missing an id: {manifest_path}")

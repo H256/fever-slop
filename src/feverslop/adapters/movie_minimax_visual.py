@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from feverslop.adapters.video_postprocessor import VideoPostProcessor
-from feverslop.application.render_video import RenderVideoScenesRequest
-from feverslop.adapters.movie_visual import _references_from_ids
-from feverslop.application.movie_msr_enrichment import _movie_video_prompt
-from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
-from feverslop.config.project_config import ProjectConfig
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.adapters.movie_visual import _references_from_ids
+from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.application.movie_msr_enrichment import _movie_video_prompt
+from feverslop.application.render_video import RenderVideoScenesRequest
+from feverslop.composition.render_video import (
+    RenderVideoCompositionOptions,
+    build_render_video_scenes_use_case,
+)
+from feverslop.config.project_config import ProjectConfig
 from feverslop.prompting.dspy_h3_prompt_builder import (
     DspyH3PromptBuilder,
     _format_relay_shots,
@@ -55,7 +59,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
                     workflow_path=self.workflow_path,
                     output_dir=self.output_dir,
                     video_pipeline=self.video_pipeline,
-                )
+                ),
             )
             rendered = use_case.execute(
                 RenderVideoScenesRequest(
@@ -68,12 +72,12 @@ class ComfyUIMiniMaxMovieVisualAdapter:
                     upload_audio=False,
                     on_scene_complete=(
                         lambda path, completed, total: on_clip_rendered(
-                            completed, total, _scene_number(path)
+                            completed, total, _scene_number(path),
                         )
                         if on_clip_rendered
                         else None
                     ),
-                )
+                ),
             )
         if not rendered:
             raise ValueError("Movie render plan has no MiniMax scenes to concatenate")

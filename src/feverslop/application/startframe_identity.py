@@ -29,12 +29,12 @@ def build_startframe_identity_ledger(*, project_dir: Path) -> Path:
             actor.get("visual_description")
             or manifest_actor.get("visual_description")
             or actor.get("name")
-            or actor_id
+            or actor_id,
         ).strip()
         reference_path = str(
             manifest_actor.get("msr_sheet_path")
             or manifest_actor.get("sheet_path")
-            or f"movie/references/actors/{actor_id}/msr_sheet.png"
+            or f"movie/references/actors/{actor_id}/msr_sheet.png",
         ).strip()
         actors[actor_id] = {
             "actor_id": actor_id,

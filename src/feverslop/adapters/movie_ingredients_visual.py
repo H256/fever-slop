@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
-from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+from feverslop.adapters.comfyui_ingredients_video_backend import (
+    ComfyUIIngredientsVideoRenderBackend,
+)
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -50,10 +52,10 @@ class ComfyUIMovieIngredientsVisualAdapter:
                     prompt=_ingredients_prompt(scene),
                     workflow_path=self.backend.workflow_path,
                     output_dir=output_dir,
-                    audio_file=Path(""),
-                    storyboard_dir=Path(""),
+                    audio_file=Path(),
+                    storyboard_dir=Path(),
                     upload_audio=False,
-                )
+                ),
             )
             rendered.append(clip_path)
             rendered_count += 1

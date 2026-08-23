@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
 
 @dataclass(frozen=True)
 class SrtBlock:
     """Parsed SRT subtitle block."""
+
     index: int
     start: float
     end: float
@@ -17,6 +18,7 @@ class SrtBlock:
 @dataclass(frozen=True)
 class SrtScene:
     """Represents a scene from an SRT with scene number."""
+
     scene: int
     start: float
     end: float
@@ -27,7 +29,7 @@ class SrtScene:
             raise ValueError(f"SrtScene.start must be >= 0 (got {self.start})")
         if self.end < self.start:
             raise ValueError(
-                f"SrtScene.end must be >= SrtScene.start (start={self.start}, end={self.end})"
+                f"SrtScene.end must be >= SrtScene.start (start={self.start}, end={self.end})",
             )
 
     @property
@@ -40,6 +42,7 @@ def parse_srt_timestamp(value: str) -> float:
 
     Raises:
         ValueError: If timestamp format is invalid.
+
     """
     value = value.strip()
     hours, minutes, rest = value.split(":")

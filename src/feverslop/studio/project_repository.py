@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.composition.movie_planner import build_movie_planner
-from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX, SCENE_PROMPT_WORD_COUNT_MIN
-from feverslop.ports.reporting import Reporter
-from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE, validate_full_auto_inputs, validate_pipeline_mode
+from feverslop.config.project_config import (
+    SCENE_PROMPT_WORD_COUNT_MAX,
+    SCENE_PROMPT_WORD_COUNT_MIN,
+)
 from feverslop.domain.slug_utils import slugify_project_name
+from feverslop.ports.reporting import Reporter
+from feverslop.studio.project_validation import (
+    VIDEO_PIPELINE_BY_MODE,
+    validate_full_auto_inputs,
+    validate_pipeline_mode,
+)
 from feverslop.studio.projects import ProjectCreateRequest, StudioPathError
 from feverslop.utils.io import atomic_write_json
 
@@ -113,7 +121,7 @@ class ProjectRepository:
                 min_scene_duration=float(config["scene_generation"]["min_duration"]),
                 max_scene_duration=float(config["scene_generation"]["max_duration"]),
                 config={**config, **movie_config},
-            )
+            ),
         )
         if result.project_slug != slug:
             raise ValueError("Movie project slug mismatch")

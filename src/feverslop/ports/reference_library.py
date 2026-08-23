@@ -5,8 +5,8 @@ from typing import Any, Protocol
 
 from feverslop.domain.reference_workspace import (
     ReferenceAsset,
-    SceneReferenceAssignment,
     ReferenceWorkspaceSnapshot,
+    SceneReferenceAssignment,
 )
 
 
@@ -14,7 +14,7 @@ class ReferenceLibraryPort(Protocol):
     """Persistent store for reference workspace assets and assignments."""
 
     def load(self, project_id: str) -> ReferenceWorkspaceSnapshot:
-        """Load the reference workspace snapshot for the given project."""  # noqa: D402
+        """Load the reference workspace snapshot for the given project."""
         ...
 
     def save_assignments(
@@ -27,7 +27,7 @@ class ReferenceLibraryPort(Protocol):
 
         Returns the new revision string on success.
         Raises ``ValueError`` on revision mismatch.
-        """  # noqa: D402
+        """
         ...
 
     def add_asset(
@@ -38,7 +38,7 @@ class ReferenceLibraryPort(Protocol):
         """Persist a new reference asset (typically after import).
 
         Returns the stored asset with adapter-filled fields (path, dimensions).
-        """  # noqa: D402
+        """
         ...
 
 
@@ -57,7 +57,7 @@ class ImportReferencePort(Protocol):
         - Reject directory traversal in *source_path*
         - Preserve the original file unchanged
         - Return a new asset with the resolved path and dimensions
-        """  # noqa: D402
+        """
         ...
 
 
@@ -65,19 +65,19 @@ class MovieBiblePort(Protocol):
     """Read-only access to the project's movie bible data."""
 
     def get_known_actor_ids(self, project_id: str) -> list[str]:
-        """Return the authoritative list of actor IDs from the movie bible."""  # noqa: D402
+        """Return the authoritative list of actor IDs from the movie bible."""
         ...
 
     def get_known_location_ids(self, project_id: str) -> list[str]:
-        """Return the authoritative list of location IDs from the movie bible."""  # noqa: D402
+        """Return the authoritative list of location IDs from the movie bible."""
         ...
 
     def get_background_ids(self, project_id: str) -> list[str]:
-        """Return known background IDs from render-plan metadata."""  # noqa: D402
+        """Return known background IDs from render-plan metadata."""
         ...
 
     def get_known_prop_ids(self, project_id: str) -> list[str]:
-        """Return known prop IDs from project global asset config."""  # noqa: D402
+        """Return known prop IDs from project global asset config."""
         ...
 
 
@@ -85,7 +85,7 @@ class SceneCastPort(Protocol):
     """Access to scene cast resolution for validation."""
 
     def get_max_scene_actors(self, project_id: str) -> int:
-        """Return the maximum number of actors allowed in a single scene."""  # noqa: D402
+        """Return the maximum number of actors allowed in a single scene."""
         ...
 
 
@@ -107,7 +107,7 @@ class ArtifactInvalidationPort(Protocol):
             "ingredients_sheets": ["scene_3_ingredients.png"],
             "renders": ["scene_3/shot_1.png"],
         }
-        """  # noqa: D402
+        """
         ...
 
 
@@ -120,7 +120,7 @@ class GenerationJobPort(Protocol):
         scene_number: int,
         reference_ids: tuple[str, ...],
     ) -> str:
-        """Queue a storyboard frame generation job. Returns job ID."""  # noqa: D402
+        """Queue a storyboard frame generation job. Returns job ID."""
         ...
 
     def queue_msr_sheet(
@@ -130,7 +130,7 @@ class GenerationJobPort(Protocol):
         actor_ids: tuple[str, ...],
         location_ids: tuple[str, ...] = (),
     ) -> str:
-        """Queue an MSR sheet generation job. Returns job ID."""  # noqa: D402
+        """Queue an MSR sheet generation job. Returns job ID."""
         ...
 
     def queue_ingredients_sheet(
@@ -141,7 +141,7 @@ class GenerationJobPort(Protocol):
         location_ids: tuple[str, ...] = (),
         background_ids: tuple[str, ...] = (),
     ) -> str:
-        """Queue an Ingredients sheet generation job. Returns job ID."""  # noqa: D402
+        """Queue an Ingredients sheet generation job. Returns job ID."""
         ...
 
     def queue_reference_rerender(
@@ -149,5 +149,5 @@ class GenerationJobPort(Protocol):
         project_id: str,
         reference_id: str,
     ) -> str:
-        """Queue a rerender for a single reference asset. Returns job ID."""  # noqa: D402
+        """Queue a rerender for a single reference asset. Returns job ID."""
         ...

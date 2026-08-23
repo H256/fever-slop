@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import os
 from os import PathLike
 from pathlib import Path, PureWindowsPath
-import os
 
 
 def coerce_local_path(
@@ -32,7 +32,7 @@ def coerce_local_path(
         root = Path(containment_root).resolve()
         if not resolved.is_relative_to(root):
             raise ValueError(
-                f"Path escapes containment root: {resolved} is not under {root}"
+                f"Path escapes containment root: {resolved} is not under {root}",
             )
     return coerced
 

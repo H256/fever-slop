@@ -1,10 +1,9 @@
 import json
+import unittest
 from argparse import Namespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
-
-import unittest
 
 from feverslop.composition.stage_runners import _run_timeline_export_stage
 from feverslop.scene_artifacts import SceneArtifactLayout

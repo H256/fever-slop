@@ -1,9 +1,9 @@
 import json
-import xml.etree.ElementTree as ET
-from unittest.mock import patch
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest.mock import patch
 
 
 def _write_overlapping_plan(root):
@@ -21,7 +21,9 @@ def _write_overlapping_plan(root):
 class OpenShotExporterTests(unittest.TestCase):
     @patch("subprocess.run")
     def test_uses_rendered_clip_profile_for_project(self, run_probe):
-        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+        from feverslop.application.openshot_exporter import (
+            export_render_plan_to_openshot,
+        )
 
         run_probe.return_value = type("Completed", (), {
             "stdout": json.dumps({"streams": [{"width": 1216, "height": 672, "r_frame_rate": "24/1"}]}),
@@ -52,7 +54,9 @@ class OpenShotExporterTests(unittest.TestCase):
             self.assertEqual(project["files"][0]["fps"], {"num": 24, "den": 1})
 
     def test_exports_relative_video_and_audio_clips_in_render_plan_order(self):
-        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+        from feverslop.application.openshot_exporter import (
+            export_render_plan_to_openshot,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -98,7 +102,9 @@ class OpenShotExporterTests(unittest.TestCase):
             self.assertTrue(all(not Path(file["path"]).is_absolute() for file in project["files"]))
 
     def test_reports_progress_for_each_video_clip_and_audio(self):
-        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+        from feverslop.application.openshot_exporter import (
+            export_render_plan_to_openshot,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -124,7 +130,9 @@ class OpenShotExporterTests(unittest.TestCase):
             self.assertEqual(progress, [(1, 2, "scene 1"), (2, 2, "audio")])
 
     def test_rejects_empty_render_plan(self):
-        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+        from feverslop.application.openshot_exporter import (
+            export_render_plan_to_openshot,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -142,7 +150,9 @@ class OpenShotExporterTests(unittest.TestCase):
 
     def test_rejects_overlapping_absolute_render_plan_entries(self):
         from feverslop.application.mlt_exporter import export_render_plan_to_mlt
-        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+        from feverslop.application.openshot_exporter import (
+            export_render_plan_to_openshot,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -171,7 +181,9 @@ class OpenShotExporterTests(unittest.TestCase):
         self.assertIn("scene 2 ends at frame 22, before frame 48", str(openshot_error.exception))
 
     def test_tolerates_one_frame_boundary_rounding_difference(self):
-        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+        from feverslop.application.openshot_exporter import (
+            export_render_plan_to_openshot,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -198,7 +210,9 @@ class OpenShotExporterTests(unittest.TestCase):
             self.assertEqual(project["duration"], 23 / 24 + 1.0)
 
     def test_repairs_accumulated_rounding_drift_with_absolute_plan(self):
-        from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+        from feverslop.application.openshot_exporter import (
+            export_render_plan_to_openshot,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

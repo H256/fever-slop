@@ -1,5 +1,6 @@
-import unittest
 import json
+import unittest
+
 from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
 
 
@@ -62,14 +63,14 @@ class ConceptPromptBatcherTests(unittest.TestCase):
             llm=object(),
             prompt_modules=modules,
             batch_size=1,
-            request_timeout_seconds=42.0
+            request_timeout_seconds=42.0,
         )
 
         batcher.create_concept_prompts_batched(
             stage1_segments=[{"segment_id": "seg_1"}],
             story_idea="idea",
             global_context={"silent_mode": False},
-            notes="notes"
+            notes="notes",
         )
 
         # Check _generate_batch call
@@ -98,7 +99,7 @@ class ConceptPromptBatcherTests(unittest.TestCase):
             llm=object(),
             prompt_modules=modules,
             batch_size=1,
-            request_timeout_seconds=99.0
+            request_timeout_seconds=99.0,
         )
 
         batcher.create_concept_prompts_batched(
@@ -150,13 +151,13 @@ class ConceptPromptBatcherTests(unittest.TestCase):
                 "seg_1": {
                     "concept": "The singer performs on stage.",
                     "references": {"actor_ids": ["singer", "bass"], "location_id": "stage"},
-                }
+                },
             }),
             json.dumps({
                 "seg_1": {
                     "concept": "The singer and Bass Player perform together on stage; the Bass Player holds the bass.",
                     "references": {"actor_ids": ["singer", "bass"], "location_id": "stage"},
-                }
+                },
             }),
             "summary",
         ])
@@ -169,7 +170,7 @@ class ConceptPromptBatcherTests(unittest.TestCase):
                 "actors": [
                     {"id": "singer", "name": "Goth Singer"},
                     {"id": "bass", "name": "Bass Player"},
-                ]
+                ],
             },
         )
 

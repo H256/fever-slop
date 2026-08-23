@@ -5,9 +5,9 @@ from feverslop.adapters.api_observability import (
     APIMetrics,
     RequestRateLimiter,
     api_observability_context,
+    record_api_call,
     redact_secrets,
     require_json_object,
-    record_api_call,
 )
 
 

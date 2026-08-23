@@ -1,16 +1,27 @@
-import json
+import gc
 import hashlib
 import importlib.util
+import json
 import tempfile
 import threading
 import time
-import gc
 import unittest
 import weakref
 from pathlib import Path
+
 from rich.panel import Panel
 
-from feverslop.studio.jobs import JobRegistry, build_ffmpeg_recut_command, build_pipeline_options, run_with_stream_logging
+from feverslop.studio.job_service import StudioFullAutoConsole as _StudioFullAutoConsole
+from feverslop.studio.job_service import (
+    build_full_auto_handler,
+    pipeline_mode_from_config,
+)
+from feverslop.studio.jobs import (
+    JobRegistry,
+    build_ffmpeg_recut_command,
+    build_pipeline_options,
+    run_with_stream_logging,
+)
 from feverslop.studio.projects import (
     ArtifactRequest,
     ProjectCreateRequest,
@@ -20,7 +31,6 @@ from feverslop.studio.projects import (
     sanitize_audio_filename,
     slugify_project_name,
 )
-from feverslop.studio.job_service import StudioFullAutoConsole as _StudioFullAutoConsole, build_full_auto_handler, pipeline_mode_from_config
 from tests.studio_harness import NativeStudioHarness
 
 
@@ -34,7 +44,7 @@ class StudioBackendTests(unittest.TestCase):
                 [
                     {"scene": 1, "prompt": "old prompt", "actor_references": []},
                     {"scene": 2, "prompt": "second", "location_references": []},
-                ]
+                ],
             ),
             encoding="utf-8",
         )
@@ -172,7 +182,7 @@ class StudioBackendTests(unittest.TestCase):
                 ProjectCreateRequest(
                     project_type="standard_music_video",
                     name="My Cool Video",
-                )
+                ),
             )
 
             root = Path(temp_dir) / "my-cool-video"
@@ -204,7 +214,7 @@ class StudioBackendTests(unittest.TestCase):
                             project_type="standard_music_video",
                             name=f"Pipeline {pipeline_mode}",
                             pipeline_mode=pipeline_mode,
-                        )
+                        ),
                     )
                     config = json.loads((Path(temp_dir) / project["id"] / "config.json").read_text())
 
@@ -220,7 +230,7 @@ class StudioBackendTests(unittest.TestCase):
                         project_type="standard_music_video",
                         name="Unknown pipeline",
                         pipeline_mode="unknown",
-                    )
+                    ),
                 )
 
     def test_create_project_persists_silent_mode(self):
@@ -232,7 +242,7 @@ class StudioBackendTests(unittest.TestCase):
                     project_type="standard_music_video",
                     name="Silent Video",
                     silent_mode=True,
-                )
+                ),
             )
 
             root = Path(temp_dir) / "silent-video"
@@ -256,7 +266,7 @@ class StudioBackendTests(unittest.TestCase):
                     height=1080,
                     fps=50,
                     pipeline_mode="msr",
-                )
+                ),
             )
 
             root = Path(temp_dir) / "neon-wolves"
@@ -282,7 +292,7 @@ class StudioBackendTests(unittest.TestCase):
                         name="Neon Wolves",
                         idea="again",
                         song_style="again",
-                    )
+                    ),
                 )
 
     def test_create_full_auto_project_validates_render_inputs(self):
@@ -304,7 +314,7 @@ class StudioBackendTests(unittest.TestCase):
                                 idea="idea",
                                 song_style="style",
                                 **kwargs,
-                            )
+                            ),
                         )
 
     def test_artifact_read_write_is_project_relative(self):
@@ -439,7 +449,7 @@ class StudioBackendTests(unittest.TestCase):
                     target=lambda: result.append(store.write_artifact(
                         "demo",
                         ArtifactRequest(path="new.json", data={"complete": True}, create_only=True),
-                    ))
+                    )),
                 )
                 worker.start()
                 self.assertTrue(publish_started.wait(1))
@@ -929,6 +939,7 @@ class StudioBackendTests(unittest.TestCase):
         def noisy():
             print("[green]OK[/green] stdout")
             import sys
+
             from rich.console import Console
 
             Console(file=sys.stderr, force_terminal=False, width=120).print(Panel.fit("[cyan]stderr panel[/cyan]"))
@@ -1087,7 +1098,7 @@ class StudioBackendTests(unittest.TestCase):
                     movie_video_workflow="msr-i2v-startframe",
                     movie_continuity_keyframes="last-to-start",
                     movie_msr_i2v_workflow="workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json",
-                )
+                ),
             )
 
             metadata = json.loads((Path(temp_dir) / "door-below" / ".studio" / "project.json").read_text())
@@ -1108,7 +1119,7 @@ class StudioBackendTests(unittest.TestCase):
                     movie_mode="scaffold",
                     movie_planner_backend="deterministic",
                     movie_video_workflow="i2v-edit",
-                )
+                ),
             )
 
             metadata = json.loads((Path(temp_dir) / "i2v-movie" / ".studio" / "project.json").read_text())
@@ -1128,7 +1139,7 @@ class StudioBackendTests(unittest.TestCase):
                     movie_mode="scaffold",
                     movie_planner_backend="deterministic",
                     movie_video_workflow="startframe-director",
-                )
+                ),
             )
 
             metadata = json.loads((Path(temp_dir) / "director-movie" / ".studio" / "project.json").read_text())
@@ -1157,7 +1168,7 @@ class StudioBackendTests(unittest.TestCase):
                     movie_planner_backend="deterministic",
                     movie_video_workflow="startframe-director",
                     movie_startframe_director_backend="ideogram",
-                )
+                ),
             )
 
             metadata = json.loads((Path(temp_dir) / "ideogram-director-movie" / ".studio" / "project.json").read_text())
@@ -1179,7 +1190,7 @@ class StudioBackendTests(unittest.TestCase):
                     movie_video_workflow="startframe-director",
                     movie_startframe_write_debug_workflows=True,
                     movie_startframe_debug_workflows_dir="debug/startframes",
-                )
+                ),
             )
 
             metadata = json.loads((Path(temp_dir) / "debug-director-movie" / ".studio" / "project.json").read_text())
@@ -1214,7 +1225,7 @@ class StudioBackendTests(unittest.TestCase):
                     fps=16,
                     silent_mode=True,
                     pipeline_mode="classic",
-                )
+                ),
             )
             handler = build_full_auto_handler(
                 store=store,

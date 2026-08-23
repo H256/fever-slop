@@ -1,6 +1,9 @@
 import unittest
 
-from feverslop.domain.reference_workspace import PropInteraction, SceneReferenceAssignment
+from feverslop.domain.reference_workspace import (
+    PropInteraction,
+    SceneReferenceAssignment,
+)
 from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 
 

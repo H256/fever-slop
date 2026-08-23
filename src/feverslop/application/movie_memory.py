@@ -4,27 +4,27 @@ import re
 from dataclasses import asdict
 from typing import Any
 
+from feverslop.domain.movie import (
+    CinematicShot,
+    MovieAct,
+    MovieBible,
+    MovieCharacterArc,
+    MovieNarrativePlan,
+    MovieSceneBlueprint,
+    MovieSceneCard,
+    MovieScreenplayArtifact,
+    MovieScreenplayScene,
+    MovieSetupPayoff,
+    MovieShotCard,
+    MovieStoryDesign,
+    MovieTurningPoint,
+)
 from feverslop.domain.movie_utils import (
     safe_id,
     string_list,
     transition_from_previous,
 )
 from feverslop.domain.screenplay import parse_screenplay
-from feverslop.domain.movie import (
-    CinematicShot,
-    MovieBible,
-    MovieNarrativePlan,
-    MovieAct,
-    MovieCharacterArc,
-    MovieSceneCard,
-    MovieSceneBlueprint,
-    MovieScreenplayArtifact,
-    MovieScreenplayScene,
-    MovieShotCard,
-    MovieSetupPayoff,
-    MovieStoryDesign,
-    MovieTurningPoint,
-)
 from feverslop.ports.movie import ScenePlanningPort
 
 
@@ -180,7 +180,7 @@ def build_movie_narrative_plan_fallback(*, screenplay: MovieScreenplayArtifact) 
                 "story_state_after": after,
                 "cause_from_previous": "Opening scene establishes the premise." if index == 1 else f"Previous scene leaves: {previous}",
                 "sets_up_next": screenplay.scenes[index].summary if index < len(screenplay.scenes) else "The final scene resolves the current arc.",
-            }
+            },
         )
         previous = after
     return MovieNarrativePlan(title=screenplay.title, sequences=sequences, causal_chain=tuple(causal_chain), open_threads=())
@@ -201,7 +201,7 @@ def build_movie_scene_cards(*, screenplay: MovieScreenplayArtifact, shots: tuple
                 active_actor_ids=scene.actor_ids or (shot.actor_ids if shot else ()),
                 location_id=scene.location_id or (shot.location_id if shot else ""),
                 dialogue=scene.dialogue,
-            )
+            ),
         )
     return tuple(cards)
 
@@ -225,7 +225,7 @@ def build_movie_shot_cards(*, shots: tuple[CinematicShot, ...], scene_cards: tup
                 end_frame_brief=_end_frame_brief(shot),
                 transition_from_previous=transition_from_previous(shot.transition_from_previous),
                 transition_reason=_transition_reason(shot),
-            )
+            ),
         )
     return tuple(cards)
 
@@ -341,7 +341,7 @@ def movie_screenplay_from_dict(data: dict, *, fallback_title: str, source_type: 
                 emotional_turn=str(raw.get("emotional_turn") or "").strip(),
                 subtext=str(raw.get("subtext") or "").strip(),
                 dialogue_function=str(raw.get("dialogue_function") or "").strip(),
-            )
+            ),
         )
     if not scenes:
         scenes = list(_screenplay_scenes_from_beats((str(data.get("premise") or fallback_title),), bible=bible))
@@ -421,7 +421,7 @@ def movie_shot_cards_to_dict(cards: tuple[MovieShotCard, ...]) -> dict:
                 "shot_id": first.shot_id,
                 "description": first.action,
                 "scene_id": first.scene_id,
-            }
+            },
         }
     return {"shot_cards": [asdict(card) for card in cards], "memory_pack": memory_pack}
 
@@ -527,7 +527,7 @@ def _apply_story_design_to_screenplay(scenes: tuple[MovieScreenplayScene, ...], 
                 emotional_turn=blueprint.emotional_turn,
                 subtext=blueprint.subtext,
                 dialogue_function=blueprint.dialogue_function,
-            )
+            ),
         )
     return tuple(enriched)
 

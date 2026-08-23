@@ -5,12 +5,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.adapters.api_observability import APIMetrics, record_api_call
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
 )
 from feverslop.config.app_config import AppConfig
+from feverslop.domain.visual_consistency import PreflightMode
 from feverslop.studio.job_service import (
     StudioJobRequest,
     StudioJobService,
@@ -39,7 +39,6 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
 
         def handler(_log):
             record_api_call(metrics, None, "test", "operation", 0.0, success=True)
-            return None
 
         with JobRegistry(max_workers=1) as registry:
             job_id = registry.start("project-7", "test-action", handler)
@@ -52,7 +51,7 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
             (project / "config.json").write_text(
-                json.dumps({"input_audio": "song.mp3"}), encoding="utf-8"
+                json.dumps({"input_audio": "song.mp3"}), encoding="utf-8",
             )
             (project / "plan.json").write_text(json.dumps([{
                 "scene": 1,
@@ -69,7 +68,7 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
                     "output_scale": 1.0,
                     "supports_per_pass_loras": False,
                     "supports_start_frame": True,
-                }]
+                }],
             }), encoding="utf-8")
             action = VisualConsistencyPreflightAction(_Store(project))
             request = StudioJobRequest(
@@ -91,14 +90,14 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
         self.assertTrue(result["renderable"])
         self.assertEqual("custom-i2v", preflight.call_args.kwargs["workflow_profile"])
         self.assertTrue(
-            preflight.call_args.kwargs["supports_continuous_transitions"]
+            preflight.call_args.kwargs["supports_continuous_transitions"],
         )
 
     def test_structured_plan_rejects_mixed_profiles_clearly(self):
         with TemporaryDirectory() as tmp:
             project = Path(tmp)
             (project / "config.json").write_text(
-                json.dumps({"input_audio": "song.mp3"}), encoding="utf-8"
+                json.dumps({"input_audio": "song.mp3"}), encoding="utf-8",
             )
             (project / "plan.json").write_text(json.dumps([
                 {"scene": 1, "visual_consistency": {"workflow_profile": "one"}},
@@ -115,7 +114,7 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(
-                ValueError, "mixed visual consistency workflow profiles"
+                ValueError, "mixed visual consistency workflow profiles",
             ):
                 handler(lambda _message: None)
 
@@ -139,9 +138,9 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
             action = service.registry.resolve(request.action)
             before = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
             with patch(
-                "feverslop.studio.jobs.subprocess.run"
+                "feverslop.studio.jobs.subprocess.run",
             ) as subprocess_run, patch(
-                "feverslop.studio.jobs.pipeline_runner.run"
+                "feverslop.studio.jobs.pipeline_runner.run",
             ) as gpu_pipeline:
                 result = action.build("demo", request, {})(lambda _message: None)
             after = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
@@ -214,11 +213,11 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
             }
 
             with patch(
-                "feverslop.studio.jobs.ProjectConfig.load"
+                "feverslop.studio.jobs.ProjectConfig.load",
             ) as config_load, patch(
-                "feverslop.studio.jobs.ProjectReferenceManifestAdapter"
+                "feverslop.studio.jobs.ProjectReferenceManifestAdapter",
             ) as manifest_adapter, patch(
-                "feverslop.studio.jobs.subprocess.run"
+                "feverslop.studio.jobs.subprocess.run",
             ) as subprocess_run:
                 result = action.build("demo", request, {})(lambda _message: None)
             after = {
@@ -286,7 +285,7 @@ class StudioVisualConsistencyJobTests(unittest.TestCase):
                 payload.get("renderable") is False
                 for payload in structured_logs
                 if isinstance(payload, dict)
-            )
+            ),
         )
 
 

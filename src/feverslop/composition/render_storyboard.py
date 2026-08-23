@@ -10,7 +10,9 @@ from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.application.render_storyboard import RenderStoryboardUseCase
 from feverslop.config.app_config import AppConfig, StoryboardPromptTransformConfig
 from feverslop.path_utils import coerce_local_path
-from feverslop.prompting.storyboard_prompt_transformer import TemplateStoryboardPromptTransformer
+from feverslop.prompting.storyboard_prompt_transformer import (
+    TemplateStoryboardPromptTransformer,
+)
 
 
 def build_render_storyboard_use_case(

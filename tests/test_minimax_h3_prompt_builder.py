@@ -14,7 +14,6 @@ from feverslop.prompting.minimax_h3_prompt_style import (
     build_t2v_prompt,
 )
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -53,7 +52,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
                 "actor_sheet_paths": ["a1.png", "a2.png"],
                 "location_sheet_path": "loc.png",
                 "style_reference_paths": [{"name": "Moody", "path": "s1.png"}],
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         labels = [lbl for lbl, _ in refs]
@@ -65,7 +64,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
                 "actor_sheet_paths": ["a1.png"],
                 "location_sheet_path": "",
                 "style_reference_paths": [],
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         self.assertEqual(len(refs), 1)
@@ -75,7 +74,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
         scene = {
             "references": {
                 "actor_sheet_paths": ["a1.png"],
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         self.assertEqual(len(refs), 1)
@@ -89,7 +88,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
                     {"name": "S1", "path": "s1.png"},
                     {"name": "S2", "path": "s2.png"},
                 ],
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         labels = [lbl for lbl, _ in refs]
@@ -109,7 +108,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
                     {"name": "Alice"},
                     {"name": "Bob"},
                 ],
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         labels = [lbl for lbl, _ in refs]
@@ -119,7 +118,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
         scene = {
             "references": {
                 "actor_sheet_paths": ["a1.png", "a2.png", "a3.png"],
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         labels = [lbl for lbl, _ in refs]
@@ -138,7 +137,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
             "references": {
                 "location_sheet_path": "loc.png",
                 "location_reference_description": {"name": "Castle"},
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         self.assertEqual(refs[0][0], "Castle")
@@ -147,7 +146,7 @@ class CollectR2VImageRefsTests(unittest.TestCase):
         scene = {
             "references": {
                 "style_reference_paths": ["plain.png"],
-            }
+            },
         }
         refs = _collect_r2v_image_refs(scene)
         self.assertEqual(refs[0], ("Style ref", "plain.png"))
@@ -163,7 +162,7 @@ class CollectT2VFrameRefsTests(unittest.TestCase):
             "keyframes": {
                 "startframe_path": "start.png",
                 "lastframe_path": "end.png",
-            }
+            },
         }
         refs = _collect_t2v_frame_refs(scene)
         self.assertEqual(
@@ -175,7 +174,7 @@ class CollectT2VFrameRefsTests(unittest.TestCase):
         scene = {
             "keyframes": {
                 "startframe_path": "start.png",
-            }
+            },
         }
         refs = _collect_t2v_frame_refs(scene)
         self.assertEqual(refs, [("first_frame", "start.png")])

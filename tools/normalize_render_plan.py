@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import json
+from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
@@ -10,13 +10,12 @@ from rich.panel import Panel
 from feverslop.path_utils import coerce_local_path
 from tools.render_plan_normalizer import normalize_render_plan_file
 
-
 console = Console()
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Repair render-plan scenes using scene_generation min/max duration."
+        description="Repair render-plan scenes using scene_generation min/max duration.",
     )
     parser.add_argument("--input-render-plan", required=True)
     parser.add_argument("--output-render-plan", required=True)

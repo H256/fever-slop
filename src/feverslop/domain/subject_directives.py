@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
-
+from typing import Any
 
 SCHEMA_VERSION = "subject-directives/v1"
 PROP_STATES = frozenset({"held", "played", "attached", "placed", "absent"})
@@ -18,7 +18,7 @@ class TemporalScope:
             raise ValueError("temporal scope requires end_seconds > start_seconds >= 0")
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "TemporalScope":
+    def from_dict(cls, payload: Mapping[str, Any]) -> TemporalScope:
         return cls(float(payload.get("start_seconds", 0)), float(payload.get("end_seconds", 0)))
 
     def to_dict(self) -> dict[str, float]:
@@ -38,7 +38,7 @@ class PropBinding:
             raise ValueError(f"unsupported prop state: {self.state}")
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "PropBinding":
+    def from_dict(cls, payload: Mapping[str, Any]) -> PropBinding:
         return cls(str(payload.get("prop_id", "")).strip(), str(payload.get("state", "")).strip(), str(payload.get("detail", "")).strip())
 
     def to_dict(self) -> dict[str, str]:
@@ -56,7 +56,7 @@ class SpatialRelation:
     detail: str = ""
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "SpatialRelation":
+    def from_dict(cls, payload: Mapping[str, Any]) -> SpatialRelation:
         return cls(*(str(payload.get(key, "")).strip() for key in ("subject_id", "relation", "target_id", "detail")))
 
     def to_dict(self) -> dict[str, str]:
@@ -88,7 +88,7 @@ class SubjectDirective:
         object.__setattr__(self, "prop_bindings", tuple(self.prop_bindings))
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "SubjectDirective":
+    def from_dict(cls, payload: Mapping[str, Any]) -> SubjectDirective:
         scope = payload.get("temporal_scope")
         return cls(
             subject_id=str(payload.get("subject_id", "")).strip(),
@@ -139,7 +139,7 @@ class SubjectDirectivePlan:
         object.__setattr__(self, "spatial_relations", tuple(self.spatial_relations))
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "SubjectDirectivePlan":
+    def from_dict(cls, payload: Mapping[str, Any]) -> SubjectDirectivePlan:
         return cls(
             shot_id=str(payload.get("shot_id", "")).strip(),
             temporal_scope=TemporalScope.from_dict(payload.get("temporal_scope") or {}),
@@ -183,6 +183,6 @@ def validate_subject_directive_plan(
         if previous != relation.detail:
             issues.append(
                 "contradictory spatial relation: "
-                f"{relation.subject_id} {relation.relation} {relation.target_id}"
+                f"{relation.subject_id} {relation.relation} {relation.target_id}",
             )
     return issues

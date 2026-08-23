@@ -9,18 +9,17 @@ from rich.table import Table
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.path_utils import coerce_local_path
 from feverslop.pipeline.scene_duration_enforcer import (
-    parse_srt_scenes,
     enforce_scene_srt_file,
+    parse_srt_scenes,
     validate_scene_durations,
 )
-
 
 console = Console()
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Repair beat scene SRT so every scene respects min/max duration."
+        description="Repair beat scene SRT so every scene respects min/max duration.",
     )
     parser.add_argument("--input-srt", required=True)
     parser.add_argument("--output-srt", required=True)

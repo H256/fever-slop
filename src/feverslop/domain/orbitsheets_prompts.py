@@ -15,7 +15,7 @@ class H3SheetPrompt:
 
 def _fit_rotation(rotation: str, take_seconds: float) -> tuple[int, str]:
     ceiling = max(1.0, float(take_seconds)) * 40.0
-    requested = {"quarter": 90, "half": 180, "full": 360}.get(rotation, None)
+    requested = {"quarter": 90, "half": 180, "full": 360}.get(rotation)
     degrees = min(requested or max((value for value in (90, 180, 360) if value <= ceiling), default=90), ceiling)
     degrees = int(degrees // 10 * 10)
     return degrees, f"a {degrees}-degree turn" if degrees < 360 else "a complete 360-degree turn"

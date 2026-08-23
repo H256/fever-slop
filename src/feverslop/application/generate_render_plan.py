@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import time
-from typing import Any, Callable
+from typing import Any
 
-from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.adapters.api_observability import redact_secrets
+from feverslop.adapters.reporting import ConsoleReporter, NullReporter
+from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import Reporter
-from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 
 
 @dataclass(frozen=True)
@@ -237,7 +238,7 @@ class GenerateRenderPlanUseCase:
         renderer = self.storyboard_renderer_factory(app_config, render_dir, request.zimage_workflow_path)
         rendered = renderer.render_storyboard(render_plan_path=render_plan_json)
         self.reporter.message(
-            f"[green]OK[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]"
+            f"[green]OK[/green] Rendered storyboard frames: [yellow]{len(rendered)}[/yellow]",
         )
 
 

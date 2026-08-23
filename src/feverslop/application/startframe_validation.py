@@ -31,7 +31,7 @@ def write_local_startframe_validation(*, project_dir: Path) -> Path:
                 "failures": [],
                 "warnings": ["local placeholder validation; real Gemma4 validation not run"],
                 "validator": {"semantic_model": "local-placeholder", "threshold_profile": "default"},
-            }
+            },
         )
     output_path = project_dir / "movie" / "startframe_validation.json"
     output_path.write_text(json.dumps({"version": 1, "shots": shots}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

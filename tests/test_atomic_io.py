@@ -3,11 +3,16 @@ from __future__ import annotations
 
 import json
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from feverslop.utils.io import atomic_write_bytes, atomic_write_json, atomic_write_text, file_is_valid
+from feverslop.utils.io import (
+    atomic_write_bytes,
+    atomic_write_json,
+    atomic_write_text,
+    file_is_valid,
+)
 
 
 class AtomicWriteJsonTests(unittest.TestCase):

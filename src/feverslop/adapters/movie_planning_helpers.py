@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import re
-from math import ceil
-
 from dataclasses import replace
+from math import ceil
 
 from feverslop.domain.movie import CinematicShot
 from feverslop.domain.movie_utils import safe_id, transition_from_previous
@@ -60,7 +59,7 @@ def _normalize_movie_shots(shots, *, desired_length: float, min_duration: float,
                     action=action,
                     dialogue=shot.dialogue if part == 0 else "",
                     expression=shot.expression if part == 0 or not shot.dialogue else "silent physical reaction after the dialogue beat",
-                )
+                ),
             )
     pattern = (0.86, 1.08, 0.94, 1.18, 1.0, 0.78, 1.12)
     weighted = [max(min_duration, min(max_duration, shot.duration_seconds * pattern[index % len(pattern)])) for index, shot in enumerate(expanded)]
@@ -144,7 +143,7 @@ def _shots_from_data(shots, *, desired_length: float, min_duration: float, max_d
                 actor_ids=tuple(_string_list(shot.get("actor_ids") or shot.get("actors"))),
                 location_id=_safe_id(shot.get("location_id") or shot.get("location")),
                 transition_from_previous=_transition_from_previous(shot.get("transition_from_previous")),
-            )
+            ),
         )
     return _normalize_movie_shots(
         planned,

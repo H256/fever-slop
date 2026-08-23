@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import tempfile
 import threading
+from pathlib import Path
 from typing import Any
 
 from feverslop.errors import FeverSlopDataError
-
 
 _atomic_replace_lock = threading.Lock()
 
@@ -57,7 +56,7 @@ def read_json_object(path: str | Path) -> dict[str, Any]:
         raise
     except (OSError, json.JSONDecodeError) as exc:
         raise FeverSlopDataError(
-            f"Cannot read movie pipeline artifact: {candidate}: {exc}"
+            f"Cannot read movie pipeline artifact: {candidate}: {exc}",
         ) from exc
     if not isinstance(data, dict):
         raise ValueError(f"Movie pipeline artifact must be a JSON object: {candidate}")

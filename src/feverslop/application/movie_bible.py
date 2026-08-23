@@ -3,6 +3,17 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, replace
 
+from feverslop.application.movie_common import (
+    MovieInput,
+    _planner_source_text,
+)
+from feverslop.application.movie_continuity import (
+    movie_continuity_plan_from_dict,
+)
+from feverslop.application.movie_references import (
+    build_movie_actor_reference_prompt,
+    build_movie_actor_visual_description,
+)
 from feverslop.domain.movie import (
     CinematicShot,
     MovieActor,
@@ -13,18 +24,7 @@ from feverslop.domain.movie import (
     MovieProject,
     StoryArch,
 )
-from feverslop.application.movie_common import (
-    MovieInput,
-    _planner_source_text,
-)
 from feverslop.domain.movie_utils import clean_visual_description, safe_id
-from feverslop.application.movie_continuity import (
-    movie_continuity_plan_from_dict,
-)
-from feverslop.application.movie_references import (
-    build_movie_actor_reference_prompt,
-    build_movie_actor_visual_description,
-)
 from feverslop.ports.movie import ScenePlanningPort
 
 
@@ -118,7 +118,7 @@ def plan_movie_shots_from_bible(*, planner: ScenePlanningPort, bible: MovieBible
             height=height,
             min_duration=min_duration,
             max_duration=max_duration,
-        )
+        ),
     )
 
 
@@ -254,7 +254,7 @@ def _actor_from_dict(actor: dict, index: int) -> MovieActor:
     actor_id = safe_id(actor.get("id") or actor.get("name"), f"actor_{index}")
     name = str(actor.get("name") or actor.get("id") or f"Actor {index}").strip()
     visual_description = build_movie_actor_visual_description(
-        str(actor.get("visual_description") or actor.get("image_prompt") or actor.get("prompt") or name).strip()
+        str(actor.get("visual_description") or actor.get("image_prompt") or actor.get("prompt") or name).strip(),
     )
     return MovieActor(
         id=actor_id,

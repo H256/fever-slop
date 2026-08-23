@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 from feverslop.domain.full_auto import SongSpec
 from feverslop.domain.slug_utils import slugify_project_name
 from feverslop.errors import FeverSlopConfigError
@@ -14,7 +15,6 @@ from feverslop.ports.full_auto import (
     SongBriefGeneratorPort,
 )
 from feverslop.ports.reporting import Reporter
-from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 
 
 @dataclass(frozen=True)

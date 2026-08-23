@@ -136,11 +136,11 @@ class TimelineStudioService:
         """Replace current snapshot and persist."""
         self._current = snapshot
         self._write_port.write_timeline(  # type: ignore[union-attr]
-            [self._current.to_json()]
+            [self._current.to_json()],
         )
 
     def _compute_impact(
-        self, before: TimelineSnapshot, after: TimelineSnapshot
+        self, before: TimelineSnapshot, after: TimelineSnapshot,
     ) -> AffectedArtifacts:
         impact = compute_edit_impact(before, after)
         return AffectedArtifacts.from_timeline_edit_impact(impact)
@@ -161,7 +161,7 @@ class TimelineStudioService:
         segments = list(current.segments)
         if index < 0 or index >= len(segments):
             raise ValueError(
-                f"segment index {index} out of range [0, {len(segments)})"
+                f"segment index {index} out of range [0, {len(segments)})",
             )
 
         original = segments[index]
@@ -222,7 +222,7 @@ class TimelineStudioService:
         if index < 0 or index + count > len(current.segments):
             raise ValueError(
                 f"segments [{index}:{index + count}] out of range "
-                f"[0, {len(current.segments)})"
+                f"[0, {len(current.segments)})",
             )
 
         self._push_history()
@@ -244,7 +244,7 @@ class TimelineStudioService:
         return self._compute_impact(before, after)  # type: ignore[arg-type]
 
     def add_scene_boundary(
-        self, start: float, end: float, reason: str
+        self, start: float, end: float, reason: str,
     ) -> AffectedArtifacts:
         current = self._ensure_loaded()
         self._push_history()
@@ -289,7 +289,7 @@ class TimelineStudioService:
         """Schedule a rebuild job for invalidated downstream artifacts."""
         self._ensure_loaded()
         job = self._job_registry.add_rebuild_plan_timeline(
-            self._project_dir, affected
+            self._project_dir, affected,
         )
         return job
 
@@ -310,7 +310,7 @@ class TimelineStudioService:
         self._redo_stack.append(self._ensure_loaded())
         self._current = self._undo_stack.pop()
         self._write_port.write_timeline(  # type: ignore[union-attr]
-            [self._current.to_json()]
+            [self._current.to_json()],
         )
 
     def redo(self) -> None:
@@ -320,5 +320,5 @@ class TimelineStudioService:
         self._undo_stack.append(self._ensure_loaded())
         self._current = self._redo_stack.pop()
         self._write_port.write_timeline(  # type: ignore[union-attr]
-            [self._current.to_json()]
+            [self._current.to_json()],
         )

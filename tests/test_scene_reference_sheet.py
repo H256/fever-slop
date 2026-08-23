@@ -1,5 +1,5 @@
-import json
 import hashlib
+import json
 import math
 import tempfile
 import time
@@ -7,25 +7,26 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
+
 from PIL import Image
 
 from feverslop.application.movie_ingredients_sheets import (
     IngredientsSceneSheetBuilder,
     enrich_movie_render_plan_with_ingredients_sheets,
 )
-from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
 from feverslop.application.reference_bible import (
     _fit_contain_image,
     _panel_position_label,
     _type_label,
-    compose_scene_reference_sheet,
     compose_cached_ingredients_sheet,
+    compose_scene_reference_sheet,
     generate_scene_sheet_description,
-    ingredients_signature_references,
     ingredients_sheet_signature,
     ingredients_sheet_size,
+    ingredients_signature_references,
     snapshot_ingredients_sources,
 )
+from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
 
 
 class FitContainImageTests(unittest.TestCase):
@@ -364,7 +365,7 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
             self._make_project(tmp)
             actor_dir = tmp / "movie" / "references" / "actors" / "actor_1"
             default_sheet = self._make_image(
-                200, 200, (255, 0, 0), actor_dir
+                200, 200, (255, 0, 0), actor_dir,
             )
             winter_sheet = actor_dir / "winter.png"
             Image.new("RGB", (200, 200), (0, 255, 0)).save(winter_sheet)
@@ -449,7 +450,7 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
             with Image.open(cached) as image:
                 image.verify()
             self.assertFalse(
-                any(path.suffix == ".tmp" for path in cache.iterdir())
+                any(path.suffix == ".tmp" for path in cache.iterdir()),
             )
 
     def test_existing_cache_lock_file_does_not_block_composition(self):
@@ -498,7 +499,7 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
                         "id": "actor",
                         "type": "actor",
                         "sha256": hashlib.sha256(
-                            source.read_bytes()
+                            source.read_bytes(),
                         ).hexdigest(),
                     }]
                     signature = ingredients_sheet_signature(
@@ -708,8 +709,8 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
             self.assertNotIn("\\", result["sheet_path"])
             self.assertTrue(
                 result["sheet_path"].startswith(
-                    "movie/references/ingredients_sheets/by_signature/"
-                )
+                    "movie/references/ingredients_sheets/by_signature/",
+                ),
             )
 
     def test_builder_uses_sheet_path_only(self):
@@ -842,7 +843,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
                         "description": "A test scene",
                         "reference_ids": {"actors": ["actor_1"], "location": "loc_1"},
                         **shot_fields,
-                    }
+                    },
                 ],
             }),
             encoding="utf-8",
@@ -910,7 +911,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
             plan_path.write_text(json.dumps(plan), encoding="utf-8")
 
             output = enrich_movie_render_plan_with_ingredients_sheets(
-                project_dir=tmp
+                project_dir=tmp,
             )
             shots = json.loads(output.read_text(encoding="utf-8"))["shots"]
 
@@ -1007,7 +1008,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
                             "duration_seconds": 2,
                             "description": "A test scene",
                             "reference_ids": {"actors": [], "location": ""},
-                        }
+                        },
                     ],
                 }),
                 encoding="utf-8",
@@ -1068,7 +1069,7 @@ class IngredientsEnrichmentWiringTests(unittest.TestCase):
                             "description": "Mara speaks",
                             "dialogue": "MARA: Hola mundo.",
                             "reference_ids": {"actors": ["mara"], "location": "loc_1"},
-                        }
+                        },
                     ],
                 }),
                 encoding="utf-8",

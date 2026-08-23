@@ -18,9 +18,9 @@ class RenderPlanReferencesTests(unittest.TestCase):
                 {
                     "scene": 1,
                     "prompt_relay": [
-                        {"frame_start": 0, "frame_end": 24, "state": "singing", "prompt": "singing"}
+                        {"frame_start": 0, "frame_end": 24, "state": "singing", "prompt": "singing"},
                     ],
-                }
+                },
             ]),
             encoding="utf-8",
         )

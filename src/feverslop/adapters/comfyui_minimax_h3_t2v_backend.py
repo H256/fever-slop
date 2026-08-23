@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import random
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
-from feverslop.adapters.comfyui_minimax_h3_video_backend import ComfyUIMiniMaxH3VideoRenderBackend
+from feverslop.adapters.comfyui_minimax_h3_video_backend import (
+    ComfyUIMiniMaxH3VideoRenderBackend,
+)
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
@@ -121,7 +123,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- optional: frame count
         if duration_seconds is not None:
             patcher.set_input_by_title(
-                "#FRAMECOUNT", "value", int(round(float(duration_seconds) * 24))
+                "#FRAMECOUNT", "value", int(round(float(duration_seconds) * 24)),
             )
 
         # -- optional: start/end frames
@@ -210,7 +212,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             keep_frames = int(scene_frame_count)
         else:
             keep_frames = self._frames_from_duration(
-                duration_seconds if duration_seconds else 5.0
+                duration_seconds or 5.0,
             )
         return self._postprocess_with_audio(
             raw_output,
@@ -250,7 +252,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     def _validate_scene(self, scene: dict) -> None:
         """T2V has no actor reference requirement."""
-        pass  # Always valid -- T2V is text-driven
+        # Always valid -- T2V is text-driven
 
     # -----------------------------------------------------------------------
     # Internals

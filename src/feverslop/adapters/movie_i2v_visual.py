@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 
 from feverslop.adapters.movie_visual import write_local_placeholder_clip
 from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
@@ -93,7 +94,7 @@ class ComfyUIMovieI2VEditVisualAdapter:
                 upload_startframes=True,
                 anchors=WorkflowAnchorConfig(),
                 on_scene_complete=on_clip_rendered,
-            )
+            ),
         )
         concat_list = self.postprocessor.write_concat_list(rendered, ltx_dir / "concat_list.txt")
         return self.postprocessor.concat_clips(
@@ -131,7 +132,7 @@ class ComfyUIMovieI2VEditVisualAdapter:
                     output_dir=base_dir,
                     width=int(scene.get("width") or 1280),
                     height=int(scene.get("height") or 704),
-                )
+                ),
             )
             completed_steps += 1
             _notify_startframe_step(

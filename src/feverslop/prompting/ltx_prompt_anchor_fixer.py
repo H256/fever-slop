@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import re
-
+from pathlib import Path
 
 FORBIDDEN_RELAY_PHRASES = [
     "no subject visible",
@@ -38,8 +37,7 @@ def _sentence_limit(value: str, max_chars: int = 850) -> str:
 
 
 class LTXPromptAnchorFixer:
-    """
-    Makes render_plan LTX prompts safer for I2V.
+    """Makes render_plan LTX prompts safer for I2V.
 
     Problem this fixes:
     - Z-Image startframe shows the main subject.
@@ -160,7 +158,7 @@ class LTXPromptAnchorFixer:
 
         if has_vocals:
             dynamic.append(
-                "Environmental motion happens around or behind the visible main subject, never replacing the subject."
+                "Environmental motion happens around or behind the visible main subject, never replacing the subject.",
             )
 
         # Use base as secondary context, not as primary instruction.

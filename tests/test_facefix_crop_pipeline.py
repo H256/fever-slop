@@ -10,7 +10,10 @@ class TestFaceFixCropPipeline(unittest.TestCase):
     @patch("feverslop.composition.facefix_pipeline._run_crop_facefix")
     @patch("feverslop.composition.facefix_pipeline._run_legacy_facefix")
     def test_use_crop_pipeline_true(self, mock_legacy, mock_crop):
-        from feverslop.composition.facefix_pipeline import run_facefix, FaceFixCompositionOptions
+        from feverslop.composition.facefix_pipeline import (
+            FaceFixCompositionOptions,
+            run_facefix,
+        )
 
         mock_crop.return_value = [Path("/tmp/result.mp4")]
         options = FaceFixCompositionOptions(
@@ -25,7 +28,10 @@ class TestFaceFixCropPipeline(unittest.TestCase):
     @patch("feverslop.composition.facefix_pipeline._run_crop_facefix")
     @patch("feverslop.composition.facefix_pipeline._run_legacy_facefix")
     def test_use_crop_pipeline_false(self, mock_legacy, mock_crop):
-        from feverslop.composition.facefix_pipeline import run_facefix, FaceFixCompositionOptions
+        from feverslop.composition.facefix_pipeline import (
+            FaceFixCompositionOptions,
+            run_facefix,
+        )
 
         mock_legacy.return_value = [Path("/tmp/result.mp4")]
         options = FaceFixCompositionOptions(
@@ -46,7 +52,9 @@ class TestFaceFixCropBackendInit(unittest.TestCase):
     """Test ComfyUIFaceFixCropBackend __init__ with various parameter combos."""
 
     def test_init_defaults(self):
-        from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+        from feverslop.adapters.comfyui_facefix_crop_backend import (
+            ComfyUIFaceFixCropBackend,
+        )
 
         backend = ComfyUIFaceFixCropBackend(client=MagicMock())
         self.assertIsNotNone(backend.client)
@@ -55,7 +63,9 @@ class TestFaceFixCropBackendInit(unittest.TestCase):
         self.assertIsNone(backend.face_ref_image)
 
     def test_init_explicit_face_ref(self):
-        from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+        from feverslop.adapters.comfyui_facefix_crop_backend import (
+            ComfyUIFaceFixCropBackend,
+        )
 
         ref_path = Path("/tmp/ref.png")
         backend = ComfyUIFaceFixCropBackend(
@@ -65,7 +75,9 @@ class TestFaceFixCropBackendInit(unittest.TestCase):
         self.assertEqual(backend.face_ref_image, ref_path)
 
     def test_init_workflow_path(self):
-        from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+        from feverslop.adapters.comfyui_facefix_crop_backend import (
+            ComfyUIFaceFixCropBackend,
+        )
 
         wf_path = Path("/tmp/custom_workflow.json")
         backend = ComfyUIFaceFixCropBackend(
@@ -75,7 +87,9 @@ class TestFaceFixCropBackendInit(unittest.TestCase):
         self.assertEqual(backend.workflow_path, wf_path)
 
     def test_init_postprocess_off(self):
-        from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+        from feverslop.adapters.comfyui_facefix_crop_backend import (
+            ComfyUIFaceFixCropBackend,
+        )
 
         backend = ComfyUIFaceFixCropBackend(
             client=MagicMock(),
@@ -96,7 +110,9 @@ class TestFaceFixCropBackendBuildWorkflow(unittest.TestCase):
         }
 
     def test_build_workflow_with_face_ref(self):
-        from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+        from feverslop.adapters.comfyui_facefix_crop_backend import (
+            ComfyUIFaceFixCropBackend,
+        )
 
         mock_client = MagicMock()
         mock_client.upload_file_via_image_endpoint.return_value = {"filename": "test.mp4", "subfolder": "test"}
@@ -118,7 +134,9 @@ class TestFaceFixCropBackendBuildWorkflow(unittest.TestCase):
             self.assertIsInstance(workflow, dict)
 
     def test_build_workflow_no_face_ref(self):
-        from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+        from feverslop.adapters.comfyui_facefix_crop_backend import (
+            ComfyUIFaceFixCropBackend,
+        )
 
         mock_client = MagicMock()
         mock_client.upload_file_via_image_endpoint.return_value = {"filename": "test.mp4", "subfolder": "test"}
@@ -139,7 +157,9 @@ class TestFaceFixCropBackendBuildWorkflow(unittest.TestCase):
             self.assertIsInstance(workflow, dict)
 
     def test_build_workflow_face_ref_missing_file(self):
-        from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+        from feverslop.adapters.comfyui_facefix_crop_backend import (
+            ComfyUIFaceFixCropBackend,
+        )
 
         mock_client = MagicMock()
         mock_client.upload_file_via_image_endpoint.return_value = {"filename": "test.mp4", "subfolder": "test"}
@@ -219,7 +239,7 @@ class TestFaceVideoEncoder(unittest.TestCase):
         from feverslop.errors import FeverSlopAdaptationError
 
         mock_subprocess.run.return_value = MagicMock(
-            returncode=1, stderr="Invalid input format"
+            returncode=1, stderr="Invalid input format",
         )
 
         with self.assertRaises(FeverSlopAdaptationError) as ctx:
@@ -319,9 +339,10 @@ class TestFaceDebugAdapter(unittest.TestCase):
     """Test that FaceDebugAdapter implements DebugArtifactPort."""
 
     def test_write_debug_image(self):
-        from feverslop.adapters.face_debug import FaceDebugAdapter
-        import tempfile
         import shutil
+        import tempfile
+
+        from feverslop.adapters.face_debug import FaceDebugAdapter
 
         tmpdir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
@@ -335,10 +356,11 @@ class TestFaceDebugAdapter(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_write_detection_overlay(self):
-        from feverslop.adapters.face_debug import FaceDebugAdapter
-        from feverslop.domain.face_detection import FaceDetection, BoundingBox
-        import tempfile
         import shutil
+        import tempfile
+
+        from feverslop.adapters.face_debug import FaceDebugAdapter
+        from feverslop.domain.face_detection import BoundingBox, FaceDetection
 
         tmpdir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
@@ -350,16 +372,17 @@ class TestFaceDebugAdapter(unittest.TestCase):
                 score=0.95,
             )]
             path = adapter.write_detection_overlay(
-                0, frame, detections, "ACCEPTED"
+                0, frame, detections, "ACCEPTED",
             )
             self.assertTrue(path.exists())
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_write_crop(self):
-        from feverslop.adapters.face_debug import FaceDebugAdapter
-        import tempfile
         import shutil
+        import tempfile
+
+        from feverslop.adapters.face_debug import FaceDebugAdapter
 
         tmpdir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
@@ -372,9 +395,10 @@ class TestFaceDebugAdapter(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_write_mask(self):
-        from feverslop.adapters.face_debug import FaceDebugAdapter
-        import tempfile
         import shutil
+        import tempfile
+
+        from feverslop.adapters.face_debug import FaceDebugAdapter
 
         tmpdir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
@@ -387,9 +411,10 @@ class TestFaceDebugAdapter(unittest.TestCase):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_write_composite(self):
-        from feverslop.adapters.face_debug import FaceDebugAdapter
-        import tempfile
         import shutil
+        import tempfile
+
+        from feverslop.adapters.face_debug import FaceDebugAdapter
 
         tmpdir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
@@ -512,7 +537,9 @@ class TestDeprecatedBackend(unittest.TestCase):
 
     def test_deprecation_warning(self):
         with self.assertWarns(DeprecationWarning) as ctx:
-            from feverslop.adapters.comfyui_facefix_backend import ComfyUIFaceFixRenderBackend
+            from feverslop.adapters.comfyui_facefix_backend import (
+                ComfyUIFaceFixRenderBackend,
+            )
             ComfyUIFaceFixRenderBackend(
                 client=MagicMock(),
                 workflow_path=Path("/tmp/wf.json"),

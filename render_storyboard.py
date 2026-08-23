@@ -1,26 +1,32 @@
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import json
+from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
-from feverslop.config.app_config import AppConfig
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
+from feverslop.config.app_config import AppConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
-
 
 console = Console()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Render Z-Image storyboard startframes from render_plan.json."
+        description="Render Z-Image storyboard startframes from render_plan.json.",
     )
     parser.add_argument("--app-config", default="./app_config.json")
     parser.add_argument("--render-plan", required=True)
@@ -132,13 +138,13 @@ def main():
                     task,
                     completed=completed,
                 ),
-            )
+            ),
         )
         progress.update(task, completed=len(rendered))
 
     console.print(
         f"[green]OK[/green] Rendered/available storyboard frames: "
-        f"[yellow]{len(rendered)}[/yellow]"
+        f"[yellow]{len(rendered)}[/yellow]",
     )
 
     for path in rendered:

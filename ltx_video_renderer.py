@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from feverslop.adapters.comfyui_video_backend import AudioWindowSpec, ComfyUIVideoBackend
+from feverslop.adapters.comfyui_video_backend import (
+    AudioWindowSpec,
+    ComfyUIVideoBackend,
+)
 
 __all__ = ["AudioWindowSpec", "LTXVideoRenderer"]
 

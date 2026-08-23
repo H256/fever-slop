@@ -6,7 +6,7 @@ from feverslop.adapters.workflow_patcher import WorkflowPatcher
 class WorkflowPatchSpecTests(unittest.TestCase):
     def test_patch_spec_sets_input_from_dotted_context_path(self):
         patcher = WorkflowPatcher({
-            "1": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}}
+            "1": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
         })
 
         patcher.apply_patch_spec(
@@ -29,7 +29,7 @@ class WorkflowPatchSpecTests(unittest.TestCase):
                     "op": "remove_node",
                     "target": {"title": "#LORA"},
                     "bridge": [{"from_input": "model", "to": {"title": "#SAMPLER", "input": "model"}}],
-                }
+                },
             ],
             {},
         )
@@ -53,7 +53,7 @@ class WorkflowPatchSpecTests(unittest.TestCase):
                     "target": {"title": "#SAMPLER", "input": "model"},
                     "new_node_input": "model",
                     "new_node_output": 0,
-                }
+                },
             ],
             {},
         )
@@ -204,7 +204,7 @@ class WorkflowPatchSpecTests(unittest.TestCase):
                     "target": {"node_id": "3", "input": "model"},
                     "new_node_input": "model",
                     "new_node_output": 0,
-                }
+                },
             ],
             {},
         )

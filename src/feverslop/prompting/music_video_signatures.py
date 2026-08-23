@@ -17,6 +17,7 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
 
     class StoryIdea(dspy_module.Signature):
         """Create a concise music-video story idea using the supplied guide."""
+
         guide: str = dspy_module.InputField()
         lyrics: str = dspy_module.InputField()
         notes: str = dspy_module.InputField()
@@ -24,6 +25,7 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
 
     class StyleBlock(dspy_module.Signature):
         """Create the requested three-part visual style block using the guide."""
+
         guide: str = dspy_module.InputField()
         lyrics: str = dspy_module.InputField()
         notes: str = dspy_module.InputField()
@@ -31,6 +33,7 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
 
     class SubjectLocations(dspy_module.Signature):
         """Extract stable actors and physical locations as structured data."""
+
         guide: str = dspy_module.InputField()
         story_idea: str = dspy_module.InputField()
         notes: str = dspy_module.InputField()
@@ -38,12 +41,14 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
 
     class ConceptMap(dspy_module.Signature):
         """Map every supplied timed segment to one visual concept."""
+
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
         concepts: dict[str, Any] = dspy_module.OutputField()
 
     class Detail(dspy_module.Signature):
         """Create one short visual detail for the requested category."""
+
         guide: str = dspy_module.InputField()
         label: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
@@ -51,12 +56,14 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
 
     class T2I(dspy_module.Signature):
         """Create one concrete still-image prompt using the supplied guide."""
+
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
         prompt: str = dspy_module.OutputField()
 
     class I2V(dspy_module.Signature):
         """Create one dynamic image-to-video prompt using the supplied guide."""
+
         guide: str = dspy_module.InputField()
         performance_policy: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
@@ -64,12 +71,14 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
 
     class Summary(dspy_module.Signature):
         """Summarize visual story continuity in a few concise sentences."""
+
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
         summary: str = dspy_module.OutputField()
 
     class RepairConcepts(dspy_module.Signature):
         """Repair only missing segment concept keys."""
+
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
         concepts: dict[str, Any] = dspy_module.OutputField()

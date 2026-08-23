@@ -66,10 +66,10 @@ class FacePipeline:
 
     def __init__(
         self,
-        detector: "FaceDetectorPort",
-        identity_port: "FaceIdentityPort",
-        mask_port: "FaceMaskPort",
-        debug_port: "DebugArtifactPort | None",
+        detector: FaceDetectorPort,
+        identity_port: FaceIdentityPort,
+        mask_port: FaceMaskPort,
+        debug_port: DebugArtifactPort | None,
         policy: FaceProcessingPolicy | None = None,
     ):
         self.detector = detector
@@ -99,7 +99,7 @@ class FacePipeline:
 
         # Step 2: Filter detections
         state.filtered_detections = self._filter_detections(
-            state, frame_width, frame_height
+            state, frame_width, frame_height,
         )
 
         # Step 3: Rank candidates
@@ -129,7 +129,7 @@ class FacePipeline:
         return result
 
     def _detect_faces(
-        self, state: FramePipelineState, frame: np.ndarray
+        self, state: FramePipelineState, frame: np.ndarray,
     ) -> list[FaceDetection]:
         """Step 1: Run face detection."""
         try:
@@ -152,7 +152,7 @@ class FacePipeline:
     ) -> list[FaceDetection]:
         """Step 2: Filter detections by validity."""
         filtered = filter_detections(
-            state.detections, frame_width, frame_height, self.policy
+            state.detections, frame_width, frame_height, self.policy,
         )
         logger.debug(
             "Frame %d: %d detections after filtering (%d rejected)",
@@ -163,7 +163,7 @@ class FacePipeline:
         return filtered
 
     def _rank_and_select_candidate(
-        self, state: FramePipelineState
+        self, state: FramePipelineState,
     ) -> FaceDetection | None:
         """Step 3: Rank candidates and select the best one."""
         frame_height, frame_width = state.frame.shape[:2]
@@ -189,7 +189,7 @@ class FacePipeline:
         return best.detection
 
     def _update_track(
-        self, state: FramePipelineState, candidate: FaceDetection | None
+        self, state: FramePipelineState, candidate: FaceDetection | None,
     ) -> FaceTrack | None:
         """Step 4: Update temporal tracking state."""
         if candidate is None:
@@ -210,7 +210,7 @@ class FacePipeline:
         return track
 
     def _match_track(
-        self, frame_index: int, box: BoundingBox
+        self, frame_index: int, box: BoundingBox,
     ) -> FaceTrack | None:
         """Find the best matching track for a detection."""
         best_track: FaceTrack | None = None
@@ -228,7 +228,7 @@ class FacePipeline:
         return best_track
 
     def _create_track(
-        self, frame_index: int, detection: FaceDetection
+        self, frame_index: int, detection: FaceDetection,
     ) -> FaceTrack:
         """Create a new track for a detection."""
         track_id = self._next_track_id
@@ -299,7 +299,7 @@ class FacePipeline:
                 )
 
     def _verify_identity(
-        self, state: FramePipelineState
+        self, state: FramePipelineState,
     ) -> tuple[float | None, str | None]:
         """Step 5: Verify identity of the candidate."""
         if not self.policy.enable_identity_check:
@@ -310,7 +310,7 @@ class FacePipeline:
 
         try:
             actor_id, similarity = self.identity_port.verify_identity(
-                state.candidate.embedding
+                state.candidate.embedding,
             )
             logger.debug(
                 "Frame %d: identity check -> actor=%s, score=%.4f",

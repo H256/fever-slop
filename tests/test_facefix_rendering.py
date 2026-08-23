@@ -46,7 +46,7 @@ class TestFaceFixSceneRequest(unittest.TestCase):
             source_video=Path("/tmp/scene_0001.mp4"),
         )
         self.assertEqual(req.reference_images, ())
-        self.assertEqual(req.output_dir, Path("."))
+        self.assertEqual(req.output_dir, Path())
 
 
 if __name__ == "__main__":

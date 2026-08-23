@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 
 from feverslop.domain.visual_consistency import SceneConsistencyContract
-
 
 CONTINUITY_ANCHOR_HEADER = "Continuity anchors (keep unchanged):"
 
@@ -36,7 +35,7 @@ def resolve_reference_look(item: dict, look_id: str) -> dict:
                 break
         if not matched:
             raise ValueError(
-                f"Reference {item.get('id')!r} has no look {look_id!r}"
+                f"Reference {item.get('id')!r} has no look {look_id!r}",
             )
     resolved["id"] = item.get("id")
     resolved["name"] = item.get("name")
@@ -88,7 +87,7 @@ def bind_continuity_anchors(
         text,
     ).strip()
     anchors = scrub_prior_context(
-        contract.prompt_anchor_text(max_chars=max_chars)
+        contract.prompt_anchor_text(max_chars=max_chars),
     ).replace("\n", "; ")
     return (
         f"{text}\n{CONTINUITY_ANCHOR_HEADER} {anchors}".strip()
@@ -114,13 +113,13 @@ def validate_runtime_visual_consistency(
         raise ValueError("visual consistency scene does not match runtime scene")
     if contract.mode != mode:
         raise ValueError(
-            f"visual consistency mode {contract.mode!r} does not match backend {mode!r}"
+            f"visual consistency mode {contract.mode!r} does not match backend {mode!r}",
         )
     if contract.workflow_profile != workflow_profile:
         raise ValueError(
             "visual consistency workflow profile "
             f"{contract.workflow_profile!r} does not match backend "
-            f"{workflow_profile!r}"
+            f"{workflow_profile!r}",
         )
     _validate_reference_bindings(scene, contract)
     if mode == "ingredients":

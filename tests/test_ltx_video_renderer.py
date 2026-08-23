@@ -1,11 +1,11 @@
-﻿import unittest
+﻿import json
 import tempfile
-import json
+import unittest
 from pathlib import Path
 
-from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.errors import FeverSlopValidationError
+from ltx_video_renderer import AudioWindowSpec, LTXVideoRenderer
 
 
 class PromptRelayPayloadTests(unittest.TestCase):
@@ -101,13 +101,13 @@ class LTXRenderModeTests(unittest.TestCase):
                 "inputs": {"text": ""},
                 "class_type": "CLIPTextEncode",
                 "_meta": {"title": "#PROMPT"},
-            }
+            },
         })
         scene = {
             "ltx": {
                 "base_prompt": "base prompt",
                 "original_style_i2v_prompt": "original style prompt",
-            }
+            },
         }
 
         renderer._patch_prompt_inputs(patcher, scene, mode="single_prompt", render_frame_count=24, trim_front_frames=0, tail_loss_frames=0)
@@ -128,13 +128,13 @@ class LTXRenderModeTests(unittest.TestCase):
                 "inputs": {"text": ""},
                 "class_type": "CLIPTextEncode",
                 "_meta": {"title": "#PROMPT_POSITIVE"},
-            }
+            },
         })
         scene = {
             "ltx": {
                 "base_prompt": "base prompt",
                 "original_style_i2v_prompt": "fallback prompt",
-            }
+            },
         }
 
         renderer._patch_prompt_inputs(patcher, scene, mode="single_prompt", render_frame_count=24, trim_front_frames=0, tail_loss_frames=0)
@@ -179,7 +179,7 @@ class LTXLoraTests(unittest.TestCase):
                 },
                 "class_type": "LoraLoader",
                 "_meta": {"title": "#LORA_1"},
-            }
+            },
         })
 
         patched = patcher.patch_lora_by_title(
@@ -215,7 +215,7 @@ class LTXLoraTests(unittest.TestCase):
                 },
                 "class_type": "LoraLoader",
                 "_meta": {"title": "#LORA_1"},
-            }
+            },
         })
 
         renderer._patch_lora_inputs(patcher)
@@ -238,7 +238,7 @@ class LTXLoraTests(unittest.TestCase):
                 "inputs": {"strength_model": 0.42},
                 "class_type": "LoraLoaderModelOnly",
                 "_meta": {"title": "#LORA_1"},
-            }
+            },
         })
 
         renderer._patch_lora_inputs(patcher)
@@ -513,10 +513,10 @@ class LTXLoraTests(unittest.TestCase):
                     "outputs": {
                         "save": {
                             "videos": [
-                                {"filename": "scene_0001.mp4", "subfolder": "", "type": "output"}
-                            ]
-                        }
-                    }
+                                {"filename": "scene_0001.mp4", "subfolder": "", "type": "output"},
+                            ],
+                        },
+                    },
                 }
 
             def download_view_file(self, filename, subfolder, file_type, output_path):

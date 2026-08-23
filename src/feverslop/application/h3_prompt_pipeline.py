@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
@@ -188,7 +189,7 @@ class H3PromptPipeline:
             if reporter is not None:
                 reporter.message(
                     f"video_pipeline '{config.video_pipeline}' has no H3 model spec ({exc}); "
-                    "falling back to the legacy H3 prompt builder with T2V mode"
+                    "falling back to the legacy H3 prompt builder with T2V mode",
                 )
         if model_spec and model_spec.is_minimax_h3 and self.dspy_prompt_builder_factory:
             builder_factory = self.dspy_prompt_builder_factory
@@ -220,7 +221,7 @@ class H3PromptPipeline:
             status_callback=lambda current, total, status: (
                 reporter.message(
                     f"[cyan]H3 prompts: {current}/{total} scenes - "
-                    f"{'start' if status == 'started' else 'completed'}[/cyan]"
+                    f"{'start' if status == 'started' else 'completed'}[/cyan]",
                 )
                 if reporter is not None
                 else None
@@ -242,7 +243,7 @@ class H3PromptPipeline:
                     reporter.message(
                         "[yellow]H3 prompt judge: BAD for "
                         f"{item.get('segment_id')}; prompt saved and pipeline continues: "
-                        f"{'; '.join(str(issue) for issue in judge.get('issues') or [])}[/yellow]"
+                        f"{'; '.join(str(issue) for issue in judge.get('issues') or [])}[/yellow]",
                     )
             if bad_judgements:
                 reporter.message(
@@ -251,7 +252,7 @@ class H3PromptPipeline:
                     "Prompts were saved; review and optionally correct them manually "
                     "before rendering: "
                     + ", ".join(str(item.get("segment_id")) for item in bad_judgements)
-                    + "[/yellow]"
+                    + "[/yellow]",
                 )
             else:
                 reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")

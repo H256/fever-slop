@@ -43,7 +43,7 @@ def build_startframe_director_prompts(
                 ),
                 "width": reference_width,
                 "height": reference_height,
-            }
+            },
         )
     output_path = movie_dir / "startframe_director_prompts.json"
     write_json_document(output_path, {"version": 1, "shots": shots})
@@ -97,7 +97,7 @@ def _ideogram_prompt(shot: dict[str, Any], identity: dict[str, Any]) -> dict[str
                     )
                     if part
                 ),
-            }
+            },
         )
     location = str((shot.get("continuity_in") or {}).get("location_id") or "")
     return {
@@ -138,7 +138,7 @@ def _krea2_prompt(shot: dict[str, Any], identity: dict[str, Any]) -> str:
                     placement,
                 )
                 if part
-            )
+            ),
         )
     intent = shot.get("startframe_intent") or {}
     camera = str(intent.get("camera") or shot.get("camera") or "").strip()

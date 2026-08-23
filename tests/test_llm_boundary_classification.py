@@ -1,9 +1,8 @@
 """Static guards for production LLM transport boundaries."""
 
 import ast
-from pathlib import Path
 import unittest
-
+from pathlib import Path
 
 PRODUCTION_ROOT = Path("src/feverslop")
 APPROVED_DIRECT_LLM_CALLS = {

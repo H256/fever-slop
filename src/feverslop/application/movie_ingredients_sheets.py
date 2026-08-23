@@ -3,36 +3,40 @@ from __future__ import annotations
 import json
 import logging
 import math
+from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+from feverslop.application.ingredients_render_plan import (
+    build_ingredients_static_prompt,
+)
+from feverslop.application.ingredients_vision_prompt import (
+    build_ingredients_vision_prompt,
+)
+from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.application.reference_bible import (
     INGREDIENTS_SHEET_LAYOUT_VERSION,
     build_ingredients_target_binding,
     build_runtime_consistency_contract,
     compose_cached_ingredients_sheet,
-    generate_scene_sheet_description,
     generate_scene_sheet_anchors,
+    generate_scene_sheet_description,
+    ingredients_sheet_size,
     ingredients_signature_references,
     ingredients_signature_sources,
-    ingredients_sheet_size,
     snapshot_ingredients_sources,
     visual_consistency_sources,
 )
 from feverslop.domain.prepared_workflow import sha256_file
+from feverslop.domain.vision_references import ReferenceImage
 from feverslop.domain.visual_consistency_runtime import (
     bind_continuity_anchors,
     reference_look_id,
     resolve_reference_look,
 )
-from feverslop.application.ingredients_render_plan import build_ingredients_static_prompt
-from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.ports.llm import VisionLLMPort
-from feverslop.application.ingredients_vision_prompt import build_ingredients_vision_prompt
-from feverslop.domain.vision_references import ReferenceImage
 from feverslop.utils.io import read_json_object
-
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,7 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     project_dir: Project root.
     sheet_scale: Minimum multiplier over the project resolution. The resulting
                  canvas is expanded to the Ingredients model's 12:7 aspect.
+
     """
     project_dir = Path(project_dir)
     movie_dir = project_dir / "movie"
@@ -124,7 +129,7 @@ def enrich_movie_render_plan_with_ingredients_sheets(
 def _enrich_shot(
     shot: dict,
     *,
-    builder: "IngredientsSceneSheetBuilder",
+    builder: IngredientsSceneSheetBuilder,
     manifest: dict,
     bible: dict,
     fps: int,

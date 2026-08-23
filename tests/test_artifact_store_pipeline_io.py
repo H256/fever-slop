@@ -3,13 +3,15 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.srt import SrtScene
-from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
-from feverslop.pipeline.prompt_relay_builder import lyrics_for_time_range
+from feverslop.pipeline.prompt_relay_builder import (
+    build_scene_prompt_relay,
+    lyrics_for_time_range,
+)
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.pipeline.scene_duration_enforcer import write_scene_srt
 from feverslop.pipeline.stage1_segment_builder import build_stage1_segment_json
-from feverslop.config.video_settings import VideoSettings
 
 
 class FakeArtifactStore:
@@ -77,7 +79,7 @@ class ArtifactStorePipelineIoTests(unittest.TestCase):
             render_plan_path = temp / "render_plan.json"
             store = FakeArtifactStore()
             store.json_reads[str(timeline_path)] = [
-                {"kind": "vocals", "start": 0.0, "end": 1.0, "lyrics": "line"}
+                {"kind": "vocals", "start": 0.0, "end": 1.0, "lyrics": "line"},
             ]
             store.json_reads[str(scene_prompts_path)] = [
                 {
@@ -89,7 +91,7 @@ class ArtifactStorePipelineIoTests(unittest.TestCase):
                     "type": "vocals",
                     "zimage_prompt": "image prompt",
                     "t2i_prompt": "image prompt",
-                }
+                },
             ]
 
             build_stage1_segment_json(scene_srt, timeline_path, stage1_path, artifact_store=store)
@@ -140,7 +142,7 @@ class ArtifactStorePipelineIoTests(unittest.TestCase):
                         {"word": "four", "start": 7.5, "end": 9.5},
                         {"word": "five", "start": 9.5, "end": 10.0},
                     ],
-                }
+                },
             ]
 
             build_stage1_segment_json(scene_srt, timeline_path, stage1_path, artifact_store=store)

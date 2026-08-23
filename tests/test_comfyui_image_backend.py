@@ -54,7 +54,7 @@ def workflow_json(*, positive_input: str = "text") -> str:
                 "inputs": {"filename_prefix": "old", "images": ["0", 0]},
                 "_meta": {"title": "#SAVE_IMAGE"},
             },
-        }
+        },
     )
 
 
@@ -77,7 +77,7 @@ class ComfyUIImageBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     width=1920,
                     height=1088,
-                )
+                ),
             )
 
         self.assertEqual("new prompt", client.queued_workflow["1"]["inputs"]["text"])
@@ -103,7 +103,7 @@ class ComfyUIImageBackendTests(unittest.TestCase):
                     width=1280,
                     height=704,
                     anchors=WorkflowAnchorConfig(positive_prompt_input="value"),
-                )
+                ),
             )
 
         self.assertEqual("{raw result}", client.queued_workflow["1"]["inputs"]["value"])
@@ -148,7 +148,7 @@ class ComfyUIImageBackendTests(unittest.TestCase):
                     workflow_path=workflow_path,
                     output_dir=temp / "out",
                     anchors=WorkflowAnchorConfig(positive_prompt_input="text"),
-                )
+                ),
             )
 
         self.assertEqual({"value": "old value"}, client.queued_workflow["1"]["inputs"])
@@ -195,7 +195,7 @@ class ComfyUIImageBackendTests(unittest.TestCase):
                     output_dir=temp / "out",
                     width=832,
                     height=1216,
-                )
+                ),
             )
 
         self.assertEqual(832, client.queued_workflow["3"]["inputs"]["width"])
@@ -245,7 +245,7 @@ class ComfyUIImageBackendTests(unittest.TestCase):
                     prompt="portrait",
                     workflow_path=workflow_path,
                     output_dir=temp / "out",
-                )
+                ),
             )
 
         self.assertEqual(100004, client.queued_workflow["3"]["inputs"]["seed"])

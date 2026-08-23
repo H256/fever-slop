@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from rich.console import Console
 
@@ -15,7 +15,7 @@ from feverslop.path_utils import coerce_local_path
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate ComfyUI workflow model references against the configured server dropdown values."
+        description="Validate ComfyUI workflow model references against the configured server dropdown values.",
     )
     parser.add_argument("--app-config", default="app_config.json")
     parser.add_argument("--workflows-dir", default="workflows")
@@ -58,7 +58,7 @@ def main() -> None:
 
         console.print(
             f"[green]OK[/green] {report['workflow']}: "
-            f"{report['patched_count']} model reference(s) would be patched"
+            f"{report['patched_count']} model reference(s) would be patched",
         )
         for patch in report["patched"]:
             console.print(f"  {patch['node_id']} {patch['input']}: {patch['from']} -> {patch['to']}")

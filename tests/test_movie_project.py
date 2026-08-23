@@ -1,14 +1,14 @@
 import json
-import time
 import tempfile
+import time
 import unittest
-from unittest.mock import patch
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
-from feverslop.prompting.msr_signatures import MSRPromptResult
 
 from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
+from feverslop.prompting.msr_signatures import MSRPromptResult
 from tests.studio_harness import NativeStudioHarness
 
 
@@ -272,7 +272,9 @@ class MovieProjectTests(unittest.TestCase):
     def test_prepared_ingredients_movie_accepts_compact_prompt_contract(self):
         from unittest.mock import Mock
 
-        from feverslop.application.movie_prepared_workflows import prepare_movie_workflows
+        from feverslop.application.movie_prepared_workflows import (
+            prepare_movie_workflows,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -309,7 +311,9 @@ class MovieProjectTests(unittest.TestCase):
     def test_prepared_ingredients_movie_validates_compact_anchor_bindings(self):
         from unittest.mock import Mock
 
-        from feverslop.application.movie_prepared_workflows import prepare_movie_workflows
+        from feverslop.application.movie_prepared_workflows import (
+            prepare_movie_workflows,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -339,7 +343,9 @@ class MovieProjectTests(unittest.TestCase):
     def test_prepared_movie_workflows_use_identical_strict_scene_filter(self):
         from unittest.mock import Mock
 
-        from feverslop.application.movie_prepared_workflows import prepare_movie_workflows
+        from feverslop.application.movie_prepared_workflows import (
+            prepare_movie_workflows,
+        )
         from feverslop.scene_artifacts import SceneArtifactLayout
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -369,7 +375,9 @@ class MovieProjectTests(unittest.TestCase):
     def test_prepared_movie_render_requires_selected_manifest_and_names_prepare(self):
         from unittest.mock import Mock
 
-        from feverslop.application.movie_prepared_workflows import render_prepared_movie_workflows
+        from feverslop.application.movie_prepared_workflows import (
+            render_prepared_movie_workflows,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -386,7 +394,9 @@ class MovieProjectTests(unittest.TestCase):
     def test_prepared_movie_render_writes_canonical_final_and_reads_legacy_fallback(self):
         from unittest.mock import Mock
 
-        from feverslop.application.movie_prepared_workflows import render_prepared_movie_workflows
+        from feverslop.application.movie_prepared_workflows import (
+            render_prepared_movie_workflows,
+        )
         from feverslop.scene_artifacts import SceneArtifactLayout
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -419,8 +429,8 @@ class MovieProjectTests(unittest.TestCase):
             )
 
     def test_movie_scaffold_persists_screenplay_memory_and_shot_cards(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         with tempfile.TemporaryDirectory() as temp_dir:
             ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
@@ -439,7 +449,7 @@ class MovieProjectTests(unittest.TestCase):
                         "structured_locations": [{"id": "archive", "name": "Archive", "visual_description": "white marble archive"}],
                         "dialogue_language": "English",
                     },
-                )
+                ),
             )
 
             root = Path(temp_dir) / "archive-memory"
@@ -476,8 +486,8 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("INT. ARCHIVE", shot_cards["memory_pack"]["current_shot"]["description"])
 
     def test_short_story_scaffold_writes_story_design_and_authored_screenplay_fields(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = ScaffoldMovieUseCase(planner=DeterministicMoviePlanner(), projects_root=Path(temp_dir), artifact_writer=LocalMovieArtifactWriter()).execute(
@@ -492,7 +502,7 @@ class MovieProjectTests(unittest.TestCase):
                         "structured_locations": [{"id": "battlefield", "name": "Battlefield", "visual_description": "silent battlefield"}],
                         "max_scene_actors": 1,
                     },
-                )
+                ),
             )
 
             story_design = json.loads((result.project_dir / "movie" / "story_design.json").read_text(encoding="utf-8"))
@@ -525,7 +535,14 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_scaffold_writes_bible_and_uses_it_for_manifest_and_render_plan(self):
         from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
-        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+        from feverslop.domain.movie import (
+            CinematicShot,
+            MovieActor,
+            MovieBible,
+            MovieContinuityRule,
+            MovieLocation,
+            StoryArch,
+        )
 
         class BiblePlanner:
             def generate_story_arch(self, **_kwargs):
@@ -580,7 +597,7 @@ class MovieProjectTests(unittest.TestCase):
                     source_type="short_story",
                     story_text="Mara unlocks a forbidden archive and finds a ledger that knows her name.",
                     desired_length=12,
-                )
+                ),
             )
             root = Path(temp_dir) / "archive"
             bible = json.loads((root / "movie" / "bible.json").read_text(encoding="utf-8"))
@@ -607,8 +624,8 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("archive", plan["shots"][0]["location_id"])
 
     def test_movie_bible_respects_config_actor_location_constraints(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         config = {
             "actors": [
@@ -627,7 +644,7 @@ class MovieProjectTests(unittest.TestCase):
                     story_text="Mara and an intruder argue inside the archive about a sealed book.",
                     desired_length=20,
                     config=config,
-                )
+                ),
             )
             root = Path(temp_dir) / "configured-movie"
             bible = json.loads((root / "movie" / "bible.json").read_text(encoding="utf-8"))
@@ -641,7 +658,9 @@ class MovieProjectTests(unittest.TestCase):
                 self.assertEqual("archive", shot["reference_ids"]["location"])
 
     def test_movie_msr_enrichment_writes_video_prompts_without_reference_sheet_text(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -658,7 +677,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [{"id": "coat", "description": "same charcoal coat"}],
                         "style_constraints": ["gothic realism"],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -679,9 +698,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "continuity_notes": "same charcoal coat",
                                 "transition_from_previous": "continuous",
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -704,7 +723,7 @@ class MovieProjectTests(unittest.TestCase):
                                 "outgoing": ["the ledger recognizes Mara"],
                                 "characters": {"mara": {"character_id": "mara", "base_identity": "stern archivist", "wardrobe": "same charcoal coat", "carried_props": [], "physical_state": "", "emotional_state": "controlled fear", "last_location": "archive", "last_action": "opens the ledger"}},
                                 "location": {"location_id": "archive", "name": "Archive", "time_of_day": "", "lighting": "", "props": [], "environmental_state": "quiet archive room"},
-                            }
+                            },
                         },
                         "narrative_chain": [
                             {
@@ -716,9 +735,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "conflict_or_tension": "The archive knows her.",
                                 "turning_point": "The ledger responds.",
                                 "sets_up_next": "Mara must decide whether to keep reading.",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -727,7 +746,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist", "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png"}],
                         "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -886,7 +905,9 @@ class MovieProjectTests(unittest.TestCase):
                 )
 
     def test_movie_msr_enrichment_uses_individual_manifest_images_for_vision(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         modules = FakeMovieVisionModules({
                     "references": [
@@ -923,7 +944,7 @@ class MovieProjectTests(unittest.TestCase):
             statuses = []
 
             output = enrich_movie_render_plan_with_msr_prompts(
-                project_dir=project, modules=modules, on_analysis_status=lambda shot, references: statuses.append((shot, references))
+                project_dir=project, modules=modules, on_analysis_status=lambda shot, references: statuses.append((shot, references)),
             )
 
             shot = json.loads(output.read_text(encoding="utf-8"))["shots"][0]
@@ -939,7 +960,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("shot_7", statuses[0][0])
 
     def test_movie_msr_partial_missing_images_keep_full_labeled_fallback(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         modules = FakeMovieVisionModules({})
 
@@ -971,7 +994,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual([], modules.calls)
 
     def test_movie_msr_transport_exception_is_logged_as_vision_unavailable(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         modules = FakeMovieVisionModules(error=RuntimeError("transport failed"))
 
@@ -998,7 +1023,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertFalse(any("reason=invalid response" in message for message in logs.output))
 
     def test_movie_msr_vision_dialogue_relay_requests_spoken_lip_sync(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
         from feverslop.prompting.guide_loader import load_markdown_guide
 
         modules = FakeMovieVisionModules({
@@ -1035,7 +1062,9 @@ class MovieProjectTests(unittest.TestCase):
 
 
     def test_movie_msr_enrichment_enforces_dialogue_language_from_bible(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1052,7 +1081,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1070,9 +1099,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "action": "opens the ledger",
                                 "dialogue": "MARA: Es erinnert sich an mich.",
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1081,7 +1110,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist", "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png"}],
                         "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1105,7 +1134,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("MARA: Es erinnert sich an mich.", global_prompt)
 
     def test_movie_msr_enrichment_formats_radio_dialogue_as_diegetic_audio(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1122,7 +1153,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1140,9 +1171,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "action": "The radio plays a recording of Elara's own voice screaming",
                                 "dialogue": "(Radio Voice) Lauf weg! Er ist hier! Er kommt!",
                                 "reference_ids": {"actors": ["elara"], "location": "radio_room"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1151,7 +1182,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "elara", "name": "Elara", "visual_description": "weathered arctic technician in a frost-covered parka", "msr_sheet_path": "actor.png"}],
                         "locations": [{"id": "radio_room", "name": "Radio Room", "visual_description": "cramped warm room filled with glowing vacuum tubes and an old analog radio transmitter", "msr_sheet_path": "location.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1175,7 +1206,9 @@ class MovieProjectTests(unittest.TestCase):
             )
 
     def test_movie_msr_enrichment_blocks_dialogue_when_shot_has_no_dialogue(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1192,7 +1225,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1210,9 +1243,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "action": "opens the ledger without speaking",
                                 "dialogue": "",
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1221,7 +1254,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "visual_description": "stern archivist", "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png"}],
                         "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1245,7 +1278,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("extra voice", global_prompt)
 
     def test_movie_msr_enrichment_drops_screenplay_dumps_from_continuity(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         screenplay_dump = (
             "EXT. SOMME VALLEY - DAY (1916): German soldiers move through fog; "
@@ -1267,7 +1302,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1286,9 +1321,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "dialogue": "",
                                 "continuity_notes": f"{screenplay_dump}; Hans keeps the torn gray coat",
                                 "reference_ids": {"actors": ["hans"], "location": "trench"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1301,7 +1336,7 @@ class MovieProjectTests(unittest.TestCase):
                                 "required_carryovers": [screenplay_dump, "Hans keeps the torn gray coat"],
                                 "allowed_changes": ["smoke thickens"],
                                 "outgoing": [screenplay_dump],
-                            }
+                            },
                         },
                         "narrative_chain": [
                             {
@@ -1310,9 +1345,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "story_state_after": "Hans understands the trench will not answer him.",
                                 "cause_from_previous": screenplay_dump,
                                 "narrative_purpose": "Show Hans losing faith.",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1321,7 +1356,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier", "msr_sheet_path": "movie/references/actors/hans/msr_sheet.png"}],
                         "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench", "msr_sheet_path": "movie/references/locations/trench/views/hero.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1343,7 +1378,9 @@ class MovieProjectTests(unittest.TestCase):
                 self.assertNotIn("CONTINUITY CONTRACT", value)
 
     def test_movie_msr_enrichment_uses_only_current_shot_facts_in_video_prompt(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1363,7 +1400,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": ["desaturated trench realism"],
                         "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1382,9 +1419,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "dialogue": "Hans: Halt den Mund, Karl.",
                                 "continuity_notes": "Karl was trembling beside the rifle; Hans keeps the torn gray coat",
                                 "reference_ids": {"actors": ["hans", "karl"], "location": "trench"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1397,7 +1434,7 @@ class MovieProjectTests(unittest.TestCase):
                                 "required_carryovers": ["Hans keeps the torn gray coat"],
                                 "allowed_changes": ["Hans answers without raising his voice"],
                                 "outgoing": ["Karl falls silent after Hans answers"],
-                            }
+                            },
                         },
                         "narrative_chain": [
                             {
@@ -1407,9 +1444,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "cause_from_previous": "Karl whispered that he cannot feel the ground.",
                                 "narrative_purpose": "Show Hans suppressing panic.",
                                 "sets_up_next": "Friedrich enters with a memory of home.",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1421,7 +1458,7 @@ class MovieProjectTests(unittest.TestCase):
                             {"id": "karl", "name": "Karl", "visual_description": "trembling soldier", "msr_sheet_path": "movie/references/actors/karl/msr_sheet.png"},
                         ],
                         "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench", "msr_sheet_path": "movie/references/locations/trench/views/hero.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1462,7 +1499,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("CONTINUITY CONTRACT", ltx["msr_global_prompt"])
 
     def test_movie_msr_global_prompt_excludes_audio_hints_for_indoor_locations(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1479,7 +1518,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1494,9 +1533,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "duration_seconds": 4,
                                 "action": "Mara listens without moving",
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1505,7 +1544,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
                         "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room", "msr_sheet_path": "location.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1519,7 +1558,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("ambient sounds", global_prompt)
 
     def test_movie_msr_global_prompt_ignores_structured_style_constraints(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1536,7 +1577,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [{"word_count_min": 40}, "desaturated realism"],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1551,9 +1592,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "duration_seconds": 4,
                                 "action": "Mara listens without moving",
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1562,7 +1603,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
                         "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room", "msr_sheet_path": "location.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1577,7 +1618,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("word_count_min", global_prompt)
 
     def test_movie_msr_enrichment_drops_planning_dumps_from_local_prompt_fields(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1594,7 +1637,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1607,11 +1650,11 @@ class MovieProjectTests(unittest.TestCase):
                                 "shot_id": "shot_0001",
                                 "description": "Mara waits beside the door. story_idea: dumped screenplay",
                                 "duration_seconds": 4,
-                                "action": "Mara listens without moving. prompt_guidance: {\"word_count_min\": 40}",
+                                "action": 'Mara listens without moving. prompt_guidance: {"word_count_min": 40}',
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1620,7 +1663,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
                         "locations": [{"id": "archive", "name": "Archive Room", "visual_description": "small indoor archive room", "msr_sheet_path": "location.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1638,7 +1681,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("word_count_min", prompt)
 
     def test_movie_msr_prompts_use_clean_reference_format_and_avoid_action_duplication(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1655,7 +1700,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1673,9 +1718,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "acting": "silent physical reaction",
                                 "dialogue": "",
                                 "reference_ids": {"actors": ["tech"], "location": "corridor"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1690,7 +1735,7 @@ class MovieProjectTests(unittest.TestCase):
                                 "visual_description": "Technikerin, character, Lena, frost-covered field technician in a red parka",
                                 "image_prompt": "Full-body cinematic character reference sheet for Technikerin. Four vertical panels.",
                                 "msr_sheet_path": "actor.png",
-                            }
+                            },
                         ],
                         "locations": [
                             {
@@ -1698,9 +1743,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "name": "KORRIDOR DER STATION - NACHT",
                                 "visual_description": "KORRIDOR DER STATION - NACHT, narrow frozen station corridor with flickering emergency lights",
                                 "msr_sheet_path": "location.png",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1718,7 +1763,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual(1, local_prompt.count("Hinter einer Metalltür klopft etwas langsam von innen"))
 
     def test_movie_msr_reference_prompt_keeps_placeholder_references_without_story_defined_text(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1735,7 +1782,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1749,9 +1796,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "description": "Hinter einer Metalltür klopft etwas langsam von innen.",
                                 "duration_seconds": 4,
                                 "reference_ids": {"actors": ["tech"], "location": "corridor"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1760,7 +1807,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "tech", "name": "Technikerin", "role": "character", "visual_description": "Technikerin, story-defined cinematic character with", "msr_sheet_path": "actor.png"}],
                         "locations": [{"id": "corridor", "name": "KORRIDOR DER STATION - NACHT", "visual_description": "KORRIDOR DER STATION - NACHT, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere", "msr_sheet_path": "location.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1774,9 +1821,13 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("consistent production design", global_prompt)
 
     def test_movie_msr_workflow_prompt_relay_node_excludes_continuity_contract(self):
-        from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+        from feverslop.adapters.comfyui_msr_video_backend import (
+            ComfyUIMSRVideoRenderBackend,
+        )
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1798,7 +1849,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": ["desaturated trench realism"],
                         "runtime_constraints": {"fps": 24, "dialogue_language": "German"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1818,9 +1869,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "dialogue": "Hans: Halt den Mund, Karl.",
                                 "continuity_notes": "Karl whispered that he cannot feel the ground; Hans keeps the torn gray coat",
                                 "reference_ids": {"actors": ["hans"], "location": "trench"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1832,16 +1883,16 @@ class MovieProjectTests(unittest.TestCase):
                                 "incoming": ["Karl whispered that he cannot feel the ground"],
                                 "required_carryovers": ["Hans keeps the torn gray coat"],
                                 "outgoing": ["Karl falls silent after Hans answers"],
-                            }
+                            },
                         },
                         "narrative_chain": [
                             {
                                 "shot_id": "shot_0002",
                                 "story_state_before": "Karl has just confessed fear.",
                                 "sets_up_next": "Friedrich enters with a memory of home.",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1850,7 +1901,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "hans", "name": "Hans", "visual_description": "mud-covered soldier", "msr_sheet_path": actor_sheet.relative_to(project).as_posix()}],
                         "locations": [{"id": "trench", "name": "Trench Line", "visual_description": "muddy trench", "msr_sheet_path": location_sheet.relative_to(project).as_posix()}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1862,7 +1913,7 @@ class MovieProjectTests(unittest.TestCase):
                         "2": {"inputs": {"image": ""}, "_meta": {"title": "#MSR_BACKGROUND"}},
                         "27": {"inputs": {"global_prompt": "", "local_prompts": "", "segment_lengths": ""}, "_meta": {"title": "#PROMPT_RELAY"}},
                         "4": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1913,7 +1964,9 @@ class MovieProjectTests(unittest.TestCase):
             self.assertNotIn("Friedrich enters with a memory of home", relay_inputs["local_prompts"])
 
     def test_movie_msr_silent_shot_prompt_avoids_music_and_vocal_trigger_words(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -1930,7 +1983,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24, "dialogue_language": "English"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1945,9 +1998,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "duration_seconds": 4,
                                 "action": "Mara stands still and breathes quietly",
                                 "reference_ids": {"actors": ["mara"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1958,7 +2011,7 @@ class MovieProjectTests(unittest.TestCase):
                     {
                         "actors": [{"id": "mara", "name": "Mara", "visual_description": "quiet archivist", "msr_sheet_path": "actor.png"}],
                         "locations": [{"id": "archive", "name": "Archive", "visual_description": "dusty archive", "msr_sheet_path": "location.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -1980,7 +2033,14 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_continuity_fallback_drops_screenplay_dumps_from_carryovers(self):
         from feverslop.application.movie import build_movie_continuity_fallback
-        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+        from feverslop.domain.movie import (
+            CinematicShot,
+            MovieActor,
+            MovieBible,
+            MovieContinuityRule,
+            MovieLocation,
+            StoryArch,
+        )
 
         screenplay_dump = (
             "EXT. SOMME VALLEY - DAY (1916): German soldiers move through fog; "
@@ -2020,7 +2080,9 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIn("Hans keeps the torn gray coat", carryovers)
 
     def test_movie_msr_enrichment_writes_multi_actor_global_reference_prompt(self):
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -2040,7 +2102,7 @@ class MovieProjectTests(unittest.TestCase):
                         "continuity": [],
                         "style_constraints": [],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2057,9 +2119,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "acting": "restrained suspicion",
                                 "action": "both characters hold their ground",
                                 "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2071,7 +2133,7 @@ class MovieProjectTests(unittest.TestCase):
                             {"id": "ivo", "name": "Ivo", "role": "rival", "visual_description": "white suit and silver cane", "msr_sheet_path": "movie/references/actors/ivo/msr_sheet.png"},
                         ],
                         "locations": [{"id": "archive", "name": "Archive", "visual_description": "quiet archive room", "msr_sheet_path": "movie/references/locations/archive/views/hero.png"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2088,8 +2150,8 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("Visible cast: Mara (`mara`) and Ivo (`ivo`)", ltx["original_style_i2v_prompt"])
 
     def test_movie_orchestrator_scaffolds_story_arch_and_render_plan(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = ScaffoldMovieUseCase(
@@ -2105,7 +2167,7 @@ class MovieProjectTests(unittest.TestCase):
                     width=1280,
                     height=704,
                     mode="scaffold",
-                )
+                ),
             )
 
             self.assertEqual("door-below", result.project_slug)
@@ -2192,7 +2254,7 @@ class MovieProjectTests(unittest.TestCase):
                     source_type="short_story",
                     story_text="A man fights a succubus and demonic goat inside a desolate void.",
                     desired_length=8,
-                )
+                ),
             )
             root = Path(temp_dir) / "void"
             manifest = json.loads((root / "movie" / "references" / "manifest.json").read_text())
@@ -2272,7 +2334,7 @@ class MovieProjectTests(unittest.TestCase):
                     source_type="short_story",
                     story_text="A man fights a succubus and goat demon inside a dreamscape.",
                     desired_length=8,
-                )
+                ),
             )
 
             manifest = json.loads(result.reference_manifest_path.read_text())
@@ -2289,7 +2351,10 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("Four vertical panels in one image", goat["prompt"])
 
     def test_movie_actor_reference_prompts_drop_closeup_and_motion_cues(self):
-        from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
+        from feverslop.application.movie import (
+            build_movie_actor_reference_prompt,
+            build_movie_actor_visual_description,
+        )
 
         visual_description = build_movie_actor_visual_description(
             "Extreme close-up of the man's eye fluttering as the screen fades; "
@@ -2308,7 +2373,11 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_auto_produce_movie_generates_references_before_rendering(self):
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
-        from feverslop.application.movie import AutoProduceMovieUseCase, MovieInput, ScaffoldMovieUseCase
+        from feverslop.application.movie import (
+            AutoProduceMovieUseCase,
+            MovieInput,
+            ScaffoldMovieUseCase,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             reference_generator = FakeMovieReferenceGenerator()
@@ -2329,15 +2398,15 @@ class MovieProjectTests(unittest.TestCase):
                     story_text="A locksmith finds a glowing door below an abandoned station.",
                     desired_length=30,
                     mode="full_auto",
-                )
+                ),
             )
 
             self.assertEqual([Path(temp_dir) / "door-below"], reference_generator.calls)
             self.assertEqual(Path(temp_dir) / "door-below" / "output" / "movie" / "door-below.mp4", result.final_video_path)
 
     def test_screenplay_scaffold_preserves_location_action_and_dialogue(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         screenplay = """
         INT. ABANDONED STATION - NIGHT
@@ -2364,7 +2433,7 @@ class MovieProjectTests(unittest.TestCase):
                     story_text=screenplay,
                     desired_length=24,
                     mode="scaffold",
-                )
+                ),
             )
 
             render_plan = json.loads(result.render_plan_path.read_text())
@@ -2377,8 +2446,8 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("interior", first["camera"].lower())
 
     def test_screenplay_scaffold_accepts_markdown_scene_headings_and_parentheticals(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         screenplay = """
         **TITLE: THE MUD AND THE SILENCE**
@@ -2416,7 +2485,7 @@ class MovieProjectTests(unittest.TestCase):
                     desired_length=20,
                     mode="scaffold",
                     config={"dialogue_language": "german"},
-                )
+                ),
             )
 
             screenplay_artifact = json.loads(result.screenplay_path.read_text(encoding="utf-8"))
@@ -2443,7 +2512,9 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIn("#SAVE_IMAGE", titles)
 
     def test_movie_two_ref_edit_backend_patches_plate_character_and_prompt(self):
-        from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
+        from feverslop.adapters.movie_edit_image_backend import (
+            MovieTwoRefEditImageBackend,
+        )
 
         class FakeClient:
             def __init__(self):
@@ -2483,7 +2554,7 @@ class MovieProjectTests(unittest.TestCase):
                         "3": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}},
                         "4": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}, "_meta": {"title": "#PROMPT_NEGATIVE"}},
                         "5": {"class_type": "SaveImage", "inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_IMAGE"}},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2510,8 +2581,8 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual("movie_edit/scene_0001_pass_02", client.queued["5"]["inputs"]["filename_prefix"])
 
     def test_screenplay_scaffold_preserves_multilingual_dialogue_without_translations(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         screenplay = """
         EXT. STONE CLEARING - DUSK
@@ -2537,7 +2608,7 @@ class MovieProjectTests(unittest.TestCase):
                     story_text=screenplay,
                     desired_length=12,
                     mode="scaffold",
-                )
+                ),
             )
 
             screenplay_artifact = json.loads(result.screenplay_path.read_text(encoding="utf-8"))
@@ -2570,9 +2641,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "actor_ids": ["leo", "morwenna"],
                                 "dialogue": "MORWENNA: Tu tardes.",
                                 "duration_seconds": 5,
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2588,7 +2659,7 @@ class MovieProjectTests(unittest.TestCase):
                             {"id": "stone_clearing", "name": "Stone Clearing", "visual_description": "mossy forest clearing with a flat ritual stone"},
                         ],
                         "runtime_constraints": {"fps": 24},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2599,8 +2670,8 @@ class MovieProjectTests(unittest.TestCase):
                         "actors": [
                             {"id": "leo", "msr_sheet_path": "movie/references/actors/leo/msr_sheet.png"},
                             {"id": "morwenna", "sheet_path": "movie/references/actors/morwenna/sheet.png"},
-                        ]
-                    }
+                        ],
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2640,9 +2711,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "location_id": "stone_hut",
                                 "actor_ids": ["morwenna", "leo"],
                                 "duration_seconds": 5,
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2652,7 +2723,7 @@ class MovieProjectTests(unittest.TestCase):
                         "title": "Blackwood",
                         "actors": [{"id": "morwenna", "name": "Morwenna"}, {"id": "leo", "name": "Leo"}],
                         "locations": [{"id": "stone_hut", "name": "Stone Hut", "visual_description": "stone interior with hearth, baskets, jars, and tools"}],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2670,7 +2741,9 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIn("full-body standing human scale", first_pass["prompt"])
 
     def test_movie_i2v_render_plan_matches_classic_render_contract(self):
-        from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
+        from feverslop.application.movie_i2v_render_plan import (
+            write_movie_i2v_render_plan,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -2689,9 +2762,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "base_plate_prompt": "Scene-only background plate.",
                                 "edit_passes": [{"pass": 1, "actor_id": "leo", "prompt": "Add only leo from Image 2 into Image 1."}],
                                 "video_prompt": "Use the supplied startframe. Leo walks slowly.",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2777,8 +2850,8 @@ class MovieProjectTests(unittest.TestCase):
                             "actor_id": "leo",
                             "reference_image_path": "movie/references/actors/leo/hero.png",
                             "prompt": "Add only leo.",
-                        }
-                    ]
+                        },
+                    ],
                 },
             }
             base = FakeBaseBackend()
@@ -2817,7 +2890,7 @@ class MovieProjectTests(unittest.TestCase):
                             "edit_passes": [
                                 {"pass": 1, "actor_id": "leo", "reference_image_path": "movie/references/actors/leo/hero.png", "prompt": "Add leo."},
                                 {"pass": 2, "actor_id": "morwenna", "reference_image_path": "movie/references/actors/morwenna/hero.png", "prompt": "Add morwenna."},
-                            ]
+                            ],
                         },
                     },
                     {
@@ -2826,7 +2899,7 @@ class MovieProjectTests(unittest.TestCase):
                         "movie": {
                             "edit_passes": [
                                 {"pass": 1, "actor_id": "leo", "reference_image_path": "movie/references/actors/leo/hero.png", "prompt": "Add leo."},
-                            ]
+                            ],
                         },
                     },
                 ]
@@ -2916,9 +2989,9 @@ class MovieProjectTests(unittest.TestCase):
                                 "view_id": "stone_hut_hearth",
                                 "selected_actor_ids": ["leo", "morwenna"],
                                 "video_prompt": "Leo stops breathing as Morwenna turns.",
-                            }
+                            },
                         ],
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -2931,8 +3004,8 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIn("scene_0001.png", html)
 
     def test_short_story_scaffold_still_generates_screenplay_from_unformatted_idea(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = ScaffoldMovieUseCase(
@@ -2946,7 +3019,7 @@ class MovieProjectTests(unittest.TestCase):
                     story_text="A deserter follows a broken compass through a silent battlefield and finds a buried radio.",
                     desired_length=24,
                     mode="scaffold",
-                )
+                ),
             )
 
             screenplay_artifact = json.loads(result.screenplay_path.read_text(encoding="utf-8"))
@@ -2956,8 +3029,8 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("deserter", screenplay_artifact["scenes"][0]["action"].lower())
 
     def test_screenplay_scaffold_seeds_reference_manifest_from_screenplay_cues(self):
-        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
         from feverslop.adapters.movie_planning import DeterministicMoviePlanner
+        from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 
         screenplay = """
         INT. ABANDONED STATION - NIGHT
@@ -2980,7 +3053,7 @@ class MovieProjectTests(unittest.TestCase):
                     story_text=screenplay,
                     desired_length=12,
                     mode="scaffold",
-                )
+                ),
             )
 
             bible = json.loads(result.bible_path.read_text())
@@ -3022,7 +3095,7 @@ class MovieProjectTests(unittest.TestCase):
                                 "id": "primary_location",
                                 "name": "Primary Location",
                                 "visual_description": "Primary Location, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere",
-                            }
+                            },
                         ],
                     }})
 
@@ -3062,9 +3135,9 @@ class MovieProjectTests(unittest.TestCase):
                         "id": "korridor_der_station_nacht",
                         "name": "KORRIDOR DER STATION - NACHT",
                         "visual_description": "KORRIDOR DER STATION - NACHT, story-defined cinematic location with consistent production design, geography, lighting, and atmosphere",
-                    }
+                    },
                 ],
-            }
+            },
         )
 
         self.assertEqual("KORRIDOR DER STATION - NACHT", bible.locations[0].visual_description)
@@ -3194,7 +3267,9 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual(["5", 0], patched["61"]["inputs"]["audio_vae"])
 
     def test_msr_backend_renders_without_custom_audio_when_upload_disabled(self):
-        from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+        from feverslop.adapters.comfyui_msr_video_backend import (
+            ComfyUIMSRVideoRenderBackend,
+        )
         from feverslop.ports.rendering import VideoRenderRequest
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3224,7 +3299,7 @@ class MovieProjectTests(unittest.TestCase):
                     audio_file=temp / "missing.mp3",
                     storyboard_dir=temp / "storyboard",
                     upload_audio=False,
-                )
+                ),
             )
 
             self.assertEqual(temp / "out" / "raw" / "scene_0001_raw.mp4", output)
@@ -3233,8 +3308,12 @@ class MovieProjectTests(unittest.TestCase):
             self.assertFalse(any("audio" in key.lower() for node in queued_workflow.values() for key in node.get("inputs", {})))
 
     def test_comfyui_movie_ingredients_adapter_disables_audio_upload(self):
-        from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
-        from feverslop.adapters.movie_ingredients_visual import ComfyUIMovieIngredientsVisualAdapter
+        from feverslop.adapters.comfyui_ingredients_video_backend import (
+            ComfyUIIngredientsVideoRenderBackend,
+        )
+        from feverslop.adapters.movie_ingredients_visual import (
+            ComfyUIMovieIngredientsVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -3361,7 +3440,7 @@ class MovieProjectTests(unittest.TestCase):
                             "description": "A tense lock opens below the city.",
                             "duration_seconds": 2,
                             "reference_ids": {"actors": ["main_character"], "location": "primary_location"},
-                        }
+                        },
                     ],
                 }),
                 encoding="utf-8",
@@ -3476,12 +3555,12 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual(expected_startframe.parent, temporary_frame.parent)
             self.assertTrue(
                 temporary_frame.name.startswith(
-                    ".scene_0001_to_0002_start-"
-                )
+                    ".scene_0001_to_0002_start-",
+                ),
             )
             self.assertTrue(expected_startframe.is_file())
             scene_1_workflow = queue.calls[0][0]
-            self.assertFalse(any("#STARTFRAME" == node.get("_meta", {}).get("title") for node in scene_1_workflow.values()))
+            self.assertFalse(any(node.get("_meta", {}).get("title") == "#STARTFRAME" for node in scene_1_workflow.values()))
             scene_2_workflow = queue.calls[1][0]
             self.assertEqual("scene_0001_to_0002_start.png", scene_2_workflow["11"]["inputs"]["image"])
 
@@ -3526,7 +3605,7 @@ class MovieProjectTests(unittest.TestCase):
                                         "frame_start": 0,
                                         "frame_end": 47,
                                         "prompt": "Mara waits at the archive threshold as fog drifts outward.",
-                                    }
+                                    },
                                 ],
                             },
                         },
@@ -3542,7 +3621,7 @@ class MovieProjectTests(unittest.TestCase):
                                         "frame_start": 0,
                                         "frame_end": 47,
                                         "prompt": "Mara steps through the archive door.",
-                                    }
+                                    },
                                 ],
                             },
                         },
@@ -3610,7 +3689,7 @@ class MovieProjectTests(unittest.TestCase):
             ).render_movie(project_dir=temp, render_plan_path=render_plan_path)
 
             self.assertEqual([], postprocessor.last_frame_extracts)
-            self.assertFalse(any("#STARTFRAME" == node.get("_meta", {}).get("title") for node in queue.calls[1][0].values()))
+            self.assertFalse(any(node.get("_meta", {}).get("title") == "#STARTFRAME" for node in queue.calls[1][0].values()))
 
     def test_comfyui_movie_adapter_requires_previous_clip_for_selected_continuous_scene(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
@@ -3797,7 +3876,9 @@ class MovieProjectTests(unittest.TestCase):
                 self.assertEqual("workflows/video_minimax_h3_t2v.json", config["i2v_workflow"])
 
     def test_movie_visual_factory_selects_minimax_adapter(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
         from feverslop.studio.job_service import build_movie_visual_adapter
 
         adapter = build_movie_visual_adapter(
@@ -3810,7 +3891,9 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual("minimax-h3-i2v", adapter.video_pipeline)
 
     def test_minimax_movie_adapter_materializes_h3_prompt_and_msr_references(self):
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_dir = Path(temp_dir)
@@ -3888,7 +3971,9 @@ class MovieProjectTests(unittest.TestCase):
         self.assertIsInstance(generator.backend, ComfyUIImageBackend)
 
     def test_movie_reference_generator_can_select_sequence_sheet_mode(self):
-        from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
+        from feverslop.adapters.sequence_to_sheet_backend import (
+            ComfyUISequenceToSheetBackend,
+        )
         from feverslop.studio.job_service import build_movie_reference_generator
 
         generator = build_movie_reference_generator({"reference_generation": "sequence_sheet"})
@@ -3965,8 +4050,8 @@ class MovieProjectTests(unittest.TestCase):
                                 "expression": "wary focus",
                                 "location": "abandoned station",
                                 "dialogue": "MARA: We go below.",
-                            }
-                        ]
+                            },
+                        ],
                 },
                 "story_arch": {"premise": "A locksmith descends below the city.", "beats": ["Mara finds the door."]},
         })
@@ -4061,7 +4146,15 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_shot_plan_prompt_INCLUDES_screenplay(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
-        from feverslop.domain.movie import MovieBible, MovieActor, MovieLocation, MovieContinuityRule, StoryArch, MovieScreenplayArtifact, MovieScreenplayScene
+        from feverslop.domain.movie import (
+            MovieActor,
+            MovieBible,
+            MovieContinuityRule,
+            MovieLocation,
+            MovieScreenplayArtifact,
+            MovieScreenplayScene,
+            StoryArch,
+        )
         from feverslop.prompting.guide_loader import load_markdown_guide
 
         modules = FakeMoviePlanningModules(responses={"shot_plan_from_bible": {
@@ -4131,8 +4224,8 @@ class MovieProjectTests(unittest.TestCase):
                                 "duration_seconds": 4,
                                 "actor_ids": ["mara"],
                                 "location_id": "archive",
-                            }
-                        ]
+                            },
+                        ],
                 },
                 "story_arch": {
                     "premise": "A story with at least 3 characters entering a haunted archive.",
@@ -4173,7 +4266,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("movie/references/locations/primary_location/views/hero.png", manifest["locations"][0]["msr_sheet_path"])
             self.assertGreaterEqual(len(backend.requests), 2)
             self.assertTrue(
-                backend.requests[0].prompt.startswith("Full-body cinematic character reference sheet for Mara.")
+                backend.requests[0].prompt.startswith("Full-body cinematic character reference sheet for Mara."),
             )
             self.assertEqual("gothic protagonist", manifest["actors"][0]["visual_description"])
             self.assertEqual(1, backend.requests[0].prompt.count("Full-body cinematic character reference sheet"))
@@ -4183,7 +4276,9 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_reference_generator_can_use_sequence_sheet_mode(self):
         from feverslop.application.movie_references import MovieReferenceSheetGenerator
-        from feverslop.application.sequence_reference_pipeline import SequenceReferenceResult
+        from feverslop.application.sequence_reference_pipeline import (
+            SequenceReferenceResult,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -4239,7 +4334,7 @@ class MovieProjectTests(unittest.TestCase):
                         "action": "The tormented man walks through fog",
                         "location": "The Desolate Void",
                         "reference_ids": {"actors": ["tormented_man", "demonic_goat"], "location": "desolate_void"},
-                    }
+                    },
                 ]),
                 encoding="utf-8",
             )
@@ -4251,7 +4346,7 @@ class MovieProjectTests(unittest.TestCase):
                             "name": "Tormented Man",
                             "prompt": "consistent cinematic character Tormented Man for tm3, drawn from the story premise",
                             "msr_sheet_path": "x.png",
-                        }
+                        },
                     ],
                     "locations": [{"id": "the_desolate_void", "name": "The Desolate Void", "prompt": "", "msr_sheet_path": "y.png"}],
                 }),
@@ -4302,7 +4397,7 @@ class MovieProjectTests(unittest.TestCase):
                             "location": "Dreamscape",
                             "reference_ids": {"actors": ["the_succubus", "the_goat_demon"], "location": "dreamscape"},
                         },
-                    ]
+                    ],
                 }),
                 encoding="utf-8",
             )
@@ -4322,7 +4417,7 @@ class MovieProjectTests(unittest.TestCase):
                             "visual_description": mixed_prompt,
                             "image_prompt": mixed_prompt,
                             "msr_sheet_path": "movie/references/actors/the_goat_demon/msr_sheet.png",
-                        }
+                        },
                     ],
                     "locations": [{"id": "dreamscape", "name": "Dreamscape", "prompt": "Dreamscape", "msr_sheet_path": "x.png"}],
                 }),
@@ -4625,7 +4720,9 @@ class MovieProjectTests(unittest.TestCase):
             manifest["locations"][0]["msr_sheet_path"] = "movie/references/locations/primary_location/views/hero.png"
             manifest["generator_backend"] = "local"
             (project_dir / "movie" / "references" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-            from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+            from feverslop.application.movie_msr_enrichment import (
+                enrich_movie_render_plan_with_msr_prompts,
+            )
 
             enrich_movie_render_plan_with_msr_prompts(project_dir=project_dir)
 
@@ -4661,7 +4758,13 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_screenplay_prompt_requires_dialogue(self):
         from feverslop.adapters.movie_planning import LLMMoviePlanner
-        from feverslop.domain.movie import MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+        from feverslop.domain.movie import (
+            MovieActor,
+            MovieBible,
+            MovieContinuityRule,
+            MovieLocation,
+            StoryArch,
+        )
 
         modules = FakeMoviePlanningModules(responses={"screenplay": {
                     "title": "Test",
@@ -4754,7 +4857,7 @@ class TestLocationMergeHelpers(unittest.TestCase):
         self.assertTrue(_location_id_matches(
             "blackwood_forest_day_2024", "blackwood_forest",
             name_a="EXT. BLACKWOOD FOREST - DAY (2024)",
-            name_b="Blackwood Forest"
+            name_b="Blackwood Forest",
         ))
 
     def test_location_id_matches_different(self):
@@ -4763,7 +4866,7 @@ class TestLocationMergeHelpers(unittest.TestCase):
         self.assertFalse(_location_id_matches(
             "hut", "clearing",
             name_a="INT. HUT - NIGHT",
-            name_b="Clearing"
+            name_b="Clearing",
         ))
 
     def test_location_visual_description_basic(self):
@@ -4991,7 +5094,7 @@ def _continuity_handoff_factory(
             postprocessor,
             project_dir=project_dir,
             selected_rerender=selected_rerender,
-        )
+        ),
     )
 
 
@@ -5123,7 +5226,14 @@ class TestRefineLocationPrompts(unittest.TestCase):
 
     def test_reference_manifest_prefers_image_prompt(self):
         from feverslop.application.movie import _reference_manifest
-        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
+        from feverslop.domain.movie import (
+            CinematicShot,
+            MovieActor,
+            MovieBible,
+            MovieLocation,
+            MovieProject,
+            StoryArch,
+        )
 
         bible = MovieBible(
             title="Test",
@@ -5164,7 +5274,14 @@ class TestRefineLocationPrompts(unittest.TestCase):
 
     def test_reference_manifest_falls_back_to_visual_description(self):
         from feverslop.application.movie import _reference_manifest
-        from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieProject, StoryArch
+        from feverslop.domain.movie import (
+            CinematicShot,
+            MovieActor,
+            MovieBible,
+            MovieLocation,
+            MovieProject,
+            StoryArch,
+        )
 
         bible = MovieBible(
             title="Test",

@@ -8,13 +8,13 @@ from feverslop.application.visual_consistency import (
     build_scene_contract,
     normalize_reference_ids,
 )
+from feverslop.domain.scene_cast import resolve_scene_cast
 from feverslop.domain.visual_consistency import (
-    can_handoff,
     ConsistencyIssue,
     PreflightMode,
     SceneConsistencyContract,
+    can_handoff,
 )
-from feverslop.domain.scene_cast import resolve_scene_cast
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
@@ -39,19 +39,19 @@ def resolve_preflight_workflow_profile(
     if len(stored_profiles) > 1:
         profiles = ", ".join(sorted(stored_profiles))
         raise ValueError(
-            f"Render plan contains mixed visual consistency workflow profiles: {profiles}"
+            f"Render plan contains mixed visual consistency workflow profiles: {profiles}",
         )
     if stored_profiles:
         stored_profile = next(iter(stored_profiles))
         if explicit_profile and explicit_profile != stored_profile:
             raise ValueError(
                 "Selected workflow profile does not match the stored visual "
-                f"consistency profile: {explicit_profile} != {stored_profile}"
+                f"consistency profile: {explicit_profile} != {stored_profile}",
             )
         return stored_profile
     if has_structured_contract:
         raise ValueError(
-            "Structured visual consistency contracts must declare workflow_profile"
+            "Structured visual consistency contracts must declare workflow_profile",
         )
     if explicit_profile:
         return explicit_profile
@@ -101,7 +101,7 @@ def preflight_visual_consistency(
                     scene_number,
                     f"Scene number {scene_number} appears more than once",
                     policy,
-                )
+                ),
             )
         seen_scene_numbers.add(scene_number)
         malformed = _malformed_reference_bindings(scene)
@@ -113,7 +113,7 @@ def preflight_visual_consistency(
                     f"Scene {scene_number} has malformed reference bindings: "
                     f"{malformed}",
                     policy,
-                )
+                ),
             )
             previous_contract = None
             continue
@@ -125,7 +125,7 @@ def preflight_visual_consistency(
                     scene_number,
                     f"Scene {scene_number} has no structured reference bindings",
                     policy,
-                )
+                ),
             )
             previous_contract = None
             continue
@@ -151,7 +151,7 @@ def preflight_visual_consistency(
                     scene_number,
                     f"Scene {scene_number} exceeds the configured visible actor limit",
                     policy,
-                )
+                ),
             )
         missing_bindings = False
         for actor_id in actor_ids:
@@ -171,7 +171,7 @@ def preflight_visual_consistency(
                         f"{actor_id!r}"
                     ),
                     policy,
-                )
+                ),
             )
         if location_id and (
             location_id,
@@ -197,7 +197,7 @@ def preflight_visual_consistency(
                         f"{location_id!r}"
                     ),
                     policy,
-                )
+                ),
             )
         if missing_bindings:
             previous_contract = None
@@ -224,7 +224,7 @@ def preflight_visual_consistency(
                         f"Scene {scene_number} requests a continuous transition "
                         "that the workflow or adjacent contracts cannot support",
                         policy,
-                    )
+                    ),
                 )
         stored = scene.get("visual_consistency")
         stored_fingerprint = (
@@ -241,7 +241,7 @@ def preflight_visual_consistency(
                     scene_number,
                     f"Scene {scene_number} has a stale visual consistency fingerprint",
                     policy,
-                )
+                ),
             )
         previous_contract = contract
     return VisualConsistencyPreflightResult(tuple(contracts), tuple(issues))
@@ -261,7 +261,7 @@ def _mode_issues(
         ingredients = scene.get("ingredients")
         ingredients = ingredients if isinstance(ingredients, Mapping) else {}
         sheet = ingredients.get("sheet_path") or scene.get(
-            "ingredients_scene_sheet"
+            "ingredients_scene_sheet",
         )
         if not isinstance(sheet, str) or not sheet.strip():
             issues.append(
@@ -270,10 +270,10 @@ def _mode_issues(
                     contract.scene,
                     f"Scene {contract.scene} has no Ingredients sheet",
                     policy,
-                )
+                ),
             )
         anchors = ingredients.get("anchors") or scene.get(
-            "ingredients_scene_sheet_anchors"
+            "ingredients_scene_sheet_anchors",
         )
         anchor_ids = {
             str(anchor.get("id") or "").strip()
@@ -288,7 +288,7 @@ def _mode_issues(
                     contract.scene,
                     f"Scene {contract.scene} Ingredients anchors do not match references",
                     policy,
-                )
+                ),
             )
     elif contract.mode == "msr":
         raw_actor_roles = (
@@ -312,7 +312,7 @@ def _mode_issues(
                     contract.scene,
                     f"Scene {contract.scene} has no MSR role for every actor",
                     policy,
-                )
+                ),
             )
         raw_location_role = (
             references.get("location_msr_path")
@@ -330,7 +330,7 @@ def _mode_issues(
                     contract.scene,
                     f"Scene {contract.scene} has no MSR location role",
                     policy,
-                )
+                ),
             )
     return issues
 

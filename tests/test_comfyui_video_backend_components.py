@@ -1,7 +1,7 @@
-﻿import unittest
-import hashlib
+﻿import hashlib
 import json
 import tempfile
+import unittest
 from pathlib import Path
 
 
@@ -221,7 +221,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                     "#PROMPT_RELAY",
                     "#SAVE_VIDEO",
                     "#LORA_1",
-                ]
+                ],
             ),
             encoding="utf-8",
         )
@@ -239,7 +239,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                     "#PROMPT_POSITIVE",
                     "#SAVE_VIDEO",
                     "#LORA_1",
-                ]
+                ],
             ),
             encoding="utf-8",
         )
@@ -293,7 +293,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                         "#FRAMERATE",
                         "#SEED",
                         "#SAVE_VIDEO",
-                    ]
+                    ],
                 ),
                 encoding="utf-8",
             )
@@ -332,7 +332,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                         },
                         "8": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
                         "9": {"inputs": {}, "class_type": "LTXVEmptyLatentAudio"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -358,7 +358,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                         "7": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}},
                         "8": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
                         "9": {"inputs": {}, "class_type": "LTXVEmptyLatentAudio"},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -422,7 +422,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                         "#SEED",
                         "#PROMPT_RELAY",
                         "#SAVE_VIDEO",
-                    ]
+                    ],
                 ),
                 encoding="utf-8",
             )
@@ -496,7 +496,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                             "inputs": {"lora_name": "workflow-default.safetensors", "strength_model": 0.85},
                             "_meta": {"title": "#LORA_1"},
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -560,7 +560,10 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
 
     def test_lora_patching_is_delegated_to_lora_workflow_patcher(self):
         from feverslop.adapters.lora_workflow_patcher import LoraWorkflowPatcher
-        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, ResolvedLoraConfig
+        from feverslop.adapters.ltx_workflow_patcher import (
+            LTXWorkflowPatcher,
+            ResolvedLoraConfig,
+        )
         from feverslop.adapters.workflow_patcher import WorkflowPatcher
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -579,7 +582,7 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                             strength_clip_explicit=True,
                         ),
                     ),
-                )
+                ),
             )
             patcher = WorkflowPatcher(
                 {
@@ -587,8 +590,8 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
                         "inputs": {"lora_name": "", "strength_model": 1.0, "strength_clip": 1.0},
                         "class_type": "LoraLoader",
                         "_meta": {"title": "#LORA_1"},
-                    }
-                }
+                    },
+                },
             )
 
             ltx.patch_lora_inputs(patcher)
@@ -633,9 +636,9 @@ class ComfyUIRenderQueueTests(unittest.TestCase):
                             {"filename": "d.webm", "subfolder": "", "type": "output"},
                             {"filename": "note.txt", "subfolder": "", "type": "output"},
                         ],
-                    }
-                }
-            }
+                    },
+                },
+            },
         )
 
         self.assertEqual(["a.mp4", "b.mov", "c.mkv", "d.webm"], [item["filename"] for item in videos])
@@ -664,11 +667,11 @@ class ComfyUIRenderQueueTests(unittest.TestCase):
                     "outputs": {
                         "save": {
                             "videos": [
-                                {"filename": "scene_0001.mp4", "subfolder": "ltx_raw", "type": "output"}
-                            ]
-                        }
-                    }
-                }
+                                {"filename": "scene_0001.mp4", "subfolder": "ltx_raw", "type": "output"},
+                            ],
+                        },
+                    },
+                },
             )
             queue = ComfyUIRenderQueue(client)
 
@@ -809,7 +812,7 @@ class ComfyUIImageBackendModelResolverTests(unittest.TestCase):
                     {
                         "1": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},
                         "2": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_IMAGE"}},
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -836,7 +839,7 @@ class ComfyUIImageBackendModelResolverTests(unittest.TestCase):
                         save_image_title="#SAVE_IMAGE",
                         character_lora_title=None,
                     ),
-                )
+                ),
             )
 
             self.assertIn("resolved", client.queued_workflow)
@@ -877,7 +880,7 @@ class ComfyUIImageBackendModelResolverTests(unittest.TestCase):
                             "inputs": {"lora_name": "workflow-default.safetensors", "strength_model": 0.42},
                             "_meta": {"title": "#LORA_1"},
                         },
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -901,7 +904,7 @@ class ComfyUIImageBackendModelResolverTests(unittest.TestCase):
                         save_image_title="#SAVE_IMAGE",
                         character_lora_title="#LORA_1",
                     ),
-                )
+                ),
             )
 
             self.assertEqual(0.42, client.queued_workflow["3"]["inputs"]["strength_model"])
@@ -926,7 +929,10 @@ class ComfyUIVideoBackendOrchestrationTests(unittest.TestCase):
         self.assertNotIn("from feverslop.adapters.workflow_patcher import WorkflowPatcher", text)
 
     def test_video_backend_exposes_injected_collaborators(self):
-        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoBackendConfig, ComfyUIVideoRenderBackend
+        from feverslop.adapters.comfyui_video_backend import (
+            ComfyUIVideoBackendConfig,
+            ComfyUIVideoRenderBackend,
+        )
 
         backend = ComfyUIVideoRenderBackend(
             client=object(),

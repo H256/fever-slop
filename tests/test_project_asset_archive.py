@@ -93,7 +93,7 @@ class ProjectAssetArchiveTests(unittest.TestCase):
                         project / "output" / "render" / "ltx" / "La_Entity_video_only.mp4",
                         "output/render/ltx/La_Entity_video_only.mp4",
                         10,
-                    )
+                    ),
                 ],
                 members,
             )
@@ -223,7 +223,7 @@ class ProjectAssetArchiveTests(unittest.TestCase):
                     "--output",
                     str(output_zip),
                     "--dry-run",
-                ]
+                ],
             )
 
             self.assertEqual(0, exit_code)

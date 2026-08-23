@@ -242,7 +242,7 @@ class TestSetResolutionPipelineStages(unittest.TestCase):
     """Test that --set-resolution resolves to SET_RESOLUTION stage for Issue #220."""
 
     def test_set_resolution_returns_set_resolution_stage(self):
-        from feverslop.composition.arg_parser import build_arg_parser, PipelineStage
+        from feverslop.composition.arg_parser import PipelineStage, build_arg_parser
         from feverslop.composition.stage_runners import resolve_pipeline_stages
 
         parser = build_arg_parser()
@@ -252,7 +252,7 @@ class TestSetResolutionPipelineStages(unittest.TestCase):
 
     def test_set_resolution_ignores_skip_flags(self):
         """--set-resolution should ignore all skip flags."""
-        from feverslop.composition.arg_parser import build_arg_parser, PipelineStage
+        from feverslop.composition.arg_parser import PipelineStage, build_arg_parser
         from feverslop.composition.stage_runners import resolve_pipeline_stages
 
         parser = build_arg_parser()

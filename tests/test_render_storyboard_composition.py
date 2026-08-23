@@ -5,7 +5,9 @@ from pathlib import Path
 
 class RenderStoryboardCompositionTests(unittest.TestCase):
     def test_matching_storyboard_prompt_transform_accepts_suffix_workflow_path(self):
-        from feverslop.composition.render_storyboard import matching_storyboard_prompt_transform
+        from feverslop.composition.render_storyboard import (
+            matching_storyboard_prompt_transform,
+        )
         from feverslop.config.app_config import (
             AppConfig,
             ComfyUIConfig,
@@ -23,7 +25,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
                     template="documentation/ideogram4_prompt_template.md",
                     positive_prompt_input="text",
                     debug_dir="ideogram4_prompt_debug",
-                )
+                ),
             ],
         )
 
@@ -36,7 +38,9 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
         self.assertEqual("text", transform.positive_prompt_input)
 
     def test_matching_storyboard_prompt_transform_accepts_windows_relative_workflow_path(self):
-        from feverslop.composition.render_storyboard import matching_storyboard_prompt_transform
+        from feverslop.composition.render_storyboard import (
+            matching_storyboard_prompt_transform,
+        )
         from feverslop.config.app_config import (
             AppConfig,
             ComfyUIConfig,
@@ -51,7 +55,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
                 StoryboardPromptTransformConfig(
                     workflow="workflows/image_t2i_startframe_ideogram_v1.json",
                     template="documentation/ideogram4_prompt_template.md",
-                )
+                ),
             ],
         )
 

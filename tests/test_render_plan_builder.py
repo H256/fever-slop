@@ -5,17 +5,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.config.video_settings import VideoSettings
 from feverslop.errors import FeverSlopDataError
+
+# Access the private helper for direct unit testing
+from feverslop.pipeline import render_plan_builder as rpb_module
 from feverslop.pipeline.render_plan_builder import (
     DetailListPicker,
     _clamp_relay_segment,
     build_original_style_i2v_prompt,
     build_render_plan,
 )
-from feverslop.config.video_settings import VideoSettings
-
-# Access the private helper for direct unit testing
-from feverslop.pipeline import render_plan_builder as rpb_module
 
 
 class DetailListPickerTests(unittest.TestCase):
@@ -225,7 +225,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                             "zimage_prompt": "z3",
                             "ltx_base_prompt": "The performer holds still in a spotlight.",
                         },
-                    ]
+                    ],
                 ),
                 encoding="utf-8",
             )
@@ -242,7 +242,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                             ],
                         },
                         {"scene": 3, "prompt_relay": []},
-                    ]
+                    ],
                 ),
                 encoding="utf-8",
             )
@@ -288,8 +288,8 @@ class BuildRenderPlanTests(unittest.TestCase):
                             "base_concept": "silent story action",
                             "zimage_prompt": "z",
                             "ltx_base_prompt": "The warrior acts out the story without singing.",
-                        }
-                    ]
+                        },
+                    ],
                 ),
                 encoding="utf-8",
             )
@@ -299,10 +299,10 @@ class BuildRenderPlanTests(unittest.TestCase):
                         {
                             "scene": 1,
                             "prompt_relay": [
-                                {"frame_start": 0, "frame_end": 48, "state": "singing", "lyrics": "do not sing this"}
+                                {"frame_start": 0, "frame_end": 48, "state": "singing", "lyrics": "do not sing this"},
                             ],
-                        }
-                    ]
+                        },
+                    ],
                 ),
                 encoding="utf-8",
             )
@@ -356,7 +356,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                         "ltx_base_prompt": "The warrior sings.",
                         "i2v_prompt_from_t2i": "I2V",
                         "references": {"reference_audio_paths": [str(existing_path)]},
-                    }
+                    },
                 ]),
                 encoding="utf-8",
             )
@@ -427,7 +427,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                         "zimage_prompt": "z",
                         "ltx_base_prompt": "Test",
                         "i2v_prompt_from_t2i": "Test",
-                    }
+                    },
                 ]),
                 encoding="utf-8",
             )
@@ -552,8 +552,8 @@ class BuildRenderPlanTests(unittest.TestCase):
                             "t2i_prompt": "T2I PROMPT",
                             "ltx_base_prompt": "T2I PROMPT",
                             "i2v_prompt_from_t2i": "I2V FROM T2I",
-                        }
-                    ]
+                        },
+                    ],
                 ),
                 encoding="utf-8",
             )
@@ -598,7 +598,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                         "base_concept": "stage",
                         "zimage_prompt": "z",
                         "ltx_base_prompt": "The performer remains still on stage.",
-                    }
+                    },
                 )
                 relay_scenes.append({"scene": scene_number, "prompt_relay": []})
 
@@ -721,7 +721,7 @@ class FrameBoundaryTests(unittest.TestCase):
                         "base_concept": "test",
                         "zimage_prompt": "z",
                         "ltx_base_prompt": "A test prompt.",
-                    }
+                    },
                 ]),
                 encoding="utf-8",
             )
@@ -805,7 +805,7 @@ class TestDefensiveGuardsSceneKeys(unittest.TestCase):
 
             output = tmp / "render_plan.json"
             return build_render_plan(
-                scenes_file, relay_file, output, settings, artifact_store=store
+                scenes_file, relay_file, output, settings, artifact_store=store,
             )
 
     def test_missing_scene_key_raises_data_error(self):

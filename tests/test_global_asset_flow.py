@@ -6,7 +6,10 @@ from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.application.global_cast_resolver import GlobalCastResolver
 from feverslop.config.project_config import GlobalAssetConfig
 from feverslop.domain.global_library import AssetKind, GlobalAsset
-from feverslop.domain.reference_workspace import PropInteraction, SceneReferenceAssignment
+from feverslop.domain.reference_workspace import (
+    PropInteraction,
+    SceneReferenceAssignment,
+)
 
 
 class GlobalAssetFlowTests(unittest.TestCase):

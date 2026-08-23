@@ -8,7 +8,6 @@ from pathlib import Path
 from feverslop.adapters.project_timeline_documents import ProjectTimelineDocuments
 from feverslop.ports.timeline_documents import TimelineReadPort, TimelineWritePort
 
-
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------

@@ -6,7 +6,10 @@ from typing import Any
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.llm_policy import msr_segments_max_tokens
-from feverslop.prompting.msr_signatures import MSRPromptResult, build_msr_signature_bundle
+from feverslop.prompting.msr_signatures import (
+    MSRPromptResult,
+    build_msr_signature_bundle,
+)
 
 
 def _value(result: Any, name: str) -> Any:

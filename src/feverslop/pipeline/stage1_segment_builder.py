@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from feverslop.pipeline.prompt_relay_builder import (
+    lyrics_for_time_range,
+    overlap,
+    parse_scene_dicts,
+)
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.pipeline.prompt_relay_builder import lyrics_for_time_range, parse_scene_dicts, overlap
 
 
 def build_stage1_segment_json(

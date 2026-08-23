@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 
 from feverslop.tools.storyboard_page import (
+    _render_html,
     generate_storyboard_page,
     parse_scene_list,
-    _render_html,
 )
 
 
@@ -26,7 +26,7 @@ def _scene(scene_number: int, base_concept: str = "A story beat.") -> dict:
                     "frame_end": 12,
                     "state": "singing",
                     "prompt": "Relay prompt",
-                }
+                },
             ],
         },
         "metadata": {
@@ -111,8 +111,8 @@ class StoryboardPageTests(unittest.TestCase):
         self.assertIn('<div class="mode-switch" aria-label="Storyboard view mode">', html)
         self.assertIn('data-mode-button="full"', html)
         self.assertIn('data-mode-button="compact"', html)
-        self.assertIn('body.mode-compact .scene-header', html)
-        self.assertIn('body.mode-compact .scene-content', html)
+        self.assertIn("body.mode-compact .scene-header", html)
+        self.assertIn("body.mode-compact .scene-content", html)
         self.assertIn('title="Z prompt &lt;unsafe&gt;"', html)
         self.assertIn("localStorage.setItem('storyboardPageMode', mode);", html)
 

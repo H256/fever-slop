@@ -19,7 +19,7 @@ from feverslop.domain.timeline_editing import (
 class EditableTimelineSegmentTest(unittest.TestCase):
     def test_create_from_timeline_segment(self):
         segment = EditableTimelineSegment(
-            start=0.0, end=5.0, kind="vocals", text="hello"
+            start=0.0, end=5.0, kind="vocals", text="hello",
         )
         self.assertEqual(segment.start, 0.0)
         self.assertEqual(segment.end, 5.0)
@@ -45,7 +45,7 @@ class EditableTimelineSegmentTest(unittest.TestCase):
 
     def test_frozen(self):
         segment = EditableTimelineSegment(
-            start=0.0, end=5.0, kind="vocals", text="hello"
+            start=0.0, end=5.0, kind="vocals", text="hello",
         )
         with self.assertRaises(Exception):
             segment.start = 1.0  # type: ignore
@@ -78,7 +78,7 @@ class SceneBoundaryTest(unittest.TestCase):
 
     def test_custom_min_duration(self):
         boundary = SceneBoundary(
-            start=0.0, end=10.0, reason="long scene", min_duration=8.0
+            start=0.0, end=10.0, reason="long scene", min_duration=8.0,
         )
         self.assertEqual(boundary.min_duration, 8.0)
 
@@ -130,7 +130,7 @@ class BeatMarkerTest(unittest.TestCase):
 class TimelineSnapshotTest(unittest.TestCase):
     def _make_segment(self, start: float, end: float) -> EditableTimelineSegment:
         return EditableTimelineSegment(
-            start=start, end=end, kind="vocals", text="test"
+            start=start, end=end, kind="vocals", text="test",
         )
 
     def _make_boundary(self, start: float, end: float) -> SceneBoundary:
@@ -183,14 +183,14 @@ class TimelineSnapshotTest(unittest.TestCase):
 
     def test_to_json_produces_dict(self):
         snapshot = TimelineSnapshot(
-            segments=[], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[], scene_boundaries=[], beat_markers=[], metadata={},
         )
         data = snapshot.to_json()
         self.assertIsInstance(data, dict)
 
     def test_json_contains_required_keys(self):
         snapshot = TimelineSnapshot(
-            segments=[], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[], scene_boundaries=[], beat_markers=[], metadata={},
         )
         data = snapshot.to_json()
         for key in ("segments", "scene_boundaries", "beat_markers", "metadata"):
@@ -198,7 +198,7 @@ class TimelineSnapshotTest(unittest.TestCase):
 
     def test_snapshot_frozen(self):
         snapshot = TimelineSnapshot(
-            segments=[], scene_boundaries=[], beat_markers=[], metadata={}
+            segments=[], scene_boundaries=[], beat_markers=[], metadata={},
         )
         with self.assertRaises(Exception):
             snapshot.metadata["x"] = 1  # type: ignore
@@ -229,7 +229,7 @@ class TimelineEditImpactTest(unittest.TestCase):
 class SplitSegmentTest(unittest.TestCase):
     def split_at(self, start: float, end: float, at: float):
         seg = EditableTimelineSegment(
-            start=start, end=end, kind="vocals", text="hello world"
+            start=start, end=end, kind="vocals", text="hello world",
         )
         return split_segment(seg, at)
 
@@ -254,7 +254,7 @@ class SplitSegmentTest(unittest.TestCase):
 
     def test_preserves_lyrics_line(self):
         seg = EditableTimelineSegment(
-            start=0.0, end=10.0, kind="vocals", text="", lyrics_line="la la"
+            start=0.0, end=10.0, kind="vocals", text="", lyrics_line="la la",
         )
         left, right = split_segment(seg, 5.0)
         self.assertEqual(left.lyrics_line, "la la")
@@ -469,7 +469,7 @@ class ComputeEditImpactTest(unittest.TestCase):
     def _seg(self, start: float, end: float, **kw) -> EditableTimelineSegment:
         return EditableTimelineSegment(
             start=start, end=end, kind=kw.pop("kind", "vocals"),
-            text=kw.pop("text", "test"), **kw
+            text=kw.pop("text", "test"), **kw,
         )
 
     def _bnd(self, start: float, end: float) -> SceneBoundary:

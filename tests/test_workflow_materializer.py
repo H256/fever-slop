@@ -1,26 +1,33 @@
 from __future__ import annotations
 
 import json
+import unittest
 from inspect import signature
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
+from unittest.mock import patch
 
 from PIL import Image
 
-from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+from feverslop.adapters.comfyui_ingredients_video_backend import (
+    ComfyUIIngredientsVideoRenderBackend,
+)
 from feverslop.adapters.prepared_workflow import (
     PreparedWorkflowRenderer,
     WorkflowMaterializationRequest,
     WorkflowMaterializer,
 )
+from feverslop.application.render_plan_ingredients_sheets import (
+    enrich_render_plan_with_ingredients_sheets,
+)
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest, sha256_file
-from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
+from feverslop.domain.visual_consistency import (
+    ReferenceAnchor,
+    SceneConsistencyContract,
+)
 from feverslop.errors import FeverSlopValidationError
-from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
-from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
-from unittest.mock import patch
+from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class FakeUploader:
@@ -189,14 +196,14 @@ class WorkflowMaterializerTests(unittest.TestCase):
             plan = project / "plan.json"
             plan.write_text("{}")
             prepared = WorkflowMaterializer(
-                FakeBackend(template), SceneArtifactLayout(project)
+                FakeBackend(template), SceneArtifactLayout(project),
             ).prepare(
                 WorkflowMaterializationRequest(
                     scene={"scene": 1, "fps": 24, "frame_count": 50,
                            "width": 64, "height": 64},
                     prompt="x", audio_file=None, render_plan_path=plan,
                     pipeline="test", seed=1,
-                )
+                ),
             )
             payload = json.loads(prepared.manifest_path.read_text())
             for key in (
@@ -236,7 +243,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                                "width": 64, "height": 64},
                         prompt="x", audio_file=None, render_plan_path=plan,
                         pipeline="test", seed=1,
-                    )
+                    ),
                 )
 
             self.assertEqual(0, backend.build_calls)
@@ -258,7 +265,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                            "width": 64, "height": 64},
                     prompt="x", audio_file=None, render_plan_path=plan,
                     pipeline="test", seed=1,
-                )
+                ),
             )
             payload = json.loads(prepared.manifest_path.read_text())
             payload["render_frame_count"] = 50
@@ -331,7 +338,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                 WorkflowMaterializationRequest(
                     scene=scene, prompt="fallback", audio_file=None, render_plan_path=enriched_path,
                     pipeline="ltx_ingredients", seed=1,
-                )
+                ),
             )
             workflow = json.loads(prepared.workflow_path.read_text())
             positive = workflow["2"]["inputs"]["text"]
@@ -376,7 +383,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                     },
                     prompt="move", audio_file=None, render_plan_path=plan,
                     pipeline="ltx_ingredients", seed=1,
-                )
+                ),
             )
 
             manifest = SceneWorkflowManifest.read(prepared.manifest_path)
@@ -399,7 +406,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
             ):
                 path.write_bytes(content)
             contract_payload = self._ingredients_contract(
-                3, sha256_file(actor), sha256_file(location)
+                3, sha256_file(actor), sha256_file(location),
             )
             scene = {
                 "scene": 3,
@@ -417,7 +424,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                         {
                             "id": "hero",
                             "path": actor.relative_to(project).as_posix(),
-                        }
+                        },
                     ],
                     "location": {
                         "id": "archive",
@@ -427,7 +434,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
             }
 
             prepared = WorkflowMaterializer(
-                FakeBackend(template), SceneArtifactLayout(project)
+                FakeBackend(template), SceneArtifactLayout(project),
             ).prepare(
                 WorkflowMaterializationRequest(
                     scene=scene,
@@ -436,7 +443,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                     render_plan_path=plan,
                     pipeline="ltx_ingredients",
                     seed=100003,
-                )
+                ),
             )
 
             manifest = SceneWorkflowManifest.read(prepared.manifest_path)
@@ -450,7 +457,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                 {asset.role for asset in manifest.assets},
             )
             self.assertTrue(
-                all(not Path(asset.path).is_absolute() for asset in manifest.assets)
+                all(not Path(asset.path).is_absolute() for asset in manifest.assets),
             )
             self.assertEqual([], manifest.verify(project))
 
@@ -466,7 +473,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
             backend = FakeBackend(template)
 
             with self.assertRaisesRegex(
-                ValueError, "fingerprint does not match canonical payload"
+                ValueError, "fingerprint does not match canonical payload",
             ):
                 WorkflowMaterializer(backend, SceneArtifactLayout(project)).prepare(
                     WorkflowMaterializationRequest(
@@ -488,7 +495,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                         render_plan_path=plan,
                         pipeline="ltx_ingredients",
                         seed=100001,
-                    )
+                    ),
                 )
 
             self.assertEqual(0, backend.build_calls)
@@ -553,8 +560,8 @@ class WorkflowMaterializerTests(unittest.TestCase):
                 else:
                     contract = SceneConsistencyContract.from_dict(
                         self._ingredients_contract(
-                            1, sha256_file(actor), sha256_file(location)
-                        )
+                            1, sha256_file(actor), sha256_file(location),
+                        ),
                     )
                     pipeline = "ltx_msr" if failure == "mode" else "ltx_ingredients"
                     scene_number = 1
@@ -621,7 +628,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                             render_plan_path=plan,
                             pipeline=pipeline,
                             seed=100000 + scene_number,
-                        )
+                        ),
                     )
 
                 self.assertFalse(layout.scene_manifest(scene_number).exists())
@@ -640,7 +647,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                     scene={"scene": 3, "fps": 24, "frame_count": 9, "width": 64, "height": 64},
                     prompt="x", audio_file=None, render_plan_path=plan,
                     pipeline="test",
-                )
+                ),
             )
 
             self.assertEqual(1, backend.seed_calls)
@@ -746,7 +753,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
         class PortableBackend(FakeBackend):
             def build_workflow(self, scene, *, prompt, comfy_audio_name, rolling):
                 sheet_name = self.asset_uploader.resolve_reference_image_name(
-                    scene["ingredients"]["sheet_path"]
+                    scene["ingredients"]["sheet_path"],
                 )
                 return {
                     "image": {"inputs": {"image": sheet_name}},
@@ -770,7 +777,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(content)
             prepared = WorkflowMaterializer(
-                PortableBackend(template), layout
+                PortableBackend(template), layout,
             ).prepare(
                 WorkflowMaterializationRequest(
                     scene={
@@ -786,11 +793,11 @@ class WorkflowMaterializerTests(unittest.TestCase):
                     render_plan_path=plan,
                     pipeline="ltx_ingredients",
                     seed=2,
-                )
+                ),
             )
             stored = json.loads(prepared.workflow_path.read_text())
             uploader = FakeCurrentServerUploader(
-                existing={"feverslop/audio/song-audiohash.wav"}
+                existing={"feverslop/audio/song-audiohash.wav"},
             )
             resolver = FakeCurrentServerResolver()
             queue = FakeQueue()
@@ -831,7 +838,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                 WorkflowMaterializationRequest(
                     scene={"scene": 2, "fps": 24, "frame_count": 49, "width": 64, "height": 64},
                     prompt="x", audio_file=None, render_plan_path=plan, pipeline="test", seed=2,
-                )
+                ),
             )
 
             manifest = SceneWorkflowManifest.read(prepared.manifest_path)
@@ -850,7 +857,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                 WorkflowMaterializationRequest(
                     scene={"scene": 2, "fps": 24, "frame_count": 9, "width": 64, "height": 64},
                     prompt="x", audio_file=None, render_plan_path=plan, pipeline="test", seed=2,
-                )
+                ),
             )
             queue = FakeQueue()
 
@@ -885,10 +892,10 @@ class WorkflowMaterializerTests(unittest.TestCase):
                     render_plan_path=plan,
                     pipeline="ltx_msr",
                     seed=2,
-                )
+                ),
             )
             manifest_payload = json.loads(
-                prepared.manifest_path.read_text(encoding="utf-8")
+                prepared.manifest_path.read_text(encoding="utf-8"),
             )
             manifest_payload["consistency"] = SceneConsistencyContract.create(
                 scene=2,
@@ -932,7 +939,7 @@ class WorkflowMaterializerTests(unittest.TestCase):
                     scene={"scene": 2, "fps": 24, "frame_count": 9, "width": 64, "height": 64},
                     prompt="x", audio_file=None, render_plan_path=plan,
                     pipeline="test", seed=2,
-                )
+                ),
             )
             impostor = prepared.scene_dir / "impostor.json"
             impostor.write_text(prepared.workflow_path.read_text())

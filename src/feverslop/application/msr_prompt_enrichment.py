@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
-from typing import Any, Callable
 import json
 import logging
 import re
+from collections.abc import Callable
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
 
-from feverslop.errors import FeverSlopLMLError
 from feverslop.domain.vision_references import ReferenceImage
+from feverslop.errors import FeverSlopLMLError
 from feverslop.ports.llm import LLMPort, VisionLLMPort
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.utils.io import atomic_write_json
-
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def enrich_render_plan_with_msr_prompts(
         render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as e:
         raise ValueError(
-            f"Render plan contains invalid JSON: {render_plan_path}\n{e}"
+            f"Render plan contains invalid JSON: {render_plan_path}\n{e}",
         ) from e
 
     enriched = []
@@ -350,7 +350,7 @@ def _build_preroll_prompt(scene: dict) -> str:
     motion = character_motion or f"{actor} remains physically present as the tension builds"
     camera_text = camera or "the camera holds a steady cinematic setup"
     return _clean_segment_prompt(
-        f"Cinematic atmosphere holds around {location}; {atmosphere}; {motion}; {camera_text} before the main action begins."
+        f"Cinematic atmosphere holds around {location}; {atmosphere}; {motion}; {camera_text} before the main action begins.",
     )
 
 
@@ -478,5 +478,5 @@ def _extract_json_array(text: str) -> list[dict[str, Any]]:
         raise ValueError(
             "Could not parse JSON array from LLM response.\n"
             f"Original response:\n{original}\n\n"
-            f"Candidate:\n{candidate}"
+            f"Candidate:\n{candidate}",
         )

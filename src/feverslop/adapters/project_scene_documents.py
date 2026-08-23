@@ -9,10 +9,10 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
-from feverslop.domain.scene_workspace import SceneMedia
-from feverslop.ports.scene_documents import SceneDocumentConflict, SceneDocumentSnapshot
 from feverslop.adapters.artifact_catalog import ArtifactCatalog
 from feverslop.adapters.artifact_locking import artifact_write_lock
+from feverslop.domain.scene_workspace import SceneMedia
+from feverslop.ports.scene_documents import SceneDocumentConflict, SceneDocumentSnapshot
 
 
 class _ArtifactCatalog(Protocol):
@@ -181,7 +181,7 @@ class ProjectSceneDocuments:
                 **{
                     field: min(field_candidates, key=lambda item: (item[0], item[1]))[1]
                     for field, field_candidates in scene_candidates.items()
-                }
+                },
             )
             for scene_number, scene_candidates in candidates.items()
         }
@@ -289,7 +289,7 @@ class ProjectSceneDocuments:
             if candidate is not None:
                 scene_number, rank = candidate
                 candidates.setdefault(scene_number, {}).setdefault(field, []).append(
-                    (rank, relative_path)
+                    (rank, relative_path),
                 )
 
 

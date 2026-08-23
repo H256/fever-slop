@@ -1,12 +1,13 @@
 ﻿from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from feverslop.domain.llm_parsing import extract_json_object
-from feverslop.prompting.music_video_modules import MusicVideoPromptModules
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
+from feverslop.prompting.music_video_modules import MusicVideoPromptModules
 
 
 def chunked(items: list[Any], size: int):
@@ -15,8 +16,7 @@ def chunked(items: list[Any], size: int):
 
 
 class ConceptPromptBatcher:
-    """
-    Robust concept-prompt generation for many music-video scenes.
+    """Robust concept-prompt generation for many music-video scenes.
 
     Why:
     Large single-call JSON generation often drops late keys like segment_040.

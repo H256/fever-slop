@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
 import hashlib
 import json
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +41,7 @@ class ProjectReferenceManifestAdapter:
                 decoded = self._read_manifest(root, path)
                 source_path = path.relative_to(root).as_posix()
                 decoded_manifests.append(
-                    {"path": source_path, "manifest": decoded}
+                    {"path": source_path, "manifest": decoded},
                 )
                 self._add_item(
                     root,
@@ -61,7 +61,7 @@ class ProjectReferenceManifestAdapter:
                 {
                     "path": source_path,
                     "manifest": decoded,
-                }
+                },
             )
             for kind, collection_name, destination, sources in (
                 ("actor", "actors", actors, actor_sources),
@@ -73,13 +73,13 @@ class ProjectReferenceManifestAdapter:
                 if not isinstance(collection, list):
                     raise ValueError(
                         f"Reference manifest {collection_name} must be a JSON array: "
-                        f"{movie_path}"
+                        f"{movie_path}",
                     )
                 for index, item in enumerate(collection):
                     if not isinstance(item, dict):
                         raise ValueError(
                             f"Reference manifest {collection_name}[{index}] "
-                            f"must be a JSON object: {movie_path}"
+                            f"must be a JSON object: {movie_path}",
                         )
                     self._add_item(
                         root,
@@ -166,7 +166,7 @@ class ProjectReferenceManifestAdapter:
             if not isinstance(look, dict):
                 raise ValueError(
                     f"Reference look at index {index} must be a JSON object: "
-                    f"{manifest_path}"
+                    f"{manifest_path}",
                 )
             look_context = f"{context} looks[{index}]"
             look_id = cls._required_string(look.get("id"), "look id", look_context)
@@ -178,7 +178,7 @@ class ProjectReferenceManifestAdapter:
             if not asset_value:
                 raise ValueError(
                     f"Reference look sheet_path is required for {semantic_id!r} "
-                    f"look {look_id!r}: {manifest_path}"
+                    f"look {look_id!r}: {manifest_path}",
                 )
             cls._insert_anchor(
                 destination,
@@ -227,7 +227,7 @@ class ProjectReferenceManifestAdapter:
     def _required_string(value: Any, field: str, context: str) -> str:
         if not isinstance(value, str):
             raise ValueError(
-                f"Reference {field} must be a string: {context}"
+                f"Reference {field} must be a string: {context}",
             )
         return value.strip()
 
@@ -263,7 +263,7 @@ class ProjectReferenceManifestAdapter:
         if not normalized_description:
             raise ValueError(
                 f"Reference visual description is required for {kind} "
-                f"{semantic_id!r} look {look_id!r}: {manifest_path}"
+                f"{semantic_id!r} look {look_id!r}: {manifest_path}",
             )
         asset = cls._resolve_asset(root, asset_value)
         prefix = f"Reference {kind} `{semantic_id}` (look `{look_id}`): "
@@ -305,7 +305,7 @@ class ProjectReferenceManifestAdapter:
             raise ValueError(
                 f"{qualifier} {anchor.kind} reference "
                 f"{anchor.id!r} look {anchor.look_id!r} in {source_path}; "
-                f"first defined in {sources[key]}"
+                f"first defined in {sources[key]}",
             )
         destination[key] = anchor
         sources[key] = source_path
@@ -331,7 +331,7 @@ def validate_project_scene_artifacts(
             ingredients = scene.get("ingredients")
             ingredients = ingredients if isinstance(ingredients, Mapping) else {}
             sheet = ingredients.get("sheet_path") or scene.get(
-                "ingredients_scene_sheet"
+                "ingredients_scene_sheet",
             )
             if isinstance(sheet, str) and sheet.strip():
                 issue = _validate_artifact_path(

@@ -69,13 +69,13 @@ class FaceDebugAdapter:
         if extra_info:
             label = f"{label} | {extra_info}"
         (w, h), _ = cv2.getTextSize(
-            label, font, font_scale, thickness
+            label, font, font_scale, thickness,
         )
         # Position in top-right
         x = overlay.shape[1] - w - 10
         y = 20 + h
         cv2.putText(
-            overlay, label, (x, y), font, font_scale, (0, 0, 255), thickness
+            overlay, label, (x, y), font, font_scale, (0, 0, 255), thickness,
         )
 
         path = self.output_dir / f"detection_frame{frame_index:06d}.png"
@@ -124,7 +124,7 @@ class FaceDebugAdapter:
         else:
             mask_color = mask[:, :, :3]
         composite[:, w * 2 + 2:w * 3 + 2] = cv2.cvtColor(
-            mask_color, cv2.COLOR_RGB2BGR
+            mask_color, cv2.COLOR_RGB2BGR,
         )
 
         path = self.output_dir / f"composite_frame{frame_index:06d}.png"

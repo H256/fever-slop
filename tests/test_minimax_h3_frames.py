@@ -1,10 +1,10 @@
 import unittest
 
 from feverslop.domain.minimax_h3_frames import (
+    MIN_FRAMES,
     MINIMAX_H3_FPS,
     MINIMAX_H3_MAX_DURATION_SECONDS,
     MINIMAX_H3_MIN_DURATION_SECONDS,
-    MIN_FRAMES,
     _duration_from_frames,
     _frames_from_duration,
     _next_valid_17n5,

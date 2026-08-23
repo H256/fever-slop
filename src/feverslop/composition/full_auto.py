@@ -4,7 +4,9 @@ from pathlib import Path
 
 from rich.console import Console
 
-from feverslop.adapters.comfyui_acestep_song_generator import ComfyUIAceStepSongGenerator
+from feverslop.adapters.comfyui_acestep_song_generator import (
+    ComfyUIAceStepSongGenerator,
+)
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold

@@ -72,7 +72,7 @@ def build_startframe_plan(*, project_dir: Path) -> Path:
                     "allowed_motion": ["subtle story-consistent motion"],
                     "forbidden_motion": ["new characters enter", "location changes", "wardrobe changes"],
                 },
-            }
+            },
         )
     output = {"version": 1, "title": str(render_plan.get("title") or bible.get("title") or project_dir.name), "shots": shots}
     output_path = movie_dir / "startframe_plan.json"

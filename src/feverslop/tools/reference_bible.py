@@ -5,19 +5,29 @@ import json
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
-from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
-from feverslop.application.reference_bible import ReferenceBibleGenerator, ReferenceLocation, ReferenceSubject
-from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
 from feverslop.adapters.llm_client import LocalOpenAIClient
+from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
+from feverslop.application.reference_bible import (
+    ReferenceBibleGenerator,
+    ReferenceLocation,
+    ReferenceSubject,
+)
+from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.rendering import WorkflowAnchorConfig
-
 
 console = Console()
 MSR_ACTOR_VIEW_NAMES = ReferenceBibleGenerator.direct_msr_actor_view_names
@@ -78,7 +88,7 @@ def load_reference_subjects(project_config_path: str | Path) -> tuple[list[Refer
                 name="Subject",
                 visual_description=config.subject,
                 image_prompt=config.subject,
-            )
+            ),
         )
 
     locations = [
@@ -158,7 +168,7 @@ def run(args: argparse.Namespace) -> list[Path]:
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
                 dspy_cache=app_config.llm.dspy_cache,
                 max_concurrent_requests=app_config.llm.max_concurrent_requests,
-            )
+            ),
         )
     hero_anchors = WorkflowAnchorConfig(positive_prompt_title=args.hero_positive_title)
     edit_anchors = WorkflowAnchorConfig(
@@ -176,7 +186,7 @@ def run(args: argparse.Namespace) -> list[Path]:
         raise ValueError(
             "No reference actors or locations found. Run the prompt/render-plan step first "
             "so output/prompts/resolved_context_<song>.json exists, or add subject/actors/locations "
-            "to the project config."
+            "to the project config.",
         )
 
     actor_view_names, location_view_names = resolve_view_names(args.view_set)
@@ -191,7 +201,7 @@ def run(args: argparse.Namespace) -> list[Path]:
         f"Locations: [yellow]{len(locations)}[/yellow]  "
         f"Actor views: [yellow]{len(actor_view_names)}[/yellow]  "
         f"Location views: [yellow]{len(location_view_names)}[/yellow]  "
-        f"Total renders: [yellow]{total_views}[/yellow]"
+        f"Total renders: [yellow]{total_views}[/yellow]",
     )
 
     manifests: list[Path] = []
@@ -215,7 +225,7 @@ def run(args: argparse.Namespace) -> list[Path]:
         if sequence_backend is not None:
             console.print(
                 "[cyan]Reference phases:[/cyan] each asset runs the anchor image first, "
-                "then the MiniMax sequence."
+                "then the MiniMax sequence.",
             )
 
         def on_view_complete(event: dict) -> None:

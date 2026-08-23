@@ -142,7 +142,7 @@ class EnsureSchemaTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_file.name)
         ensure_schema(conn)
         version = conn.execute(
-            "SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1"
+            "SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1",
         ).fetchone()[0]
         conn.close()
 
@@ -210,14 +210,14 @@ class EnsureSchemaTests(unittest.TestCase):
                 ON artifact_provenance (project_id);
             CREATE INDEX idx_artifact_provenance_kind
                 ON artifact_provenance (project_id, artifact_kind, scene_number);
-            """
+            """,
         )
 
         ensure_schema(conn)
         indexes = {
             row[0]
             for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'index'"
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
             )
         }
         conn.close()
@@ -234,7 +234,7 @@ class EnsureSchemaTests(unittest.TestCase):
         indexes = {
             row[0]
             for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'index'"
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
             )
         }
         conn.close()

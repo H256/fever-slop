@@ -4,10 +4,10 @@ import numpy as np
 
 from feverslop.adapters.face_compositor import (
     FaceCompositor,
+    _find_entry_for_frame,
+    color_match,
     radial_feather_mask,
     voronoi_partition,
-    color_match,
-    _find_entry_for_frame,
 )
 from feverslop.domain.face_detection import FaceBox, FaceTrackEntry
 

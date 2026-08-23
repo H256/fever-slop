@@ -14,7 +14,6 @@ from feverslop.ports.timeline_documents import (
     AffectedArtifacts,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fake port implementations (shared across tests)
 # ---------------------------------------------------------------------------
@@ -93,7 +92,7 @@ def _make_timeline_dicts(
 def _make_seg(start: float, end: float, **kw: Any) -> EditableTimelineSegment:
     return EditableTimelineSegment(
         start=start, end=end, kind=kw.pop("kind", "vocals"),
-        text=kw.pop("text", "test"), **kw
+        text=kw.pop("text", "test"), **kw,
     )
 
 
@@ -326,7 +325,10 @@ class RebuildDownstreamArtifactsTest(unittest.TestCase):
 
     def test_segment_split_triggers_downstream(self):
         """A segment split (count change) triggers stage1 and render_plan jobs."""
-        from feverslop.application.edit_audio_timeline import ComputeEditImpact, RebuildDownstreamArtifacts
+        from feverslop.application.edit_audio_timeline import (
+            ComputeEditImpact,
+            RebuildDownstreamArtifacts,
+        )
         before = TimelineSnapshot(
             segments=[_make_seg(0, 10)],
             scene_boundaries=[],
@@ -358,7 +360,10 @@ class EditAudioTimelineTest(unittest.TestCase):
         self.write_port = FakeWritePort()
 
     def test_happy_path_edit(self):
-        from feverslop.application.edit_audio_timeline import EditAudioTimeline, EditResult
+        from feverslop.application.edit_audio_timeline import (
+            EditAudioTimeline,
+            EditResult,
+        )
         segs = [_make_seg(0, 10)]
         snap = TimelineSnapshot(segments=segs, scene_boundaries=[], beat_markers=[], metadata={})
         self.read_port.timeline = [snap.to_json()]
@@ -389,7 +394,10 @@ class EditAudioTimelineTest(unittest.TestCase):
         self.assertFalse(result.impact.any())
 
     def test_validation_failure_surfaces(self):
-        from feverslop.application.edit_audio_timeline import EditAudioTimeline, EditError
+        from feverslop.application.edit_audio_timeline import (
+            EditAudioTimeline,
+            EditError,
+        )
         segs = [_make_seg(0, 5)]
         snap = TimelineSnapshot(segments=segs, scene_boundaries=[], beat_markers=[], metadata={})
         self.read_port.timeline = [snap.to_json()]
@@ -403,7 +411,10 @@ class EditAudioTimelineTest(unittest.TestCase):
             use_case.edit(segment_index=0, changes={"start": -1.0})
 
     def test_write_error_surfaces(self):
-        from feverslop.application.edit_audio_timeline import EditAudioTimeline, EditError
+        from feverslop.application.edit_audio_timeline import (
+            EditAudioTimeline,
+            EditError,
+        )
         segs = [_make_seg(0, 5)]
         snap = TimelineSnapshot(segments=segs, scene_boundaries=[], beat_markers=[], metadata={})
         self.read_port.timeline = [snap.to_json()]
@@ -418,7 +429,10 @@ class EditAudioTimelineTest(unittest.TestCase):
             use_case.edit(segment_index=0, changes={"text": "modified"})
 
     def test_out_of_range_index_surfaces(self):
-        from feverslop.application.edit_audio_timeline import EditAudioTimeline, EditError
+        from feverslop.application.edit_audio_timeline import (
+            EditAudioTimeline,
+            EditError,
+        )
         segs = [_make_seg(0, 5)]
         snap = TimelineSnapshot(segments=segs, scene_boundaries=[], beat_markers=[], metadata={})
         self.read_port.timeline = [snap.to_json()]

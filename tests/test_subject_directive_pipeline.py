@@ -1,8 +1,12 @@
-import unittest
 import json
-from unittest.mock import patch
+import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from feverslop.application.ingredients_render_plan import (
+    project_ingredients_runtime_scene,
+)
+from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.domain.subject_directives import (
     PropBinding,
     SpatialRelation,
@@ -10,17 +14,15 @@ from feverslop.domain.subject_directives import (
     SubjectDirectivePlan,
     TemporalScope,
 )
+from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
 from feverslop.prompting.subject_directive_planning import (
     DspySubjectDirectivePlanner,
-    build_shared_staging_plan,
     SubjectDirectivePlanner,
+    build_shared_staging_plan,
     project_directives_to_prompt,
     validate_projected_prompt,
 )
 from feverslop.prompting.subject_directive_projections import project_subject_directives
-from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
-from feverslop.application.ingredients_render_plan import project_ingredients_runtime_scene
-from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 
 
 def _plan():
@@ -48,7 +50,7 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
             "shot_id": "shot-1",
             "duration_seconds": 2,
             "subjects": [
-                {"subject_id": "singer", "role": "singer", "position": "front center", "action": "sings"}
+                {"subject_id": "singer", "role": "singer", "position": "front center", "action": "sings"},
             ],
         })
         self.assertEqual(("singer",), tuple(item.subject_id for item in plan.subjects))
@@ -97,7 +99,7 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
                         "temporal_scope": '{"start_seconds": 0, "end_seconds": 0}',
                         "subjects": '[{"subject_id":"singer","role":"singer","position":"front","action":"sings","temporal_scope":{"start_seconds":0,"end_seconds":0}}]',
                         "spatial_relations": "[]",
-                    }
+                    },
                 }
 
             def make_lm(self, _llm, **_kwargs):
@@ -201,7 +203,7 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
 
         store = Store()
         with patch(
-            "feverslop.application.prompt_generation_pipeline.DspySubjectDirectivePlanner"
+            "feverslop.application.prompt_generation_pipeline.DspySubjectDirectivePlanner",
         ) as planner_type:
             planner_type.return_value.plan.return_value = generated
             PromptGenerationPipeline._generate_subject_directives(
@@ -240,7 +242,7 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
 
         reporter = Reporter()
         with patch(
-            "feverslop.application.prompt_generation_pipeline.DspySubjectDirectivePlanner"
+            "feverslop.application.prompt_generation_pipeline.DspySubjectDirectivePlanner",
         ) as planner_type:
             planner_type.return_value.plan.side_effect = [ValueError("malformed scope"), generated]
             PromptGenerationPipeline._generate_subject_directives(

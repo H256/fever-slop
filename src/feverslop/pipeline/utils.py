@@ -1,5 +1,6 @@
-from pathlib import Path
 import json
+from pathlib import Path
+
 
 def save_timeline_json(timeline, output_file: str | Path, *, whisper_raw=None):
     output_file = Path(output_file)

@@ -1,21 +1,23 @@
 from __future__ import annotations
 
-from pathlib import Path
-from copy import deepcopy
-from dataclasses import replace
 import json
 import math
+from copy import deepcopy
+from dataclasses import replace
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.domain.minimax_h3_frames import _frames_from_duration as _frames_from_duration_
-from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
-from feverslop.domain.postprocessing import TrimSpec
-from feverslop.errors import FeverSlopValidationError
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.minimax_h3_frames import (
+    _frames_from_duration as _frames_from_duration_,
+)
+from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
+from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -83,13 +85,13 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
             raise FeverSlopValidationError(
                 f"Width {width} is outside allowed range "
                 f"[{ComfyUIMiniMaxH3VideoRenderBackend.MIN_DIMENSION}, "
-                f"{ComfyUIMiniMaxH3VideoRenderBackend.MAX_DIMENSION}]"
+                f"{ComfyUIMiniMaxH3VideoRenderBackend.MAX_DIMENSION}]",
             )
         if height < ComfyUIMiniMaxH3VideoRenderBackend.MIN_DIMENSION or height > ComfyUIMiniMaxH3VideoRenderBackend.MAX_DIMENSION:
             raise FeverSlopValidationError(
                 f"Height {height} is outside allowed range "
                 f"[{ComfyUIMiniMaxH3VideoRenderBackend.MIN_DIMENSION}, "
-                f"{ComfyUIMiniMaxH3VideoRenderBackend.MAX_DIMENSION}]"
+                f"{ComfyUIMiniMaxH3VideoRenderBackend.MAX_DIMENSION}]",
             )
 
     @staticmethod
@@ -113,7 +115,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
                 continue
         raise KeyError(
             "Workflow has neither MiniMaxH3Video nor MiniMaxH3ReferenceToVideo "
-            "nor MiniMaxH3ImageToVideo node"
+            "nor MiniMaxH3ImageToVideo node",
         )
 
     @staticmethod
@@ -273,11 +275,13 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         """Build a patched workflow dict for rendering.
 
         Protocol: build_workflow(self, scene: dict, **kwargs) -> dict.
-        Subclasses must implement."""
+        Subclasses must implement.
+        """
         raise NotImplementedError("build_workflow must be implemented by subclass")
 
     def render_video(self, scene: dict, **kwargs) -> Path:
         """Render one video scene.
 
-        Subclasses must implement to satisfy the VideoRenderBackend protocol."""
+        Subclasses must implement to satisfy the VideoRenderBackend protocol.
+        """
         raise NotImplementedError("render_video must be implemented by subclass")

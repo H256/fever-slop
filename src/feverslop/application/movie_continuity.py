@@ -47,7 +47,7 @@ def apply_movie_continuity_to_shots(shots: tuple[CinematicShot, ...], continuity
                 conflict_or_tension=shot.conflict_or_tension or (beat.conflict_or_tension if beat else ""),
                 turning_point=shot.turning_point or (beat.turning_point if beat else ""),
                 sets_up_next=shot.sets_up_next or (beat.sets_up_next if beat else ""),
-            )
+            ),
         )
     return tuple(updated)
 

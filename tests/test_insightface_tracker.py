@@ -73,7 +73,7 @@ class TestInsightFaceTrackerAnchorSelection(unittest.TestCase):
         face_emb = np.ones(512)
         extractor = MagicMock()
         extractor.detect_all.return_value = [
-            FaceBox(x1=10, y1=10, x2=100, y2=100, confidence=0.9, embedding=face_emb)
+            FaceBox(x1=10, y1=10, x2=100, y2=100, confidence=0.9, embedding=face_emb),
         ]
         tracker = InsightFaceTracker(extractor)
 

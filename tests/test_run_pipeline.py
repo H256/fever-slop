@@ -8,20 +8,24 @@ from unittest.mock import Mock, patch
 from rich.progress import TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
 
 import run_pipeline
+from feverslop.composition.arg_parser import PipelineStage
 from feverslop.composition.stage_runners import (
+    _discover_stem_files,
     _initial_render_plan,
+    _preserve_enriched_reference_paths,
     _read_h3_input,
     _run_concat_video_only_stage,
     _run_main_pipeline_stage,
-    _run_mux_original_audio_stage,
     _run_msr_reference_sheets_stage,
-    _preserve_enriched_reference_paths,
-    _discover_stem_files,
+    _run_mux_original_audio_stage,
     _seed_reference_bindings,
     _selected_video_workflows,
 )
-from feverslop.composition.arg_parser import PipelineStage
-from feverslop.config.project_config import ActorConfig, ProjectConfig, StructuredLocationConfig
+from feverslop.config.project_config import (
+    ActorConfig,
+    ProjectConfig,
+    StructuredLocationConfig,
+)
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -527,7 +531,7 @@ class RunPipelinePathTests(unittest.TestCase):
                     {
                         "project_name": "My Song: Final!",
                         "input_audio": "input/song demo.mp3",
-                    }
+                    },
                 ),
                 encoding="utf-8",
             )
@@ -581,7 +585,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             args=Namespace(video_pipeline="ltx_i2v", render_mode="auto"),
             msr_workflow=Path("msr.json"),
             ingredients_workflow=Path("ingredients.json"),
-            relay_workflow=Path(""),
+            relay_workflow=Path(),
             single_prompt_workflow=Path("single.json"),
         )
 
@@ -691,7 +695,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-storyboard-page",
                     "--skip-ltx",
                     "--skip-final-concat",
-                ]
+                ],
             )
 
             with patch("feverslop.composition.stage_runners.run_unittest_suite") as tests, \
@@ -753,7 +757,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--smoke-only",
                     "--smoke-scene",
                     "7",
-                ]
+                ],
             )
 
             use_case = Mock()
@@ -792,7 +796,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-storyboard-page",
                     "--skip-ltx",
                     "--skip-final-concat",
-                ]
+                ],
             )
 
             use_case = Mock()
@@ -833,7 +837,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-storyboard",
                     "--skip-storyboard-page",
                     "--skip-final-concat",
-                ]
+                ],
             )
 
             use_case = Mock()
@@ -879,7 +883,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-storyboard-page",
                     "--skip-msr-reference-render",
                     "--skip-final-concat",
-                ]
+                ],
             )
 
             use_case = Mock()
@@ -920,7 +924,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-anchor-fix",
                     "--skip-ltx",
                     "--skip-final-concat",
-                ]
+                ],
             )
 
             use_case = Mock()
@@ -996,7 +1000,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-final-concat",
                     "--scenes",
                     "15-16",
-                ]
+                ],
             )
 
             use_case = Mock()
@@ -1053,7 +1057,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-anchor-fix",
                     "--skip-storyboard",
                     "--skip-storyboard-page",
-                ]
+                ],
             )
 
             use_case = Mock()
@@ -1127,7 +1131,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                     "--skip-storyboard-page",
                     "--skip-msr-reference-render",
                     "--skip-ltx",
-                ]
+                ],
             )
 
             def enrich(_input_plan, _references_dir, output_plan, on_scene_complete=None):

@@ -63,7 +63,7 @@ class InsightFaceDetectorAdapter(FaceDetectorPort):
                             (lm[4], lm[5]),  # nose
                             (lm[6], lm[7]),  # left mouth
                             (lm[8], lm[9]),  # right mouth
-                        ]
+                        ],
                     )
 
             embedding = face.embedding.copy() if face.embedding is not None else None
@@ -74,13 +74,13 @@ class InsightFaceDetectorAdapter(FaceDetectorPort):
                     score=float(face.det_score),
                     landmarks=landmarks,
                     embedding=embedding,
-                )
+                ),
             )
 
         return detections
 
     def extract_embedding(
-        self, frame: np.ndarray, box: BoundingBox
+        self, frame: np.ndarray, box: BoundingBox,
     ) -> np.ndarray | None:
         """Extract face embedding from a specific region."""
         try:

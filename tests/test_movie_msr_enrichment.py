@@ -5,15 +5,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from feverslop.application.movie_msr_enrichment import (
-    _read_json,
-    _read_json as _read_json_msr,
+from feverslop.application.movie_artifacts import (
+    _read_json as _read_json_artifacts,
 )
 from feverslop.application.movie_ingredients_sheets import (
     _read_json as _read_json_ingredients,
 )
-from feverslop.application.movie_artifacts import (
-    _read_json as _read_json_artifacts,
+from feverslop.application.movie_msr_enrichment import (
+    _read_json,
+)
+from feverslop.application.movie_msr_enrichment import (
+    _read_json as _read_json_msr,
 )
 from feverslop.errors import FeverSlopDataError
 
@@ -96,26 +98,26 @@ class TestTOCTOUReplacement(unittest.TestCase):
 
     def test_msr_read_json_eafp_missing_returns_empty(self):
         result = TestTOCTOUReplacement._eafp_read_default(
-            _read_json_msr, Path("/nonexistent"), {}
+            _read_json_msr, Path("/nonexistent"), {},
         )
         self.assertEqual(result, {})
 
     def test_ingredients_read_json_eafp_missing_returns_empty(self):
         result = TestTOCTOUReplacement._eafp_read_default(
-            _read_json_ingredients, Path("/nonexistent"), {}
+            _read_json_ingredients, Path("/nonexistent"), {},
         )
         self.assertEqual(result, {})
 
     def test_artifacts_read_json_eafp_missing_returns_empty(self):
         result = TestTOCTOUReplacement._eafp_read_default(
-            _read_json_artifacts, Path("/nonexistent"), {}
+            _read_json_artifacts, Path("/nonexistent"), {},
         )
         self.assertEqual(result, {})
 
     def test_artifacts_read_json_eafp_missing_returns_custom_default(self):
         default = {"actors": [], "locations": []}
         result = TestTOCTOUReplacement._eafp_read_default(
-            _read_json_artifacts, Path("/nonexistent"), default
+            _read_json_artifacts, Path("/nonexistent"), default,
         )
         self.assertEqual(result, default)
 
@@ -126,7 +128,7 @@ class TestTOCTOUReplacement(unittest.TestCase):
             path = Path(f.name)
         try:
             result = TestTOCTOUReplacement._eafp_read_default(
-                _read_json_msr, path, {}
+                _read_json_msr, path, {},
             )
             self.assertEqual(result, {"foo": "bar"})
         finally:

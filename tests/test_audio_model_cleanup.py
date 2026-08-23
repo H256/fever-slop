@@ -31,7 +31,7 @@ class AudioModelCleanupTests(unittest.TestCase):
         from feverslop.adapters.audio import vocal_timeline_analyzer
 
         analyzer = vocal_timeline_analyzer.VocalTimelineAnalyzer.__new__(
-            vocal_timeline_analyzer.VocalTimelineAnalyzer
+            vocal_timeline_analyzer.VocalTimelineAnalyzer,
         )
         analyzer.model = object()
         events = []
@@ -102,7 +102,7 @@ class DemucsSeparatorLazyModelTests(unittest.TestCase):
                     demucs_separator.torchaudio,
                     "save",
                     side_effect=lambda path, *args, **kwargs: Path(
-                        path
+                        path,
                     ).write_bytes(b"fake-wav-bytes"),
                 ),
             ):

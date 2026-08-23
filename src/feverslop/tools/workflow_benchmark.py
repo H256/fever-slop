@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import random
 import re
 import statistics
 import sys
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
-
+from typing import Any
 
 SCORE_NAMES = (
     "identity",
@@ -141,32 +141,32 @@ class VisualConsistencyBenchmarkResult:
 
     @classmethod
     def from_dict(
-        cls, payload: Mapping[str, Any]
+        cls, payload: Mapping[str, Any],
     ) -> VisualConsistencyBenchmarkResult:
         if not isinstance(payload, Mapping):
             raise ValueError("Benchmark result must be an object")
         unknown = sorted(set(payload) - _RESULT_FIELDS)
         if unknown:
             raise ValueError(
-                "Unknown benchmark result fields: " + ", ".join(unknown)
+                "Unknown benchmark result fields: " + ", ".join(unknown),
             )
         missing = sorted(_RESULT_FIELDS - _OPTIONAL_RESULT_FIELDS - set(payload))
         if missing:
             raise ValueError(
-                "Missing benchmark result fields: " + ", ".join(missing)
+                "Missing benchmark result fields: " + ", ".join(missing),
             )
 
         candidate_label = _nonblank(payload["candidate_label"], "candidate_label")
         workflow_profile = _nonblank(payload["workflow_profile"], "workflow_profile")
         scene = _positive_integer(payload["scene"], "scene")
         prepared_hash = _sha256(
-            payload["prepared_workflow_sha256"], "prepared_workflow_sha256"
+            payload["prepared_workflow_sha256"], "prepared_workflow_sha256",
         )
         fingerprint = _sha256(
-            payload["contract_fingerprint"], "contract_fingerprint"
+            payload["contract_fingerprint"], "contract_fingerprint",
         )
         wall_time = _positive_number(
-            payload["wall_time_seconds"], "wall_time_seconds"
+            payload["wall_time_seconds"], "wall_time_seconds",
         )
         peak_vram = payload.get("peak_vram_mb")
         if peak_vram is not None:
@@ -178,19 +178,19 @@ class VisualConsistencyBenchmarkResult:
         if not isinstance(oom, bool):
             raise ValueError("oom must be a boolean")
         environment_fingerprint = _sha256(
-            payload["environment_fingerprint"], "environment_fingerprint"
+            payload["environment_fingerprint"], "environment_fingerprint",
         )
         evidence_schema = payload.get("blinded_evidence_schema")
         evidence_sha256 = payload.get("blinded_evidence_sha256")
         if (evidence_schema is None) != (evidence_sha256 is None):
             raise ValueError(
-                "blinded evidence schema and SHA-256 must appear together"
+                "blinded evidence schema and SHA-256 must appear together",
             )
         if evidence_schema is not None:
             if evidence_schema != EVIDENCE_SCHEMA:
                 raise ValueError("Unsupported blinded evidence schema")
             evidence_sha256 = _sha256(
-                evidence_sha256, "blinded_evidence_sha256"
+                evidence_sha256, "blinded_evidence_sha256",
             )
 
         return cls(
@@ -254,7 +254,7 @@ class UnscoredBenchmarkRun:
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise ValueError(
-                "Unknown unscored benchmark run fields: " + ", ".join(unknown)
+                "Unknown unscored benchmark run fields: " + ", ".join(unknown),
             )
         if "scores" in payload and payload["scores"] is not None:
             raise ValueError("unscored benchmark run scores must be absent or null")
@@ -262,7 +262,7 @@ class UnscoredBenchmarkRun:
         missing = sorted(required - set(payload))
         if missing:
             raise ValueError(
-                "Missing unscored benchmark run fields: " + ", ".join(missing)
+                "Missing unscored benchmark run fields: " + ", ".join(missing),
             )
         peak_vram = payload.get("peak_vram_mb")
         if peak_vram is not None:
@@ -272,32 +272,32 @@ class UnscoredBenchmarkRun:
             raise ValueError("oom must be a boolean")
         return cls(
             candidate_label=_nonblank(
-                payload["candidate_label"], "candidate_label"
+                payload["candidate_label"], "candidate_label",
             ),
             scene=_positive_integer(payload["scene"], "scene"),
             workflow_profile=_nonblank(
-                payload["workflow_profile"], "workflow_profile"
+                payload["workflow_profile"], "workflow_profile",
             ),
             prepared_workflow_sha256=_sha256(
                 payload["prepared_workflow_sha256"],
                 "prepared_workflow_sha256",
             ),
             contract_fingerprint=_sha256(
-                payload["contract_fingerprint"], "contract_fingerprint"
+                payload["contract_fingerprint"], "contract_fingerprint",
             ),
             wall_time_seconds=_positive_number(
-                payload["wall_time_seconds"], "wall_time_seconds"
+                payload["wall_time_seconds"], "wall_time_seconds",
             ),
             peak_vram_mb=peak_vram,
             preflight_errors=_errors(
-                payload["preflight_errors"], "preflight_errors"
+                payload["preflight_errors"], "preflight_errors",
             ),
             manifest_errors=_errors(
-                payload["manifest_errors"], "manifest_errors"
+                payload["manifest_errors"], "manifest_errors",
             ),
             oom=oom,
             environment_fingerprint=_sha256(
-                payload["environment_fingerprint"], "environment_fingerprint"
+                payload["environment_fingerprint"], "environment_fingerprint",
             ),
         )
 
@@ -333,7 +333,7 @@ class MatrixValidation:
 
 
 def blind_candidate_labels(
-    candidate_names: Sequence[str], *, seed: int
+    candidate_names: Sequence[str], *, seed: int,
 ) -> dict[str, str]:
     names = tuple(_nonblank(name, "candidate name") for name in candidate_names)
     if len(set(names)) != len(names):
@@ -362,11 +362,11 @@ def evaluate_promotion(
         environment=environment,
     )
     role_failures = _comparison_matrix_failures(
-        baseline_results, candidate_results
+        baseline_results, candidate_results,
     )
     if role_failures:
         validation = MatrixValidation(
-            False, (*validation.failures, *role_failures)
+            False, (*validation.failures, *role_failures),
         )
     if not validation.valid:
         return PromotionDecision(
@@ -417,7 +417,7 @@ def evaluate_promotion(
     ):
         failures.append(
             "candidate lacks required quality improvement or 15% equal-quality "
-            "wall-time reduction"
+            "wall-time reduction",
         )
 
     return PromotionDecision(
@@ -440,30 +440,30 @@ def validate_complete_matrix(
     failures = list(_complete_matrix_structure_failures(recorded))
     if review is None or sealed_mapping is None or environment is None:
         failures.append(
-            "blinded evidence artifacts are required for complete matrix validation"
+            "blinded evidence artifacts are required for complete matrix validation",
         )
     else:
         try:
             ingested = ingest_blinded_review_scores(
-                recorded, review, sealed_mapping, environment=environment
+                recorded, review, sealed_mapping, environment=environment,
             )
         except (TypeError, ValueError) as exc:
             failures.append(f"invalid blinded evidence artifacts: {exc}")
         else:
             evidence_sha256 = _blinded_evidence_sha256(
-                recorded, review, sealed_mapping, environment
+                recorded, review, sealed_mapping, environment,
             )
             failures.extend(
                 _embedded_evidence_failures(
-                    recorded, expected_sha256=evidence_sha256
-                )
+                    recorded, expected_sha256=evidence_sha256,
+                ),
             )
             if any(
                 dict(actual.scores) != dict(expected.scores)
                 for actual, expected in zip(recorded, ingested, strict=True)
             ):
                 failures.append(
-                    "recorded scores do not match the blinded review artifact"
+                    "recorded scores do not match the blinded review artifact",
                 )
     return MatrixValidation(
         valid=not failures,
@@ -483,18 +483,18 @@ def _complete_matrix_structure_failures(
     }
     unexpected_profiles = sorted(
         {item.workflow_profile for item in recorded}
-        - set(FIXED_WORKFLOW_PROFILES)
+        - set(FIXED_WORKFLOW_PROFILES),
     )
     if unexpected_profiles:
         failures.append(
             "matrix has profiles outside the fixed fixture: "
-            + ", ".join(unexpected_profiles)
+            + ", ".join(unexpected_profiles),
         )
     failures.extend(
         _comparison_matrix_failures(
             by_profile[FIXED_WORKFLOW_PROFILES[0]],
             by_profile[FIXED_WORKFLOW_PROFILES[1]],
-        )
+        ),
     )
     if len(recorded) != len(FIXED_SCENE_IDS) * 2:
         failures.append("complete matrix must contain exactly 12 records")
@@ -512,7 +512,7 @@ def create_blinded_review_artifact(
     if failures:
         raise ValueError(
             "Cannot blind incomplete benchmark matrix: "
-            + "; ".join(failures)
+            + "; ".join(failures),
         )
     _validate_environment_fingerprints(recorded, environment)
     labels = blind_candidate_labels(FIXED_WORKFLOW_PROFILES, seed=seed)
@@ -520,7 +520,7 @@ def create_blinded_review_artifact(
         {
             "candidate_label": labels[item.workflow_profile],
             "scene": item.scene,
-            "scores": {name: None for name in SCORE_NAMES},
+            "scores": dict.fromkeys(SCORE_NAMES),
         }
         for item in recorded
     ]
@@ -564,7 +564,7 @@ def ingest_blinded_review_scores(
     if failures:
         raise ValueError(
             "Cannot ingest scores for incomplete benchmark matrix: "
-            + "; ".join(failures)
+            + "; ".join(failures),
         )
     _validate_environment_fingerprints(source, environment)
     if review.get("schema") != REVIEW_SCHEMA:
@@ -582,7 +582,7 @@ def ingest_blinded_review_scores(
         identity = (
             _nonblank(item.get("workflow_profile"), "workflow_profile"),
             _nonblank(
-                item.get("source_candidate_label"), "source_candidate_label"
+                item.get("source_candidate_label"), "source_candidate_label",
             ),
         )
         if opaque in identities:
@@ -617,7 +617,7 @@ def ingest_blinded_review_scores(
     if len(reviewed_scores) != len(source):
         raise ValueError("Blinded review does not contain the complete matrix")
     evidence_sha256 = _blinded_evidence_sha256(
-        source, review, sealed_mapping, environment
+        source, review, sealed_mapping, environment,
     )
     restored = []
     for result in source:
@@ -628,7 +628,7 @@ def ingest_blinded_review_scores(
             ]
         except KeyError:
             raise ValueError(
-                "Blinded review does not match source profile/scene matrix"
+                "Blinded review does not match source profile/scene matrix",
             ) from None
         payload["blinded_evidence_schema"] = EVIDENCE_SCHEMA
         payload["blinded_evidence_sha256"] = evidence_sha256
@@ -638,7 +638,7 @@ def ingest_blinded_review_scores(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate recorded cross-scene visual consistency benchmark results."
+        description="Validate recorded cross-scene visual consistency benchmark results.",
     )
     parser.add_argument("results", help="Path to a recorded benchmark result JSON file.")
     parser.add_argument(
@@ -686,7 +686,7 @@ def run(argv: list[str] | None = None) -> int:
                 or args.environment is None
             ):
                 raise ValueError(
-                    "--create-review requires --sealed-mapping, --seed, and --environment"
+                    "--create-review requires --sealed-mapping, --seed, and --environment",
                 )
             review_path, mapping_path = _distinct_paths(
                 source_path,
@@ -702,16 +702,16 @@ def run(argv: list[str] | None = None) -> int:
                 or args.environment is not None
             ):
                 raise ValueError(
-                    "review, sealed mapping, and seed are not used in record-only mode"
+                    "review, sealed mapping, and seed are not used in record-only mode",
                 )
         else:
             if args.environment is None:
                 raise ValueError(
-                    "complete matrix validation requires --environment"
+                    "complete matrix validation requires --environment",
                 )
             if (args.review is None) != (args.sealed_mapping is None):
                 raise ValueError(
-                    "--review and --sealed-mapping must be supplied together"
+                    "--review and --sealed-mapping must be supplied together",
                 )
             if args.seed is not None:
                 raise ValueError("--seed is only used with --create-review")
@@ -730,8 +730,8 @@ def run(argv: list[str] | None = None) -> int:
             if args.record_only
             else BenchmarkEnvironment.from_dict(
                 json.loads(
-                    Path(args.environment).read_text(encoding="utf-8-sig")
-                )
+                    Path(args.environment).read_text(encoding="utf-8-sig"),
+                ),
             )
         )
 
@@ -769,11 +769,11 @@ def run(argv: list[str] | None = None) -> int:
             print(
                 json.dumps(output, sort_keys=True)
                 if args.json
-                else "; ".join(failures)
+                else "; ".join(failures),
             )
             return 2
         review, sealed_mapping = create_blinded_review_artifact(
-            results, environment=environment, seed=args.seed
+            results, environment=environment, seed=args.seed,
         )
         try:
             _write_json_pair_atomic(
@@ -787,7 +787,7 @@ def run(argv: list[str] | None = None) -> int:
             print(
                 json.dumps(output, sort_keys=True)
                 if args.json
-                else output["error"]
+                else output["error"],
             )
             return 1
         output = {
@@ -825,7 +825,7 @@ def run(argv: list[str] | None = None) -> int:
             print(
                 json.dumps(output, sort_keys=True)
                 if args.json
-                else output["error"]
+                else output["error"],
             )
             return 1
         validation = validate_complete_matrix(
@@ -844,13 +844,13 @@ def run(argv: list[str] | None = None) -> int:
             print(
                 json.dumps(output, sort_keys=True)
                 if args.json
-                else "; ".join(validation.failures)
+                else "; ".join(validation.failures),
             )
             return 2
     print(
         json.dumps(output, sort_keys=True)
         if args.json
-        else _human_success(output)
+        else _human_success(output),
     )
     return 0
 
@@ -858,7 +858,7 @@ def run(argv: list[str] | None = None) -> int:
 def _scores(value: Any) -> dict[str, int]:
     if not isinstance(value, Mapping) or set(value) != set(SCORE_NAMES):
         raise ValueError(
-            "scores must contain exactly: " + ", ".join(SCORE_NAMES)
+            "scores must contain exactly: " + ", ".join(SCORE_NAMES),
         )
     scores: dict[str, int] = {}
     for name in SCORE_NAMES:
@@ -880,7 +880,7 @@ def _errors(value: Any, name: str) -> tuple[str, ...]:
 
 
 def _matrix_failures(
-    results: tuple[VisualConsistencyBenchmarkResult, ...], name: str
+    results: tuple[VisualConsistencyBenchmarkResult, ...], name: str,
 ) -> list[str]:
     failures: list[str] = []
     if not results:
@@ -891,7 +891,7 @@ def _matrix_failures(
     scene_ids = set(scenes)
     if scene_ids != FIXED_SCENE_IDS:
         failures.append(
-            f"{name} benchmark matrix scenes must be exactly 1 through 6"
+            f"{name} benchmark matrix scenes must be exactly 1 through 6",
         )
     profiles = {item.workflow_profile for item in results}
     if len(profiles) != 1:
@@ -938,15 +938,15 @@ def _embedded_evidence_failures(
     failures: list[str] = []
     if schemas != {EVIDENCE_SCHEMA}:
         failures.append(
-            "complete benchmark results require a valid blinded evidence marker"
+            "complete benchmark results require a valid blinded evidence marker",
         )
     if len(digests) != 1 or None in digests:
         failures.append(
-            "complete benchmark results require one blinded evidence SHA-256"
+            "complete benchmark results require one blinded evidence SHA-256",
         )
     elif expected_sha256 is not None and digests != {expected_sha256}:
         failures.append(
-            "blinded evidence SHA-256 does not match review and sealed mapping"
+            "blinded evidence SHA-256 does not match review and sealed mapping",
         )
     return tuple(failures)
 
@@ -983,7 +983,7 @@ def _hash_mapping(value: Any, name: str) -> dict[str, str]:
 
 def _canonical_json(value: Any) -> bytes:
     return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")
 
 
@@ -1031,7 +1031,7 @@ def _alphabetic_label(index: int) -> str:
 
 
 def _single_label(
-    results: tuple[VisualConsistencyBenchmarkResult, ...], profile: str
+    results: tuple[VisualConsistencyBenchmarkResult, ...], profile: str,
 ) -> str:
     labels = {item.candidate_label for item in results}
     if len(labels) != 1:
@@ -1063,12 +1063,12 @@ def _blinded_evidence_sha256(
 
 
 def _validate_environment_fingerprints(
-    results: Sequence[Any], environment: BenchmarkEnvironment
+    results: Sequence[Any], environment: BenchmarkEnvironment,
 ) -> None:
     fingerprints = {item.environment_fingerprint for item in results}
     if fingerprints != {environment.fingerprint}:
         raise ValueError(
-            "Benchmark records do not match supplied environment fingerprint"
+            "Benchmark records do not match supplied environment fingerprint",
         )
 
 
@@ -1087,7 +1087,7 @@ def _distinct_paths(
     normalized = {os.path.normcase(str(path)) for path in paths}
     if len(normalized) != len(paths):
         raise ValueError(
-            "source, review, sealed mapping, and environment paths must be distinct"
+            "source, review, sealed mapping, and environment paths must be distinct",
         )
     for index, first in enumerate(paths):
         if not first.exists():
@@ -1095,7 +1095,7 @@ def _distinct_paths(
         for second in paths[index + 1 :]:
             if second.exists() and os.path.samefile(first, second):
                 raise ValueError(
-                    "source, review, sealed mapping, and environment paths must not alias"
+                    "source, review, sealed mapping, and environment paths must not alias",
                 )
     return paths[1], paths[2]
 
@@ -1145,7 +1145,7 @@ def _write_json_pair_atomic(
                 os.replace(destination, backup)
                 backup_paths[destination] = backup
         for temporary, destination in zip(
-            tuple(temporary_paths), destinations, strict=True
+            tuple(temporary_paths), destinations, strict=True,
         ):
             os.replace(temporary, destination)
             temporary_paths.remove(temporary)
@@ -1164,7 +1164,7 @@ def _write_json_pair_atomic(
                 except OSError as restore_error:
                     retained_backups.add(backup)
                     recovery_errors.append(
-                        f"{destination}: {restore_error}"
+                        f"{destination}: {restore_error}",
                     )
         for temporary in temporary_paths:
             try:

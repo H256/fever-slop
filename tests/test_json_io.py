@@ -7,7 +7,12 @@ import unittest
 from pathlib import Path
 
 from feverslop.errors import FeverSlopDataError
-from feverslop.utils.io import read_json, read_json_document, read_json_or_none, write_json_document
+from feverslop.utils.io import (
+    read_json,
+    read_json_document,
+    read_json_or_none,
+    write_json_document,
+)
 
 
 class JsonIoTests(unittest.TestCase):

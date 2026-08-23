@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from fractions import Fraction
 import json
 import math
 import os
-from pathlib import Path
 import subprocess
+from collections.abc import Callable, Sequence
+from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 from feverslop.application.render_plan_validation import (
     require_non_empty_render_plan,
     validate_render_plan_timeline,
 )
-
 
 ProgressCallback = Callable[[int, int, str], None]
 
@@ -38,7 +37,7 @@ def export_render_plan_to_openshot(
     if len(plan) != len(clip_paths):
         raise ValueError(
             "OpenShot export requires one rendered clip per render-plan entry "
-            f"(got {len(clip_paths)} clips for {len(plan)} entries)"
+            f"(got {len(clip_paths)} clips for {len(plan)} entries)",
         )
 
     require_non_empty_render_plan(plan, render_plan_path=render_plan_path)
@@ -141,7 +140,7 @@ def _profile_from_clips(clip_paths: Sequence[str | Path]) -> tuple[int, int, int
             raise ValueError(
                 "OpenShot export requires matching rendered clip profiles: "
                 f"{detected_path} has {detected[0]}x{detected[1]}@{detected[2]}fps, "
-                f"but {clip_path} has {profile[0]}x{profile[1]}@{profile[2]}fps"
+                f"but {clip_path} has {profile[0]}x{profile[1]}@{profile[2]}fps",
             )
     return detected
 

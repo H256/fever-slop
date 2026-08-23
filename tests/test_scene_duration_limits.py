@@ -5,12 +5,12 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.domain.srt import SrtScene
+from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
 from feverslop.domain.scene_duration_limits import (
     resolve_scene_duration_policy,
     validate_render_frame_budget,
 )
-from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
+from feverslop.domain.srt import SrtScene
 from feverslop.errors import FeverSlopValidationError
 from feverslop.pipeline.scene_duration_enforcer import (
     enforce_scene_srt_file,
@@ -19,7 +19,6 @@ from feverslop.pipeline.scene_duration_enforcer import (
     validate_scene_durations,
     write_scene_srt,
 )
-
 
 TWO_SCENE_SRT = textwrap.dedent("""\
     1
@@ -96,7 +95,7 @@ class SceneDurationLimitTests(unittest.TestCase):
             ),
         )
         self.assertTrue(
-            all(round(scene.duration * policy.fps) <= policy.max_scene_frames for scene in repaired)
+            all(round(scene.duration * policy.fps) <= policy.max_scene_frames for scene in repaired),
         )
 
     def test_millisecond_cap_validation_is_stable_at_nonzero_srt_timestamps(self):
@@ -113,7 +112,7 @@ class SceneDurationLimitTests(unittest.TestCase):
                         start=3600.0,
                         end=3600.0 + policy.effective_max_seconds,
                         text="Scene 1",
-                    )
+                    ),
                 ],
                 artifact_store=store,
             )

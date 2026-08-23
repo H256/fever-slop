@@ -1,5 +1,5 @@
-import unittest
 import json
+import unittest
 from pathlib import Path
 
 from feverslop.adapters.sequence_to_sheet_workflow import (

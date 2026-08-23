@@ -9,7 +9,10 @@ from feverslop.domain.prepared_workflow import (
     StoredArtifact,
     sha256_file,
 )
-from feverslop.domain.visual_consistency import ReferenceAnchor, SceneConsistencyContract
+from feverslop.domain.visual_consistency import (
+    ReferenceAnchor,
+    SceneConsistencyContract,
+)
 
 SCHEMA_V1 = "feverslop.scene-workflow/v1"
 SCHEMA_V2 = "feverslop.scene-workflow/v2"
@@ -118,7 +121,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             ):
                 path.write_bytes(content)
             contract = self._contract(
-                1, sha256_file(actor), sha256_file(location)
+                1, sha256_file(actor), sha256_file(location),
             )
 
             manifest = SceneWorkflowManifest.create(
@@ -203,7 +206,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             ):
                 path.write_bytes(content)
             contract = self._contract(
-                1, sha256_file(actor), sha256_file(location)
+                1, sha256_file(actor), sha256_file(location),
             )
             manifest = SceneWorkflowManifest.create(
                 project_dir=project,
@@ -265,7 +268,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             )
 
             self.assertTrue(
-                any("startframe" in item for item in manifest.verify(project))
+                any("startframe" in item for item in manifest.verify(project)),
             )
 
     def test_continuous_manifest_records_and_verifies_exact_startframe_lineage(self):
@@ -348,7 +351,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
                 path.write_text(json.dumps(payload), encoding="utf-8")
                 tampered = SceneWorkflowManifest.read(path)
                 self.assertTrue(
-                    any("startframe" in item for item in tampered.verify(project))
+                    any("startframe" in item for item in tampered.verify(project)),
                 )
 
             payload = restored.to_dict()
@@ -356,7 +359,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             tampered = SceneWorkflowManifest.read(path)
             self.assertTrue(
-                any("source clip" in item for item in tampered.verify(project))
+                any("source clip" in item for item in tampered.verify(project)),
             )
 
             payload = restored.to_dict()
@@ -364,7 +367,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             tampered = SceneWorkflowManifest.read(path)
             self.assertTrue(
-                any("source clip" in item for item in tampered.verify(project))
+                any("source clip" in item for item in tampered.verify(project)),
             )
 
     def test_verify_preserves_distinct_actor_bindings_for_shared_source(self):
@@ -426,7 +429,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             tampered = SceneWorkflowManifest.read(path)
             self.assertTrue(
-                any("actor_sheet" in item for item in tampered.verify(project))
+                any("actor_sheet" in item for item in tampered.verify(project)),
             )
 
     def test_verify_rejects_msr_contract_for_i2v_pipeline(self):
@@ -440,7 +443,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             for path in (workflow, template, plan, actor, location):
                 path.write_bytes(path.name.encode())
             contract = self._contract(
-                1, sha256_file(actor), sha256_file(location)
+                1, sha256_file(actor), sha256_file(location),
             )
             manifest = SceneWorkflowManifest.create(
                 project_dir=project,
@@ -465,7 +468,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
                 any(
                     "mode does not match manifest pipeline" in item
                     for item in manifest.verify(project)
-                )
+                ),
             )
 
     def test_external_template_is_absolute_and_explicitly_marked(self):

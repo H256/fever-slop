@@ -1,25 +1,26 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
 import inspect
 import json
-from typing import Any, Callable
+from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
+from pathlib import Path
+from typing import Any
 
+from feverslop.application.global_cast_resolver import materialize_global_assets
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.domain.prompt_constraints import build_location_constraint
 from feverslop.ports.generate_pipeline import (
     ConceptBatcherFactory,
     LLMFactory,
     PromptPipelineFactory,
     ScenePromptBuilderFactory,
 )
-from feverslop.domain.prompt_constraints import build_location_constraint
-from feverslop.utils.sub_step_progress import SubStepProgress
-from feverslop.application.global_cast_resolver import materialize_global_assets
 from feverslop.prompting.subject_directive_planning import (
     DspySubjectDirectivePlanner,
     build_shared_staging_plan,
 )
+from feverslop.utils.sub_step_progress import SubStepProgress
 
 
 def join_notes(*parts: str) -> str:
@@ -141,7 +142,7 @@ def validate_and_order_concept_prompts(stage1_segments: list[dict], concept_prom
     missing = [seg["segment_id"] for seg in stage1_segments if seg["segment_id"] not in concept_prompts]
     if missing:
         raise ValueError(f"Missing concept prompts: {missing}")
-    extra = [segment_id for segment_id in concept_prompts.keys() if segment_id not in expected_ids]
+    extra = [segment_id for segment_id in concept_prompts if segment_id not in expected_ids]
     ordered = {seg["segment_id"]: concept_prompts[seg["segment_id"]] for seg in stage1_segments}
     return ordered, extra
 
@@ -232,7 +233,7 @@ class PromptGenerationPipeline:
         if request.concept_batch_size > 0:
             reporter.message(
                 f"[cyan]Using batched concept generation: "
-                f"{request.concept_batch_size} segments per batch[/cyan]"
+                f"{request.concept_batch_size} segments per batch[/cyan]",
             )
             concept_batcher = self.concept_batcher_factory(
                 llm,
@@ -242,7 +243,7 @@ class PromptGenerationPipeline:
             reporter.message(
                 f"[cyan]Concept generation started: "
                 f"{len(stage1_segments)} scenes, batches of "
-                f"{request.concept_batch_size}[/cyan]"
+                f"{request.concept_batch_size}[/cyan]",
             )
             concept_prompts = call_with_supported_kwargs(
                 concept_batcher.create_concept_prompts_batched,
@@ -251,14 +252,14 @@ class PromptGenerationPipeline:
                 global_context=global_context,
                 notes=get_steering_value(config, "concepts"),
                 progress_callback=lambda message: reporter.message(
-                    f"[cyan]{message}[/cyan]"
+                    f"[cyan]{message}[/cyan]",
                 ),
             )
             reporter.message("[green]Concept generation finished.[/green]")
         else:
             reporter.message(
                 f"[cyan]Concept generation started for "
-                f"{len(stage1_segments)} scenes[/cyan]"
+                f"{len(stage1_segments)} scenes[/cyan]",
             )
             concept_prompts = call_with_supported_kwargs(
                 prompt_pipeline.create_concept_prompts,
@@ -281,7 +282,7 @@ class PromptGenerationPipeline:
 
         reporter.message(
             f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
-            "camera and character motion per scene[/cyan]"
+            "camera and character motion per scene[/cyan]",
         )
         scene_details_progress = SubStepProgress(reporter, "Scene details", len(stage1_segments))
         scene_details = call_with_supported_kwargs(
@@ -302,12 +303,12 @@ class PromptGenerationPipeline:
         log_step("8. Scene Prompt Pack (Startframe + Base Motion Prompts)")
         reporter.message(
             f"[cyan]Scene prompt pack started: {len(stage1_segments)} scenes; "
-            "building still-image startframe and backend-neutral base motion prompts[/cyan]"
+            "building still-image startframe and backend-neutral base motion prompts[/cyan]",
         )
         if get_config_value(config, "video_pipeline") == "minimax-h3-r2v":
             reporter.message(
                 "[cyan]MiniMax H3 R2V selected: H3 structured prompts will be "
-                "generated after reference sheets.[/cyan]"
+                "generated after reference sheets.[/cyan]",
             )
         scene_prompt_builder = self.scene_prompt_builder_factory(llm)
         scene_prompts_progress = SubStepProgress(reporter, "Scene prompts", len(stage1_segments))
@@ -348,7 +349,7 @@ class PromptGenerationPipeline:
                 "global_context": global_context,
                 "concept_prompts": concept_prompts,
                 "scene_details": scene_details,
-            }
+            },
         )
         return context
 
@@ -432,12 +433,12 @@ class PromptGenerationPipeline:
                 "scene_details": scene_details.get(segment_id, {}),
                 "global_context": global_context,
                 "allowed_subject_ids": list(
-                    (scene.get("references") or {}).get("actor_ids") or []
+                    (scene.get("references") or {}).get("actor_ids") or [],
                 ),
                 "allowed_environment_ids": [
                     str(location_id)
                     for location_id in [
-                        (scene.get("references") or {}).get("location_id")
+                        (scene.get("references") or {}).get("location_id"),
                     ]
                     if location_id
                 ],
@@ -486,7 +487,7 @@ class PromptGenerationPipeline:
                 continue
             for repair in getattr(planner, "last_repairs", []):
                 reporter.message(
-                    f"[yellow]Subject staging repaired for {segment_id}: {repair}[/yellow]"
+                    f"[yellow]Subject staging repaired for {segment_id}: {repair}[/yellow]",
                 )
             scene["subject_directives"] = plan.to_dict()
             changed += 1
@@ -499,7 +500,7 @@ class PromptGenerationPipeline:
                 f"{len(failures)} scene(s) could not be normalized; "
                 "their debug traces were saved and the pipeline continues. "
                 + " | ".join(failures)
-                + "[/yellow]"
+                + "[/yellow]",
             )
 
     def build_resolved_global_context(
@@ -570,7 +571,7 @@ class PromptGenerationPipeline:
         has_configured_subject_assets = bool(
             config_subject
             and config_items_as_dicts(config_actors)
-            and config_items_as_dicts(config_structured_locations)
+            and config_items_as_dicts(config_structured_locations),
         )
         subject_locations = (
             {}

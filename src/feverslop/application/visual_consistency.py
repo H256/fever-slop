@@ -93,7 +93,7 @@ def build_scene_contract(
         actors=actors,
         location=location,
         transition_from_previous=transition_from_previous(
-            scene.get("transition_from_previous")
+            scene.get("transition_from_previous"),
         ),
     )
 
@@ -155,5 +155,5 @@ def _anchor(
     except KeyError:
         raise ValueError(
             f"Scene {scene_number} missing {kind} reference "
-            f"id {semantic_id!r} with look id {look_id!r}"
+            f"id {semantic_id!r} with look id {look_id!r}",
         ) from None

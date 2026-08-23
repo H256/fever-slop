@@ -4,7 +4,10 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder, scene_prompt_word_limit
+from feverslop.prompting.scene_prompt_builder import (
+    ScenePromptBuilder,
+    scene_prompt_word_limit,
+)
 from tests.prompt_fakes import GeneralModulesFake
 
 
@@ -116,7 +119,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                 "end": 4.0,
                 "duration": 4.0,
                 "lyrics": "hello",
-            }
+            },
         ]
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -190,7 +193,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                         "end": 4.0,
                         "duration": 4.0,
                         "lyrics": "hello",
-                    }
+                    },
                 ],
                 concept_prompts={"segment_001": "Mara tells the story without dialogue."},
                 scene_details={"segment_001": {}},
@@ -242,7 +245,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                 "end": 4.0,
                 "duration": 4.0,
                 "lyrics": "hello",
-            }
+            },
         ]
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -253,7 +256,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                     "segment_001": {
                         "concept": "Mara sings on the mirror stage.",
                         "references": {"actor_ids": ["singer"], "location_id": "stage"},
-                    }
+                    },
                 },
                 scene_details={},
                 global_context={
@@ -286,7 +289,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                             "actor_ids": ["warrior_lead", "mage_lead", "rogue_lead"],
                             "location_id": "cathedral",
                         },
-                    }
+                    },
                 },
                 scene_details={"segment_005": {"camera_motion": "dolly", "character_motion": "advance"}},
                 global_context={
@@ -327,7 +330,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                     "segment_006": {
                         "concept": "The full band performs together.",
                         "references": {"actor_ids": actor_ids, "location_id": "stage"},
-                    }
+                    },
                 },
                 scene_details={},
                 global_context={
@@ -359,7 +362,7 @@ class ScenePromptBuilderTests(unittest.TestCase):
                     "segment_001": {
                         "concept": "Mara and Jon stand on the mirror stage.",
                         "references": {"actor_ids": ["mara", "jon"], "location_id": "stage"},
-                    }
+                    },
                 },
                 scene_details={},
                 global_context={

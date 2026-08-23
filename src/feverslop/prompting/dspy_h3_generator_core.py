@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from pathlib import Path
 import logging
 import re
-from typing import Any, Callable
+from collections import defaultdict
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_models import (
-    GeneratedVideoPrompt,
     BaseVideoPrompt,
-    PromptJudgeResult,
+    GeneratedVideoPrompt,
     ImageAnalysisMode,
     MusicIntent,
     PlannedSubject,
+    PromptJudgeResult,
     PromptMode,
     ReferenceAsset,
     ReferenceKind,
@@ -27,7 +28,6 @@ from feverslop.prompting.dspy_h3_models import (
 )
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
-
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def _split_reference_labels(value: str) -> list[str]:
     if not text:
         return []
     labels = _REFERENCE_LABEL_PATTERN.findall(text)
-    return labels if labels else [text]
+    return labels or [text]
 
 
 def _normalize_plan_reference_labels(plan: Any) -> None:
@@ -134,7 +134,7 @@ def _deterministic_reference_definitions(refs: list[ResolvedReference]) -> list[
         if ref.kind is ReferenceKind.AUDIO:
             name = (ref.name or "audio").strip()
             definitions.append(
-                f"{ref.label} is the synchronized {name} audio reference and is reused for the scene."
+                f"{ref.label} is the synchronized {name} audio reference and is reused for the scene.",
             )
     return definitions
 
@@ -260,7 +260,7 @@ class VideoPromptGenerator:
             if plan.music_intent == MusicIntent.NONE:
                 plan.non_diegetic_music = None
             missing_music_description = bool(
-                plan.music_intent != MusicIntent.NONE and not plan.non_diegetic_music
+                plan.music_intent != MusicIntent.NONE and not plan.non_diegetic_music,
             )
             unknown = {
                 label
@@ -330,7 +330,7 @@ class VideoPromptGenerator:
             if attempt == 3:
                 self._warning(
                     "H3 planner contract warning after final attempt; continuing with result: "
-                    f"{error}"
+                    f"{error}",
                 )
                 break
             self._warning(f"H3 planner retry {attempt + 1}/3: {error}", title="H3 planner retry")
@@ -428,7 +428,7 @@ class VideoPromptGenerator:
             # source-audio context without instructing the on-screen subject to sing.
             active_vocal_language = bool(
                 fully_instrumental
-                and _contains_active_vocal_language(detailed_description)
+                and _contains_active_vocal_language(detailed_description),
             )
             if not any((
                 undefined_subjects,
@@ -450,7 +450,7 @@ class VideoPromptGenerator:
             if attempt == 3:
                 self._warning(
                     "H3 renderer contract warning after final attempt; continuing with result: "
-                    f"{error}"
+                    f"{error}",
                 )
                 return output
             self._warning(f"H3 renderer retry {attempt + 1}/3: {error}", title="H3 renderer retry")
@@ -521,7 +521,7 @@ class VideoPromptGenerator:
                         f"{effective_request.notes or ''}\n\n"
                         "Try again. Here are the judge errors you must fix: "
                         f"{feedback}"
-                    ).strip()
+                    ).strip(),
                 })
         if judge is not None and judge.verdict == "bad":
             self._warning(

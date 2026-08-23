@@ -39,8 +39,7 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertIn("feverslop/application/generate_render_plan.py", module_path)
 
     def test_config_modules_resolve_under_src_package(self):
-        import feverslop.config.project_config as project_config
-        import feverslop.config.video_settings as video_settings
+        from feverslop.config import project_config, video_settings
 
         self.assertIn(
             "src/feverslop/config/project_config.py",
@@ -52,8 +51,8 @@ class PackageLayoutTests(unittest.TestCase):
         )
 
     def test_pipeline_and_prompting_modules_resolve_under_src_package(self):
-        import feverslop.pipeline.render_plan_builder as render_plan_builder
-        import feverslop.prompting.scene_prompt_builder as scene_prompt_builder
+        from feverslop.pipeline import render_plan_builder
+        from feverslop.prompting import scene_prompt_builder
 
         self.assertIn(
             "src/feverslop/pipeline/render_plan_builder.py",
@@ -65,8 +64,7 @@ class PackageLayoutTests(unittest.TestCase):
         )
 
     def test_adapter_modules_resolve_under_src_package(self):
-        import feverslop.adapters.comfyui_client as comfyui_client
-        import feverslop.adapters.workflow_patcher as workflow_patcher
+        from feverslop.adapters import comfyui_client, workflow_patcher
 
         self.assertIn(
             "src/feverslop/adapters/comfyui_client.py",

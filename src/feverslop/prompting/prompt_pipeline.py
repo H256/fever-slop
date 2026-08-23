@@ -1,11 +1,14 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
 import json
 import re
-from typing import Callable
+from collections.abc import Callable
+from pathlib import Path
 
 from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
+from feverslop.ports.artifacts import ArtifactStore
+from feverslop.ports.llm import LLMPort
 from feverslop.prompting.music_video_modules import MusicVideoPromptModules
 from feverslop.prompting.music_video_prompt_style import (
     build_detail_system_prompt,
@@ -13,9 +16,6 @@ from feverslop.prompting.music_video_prompt_style import (
     build_t2i_system_prompt,
     build_video_payload,
 )
-from feverslop.ports.artifacts import ArtifactStore
-from feverslop.ports.llm import LLMPort
-from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 
 
 class MusicVideoPromptPipeline:
@@ -148,7 +148,7 @@ class MusicVideoPromptPipeline:
             if missing_in_details:
                 parts.append(f"scene_details: {sorted(missing_in_details)}")
             raise ValueError(
-                f"Segment IDs from stage1_segments missing in upstream results: {', '.join(parts)}"
+                f"Segment IDs from stage1_segments missing in upstream results: {', '.join(parts)}",
             )
         result = []
 

@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 from feverslop.adapters.llm_client import LocalOpenAIClient
 
-
 VISION_MODEL = {"modalities": ["text", "vision"]}
 TEXT_MODEL = {"modalities": ["text"]}
 
@@ -26,7 +25,7 @@ class LLMVisionCapabilityProbeTests(unittest.TestCase):
             mock_openai.return_value = mock_client
             mock_client.models.retrieve.return_value = VISION_MODEL
             client = LocalOpenAIClient(
-                api_key="test-key", model="probe-model", request_timeout_seconds=4.0
+                api_key="test-key", model="probe-model", request_timeout_seconds=4.0,
             )
 
             client.model_supports_vision()

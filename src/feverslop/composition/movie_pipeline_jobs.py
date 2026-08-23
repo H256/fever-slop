@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
-from feverslop.application.movie import build_movie_actor_reference_prompt, build_movie_actor_visual_description
-from feverslop.composition.movie_workflow import patch_movie_msr_workflow
+from feverslop.application.movie import (
+    build_movie_actor_reference_prompt,
+    build_movie_actor_visual_description,
+)
 from feverslop.application.movie_artifacts import (
     ensure_movie_planning_artifacts,
     write_movie_reference_manifest_from_bible,
 )
-from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+from feverslop.application.movie_msr_enrichment import (
+    enrich_movie_render_plan_with_msr_prompts,
+)
+from feverslop.composition.movie_workflow import patch_movie_msr_workflow
 from feverslop.config.project_config import ProjectConfig
-
 
 JobHandler = Callable[[Callable[[str], None]], Any]
 
@@ -56,16 +61,22 @@ def build_movie_full_auto_handler(*, store: ProjectStorePort, project_id: str, r
                 project_dir=project_dir,
                 render_plan_path=planning.render_plan_path,
                 on_clip_rendered=lambda completed, total, scene_number: log(
-                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}"
+                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}",
                 ),
             )
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
             return final_video
         if config["movie_video_workflow"] == "i2v-edit":
-            from feverslop.adapters.movie_i2v_visual import LocalMovieI2VEditVisualAdapter
-            from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
+            from feverslop.adapters.movie_i2v_visual import (
+                LocalMovieI2VEditVisualAdapter,
+            )
+            from feverslop.application.movie_i2v_render_plan import (
+                write_movie_i2v_render_plan,
+            )
             from feverslop.application.movie_visual_plan import build_movie_visual_plan
-            from feverslop.tools.movie_storyboard_page import generate_movie_storyboard_page
+            from feverslop.tools.movie_storyboard_page import (
+                generate_movie_storyboard_page,
+            )
 
             log("[MoviePipeline] Stage: Movie visual plan")
             visual_plan_path = build_movie_visual_plan(project_dir=project_dir)
@@ -90,12 +101,22 @@ def build_movie_full_auto_handler(*, store: ProjectStorePort, project_id: str, r
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
             return final_video
         if config["movie_video_workflow"] == "startframe-director":
-            from feverslop.adapters.startframe_director_visual import LocalStartframeDirectorVisualAdapter
-            from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-            from feverslop.application.startframe_i2v_render_plan import write_startframe_i2v_render_plan
-            from feverslop.application.startframe_identity import build_startframe_identity_ledger
+            from feverslop.adapters.startframe_director_visual import (
+                LocalStartframeDirectorVisualAdapter,
+            )
+            from feverslop.application.startframe_director_prompts import (
+                build_startframe_director_prompts,
+            )
+            from feverslop.application.startframe_i2v_render_plan import (
+                write_startframe_i2v_render_plan,
+            )
+            from feverslop.application.startframe_identity import (
+                build_startframe_identity_ledger,
+            )
             from feverslop.application.startframe_plan import build_startframe_plan
-            from feverslop.application.startframe_validation import write_local_startframe_validation
+            from feverslop.application.startframe_validation import (
+                write_local_startframe_validation,
+            )
 
             log("[MoviePipeline] Stage: Movie identity ledger")
             identity_ledger_path = build_startframe_identity_ledger(project_dir=project_dir)
@@ -186,7 +207,7 @@ def build_movie_render_handler(
                 selected_scenes=selected_scenes,
                 concat_only=concat_only,
                 on_clip_rendered=lambda completed, total, scene_number: log(
-                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}"
+                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}",
                 ),
             )
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
@@ -461,10 +482,12 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
     from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
-    from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
+    from feverslop.adapters.llm_client import LocalOpenAIClient
+    from feverslop.adapters.sequence_to_sheet_backend import (
+        ComfyUISequenceToSheetBackend,
+    )
     from feverslop.application.movie_references import MovieReferenceSheetGenerator
     from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
-    from feverslop.adapters.llm_client import LocalOpenAIClient
     from feverslop.config.app_config import AppConfig
     from feverslop.ports.rendering import WorkflowAnchorConfig
 
@@ -477,13 +500,13 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
     hero = ComfyUIImageBackend(
         client=client,
         workflow_path=backend_config_path(movie_runtime_config(movie_config)["hero_workflow"]),
-        output_dir=Path("."),
+        output_dir=Path(),
         model_resolver=resolver,
     )
     edit = ComfyUIImageBackend(
         client=client,
         workflow_path=backend_config_path(movie_runtime_config(movie_config)["edit_workflow"]),
-        output_dir=Path("."),
+        output_dir=Path(),
         model_resolver=resolver,
     )
     sequence_backend = None
@@ -506,7 +529,7 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
                 dspy_cache=app_config.llm.dspy_cache,
                 max_concurrent_requests=app_config.llm.max_concurrent_requests,
-            )
+            ),
         )
     return MovieReferenceSheetGenerator(
         backend=hero,
@@ -527,7 +550,9 @@ def build_movie_visual_adapter(
 ):
     config = movie_runtime_config(movie_config)
     if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
-        from feverslop.adapters.movie_minimax_visual import ComfyUIMiniMaxMovieVisualAdapter
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
 
         workflow_key = {
             "minimax-h3-r2v": "r2v_workflow",
@@ -575,7 +600,7 @@ def build_movie_visual_adapter(
                     postprocessor,
                     project_dir=root,
                     selected_rerender=selected,
-                )
+                ),
             )
         ),
         model_resolver=ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides),
@@ -590,7 +615,10 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
     from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
     from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
     from feverslop.adapters.video_postprocessor import VideoPostProcessor
-    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.composition.render_video import (
+        RenderVideoCompositionOptions,
+        build_render_video_scenes_use_case,
+    )
     from feverslop.config.app_config import AppConfig
 
     app_config = AppConfig.load("app_config.json")
@@ -606,7 +634,7 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
             single_prompt_workflow_path=config["i2v_workflow"],
             output_dir=ltx_dir,
             video_pipeline="ltx_i2v",
-        )
+        ),
     )
     return ComfyUIMovieI2VEditVisualAdapter(
         base_image_backend=ComfyUIImageBackend(
@@ -633,8 +661,13 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
     from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
-    from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
-    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.adapters.startframe_director_comfyui import (
+        ComfyUIStartframeDirectorVisualAdapter,
+    )
+    from feverslop.composition.render_video import (
+        RenderVideoCompositionOptions,
+        build_render_video_scenes_use_case,
+    )
     from feverslop.config.app_config import AppConfig
 
     app_config = AppConfig.load("app_config.json")
@@ -655,7 +688,7 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
             output_dir=ltx_dir,
             video_pipeline="ltx_i2v",
             debug_workflows_dir=_startframe_debug_workflows_dir(project_dir, config),
-        )
+        ),
     )
     return ComfyUIStartframeDirectorVisualAdapter(
         client=client,

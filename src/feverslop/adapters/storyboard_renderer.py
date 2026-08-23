@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 from rich.progress import (
+    BarColumn,
     Progress,
     TextColumn,
-    BarColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
@@ -19,8 +19,7 @@ from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
 
 
 class StoryboardRenderer:
-    """
-    Renders Z-Image startframes from a render_plan.json.
+    """Renders Z-Image startframes from a render_plan.json.
 
     This is intentionally independent from the concept/prompt pipeline.
     You can generate render_plan.json first, review/edit it, then run this renderer later.
@@ -138,5 +137,5 @@ class StoryboardRenderer:
                     save_image_title=self.save_image_node_title,
                     character_lora_title=self.character_lora_node_title,
                 ),
-            )
+            ),
         )

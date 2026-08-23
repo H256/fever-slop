@@ -7,7 +7,9 @@ from tests.prompt_fakes import GeneralModulesFake
 
 class StoryboardPromptTransformerTests(unittest.TestCase):
     def test_template_transformer_passes_system_and_filled_user_prompt_to_llm(self):
-        from feverslop.prompting.storyboard_prompt_transformer import TemplateStoryboardPromptTransformer
+        from feverslop.prompting.storyboard_prompt_transformer import (
+            TemplateStoryboardPromptTransformer,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -37,7 +39,9 @@ class StoryboardPromptTransformerTests(unittest.TestCase):
         self.assertEqual("TARGET IMAGE ASPECT RATIO: 1920:1088 (width:height).\nUser idea: cinematic frame", modules.calls[0].payload["user_template"])
 
     def test_template_transformer_writes_debug_files(self):
-        from feverslop.prompting.storyboard_prompt_transformer import TemplateStoryboardPromptTransformer
+        from feverslop.prompting.storyboard_prompt_transformer import (
+            TemplateStoryboardPromptTransformer,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

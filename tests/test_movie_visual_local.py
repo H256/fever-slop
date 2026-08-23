@@ -46,7 +46,7 @@ class WriteLocalPlaceholderClipTests(unittest.TestCase):
     @patch("feverslop.adapters.movie_visual.subprocess.run")
     def test_placeholder_clip_timeout_raises_adaptation_error(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired(
-            ["ffmpeg"], PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS
+            ["ffmpeg"], PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS,
         )
         path = self.project / "output" / "timeout.mp4"
 
@@ -60,7 +60,7 @@ class WriteLocalPlaceholderClipTests(unittest.TestCase):
     @patch("feverslop.adapters.movie_visual.subprocess.run")
     def test_placeholder_clip_failure_includes_stderr(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(
-            1, ["ffmpeg"], stderr="lavfi: not found"
+            1, ["ffmpeg"], stderr="lavfi: not found",
         )
         path = self.project / "output" / "failed.mp4"
 
@@ -87,8 +87,8 @@ class LocalMovieVisualAdapterRenderTests(unittest.TestCase):
                     "shots": [
                         {"scene": 1, "duration_seconds": 1.5},
                         {"scene": 2, "duration_seconds": 2.0},
-                    ]
-                }
+                    ],
+                },
             ),
             encoding="utf-8",
         )
@@ -119,7 +119,7 @@ class LocalMovieVisualAdapterRenderTests(unittest.TestCase):
         mock_run,
     ):
         mock_run.side_effect = subprocess.TimeoutExpired(
-            ["ffmpeg"], PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS
+            ["ffmpeg"], PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS,
         )
         plan_path = self._write_render_plan()
 

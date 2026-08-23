@@ -5,7 +5,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
-from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+from feverslop.composition.render_video import (
+    RenderVideoCompositionOptions,
+    build_render_video_scenes_use_case,
+)
 from feverslop.errors import FeverSlopValidationError
 
 
@@ -34,7 +37,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
                         output_dir=temp / "out",
                         render_mode="single_prompt",
                         rolling_frame_profile="off",
-                    )
+                    ),
                 )
 
             self.assertEqual(18.0, use_case.backend.max_render_duration_seconds)
@@ -58,7 +61,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
                         output_dir=temp / "out",
                         render_mode="single_prompt",
                         rolling_frame_profile="off",
-                    )
+                    ),
                 )
 
             backend = use_case.backend
@@ -69,7 +72,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
             }
             with self.assertRaisesRegex(FeverSlopValidationError, "limited to 49 frames"):
                 backend.render_scene_video(
-                    scene, "audio.mp3", "start.png", backend._rolling_spec(scene)
+                    scene, "audio.mp3", "start.png", backend._rolling_spec(scene),
                 )
 
             self.assertIsNone(backend.max_render_frames)
@@ -107,7 +110,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
                         output_dir=temp / "out",
                         render_mode="auto",
                         rolling_frame_profile="original",
-                    )
+                    ),
                 )
 
             backend = use_case.backend
@@ -162,7 +165,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
                         video_pipeline="ltx_msr",
                         rolling_frame_profile="original",
                         max_duration=99,
-                    )
+                    ),
                 )
 
             self.assertEqual(313, use_case.backend.max_render_frames)
@@ -195,7 +198,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
                         workflow_path=workflow,
                         output_dir=temp / "out",
                         video_pipeline="ltx_msr",
-                    )
+                    ),
                 )
 
             self.assertEqual(241, use_case.backend.max_render_frames)
@@ -216,7 +219,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
                         workflow_path=workflow,
                         output_dir=temp / "out",
                         video_pipeline="ltx_msr",
-                    )
+                    ),
                 )
 
             self.assertIsInstance(use_case.backend, ComfyUIMSRVideoRenderBackend)
@@ -237,7 +240,7 @@ class RenderVideoCompositionMSRTests(unittest.TestCase):
                         output_dir=temp / "out",
                         video_pipeline="ltx_msr",
                         randomize_seed=True,
-                    )
+                    ),
                 )
 
             self.assertTrue(use_case.backend.randomize_seed)

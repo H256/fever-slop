@@ -59,7 +59,7 @@ class PromptGenerationServiceTests(unittest.TestCase):
                 "user_prompt": "A dancer crosses a neon-lit street.",
                 "references": [
                     {"kind": "picture", "source": "style.png", "role": "style", "description": None,
-                     "name": None, "use_audio": False}
+                     "name": None, "use_audio": False},
                 ],
                 "notes": "Keep the camera low.",
                 "duration_seconds": 6.0,

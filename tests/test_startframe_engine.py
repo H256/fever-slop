@@ -2,12 +2,15 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+
 from PIL import Image
 
 
 class StartframeEngineTests(unittest.TestCase):
     def test_identity_ledger_splits_face_body_and_wardrobe_contracts(self):
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_startframe_project(Path(temp_dir))
@@ -25,7 +28,9 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertIn("modern jacket", mara["wardrobe"]["forbidden"])
 
     def test_startframe_plan_writes_actor_bboxes_and_continuity_requirements(self):
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
         from feverslop.application.startframe_plan import build_startframe_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -44,8 +49,12 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertIn("Use the supplied startframe as authoritative", shot["ltx_motion"]["prompt"])
 
     def test_director_prompts_include_ideogram_json_bboxes_and_wardrobe(self):
-        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
         from feverslop.application.startframe_plan import build_startframe_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -69,8 +78,12 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertIn("contact sheet", data["shots"][0]["negative_prompt"])
 
     def test_krea2_director_prompts_are_single_frame_plain_cinematic_prompts(self):
-        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
         from feverslop.application.startframe_plan import build_startframe_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -94,8 +107,12 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertNotIn("required_carryovers", shot["positive_prompt"])
 
     def test_director_prompts_use_reference_image_resolution(self):
-        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
         from feverslop.application.startframe_plan import build_startframe_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -113,8 +130,12 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertEqual(1152, data["shots"][0]["height"])
 
     def test_director_prompts_fail_clearly_when_startframe_plan_is_missing(self):
-        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_startframe_project(Path(temp_dir))
@@ -124,8 +145,12 @@ class StartframeEngineTests(unittest.TestCase):
                 build_startframe_director_prompts(project_dir=project)
 
     def test_director_prompts_fail_clearly_when_identity_ledger_is_missing(self):
-        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
         from feverslop.application.startframe_plan import build_startframe_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -225,10 +250,18 @@ class StartframeEngineTests(unittest.TestCase):
                 self.assertTrue(contract["anchors"].issubset(titles))
 
     def test_comfyui_startframe_director_orchestrator_runs_all_stage_workflows(self):
-        from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
-        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-        from feverslop.application.startframe_i2v_render_plan import write_startframe_i2v_render_plan
-        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.adapters.startframe_director_comfyui import (
+            ComfyUIStartframeDirectorVisualAdapter,
+        )
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_i2v_render_plan import (
+            write_startframe_i2v_render_plan,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
         from feverslop.application.startframe_plan import build_startframe_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -280,7 +313,9 @@ class StartframeEngineTests(unittest.TestCase):
             self.assertIn("Mara and Ivo cross the threshold.", _node_by_title(exported_director, "#PROMPT_POSITIVE")["inputs"]["text"])
 
     def test_gemma4_validator_normalizes_non_json_text_fallback(self):
-        from feverslop.adapters.gemma4_startframe_validator import normalize_validation_response
+        from feverslop.adapters.gemma4_startframe_validator import (
+            normalize_validation_response,
+        )
 
         result = normalize_validation_response(
             """
@@ -288,7 +323,7 @@ class StartframeEngineTests(unittest.TestCase):
             Score: 0.9
             Issues: ["Action moment discrepancy: ledger is held with both hands."]
             Notes: Identity, wardrobe, and location are consistent.
-            """
+            """,
         )
 
         self.assertFalse(result["pass"])
@@ -311,16 +346,16 @@ def _write_startframe_project(root: Path) -> Path:
                         "id": "mara",
                         "name": "Mara",
                         "visual_description": "gothic archivist in a charcoal coat",
-                    }
+                    },
                 ],
                 "locations": [
                     {
                         "id": "archive",
                         "name": "Archive",
                         "visual_description": "dusty archive room with a sealed ledger on a table",
-                    }
+                    },
                 ],
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -340,9 +375,9 @@ def _write_startframe_project(root: Path) -> Path:
                         "location_id": "archive",
                         "duration_seconds": 4,
                         "reference_ids": {"actors": ["mara"], "location": "archive"},
-                    }
+                    },
                 ],
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -353,9 +388,9 @@ def _write_startframe_project(root: Path) -> Path:
                     "shot_0001": {
                         "required_carryovers": ["same archive location"],
                         "incoming": ["Mara has just entered the archive"],
-                    }
-                }
-            }
+                    },
+                },
+            },
         ),
         encoding="utf-8",
     )
@@ -368,7 +403,7 @@ def _write_startframe_project(root: Path) -> Path:
                         "name": "Mara",
                         "visual_description": "gothic archivist in a charcoal coat",
                         "msr_sheet_path": "movie/references/actors/mara/msr_sheet.png",
-                    }
+                    },
                 ],
                 "locations": [
                     {
@@ -376,9 +411,9 @@ def _write_startframe_project(root: Path) -> Path:
                         "name": "Archive",
                         "visual_description": "dusty archive room with a sealed ledger on a table",
                         "msr_sheet_path": "movie/references/locations/archive/views/hero.png",
-                    }
+                    },
                 ],
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -402,7 +437,7 @@ def _write_two_actor_startframe_project(root: Path) -> Path:
                     {"id": "archive", "name": "Archive", "visual_description": "dusty municipal archive"},
                     {"id": "station", "name": "Station", "visual_description": "abandoned underground signal station"},
                 ],
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -421,9 +456,9 @@ def _write_two_actor_startframe_project(root: Path) -> Path:
                         "location_id": "archive",
                         "duration_seconds": 3,
                         "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
-                    }
+                    },
                 ],
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -463,7 +498,7 @@ def _write_two_actor_startframe_project(root: Path) -> Path:
                     },
                 ],
                 "generator_backend": "local",
-            }
+            },
         ),
         encoding="utf-8",
     )

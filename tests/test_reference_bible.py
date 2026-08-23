@@ -29,7 +29,9 @@ class FakeImageBackend:
 
 class ReferenceBibleTests(unittest.TestCase):
     def test_generator_can_publish_sequence_sheet_artifacts(self):
-        from feverslop.application.sequence_reference_pipeline import SequenceReferenceResult
+        from feverslop.application.sequence_reference_pipeline import (
+            SequenceReferenceResult,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir) / "output" / "references"
@@ -57,7 +59,7 @@ class ReferenceBibleTests(unittest.TestCase):
                 return_value=result,
             ):
                 manifest_path = generator.generate_subject_bible(
-                    ReferenceSubject(id="singer", name="Mara", image_prompt="astronaut")
+                    ReferenceSubject(id="singer", name="Mara", image_prompt="astronaut"),
                 )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -69,7 +71,9 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual([], [p for p in actor_dir.rglob("*") if p.name.endswith(".tmp")])
 
     def test_generator_can_publish_sequence_location_bible(self):
-        from feverslop.application.sequence_reference_pipeline import SequenceReferenceResult
+        from feverslop.application.sequence_reference_pipeline import (
+            SequenceReferenceResult,
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir) / "output" / "references"
@@ -97,7 +101,7 @@ class ReferenceBibleTests(unittest.TestCase):
                 return_value=result,
             ):
                 manifest_path = generator.generate_location_bible(
-                    ReferenceLocation(id="stage", name="Mirror Stage", image_prompt="wide mirror stage")
+                    ReferenceLocation(id="stage", name="Mirror Stage", image_prompt="wide mirror stage"),
                 )
 
             self.assertTrue(manifest_path.is_relative_to(output_dir))
@@ -127,7 +131,7 @@ class ReferenceBibleTests(unittest.TestCase):
                     role="lead",
                     visual_description="silver hair",
                     image_prompt="portrait of Mara",
-                )
+                ),
             )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -154,7 +158,7 @@ class ReferenceBibleTests(unittest.TestCase):
                     id="singer",
                     name="Mara",
                     image_prompt="portrait of Mara",
-                )
+                ),
             )
 
             self.assertEqual(1, len(hero_backend.requests))
@@ -171,10 +175,10 @@ class ReferenceBibleTests(unittest.TestCase):
             )
 
             generator.generate_subject_bible(
-                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara")
+                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
             )
             generator.generate_location_bible(
-                ReferenceLocation(id="station", name="Station", image_prompt="abandoned station")
+                ReferenceLocation(id="station", name="Station", image_prompt="abandoned station"),
             )
 
         self.assertEqual((1152, 2048), (backend.requests[0].width, backend.requests[0].height))
@@ -192,7 +196,7 @@ class ReferenceBibleTests(unittest.TestCase):
             )
 
             generator.generate_subject_bible(
-                ReferenceSubject(id="bard", name="Bard", image_prompt="portrait of Bard")
+                ReferenceSubject(id="bard", name="Bard", image_prompt="portrait of Bard"),
             )
 
         self.assertEqual((2560, 1440), (backend.requests[0].width, backend.requests[0].height))
@@ -214,7 +218,7 @@ class ReferenceBibleTests(unittest.TestCase):
                     id="singer",
                     name="Mara",
                     image_prompt="portrait of Mara in a forest with emerald robes and silver hair",
-                )
+                ),
             )
 
             self.assertIn("portrait of Mara in a forest", hero_backend.requests[0].prompt)
@@ -245,7 +249,7 @@ class ReferenceBibleTests(unittest.TestCase):
                     id="singer",
                     name="Mara",
                     image_prompt="portrait of Mara",
-                )
+                ),
             )
 
             self.assertEqual((1088, 1920), (hero_backend.requests[0].width, hero_backend.requests[0].height))
@@ -265,7 +269,7 @@ class ReferenceBibleTests(unittest.TestCase):
             )
 
             manifest_path = generator.generate_subject_bible(
-                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara")
+                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
             )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -293,7 +297,7 @@ class ReferenceBibleTests(unittest.TestCase):
             )
 
             manifest_path = generator.generate_subject_bible(
-                ReferenceSubject(id="warrior", name="Warrior", image_prompt="dark fantasy warrior")
+                ReferenceSubject(id="warrior", name="Warrior", image_prompt="dark fantasy warrior"),
             )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -325,7 +329,7 @@ class ReferenceBibleTests(unittest.TestCase):
                     id="warrior",
                     name="Warrior",
                     image_prompt="dark fantasy warrior with black armor",
-                )
+                ),
             )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -361,7 +365,7 @@ class ReferenceBibleTests(unittest.TestCase):
                     name="Mirror Stage",
                     visual_description="black stage",
                     image_prompt="wide mirror stage",
-                )
+                ),
             )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -384,7 +388,7 @@ class ReferenceBibleTests(unittest.TestCase):
             )
 
             manifest_path = generator.generate_location_bible(
-                ReferenceLocation(id="stage", name="Stage", image_prompt="wide stage")
+                ReferenceLocation(id="stage", name="Stage", image_prompt="wide stage"),
             )
 
             self.assertEqual((1920, 1088), (hero_backend.requests[0].width, hero_backend.requests[0].height))
@@ -413,7 +417,7 @@ class ReferenceBibleTests(unittest.TestCase):
             )
 
             generator.generate_subject_bible(
-                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait")
+                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait"),
             )
 
             self.assertEqual(["hero", "front", "left", "right", "closeup"], [event["view"] for event in events])
@@ -463,7 +467,7 @@ class ReferenceBibleTests(unittest.TestCase):
 
     def test_direct_msr_actor_sheet_prompt_keeps_music_video_default(self):
         prompt = ReferenceBibleGenerator._direct_msr_sheet_prompt(
-            ReferenceSubject(id="goat", name="The Goat Demon", image_prompt="massive horned goat demon")
+            ReferenceSubject(id="goat", name="The Goat Demon", image_prompt="massive horned goat demon"),
         )
 
         self.assertTrue(prompt.startswith("vertical four panel character sheet photos."))

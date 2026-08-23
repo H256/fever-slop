@@ -15,9 +15,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
-from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
+from feverslop.application.render_video import (
+    RenderVideoScenesRequest,
+    RenderVideoScenesUseCase,
+)
 from feverslop.ports.rendering import VideoRenderRequest
-
 
 # ---------------------------------------------------------------------------
 # FakeVideoBackend (reused pattern from test_architecture_ports)
@@ -132,7 +134,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "render",
                     render_mode="single_prompt",
-                )
+                ),
             )
 
             self.assertEqual(2, len(rendered))
@@ -162,7 +164,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                         storyboard_dir=temp / "storyboard",
                         output_dir=temp / "render",
                         render_mode="single_prompt",
-                    )
+                    ),
                 )
 
             self.assertEqual([7001, 7002], [request.scene["seed"] for request in backend.requests])
@@ -189,7 +191,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "output/ltx",
                     render_mode="single_prompt",
-                )
+                ),
             )
 
             output_dir = temp / "output/ltx"
@@ -227,7 +229,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     output_dir=temp / "render",
                     render_mode="single_prompt",
                     skip_existing=True,
-                )
+                ),
             )
 
             self.assertEqual(2, len(rendered))
@@ -261,16 +263,16 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     output_dir=temp / "render",
                     render_mode="single_prompt",
                     skip_existing=True,
-                )
+                ),
             )
 
             self.assertEqual(2, len(rendered))
             self.assertEqual(0, len(backend.requests))
             self.assertEqual(
-                temp / "render/scene_0001/final.mp4", rendered[0]
+                temp / "render/scene_0001/final.mp4", rendered[0],
             )
             self.assertEqual(
-                temp / "render/scene_0002/final.mp4", rendered[1]
+                temp / "render/scene_0002/final.mp4", rendered[1],
             )
 
     def test_skip_existing_backfills_minimax_scene_manifests(self):
@@ -320,7 +322,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     output_dir=temp / "render",
                     render_mode="single_prompt",
                     skip_existing=True,
-                )
+                ),
             )
             self.assertEqual(1, len(backend.requests))
 
@@ -345,7 +347,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     output_dir=temp / "render",
                     render_mode="single_prompt",
                     scene_numbers={2},
-                )
+                ),
             )
 
             self.assertEqual(1, len(rendered))
@@ -372,7 +374,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "render",
                     render_mode="relay",
-                )
+                ),
             )
 
             self.assertEqual("relay", backend.requests[0].render_mode)
@@ -397,7 +399,7 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
                     storyboard_dir=temp / "storyboard",
                     output_dir=temp / "render",
                     render_mode="single_prompt",
-                )
+                ),
             )
 
             expected = [

@@ -1,12 +1,11 @@
 import json
 import os
+import tempfile
+import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
-import tempfile
-import unittest
 from unittest import mock
-
 
 from tools import generate_prompt
 

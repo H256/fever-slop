@@ -6,7 +6,8 @@ import base64
 import io
 import json
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 import cv2
 import numpy as np
