@@ -11,6 +11,7 @@ from feverslop.domain.subject_directives import (
     TemporalScope,
 )
 from feverslop.prompting.subject_directive_planning import (
+    DspySubjectDirectivePlanner,
     build_shared_staging_plan,
     SubjectDirectivePlanner,
     project_directives_to_prompt,
@@ -73,6 +74,32 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
         })
         self.assertEqual(1, len(calls))
         self.assertIn("concept", calls[0]["scene"])
+        self.assertEqual("singer", plan.subjects[0].subject_id)
+
+    def test_dspy_planner_decodes_nested_json_fields(self):
+        class Runtime:
+            def predict(self, _signature):
+                return lambda **_kwargs: {
+                    "staging_plan": {
+                        "schema_version": "subject-directives/v1",
+                        "shot_id": "shot-1",
+                        "temporal_scope": '{"start_seconds": 0, "end_seconds": 2}',
+                        "subjects": '[{"subject_id":"singer","role":"singer","position":"front","action":"sings","temporal_scope":{"start_seconds":0,"end_seconds":2}}]',
+                        "spatial_relations": "[]",
+                    }
+                }
+
+            def make_lm(self, _llm):
+                return object()
+
+            def context(self, **_kwargs):
+                from contextlib import nullcontext
+                return nullcontext()
+
+        with patch("dspy.Module", object):
+            with patch("feverslop.prompting.dspy_subject_directive_signatures.build_subject_directive_signature", return_value=object()):
+                planner = DspySubjectDirectivePlanner(object(), dspy_runtime=Runtime())
+        plan = planner.plan({"shot_id": "shot-1", "duration_seconds": 2})
         self.assertEqual("singer", plan.subjects[0].subject_id)
 
     def test_projection_is_explicit_and_backend_neutral(self):

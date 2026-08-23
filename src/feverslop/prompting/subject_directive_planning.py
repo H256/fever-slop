@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+import json
 from typing import Any
 
 from feverslop.domain.subject_directives import (
@@ -53,7 +54,24 @@ class DspySubjectDirectivePlanner:
             payload = extract_json_object(payload)
         if not isinstance(payload, Mapping):
             raise ValueError("DSPy subject planner returned no structured staging plan")
+        payload = _decode_nested_json(payload)
         return build_shared_staging_plan(scene, generator=lambda _payload: payload)
+
+
+def _decode_nested_json(value: Any) -> Any:
+    """Normalize DSPy JSON fields that LiteLLM may deserialize only partially."""
+    if isinstance(value, Mapping):
+        return {key: _decode_nested_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_decode_nested_json(item) for item in value]
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate[:1] in "[{":
+            try:
+                return _decode_nested_json(json.loads(candidate))
+            except json.JSONDecodeError:
+                pass
+    return value
 
 
 def build_shared_staging_plan(
