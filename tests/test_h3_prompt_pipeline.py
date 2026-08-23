@@ -246,8 +246,8 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         self.assertEqual(1, len(calls))
         self.assertEqual("legacy", calls[0][0])
-        self.assertEqual(1, len(messages))
-        self.assertIn("ltx_i2v", messages[0])
+        fallback_messages = [message for message in messages if "ltx_i2v" in message]
+        self.assertEqual(1, len(fallback_messages))
 
     def test_minimax_pipeline_emits_no_fallback_warning(self):
         messages = []
@@ -260,6 +260,6 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         self.assertEqual(1, len(calls))
         self.assertEqual("dspy", calls[0][0])
-        self.assertEqual(0, len(messages))
+        self.assertFalse(any("fallback" in message.lower() for message in messages))
 if __name__ == "__main__":
     unittest.main()

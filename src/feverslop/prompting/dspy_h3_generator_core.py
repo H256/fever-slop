@@ -173,8 +173,9 @@ class VideoPromptGenerator:
 
     def _warning(self, message: str, *, title: str = "H3 warning") -> None:
         logger.warning(message)
-        if self.warning_callback is not None:
-            self.warning_callback(message, title=title)
+        callback = getattr(self, "warning_callback", None)
+        if callback is not None:
+            callback(message, title=title)
 
     def _judge_final_prompt(
         self,

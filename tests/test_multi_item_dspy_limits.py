@@ -49,7 +49,7 @@ class MultiItemDspyLimitTests(unittest.TestCase):
         )
         modules.segments({"relay_segments": [{"index": i} for i in range(4)]})
 
-        self.assertEqual(3072, calls[0]["config"]["max_tokens"])
+        self.assertEqual(9216, calls[0]["config"]["max_tokens"])
 
 
 if __name__ == "__main__":

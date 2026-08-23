@@ -1180,7 +1180,9 @@ def _load_manifests_by_id(root: Path) -> dict[str, dict]:
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise FeverSlopValidationError(f"Cannot read reference manifest: {manifest_path}: {exc}") from exc
+            raise FeverSlopValidationError(
+                f"Cannot read reference manifest: {manifest_path.as_posix()}: {exc}"
+            ) from exc
         if not isinstance(manifest, dict) or "id" not in manifest:
             raise FeverSlopValidationError(f"Reference manifest is missing an id: {manifest_path}")
         manifests[str(manifest["id"])] = manifest
