@@ -47,12 +47,20 @@ class DspySubjectDirectivePlanner:
         # budget (which may be 65k+) and let one malformed scene consume the
         # whole response or get truncated before the JSON plan is complete.
         self.lm = self.runtime.make_lm(llm, max_tokens=4096)
+        self.last_scene: dict[str, Any] | None = None
+        self.last_output: Any = None
+        self.last_lm_history: Any = None
 
     def plan(self, scene: Mapping[str, Any]) -> SubjectDirectivePlan:
         from feverslop.domain.llm_parsing import extract_json_object
 
-        with self.runtime.context(lm=self.lm):
-            output = self.predictor(scene=dict(scene))
+        self.last_scene = dict(scene)
+        try:
+            with self.runtime.context(lm=self.lm):
+                output = self.predictor(scene=dict(scene))
+        finally:
+            self.last_lm_history = list(getattr(self.lm, "history", []) or [])
+        self.last_output = output
         payload = output.get("staging_plan") if isinstance(output, Mapping) else getattr(output, "staging_plan", output)
         if isinstance(payload, str):
             payload = extract_json_object(payload)
@@ -98,8 +106,6 @@ def build_shared_staging_plan(
             return generated
         if isinstance(generated, Mapping):
             payload = generated.get("subject_directives", generated)
-            if isinstance(payload, Mapping):
-                payload = _default_temporal_scopes(payload, scene)
             return SubjectDirectivePlan.from_dict(payload)
 
     duration = float(scene.get("duration_seconds") or scene.get("duration") or 1)
@@ -123,44 +129,6 @@ def build_shared_staging_plan(
     if issues:
         raise ValueError("Invalid shared staging plan: " + "; ".join(issues))
     return plan
-
-
-def _default_temporal_scopes(payload: Mapping[str, Any], scene: Mapping[str, Any]) -> dict[str, Any]:
-    """Fill invalid model scopes from the authoritative scene duration."""
-    duration = float(scene.get("duration_seconds") or scene.get("duration") or 1)
-    fallback = {"start_seconds": 0, "end_seconds": duration}
-    result = dict(payload)
-    scope = result.get("temporal_scope")
-    if not isinstance(scope, Mapping):
-        result["temporal_scope"] = fallback
-    else:
-        try:
-            valid = float(scope.get("start_seconds", 0)) >= 0 and float(scope.get("end_seconds", 0)) > float(scope.get("start_seconds", 0))
-        except (TypeError, ValueError):
-            valid = False
-        if not valid:
-            result["temporal_scope"] = fallback
-    subjects = []
-    for item in result.get("subjects") or ():
-        if not isinstance(item, Mapping):
-            subjects.append(item)
-            continue
-        subject = dict(item)
-        subject_scope = subject.get("temporal_scope")
-        try:
-            subject_scope_valid = (
-                isinstance(subject_scope, Mapping)
-                and float(subject_scope.get("start_seconds", 0)) >= 0
-                and float(subject_scope.get("end_seconds", 0)) > float(subject_scope.get("start_seconds", 0))
-            )
-        except (TypeError, ValueError):
-            subject_scope_valid = False
-        if not subject_scope_valid:
-            subject["temporal_scope"] = dict(result["temporal_scope"])
-        subjects.append(subject)
-    if "subjects" in result:
-        result["subjects"] = subjects
-    return result
 
 
 def project_directives_to_prompt(plan: SubjectDirectivePlan) -> str:

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import inspect
+import json
 from typing import Any, Callable
 from dataclasses import asdict, is_dataclass
 
@@ -32,6 +33,26 @@ def get_steering_value(config: Any, name: str, default: str = "") -> str:
 
 def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
+
+
+def _write_subject_directive_debug_artifact(
+    *, planner: Any, scene: dict[str, Any], error: Exception, output_path: Path, model: str,
+) -> Path:
+    debug_dir = output_path.parent / "subject_directive_debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    segment_id = str(scene.get("segment_id") or scene.get("shot_id") or scene.get("scene") or "unknown")
+    debug_path = debug_dir / f"{segment_id}.json"
+    payload = {
+        "segment_id": segment_id,
+        "model": model,
+        "effective_max_tokens": 4096,
+        "error": {"type": type(error).__name__, "message": str(error)},
+        "planner_input": getattr(planner, "last_scene", None) or scene,
+        "raw_dspy_output": getattr(planner, "last_output", None),
+        "lm_history": getattr(planner, "last_lm_history", None),
+    }
+    debug_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    return debug_path
 
 
 def config_items_as_dicts(items: Any) -> list[dict]:
@@ -376,7 +397,7 @@ class PromptGenerationPipeline:
             concept = concept_prompts.get(segment_id, "")
             if isinstance(concept, dict):
                 concept = concept.get("concept") or concept.get("prompt") or ""
-            plan = planner.plan({
+            planner_input = {
                 "shot_id": segment_id,
                 "scene": source.get("scene") or scene.get("scene"),
                 "duration_seconds": source.get("duration") or source.get("duration_seconds") or scene.get("duration_seconds"),
@@ -384,7 +405,20 @@ class PromptGenerationPipeline:
                 "concept": str(concept),
                 "scene_details": scene_details.get(segment_id, {}),
                 "global_context": global_context,
-            })
+            }
+            try:
+                plan = planner.plan(planner_input)
+            except Exception as exc:
+                debug_path = _write_subject_directive_debug_artifact(
+                    planner=planner,
+                    scene=planner_input,
+                    error=exc,
+                    output_path=scene_prompts_json,
+                    model=str(getattr(llm, "model", "unknown")),
+                )
+                raise RuntimeError(
+                    f"Subject staging failed for {segment_id}; full DSPy input/output trace: {debug_path}"
+                ) from exc
             scene["subject_directives"] = plan.to_dict()
             changed += 1
             reporter.message(f"[cyan]Subject staging generated: {changed}/{len(prompts)} scenes[/cyan]")

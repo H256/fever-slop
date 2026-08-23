@@ -76,17 +76,16 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
         self.assertIn("concept", calls[0]["scene"])
         self.assertEqual("singer", plan.subjects[0].subject_id)
 
-    def test_planner_defaults_zero_length_model_scopes_to_scene_duration(self):
-        plan = SubjectDirectivePlanner(predictor=lambda _payload: {
-            "shot_id": "shot-1",
-            "temporal_scope": {"start_seconds": 0, "end_seconds": 0},
-            "subjects": [{
-                "subject_id": "singer", "role": "singer", "position": "front",
-                "action": "sings", "temporal_scope": {"start_seconds": 0, "end_seconds": 0},
-            }],
-        }).plan({"shot_id": "shot-1", "duration_seconds": 4})
-        self.assertEqual(4, plan.temporal_scope.end_seconds)
-        self.assertEqual(4, plan.subjects[0].temporal_scope.end_seconds)
+    def test_planner_rejects_zero_length_model_scopes(self):
+        with self.assertRaisesRegex(ValueError, "temporal scope requires"):
+            SubjectDirectivePlanner(predictor=lambda _payload: {
+                "shot_id": "shot-1",
+                "temporal_scope": {"start_seconds": 0, "end_seconds": 0},
+                "subjects": [{
+                    "subject_id": "singer", "role": "singer", "position": "front",
+                    "action": "sings", "temporal_scope": {"start_seconds": 0, "end_seconds": 0},
+                }],
+            }).plan({"shot_id": "shot-1", "duration_seconds": 4})
 
     def test_dspy_planner_decodes_nested_json_fields(self):
         class Runtime:
