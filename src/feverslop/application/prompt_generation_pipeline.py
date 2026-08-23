@@ -440,6 +440,10 @@ class PromptGenerationPipeline:
                 )
                 failures.append(f"{segment_id}: {last_error} (trace: {debug_path})")
                 continue
+            for repair in getattr(planner, "last_repairs", []):
+                reporter.message(
+                    f"[yellow]Subject staging repaired for {segment_id}: {repair}[/yellow]"
+                )
             scene["subject_directives"] = plan.to_dict()
             changed += 1
             reporter.message(f"[cyan]Subject staging generated: {changed}/{len(prompts)} scenes[/cyan]")

@@ -50,6 +50,7 @@ class DspySubjectDirectivePlanner:
         self.last_scene: dict[str, Any] | None = None
         self.last_output: Any = None
         self.last_lm_history: Any = None
+        self.last_repairs: list[str] = []
 
     def plan(self, scene: Mapping[str, Any]) -> SubjectDirectivePlan:
         from feverslop.domain.llm_parsing import extract_json_object
@@ -67,6 +68,7 @@ class DspySubjectDirectivePlanner:
         if not isinstance(payload, Mapping):
             raise ValueError("DSPy subject planner returned no structured staging plan")
         payload = _decode_nested_json(payload)
+        payload, self.last_repairs = _repair_zero_length_scopes(payload, scene)
         return build_shared_staging_plan(scene, generator=lambda _payload: payload)
 
 
@@ -87,6 +89,42 @@ def _decode_nested_json(value: Any) -> Any:
                 except (SyntaxError, ValueError):
                     pass
     return value
+
+
+def _repair_zero_length_scopes(
+    payload: Mapping[str, Any], scene: Mapping[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """Repair only the unambiguous model error of a zero-length full-shot scope."""
+    duration = float(scene.get("duration_seconds") or scene.get("duration") or 1)
+    result = dict(payload)
+    repairs: list[str] = []
+
+    def repair_scope(scope: Any, label: str) -> dict[str, Any] | Any:
+        if not isinstance(scope, Mapping):
+            return scope
+        try:
+            start = float(scope.get("start_seconds"))
+            end = float(scope.get("end_seconds"))
+        except (TypeError, ValueError):
+            return scope
+        if start == 0 and end == 0:
+            repairs.append(f"{label}: temporal_scope 0..0s -> 0..{duration:g}s")
+            return {"start_seconds": 0, "end_seconds": duration}
+        return scope
+
+    result["temporal_scope"] = repair_scope(result.get("temporal_scope"), "plan")
+    subjects = []
+    for item in result.get("subjects") or ():
+        if not isinstance(item, Mapping):
+            subjects.append(item)
+            continue
+        subject = dict(item)
+        subject_id = str(subject.get("subject_id") or "unknown")
+        subject["temporal_scope"] = repair_scope(subject.get("temporal_scope"), subject_id)
+        subjects.append(subject)
+    if "subjects" in result:
+        result["subjects"] = subjects
+    return result, repairs
 
 
 def build_shared_staging_plan(

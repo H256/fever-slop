@@ -94,8 +94,8 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
                     "staging_plan": {
                         "schema_version": "subject-directives/v1",
                         "shot_id": "shot-1",
-                        "temporal_scope": '{"start_seconds": 0, "end_seconds": 2}',
-                        "subjects": '[{"subject_id":"singer","role":"singer","position":"front","action":"sings","temporal_scope":{"start_seconds":0,"end_seconds":2}}]',
+                        "temporal_scope": '{"start_seconds": 0, "end_seconds": 0}',
+                        "subjects": '[{"subject_id":"singer","role":"singer","position":"front","action":"sings","temporal_scope":{"start_seconds":0,"end_seconds":0}}]',
                         "spatial_relations": "[]",
                     }
                 }
@@ -112,6 +112,9 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
                 planner = DspySubjectDirectivePlanner(object(), dspy_runtime=Runtime())
         plan = planner.plan({"shot_id": "shot-1", "duration_seconds": 2})
         self.assertEqual("singer", plan.subjects[0].subject_id)
+        self.assertEqual(2, plan.temporal_scope.end_seconds)
+        self.assertEqual(2, plan.subjects[0].temporal_scope.end_seconds)
+        self.assertEqual(2, len(planner.last_repairs))
 
     def test_projection_is_explicit_and_backend_neutral(self):
         text = project_directives_to_prompt(_plan())
