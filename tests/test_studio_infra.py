@@ -11,7 +11,7 @@ class TestArtifactCatalogOSError(unittest.TestCase):
     """INFRA-003: Handle OSError on path.stat()."""
 
     def test_catalog_snapshot_handles_broken_symlink(self):
-        from feverslop.studio.artifact_catalog import ArtifactCatalog
+        from feverslop.adapters.artifact_catalog import ArtifactCatalog
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

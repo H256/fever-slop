@@ -3834,14 +3834,14 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_job_uses_comfyui_adapter_when_configured(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
-        from feverslop.studio.job_service import build_movie_visual_adapter
+        from feverslop.composition.movie_pipeline_jobs import build_movie_visual_adapter
 
         adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"), movie_config={"render_backend": "comfyui"})
 
         self.assertIsInstance(adapter, ComfyUIMovieVisualAdapter)
 
     def test_movie_runtime_config_requires_i2v_workflow_for_last_frame_keyframes(self):
-        from feverslop.studio.job_service import movie_runtime_config
+        from feverslop.composition.movie_pipeline_jobs import movie_runtime_config
 
         with self.assertRaisesRegex(ValueError, "msr-i2v-startframe"):
             movie_runtime_config({"continuity_keyframes": "last-to-start"})
@@ -3854,7 +3854,7 @@ class MovieProjectTests(unittest.TestCase):
         self.assertEqual("last-to-start", config["continuity_keyframes"])
 
     def test_movie_runtime_config_uses_v6_ingredients_workflow_by_default(self):
-        from feverslop.studio.job_service import movie_runtime_config
+        from feverslop.composition.movie_pipeline_jobs import movie_runtime_config
 
         config = movie_runtime_config({"movie_video_workflow": "ingredients"})
 
@@ -3864,7 +3864,7 @@ class MovieProjectTests(unittest.TestCase):
         )
 
     def test_movie_runtime_config_supports_minimax_h3_video_modes(self):
-        from feverslop.studio.job_service import movie_runtime_config
+        from feverslop.composition.movie_pipeline_jobs import movie_runtime_config
 
         for mode in ("minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"):
             with self.subTest(mode=mode):
@@ -3879,7 +3879,7 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.movie_minimax_visual import (
             ComfyUIMiniMaxMovieVisualAdapter,
         )
-        from feverslop.studio.job_service import build_movie_visual_adapter
+        from feverslop.composition.movie_pipeline_jobs import build_movie_visual_adapter
 
         adapter = build_movie_visual_adapter(
             Path("project"),
@@ -3946,7 +3946,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_visual_adapter_defaults_to_comfyui_not_placeholder(self):
         from feverslop.adapters.movie_visual import ComfyUIMovieVisualAdapter
-        from feverslop.studio.job_service import build_movie_visual_adapter
+        from feverslop.composition.movie_pipeline_jobs import build_movie_visual_adapter
 
         adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"))
 
@@ -3954,7 +3954,7 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_local_visual_adapter_requires_explicit_dev_override(self):
         from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
-        from feverslop.studio.job_service import build_movie_visual_adapter
+        from feverslop.composition.movie_pipeline_jobs import build_movie_visual_adapter
 
         adapter = build_movie_visual_adapter(Path("project"), Path("workflow.json"), movie_config={"render_backend": "local"})
 
@@ -3963,7 +3963,7 @@ class MovieProjectTests(unittest.TestCase):
     def test_movie_reference_generator_defaults_to_comfyui_not_placeholder(self):
         from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
         from feverslop.application.movie_references import MovieReferenceSheetGenerator
-        from feverslop.studio.job_service import build_movie_reference_generator
+        from feverslop.composition.movie_pipeline_jobs import build_movie_reference_generator
 
         generator = build_movie_reference_generator()
 
@@ -3974,7 +3974,7 @@ class MovieProjectTests(unittest.TestCase):
         from feverslop.adapters.sequence_to_sheet_backend import (
             ComfyUISequenceToSheetBackend,
         )
-        from feverslop.studio.job_service import build_movie_reference_generator
+        from feverslop.composition.movie_pipeline_jobs import build_movie_reference_generator
 
         with patch(
             "feverslop.adapters.llm_client.LocalOpenAIClient",
@@ -3986,14 +3986,14 @@ class MovieProjectTests(unittest.TestCase):
 
     def test_movie_local_reference_generator_requires_explicit_dev_override(self):
         from feverslop.adapters.movie_references import LocalMovieImageBackend
-        from feverslop.studio.job_service import build_movie_reference_generator
+        from feverslop.composition.movie_pipeline_jobs import build_movie_reference_generator
 
         generator = build_movie_reference_generator(movie_config={"reference_backend": "local"})
 
         self.assertIsInstance(generator.backend, LocalMovieImageBackend)
 
     def test_movie_workflow_patcher_uses_default_movie_msr_template(self):
-        from feverslop.studio.job_service import patch_movie_msr_workflow
+        from feverslop.composition.movie_pipeline_jobs import patch_movie_msr_workflow
 
         output = patch_movie_msr_workflow()
 
@@ -4325,7 +4325,7 @@ class MovieProjectTests(unittest.TestCase):
             generate.assert_called_once()
 
     def test_movie_reference_sync_adds_missing_render_plan_ids(self):
-        from feverslop.studio.job_service import sync_movie_manifest_with_render_plan
+        from feverslop.composition.movie_pipeline_jobs import sync_movie_manifest_with_render_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -4369,7 +4369,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual("", repaired_actor["msr_sheet_path"])
 
     def test_movie_reference_sync_rebuilds_mixed_actor_prompts_before_rendering(self):
-        from feverslop.studio.job_service import sync_movie_manifest_with_render_plan
+        from feverslop.composition.movie_pipeline_jobs import sync_movie_manifest_with_render_plan
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

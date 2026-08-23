@@ -14,8 +14,9 @@ from typing import Any
 from feverslop.domain.slug_utils import (
     slugify_project_name,  # noqa: F401 -- re-exported for backward compatibility
 )
+from feverslop.adapters.artifact_catalog import ArtifactCatalog
+from feverslop.adapters.artifact_locking import artifact_write_lock
 from feverslop.ports.reporting import Reporter
-from feverslop.studio.artifact_locking import artifact_write_lock
 
 _logger = logging.getLogger(__name__)
 
@@ -123,7 +124,6 @@ class ProjectStore:
         max_upload_size: int = 100 * 1024 * 1024,
     ):
         self.projects_root = Path(projects_root).resolve()
-        from feverslop.studio.artifact_catalog import ArtifactCatalog
         from feverslop.studio.media_store import MediaStore
         from feverslop.studio.pipeline_state_store import PipelineStateStore
         from feverslop.studio.project_repository import ProjectRepository
