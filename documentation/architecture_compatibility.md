@@ -18,6 +18,11 @@ Compatibility facades remain available for older imports:
 - `storyboard_renderer.StoryboardRenderer`; new code should import from `feverslop.adapters.storyboard_renderer`.
 - `workflow_patcher.WorkflowPatcher`; new code should import from `feverslop.adapters.workflow_patcher`.
 
+The complete ownership map for the transitional `feverslop.studio` namespace
+is documented in [Studio Ownership](studio-ownership.md). It defines the
+target owner for every remaining Studio module and keeps the Python package
+migration separate from the on-disk `.studio/` project metadata format.
+
 Current architecture boundaries:
 
 - `feverslop.application` contains use cases and pipeline services; the application layer does not import concrete adapters.
