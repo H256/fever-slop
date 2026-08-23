@@ -28,7 +28,7 @@ from feverslop.composition.movie_pipeline_jobs import (  # noqa: F401
     write_startframe_i2v_empty_audio_workflow,
 )
 from feverslop.ports.rebuild_execution import ArtifactProvenancePort
-from feverslop.studio.jobs import (
+from feverslop.composition.job_runtime import (
     PIPELINE_ACTIONS,
     JobHandler,
     JobRegistry,
