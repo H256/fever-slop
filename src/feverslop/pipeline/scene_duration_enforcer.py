@@ -2,7 +2,12 @@
 
 from pathlib import Path
 
-from feverslop.domain.srt import SrtBlock, SrtScene, format_srt_timestamp, parse_srt_blocks
+from feverslop.domain.srt import (
+    SrtBlock,
+    SrtScene,
+    format_srt_timestamp,
+    parse_srt_blocks,
+)
 from feverslop.ports.artifacts import ArtifactStore
 
 
@@ -50,7 +55,7 @@ def write_scene_srt(
                 str(index),
                 f"{format_srt_timestamp(scene.start)} --> {format_srt_timestamp(scene.end)}",
                 body,
-            ])
+            ]),
         )
 
     return artifact_store.write_text(path, "\n\n".join(blocks) + "\n")
@@ -61,8 +66,7 @@ def enforce_scene_duration_constraints(
     min_duration: float,
     max_duration: float,
 ) -> list[SrtScene]:
-    """
-    Repairs scene durations after beat-based SRT generation.
+    """Repairs scene durations after beat-based SRT generation.
 
     Goal:
     - No scene shorter than min_duration unless the entire song/remaining tail is shorter.
@@ -75,7 +79,6 @@ def enforce_scene_duration_constraints(
     - It does not try to re-beat-detect.
     - It only repairs the segment windows so downstream Stage1/Storyboard/LTX agree.
     """
-
     if not scenes:
         return []
 
@@ -90,7 +93,7 @@ def enforce_scene_duration_constraints(
             split_long_scenes(scenes, max_duration=max_duration),
             min_duration=min_duration,
             max_duration=max_duration,
-        )
+        ),
     )
 
 
@@ -199,7 +202,7 @@ def _split_scene_to_max(scene: SrtScene, max_duration: float) -> list[SrtScene]:
                 start=start,
                 end=end,
                 text=scene.text,
-            )
+            ),
         )
 
     return result
@@ -239,12 +242,12 @@ def validate_scene_durations(
         if duration < min_duration - epsilon:
             if not (allow_single_short_tail and is_last and len(scenes) == 1):
                 errors.append(
-                    f"Scene {index + 1} too short: {duration:.3f}s < {min_duration:.3f}s"
+                    f"Scene {index + 1} too short: {duration:.3f}s < {min_duration:.3f}s",
                 )
 
         if duration > max_duration + epsilon:
             errors.append(
-                f"Scene {index + 1} too long: {duration:.3f}s > {max_duration:.3f}s"
+                f"Scene {index + 1} too long: {duration:.3f}s > {max_duration:.3f}s",
             )
 
     return errors

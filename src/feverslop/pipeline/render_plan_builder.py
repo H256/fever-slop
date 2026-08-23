@@ -1,16 +1,18 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
 import random
 import re
+from pathlib import Path
 
-from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
-from feverslop.path_utils import coerce_local_path
-from feverslop.errors import FeverSlopDataError
-from feverslop.domain.subject_directives import SubjectDirectivePlan, validate_subject_directive_plan
 from feverslop.domain.performance_sync import select_performance_stems
-
+from feverslop.domain.subject_directives import (
+    SubjectDirectivePlan,
+    validate_subject_directive_plan,
+)
+from feverslop.errors import FeverSlopDataError
+from feverslop.path_utils import coerce_local_path
+from feverslop.ports.artifacts import ArtifactStore
 
 CAMERA_MOTION_DETAILS = [
     "slow forward dolly",
@@ -211,7 +213,7 @@ def _scene_references(scene: dict, max_scene_actors: int = 4) -> dict:
     actor_ids = list(references.get("actor_ids") or [])
     if len(actor_ids) > max_scene_actors:
         raise ValueError(
-            f"Scene {scene.get('scene')} references at most {max_scene_actors} actors"
+            f"Scene {scene.get('scene')} references at most {max_scene_actors} actors",
         )
     if actor_ids:
         references["actor_ids"] = [str(actor_id) for actor_id in actor_ids]
@@ -257,12 +259,12 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
         scene.get("t2i_prompt")
         or scene.get("zimage_prompt")
         or scene.get("z_image", {}).get("prompt", "")
-        or ""
+        or "",
     ).strip()
     explicit_i2v_prompt = str(
         scene.get("i2v_prompt_from_t2i")
         or scene.get("original_style_i2v_prompt")
-        or ""
+        or "",
     ).strip()
     if explicit_i2v_prompt and not (_scene_silent_mode(scene) and _contains_vocal_performance_prompt(explicit_i2v_prompt)):
         return explicit_i2v_prompt
@@ -272,7 +274,7 @@ def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
         or scene.get("zimage_prompt")
         or scene.get("ltx_base_prompt")
         or scene.get("base_prompt")
-        or ""
+        or "",
     ).strip()
     base_concept = str(scene.get("base_concept", "")).strip()
     visual_foundation = zimage_prompt or base_prompt
@@ -364,8 +366,7 @@ def build_render_plan(
     seed: int = 0,
     max_scene_actors: int = 4,
 ) -> Path:
-    """
-    Combines:
+    """Combines:
     - scene_prompts_json: per-scene Z-Image and LTX prompts
     - ltx_prompt_relay_json: per-scene frame-relative singing/instrumental relay
 
@@ -378,7 +379,6 @@ def build_render_plan(
       frame_count (scene_frame_count_between) and the exporter frame math, so
       frame_count == round(fps * duration_seconds) holds within one frame.
     """
-
     scene_prompts = artifact_store.read_json(scene_prompts_json)
     relay_scenes = artifact_store.read_json(ltx_prompt_relay_json)
 
@@ -411,7 +411,7 @@ def build_render_plan(
         if ab_end <= ab_start:
             raise ValueError(
                 f"Render plan builder received a non-positive scene span for scene {scene_number}: "
-                f"start {ab_start}, end {ab_end}"
+                f"start {ab_start}, end {ab_end}",
             )
         frame_count = video_settings.scene_frame_count_between(ab_start, ab_end)
 
@@ -422,7 +422,7 @@ def build_render_plan(
         i2v_prompt_from_t2i = original_style_i2v_prompt if _scene_silent_mode(scene) else str(
             scene.get("i2v_prompt_from_t2i")
             or scene.get("original_style_i2v_prompt")
-            or original_style_i2v_prompt
+            or original_style_i2v_prompt,
         ).strip()
 
         prompt_relay = []
@@ -521,10 +521,10 @@ def build_render_plan(
                 render_scene["subject_directives"] = scene["subject_directives"]
             if issues:
                 render_scene.setdefault("metadata", {}).setdefault(
-                    "validation_warnings", []
+                    "validation_warnings", [],
                 ).extend(issues)
         references = _filter_silent_audio_references(
-            _scene_references(scene, max_scene_actors), scene
+            _scene_references(scene, max_scene_actors), scene,
         )
         if references and project_dir is not None:
             _portable_audio_references(references, project_dir)
@@ -551,7 +551,7 @@ def build_render_plan(
                 if not source:
                     raise FeverSlopDataError(
                         f"Scene {scene_number} H3 audio reference "
-                        f"{audio_ref.get('label')!r} has no source"
+                        f"{audio_ref.get('label')!r} has no source",
                     )
 
                 rendered_path = _render_audio_path(source, project_dir)
@@ -567,7 +567,7 @@ def build_render_plan(
                 stem_tags[rendered_path] = str(
                     audio_ref.get("description")
                     or audio_ref.get("copy_mode")
-                    or f"{name} audio reference"
+                    or f"{name} audio reference",
                 )
 
             render_scene["stem_audio"] = {
@@ -619,13 +619,13 @@ def build_render_plan(
                     all_stem_paths.add(
                         _project_relative_path(stem_path, project_dir)
                         if project_dir is not None
-                        else stem_path.as_posix()
+                        else stem_path.as_posix(),
                     )
                 if input_audio is not None:
                     all_stem_paths.add(
                         _project_relative_path(input_audio, project_dir)
                         if project_dir is not None
-                        else input_audio.as_posix()
+                        else input_audio.as_posix(),
                     )
                 selected_paths = set(resolved_stem_paths.values())
                 existing: list[str] = [

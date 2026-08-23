@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
+from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.srt import parse_srt_blocks
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.config.video_settings import VideoSettings
 
 
 def parse_scene_dicts(srt_file: str | Path) -> list[dict]:
@@ -191,7 +191,7 @@ def build_scene_prompt_relay(
             if lyrics_here:
                 state = "singing"
                 prompt = singing_prompt_template.format(
-                    lyrics=" ".join(lyrics_here).strip()
+                    lyrics=" ".join(lyrics_here).strip(),
                 )
             else:
                 state = "instrumental"
