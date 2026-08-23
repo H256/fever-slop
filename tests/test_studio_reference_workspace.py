@@ -140,7 +140,7 @@ class ReferenceWorkspaceServiceTests(unittest.TestCase):
 
     def _service_with_mock(self):
         with patch(
-            "feverslop.studio.reference_workspace_service.ProjectReferenceLibrary",
+            "feverslop.composition.reference_workspace_service.ProjectReferenceLibrary",
             return_value=self._mock,
         ):
             return ReferenceWorkspaceService(project_root=Path("/tmp/test"))
