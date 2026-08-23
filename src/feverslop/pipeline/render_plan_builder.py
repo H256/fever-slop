@@ -512,24 +512,17 @@ def build_render_plan(
             },
         }
         if scene.get("subject_directives") is not None:
-            directive_plan = SubjectDirectivePlan.from_dict(scene["subject_directives"])
-            known_subject_ids = tuple((scene.get("references") or {}).get("actor_ids") or ())
-            known_prop_ids = tuple((scene.get("references") or {}).get("prop_ids") or ())
-            issues = validate_subject_directive_plan(
-                directive_plan,
-                known_subject_ids=known_subject_ids,
-                known_environment_ids=tuple(
-                    location_id
-                    for location_id in [(scene.get("references") or {}).get("location_id")]
-                    if location_id
-                ),
-                known_prop_ids=known_prop_ids,
-            )
+            try:
+                directive_plan = SubjectDirectivePlan.from_dict(scene["subject_directives"])
+                issues = validate_subject_directive_plan(directive_plan)
+                render_scene["subject_directives"] = directive_plan.to_dict()
+            except (TypeError, ValueError) as exc:
+                issues = [f"subject directive decode failed: {exc}"]
+                render_scene["subject_directives"] = scene["subject_directives"]
             if issues:
-                raise ValueError(
-                    f"Scene {scene_number} has invalid subject directives: {'; '.join(issues)}"
-                )
-            render_scene["subject_directives"] = directive_plan.to_dict()
+                render_scene.setdefault("metadata", {}).setdefault(
+                    "validation_warnings", []
+                ).extend(issues)
         references = _filter_silent_audio_references(
             _scene_references(scene, max_scene_actors), scene
         )

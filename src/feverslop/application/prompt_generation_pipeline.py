@@ -465,9 +465,12 @@ class PromptGenerationPipeline:
         if changed:
             artifact_store.write_json(scene_prompts_json, prompts)
         if failures:
-            raise RuntimeError(
-                "Subject staging failed after three attempts for "
-                f"{len(failures)} scene(s):\n" + "\n".join(failures)
+            reporter.message(
+                "[yellow]Subject staging warning: "
+                f"{len(failures)} scene(s) could not be normalized; "
+                "their debug traces were saved and the pipeline continues. "
+                + " | ".join(failures)
+                + "[/yellow]"
             )
 
     def build_resolved_global_context(

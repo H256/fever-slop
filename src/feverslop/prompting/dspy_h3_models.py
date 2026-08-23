@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -11,6 +12,12 @@ class PromptMode(str, Enum):
     FL2V = "fl2v"
     L2V = "l2v"
     R2V = "r2v"
+
+
+class PromptJudgeResult(BaseModel):
+    verdict: Literal["good", "bad"]
+    issues: list[str] = Field(default_factory=list)
+    repair_instruction: str = ""
 
 
 class ReferenceKind(str, Enum):
@@ -245,6 +252,7 @@ class GeneratedVideoPrompt(BaseModel):
     prompt: BaseVideoPrompt | ReferenceVideoPrompt
     plan: ResolvedPromptPlan
     references: list[ResolvedReference]
+    judge: PromptJudgeResult | None = None
 
     @property
     def rendered_prompt(self) -> str:

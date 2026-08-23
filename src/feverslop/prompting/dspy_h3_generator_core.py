@@ -9,6 +9,8 @@ from typing import Any
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_models import (
     GeneratedVideoPrompt,
+    BaseVideoPrompt,
+    PromptJudgeResult,
     ImageAnalysisMode,
     MusicIntent,
     PlannedSubject,
@@ -156,7 +158,38 @@ class VideoPromptGenerator:
         self.planner = self.dspy_runtime.predict(signatures.build_prompt_plan)
         self.base_renderer = self.dspy_runtime.predict(signatures.render_base_prompt)
         self.reference_renderer = self.dspy_runtime.predict(signatures.render_reference_prompt)
+        self.judge = (
+            self.dspy_runtime.predict(signatures.judge_final_prompt)
+            if getattr(signatures, "judge_final_prompt", None) is not None
+            else None
+        )
         self.lm = self.dspy_runtime.make_lm(llm)
+
+    def _judge_final_prompt(
+        self,
+        request: VideoPromptRequest,
+        plan: ResolvedPromptPlan,
+        references: list[ResolvedReference],
+        prompt: BaseVideoPrompt | ReferenceVideoPrompt,
+    ) -> PromptJudgeResult | None:
+        if self.judge is None:
+            return None
+        guide_path = self.reference_guide_path if request.mode is PromptMode.R2V else self.base_guide_path
+        try:
+            output = self.judge(
+                guide=self._read(guide_path),
+                final_prompt=prompt.render(),
+                authoritative_plan=plan.model_dump_json(indent=2),
+                references=references,
+            )
+            value = getattr(output, "judge", output)
+            return PromptJudgeResult.model_validate(value)
+        except Exception as exc:
+            logger.warning("H3 final prompt judge unavailable: %s", exc)
+            return PromptJudgeResult(
+                verdict="bad",
+                issues=[f"judge unavailable: {type(exc).__name__}: {exc}"],
+            )
 
     @staticmethod
     def _read(path: str | Path) -> str:
@@ -446,4 +479,14 @@ class VideoPromptGenerator:
                 prompt = output.result
         if plan.music_intent == MusicIntent.NONE:
             prompt.non_diegetic_music = None
-        return GeneratedVideoPrompt(mode=request.mode, prompt=prompt, plan=plan, references=refs)
+        with self.dspy_runtime.context(lm=self.lm):
+            judge = self._judge_final_prompt(request, plan, refs, prompt)
+        if judge is not None and judge.verdict == "bad":
+            logger.warning("H3 final prompt judge rejected prompt: %s", "; ".join(judge.issues))
+        return GeneratedVideoPrompt(
+            mode=request.mode,
+            prompt=prompt,
+            plan=plan,
+            references=refs,
+            judge=judge,
+        )

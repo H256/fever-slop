@@ -6,45 +6,6 @@ from typing import Any, Iterable, Mapping
 
 SCHEMA_VERSION = "subject-directives/v1"
 PROP_STATES = frozenset({"held", "played", "attached", "placed", "absent"})
-_NON_ACTOR_ROLE_MARKERS = frozenset(
-    {
-        "atmosphere",
-        "atmospheric",
-        "audience",
-        "accessory",
-        "ambient",
-        "background",
-        "crowd",
-        "equipment",
-        "environment",
-        "effect",
-        "fog",
-        "haze",
-        "instrument",
-        "lighting",
-        "location",
-        "object",
-        "prop",
-        "scene",
-        "stage",
-        "visual",
-    }
-)
-_NON_ACTOR_ID_MARKERS = frozenset(
-    {
-        "audience",
-        "background",
-        "beam",
-        "crowd",
-        "environment",
-        "fog",
-        "haze",
-        "light",
-        "lighting",
-        "stage",
-        "spotlight",
-    }
-)
 
 
 @dataclass(frozen=True)
@@ -204,50 +165,19 @@ def validate_subject_directive_plan(
     known_environment_ids: Iterable[str] = (),
     known_prop_ids: Iterable[str] = (),
 ) -> list[str]:
-    known_subjects = set(known_subject_ids)
-    known_environments = set(known_environment_ids)
-    known_props = set(known_prop_ids)
     issues: list[str] = []
     seen: set[str] = set()
     for subject in plan.subjects:
         if subject.subject_id in seen:
             issues.append(f"duplicate subject ID: {subject.subject_id}")
         seen.add(subject.subject_id)
-        if (
-            known_subjects
-            and subject.subject_id not in known_subjects
-            and subject.subject_id not in known_environments
-            and not _is_non_actor_subject(subject.role)
-            and not _is_non_actor_subject_id(subject.subject_id)
-        ):
-            issues.append(f"Unknown subject ID: {subject.subject_id}")
         if subject.visibility == "visible" and (not subject.position or not subject.action):
             issues.append(f"subject {subject.subject_id} needs position and action")
         scope = subject.temporal_scope
         if scope is None or scope.start_seconds > plan.temporal_scope.start_seconds or scope.end_seconds < plan.temporal_scope.end_seconds:
             issues.append(f"subject {subject.subject_id} has incomplete temporal coverage")
-        for binding in subject.prop_bindings:
-            if known_props and binding.prop_id not in known_props:
-                issues.append(f"Unknown prop ID: {binding.prop_id}")
-
-    declared_props = {
-        binding.prop_id
-        for subject in plan.subjects
-        for binding in subject.prop_bindings
-    }
-    relation_ids = seen | known_subjects | known_environments | known_props | declared_props
     relation_values: dict[tuple[str, str, str], str] = {}
     for relation in plan.spatial_relations:
-        if (
-            relation.subject_id not in relation_ids
-            and not _is_non_actor_subject_id(relation.subject_id)
-        ):
-            issues.append(f"unknown spatial relation subject: {relation.subject_id}")
-        if (
-            relation.target_id not in relation_ids
-            and not _is_non_actor_subject_id(relation.target_id)
-        ):
-            issues.append(f"unknown spatial relation target: {relation.target_id}")
         key = (relation.subject_id, relation.relation, relation.target_id)
         previous = relation_values.setdefault(key, relation.detail)
         if previous != relation.detail:
@@ -256,20 +186,3 @@ def validate_subject_directive_plan(
                 f"{relation.subject_id} {relation.relation} {relation.target_id}"
             )
     return issues
-
-
-def _is_non_actor_subject(role: str) -> bool:
-    role_words = {
-        word.strip(".,:;()[]{}")
-        for word in role.lower().replace("/", " ").replace("-", " ").split()
-    }
-    return bool(role_words & _NON_ACTOR_ROLE_MARKERS)
-
-
-def _is_non_actor_subject_id(subject_id: str) -> bool:
-    id_words = {
-        word
-        for word in subject_id.lower().replace("-", "_").split("_")
-        if word
-    }
-    return bool(id_words & _NON_ACTOR_ID_MARKERS)

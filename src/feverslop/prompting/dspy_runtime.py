@@ -15,6 +15,7 @@ class H3SignatureBundle:
     build_prompt_plan: Any
     render_base_prompt: Any
     render_reference_prompt: Any
+    judge_final_prompt: Any = None
 
 
 @dataclass(frozen=True, slots=True)

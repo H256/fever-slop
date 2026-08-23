@@ -223,4 +223,26 @@ class H3PromptPipeline:
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
+        if reporter is not None:
+            bad_judgements = []
+            for item in context["h3_prompts"]:
+                judge = item.get("prompt_judge") or {}
+                if judge.get("verdict") == "bad":
+                    bad_judgements.append(item)
+                    reporter.message(
+                        "[yellow]H3 prompt judge: BAD for "
+                        f"{item.get('segment_id')}; prompt saved and pipeline continues: "
+                        f"{'; '.join(str(issue) for issue in judge.get('issues') or [])}[/yellow]"
+                    )
+            if bad_judgements:
+                reporter.message(
+                    "[yellow]H3 prompt judge summary: "
+                    f"{len(bad_judgements)} scene(s) marked BAD. "
+                    "Prompts were saved; review and optionally correct them manually "
+                    "before rendering: "
+                    + ", ".join(str(item.get("segment_id")) for item in bad_judgements)
+                    + "[/yellow]"
+                )
+            else:
+                reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
         return context
