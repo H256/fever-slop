@@ -29,8 +29,7 @@ Core Python packages live under `src/feverslop`. Composition code such as
 `feverslop.composition.generate_render_plan` is kept separate from adapters
 such as `feverslop.adapters.comfyui_video_backend`.
 
-The package ownership and compatibility rules, including the transitional
-`feverslop.studio` import paths, are documented in
+The package ownership and compatibility rules are documented in
 [documentation/architecture_compatibility.md](documentation/architecture_compatibility.md).
 
 The DSPy prompt boundary, bundled guide naming, typed inputs, fallback rules,

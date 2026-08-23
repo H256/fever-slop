@@ -14,12 +14,12 @@ from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
     build_render_video_scenes_use_case,
 )
-from feverslop.studio.jobs import (
+from feverslop.composition.job_runtime import (
     FULL_PIPELINE_STEPS_BY_MODE,
     _pipeline_step_names,
     _video_pipeline_for_mode,
 )
-from feverslop.studio.project_validation import (
+from feverslop.config.project_validation import (
     VIDEO_PIPELINE_BY_MODE,
     validate_full_auto_inputs,
     validate_pipeline_mode,

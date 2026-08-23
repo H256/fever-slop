@@ -149,7 +149,7 @@ class TestGenerateMovieBibleRefineActors(unittest.TestCase):
 
 class TestConfigFlags(unittest.TestCase):
     def test_project_create_request_has_refine_actor_prompts(self):
-        from feverslop.studio.projects import ProjectCreateRequest
+        from feverslop.composition.project_store import ProjectCreateRequest
 
         req = ProjectCreateRequest(
             project_type="movie",
@@ -159,8 +159,8 @@ class TestConfigFlags(unittest.TestCase):
         self.assertTrue(req.movie_refine_actor_prompts)
 
     def test_movie_project_config_includes_refine_actor_prompts(self):
-        from feverslop.studio.project_repository import movie_project_config
-        from feverslop.studio.projects import ProjectCreateRequest
+        from feverslop.composition.project_repository import movie_project_config
+        from feverslop.composition.project_store import ProjectCreateRequest
 
         req = ProjectCreateRequest(
             project_type="movie",
@@ -171,8 +171,8 @@ class TestConfigFlags(unittest.TestCase):
         self.assertTrue(config["refine_actor_prompts"])
 
     def test_movie_project_config_defaults_refine_actor_prompts_to_false(self):
-        from feverslop.studio.project_repository import movie_project_config
-        from feverslop.studio.projects import ProjectCreateRequest
+        from feverslop.composition.project_repository import movie_project_config
+        from feverslop.composition.project_store import ProjectCreateRequest
 
         req = ProjectCreateRequest(
             project_type="movie",

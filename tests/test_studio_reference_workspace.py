@@ -14,7 +14,7 @@ from feverslop.domain.reference_workspace import (
     ReferenceWorkspaceSnapshot,
     SceneReferenceAssignment,
 )
-from feverslop.studio.reference_workspace_service import (
+from feverslop.composition.reference_workspace_service import (
     GenerationCommand,
     ReferenceWorkspaceService,
     _asset_to_dict,

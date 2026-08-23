@@ -10,8 +10,8 @@ import weakref
 from pathlib import Path
 from unittest.mock import patch
 
-from feverslop.studio import pipeline_state_store
-from feverslop.studio.pipeline_state_store import PipelineStateStore
+from feverslop.adapters import pipeline_state_store
+from feverslop.adapters.pipeline_state_store import PipelineStateStore
 
 
 class PipelineStateStoreTests(unittest.TestCase):

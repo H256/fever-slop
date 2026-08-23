@@ -7,7 +7,7 @@ from pathlib import Path
 
 class PipelineActionAvailabilityTests(unittest.TestCase):
     def test_atomic_stage_history_enables_rerunning_msr_references_after_main(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -31,7 +31,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertFalse(actions["msr-enrich"]["enabled"])
 
     def test_main_pipeline_rerun_invalidates_older_msr_reference_completion(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -56,7 +56,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("Run MSR references first.", actions["msr-enrich"]["reason"])
 
     def test_missing_selected_scene_workflow_recommends_preparation_and_blocks_render(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -79,7 +79,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("Prepare LTX workflows for scenes 3 first.", actions["ltx-render-scenes"]["reason"])
 
     def test_empty_selection_uses_render_plan_for_workflow_preparation(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -103,7 +103,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("Prepare LTX workflows (all scenes)", actions["ltx-prepare-workflows"]["label"])
 
     def test_empty_selection_enables_rendering_all_prepared_render_plan_scenes(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -126,7 +126,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("Render all scenes", actions["ltx-render-scenes"]["label"])
 
     def test_empty_selection_rejects_malformed_render_plan_entries(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -150,7 +150,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         )
 
     def test_unfinished_enrichment_blocks_workflow_preparation(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -168,7 +168,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("Run MSR enrichment first.", actions["ltx-prepare-workflows"]["reason"])
 
     def test_all_selected_workflows_enable_render(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -185,7 +185,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("", actions["ltx-render-scenes"]["reason"])
 
     def test_final_concat_is_blocked_until_scene_clips_exist(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             actions = {item["value"]: item for item in pipeline_action_availability(Path(temp_dir), [1])}
@@ -194,7 +194,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("Render scene clips first.", actions["final-concat"]["reason"])
 
     def test_final_concat_stays_blocked_after_partial_scene_render(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -211,7 +211,7 @@ class PipelineActionAvailabilityTests(unittest.TestCase):
         self.assertEqual("Render scene clips first.", actions["final-concat"]["reason"])
 
     def test_final_concat_uses_plan_for_configured_video_pipeline(self):
-        from feverslop.studio.pipeline_actions import pipeline_action_availability
+        from feverslop.composition.pipeline_actions import pipeline_action_availability
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

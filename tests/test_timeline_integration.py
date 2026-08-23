@@ -18,8 +18,8 @@ from feverslop.domain.timeline_editing import (
     TimelineSnapshot,
 )
 from feverslop.ports.timeline_documents import AffectedArtifacts
-from feverslop.studio.jobs import JobRegistry
-from feverslop.studio.timeline_service import TimelineStudioService
+from feverslop.composition.job_runtime import JobRegistry
+from feverslop.composition.timeline_service import TimelineStudioService
 
 # ---------------------------------------------------------------------------
 # Helpers

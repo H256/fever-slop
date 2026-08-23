@@ -11,18 +11,18 @@ from pathlib import Path
 
 from rich.panel import Panel
 
-from feverslop.studio.job_service import StudioFullAutoConsole as _StudioFullAutoConsole
-from feverslop.studio.job_service import (
+from feverslop.composition.job_service import StudioFullAutoConsole as _StudioFullAutoConsole
+from feverslop.composition.job_service import (
     build_full_auto_handler,
     pipeline_mode_from_config,
 )
-from feverslop.studio.jobs import (
+from feverslop.composition.job_runtime import (
     JobRegistry,
     build_ffmpeg_recut_command,
     build_pipeline_options,
     run_with_stream_logging,
 )
-from feverslop.studio.projects import (
+from feverslop.composition.project_store import (
     ArtifactRequest,
     ProjectCreateRequest,
     ProjectStore,
@@ -417,7 +417,7 @@ class StudioBackendTests(unittest.TestCase):
             store = self._project_store(Path(temp_dir))
             path = Path(temp_dir) / "demo" / "new.json"
 
-            with patch("feverslop.studio.projects.os.fsync", side_effect=OSError("fsync failed")):
+            with patch("feverslop.composition.project_store.os.fsync", side_effect=OSError("fsync failed")):
                 with self.assertRaisesRegex(OSError, "fsync failed"):
                     store.write_artifact(
                         "demo",
@@ -444,7 +444,7 @@ class StudioBackendTests(unittest.TestCase):
                 real_link(source, target)
 
             result = []
-            with patch("feverslop.studio.projects.os.link", side_effect=observed_link):
+            with patch("feverslop.composition.project_store.os.link", side_effect=observed_link):
                 worker = threading.Thread(
                     target=lambda: result.append(store.write_artifact(
                         "demo",
@@ -479,10 +479,10 @@ class StudioBackendTests(unittest.TestCase):
             self.assertFalse(any(destination.parent.glob(f".{destination.name}.*.tmp")))
 
     def test_artifact_locking_module_is_available(self):
-        self.assertIsNotNone(importlib.util.find_spec("feverslop.studio.artifact_locking"))
+        self.assertIsNotNone(importlib.util.find_spec("feverslop.adapters.artifact_locking"))
 
     def test_artifact_locks_are_released_when_no_writer_uses_them(self):
-        from feverslop.studio import artifact_locking
+        from feverslop.adapters import artifact_locking
 
         path = Path("artifact.json").resolve()
         with artifact_locking._LOCKS_GUARD:

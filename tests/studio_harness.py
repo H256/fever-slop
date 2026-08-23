@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from feverslop.studio.job_service import StudioJobRequest, StudioJobService
-from feverslop.studio.jobs import JobRegistry
-from feverslop.studio.project_requests import project_create_request
-from feverslop.studio.projects import ProjectStore
+from feverslop.application.job_contracts import JobRequest as StudioJobRequest
+from feverslop.application.project_requests import project_create_request
+from feverslop.composition.job_runtime import JobRegistry
+from feverslop.composition.job_service import StudioJobService
+from feverslop.composition.project_store import ProjectStore
 
 
 class HarnessResponse:

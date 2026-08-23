@@ -18,10 +18,8 @@ Compatibility facades remain available for older imports:
 - `storyboard_renderer.StoryboardRenderer`; new code should import from `feverslop.adapters.storyboard_renderer`.
 - `workflow_patcher.WorkflowPatcher`; new code should import from `feverslop.adapters.workflow_patcher`.
 
-The complete ownership map for the transitional `feverslop.studio` namespace
-is documented in [Studio Ownership](studio-ownership.md). It defines the
-target owner for every remaining Studio module and keeps the Python package
-migration separate from the on-disk `.studio/` project metadata format.
+The deprecated `feverslop.studio` namespace has been removed. The on-disk
+`.studio/` project metadata format remains a separate compatibility contract.
 
 Current architecture boundaries:
 
@@ -30,25 +28,20 @@ Current architecture boundaries:
 - `feverslop.domain` contains render plan, LTX, and postprocessing domain types.
 - `feverslop.ports` defines protocols and shared request types; ports do not import adapters.
 - `feverslop.adapters` contains ComfyUI, local JSON artifacts, OpenAI-compatible LLM clients, and FFmpeg/postprocessing integration.
-- `feverslop.studio` contains transitional headless services only; it is not a supported GUI package.
+- the former `feverslop.studio` package is removed; headless services live in their canonical layers.
 - repository-root Python files are public CLI scripts or compatibility facades only.
 
-## Headless Studio compatibility
+## Headless service ownership
 
-The following implementations have one canonical home outside the transitional
-`feverslop.studio` namespace:
+Headless implementations use these canonical homes:
 
 - `feverslop.adapters.artifact_catalog` - global/project artifact catalog access.
 - `feverslop.adapters.artifact_locking` - artifact write locking.
 - `feverslop.composition.movie_pipeline_jobs` - movie pipeline job builders and helpers.
 
-The old `feverslop.studio.artifact_catalog`,
-`feverslop.studio.artifact_locking`, and
-`feverslop.studio.movie_pipeline_jobs` paths remain as compatibility shims for
-older callers. New implementation code and tests must import the canonical
-modules directly. The on-disk `.studio/` project metadata directory is a
-separate compatibility format and is not a recommendation to use the Python
-package namespace.
+The old Studio Python import paths are intentionally no longer supported. The
+on-disk `.studio/` project metadata directory is a separate compatibility
+format and remains unchanged.
 
 Allowed root Python files:
 
