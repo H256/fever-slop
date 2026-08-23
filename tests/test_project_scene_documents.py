@@ -11,7 +11,7 @@ from unittest.mock import patch
 from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
 from feverslop.application.scene_workspace import PatchSceneUseCase
 from feverslop.ports.scene_documents import SceneDocumentConflict, SceneLtxPromptField
-from feverslop.studio.artifact_catalog import ArtifactCatalog
+from feverslop.adapters.artifact_catalog import ArtifactCatalog
 
 
 class CatalogStub:

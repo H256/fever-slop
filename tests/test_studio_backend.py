@@ -611,7 +611,7 @@ class StudioBackendTests(unittest.TestCase):
             self.assertEqual(store.read_artifact("demo", relative)["revision"], updated["revision"])
 
     def test_patch_render_plan_uses_shared_artifact_write_lock(self):
-        from feverslop.studio.artifact_locking import artifact_write_lock
+        from feverslop.adapters.artifact_locking import artifact_write_lock
 
         with tempfile.TemporaryDirectory() as temp_dir:
             store = self._project_store(Path(temp_dir))
@@ -638,7 +638,7 @@ class StudioBackendTests(unittest.TestCase):
 
     def test_scene_and_raw_revision_writers_cannot_lose_update(self):
         from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
-        from feverslop.studio.artifact_catalog import ArtifactCatalog
+        from feverslop.adapters.artifact_catalog import ArtifactCatalog
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

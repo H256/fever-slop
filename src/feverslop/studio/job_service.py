@@ -10,22 +10,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from feverslop.domain.visual_consistency import PreflightMode
-from feverslop.ports.rebuild_execution import ArtifactProvenancePort
-from feverslop.studio.jobs import (
-    PIPELINE_ACTIONS,
-    JobHandler,
-    JobRegistry,
-    build_pipeline_handler,
-    build_pipeline_options,
-    build_recut_scene_handler,
-    build_reference_rerender_handler,
-    build_visual_consistency_preflight_handler,
-    run_with_stream_logging,
-)
-from feverslop.studio.logging import render_log_lines
-
-# Re-export movie pipeline functions for backward compatibility
-from feverslop.studio.movie_pipeline_jobs import (  # noqa: F401
+from feverslop.composition.movie_pipeline_jobs import (  # noqa: F401
     backend_config_path,
     build_movie_full_auto_handler,
     build_movie_i2v_edit_visual_adapter,
@@ -43,6 +28,20 @@ from feverslop.studio.movie_pipeline_jobs import (  # noqa: F401
     sync_movie_manifest_with_render_plan,
     write_startframe_i2v_empty_audio_workflow,
 )
+from feverslop.ports.rebuild_execution import ArtifactProvenancePort
+from feverslop.studio.jobs import (
+    PIPELINE_ACTIONS,
+    JobHandler,
+    JobRegistry,
+    build_pipeline_handler,
+    build_pipeline_options,
+    build_recut_scene_handler,
+    build_reference_rerender_handler,
+    build_visual_consistency_preflight_handler,
+    run_with_stream_logging,
+)
+from feverslop.studio.logging import render_log_lines
+
 from feverslop.studio.pipeline_actions import ensure_pipeline_action_available
 from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE
 from feverslop.studio.projects import ProjectStore
