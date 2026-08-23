@@ -207,7 +207,7 @@ class ProjectStore:
         artifact_path = self.resolve_project_path(project_id, request.path)
         data = request.data
         if artifact_path.name == "config.json":
-            from feverslop.studio.project_validation import validate_project_config
+            from feverslop.config.project_validation import validate_project_config
 
             metadata = self.project_metadata(project_id)
             validate_project_config(data, project_type=str(metadata.get("project_type") or "standard_music_video"))
