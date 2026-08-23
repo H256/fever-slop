@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import logging
 import os
 import re
@@ -11,10 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from feverslop.domain.slug_utils import slugify_project_name  # noqa: F401 -- re-exported for backward compatibility
+from feverslop.domain.slug_utils import (
+    slugify_project_name,  # noqa: F401 -- re-exported for backward compatibility
+)
 from feverslop.ports.reporting import Reporter
 from feverslop.studio.artifact_locking import artifact_write_lock
-
 
 _logger = logging.getLogger(__name__)
 
@@ -234,7 +235,7 @@ class ProjectStore:
                         raise ArtifactConflict(request.path, None, actual) from None
                     except OSError as exc:
                         raise OSError(
-                            f"Could not atomically create artifact: {request.path}"
+                            f"Could not atomically create artifact: {request.path}",
                         ) from exc
                 finally:
                     temporary_path.unlink(missing_ok=True)

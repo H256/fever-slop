@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 VIDEO_PIPELINE_BY_MODE = {
     "classic": "ltx_i2v",
     "msr": "ltx_msr",

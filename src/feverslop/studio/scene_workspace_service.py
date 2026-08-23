@@ -29,7 +29,7 @@ _SCENE_ACTIONS: Mapping[str, _SceneAction] = MappingProxyType(
         "retake": _SceneAction(job_action="ltx-render-scenes"),
         "ltx-render": _SceneAction(job_action="ltx-render-scenes"),
         "stage-1-preview": _SceneAction(job_action=None),
-    }
+    },
 )
 
 
@@ -94,7 +94,7 @@ class SceneWorkspaceService:
             if preview_stage not in {None, 1} or isinstance(preview_stage, bool):
                 raise ValueError("preview_stage must be 1")
             raise ValueError(
-                "Stage-1 preview is unavailable because no studio job action is registered"
+                "Stage-1 preview is unavailable because no studio job action is registered",
             )
 
         scenes = normalize_scene_numbers(scene_numbers)

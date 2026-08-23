@@ -5,9 +5,9 @@ import threading
 import time
 import uuid
 import weakref
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
-
+from typing import Any
 
 _PATH_LOCKS_GUARD = threading.Lock()
 _PATH_LOCKS: weakref.WeakValueDictionary[Path, threading.RLock] = weakref.WeakValueDictionary()
