@@ -366,11 +366,16 @@ stabilizes faces but without character-specific guidance.
 
 Full-Auto creates a project from a short idea and song style, renders ACE-Step audio through ComfyUI, writes `config.json`, and can immediately run the video pipeline.
 
-Three pipeline modes are available:
+The following pipeline modes are available:
 
 - **Classic** (`ltx_i2v`): storyboard/start-frame driven rendering.
 - **MSR** (`ltx_msr`): reference-sheet driven rendering with actor/location identity.
 - **Ingredients** (`ltx_ingredients`): per-scene ingredients sheets with audio latent injection.
+- **MiniMax H3 R2V** (`minimax-h3-r2v`): reference-to-video rendering with actor/location
+  references and optional audio-stem references.
+- **MiniMax H3 I2V** (`minimax-h3-i2v`): image-to-video rendering from the generated
+  scene start frames.
+- **MiniMax H3 T2V** (`minimax-h3-t2v`): text-to-video rendering without an image reference.
 
 Full-Auto asks for:
 
@@ -380,7 +385,8 @@ Full-Auto asks for:
 - desired video duration
 - width and height, default `1280 x 704`
 - FPS, default `24`, allowed `16`, `24`, `50`
-- pipeline mode, **MSR** or **Classic**
+- pipeline mode, including **Classic**, **MSR**, **Ingredients**, and MiniMax H3
+  **R2V**, **I2V**, or **T2V**
 
 CLI example:
 
@@ -409,6 +415,23 @@ uv run python full_auto.py \
   --video-pipeline ltx_ingredients \
   --skip-tests
 ```
+
+Full-Auto with MiniMax H3:
+
+```bash
+uv run python full_auto.py \
+  --idea "A cyberpunk chase through a futuristic city" \
+  --style "dark synthwave with cinematic drums" \
+  --project-name neon-wolves \
+  --run-video-pipeline \
+  --video-pipeline minimax-h3-r2v \
+  --skip-tests
+```
+
+Use `minimax-h3-i2v` or `minimax-h3-t2v` instead of `minimax-h3-r2v` to select
+the corresponding MiniMax H3 input mode. R2V can additionally receive selected
+audio stems through `--minimax-audio-ref-stems`, for example
+`vocals,drums,bass`.
 
 ### LTX 2.3 Ingredients geometry
 
