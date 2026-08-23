@@ -841,9 +841,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         expected_pictures = {f"<Picture {index}>" for index in range(1, picture_count + 1)}
         bound_picture_list = re.findall(r"<Picture\s+\d+>", definitions)
         bound_pictures = set(bound_picture_list)
-        duplicate_picture_mappings = {
-            label for label in bound_picture_list if bound_picture_list.count(label) > 1
-        }
         used_pictures = set(re.findall(r"<Picture\s+\d+>", prompt))
         unbound_pictures = expected_pictures - bound_pictures
         unknown_pictures = used_pictures - expected_pictures
@@ -868,7 +865,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if any((
             undefined_subjects,
             unbound_pictures,
-            duplicate_picture_mappings,
             unknown_pictures,
             missing_videos,
             unknown_videos,
@@ -879,7 +875,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 f"Scene {scene_number} H3 reference contract mismatch: "
                 f"undefined_subjects={sorted(undefined_subjects)!r}; "
                 f"unbound_pictures={sorted(unbound_pictures)!r}; "
-                f"duplicate_picture_mappings={sorted(duplicate_picture_mappings)!r}; "
                 f"unknown_pictures={sorted(unknown_pictures)!r}; "
                 f"missing_videos={sorted(missing_videos)!r}; "
                 f"unknown_videos={sorted(unknown_videos)!r}; "
