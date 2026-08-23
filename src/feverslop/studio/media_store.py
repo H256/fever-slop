@@ -8,7 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from feverslop.studio.projects import (
+from feverslop.application.project_requests import (
     AUDIO_EXTENSIONS,
     AUDIO_MIME_TYPES,
     StudioPathError,

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import fields
 from typing import Any
 
-from feverslop.studio.projects import ProjectCreateRequest
+from feverslop.application.project_requests import ProjectCreateRequest
 
 
 def project_create_request(payload: Mapping[str, Any]) -> ProjectCreateRequest:
