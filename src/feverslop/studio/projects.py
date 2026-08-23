@@ -37,7 +37,7 @@ class ProjectStore:
         max_upload_size: int = 100 * 1024 * 1024,
     ):
         self.projects_root = Path(projects_root).resolve()
-        from feverslop.studio.media_store import MediaStore
+        from feverslop.adapters.media_store import MediaStore
         from feverslop.adapters.pipeline_state_store import PipelineStateStore
         from feverslop.studio.project_repository import ProjectRepository
 
