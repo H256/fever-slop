@@ -220,6 +220,7 @@ class H3PromptPipeline:
                 if reporter is not None
                 else None
             ),
+            warning_callback=reporter.warning if reporter is not None else None,
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)

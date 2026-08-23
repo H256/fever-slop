@@ -49,6 +49,11 @@ class FakeGenerator:
         return self.result
 
 
+class CallbackGenerator(FakeGenerator):
+    def set_warning_callback(self, callback):
+        self.warning_callback = callback
+
+
 class IncompleteAudioPrompt:
     rendered_prompt = """subject_definitions:
 <Subject 1> is a singer.
@@ -66,6 +71,24 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_build_all_forwards_reporter_warning_callback_to_generator(self):
+        generator = CallbackGenerator()
+        builder = DspyH3PromptBuilder(generator)
+        warnings = []
+
+        class Store:
+            def write_json(self, _path, payload):
+                return payload
+
+        builder.build_all_h3_prompts(
+            stage1_segments=[{"segment_id": "seg-1"}],
+            concept_prompts={}, scene_details={}, global_context={},
+            mode="ref", output_json_path="prompts.json", artifact_store=Store(),
+            warning_callback=lambda text, title=None: warnings.append((title, text)),
+        )
+
+        self.assertIsNotNone(generator.warning_callback)
+
     def test_reference_signature_requires_explicit_spatial_subject_placement(self):
         signature = build_dspy_signatures()[3]
         instructions = signature.__doc__ or ""

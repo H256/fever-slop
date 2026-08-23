@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 import logging
 import re
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_models import (
@@ -145,7 +145,8 @@ class VideoPromptGenerator:
     def __init__(self, *, base_guide_path: str | Path, reference_guide_path: str | Path,
                  llm: Any, image_analysis_mode: ImageAnalysisMode = ImageAnalysisMode.MISSING_ONLY,
                  limits: ReferenceLimits | None = None,
-                 dspy_runtime: DspyRuntime | None = None):
+                 dspy_runtime: DspyRuntime | None = None,
+                 warning_callback: Callable[..., None] | None = None):
         self.base_guide_path = Path(str(base_guide_path)).name
         self.reference_guide_path = Path(str(reference_guide_path)).name
         self.limits = limits or ReferenceLimits()
@@ -164,7 +165,16 @@ class VideoPromptGenerator:
             else None
         )
         self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
+        self.warning_callback = warning_callback
         self.lm = self.dspy_runtime.make_lm(llm)
+
+    def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
+        self.warning_callback = callback
+
+    def _warning(self, message: str, *, title: str = "H3 warning") -> None:
+        logger.warning(message)
+        if self.warning_callback is not None:
+            self.warning_callback(message, title=title)
 
     def _judge_final_prompt(
         self,
@@ -186,7 +196,7 @@ class VideoPromptGenerator:
             value = getattr(output, "judge", output)
             return PromptJudgeResult.model_validate(value)
         except Exception as exc:
-            logger.warning("H3 final prompt judge unavailable: %s", exc)
+            self._warning(f"H3 final prompt judge unavailable: {exc}")
             return PromptJudgeResult(
                 verdict="bad",
                 issues=[f"judge unavailable: {type(exc).__name__}: {exc}"],
@@ -317,12 +327,12 @@ class VideoPromptGenerator:
                 f"allowed={sorted(allowed)!r}",
             ))
             if attempt == 3:
-                logger.warning(
-                    "H3 planner contract warning after final attempt; continuing with result: %s",
-                    error,
+                self._warning(
+                    "H3 planner contract warning after final attempt; continuing with result: "
+                    f"{error}"
                 )
                 break
-            logger.warning("H3 planner retry %d/3: %s", attempt + 1, error)
+            self._warning(f"H3 planner retry {attempt + 1}/3: {error}", title="H3 planner retry")
             mapping_contract = "; ".join(
                 f'{ref.label} -> reusable subject "{ref.name or ref.label.strip("<>")}" '
                 f'with role "{ref.role.value}" and description "{ref.description}"'
@@ -437,12 +447,12 @@ class VideoPromptGenerator:
                 f"active_vocal_language={active_vocal_language!r}",
             ))
             if attempt == 3:
-                logger.warning(
-                    "H3 renderer contract warning after final attempt; continuing with result: %s",
-                    error,
+                self._warning(
+                    "H3 renderer contract warning after final attempt; continuing with result: "
+                    f"{error}"
                 )
                 return output
-            logger.warning("H3 renderer retry %d/3: %s", attempt + 1, error)
+            self._warning(f"H3 renderer retry {attempt + 1}/3: {error}", title="H3 renderer retry")
             subject_map = ", ".join(
                 f"{subject.label}={subject.name} from {subject.source_references}"
                 for subject in plan.subjects
@@ -501,11 +511,9 @@ class VideoPromptGenerator:
                 feedback = "; ".join(judge.issues) or "the prompt did not satisfy the supplied guide and plan"
                 if judge.repair_instruction:
                     feedback += f" Repair instruction: {judge.repair_instruction}"
-                logger.warning(
-                    "H3 final prompt judge retry %d/%d: %s",
-                    attempt + 1,
-                    self.judge_attempts,
-                    feedback,
+                self._warning(
+                    f"H3 final prompt judge retry {attempt + 1}/{self.judge_attempts}: {feedback}",
+                    title="H3 final prompt judge retry",
                 )
                 effective_request = effective_request.model_copy(update={
                     "notes": (
@@ -515,7 +523,10 @@ class VideoPromptGenerator:
                     ).strip()
                 })
         if judge is not None and judge.verdict == "bad":
-            logger.warning("H3 final prompt judge rejected prompt: %s", "; ".join(judge.issues))
+            self._warning(
+                "H3 final prompt judge rejected prompt: " + "; ".join(judge.issues),
+                title="H3 final prompt judge",
+            )
         return GeneratedVideoPrompt(
             mode=request.mode,
             prompt=prompt,

@@ -429,7 +429,11 @@ class DspyH3PromptBuilder:
         reference_root: Path | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         status_callback: Callable[[int, int, str], None] | None = None,
+        warning_callback: Callable[..., None] | None = None,
     ) -> Path:
+        set_warning_callback = getattr(self.generator, "set_warning_callback", None)
+        if callable(set_warning_callback):
+            set_warning_callback(warning_callback)
         results = []
         total = len(stage1_segments)
         for current, segment in enumerate(stage1_segments, start=1):
