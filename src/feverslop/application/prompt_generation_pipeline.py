@@ -6,6 +6,8 @@ import json
 from typing import Any, Callable
 from dataclasses import asdict, is_dataclass
 
+from rich.markup import escape
+
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.ports.generate_pipeline import (
     ConceptBatcherFactory,
@@ -33,6 +35,30 @@ def get_steering_value(config: Any, name: str, default: str = "") -> str:
 
 def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
+
+
+def _report_subject_staging_retry(
+    reporter: Any,
+    *,
+    attempt: int,
+    max_attempts: int,
+    segment_id: str,
+    error: Exception,
+) -> None:
+    """Render a visible, markup-safe retry diagnostic for the console reporter."""
+    title = (
+        f"[bold yellow]Subject staging · Retry {attempt}/{max_attempts} · "
+        f"{escape(str(segment_id))}[/bold yellow]"
+    )
+    text = (
+        "[yellow]The previous staging plan was rejected; retrying with repair feedback.[/yellow]\n"
+        f"[dim]Reason:[/dim] {escape(f'{type(error).__name__}: {error}')}"
+    )
+    panel = getattr(reporter, "panel", None)
+    if callable(panel):
+        panel(text, title=title)
+    else:
+        reporter.message(f"{title}\n{text}")
 
 
 def _write_subject_directive_debug_artifact(
@@ -441,8 +467,12 @@ class PromptGenerationPipeline:
                             "Return only the structured staging plan."
                         ),
                     }
-                    reporter.message(
-                        f"[yellow]Subject staging retry {attempt + 1}/3 for {segment_id}: {exc}[/yellow]"
+                    _report_subject_staging_retry(
+                        reporter,
+                        attempt=attempt + 1,
+                        max_attempts=3,
+                        segment_id=segment_id,
+                        error=exc,
                     )
             if plan is None:
                 assert last_error is not None

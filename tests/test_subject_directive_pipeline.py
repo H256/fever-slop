@@ -213,6 +213,49 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
         self.assertEqual("scene-47-shot-1", store.payload[0]["subject_directives"]["shot_id"])
         planner_type.assert_called_once()
 
+    def test_subject_staging_retry_uses_rich_panel_output(self):
+        generated = _plan()
+
+        class Store:
+            def read_json(self, _path):
+                return [{"segment_id": "seg-1"}]
+
+            def write_json(self, _path, _payload):
+                pass
+
+        class LLM:
+            model = "test-model"
+            client = object()
+
+        class Reporter:
+            def __init__(self):
+                self.panels = []
+                self.messages = []
+
+            def panel(self, text, *, title=None):
+                self.panels.append((title, text))
+
+            def message(self, text):
+                self.messages.append(text)
+
+        reporter = Reporter()
+        with patch(
+            "feverslop.application.prompt_generation_pipeline.DspySubjectDirectivePlanner"
+        ) as planner_type:
+            planner_type.return_value.plan.side_effect = [ValueError("malformed scope"), generated]
+            PromptGenerationPipeline._generate_subject_directives(
+                llm=LLM(), stage1_segments=[{"segment_id": "seg-1"}],
+                concept_prompts={}, scene_details={}, global_context={},
+                scene_prompts_json="scene-prompts.json", artifact_store=Store(),
+                reporter=reporter,
+            )
+
+        self.assertEqual(1, len(reporter.panels))
+        title, text = reporter.panels[0]
+        self.assertIn("Subject staging", title)
+        self.assertIn("Retry 2/3", title)
+        self.assertIn("malformed scope", text)
+
 
 if __name__ == "__main__":
     unittest.main()
