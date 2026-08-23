@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.scene_artifacts import SceneArtifactLayout
-from feverslop.studio.pipeline_state_store import reconcile_completed_stages
+from feverslop.adapters.pipeline_state_store import reconcile_completed_stages
 
 
 def pipeline_action_availability(project_root: Path, scenes: list[int] | None = None) -> list[dict[str, Any]]:
