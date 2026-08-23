@@ -1116,7 +1116,8 @@ def enrich_render_plan_with_reference_sheets(
         raise FeverSlopValidationError(
             "Missing reference manifests for render plan ("
             + "; ".join(details)
-            + "). Run --stage msr_references before --stage msr_reference_sheets."
+            + "). Run --stage reference_render before --stage reference_sheets "
+            + "(legacy aliases: --stage msr_references, --stage msr_reference_sheets)."
         )
 
     total = len(render_plan)

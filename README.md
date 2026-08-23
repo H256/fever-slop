@@ -114,7 +114,9 @@ If a requested artifact is missing, the pipeline stops with the exact path it
 needs instead of silently rerunning that step. For explicit stage selection,
 `prepare_workflows` and `render_scenes` are the backend-agnostic names; the
 legacy spellings `ltx_prepare_workflows` and `ltx_render_scenes` remain
-supported.
+supported. The same applies to `reference_render` / `reference_sheets` (legacy
+aliases: `msr_references` / `msr_reference_sheets`). Use `--skip-render` or
+`--skip-renderer` to skip video rendering; `--skip-ltx` remains supported.
 
 ### Video Pipeline Modes
 
@@ -156,8 +158,8 @@ uv run python run_pipeline.py ./projects/my-song \
   --reference-hero-workflow workflows/my_custom_reference_workflow.json \
   --stage main_pipeline \
   --stage anchor_fix \
-  --stage msr_references \
-  --stage msr_reference_sheets \
+  --stage reference_render \
+  --stage reference_sheets \
   --stage h3_prompts \
   --stage render_plan \
   --skip-tests
@@ -237,12 +239,12 @@ stage explicitly; use the same `--scenes` filter for the later render stage:
 ```bash
 uv run python run_pipeline.py ./projects/my-song \
   --video-pipeline ltx_ingredients \
-  --stage ltx_prepare_workflows \
+  --stage prepare_workflows \
   --scenes 1,3,5
 
 uv run python run_pipeline.py ./projects/my-song \
   --video-pipeline ltx_ingredients \
-  --stage ltx_render_scenes \
+  --stage render_scenes \
   --scenes 1,3,5
 ```
 
