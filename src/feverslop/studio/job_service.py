@@ -42,7 +42,7 @@ from feverslop.studio.jobs import (
 from feverslop.studio.logging import render_log_lines
 
 from feverslop.studio.pipeline_actions import ensure_pipeline_action_available
-from feverslop.studio.project_validation import VIDEO_PIPELINE_BY_MODE
+from feverslop.config.project_validation import VIDEO_PIPELINE_BY_MODE
 from feverslop.studio.projects import ProjectStore
 
 FullAutoHandlerFactory = Callable[..., Any]

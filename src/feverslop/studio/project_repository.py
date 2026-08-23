@@ -14,7 +14,7 @@ from feverslop.config.project_config import (
 )
 from feverslop.domain.slug_utils import slugify_project_name
 from feverslop.ports.reporting import Reporter
-from feverslop.studio.project_validation import (
+from feverslop.config.project_validation import (
     VIDEO_PIPELINE_BY_MODE,
     validate_full_auto_inputs,
     validate_pipeline_mode,
