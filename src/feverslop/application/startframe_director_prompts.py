@@ -20,8 +20,8 @@ def build_startframe_director_prompts(
         project_config = ProjectConfig.load(project_dir / "config.json")
         reference_image_size = project_config.reference_images.resolve(project_config.video)
     movie_dir = project_dir / "movie"
-    plan = read_json_document(movie_dir / "startframe_plan.json")
-    identity = read_json_document(movie_dir / "identity_ledger.json")
+    plan = _require_json(movie_dir / "startframe_plan.json", "startframe plan")
+    identity = _require_json(movie_dir / "identity_ledger.json", "identity ledger")
     backend = _director_backend(director_backend)
     shots = []
     for shot in plan.get("shots", []):
@@ -48,6 +48,12 @@ def build_startframe_director_prompts(
     output_path = movie_dir / "startframe_director_prompts.json"
     write_json_document(output_path, {"version": 1, "shots": shots})
     return output_path
+
+
+def _require_json(path: Path, label: str) -> Any:
+    if not path.is_file():
+        raise ValueError(f"Missing required {label}: {path}")
+    return read_json_document(path)
 
 
 def _director_backend(value: str) -> str:
