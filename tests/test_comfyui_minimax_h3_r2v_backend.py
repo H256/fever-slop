@@ -1324,7 +1324,7 @@ non_diegetic_music: N/A"""},
         with self.assertRaisesRegex(Exception, r"missing_audio=.*<Audio 1>"):
             backend._validate_scene(scene)
 
-    def test_scene_validation_rejects_duplicate_picture_mapping_and_unknown_video(self):
+    def test_scene_validation_rejects_unknown_video_even_when_picture_is_reused(self):
         backend = self._backend()
         scene = {
             "scene": 5,
@@ -1346,9 +1346,36 @@ non_diegetic_music: N/A"""},
 
         with self.assertRaisesRegex(
             Exception,
-            r"duplicate_picture_mappings=.*<Picture 1>.*unknown_videos=.*<Video 2>",
+            r"unknown_videos=.*<Video 2>",
         ):
             backend._validate_scene(scene)
+
+    def test_scene_validation_allows_picture_reused_by_multiple_subjects(self):
+        backend = self._backend()
+        scene = {
+            "scene": 22,
+            "references": {
+                "actor_sheet_paths": ["actor.png"],
+                "location_sheet_path": "location.png",
+                "reference_audio_paths": ["song.wav"],
+            },
+            "h3": {"prompt": """subject_definitions:
+<Subject 1> (Performer): A performer. Source references: <Picture 1>.
+<Subject 2> (Stage): A stage. Source references: <Picture 2>.
+<Subject 3> (Beam Movers): Lighting on the stage. Source references: <Picture 2>.
+<Audio 1> is reused for the scene.
+
+summary: The performer is on the stage.
+retention_analysis:
+<Subject 1>: fully_preserved - stable.
+<Subject 2>: fully_preserved - stable.
+<Subject 3>: fully_preserved - stable.
+detailed_description: <Subject 1> performs on <Subject 2> with <Subject 3>.
+overall_soundscape: Music.
+non_diegetic_music: N/A"""},
+        }
+
+        backend._validate_scene(scene)
 
     def test_production_audio_workflow_maps_reference_audio_from_slot_zero(self):
         workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
