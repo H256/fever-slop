@@ -22,7 +22,7 @@ class ComfyUIModelOverride:
     replacement: str
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "ComfyUIModelOverride":
+    def from_dict(cls, raw: dict[str, Any]) -> ComfyUIModelOverride:
         return cls(
             workflow=_require_str(raw, "workflow"),
             node_id=_require_str(raw, "node_id"),

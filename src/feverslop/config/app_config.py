@@ -1,9 +1,9 @@
 ﻿from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import math
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from feverslop.config.comfyui import ComfyUIModelOverride
@@ -55,7 +55,7 @@ class VideoWorkflowLimitConfig:
     max_render_duration_seconds: float
 
     @classmethod
-    def from_dict(cls, raw: dict) -> "VideoWorkflowLimitConfig":
+    def from_dict(cls, raw: dict) -> VideoWorkflowLimitConfig:
         raw_workflow = raw.get("workflow")
         if not isinstance(raw_workflow, str):
             raise ValueError("Video workflow limit workflow must be a string")
@@ -86,7 +86,7 @@ class StoryboardPromptTransformConfig:
     debug_dir: str = "storyboard_prompt_debug"
 
     @classmethod
-    def from_dict(cls, raw: dict) -> "StoryboardPromptTransformConfig":
+    def from_dict(cls, raw: dict) -> StoryboardPromptTransformConfig:
         raw_workflow = raw.get("workflow")
         if not isinstance(raw_workflow, str):
             raise ValueError("StoryboardPromptTransformConfig requires a non-empty workflow")
@@ -147,7 +147,7 @@ class AppConfig:
                     if profile.pipeline != pipeline or profile.purpose != purpose:
                         raise ValueError(
                             f"Video workflow profile '{name}' does not match pipeline/purpose "
-                            f"{pipeline}/{purpose}"
+                            f"{pipeline}/{purpose}",
                         )
                     return profile
             raise ValueError(f"Unknown video workflow profile: {name}")
@@ -170,7 +170,7 @@ class AppConfig:
         )
 
     @classmethod
-    def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> "AppConfig":
+    def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> AppConfig:
         path = coerce_local_path(path)
         dotenv_api_key = _read_dotenv_value(path.parent / ".env", "LLM_API_KEY")
 
@@ -197,7 +197,7 @@ class AppConfig:
         *,
         dotenv_api_key: str | None = None,
         base_dir: Path | None = None,
-    ) -> "AppConfig":
+    ) -> AppConfig:
         llm_raw = raw.get("llm", {})
         comfyui_raw = raw.get("comfyui", {})
         default_max_render_duration_raw = comfyui_raw.get("default_max_render_duration_seconds")
@@ -371,16 +371,16 @@ def _parse_video_workflow_profiles(
         unknown_fields = sorted(set(raw_profile) - _VIDEO_WORKFLOW_PROFILE_FIELDS)
         if unknown_fields:
             raise ValueError(
-                "Unknown video workflow profile fields: " + ", ".join(unknown_fields)
+                "Unknown video workflow profile fields: " + ", ".join(unknown_fields),
             )
         missing_fields = sorted(
             _VIDEO_WORKFLOW_PROFILE_FIELDS
             - {"satisfies_final_output", "supports_start_frame", "default"}
-            - set(raw_profile)
+            - set(raw_profile),
         )
         if missing_fields:
             raise ValueError(
-                "Missing video workflow profile fields: " + ", ".join(missing_fields)
+                "Missing video workflow profile fields: " + ", ".join(missing_fields),
             )
 
         is_default = raw_profile.get("default", False)
@@ -407,7 +407,7 @@ def _parse_video_workflow_profiles(
             if key in defaults:
                 raise ValueError(
                     "Multiple default video workflow profiles for "
-                    f"{profile.pipeline}/{profile.purpose}"
+                    f"{profile.pipeline}/{profile.purpose}",
                 )
             defaults[key] = profile.name
 

@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-import json
 
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
@@ -327,7 +327,7 @@ class ProjectConfig:
     minimax_h3_audio_refs: AudioRefsConfig = field(default_factory=AudioRefsConfig)
 
     @classmethod
-    def load(cls, config_path: str | Path) -> "ProjectConfig":
+    def load(cls, config_path: str | Path) -> ProjectConfig:
         config_path = coerce_local_path(config_path).resolve()
         raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
 
@@ -390,7 +390,7 @@ class ProjectConfig:
         if word_count_min > word_count_max:
             raise ValueError(
                 f"prompt_guidance.word_count_min ({word_count_min}) "
-                f"must be <= prompt_guidance.word_count_max ({word_count_max})"
+                f"must be <= prompt_guidance.word_count_max ({word_count_max})",
             )
 
         return cls(
@@ -508,7 +508,7 @@ class ProjectConfig:
             loras=loras,
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),
             minimax_h3_audio_refs=AudioRefsConfig(
-                stems=cls._validate_stems(list(audio_refs_raw.get("stems", ["vocals", "full_mix"])))
+                stems=cls._validate_stems(list(audio_refs_raw.get("stems", ["vocals", "full_mix"]))),
             ),
         )
 
@@ -519,7 +519,7 @@ class ProjectConfig:
         if invalid:
             raise ValueError(
                 f"Invalid audio ref stem(s): {', '.join(repr(s) for s in invalid)}. "
-                f"Valid options: {', '.join(sorted(VALID_AUDIO_REF_STEMS))}"
+                f"Valid options: {', '.join(sorted(VALID_AUDIO_REF_STEMS))}",
             )
         return stems_list
 
@@ -532,7 +532,7 @@ class ProjectConfig:
 
     def apply_resolution_override(
         self, *, width: int | None = None, height: int | None = None,
-    ) -> "ProjectConfig":
+    ) -> ProjectConfig:
         """Return a new ProjectConfig with overridden video resolution."""
         if width is None and height is None:
             return self
@@ -589,7 +589,7 @@ class ProjectConfig:
         return self.paths.render_dir
 
     @property
-    def paths(self) -> "ProjectPaths":
+    def paths(self) -> ProjectPaths:
         return ProjectPaths.from_config(self)
 
 
@@ -609,7 +609,7 @@ class ProjectPaths:
         return SceneArtifactLayout(self.project_dir)
 
     @classmethod
-    def from_config(cls, config: ProjectConfig) -> "ProjectPaths":
+    def from_config(cls, config: ProjectConfig) -> ProjectPaths:
         output_dir = config.project_dir / "output"
         return cls(
             project_dir=config.project_dir,
