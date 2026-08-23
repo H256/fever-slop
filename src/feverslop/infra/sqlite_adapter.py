@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import datetime
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from feverslop.domain.prompt_revisions import (
     DuplicateRevisionError,
@@ -79,7 +79,7 @@ def ensure_schema(
     # history until they re-create the project and new revisions are saved.
     try:
         cursor = connection.execute(
-            "PRAGMA table_info(prompt_revisions)"
+            "PRAGMA table_info(prompt_revisions)",
         )
         columns = {row["name"] for row in cursor.fetchall()}
         if "project_id" not in columns:
@@ -231,7 +231,7 @@ class SqliteArtifactProvenance(ArtifactProvenancePort):
             conn.commit()
 
     def load_fingerprint(
-        self, project_id: str, kind: ArtifactKind, scene_number: int | None = None
+        self, project_id: str, kind: ArtifactKind, scene_number: int | None = None,
     ) -> ArtifactFingerprint | None:
         with self._connection() as conn:
             cursor = conn.execute(
