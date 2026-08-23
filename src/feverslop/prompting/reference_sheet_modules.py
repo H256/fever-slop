@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from feverslop.prompting.dspy_runtime import DspyRuntime
-from feverslop.prompting.reference_sheet_signatures import build_reference_sheet_signature
 from feverslop.domain.reference_sheet import ReferenceSheetPlan
+from feverslop.prompting.dspy_runtime import DspyRuntime
+from feverslop.prompting.reference_sheet_signatures import (
+    build_reference_sheet_signature,
+)
 
 
 def _value(result: Any, name: str) -> Any:

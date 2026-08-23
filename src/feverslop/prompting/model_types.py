@@ -44,7 +44,7 @@ MODEL_TYPES = MappingProxyType(
             is_minimax_h3=True,
             guide_filename="minimax-h3-references.md",
         ),
-    }
+    },
 )
 
 

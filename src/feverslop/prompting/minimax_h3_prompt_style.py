@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from feverslop.errors import FeverSlopValidationError
 
-
 # ---------------------------------------------------------------------------
 # Limits
 # ---------------------------------------------------------------------------
@@ -167,6 +166,7 @@ def build_r2v_prompt(scene: dict) -> str:
 
     Raises:
         FeverSlopValidationError: If *scene* is not a dict or lacks ``"description"``.
+
     """
     return _build_r2v_prompt(scene)
 
@@ -186,6 +186,7 @@ def build_t2v_prompt(scene: dict) -> str:
 
     Raises:
         FeverSlopValidationError: If *scene* is not a dict or lacks ``"description"``.
+
     """
     return _build_t2v_prompt(scene)
 
@@ -232,6 +233,7 @@ def build_h3_video_system_prompt(
 
     Returns:
         System prompt string for LLM completion.
+
     """
     if mode == "ref":
         return _build_h3_ref_system_prompt(

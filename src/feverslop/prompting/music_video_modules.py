@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
-from feverslop.prompting.music_video_signatures import build_music_video_signature_bundle
 from feverslop.prompting.llm_policy import (
     CONCEPT_MAP,
     DETAIL,
@@ -16,6 +15,9 @@ from feverslop.prompting.llm_policy import (
     T2I,
     concept_batch_max_tokens,
     policy_for,
+)
+from feverslop.prompting.music_video_signatures import (
+    build_music_video_signature_bundle,
 )
 
 

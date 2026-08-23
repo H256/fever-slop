@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from feverslop.prompting.dspy_h3_models import ImageAnalysisMode, ReferenceAsset, ReferenceKind
+from feverslop.prompting.dspy_h3_models import (
+    ImageAnalysisMode,
+    ReferenceAsset,
+    ReferenceKind,
+)
 
 
 class LocalImageAnalyzer:

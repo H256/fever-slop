@@ -4,7 +4,10 @@ from typing import Any
 
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
-from feverslop.prompting.relay_signatures import RelayDirectionResult, build_relay_signature_bundle
+from feverslop.prompting.relay_signatures import (
+    RelayDirectionResult,
+    build_relay_signature_bundle,
+)
 
 
 def _value(result: Any, name: str) -> Any:

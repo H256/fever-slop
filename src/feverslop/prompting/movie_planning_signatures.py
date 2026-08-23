@@ -4,7 +4,14 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from feverslop.domain.movie import CinematicShot, MovieActor, MovieBible, MovieLocation, MovieScreenplayArtifact, StoryArch
+from feverslop.domain.movie import (
+    CinematicShot,
+    MovieActor,
+    MovieBible,
+    MovieLocation,
+    MovieScreenplayArtifact,
+    StoryArch,
+)
 
 
 class MoviePlanningResult(BaseModel):
@@ -252,60 +259,70 @@ def build_movie_planning_signature_bundle(dspy_module: Any | None = None) -> dic
 
     class StoryArch(dspy_module.Signature):
         """Create a movie story arch from the supplied structured source data."""
+
         guide: str = dspy_module.InputField()
         payload: StoryArchPayload = dspy_module.InputField()
         result: StoryArchResult = dspy_module.OutputField()
 
     class MovieBible(dspy_module.Signature):
         """Create a typed movie bible from the supplied structured source data."""
+
         guide: str = dspy_module.InputField()
         payload: MovieBiblePayload = dspy_module.InputField()
         result: MovieBibleResult = dspy_module.OutputField()
 
     class RefineLocations(dspy_module.Signature):
         """Refine location descriptions while preserving location ids and order."""
+
         guide: str = dspy_module.InputField()
         payload: RefineLocationsPayload = dspy_module.InputField()
         result: RefinedLocationsResult = dspy_module.OutputField()
 
     class RefineActors(dspy_module.Signature):
         """Refine actor visual descriptions while preserving actor ids and order."""
+
         guide: str = dspy_module.InputField()
         payload: RefineActorsPayload = dspy_module.InputField()
         result: RefinedActorsResult = dspy_module.OutputField()
 
     class ContinuityPlan(dspy_module.Signature):
         """Build a typed continuity and narrative plan for movie shots."""
+
         guide: str = dspy_module.InputField()
         payload: ContinuityPlanPayload = dspy_module.InputField()
         result: ContinuityPlanResult = dspy_module.OutputField()
 
     class StoryDesign(dspy_module.Signature):
         """Create a typed dramaturgical story design before screenplay writing."""
+
         guide: str = dspy_module.InputField()
         payload: StoryDesignPayload = dspy_module.InputField()
         result: StoryDesignResult = dspy_module.OutputField()
 
     class Screenplay(dspy_module.Signature):
         """Create the canonical typed screenplay while preserving source ordering."""
+
         guide: str = dspy_module.InputField()
         payload: ScreenplayPayload = dspy_module.InputField()
         result: ScreenplayResult = dspy_module.OutputField()
 
     class NarrativePlan(dspy_module.Signature):
         """Create typed narrative memory from the canonical screenplay."""
+
         guide: str = dspy_module.InputField()
         payload: NarrativePlanPayload = dspy_module.InputField()
         result: NarrativePlanResult = dspy_module.OutputField()
 
     class ShotPlanFromBible(dspy_module.Signature):
         """Create a typed cinematic shot plan from a movie bible and screenplay."""
+
         guide: str = dspy_module.InputField()
         payload: ShotPlanFromBiblePayload = dspy_module.InputField()
         result: ShotPlanResult = dspy_module.OutputField()
 
     class ShotPlan(dspy_module.Signature):
         """Create a typed cinematic shot plan from a story arch."""
+
         guide: str = dspy_module.InputField()
         payload: ShotPlanPayload = dspy_module.InputField()
         result: ShotPlanResult = dspy_module.OutputField()

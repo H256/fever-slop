@@ -4,7 +4,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-
 GUIDE_PACKAGE = "feverslop.prompting.guides"
 
 

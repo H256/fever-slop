@@ -10,15 +10,16 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
     from feverslop.prompting.dspy_h3_models import (
         BaseVideoPrompt,
         ImageAnalysis,
+        PromptJudgeResult,
         PromptPlan,
         ResolvedPromptPlan,
         ResolvedReference,
         RetentionAnalysis,
-        PromptJudgeResult,
     )
 
     class AnalyzeImage(dspy_module.Signature):
         """Analyze only observable information in a reference image for video generation."""
+
         image: dspy_module.Image = dspy_module.InputField()
         intended_role: str = dspy_module.InputField()
         user_hint: str = dspy_module.InputField()
@@ -121,6 +122,7 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         referenced soundtrack audio belong in the detailed description and audio
         references, not in this field.
         """
+
         mode: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
         duration_seconds: float | None = dspy_module.InputField()
@@ -169,6 +171,7 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         relationship, and camera instruction from the plan is represented in the generated
         prompt.
         """
+
         guide: str = dspy_module.InputField()
         mode: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
@@ -316,6 +319,7 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         reference labels are actually applied. A label-only mention does not pass this audit.
         Repair missing coverage before returning. Do not expose the internal audit.
         """
+
         guide: str = dspy_module.InputField()
         user_prompt: str = dspy_module.InputField()
         plan: ResolvedPromptPlan = dspy_module.InputField()
@@ -333,7 +337,7 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
                 "Audience-only background music prose, or null/N/A. "
                 "Never include <Audio N> labels or audio-reference definitions here; "
                 "put those in detailed_description and retention_analysis."
-            )
+            ),
         )
 
     class JudgeFinalPrompt(dspy_module.Signature):

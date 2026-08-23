@@ -39,30 +39,35 @@ def build_general_signature_bundle(dspy_module: Any | None = None):
 
     class SongBrief(dspy_module.Signature):
         """Create the structured ACE-Step and visual song brief."""
+
         guide: str = dspy_module.InputField()
         request: dict[str, Any] = dspy_module.InputField()
         result: SongBriefResult = dspy_module.OutputField()
 
     class LyricAlignment(dspy_module.Signature):
         """Correct transcription without changing segment boundaries or order."""
+
         guide: str = dspy_module.InputField()
         request: dict[str, Any] = dspy_module.InputField()
         result: LyricCorrections = dspy_module.OutputField()
 
     class ZImagePrompt(dspy_module.Signature):
         """Write one still-image prompt from the supplied scene payload."""
+
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
         result: PromptResult = dspy_module.OutputField()
 
     class I2VPrompt(dspy_module.Signature):
         """Write one image-to-video prompt from the supplied scene payload."""
+
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
         result: PromptResult = dspy_module.OutputField()
 
     class StoryboardTransform(dspy_module.Signature):
         """Transform a storyboard prompt using the supplied editable template."""
+
         guide: str = dspy_module.InputField()
         system_template: str = dspy_module.InputField()
         user_template: str = dspy_module.InputField()

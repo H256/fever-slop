@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from openai import OpenAI
 
@@ -28,7 +29,7 @@ class DspyRuntime:
     context_factory: Callable[..., AbstractContextManager[Any]]
 
     @classmethod
-    def create(cls, dspy_module: Any | None = None) -> "DspyRuntime":
+    def create(cls, dspy_module: Any | None = None) -> DspyRuntime:
         if dspy_module is None:
             import dspy as dspy_module
 

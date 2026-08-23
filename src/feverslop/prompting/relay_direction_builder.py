@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from feverslop.ports.llm import LLMPort
@@ -48,7 +48,7 @@ def _extract_json_array(text: str) -> list[dict[str, Any]]:
             return objects
         raise ValueError(
             "Could not parse JSON array from LLM response.\n"
-            f"Original response:\n{original}\n\nCandidate:\n{candidate}"
+            f"Original response:\n{original}\n\nCandidate:\n{candidate}",
         )
 
 

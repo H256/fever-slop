@@ -97,7 +97,7 @@ class VideoPromptRequest(BaseModel):
     relay_segments: list[dict] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_mode(self) -> "VideoPromptRequest":
+    def validate_mode(self) -> VideoPromptRequest:
         required = {
             PromptMode.I2V: (ReferenceRole.FIRST_FRAME,),
             PromptMode.FL2V: (ReferenceRole.FIRST_FRAME, ReferenceRole.LAST_FRAME),
@@ -162,7 +162,7 @@ class PromptPlan(BaseModel):
     alignment_instruction: str | None = None
 
     @model_validator(mode="after")
-    def validate_music(self) -> "PromptPlan":
+    def validate_music(self) -> PromptPlan:
         if self.music_intent == MusicIntent.NONE:
             self.non_diegetic_music = None
         elif not self.non_diegetic_music:

@@ -1,15 +1,18 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
 import re
-from typing import Callable
+from collections.abc import Callable
+from pathlib import Path
 
 from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX
-from feverslop.prompting.music_video_prompt_style import build_i2v_system_prompt, build_video_payload
+from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
-from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 from feverslop.prompting.general_modules import GeneralPromptModules
+from feverslop.prompting.music_video_prompt_style import (
+    build_i2v_system_prompt,
+    build_video_payload,
+)
 
 
 def clean_llm_text(text: str) -> str:
@@ -35,7 +38,7 @@ def limit_scene_prompt_words(
         status_callback(
             f"[yellow]Scene {scene_number} {prompt_kind} prompt exceeded the "
             f"{max_words}-word limit ({len(words)} words); "
-            f"trimmed to {max_words} words.[/yellow]"
+            f"trimmed to {max_words} words.[/yellow]",
         )
     return " ".join(words[:max_words])
 
@@ -106,8 +109,7 @@ def normalize_scene_references(references: dict, global_context: dict) -> dict:
 
 
 class ScenePromptBuilder:
-    """
-    Builds model-specific prompts per scene.
+    """Builds model-specific prompts per scene.
 
     Important design:
     - Subject is injected into EVERY scene-generation call.
