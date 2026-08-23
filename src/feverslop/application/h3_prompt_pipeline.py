@@ -67,6 +67,22 @@ def _attach_beat_events(stage1_segments: list[dict], beat_data: dict[str, Any]) 
     return enriched
 
 
+def _attach_subject_directives(stage1_segments: list[dict], scene_prompts: list[dict]) -> list[dict]:
+    directives_by_segment = {
+        str(scene.get("segment_id")): scene.get("subject_directives")
+        for scene in scene_prompts
+        if scene.get("subject_directives") is not None
+    }
+    enriched = []
+    for segment in stage1_segments:
+        result = dict(segment)
+        directives = directives_by_segment.get(str(segment.get("segment_id")))
+        if directives is not None:
+            result["subject_directives"] = directives
+        enriched.append(result)
+    return enriched
+
+
 def _configured_audio_paths(
     config: Any,
     stem_files: dict[str, Any] | None,
@@ -143,6 +159,15 @@ class H3PromptPipeline:
                 stage1_segments,
                 artifact_store.read_json(relay_path),
             )
+        scene_prompts_path = context.setdefault("scene_prompts_json", None)
+        if scene_prompts_path is not None:
+            try:
+                stage1_segments = _attach_subject_directives(
+                    stage1_segments,
+                    artifact_store.read_json(scene_prompts_path),
+                )
+            except (FileNotFoundError, KeyError):
+                pass
         beat_path = context.setdefault("beat_json", None)
         if beat_path is not None:
             try:

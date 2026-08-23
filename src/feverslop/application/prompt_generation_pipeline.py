@@ -15,7 +15,10 @@ from feverslop.ports.generate_pipeline import (
 from feverslop.domain.prompt_constraints import build_location_constraint
 from feverslop.utils.sub_step_progress import SubStepProgress
 from feverslop.application.global_cast_resolver import materialize_global_assets
-from feverslop.prompting.subject_directive_planning import build_shared_staging_plan
+from feverslop.prompting.subject_directive_planning import (
+    DspySubjectDirectivePlanner,
+    build_shared_staging_plan,
+)
 
 
 def join_notes(*parts: str) -> str:
@@ -282,6 +285,16 @@ class PromptGenerationPipeline:
             artifact_store=artifact_store,
             reporter=reporter,
         )
+        self._generate_subject_directives(
+            llm=llm,
+            stage1_segments=stage1_segments,
+            concept_prompts=concept_prompts,
+            scene_details=scene_details,
+            global_context=global_context,
+            scene_prompts_json=scene_prompts_json,
+            artifact_store=artifact_store,
+            reporter=reporter,
+        )
         log_file("Scene Prompts JSON", scene_prompts_json)
 
         context.update(
@@ -330,6 +343,53 @@ class PromptGenerationPipeline:
         if changed:
             artifact_store.write_json(scene_prompts_json, prompts)
             reporter.message(f"[green]Subject staging persisted for {changed} scenes.[/green]")
+
+    @staticmethod
+    def _generate_subject_directives(
+        *,
+        llm: Any,
+        stage1_segments: list[dict],
+        concept_prompts: dict[str, Any],
+        scene_details: dict[str, Any],
+        global_context: dict[str, Any],
+        scene_prompts_json: Path,
+        artifact_store: Any,
+        reporter: Any,
+    ) -> None:
+        """Generate one shared DSPy staging plan per scene in production runs."""
+        if not getattr(llm, "model", None) or getattr(llm, "client", None) is None:
+            return
+        try:
+            prompts = artifact_store.read_json(scene_prompts_json)
+        except (FileNotFoundError, KeyError):
+            return
+        planner = DspySubjectDirectivePlanner(llm)
+        by_segment = {str(item.get("segment_id")): item for item in stage1_segments}
+        changed = 0
+        for scene in prompts:
+            if scene.get("subject_directives") is not None:
+                continue
+            source = by_segment.get(str(scene.get("segment_id")))
+            if source is None:
+                continue
+            segment_id = str(source.get("segment_id") or scene.get("scene"))
+            concept = concept_prompts.get(segment_id, "")
+            if isinstance(concept, dict):
+                concept = concept.get("concept") or concept.get("prompt") or ""
+            plan = planner.plan({
+                "shot_id": segment_id,
+                "scene": source.get("scene") or scene.get("scene"),
+                "duration_seconds": source.get("duration") or source.get("duration_seconds") or scene.get("duration_seconds"),
+                "segment": source,
+                "concept": str(concept),
+                "scene_details": scene_details.get(segment_id, {}),
+                "global_context": global_context,
+            })
+            scene["subject_directives"] = plan.to_dict()
+            changed += 1
+            reporter.message(f"[cyan]Subject staging generated: {changed}/{len(prompts)} scenes[/cyan]")
+        if changed:
+            artifact_store.write_json(scene_prompts_json, prompts)
 
     def build_resolved_global_context(
         self,

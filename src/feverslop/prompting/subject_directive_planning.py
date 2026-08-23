@@ -24,8 +24,36 @@ class SubjectDirectivePlanner:
             return build_shared_staging_plan(scene)
         return build_shared_staging_plan(
             scene,
-            generator=lambda payload: self.predictor(**payload),
+            generator=lambda payload: self.predictor(payload),
         )
+
+
+class DspySubjectDirectivePlanner:
+    """Production DSPy adapter for the shared staging pass."""
+
+    def __init__(self, llm: Any, *, dspy_runtime: Any | None = None):
+        from feverslop.prompting.dspy_runtime import DspyRuntime
+        from feverslop.prompting.dspy_subject_directive_signatures import (
+            build_subject_directive_signature,
+        )
+
+        self.runtime = dspy_runtime or DspyRuntime.create()
+        import dspy
+
+        self.predictor = self.runtime.predict(build_subject_directive_signature(dspy))
+        self.lm = self.runtime.make_lm(llm)
+
+    def plan(self, scene: Mapping[str, Any]) -> SubjectDirectivePlan:
+        from feverslop.domain.llm_parsing import extract_json_object
+
+        with self.runtime.context(lm=self.lm):
+            output = self.predictor(scene=dict(scene))
+        payload = output.get("staging_plan") if isinstance(output, Mapping) else getattr(output, "staging_plan", output)
+        if isinstance(payload, str):
+            payload = extract_json_object(payload)
+        if not isinstance(payload, Mapping):
+            raise ValueError("DSPy subject planner returned no structured staging plan")
+        return build_shared_staging_plan(scene, generator=lambda _payload: payload)
 
 
 def build_shared_staging_plan(
@@ -157,6 +185,7 @@ def subject_directives_from_scene(scene: Mapping[str, Any]) -> SubjectDirectiveP
 
 __all__ = [
     "SubjectDirectivePlanner",
+    "DspySubjectDirectivePlanner",
     "build_shared_staging_plan",
     "compose_directive_prompt",
     "judge_directive_prompt",

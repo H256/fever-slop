@@ -1,5 +1,6 @@
 import unittest
 import json
+from unittest.mock import patch
 from pathlib import Path
 
 from feverslop.domain.subject_directives import (
@@ -11,12 +12,14 @@ from feverslop.domain.subject_directives import (
 )
 from feverslop.prompting.subject_directive_planning import (
     build_shared_staging_plan,
+    SubjectDirectivePlanner,
     project_directives_to_prompt,
     validate_projected_prompt,
 )
 from feverslop.prompting.subject_directive_projections import project_subject_directives
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
 from feverslop.application.ingredients_render_plan import project_ingredients_runtime_scene
+from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 
 
 def _plan():
@@ -49,6 +52,28 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
         })
         self.assertEqual(("singer",), tuple(item.subject_id for item in plan.subjects))
         self.assertEqual("front center", plan.subjects[0].position)
+
+    def test_planner_calls_one_predictor_with_the_complete_scene(self):
+        calls = []
+
+        def predictor(payload):
+            calls.append(payload)
+            return {"subject_directives": {
+                "schema_version": "subject-directives/v1",
+                "shot_id": "shot-1",
+                "temporal_scope": {"start_seconds": 0, "end_seconds": 2},
+                "subjects": [{
+                    "subject_id": "singer", "role": "singer", "position": "front",
+                    "action": "sings", "temporal_scope": {"start_seconds": 0, "end_seconds": 2},
+                }],
+            }}
+
+        plan = SubjectDirectivePlanner(predictor=predictor).plan({
+            "shot_id": "shot-1", "concept": "singer performs", "subjects": [{"subject_id": "singer"}],
+        })
+        self.assertEqual(1, len(calls))
+        self.assertIn("concept", calls[0]["scene"])
+        self.assertEqual("singer", plan.subjects[0].subject_id)
 
     def test_projection_is_explicit_and_backend_neutral(self):
         text = project_directives_to_prompt(_plan())
@@ -115,6 +140,37 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
         self.assertEqual(3, len(plans))
         self.assertEqual(5, plans[2].subjects[0].cardinality)
         self.assertEqual("absent", plans[2].subjects[0].prop_bindings[0].state)
+
+    def test_prompt_pipeline_auto_generates_and_persists_directives_for_real_llm(self):
+        generated = _plan()
+
+        class Store:
+            def __init__(self):
+                self.payload = [{"segment_id": "seg-1"}]
+
+            def read_json(self, _path):
+                return self.payload
+
+            def write_json(self, _path, payload):
+                self.payload = payload
+
+        class LLM:
+            model = "test-model"
+            client = object()
+
+        store = Store()
+        with patch(
+            "feverslop.application.prompt_generation_pipeline.DspySubjectDirectivePlanner"
+        ) as planner_type:
+            planner_type.return_value.plan.return_value = generated
+            PromptGenerationPipeline._generate_subject_directives(
+                llm=LLM(), stage1_segments=[{"segment_id": "seg-1"}],
+                concept_prompts={}, scene_details={}, global_context={},
+                scene_prompts_json="scene-prompts.json", artifact_store=store,
+                reporter=type("Reporter", (), {"message": lambda *_args: None})(),
+            )
+        self.assertEqual("scene-47-shot-1", store.payload[0]["subject_directives"]["shot_id"])
+        planner_type.assert_called_once()
 
 
 if __name__ == "__main__":
