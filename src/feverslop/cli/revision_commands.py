@@ -67,7 +67,7 @@ def run_revisions(args: argparse.Namespace) -> None:
     for i, rev in enumerate(reversed(result.history.revisions[-args.limit:])):
         marker = "(restored)" if rev.restored_from else ""
         console.print(
-            f"{rev.id[:8]}  {rev.created_at.strftime('%Y-%m-%d %H:%M')}  {marker}"
+            f"{rev.id[:8]}  {rev.created_at.strftime('%Y-%m-%d %H:%M')}  {marker}",
         )
         console.print(f"  {rev.value}")
         if rev.parent_id:
