@@ -24,6 +24,9 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install locked dependencies
         run: uv sync --frozen --extra test
 
