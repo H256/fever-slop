@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 
 from feverslop.adapters.global_library import GlobalLibraryAdapter
-from feverslop.application.global_character_creator import AssetIdea, GuidedAssetGenerator
+from feverslop.application.global_character_creator import (
+    AssetIdea,
+    GuidedAssetGenerator,
+)
 from feverslop.application.sequence_to_sheet import generate_sequence_to_sheet
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
@@ -149,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
             if len(snapshot.parents) < 5:
                 raise ValueError(
                     f"snapshot {snapshot} is shallower than the canonical layout "
-                    "<base>/global_assets/<kind>/<id>/<look>; refusing to materialize"
+                    "<base>/global_assets/<kind>/<id>/<look>; refusing to materialize",
                 )
             payload = json.loads((snapshot / "manifest.json").read_text(encoding="utf-8"))
             target = library.materialize(payload["kind"], payload["asset_id"], payload["look_id"], snapshot.parents[3])

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-import json
 from pathlib import Path
-from typing import Iterable
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from feverslop.path_utils import coerce_local_path
-
 
 ARCHIVES_DIR_NAME = "archives"
 STORYBOARD_RELATIVE_PARTS = ("output", "render", "storyboard")

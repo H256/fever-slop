@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
 import json
-from pathlib import Path
 import sys
+from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from feverslop.adapters.project_visual_consistency import (
@@ -23,7 +23,7 @@ from feverslop.domain.visual_consistency import PreflightMode
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Read-only visual consistency validation for a render plan."
+        description="Read-only visual consistency validation for a render plan.",
     )
     parser.add_argument("project_dir")
     parser.add_argument(
@@ -66,7 +66,7 @@ def run(argv: list[str] | None = None) -> int:
             config_path = project / "config.json"
             config = ProjectConfig.load(config_path) if config_path.exists() else None
             snapshot = ProjectReferenceManifestAdapter(
-                lambda _project_id: project
+                lambda _project_id: project,
             ).load(project.name)
             app_config = AppConfig.load(args.app_config)
             configured_profile = app_config.resolve_video_workflow_profile(
@@ -169,7 +169,7 @@ def _print_result(
     state = "renderable" if result.renderable else "blocked"
     print(
         f"Visual consistency preflight: {state}; "
-        f"{len(result.contracts)} contract(s), {len(result.issues)} issue(s)"
+        f"{len(result.contracts)} contract(s), {len(result.issues)} issue(s)",
     )
     for issue in result.issues:
         print(f"[{issue.severity}] scene {issue.scene} {issue.code}: {issue.message}")
