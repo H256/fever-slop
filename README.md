@@ -415,6 +415,7 @@ Most useful runs require:
 - [Code of Conduct](CODE_OF_CONDUCT.md): community participation standards.
 - [Security policy](SECURITY.md): private vulnerability reporting guidance.
 - [Third-party notices](THIRD_PARTY_NOTICES.md): external runtimes, models, and assets.
+- [MIT License](LICENSE): license for the FeverSlop source code.
 
 ## Verification Commands
 

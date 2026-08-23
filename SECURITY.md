@@ -3,8 +3,8 @@
 ## Reporting a vulnerability
 
 Do not disclose credentials, private URLs, exploit details, or personal data in
-a public issue. Report security problems privately to the repository
-maintainers through the contact channel listed in the GitHub repository.
+a public issue. Report security problems privately through GitHub's private
+security reporting channel or the contact channel listed in the repository.
 
 Include the affected version or commit, the smallest reliable reproduction,
 the impact, and any suggested mitigation. Redact tokens, media, prompts, and
