@@ -679,6 +679,148 @@ class ProjectConfigValidationTests(unittest.TestCase):
                 ProjectConfig.load(config_path)
             self.assertIn("height", str(ctx.exception).lower())
 
+    def test_rejects_non_dict_subsections(self):
+        subsection_keys = (
+            "video",
+            "reference_images",
+            "audio",
+            "scene_generation",
+            "vocal_detection",
+            "steering",
+            "prompt_guidance",
+            "lora_1",
+            "minimax_h3_audio_refs",
+        )
+        for key in subsection_keys:
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                audio = temp / "song.mp3"
+                audio.write_bytes(b"")
+                config_path = temp / "config.json"
+                config_path.write_text(
+                    json.dumps({key: 123, "input_audio": "song.mp3"}),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ValueError, f"{key} must be an object"):
+                    ProjectConfig.load(config_path)
+
+    def test_rejects_null_subsection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"steering": None, "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "steering must be an object"):
+                ProjectConfig.load(config_path)
+
+    def test_rejects_non_object_upscale_message_preserved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"upscale": True, "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "upscale must be an object"):
+                ProjectConfig.load(config_path)
+
+    def test_rejects_non_object_global_assets_message_preserved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"global_assets": [1], "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "global_assets must be an object"):
+                ProjectConfig.load(config_path)
+
+    def test_rejects_non_list_actors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"actors": "Mara", "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "actors must be an array"):
+                ProjectConfig.load(config_path)
+
+    def test_rejects_non_list_locations(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"locations": 123, "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "locations must be an array"):
+                ProjectConfig.load(config_path)
+
+    def test_missing_input_audio_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({}), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "Project config requires an 'input_audio' string field",
+            ):
+                ProjectConfig.load(config_path)
+
+    def test_null_input_audio_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": None}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "Project config requires an 'input_audio' string field",
+            ):
+                ProjectConfig.load(config_path)
+
+    def test_numeric_input_audio_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": 123}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "Project config requires an 'input_audio' string field",
+            ):
+                ProjectConfig.load(config_path)
+
+    def test_blank_input_audio_keeps_no_audio_sentinel(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": ""}),
+                encoding="utf-8",
+            )
+            config = ProjectConfig.load(config_path)
+            self.assertEqual(temp, config.input_audio)
+
 
 class SlugifyProjectNameTests(unittest.TestCase):
     def test_slugify_normalizes_spaces_and_special_chars(self):

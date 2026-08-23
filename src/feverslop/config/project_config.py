@@ -277,6 +277,18 @@ def _validate_numeric_fields(raw: dict, fields: tuple[str, ...]) -> None:
                 raise ValueError(f"Invalid '{field_name}': {raw[field_name]!r} ({exc})") from exc
 
 
+def _ensure_dict(value, key: str) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError(f"{key} must be an object")
+    return value
+
+
+def _ensure_list(value, key: str) -> list:
+    if not isinstance(value, list):
+        raise ValueError(f"{key} must be an array")
+    return value
+
+
 @dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
@@ -320,26 +332,27 @@ class ProjectConfig:
         raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
 
         project_dir = config_path.parent
-        video_raw = raw.get("video", {})
-        upscale_raw = raw.get("upscale", {})
-        if not isinstance(upscale_raw, dict):
-            raise ValueError("upscale must be an object")
-        reference_images_raw = raw.get("reference_images", {})
-        audio_raw = raw.get("audio", {})
-        scene_raw = raw.get("scene_generation", {})
-        vocal_raw = raw.get("vocal_detection", {})
-        steering_raw = raw.get("steering", {})
-        guidance_raw = raw.get("prompt_guidance", {})
-        lora_1_raw = raw.get("lora_1", {})
+        video_raw = _ensure_dict(raw.get("video", {}), "video")
+        upscale_raw = _ensure_dict(raw.get("upscale", {}), "upscale")
+        reference_images_raw = _ensure_dict(raw.get("reference_images", {}), "reference_images")
+        audio_raw = _ensure_dict(raw.get("audio", {}), "audio")
+        scene_raw = _ensure_dict(raw.get("scene_generation", {}), "scene_generation")
+        vocal_raw = _ensure_dict(raw.get("vocal_detection", {}), "vocal_detection")
+        steering_raw = _ensure_dict(raw.get("steering", {}), "steering")
+        guidance_raw = _ensure_dict(raw.get("prompt_guidance", {}), "prompt_guidance")
+        lora_1_raw = _ensure_dict(raw.get("lora_1", {}), "lora_1")
         loras_raw = raw.get("loras")
-        actors_raw = raw.get("actors", [])
-        locations_raw = raw.get("locations", [])
-        audio_refs_raw = raw.get("minimax_h3_audio_refs", {})
-        global_raw = raw.get("global_assets", {})
-        if not isinstance(global_raw, dict):
-            raise ValueError("global_assets must be an object")
+        actors_raw = _ensure_list(raw.get("actors", []), "actors")
+        locations_raw = _ensure_list(raw.get("locations", []), "locations")
+        audio_refs_raw = _ensure_dict(raw.get("minimax_h3_audio_refs", {}), "minimax_h3_audio_refs")
+        global_raw = _ensure_dict(raw.get("global_assets", {}), "global_assets")
 
-        input_audio = coerce_local_path(raw["input_audio"], base_dir=project_dir)
+        input_audio_raw = raw.get("input_audio")
+        if not isinstance(input_audio_raw, str):
+            raise ValueError("Project config requires an 'input_audio' string field")
+        # Blank is the established "no audio" sentinel for movie projects
+        # (studio/project_validation.py exempts it; movie_pipeline.py treats it as absent).
+        input_audio = coerce_local_path(input_audio_raw, base_dir=project_dir)
         _validate_numeric_fields(video_raw, ("fps", "width", "height"))
         _validate_numeric_fields(reference_images_raw, ("width", "height"))
         silent_mode = raw.get("silent_mode", False)
