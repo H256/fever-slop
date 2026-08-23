@@ -8,7 +8,6 @@ from typing import Protocol
 
 from feverslop.domain.visual_consistency import ReferenceAnchor
 
-
 ReferenceKey = tuple[str, str]
 
 

@@ -11,7 +11,6 @@ from typing import Any, Protocol
 
 from feverslop.domain.timeline_editing import TimelineEditImpact
 
-
 # ---------------------------------------------------------------------------
 # Port protocols
 # ---------------------------------------------------------------------------

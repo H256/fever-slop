@@ -1,7 +1,8 @@
 ﻿from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from feverslop.ports.llm import LLMPort
