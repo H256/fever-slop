@@ -19,7 +19,7 @@ from feverslop.config.project_validation import (
     validate_full_auto_inputs,
     validate_pipeline_mode,
 )
-from feverslop.studio.projects import ProjectCreateRequest, StudioPathError
+from feverslop.application.project_requests import ProjectCreateRequest, StudioPathError
 from feverslop.utils.io import atomic_write_json
 
 
