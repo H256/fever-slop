@@ -93,7 +93,7 @@ class ImportBoundaryTests(unittest.TestCase):
         self.assertEqual([], offenders)
 
     def test_compatibility_docs_define_new_import_policy(self):
-        text = Path("docs/architecture_compatibility.md").read_text(encoding="utf-8")
+        text = Path("documentation/architecture_compatibility.md").read_text(encoding="utf-8")
 
         self.assertIn("new implementation imports must use `feverslop.*`", text)
         self.assertIn("no new code should import `application.*`, `adapters.*`, `domain.*`, or `ports.*`", text)

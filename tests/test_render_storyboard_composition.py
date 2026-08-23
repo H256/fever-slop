@@ -20,7 +20,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
                 StoryboardPromptTransformConfig(
                     workflow="workflows/image_t2i_startframe_ideogram_v1.json",
                     kind="template",
-                    template="docs/ideogram4_prompt_template.md",
+                    template="documentation/ideogram4_prompt_template.md",
                     positive_prompt_input="text",
                     debug_dir="ideogram4_prompt_debug",
                 )
@@ -50,7 +50,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
             storyboard_prompt_transforms=[
                 StoryboardPromptTransformConfig(
                     workflow="workflows/image_t2i_startframe_ideogram_v1.json",
-                    template="docs/ideogram4_prompt_template.md",
+                    template="documentation/ideogram4_prompt_template.md",
                 )
             ],
         )

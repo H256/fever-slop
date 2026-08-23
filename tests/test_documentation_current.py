@@ -6,14 +6,14 @@ import unittest
 class DocumentationCurrentTests(unittest.TestCase):
     OPERATIONAL_DOCUMENTS = (
         Path("README.md"),
-        Path("docs/setup.md"),
-        Path("docs/running.md"),
-        Path("docs/pipelines.md"),
-        Path("docs/project_workflow.md"),
-        Path("docs/app_config.md"),
-        Path("docs/comfyui_model_resolution.md"),
-        Path("docs/minimax-h3-setup.md"),
-        Path("docs/projects.md"),
+        Path("documentation/setup.md"),
+        Path("documentation/running.md"),
+        Path("documentation/pipelines.md"),
+        Path("documentation/project_workflow.md"),
+        Path("documentation/app_config.md"),
+        Path("documentation/comfyui_model_resolution.md"),
+        Path("documentation/minimax-h3-setup.md"),
+        Path("documentation/projects.md"),
     )
 
     def test_operational_docs_do_not_reference_removed_workflows(self):
@@ -62,7 +62,7 @@ class DocumentationCurrentTests(unittest.TestCase):
         self.assertNotIn("test.bat", text)
 
     def test_current_workflow_docs_use_python_runner(self):
-        for path in [Path("AGENTS.md"), Path("docs/project_workflow.md")]:
+        for path in [Path("AGENTS.md"), Path("documentation/project_workflow.md")]:
             with self.subTest(path=path):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("run_pipeline.py", text)
@@ -86,14 +86,14 @@ class DocumentationCurrentTests(unittest.TestCase):
             self.assertNotIn(german_heading, text)
 
     def test_architecture_compatibility_mentions_final_boundaries(self):
-        text = Path("docs/architecture_compatibility.md").read_text(encoding="utf-8")
+        text = Path("documentation/architecture_compatibility.md").read_text(encoding="utf-8")
 
         self.assertIn("feverslop.composition", text)
         self.assertIn("application layer does not import concrete adapters", text)
         self.assertIn("ports do not import adapters", text)
 
     def test_examples_explain_workflow_scene_duration_limits(self):
-        text = Path("docs/examples.md").read_text(encoding="utf-8")
+        text = Path("documentation/examples.md").read_text(encoding="utf-8")
 
         self.assertIn("default_max_render_duration_seconds", text)
         self.assertIn("video_workflow_limits", text)

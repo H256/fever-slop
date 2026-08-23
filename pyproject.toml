@@ -82,6 +82,6 @@ torchvision = { index = "pytorch-cu130" }
 torchaudio = { index = "pytorch-cu130" }
 
 [project.urls]
-Historical internal tracker reference removed for the public history.
-Historical internal tracker reference removed for the public history.
-Historical internal tracker reference removed for the public history.
+Homepage = "https://github.com/H256/fever-slop"
+Repository = "https://github.com/H256/fever-slop"
+"Issue Tracker" = "https://github.com/H256/fever-slop/issues"

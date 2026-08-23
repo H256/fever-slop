@@ -55,28 +55,42 @@ This file gives working instructions for AI coding agents in this repository.
 
 ## Planning Workflow
 
-Historical internal tracker reference removed for the public history.
-- Put rough, unsorted ideas in `docs/ideas/inbox.md`.
-- When an idea is ready to refine, create a dedicated plan file in `docs/ideas/planned/`.
+- When user-facing documentation is requested, create or update it under `documentation/`.
+- Store project planning state outside the repository in the platform-specific repository state directory listed below.
+- Use `<repo-state>/ideas/` for lightweight project planning and keep the corresponding issue-tracker item linked from the plan.
+- Put rough, unsorted ideas in `<repo-state>/ideas/inbox.md`.
+- When an idea is ready to refine, create a dedicated plan file in `<repo-state>/ideas/planned/`.
 - Name plan files with an ISO date and short slug, for example `2026-06-19-better-storyboard-review.md`.
-- After creating a plan for an inbox idea, mark that idea as checked in `docs/ideas/inbox.md`.
-- Treat indented checkbox items in `docs/ideas/inbox.md` as dependent sub-ideas. When planning or implementing a sub-idea, account for the planned or completed changes from its parent idea and any relevant ancestor ideas.
-- When a feature idea is picked from `docs/ideas/inbox.md`, do not jump straight to a plan. First use the `/grill me` workflow with the user to challenge assumptions, clarify scope, define non-goals, identify risks, and capture concrete acceptance criteria.
+- After creating a plan for an inbox idea, mark that idea as checked in `<repo-state>/ideas/inbox.md`.
+- Treat indented checkbox items in `<repo-state>/ideas/inbox.md` as dependent sub-ideas. When planning or implementing a sub-idea, account for the planned or completed changes from its parent idea and any relevant ancestor ideas.
+- When a feature idea is picked from `<repo-state>/ideas/inbox.md`, do not jump straight to a plan. First use the `/grill me` workflow with the user to challenge assumptions, clarify scope, define non-goals, identify risks, and capture concrete acceptance criteria.
 - Before writing a plan for an extension or behavior change, inspect the affected code paths and summarize the relevant files, interfaces, and constraints. Skip this only for pure documentation or clearly code-independent planning.
-- After the feature has been specified through `/grill me` and the affected code has been inspected, use `/writing plans` to turn the captured information into the plan document under `docs/ideas/planned/`.
-Historical internal branch reference removed for the public history.
+- After the feature has been specified through `/grill me` and the affected code has been inspected, use `/writing plans` to turn the captured information into the plan document under `<repo-state>/ideas/planned/`.
+- Develop each planned feature on its own git branch. Use the `agent/` prefix by default unless the user requests another branch name.
 - Record the intended branch name in the plan document before implementation starts, so paused work can be resumed later from the correct branch.
-- After implementation, move the plan file to `docs/ideas/done/`.
+- After implementation, move the plan file to `<repo-state>/ideas/done/`.
 - After completing an implementation task from a planned idea, commit the finished changes before handing the work back, unless the user explicitly asks not to commit or unresolved verification failures make a commit misleading.
-- If an idea is explicitly abandoned, move it to `docs/ideas/rejected/`.
+- If an idea is explicitly abandoned, move it to `<repo-state>/ideas/rejected/`.
 - Do not create extra status folders unless the workflow clearly needs them.
-- Keep planning files in `docs/ideas/`, not in the repository root or `.agent/`.
+- Keep planning files in `<repo-state>/ideas/`, not in the repository.
 
-Historical internal tracker reference removed for the public history.
+### Repository state locations
 
-Historical internal tracker reference removed for the public history.
-Historical internal tracker reference removed for the public history.
-- Commits for the feature must be linked in the issue body before closing.
+Use a stable `<repo-id>` for the repository, independent of its local checkout
+path:
+
+- Linux: `~/.local/state/repos/<repo-id>/`
+- macOS: `~/Library/Application Support/repos/<repo-id>/`
+- Windows: `%LOCALAPPDATA%\repos\<repo-id>\`
+
+In the planning rules above, `<repo-state>` means the matching platform path
+for the current repository.
+
+Every plan file should also have a corresponding issue-tracker item:
+
+- Create the issue-tracker item when the plan file is written. Link its URL in the plan file's header (`Issue: <url>`).
+- On completion, update both the plan file (move to `<repo-state>/ideas/done/`) and the issue-tracker item.
+- Link the implementation commits in the issue-tracker item before closing it.
 
 Plan files should use this structure when practical:
 
@@ -85,7 +99,7 @@ Plan files should use this structure when practical:
 
 Status: Planned
 Created: YYYY-MM-DD
-Branch: codex/YYYY-MM-DD-feature-name
+Branch: agent/YYYY-MM-DD-feature-name
 
 ## Raw Idea
 

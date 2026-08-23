@@ -28,6 +28,10 @@ tmp-*/
 
 # Local agent state and audit artifacts
 Historical internal branch reference removed for the public history.
+.planning/debug/
+.superpowers/sdd/
+.ua/
+docs/
 
 # Generated codebase graph
 graphify-out/

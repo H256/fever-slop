@@ -1,5 +1,7 @@
 # FeverSlop
 
+Public repository: https://github.com/H256/fever-slop
+
 FeverSlop is a local, CLI-first music-video generation pipeline. It turns an
 audio track, lyrics, and visual direction into project artifacts, render plans,
 ComfyUI image/video jobs, reviewable clips, and a final muxed video.
@@ -14,10 +16,10 @@ Core Python packages live under `src/feverslop`. Composition code such as
 such as `feverslop.adapters.comfyui_video_backend`.
 
 The DSPy prompt boundary, bundled guide naming, typed inputs, fallback rules,
-and concurrency model are documented in [docs/prompt-architecture.md](docs/prompt-architecture.md).
+and concurrency model are documented in [documentation/prompt-architecture.md](documentation/prompt-architecture.md).
 
 The canonical global asset library, project snapshots, guided generation, and
-prop interactions are documented in [docs/global-assets.md](docs/global-assets.md).
+prop interactions are documented in [documentation/global-assets.md](documentation/global-assets.md).
 
 ## Quick Start
 
@@ -105,7 +107,7 @@ from `msr_reference_sheets`; run `render_plan` afterward to copy the new prompts
 into `base.json`:
 
 For the sequence-based actor/location sheet path, see the complete
-[Sequence-to-Sheet Reference Pipeline tutorial](docs/sequence-reference-pipeline.md).
+[Sequence-to-Sheet Reference Pipeline tutorial](documentation/sequence-reference-pipeline.md).
 It documents the opt-in `--reference-generation sequence_sheet` mode for both
 music-video and Movie projects, including direct reference rebuilding and
 reviewable intermediate artifacts.
@@ -397,16 +399,22 @@ Most useful runs require:
 
 ## Documentation
 
-- [App configuration reference](docs/app_config.md): complete `app_config.json` field reference and defaults.
-- [LLM performance](docs/llm-performance.md): Thinking trade-offs, token diagnostics, and concurrency guidance.
-- [LLM benchmark](docs/llm-benchmark.md): compare server-side Thinking configurations.
-- [Setup](docs/setup.md): prerequisites, dependencies, ComfyUI/ACE-Step, local config.
-- [Running](docs/running.md): CLI startup and pipeline operation.
-- [Pipelines](docs/pipelines.md): standard, Full-Auto, MSR/classic, progress and logs.
-- [Projects](docs/projects.md): folder structure, `config.json`, Project Settings, artifacts.
-- [Examples](docs/examples.md): standard and Full-Auto workflows and troubleshooting.
-- [Project workflow deep reference](docs/project_workflow.md): detailed legacy CLI reference.
-- [ComfyUI model resolution](docs/comfyui_model_resolution.md): portable workflow model matching.
+- [Documentation index](documentation/README.md): user-facing documentation overview.
+- [App configuration reference](documentation/app_config.md): complete `app_config.json` field reference and defaults.
+- [LLM performance](documentation/llm-performance.md): Thinking trade-offs, token diagnostics, and concurrency guidance.
+- [LLM benchmark](documentation/llm-benchmark.md): compare server-side Thinking configurations.
+- [Setup](documentation/setup.md): prerequisites, dependencies, ComfyUI/ACE-Step, local config.
+- [Running](documentation/running.md): CLI startup and pipeline operation.
+- [Pipelines](documentation/pipelines.md): standard, Full-Auto, MSR/classic, progress and logs.
+- [Projects](documentation/projects.md): folder structure, `config.json`, Project Settings, artifacts.
+- [Examples](documentation/examples.md): standard and Full-Auto workflows and troubleshooting.
+- [Project workflow deep reference](documentation/project_workflow.md): detailed legacy CLI reference.
+- [ComfyUI model resolution](documentation/comfyui_model_resolution.md): portable workflow model matching.
+- [Workflow model requirements](documentation/workflow-models.md): model filenames, loader roles, and workflow coverage.
+- [Contributing](CONTRIBUTING.md): development setup and contribution guidelines.
+- [Code of Conduct](CODE_OF_CONDUCT.md): community participation standards.
+- [Security policy](SECURITY.md): private vulnerability reporting guidance.
+- [Third-party notices](THIRD_PARTY_NOTICES.md): external runtimes, models, and assets.
 
 ## Verification Commands
 

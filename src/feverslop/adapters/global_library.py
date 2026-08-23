@@ -225,13 +225,19 @@ class GlobalLibraryAdapter:
                     shutil.rmtree(entry)
                 else:
                     entry.unlink()
+        remove_lock = False
         with self._lock(directory):
             # A concurrent create may republish a new asset while the old one was removed;
             # leave any newly published state intact.
             if manifest.is_file() or any(entry.name != ".lock" for entry in directory.iterdir()):
                 return
-            # Unlink the lock file LAST so a reader locking afterwards sees an absent dir.
-            (directory / ".lock").unlink()
+            remove_lock = True
+        # The lock handle must be closed before removing the lock file on Windows.
+        if remove_lock:
+            try:
+                (directory / ".lock").unlink()
+            except FileNotFoundError:
+                return
         try:
             directory.rmdir()
         except FileNotFoundError:
