@@ -3,9 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 from feverslop.adapters.llm_client import LocalOpenAIClient
 from feverslop.application.prompt_generation import PromptGenerationService

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-r2v_prompt_check.py — Validate R2V prompt generation against a real LLM.
+"""r2v_prompt_check.py — Validate R2V prompt generation against a real LLM.
 
 Usage:
     uv run python tools/r2v_prompt_check.py
@@ -13,6 +12,7 @@ import argparse
 import json
 import pathlib
 import sys
+
 
 def load_api_key(cfg_path: pathlib.Path) -> str:
     """Load LLM API key from app_config.json."""
@@ -45,9 +45,9 @@ def main():
 
     # Import project modules
     from feverslop.adapters.llm_client import LocalOpenAIClient
+    from feverslop.domain.llm_parsing import extract_json_object
     from feverslop.prompting.h3_prompt_builder import build_references_from_segment
     from feverslop.prompting.minimax_h3_prompt_style import build_h3_video_system_prompt
-    from feverslop.domain.llm_parsing import extract_json_object
 
     llm = LocalOpenAIClient(base_url=base_url, model=model, api_key=api_key, max_tokens=2048)
     print(f"🔌 LLM: {model} @ {base_url}")
