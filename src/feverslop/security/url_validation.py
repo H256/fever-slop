@@ -95,7 +95,7 @@ def validate_api_url(
                 or resolved_address.is_unspecified
             ):
                 raise APIURLValidationError(
-                    f"API URL hostname resolves to a private or reserved address: {normalized_host}"
+                    f"API URL hostname resolves to a private or reserved address: {normalized_host}",
                 )
         return value
     if address.is_loopback and allow_loopback:

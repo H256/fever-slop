@@ -7,10 +7,11 @@ slots; those still need server/provider-side limits.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Condition, Lock
-from typing import Any, Iterator
+from typing import Any
 
 import dspy
 
@@ -80,7 +81,7 @@ def get_shared_llm_concurrency_limiter(max_concurrent_requests: int = 1) -> LLMC
         elif _default_limiter_configured_limit != limit:
             raise ValueError(
                 "llm.max_concurrent_requests already configured as "
-                f"{_default_limiter_configured_limit}; got conflicting value {limit}"
+                f"{_default_limiter_configured_limit}; got conflicting value {limit}",
             )
         return _default_limiter
 
@@ -123,7 +124,7 @@ class LimitedDspyLM(dspy.BaseLM):
         with self.llm_limiter.acquire():
             return await self._lm.aforward(*args, **kwargs)
 
-    def copy(self, **kwargs: Any) -> "LimitedDspyLM":
+    def copy(self, **kwargs: Any) -> LimitedDspyLM:
         copied = self._lm.copy(**kwargs)
         return LimitedDspyLM(copied, self.llm_limiter)
 
