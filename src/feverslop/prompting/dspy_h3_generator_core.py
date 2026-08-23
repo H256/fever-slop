@@ -4,11 +4,13 @@ from collections import defaultdict
 from pathlib import Path
 import logging
 import re
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_models import (
     GeneratedVideoPrompt,
+    BaseVideoPrompt,
+    PromptJudgeResult,
     ImageAnalysisMode,
     MusicIntent,
     PlannedSubject,
@@ -143,7 +145,8 @@ class VideoPromptGenerator:
     def __init__(self, *, base_guide_path: str | Path, reference_guide_path: str | Path,
                  llm: Any, image_analysis_mode: ImageAnalysisMode = ImageAnalysisMode.MISSING_ONLY,
                  limits: ReferenceLimits | None = None,
-                 dspy_runtime: DspyRuntime | None = None):
+                 dspy_runtime: DspyRuntime | None = None,
+                 warning_callback: Callable[..., None] | None = None):
         self.base_guide_path = Path(str(base_guide_path)).name
         self.reference_guide_path = Path(str(reference_guide_path)).name
         self.limits = limits or ReferenceLimits()
@@ -156,7 +159,48 @@ class VideoPromptGenerator:
         self.planner = self.dspy_runtime.predict(signatures.build_prompt_plan)
         self.base_renderer = self.dspy_runtime.predict(signatures.render_base_prompt)
         self.reference_renderer = self.dspy_runtime.predict(signatures.render_reference_prompt)
+        self.judge = (
+            self.dspy_runtime.predict(signatures.judge_final_prompt)
+            if getattr(signatures, "judge_final_prompt", None) is not None
+            else None
+        )
+        self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
+        self.warning_callback = warning_callback
         self.lm = self.dspy_runtime.make_lm(llm)
+
+    def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
+        self.warning_callback = callback
+
+    def _warning(self, message: str, *, title: str = "H3 warning") -> None:
+        logger.warning(message)
+        if self.warning_callback is not None:
+            self.warning_callback(message, title=title)
+
+    def _judge_final_prompt(
+        self,
+        request: VideoPromptRequest,
+        plan: ResolvedPromptPlan,
+        references: list[ResolvedReference],
+        prompt: BaseVideoPrompt | ReferenceVideoPrompt,
+    ) -> PromptJudgeResult | None:
+        if self.judge is None:
+            return None
+        guide_path = self.reference_guide_path if request.mode is PromptMode.R2V else self.base_guide_path
+        try:
+            output = self.judge(
+                guide=self._read(guide_path),
+                final_prompt=prompt.render(),
+                authoritative_plan=plan.model_dump_json(indent=2),
+                references=references,
+            )
+            value = getattr(output, "judge", output)
+            return PromptJudgeResult.model_validate(value)
+        except Exception as exc:
+            self._warning(f"H3 final prompt judge unavailable: {exc}")
+            return PromptJudgeResult(
+                verdict="bad",
+                issues=[f"judge unavailable: {type(exc).__name__}: {exc}"],
+            )
 
     @staticmethod
     def _read(path: str | Path) -> str:
@@ -283,8 +327,12 @@ class VideoPromptGenerator:
                 f"allowed={sorted(allowed)!r}",
             ))
             if attempt == 3:
-                raise ValueError(error)
-            logger.warning("H3 planner retry %d/3: %s", attempt + 1, error)
+                self._warning(
+                    "H3 planner contract warning after final attempt; continuing with result: "
+                    f"{error}"
+                )
+                break
+            self._warning(f"H3 planner retry {attempt + 1}/3: {error}", title="H3 planner retry")
             mapping_contract = "; ".join(
                 f'{ref.label} -> reusable subject "{ref.name or ref.label.strip("<>")}" '
                 f'with role "{ref.role.value}" and description "{ref.description}"'
@@ -399,8 +447,12 @@ class VideoPromptGenerator:
                 f"active_vocal_language={active_vocal_language!r}",
             ))
             if attempt == 3:
-                raise ValueError(error)
-            logger.warning("H3 renderer retry %d/3: %s", attempt + 1, error)
+                self._warning(
+                    "H3 renderer contract warning after final attempt; continuing with result: "
+                    f"{error}"
+                )
+                return output
+            self._warning(f"H3 renderer retry {attempt + 1}/3: {error}", title="H3 renderer retry")
             subject_map = ", ".join(
                 f"{subject.label}={subject.name} from {subject.source_references}"
                 for subject in plan.subjects
@@ -423,27 +475,63 @@ class VideoPromptGenerator:
         with self.dspy_runtime.context(lm=self.lm):
             refs = self._resolve_references(request.references)
             plan = self._plan(request, refs)
-            if request.mode == PromptMode.R2V:
-                output = self._render_reference(request, plan, refs)
-                prompt = ReferenceVideoPrompt(
-                    subject_definitions=plan.subjects,
-                    reference_definitions=_deterministic_reference_definitions(refs),
-                    summary=output.summary,
-                    retention_analysis=output.retention_analysis,
-                    detailed_description=output.detailed_description,
-                    overall_soundscape=output.overall_soundscape,
-                    non_diegetic_music=output.non_diegetic_music,
+            effective_request = request
+            prompt = None
+            judge = None
+            judge_attempts = []
+            for attempt in range(1, self.judge_attempts + 1):
+                if request.mode == PromptMode.R2V:
+                    output = self._render_reference(effective_request, plan, refs)
+                    prompt = ReferenceVideoPrompt(
+                        subject_definitions=plan.subjects,
+                        reference_definitions=_deterministic_reference_definitions(refs),
+                        summary=output.summary,
+                        retention_analysis=output.retention_analysis,
+                        detailed_description=output.detailed_description,
+                        overall_soundscape=output.overall_soundscape,
+                        non_diegetic_music=output.non_diegetic_music,
+                    )
+                else:
+                    output = self.base_renderer(
+                        guide=self._read(self.base_guide_path), mode=request.mode.value,
+                        user_prompt=request.user_prompt, plan=plan,
+                        references=refs, notes=effective_request.notes or "",
+                        strict_fidelity=request.strict_fidelity,
+                        music_intent=plan.music_intent.value,
+                        relay_segments=request.relay_segments,
+                    )
+                    prompt = output.result
+                if plan.music_intent == MusicIntent.NONE:
+                    prompt.non_diegetic_music = None
+                judge = self._judge_final_prompt(effective_request, plan, refs, prompt)
+                if judge is not None:
+                    judge_attempts.append(judge)
+                if judge is None or judge.verdict == "good" or attempt == self.judge_attempts:
+                    break
+                feedback = "; ".join(judge.issues) or "the prompt did not satisfy the supplied guide and plan"
+                if judge.repair_instruction:
+                    feedback += f" Repair instruction: {judge.repair_instruction}"
+                self._warning(
+                    f"H3 final prompt judge retry {attempt + 1}/{self.judge_attempts}: {feedback}",
+                    title="H3 final prompt judge retry",
                 )
-            else:
-                output = self.base_renderer(
-                    guide=self._read(self.base_guide_path), mode=request.mode.value,
-                    user_prompt=request.user_prompt, plan=plan,
-                    references=refs, notes=request.notes or "",
-                    strict_fidelity=request.strict_fidelity,
-                    music_intent=plan.music_intent.value,
-                    relay_segments=request.relay_segments,
-                )
-                prompt = output.result
-        if plan.music_intent == MusicIntent.NONE:
-            prompt.non_diegetic_music = None
-        return GeneratedVideoPrompt(mode=request.mode, prompt=prompt, plan=plan, references=refs)
+                effective_request = effective_request.model_copy(update={
+                    "notes": (
+                        f"{effective_request.notes or ''}\n\n"
+                        "Try again. Here are the judge errors you must fix: "
+                        f"{feedback}"
+                    ).strip()
+                })
+        if judge is not None and judge.verdict == "bad":
+            self._warning(
+                "H3 final prompt judge rejected prompt: " + "; ".join(judge.issues),
+                title="H3 final prompt judge",
+            )
+        return GeneratedVideoPrompt(
+            mode=request.mode,
+            prompt=prompt,
+            plan=plan,
+            references=refs,
+            judge=judge,
+            judge_attempts=judge_attempts,
+        )

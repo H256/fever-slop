@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import inspect
+import json
 from typing import Any, Callable
 from dataclasses import asdict, is_dataclass
 
@@ -15,6 +16,10 @@ from feverslop.ports.generate_pipeline import (
 from feverslop.domain.prompt_constraints import build_location_constraint
 from feverslop.utils.sub_step_progress import SubStepProgress
 from feverslop.application.global_cast_resolver import materialize_global_assets
+from feverslop.prompting.subject_directive_planning import (
+    DspySubjectDirectivePlanner,
+    build_shared_staging_plan,
+)
 
 
 def join_notes(*parts: str) -> str:
@@ -28,6 +33,51 @@ def get_steering_value(config: Any, name: str, default: str = "") -> str:
 
 def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
+
+
+def _report_subject_staging_retry(
+    reporter: Any,
+    *,
+    attempt: int,
+    max_attempts: int,
+    segment_id: str,
+    error: Exception,
+) -> None:
+    """Render a visible, markup-safe retry diagnostic for the console reporter."""
+    title = f"Subject staging · Retry {attempt}/{max_attempts} · {segment_id}"
+    text = (
+        "The previous staging plan was rejected; retrying with repair feedback.\n"
+        f"Reason: {type(error).__name__}: {error}"
+    )
+    warning = getattr(reporter, "warning", None)
+    if callable(warning):
+        warning(text, title=title)
+    else:
+        panel = getattr(reporter, "panel", None)
+        if callable(panel):
+            panel(text, title=title)
+        else:
+            reporter.message(f"{title}\n{text}")
+
+
+def _write_subject_directive_debug_artifact(
+    *, planner: Any, scene: dict[str, Any], error: Exception, output_path: Path, model: str,
+) -> Path:
+    debug_dir = output_path.parent / "subject_directive_debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    segment_id = str(scene.get("segment_id") or scene.get("shot_id") or scene.get("scene") or "unknown")
+    debug_path = debug_dir / f"{segment_id}.json"
+    payload = {
+        "segment_id": segment_id,
+        "model": model,
+        "effective_max_tokens": 4096,
+        "error": {"type": type(error).__name__, "message": str(error)},
+        "planner_input": getattr(planner, "last_scene", None) or scene,
+        "raw_dspy_output": getattr(planner, "last_output", None),
+        "lm_history": getattr(planner, "last_lm_history", None),
+    }
+    debug_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    return debug_path
 
 
 def config_items_as_dicts(items: Any) -> list[dict]:
@@ -275,6 +325,22 @@ class PromptGenerationPipeline:
             status_callback=reporter.message,
         )
         reporter.message("[green]Scene prompt pack finished.[/green]")
+        self._attach_subject_directives(
+            stage1_segments=stage1_segments,
+            scene_prompts_json=scene_prompts_json,
+            artifact_store=artifact_store,
+            reporter=reporter,
+        )
+        self._generate_subject_directives(
+            llm=llm,
+            stage1_segments=stage1_segments,
+            concept_prompts=concept_prompts,
+            scene_details=scene_details,
+            global_context=global_context,
+            scene_prompts_json=scene_prompts_json,
+            artifact_store=artifact_store,
+            reporter=reporter,
+        )
         log_file("Scene Prompts JSON", scene_prompts_json)
 
         context.update(
@@ -285,6 +351,156 @@ class PromptGenerationPipeline:
             }
         )
         return context
+
+    @staticmethod
+    def _attach_subject_directives(
+        *,
+        stage1_segments: list[dict],
+        scene_prompts_json: Path,
+        artifact_store: Any,
+        reporter: Any,
+    ) -> None:
+        """Persist shared staging when upstream scene input provides subjects."""
+        try:
+            prompts = artifact_store.read_json(scene_prompts_json)
+        except (FileNotFoundError, KeyError):
+            # Lightweight dependency fakes may only capture the builder call;
+            # there is no persisted scene pack to enrich in that mode.
+            return
+        by_segment = {str(item.get("segment_id")): item for item in stage1_segments}
+        changed = 0
+        for scene in prompts:
+            source = by_segment.get(str(scene.get("segment_id")))
+            if not source or not (source.get("subject_directives") or source.get("subjects")):
+                continue
+            plan = build_shared_staging_plan({
+                "shot_id": source.get("segment_id") or scene.get("scene"),
+                "duration_seconds": source.get("duration") or source.get("duration_seconds") or scene.get("duration"),
+                "subjects": source.get("subjects") or [],
+                "subject_directives": source.get("subject_directives"),
+                "spatial_relations": source.get("spatial_relations") or [],
+            }) if not source.get("subject_directives") else None
+            if plan is not None:
+                scene["subject_directives"] = plan.to_dict()
+                changed += 1
+            elif source.get("subject_directives"):
+                scene["subject_directives"] = source["subject_directives"]
+                changed += 1
+        if changed:
+            artifact_store.write_json(scene_prompts_json, prompts)
+            reporter.message(f"[green]Subject staging persisted for {changed} scenes.[/green]")
+
+    @staticmethod
+    def _generate_subject_directives(
+        *,
+        llm: Any,
+        stage1_segments: list[dict],
+        concept_prompts: dict[str, Any],
+        scene_details: dict[str, Any],
+        global_context: dict[str, Any],
+        scene_prompts_json: Path,
+        artifact_store: Any,
+        reporter: Any,
+    ) -> None:
+        """Generate one shared DSPy staging plan per scene in production runs."""
+        if not getattr(llm, "model", None) or getattr(llm, "client", None) is None:
+            return
+        try:
+            prompts = artifact_store.read_json(scene_prompts_json)
+        except (FileNotFoundError, KeyError):
+            return
+        planner = DspySubjectDirectivePlanner(llm)
+        by_segment = {str(item.get("segment_id")): item for item in stage1_segments}
+        changed = 0
+        failures: list[str] = []
+        for scene in prompts:
+            if scene.get("subject_directives") is not None:
+                continue
+            source = by_segment.get(str(scene.get("segment_id")))
+            if source is None:
+                continue
+            segment_id = str(source.get("segment_id") or scene.get("scene"))
+            concept = concept_prompts.get(segment_id, "")
+            if isinstance(concept, dict):
+                concept = concept.get("concept") or concept.get("prompt") or ""
+            planner_input = {
+                "shot_id": segment_id,
+                "scene": source.get("scene") or scene.get("scene"),
+                "duration_seconds": source.get("duration") or source.get("duration_seconds") or scene.get("duration_seconds"),
+                "segment": source,
+                "concept": str(concept),
+                "scene_details": scene_details.get(segment_id, {}),
+                "global_context": global_context,
+                "allowed_subject_ids": list(
+                    (scene.get("references") or {}).get("actor_ids") or []
+                ),
+                "allowed_environment_ids": [
+                    str(location_id)
+                    for location_id in [
+                        (scene.get("references") or {}).get("location_id")
+                    ]
+                    if location_id
+                ],
+                "allowed_prop_ids": [
+                    str(item.get("id"))
+                    for item in (global_context.get("props") or [])
+                    if isinstance(item, dict) and item.get("id")
+                ],
+            }
+            plan = None
+            last_error: Exception | None = None
+            for attempt in range(1, 4):
+                try:
+                    plan = planner.plan(planner_input)
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    if attempt == 3:
+                        break
+                    planner_input = {
+                        **planner_input,
+                        "repair_feedback": (
+                            f"Previous staging plan was rejected: {type(exc).__name__}: {exc}. "
+                            "Return a complete valid plan. Every temporal scope must have "
+                            "end_seconds greater than start_seconds and cover the shot duration. "
+                            "Return only the structured staging plan."
+                        ),
+                    }
+                    _report_subject_staging_retry(
+                        reporter,
+                        attempt=attempt + 1,
+                        max_attempts=3,
+                        segment_id=segment_id,
+                        error=exc,
+                    )
+            if plan is None:
+                assert last_error is not None
+                debug_path = _write_subject_directive_debug_artifact(
+                    planner=planner,
+                    scene=planner_input,
+                    error=last_error,
+                    output_path=scene_prompts_json,
+                    model=str(getattr(llm, "model", "unknown")),
+                )
+                failures.append(f"{segment_id}: {last_error} (trace: {debug_path})")
+                continue
+            for repair in getattr(planner, "last_repairs", []):
+                reporter.message(
+                    f"[yellow]Subject staging repaired for {segment_id}: {repair}[/yellow]"
+                )
+            scene["subject_directives"] = plan.to_dict()
+            changed += 1
+            reporter.message(f"[cyan]Subject staging generated: {changed}/{len(prompts)} scenes[/cyan]")
+        if changed:
+            artifact_store.write_json(scene_prompts_json, prompts)
+        if failures:
+            reporter.message(
+                "[yellow]Subject staging warning: "
+                f"{len(failures)} scene(s) could not be normalized; "
+                "their debug traces were saved and the pipeline continues. "
+                + " | ".join(failures)
+                + "[/yellow]"
+            )
 
     def build_resolved_global_context(
         self,

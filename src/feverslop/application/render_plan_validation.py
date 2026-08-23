@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 import math
 
+from feverslop.domain.subject_directives import validate_subject_directive_plan
+
 
 def require_non_empty_render_plan(
     plan: Sequence[object],
@@ -12,6 +14,38 @@ def require_non_empty_render_plan(
     """Raise a clear error when the parsed render plan contains no scenes."""
     if not plan:
         raise ValueError(f"Render plan is empty: {render_plan_path}")
+
+
+def validate_render_plan_subject_directives(
+    plan: Sequence[object],
+    *,
+    known_subject_ids: Sequence[str] = (),
+    known_prop_ids: Sequence[str] = (),
+    render_plan_path: object,
+) -> None:
+    """Validate opt-in subject directives while keeping legacy scenes readable."""
+    for index, entry in enumerate(plan, start=1):
+        if not isinstance(entry, dict) or entry.get("subject_directives") is None:
+            continue
+        from feverslop.domain.subject_directives import SubjectDirectivePlan
+
+        try:
+            directive_plan = SubjectDirectivePlan.from_dict(entry["subject_directives"])
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError(
+                f"Render plan scene {entry.get('scene', index)} has invalid subject directives "
+                f"({render_plan_path}): {exc}"
+            ) from exc
+        issues = validate_subject_directive_plan(
+            directive_plan,
+            known_subject_ids=known_subject_ids,
+            known_prop_ids=known_prop_ids,
+        )
+        if issues:
+            raise ValueError(
+                f"Render plan scene {entry.get('scene', index)} has invalid subject directives "
+                f"({render_plan_path}): {'; '.join(issues)}"
+            )
 
 
 def validate_render_plan_timeline(

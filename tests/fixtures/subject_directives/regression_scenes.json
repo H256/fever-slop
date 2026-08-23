@@ -1,0 +1,30 @@
+[
+  {
+    "case": "scene-47-role-prop-binding",
+    "shot_id": "scene-47-shot-1",
+    "duration_seconds": 4,
+    "subjects": [
+      {"subject_id": "drummer", "role": "drummer", "position": "rear left", "action": "plays the drums", "prop_bindings": [{"prop_id": "drum-kit", "state": "played"}]},
+      {"subject_id": "keyboarder", "role": "keyboarder", "position": "rear right", "action": "plays the keyboard", "prop_bindings": [{"prop_id": "keyboard", "state": "played"}]},
+      {"subject_id": "bassist", "role": "bassist", "position": "front right", "action": "plays the bass", "prop_bindings": [{"prop_id": "bass", "state": "played"}]}
+    ]
+  },
+  {
+    "case": "scene-50-no-collective-instrument",
+    "shot_id": "scene-50-shot-1",
+    "duration_seconds": 4,
+    "subjects": [
+      {"subject_id": "singer", "role": "singer", "position": "front center", "action": "sings into the microphone", "prop_bindings": [{"prop_id": "microphone", "state": "held"}]},
+      {"subject_id": "keyboarder", "role": "keyboarder", "position": "rear right", "action": "plays the keyboard", "prop_bindings": [{"prop_id": "keyboard", "state": "played"}]}
+    ]
+  },
+  {
+    "case": "scene-52-explicit-background-state",
+    "shot_id": "scene-52-shot-1",
+    "duration_seconds": 4,
+    "subjects": [
+      {"subject_id": "ensemble", "role": "five visible performers", "position": "on stage", "action": "stand visibly in formation", "cardinality": 5, "prop_bindings": [{"prop_id": "instruments", "state": "absent"}]},
+      {"subject_id": "audience", "role": "audience", "position": "behind the stage", "action": "moves with the beat", "cardinality": 1}
+    ]
+  }
+]

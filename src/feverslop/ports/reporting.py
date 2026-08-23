@@ -16,6 +16,9 @@ class Reporter(Protocol):
     def message(self, text: str) -> None:
         """Report a plain status message."""
 
+    def warning(self, text: str, *, title: str | None = None) -> None:
+        """Report a warning with adapter-owned Rich styling."""
+
     def panel(self, text: str, *, title: str | None = None) -> None:
         """Report prominent text."""
 

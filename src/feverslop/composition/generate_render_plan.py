@@ -100,7 +100,8 @@ def build_generate_render_plan_execution_request(
     app_config = AppConfig.load(request.app_config_path)
     video_settings = config.to_video_settings()
     preroll_frames, tail_frames, round_render_frames_to_8n1 = resolve_rolling_frame_profile(
-        request.rolling_frame_profile
+        request.rolling_frame_profile,
+        video_pipeline=config.video_pipeline,
     )
     workflow_limits = {
         limit.workflow: limit.max_render_duration_seconds
@@ -214,6 +215,7 @@ def _build_llm(app_config):
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
         dspy_cache=app_config.llm.dspy_cache,
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
+        prompt_judge_attempts=app_config.llm.prompt_judge_attempts,
     )
 
 

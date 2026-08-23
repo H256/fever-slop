@@ -7,6 +7,10 @@ from typing import Any, Callable
 
 from feverslop.prompting.dspy_h3_models import MusicIntent
 from feverslop.domain.performance_sync import select_performance_audio_paths
+from feverslop.prompting.subject_directive_planning import (
+    project_directives_to_prompt,
+    subject_directives_from_scene,
+)
 
 
 def _reference(
@@ -314,6 +318,7 @@ class DspyH3PromptBuilder:
             mode=mode,
         )
         relay_segments = _normalize_relay_segments(segment)
+        directive_plan = subject_directives_from_scene(segment)
         generator_references = [dict(reference) for reference in references]
         directing_lines = [
             f"{key.replace('_', ' ').title()}: {str(scene_details[key]).strip()}"
@@ -321,6 +326,8 @@ class DspyH3PromptBuilder:
             if str(scene_details.get(key) or "").strip()
         ]
         user_prompt = str(concept or "").strip()
+        if directive_plan is not None:
+            user_prompt = f"{user_prompt}\n\n{project_directives_to_prompt(directive_plan)}".strip()
         if directing_lines:
             user_prompt = f"{user_prompt}\n\nScene-specific directing instructions:\n" + "\n".join(directing_lines)
         resolved_root = reference_root or self.reference_root
@@ -386,14 +393,25 @@ class DspyH3PromptBuilder:
         # DSPy is solely responsible for the guide-conformant prompt. Do not
         # append or repair deterministic prose after generation.
         prompt_parts = [str(prompt).strip()]
+        # The final prompt is judged by the DSPy prompt judge. Do not apply a
+        # second deterministic semantic gate here: a rejected prompt must be
+        # persisted with the judge result so a long batch can continue.
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
         }
+        if directive_plan is not None:
+            result["subject_directives"] = directive_plan.to_dict()
         if segment.get("performance_timing"):
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):
             result["dspy_error"] = generated["dspy_error"]
+        judge = getattr(generated, "judge", None)
+        if judge is not None:
+            result["prompt_judge"] = judge.model_dump()
+        judge_attempts = getattr(generated, "judge_attempts", None)
+        if judge_attempts:
+            result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
     def build_all_h3_prompts(
@@ -411,7 +429,11 @@ class DspyH3PromptBuilder:
         reference_root: Path | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         status_callback: Callable[[int, int, str], None] | None = None,
+        warning_callback: Callable[..., None] | None = None,
     ) -> Path:
+        set_warning_callback = getattr(self.generator, "set_warning_callback", None)
+        if callable(set_warning_callback):
+            set_warning_callback(warning_callback)
         results = []
         total = len(stage1_segments)
         for current, segment in enumerate(stage1_segments, start=1):

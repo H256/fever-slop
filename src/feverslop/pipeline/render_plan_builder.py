@@ -8,6 +8,7 @@ from feverslop.ports.artifacts import ArtifactStore
 from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
 from feverslop.errors import FeverSlopDataError
+from feverslop.domain.subject_directives import SubjectDirectivePlan, validate_subject_directive_plan
 from feverslop.domain.performance_sync import select_performance_stems
 
 
@@ -510,6 +511,18 @@ def build_render_plan(
                 "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
+        if scene.get("subject_directives") is not None:
+            try:
+                directive_plan = SubjectDirectivePlan.from_dict(scene["subject_directives"])
+                issues = validate_subject_directive_plan(directive_plan)
+                render_scene["subject_directives"] = directive_plan.to_dict()
+            except (TypeError, ValueError) as exc:
+                issues = [f"subject directive decode failed: {exc}"]
+                render_scene["subject_directives"] = scene["subject_directives"]
+            if issues:
+                render_scene.setdefault("metadata", {}).setdefault(
+                    "validation_warnings", []
+                ).extend(issues)
         references = _filter_silent_audio_references(
             _scene_references(scene, max_scene_actors), scene
         )

@@ -12,7 +12,13 @@ ROLLING_FRAME_PROFILES = {
 }
 
 
-def resolve_rolling_frame_profile(profile: str) -> tuple[int, int, bool]:
+def resolve_rolling_frame_profile(
+    profile: str,
+    *,
+    video_pipeline: str | None = None,
+) -> tuple[int, int, bool]:
+    if str(video_pipeline or "").strip().lower().startswith("minimax-h3-"):
+        return ROLLING_FRAME_PROFILES["off"]
     try:
         return ROLLING_FRAME_PROFILES[profile]
     except KeyError as exc:

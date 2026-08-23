@@ -67,6 +67,22 @@ def _attach_beat_events(stage1_segments: list[dict], beat_data: dict[str, Any]) 
     return enriched
 
 
+def _attach_subject_directives(stage1_segments: list[dict], scene_prompts: list[dict]) -> list[dict]:
+    directives_by_segment = {
+        str(scene.get("segment_id")): scene.get("subject_directives")
+        for scene in scene_prompts
+        if scene.get("subject_directives") is not None
+    }
+    enriched = []
+    for segment in stage1_segments:
+        result = dict(segment)
+        directives = directives_by_segment.get(str(segment.get("segment_id")))
+        if directives is not None:
+            result["subject_directives"] = directives
+        enriched.append(result)
+    return enriched
+
+
 def _configured_audio_paths(
     config: Any,
     stem_files: dict[str, Any] | None,
@@ -143,6 +159,15 @@ class H3PromptPipeline:
                 stage1_segments,
                 artifact_store.read_json(relay_path),
             )
+        scene_prompts_path = context.setdefault("scene_prompts_json", None)
+        if scene_prompts_path is not None:
+            try:
+                stage1_segments = _attach_subject_directives(
+                    stage1_segments,
+                    artifact_store.read_json(scene_prompts_path),
+                )
+            except (FileNotFoundError, KeyError):
+                pass
         beat_path = context.setdefault("beat_json", None)
         if beat_path is not None:
             try:
@@ -200,7 +225,30 @@ class H3PromptPipeline:
                 if reporter is not None
                 else None
             ),
+            warning_callback=reporter.warning if reporter is not None else None,
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
+        if reporter is not None:
+            bad_judgements = []
+            for item in context["h3_prompts"]:
+                judge = item.get("prompt_judge") or {}
+                if judge.get("verdict") == "bad":
+                    bad_judgements.append(item)
+                    reporter.message(
+                        "[yellow]H3 prompt judge: BAD for "
+                        f"{item.get('segment_id')}; prompt saved and pipeline continues: "
+                        f"{'; '.join(str(issue) for issue in judge.get('issues') or [])}[/yellow]"
+                    )
+            if bad_judgements:
+                reporter.message(
+                    "[yellow]H3 prompt judge summary: "
+                    f"{len(bad_judgements)} scene(s) marked BAD. "
+                    "Prompts were saved; review and optionally correct them manually "
+                    "before rendering: "
+                    + ", ".join(str(item.get("segment_id")) for item in bad_judgements)
+                    + "[/yellow]"
+                )
+            else:
+                reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
         return context
