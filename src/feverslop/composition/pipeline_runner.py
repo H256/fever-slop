@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.config.app_config import AppConfig
 from feverslop.errors import FeverSlopError
@@ -21,7 +22,6 @@ from .stage_runners import (
     resolve_pipeline_stages,
     write_step,
 )
-
 
 COMFYUI_RENDERING_STAGES = frozenset({
     PipelineStage.STORYBOARD_FRAMES,
@@ -45,7 +45,7 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         reference_edit_workflow=resolve_runner_path(args.reference_edit_workflow),
         msr_workflow=resolve_runner_path(args.msr_workflow),
         ingredients_workflow=resolve_runner_path(args.ingredients_workflow),
-        relay_workflow=resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path(""),
+        relay_workflow=resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path(),
         single_prompt_workflow=resolve_runner_path(args.single_prompt_workflow),
         facefix_workflow=resolve_runner_path(args.facefix_workflow),
         plan_for_next_step=_initial_render_plan(context, args, stages),

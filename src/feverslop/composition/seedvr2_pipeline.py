@@ -1,22 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
 import json
-from pathlib import Path
-import subprocess
 import shutil
-from typing import Any, Callable, Protocol
+import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import Any, Protocol
 
 from feverslop.adapters.comfyui_seedvr2_backend import (
     ComfyUISeedVR2Backend,
     SeedVR2RenderSettings,
 )
-from feverslop.config.project_config import ProjectConfig
-from feverslop.domain.seedvr2 import SeedVR2Pass, plan_seedvr2_passes
-from feverslop.domain.seedvr2 import SeedVR2Segment, plan_seedvr2_segments
-from feverslop.adapters.video_postprocessor import VideoPostProcessor
-from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.adapters.reporting import NullReporter
+from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.config.project_config import ProjectConfig
+from feverslop.domain.seedvr2 import (
+    SeedVR2Pass,
+    SeedVR2Segment,
+    plan_seedvr2_passes,
+    plan_seedvr2_segments,
+)
+from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.sub_step_progress import SubStepProgress
 
 
@@ -148,12 +153,12 @@ def _render_segmented_pass(
         segment_outputs.append(segment_output)
         if skip_existing and segment_output.is_file():
             reporter.message(
-                f"[yellow]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} skipped: existing {segment_output}[/yellow]"
+                f"[yellow]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} skipped: existing {segment_output}[/yellow]",
             )
             continue
         reporter.message(
             f"[cyan]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} starting: "
-            f"{segment.start_seconds:.2f}s + {segment.duration_seconds:.2f}s[/cyan]"
+            f"{segment.start_seconds:.2f}s + {segment.duration_seconds:.2f}s[/cyan]",
         )
         segment_settings = replace(
             settings,
@@ -170,7 +175,7 @@ def _render_segmented_pass(
             settings=segment_settings,
         )
         reporter.message(
-            f"[green]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} complete: {segment_output}[/green]"
+            f"[green]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} complete: {segment_output}[/green]",
         )
     concat_list = scene_dir / f"upscale_pass_{pass_number:02d}_segments.txt"
     postprocessor.write_concat_list(segment_outputs, concat_list)
@@ -232,7 +237,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                         frame_count = max(1, round(source_duration * config.video.fps))
                         options.reporter.message(
                             f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} rebuilding existing final "
-                            f"from {len(segment_outputs)} segments: {final_output}[/cyan]"
+                            f"from {len(segment_outputs)} segments: {final_output}[/cyan]",
                         )
                         postprocessor.concat_clips(
                             segment_list,
@@ -246,7 +251,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                         progress.update(scene_index, detail=f"scene {scene_number} rebuilt", force=True)
                         continue
             options.reporter.message(
-                f"[yellow]SeedVR2 scene {scene_index}/{len(plan)} skipped: existing {final_output}[/yellow]"
+                f"[yellow]SeedVR2 scene {scene_index}/{len(plan)} skipped: existing {final_output}[/yellow]",
             )
             outputs.append(final_output)
             progress.update(scene_index, detail=f"scene {scene_number} skipped", force=True)
@@ -255,7 +260,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         source_duration = probe_duration(source)
         duration_suffix = f" ({source_duration:.2f}s)" if source_duration is not None else ""
         options.reporter.message(
-            f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} starting: source {source}{duration_suffix}[/cyan]"
+            f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} starting: source {source}{duration_suffix}[/cyan]",
         )
         source_size = probe_size(source)
         upscale = config.upscale
@@ -281,7 +286,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
             final_output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, final_output)
             options.reporter.message(
-                f"[green]SeedVR2 scene {scene_index}/{len(plan)} complete: copied source (target already matched)[/green]"
+                f"[green]SeedVR2 scene {scene_index}/{len(plan)} complete: copied source (target already matched)[/green]",
             )
             outputs.append(final_output)
             progress.update(scene_index, detail=f"scene {scene_number} complete", force=True)
@@ -309,13 +314,13 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                 current = output
                 records.append(_pass_record(pass_spec, output, pass_number))
                 options.reporter.message(
-                    f"[yellow]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} skipped: existing {output}[/yellow]"
+                    f"[yellow]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} skipped: existing {output}[/yellow]",
                 )
                 continue
             options.reporter.message(
                 f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} starting: "
                 f"{pass_spec.input_size[0]}x{pass_spec.input_size[1]} -> {pass_spec.output_size[0]}x{pass_spec.output_size[1]} "
-                f"vae_temporal_size={settings.vae_temporal_size}[/cyan]"
+                f"vae_temporal_size={settings.vae_temporal_size}[/cyan]",
             )
             try:
                 current_duration = probe_duration(current) or source_duration or 0.0
@@ -352,13 +357,13 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                     )
             except Exception as exc:
                 options.reporter.message(
-                    f"[red]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} failed: {exc}[/red]"
+                    f"[red]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} failed: {exc}[/red]",
                 )
                 raise
             current = Path(rendered)
             records.append(_pass_record(pass_spec, current, pass_number))
             options.reporter.message(
-                f"[green]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} complete: {current}[/green]"
+                f"[green]SeedVR2 scene {scene_index}/{len(plan)} pass {pass_number}/{len(passes)} complete: {current}[/green]",
             )
         manifest = {
             "scene": scene_number,
@@ -383,7 +388,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         (scene_dir / "upscale_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         outputs.append(final_output)
         options.reporter.message(
-            f"[green]SeedVR2 scene {scene_index}/{len(plan)} complete: {final_output}[/green]"
+            f"[green]SeedVR2 scene {scene_index}/{len(plan)} complete: {final_output}[/green]",
         )
         progress.update(scene_index, detail=f"scene {scene_number} complete", force=True)
     return outputs

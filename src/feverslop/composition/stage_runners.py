@@ -1,39 +1,44 @@
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import hashlib
 import json
 import os
 import random
 import subprocess
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from rich.console import Console
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
-from feverslop.adapters.project_visual_consistency import (
-    ProjectReferenceManifestAdapter,
-    validate_project_scene_artifacts,
+from feverslop.adapters.postprocessor_frame_extractor import (
+    PostprocessorFrameExtractor,
 )
 from feverslop.adapters.prepared_workflow import (
     PreparedWorkflowRenderer,
     WorkflowMaterializationRequest,
     WorkflowMaterializer,
 )
-from feverslop.adapters.postprocessor_frame_extractor import (
-    PostprocessorFrameExtractor,
+from feverslop.adapters.project_visual_consistency import (
+    ProjectReferenceManifestAdapter,
+    validate_project_scene_artifacts,
 )
+from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
-from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
-from feverslop.application.pipeline_context import GenerateRenderPlanContext
-from feverslop.application.msr_prompt_enrichment import enrich_render_plan_with_msr_prompts
-from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.mlt_exporter import export_render_plan_to_mlt
-from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
+from feverslop.application.msr_prompt_enrichment import (
+    enrich_render_plan_with_msr_prompts,
+)
+from feverslop.application.openshot_exporter import export_render_plan_to_openshot
+from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.application.reference_bible import (
+    enrich_render_plan_with_reference_sheets,
+)
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
 from feverslop.application.visual_consistency_preflight import (
@@ -41,6 +46,16 @@ from feverslop.application.visual_consistency_preflight import (
     preflight_visual_consistency,
     resolve_preflight_workflow_profile,
 )
+from feverslop.composition.generate_render_plan import (
+    build_generate_render_plan_use_case,  # noqa: F401
+    execute_generate_render_plan,
+)
+from feverslop.composition.render_storyboard import build_render_storyboard_use_case
+from feverslop.composition.render_video import (
+    RenderVideoCompositionOptions,
+    build_render_video_scenes_use_case,
+)
+from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.render_plan import RenderPlan, RenderScene
@@ -51,28 +66,34 @@ from feverslop.domain.visual_consistency import (
     expand_handoff_selection,
     validate_scene_sequence,
 )
-from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case  # noqa: F401
-from feverslop.composition.generate_render_plan import execute_generate_render_plan
-from feverslop.composition.render_storyboard import build_render_storyboard_use_case
-from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
-from feverslop.config.app_config import AppConfig
+from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.ports.rendering import WorkflowAnchorConfig
-from feverslop.adapters.reporting import ConsoleReporter
-from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer, validate_anchor_file
-from feverslop.utils.io import file_is_valid
-from feverslop.utils.rich_progress import build_progress
-from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    build_dspy_generator,
+)
 from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
+from feverslop.prompting.ltx_prompt_anchor_fixer import (
+    LTXPromptAnchorFixer,
+    validate_anchor_file,
+)
 from feverslop.prompting.model_types import resolve_model_type
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
-from feverslop.pipeline.render_plan_builder import build_render_plan
-from feverslop.tools.reference_bible import build_arg_parser as build_reference_bible_arg_parser
+from feverslop.tools.reference_bible import (
+    build_arg_parser as build_reference_bible_arg_parser,
+)
 from feverslop.tools.reference_bible import run as render_reference_bible
-from feverslop.tools.storyboard_page import parse_scene_list
-from feverslop.tools.storyboard_page import generate_storyboard_page
+from feverslop.tools.storyboard_page import generate_storyboard_page, parse_scene_list
+from feverslop.utils.io import file_is_valid
+from feverslop.utils.rich_progress import build_progress
 
 from .arg_parser import PipelineStage
-from .config_loader import PipelineRunContext, PipelineRunState, count_render_plan_items, runner_root
+from .config_loader import (
+    PipelineRunContext,
+    PipelineRunState,
+    count_render_plan_items,
+    runner_root,
+)
 
 VIDEO_SCENE_PROGRESS_LABEL = "Rendering video scenes"
 
@@ -172,7 +193,7 @@ def _selected_video_workflows(state: PipelineRunState) -> tuple[Path, ...]:
             checked.append(f"single_prompt_workflow={state.single_prompt_workflow!r}")
         raise ValueError(
             f"No valid video workflows found for pipeline {vp!r} "
-            f"(render_mode={rm!r}); checked: {', '.join(checked)}"
+            f"(render_mode={rm!r}); checked: {', '.join(checked)}",
         )
     return result
 
@@ -201,7 +222,7 @@ def _read_h3_input(path: Path, label: str):
     if not path.is_file():
         raise FileNotFoundError(
             f"Cannot run h3_prompts: missing {label} artifact {path}. "
-            "Run the main_pipeline once to create the upstream prompt artifacts."
+            "Run the main_pipeline once to create the upstream prompt artifacts.",
         )
     return JsonArtifactStore().read_json(path)
 
@@ -301,7 +322,7 @@ def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> list[str
         if fallback_fields:
             warnings.append(
                 f"scene {scene.get('scene')}: structured reference serialization missing; "
-                f"using {' and '.join(fallback_fields)} from the existing reference bible."
+                f"using {' and '.join(fallback_fields)} from the existing reference bible.",
             )
     if changed:
         store.write_json(plan_path, plan)
@@ -346,7 +367,7 @@ def _merge_reference_paths_into_h3_segments(
     if not reference_plan_path.is_file():
         raise FileNotFoundError(
             f"Cannot run h3_prompts: missing reference-enriched render plan {reference_plan_path}. "
-            "Run --stage msr_reference_sheets first."
+            "Run --stage msr_reference_sheets first.",
         )
     reference_plan = JsonArtifactStore().read_json(reference_plan_path)
     by_scene = {
@@ -419,7 +440,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         }
         console.print(
             f"[cyan]Scene selection active: H3 generation limited to "
-            f"{', '.join(str(number) for number in sorted(selected))}[/cyan]"
+            f"{', '.join(str(number) for number in sorted(selected))}[/cyan]",
         )
     global_context = _read_h3_input(state.context.resolved_context, "resolved context")
     h3_prompts_json = paths.prompts_dir / f"h3_prompts_{config.song_id}.json"
@@ -508,7 +529,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         JsonArtifactStore().write_json(state.context.render_plan, selected_plan)
         console.print(
             f"[cyan]Scene selection active: render plan limited to "
-            f"{len(selected_plan)} selected scene(s)[/cyan]"
+            f"{len(selected_plan)} selected scene(s)[/cyan]",
         )
     state.plan_for_next_step = state.context.render_plan
     console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
@@ -645,7 +666,7 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
     else:
         console.print(
             f"[green]Resolution updated. Run '--stage render_scenes' to render at "
-            f"{width}x{height}.[/green]"
+            f"{width}x{height}.[/green]",
         )
 
 
@@ -667,7 +688,7 @@ def _run_storyboard_frames_stage(state: PipelineRunState) -> None:
                 output_dir=state.context.storyboard_dir,
                 character_lora_strength=state.args.storyboard_lora_strength,
                 on_frame_complete=storyboard_progress.update,
-            )
+            ),
         )
 
 
@@ -684,7 +705,7 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
 def _run_msr_references_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
         raise ValueError(
-            "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v"
+            "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v",
         )
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
@@ -716,11 +737,11 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
         raise ValueError(
-            "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v"
+            "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v",
         )
     if not state.plan_for_next_step.is_file():
         console.print(
-            "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]"
+            "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]",
         )
         _run_render_plan_stage(state)
     project_config_path = getattr(state.context, "project_config_path", None)
@@ -773,7 +794,9 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
 
 
 def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
-    from feverslop.application.render_plan_ingredients_sheets import enrich_render_plan_with_ingredients_sheets
+    from feverslop.application.render_plan_ingredients_sheets import (
+        enrich_render_plan_with_ingredients_sheets,
+    )
     if state.args.video_pipeline != "ltx_ingredients":
         raise ValueError("ingredients_sheets requires --video-pipeline ltx_ingredients")
     from feverslop.config.project_config import ProjectConfig
@@ -808,7 +831,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
             on_scene_complete=_scene_progress_callback(progress),
             workflow_profile=str(
                 getattr(state.args, "video_workflow_profile", None)
-                or state.ingredients_workflow.stem
+                or state.ingredients_workflow.stem,
             ),
         )
 
@@ -882,7 +905,7 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: tuple[RenderScene, 
                 or scene.get("ingredients_global_prompt")
                 or scene.get("ingredients_target_prompt")
                 or (scene.get("ltx") or {}).get("ingredients_target_prompt")
-                or ""
+                or "",
             )
             references = scene.get("references") or {}
             expected_ids = {
@@ -897,7 +920,7 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: tuple[RenderScene, 
             unbound = sorted(item_id for item_id in anchor_ids if f"`{item_id}`" not in target)
             if unbound:
                 missing.append(
-                    f"scene {number}: global prompt does not bind anchors {', '.join(unbound)}"
+                    f"scene {number}: global prompt does not bind anchors {', '.join(unbound)}",
                 )
         else:
             references = scene.get("references") or {}
@@ -940,7 +963,7 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
                 for scene in all_scenes
                 if (
                     contract := _stored_consistency_contract(
-                        scene.to_dict()
+                        scene.to_dict(),
                     )
                 )
                 is not None
@@ -970,7 +993,7 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
             if render_scene.scene_number in handoff_predecessors:
                 console.print(
                     f"Deferred scene {completed}/{total}: "
-                    f"{render_scene.scene_number} (awaiting predecessor handoff)"
+                    f"{render_scene.scene_number} (awaiting predecessor handoff)",
                 )
                 continue
             materializer.prepare(WorkflowMaterializationRequest(
@@ -1009,7 +1032,7 @@ def _attach_music_continuity_handoffs(
     explicitly_selected = bool(
         {state.args.smoke_scene}
         if state.args.smoke_only
-        else parse_scene_list(state.args.scenes)
+        else parse_scene_list(state.args.scenes),
     )
     attached = []
     for render_scene in selected_scenes:
@@ -1041,7 +1064,7 @@ def _attach_music_continuity_handoffs(
                 project_dir=state.context.project_config_dir,
                 selected_rerender=explicitly_selected
                 and number in selected_numbers,
-            )
+            ),
         ).execute(
             previous_contract,
             current_contract,
@@ -1074,7 +1097,7 @@ def _music_handoff_prompt(previous_scene: dict | None) -> str:
     return str(
         ltx.get("original_style_i2v_prompt")
         or ltx.get("base_prompt")
-        or ""
+        or "",
     ).strip()
 
 
@@ -1083,7 +1106,7 @@ _PROFILE_UNSET = object()
 
 def _resolved_startframe_profile(
     state: PipelineRunState,
-    profile_name: str | None | object = _PROFILE_UNSET,
+    profile_name: str | object | None = _PROFILE_UNSET,
 ):
     if state.args.video_pipeline != "ltx_msr":
         return None
@@ -1109,7 +1132,7 @@ def _resolved_startframe_profile(
         if configured != materialized:
             raise ValueError(
                 "Configured start-frame profile workflow does not match "
-                f"the materialized MSR workflow: {configured} != {materialized}"
+                f"the materialized MSR workflow: {configured} != {materialized}",
             )
     return profile
 
@@ -1228,7 +1251,7 @@ def _run_visual_consistency_preflight(
         return VisualConsistencyPreflightResult((), ())
     project_config = ProjectConfig.load(state.context.project_config_path)
     snapshot = ProjectReferenceManifestAdapter(
-        lambda _project_id: state.context.project_config_dir
+        lambda _project_id: state.context.project_config_dir,
     ).load(state.context.project_config_dir.name)
     mode = "msr" if state.args.video_pipeline == "ltx_msr" else "ingredients"
     workflow = (
@@ -1274,7 +1297,7 @@ def _run_visual_consistency_preflight(
     for issue in result.issues:
         console.print(
             f"Visual consistency {issue.severity.upper()} "
-            f"scene {issue.scene} {issue.code}: {issue.message}"
+            f"scene {issue.scene} {issue.code}: {issue.message}",
         )
     if not result.renderable:
         details = "\n- ".join(
@@ -1284,7 +1307,7 @@ def _run_visual_consistency_preflight(
         )
         raise ValueError(
             "Visual consistency preflight blocked workflow preparation:\n- "
-            + details
+            + details,
         )
     return result
 
@@ -1361,7 +1384,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                 for scene in all_scenes
                 if (
                     contract := _stored_consistency_contract(
-                        scene.to_dict()
+                        scene.to_dict(),
                     )
                 )
                 is not None
@@ -1371,7 +1394,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                 {scene.scene_number for scene in scenes},
             )
             scenes = RenderPlan(all_scenes).select(
-                scene_numbers=selected_numbers
+                scene_numbers=selected_numbers,
             ).scenes
         missing: list[Path] = []
         for scene in scenes:
@@ -1389,7 +1412,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         if missing:
             raise FileNotFoundError(
                 "Missing prepared scene workflows: " + ", ".join(str(path) for path in missing)
-                + ". Run --stage prepare_workflows first."
+                + ". Run --stage ltx_prepare_workflows first.",
             )
         backend = _specialized_video_use_case(state).backend
         active_workflow_profile = (
@@ -1431,7 +1454,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         explicit_selection = bool(
             {state.args.smoke_scene}
             if state.args.smoke_only
-            else parse_scene_list(state.args.scenes)
+            else parse_scene_list(state.args.scenes),
         )
         rendered_this_run: set[int] = set()
         dirty_marker = (
@@ -1442,7 +1465,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             {scene.scene_number for scene in all_scenes},
         )
         with RenderProgressReporter(
-            "Rendering prepared LTX scenes", total, emit_scene_progress=True
+            "Rendering prepared LTX scenes", total, emit_scene_progress=True,
         ) as progress:
             for completed, scene in enumerate(scenes, start=1):
                 workflow = state.context.artifact_layout.scene_workflow(scene.scene_number)
@@ -1493,7 +1516,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                             predecessor_scene=scene.scene_number,
                             predecessor_contract=(
                                 _stored_consistency_contract(
-                                    scene.to_dict()
+                                    scene.to_dict(),
                                 )
                             ),
                             predecessor_output=final_path,
@@ -1517,7 +1540,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                                     audio_file=state.context.input_audio,
                                     render_plan_path=state.plan_for_next_step,
                                     pipeline=state.args.video_pipeline,
-                                )
+                                ),
                             )
                         final_path = renderer.render(workflow)
                     finally:
@@ -1530,7 +1553,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                             predecessor_scene=scene.scene_number,
                             predecessor_contract=(
                                 _stored_consistency_contract(
-                                    scene.to_dict()
+                                    scene.to_dict(),
                                 )
                             ),
                             predecessor_output=final_path,
@@ -1545,7 +1568,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                                 predecessor_scene=scene.scene_number,
                                 predecessor_contract=(
                                     _stored_consistency_contract(
-                                        scene.to_dict()
+                                        scene.to_dict(),
                                     )
                                 ),
                                 predecessor_output=final_path,
@@ -1558,7 +1581,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     if manifest.pipeline != state.args.video_pipeline:
                         raise ValueError(
                             f"Prepared workflow pipeline {manifest.pipeline!r} does not match "
-                            f"expected pipeline {state.args.video_pipeline!r}"
+                            f"expected pipeline {state.args.video_pipeline!r}",
                         )
                     mismatches = manifest.verify(state.context.project_config_dir)
                     if mismatches:
@@ -1599,7 +1622,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
     ltx_scene_numbers = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
     ltx_total = count_render_plan_items(state.plan_for_next_step, scene_numbers=ltx_scene_numbers)
     with RenderProgressReporter(
-        VIDEO_SCENE_PROGRESS_LABEL, ltx_total, emit_scene_progress=True
+        VIDEO_SCENE_PROGRESS_LABEL, ltx_total, emit_scene_progress=True,
     ) as ltx_progress:
         video_use_case.execute(
             RenderVideoScenesRequest(
@@ -1617,7 +1640,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     single_prompt_input=state.args.single_prompt_input,
                 ),
                 on_scene_complete=ltx_progress.update,
-            )
+            ),
         )
 
 
@@ -1637,14 +1660,14 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         missing = [clip.parent.name for clip in canonical_clips if not clip.is_file()]
         raise FileNotFoundError(
             "Cannot build base variant without mixing artifact layouts; missing canonical "
-            f"final.mp4 for {', '.join(missing[:10])}"
+            f"final.mp4 for {', '.join(missing[:10])}",
         )
     if canonical_available:
         clips = canonical_clips
     else:
         console.print(
             "[yellow]No canonical final.mp4 scene artifacts found; using the complete legacy "
-            "scene layout for the base movie.[/yellow]"
+            "scene layout for the base movie.[/yellow]",
         )
         clips = collect_render_plan_scene_clips(
             state.plan_for_next_step,
@@ -1674,7 +1697,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
             missing = [clip.parent.name for clip in variant_clips if not clip.is_file()]
             console.print(
                 f"[yellow]Skipping {variant} movie: found {len(available)}/{len(variant_clips)} "
-                f"scene clips; missing {', '.join(missing[:10])}.[/yellow]"
+                f"scene clips; missing {', '.join(missing[:10])}.[/yellow]",
             )
             continue
         concat_list = write_concat_list(
@@ -1701,7 +1724,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         write_concat_list(raw_clips, state.context.artifact_layout.final_dir, "concat_raw.txt")
     else:
         state.context.concat_raw.write_text(
-            state.context.concat_list.read_text(encoding="utf-8"), encoding="utf-8"
+            state.context.concat_list.read_text(encoding="utf-8"), encoding="utf-8",
         )
     postprocessor.concat_clips(
         concat_list=state.context.concat_raw,
@@ -1732,7 +1755,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
             else:
                 console.print(
                     f"[yellow]Ignoring stale {aggregate_path.name}: the current render plan "
-                    f"does not have a complete {variant} scene set.[/yellow]"
+                    f"does not have a complete {variant} scene set.[/yellow]",
                 )
     if variants:
         output_paths = {
@@ -1770,8 +1793,9 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
 
 
 def _run_upscale_stage(state: PipelineRunState) -> None:
-    from .seedvr2_pipeline import SeedVR2CompositionOptions, run_seedvr2
     from feverslop.adapters.comfyui_seedvr2_backend import ComfyUISeedVR2Backend
+
+    from .seedvr2_pipeline import SeedVR2CompositionOptions, run_seedvr2
 
     config = ProjectConfig.load(state.context.project_config_path)
     if not config.upscale.enabled and not getattr(state.args, "upscale", False):
@@ -1871,14 +1895,17 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
 
 
 def _run_facefix_stage(state: PipelineRunState) -> None:
-    from feverslop.composition.facefix_pipeline import FaceFixCompositionOptions, run_facefix
+    from feverslop.composition.facefix_pipeline import (
+        FaceFixCompositionOptions,
+        run_facefix,
+    )
 
     layout = state.context.artifact_layout
     scenes_dir = layout.scenes_dir
     if not scenes_dir.is_dir():
         console.print(
             "[yellow]No scenes directory found at"
-            + f" {scenes_dir}, FaceFix skipped.[/yellow]"
+             f" {scenes_dir}, FaceFix skipped.[/yellow]",
         )
         return
 

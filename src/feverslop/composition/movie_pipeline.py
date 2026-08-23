@@ -13,17 +13,16 @@ from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
 from feverslop.application.openshot_exporter import export_render_plan_to_openshot
 from feverslop.cli.movie_cli import build_movie_arg_parser, config_from_args
-from feverslop.path_utils import coerce_local_path
-from feverslop.config.app_config import AppConfig
-from feverslop.scene_artifacts import SceneArtifactLayout
-from feverslop.utils.rich_progress import build_progress
 from feverslop.composition.movie_pipeline_jobs import (
     build_movie_reference_generator,
     build_movie_visual_adapter,
     mark_movie_reference_backend,
     movie_references_ready,
 )
-
+from feverslop.config.app_config import AppConfig
+from feverslop.path_utils import coerce_local_path
+from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.utils.rich_progress import build_progress
 
 console = Console()
 
@@ -194,7 +193,9 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     def ingredients_llm():
         try:
             app_config = AppConfig.load(args.app_config, required_keys=["llm"])
-            from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+            from feverslop.adapters.openai_compatible_llm import (
+                OpenAICompatibleLLMClient,
+            )
 
             return OpenAICompatibleLLMClient(
                 base_url=app_config.llm.base_url,
@@ -229,7 +230,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
             args.skip_movie_shot_cards,
             args.skip_movie_continuity,
             args.skip_movie_plan,
-        )
+        ),
     ):
         _log_stage("Movie planning", "using requested skip/force flags")
         if args.force_movie_bible:
@@ -443,12 +444,22 @@ def _run_startframe_director_workflow(
     narrative_plan_path, scene_cards_path, shot_cards_path, render_plan_path,
     continuity_plan_path, reference_manifest_path, render_plan_ingredients_path, manifest_path,
 ) -> MoviePipelineResult:
-    from feverslop.adapters.startframe_director_visual import LocalStartframeDirectorVisualAdapter
-    from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
-    from feverslop.application.startframe_i2v_render_plan import write_startframe_i2v_render_plan
-    from feverslop.application.startframe_identity import build_startframe_identity_ledger
+    from feverslop.adapters.startframe_director_visual import (
+        LocalStartframeDirectorVisualAdapter,
+    )
+    from feverslop.application.startframe_director_prompts import (
+        build_startframe_director_prompts,
+    )
+    from feverslop.application.startframe_i2v_render_plan import (
+        write_startframe_i2v_render_plan,
+    )
+    from feverslop.application.startframe_identity import (
+        build_startframe_identity_ledger,
+    )
     from feverslop.application.startframe_plan import build_startframe_plan
-    from feverslop.application.startframe_validation import write_local_startframe_validation
+    from feverslop.application.startframe_validation import (
+        write_local_startframe_validation,
+    )
     project_config_path = project_dir / "config.json"
     reference_image_size = None
     if project_config_path.is_file():
@@ -583,7 +594,9 @@ def _run_ingredients_workflow(
     ingredients_llm, report_ingredients_analysis, manifest_path,
 ) -> MoviePipelineResult:
     if not args.skip_movie_ingredients_sheets:
-        from feverslop.application.movie_ingredients_sheets import enrich_movie_render_plan_with_ingredients_sheets
+        from feverslop.application.movie_ingredients_sheets import (
+            enrich_movie_render_plan_with_ingredients_sheets,
+        )
         _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
         render_plan_ingredients_path = enrich_movie_render_plan_with_ingredients_sheets(
             project_dir=project_dir,
@@ -595,7 +608,7 @@ def _run_ingredients_workflow(
                     "ingredients_workflow",
                     "workflows/video_ltxv_ingredients_2stage_v6.json",
                 )
-                or "workflows/video_ltxv_ingredients_2stage_v6.json"
+                or "workflows/video_ltxv_ingredients_2stage_v6.json",
             ).stem,
         )
     elif not render_plan_ingredients_path.exists():
@@ -664,7 +677,9 @@ def _run_msr_workflow(
     ingredients_llm, report_msr_analysis, report_ingredients_analysis, manifest_path,
 ) -> MoviePipelineResult:
     if _movie_uses_msr_reference_enrichment(config["movie_video_workflow"]) and not args.skip_movie_msr_enrich:
-        from feverslop.application.movie_msr_enrichment import enrich_movie_render_plan_with_msr_prompts
+        from feverslop.application.movie_msr_enrichment import (
+            enrich_movie_render_plan_with_msr_prompts,
+        )
         render_plan_msr_path = enrich_movie_render_plan_with_msr_prompts(
             project_dir=project_dir,
             keyframe_mode=args.keyframe_mode,
@@ -676,7 +691,9 @@ def _run_msr_workflow(
         render_plan_msr_path = None
 
     if _movie_uses_msr_reference_enrichment(config["movie_video_workflow"]) and not args.skip_movie_ingredients_sheets:
-        from feverslop.application.movie_ingredients_sheets import enrich_movie_render_plan_with_ingredients_sheets
+        from feverslop.application.movie_ingredients_sheets import (
+            enrich_movie_render_plan_with_ingredients_sheets,
+        )
         _log_stage("Movie Ingredients scene sheets", "composing letterboxed scene reference sheets")
         enrich_movie_render_plan_with_ingredients_sheets(
             project_dir=project_dir,
@@ -688,7 +705,7 @@ def _run_msr_workflow(
                     "ingredients_workflow",
                     "workflows/video_ltxv_ingredients_2stage_v6.json",
                 )
-                or "workflows/video_ltxv_ingredients_2stage_v6.json"
+                or "workflows/video_ltxv_ingredients_2stage_v6.json",
             ).stem,
         )
 
@@ -710,10 +727,10 @@ def _run_msr_workflow(
             render_plan_path,
             project_dir,
             on_scene_started=lambda index, total, scene: console.print(
-                f"[cyan]H3 prompts: processing scene {index}/{total} - scene {scene}[/cyan]"
+                f"[cyan]H3 prompts: processing scene {index}/{total} - scene {scene}[/cyan]",
             ),
             on_scene_prepared=lambda completed, total, scene: console.print(
-                f"[cyan]H3 prompts: {completed}/{total} scenes - scene {scene}[/cyan]"
+                f"[cyan]H3 prompts: {completed}/{total} scenes - scene {scene}[/cyan]",
             ),
         )
         _log_stage("Movie MiniMax H3 prompts", str(prepared_minimax_plan_path))
@@ -733,7 +750,7 @@ def _run_msr_workflow(
                 project_dir=project_dir, render_plan_path=prepared_minimax_plan_path or render_plan_msr_path or render_plan_path,
                 selected_scenes=args.scenes, continuity_keyframes=config["continuity_keyframes"],
                 on_clip_rendered=lambda completed, total, scene_number: print(
-                    f"Rendered movie clip {completed}/{total}: scene {scene_number}"
+                    f"Rendered movie clip {completed}/{total}: scene {scene_number}",
                 ),
             )
         else:
@@ -838,9 +855,13 @@ def _movie_app_config_path(config: dict[str, Any]) -> str:
 
 def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, debug_workflows_dir: Path | None = None):
     from feverslop.adapters.comfyui_client import ComfyUIClient
-    from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+    from feverslop.adapters.comfyui_ingredients_video_backend import (
+        ComfyUIIngredientsVideoRenderBackend,
+    )
     from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
-    from feverslop.adapters.movie_ingredients_visual import ComfyUIMovieIngredientsVisualAdapter
+    from feverslop.adapters.movie_ingredients_visual import (
+        ComfyUIMovieIngredientsVisualAdapter,
+    )
     from feverslop.config.app_config import AppConfig
 
     app_config = AppConfig.load(_movie_app_config_path(config))
@@ -862,7 +883,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
                 "ingredients_workflow",
                 "workflows/video_ltxv_ingredients_2stage_v6.json",
             )
-            or "workflows/video_ltxv_ingredients_2stage_v6.json"
+            or "workflows/video_ltxv_ingredients_2stage_v6.json",
         ).stem,
     )
     return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
@@ -876,7 +897,10 @@ def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
     from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
     from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
     from feverslop.adapters.video_postprocessor import VideoPostProcessor
-    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.composition.render_video import (
+        RenderVideoCompositionOptions,
+        build_render_video_scenes_use_case,
+    )
     from feverslop.config.app_config import AppConfig
 
     app_config = AppConfig.load(_movie_app_config_path(config))
@@ -892,7 +916,7 @@ def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
             single_prompt_workflow_path=config["i2v_workflow"],
             output_dir=ltx_dir,
             video_pipeline="ltx_i2v",
-        )
+        ),
     )
     return ComfyUIMovieI2VEditVisualAdapter(
         base_image_backend=ComfyUIImageBackend(
@@ -919,8 +943,13 @@ def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[st
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
     from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
-    from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
-    from feverslop.composition.render_video import RenderVideoCompositionOptions, build_render_video_scenes_use_case
+    from feverslop.adapters.startframe_director_comfyui import (
+        ComfyUIStartframeDirectorVisualAdapter,
+    )
+    from feverslop.composition.render_video import (
+        RenderVideoCompositionOptions,
+        build_render_video_scenes_use_case,
+    )
     from feverslop.config.app_config import AppConfig
 
     app_config = AppConfig.load(_movie_app_config_path(config))
@@ -943,7 +972,7 @@ def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[st
             debug_workflows_dir=config.get("startframe_debug_workflows_dir")
             if config.get("startframe_write_debug_workflows")
             else None,
-        )
+        ),
     )
     return ComfyUIStartframeDirectorVisualAdapter(
         client=client,
@@ -1013,12 +1042,16 @@ def _ensure_movie_continuity_plan_artifact(project_dir):
 
 
 def _ensure_movie_render_plan_matches_bible_artifact(project_dir):
-    from feverslop.application.movie_artifacts import ensure_movie_render_plan_matches_bible
+    from feverslop.application.movie_artifacts import (
+        ensure_movie_render_plan_matches_bible,
+    )
     ensure_movie_render_plan_matches_bible(project_dir)
 
 
 def _write_movie_reference_manifest_from_bible_artifact(project_dir):
-    from feverslop.application.movie_artifacts import write_movie_reference_manifest_from_bible
+    from feverslop.application.movie_artifacts import (
+        write_movie_reference_manifest_from_bible,
+    )
     return write_movie_reference_manifest_from_bible(project_dir)
 
 
@@ -1036,8 +1069,14 @@ def _prepare_and_render_msr_movie(
     *, adapter, project_dir: Path, render_plan_path: Path, selected_scenes: list[int],
     prepare: bool, render: bool,
 ) -> tuple[Path | None, Path]:
-    from feverslop.adapters.prepared_workflow import PreparedWorkflowRenderer, WorkflowMaterializer
-    from feverslop.application.movie_prepared_workflows import prepare_movie_workflows, render_prepared_movie_workflows
+    from feverslop.adapters.prepared_workflow import (
+        PreparedWorkflowRenderer,
+        WorkflowMaterializer,
+    )
+    from feverslop.application.movie_prepared_workflows import (
+        prepare_movie_workflows,
+        render_prepared_movie_workflows,
+    )
 
     canonical_plan = _canonical_movie_plan(project_dir, render_plan_path, pipeline="ltx_msr")
     plan = json.loads(canonical_plan.read_text(encoding="utf-8"))
@@ -1056,7 +1095,7 @@ def _prepare_and_render_msr_movie(
             materializer=WorkflowMaterializer(backend, layout),
             prompt_for_scene=lambda scene: str(
                 (scene.get("ltx") or {}).get("original_style_i2v_prompt")
-                or scene.get("description") or ""
+                or scene.get("description") or "",
             ),
         )
     if not render:
@@ -1071,7 +1110,7 @@ def _prepare_and_render_msr_movie(
         postprocessor=adapter.postprocessor,
         legacy_dirs=[project_dir / "output" / "movie" / "ltx_msr"],
         on_clip_rendered=lambda completed, total, scene: print(
-            f"Rendered movie clip {completed}/{total}: scene {scene}"
+            f"Rendered movie clip {completed}/{total}: scene {scene}",
         ),
     )
     return final, layout.scenes_dir
@@ -1081,8 +1120,14 @@ def _prepare_and_render_ingredients_movie(
     *, adapter, project_dir: Path, render_plan_path: Path, selected_scenes: list[int],
     prepare: bool, render: bool,
 ) -> tuple[Path | None, Path]:
-    from feverslop.adapters.prepared_workflow import PreparedWorkflowRenderer, WorkflowMaterializer
-    from feverslop.application.movie_prepared_workflows import prepare_movie_workflows, render_prepared_movie_workflows
+    from feverslop.adapters.prepared_workflow import (
+        PreparedWorkflowRenderer,
+        WorkflowMaterializer,
+    )
+    from feverslop.application.movie_prepared_workflows import (
+        prepare_movie_workflows,
+        render_prepared_movie_workflows,
+    )
 
     canonical_plan = _canonical_movie_plan(project_dir, render_plan_path, pipeline="ltx_ingredients")
     plan = json.loads(canonical_plan.read_text(encoding="utf-8"))
@@ -1100,7 +1145,7 @@ def _prepare_and_render_ingredients_movie(
                 or scene.get("ingredients_global_prompt")
                 or (scene.get("ltx") or {}).get("ingredients_scene_sheet_description")
                 or (scene.get("ltx") or {}).get("ingredients_target_prompt")
-                or scene.get("description") or ""
+                or scene.get("description") or "",
             ),
         )
     if not render:

@@ -1,14 +1,21 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
 import random
+from pathlib import Path
 
 from rich.console import Console
 
+from feverslop.adapters.audio.beat_analysis import (
+    BeatImpactAnalyzer,
+    BeatSceneDurationGenerator,
+)
+from feverslop.adapters.audio.demucs_separator import DemucsSeparator
+from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from feverslop.adapters.storyboard_renderer import StoryboardRenderer
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
 from feverslop.application.generate_render_plan import (
     GenerateRenderPlanExecutionRequest,
@@ -16,18 +23,18 @@ from feverslop.application.generate_render_plan import (
     GenerateRenderPlanResult,
     GenerateRenderPlanUseCase,
 )
+from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig, ProjectPaths
-from feverslop.adapters.audio.beat_analysis import BeatImpactAnalyzer
-from feverslop.adapters.audio.beat_analysis import BeatSceneDurationGenerator
-from feverslop.adapters.audio.demucs_separator import DemucsSeparator
-from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
-from feverslop.domain.timeline_transform import merge_same_kind_segments, normalize_empty_vocals
 from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
 from feverslop.domain.scene_duration_limits import resolve_scene_duration_policy
+from feverslop.domain.timeline_transform import (
+    merge_same_kind_segments,
+    normalize_empty_vocals,
+)
 from feverslop.pipeline.prompt_relay_builder import build_scene_prompt_relay
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.pipeline.scene_duration_enforcer import (
@@ -38,13 +45,14 @@ from feverslop.pipeline.scene_duration_enforcer import (
 from feverslop.pipeline.stage1_segment_builder import build_stage1_segment_json
 from feverslop.pipeline.utils import save_timeline_json
 from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    build_dspy_generator,
+)
+from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
 from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
-from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
-from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
-from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder, build_dspy_generator
-from feverslop.adapters.storyboard_renderer import StoryboardRenderer
 
 
 def build_generate_render_plan_use_case(console: Console | None = None) -> GenerateRenderPlanUseCase:
@@ -79,7 +87,7 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
                 dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
-                    build_dspy_generator(llm), allow_fallback=False
+                    build_dspy_generator(llm), allow_fallback=False,
                 ),
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
@@ -170,7 +178,7 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
                 dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
-                    build_dspy_generator(llm), allow_fallback=False
+                    build_dspy_generator(llm), allow_fallback=False,
                 ),
             ),
             RenderPlanPipeline(build_render_plan=build_render_plan),
