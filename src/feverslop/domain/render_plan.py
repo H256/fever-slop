@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from feverslop.errors import FeverSlopDataError
+from feverslop.domain.subject_directives import SubjectDirectivePlan
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,15 @@ class RenderScene:
             or ltx.get("base_prompt")
             or ""
         )
+
+    @property
+    def subject_directive_plan(self) -> SubjectDirectivePlan | None:
+        payload = self.data.get("subject_directives")
+        if payload is None:
+            return None
+        if not isinstance(payload, dict):
+            raise FeverSlopDataError("render scene subject_directives must be an object")
+        return SubjectDirectivePlan.from_dict(payload)
 
 
 @dataclass(frozen=True)
