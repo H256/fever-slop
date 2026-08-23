@@ -56,6 +56,30 @@ class SubjectDirectiveContractTests(unittest.TestCase):
         self.assertTrue(any("duplicate subject" in issue for issue in issues))
         self.assertTrue(any("Unknown subject ID" in issue for issue in issues))
 
+    def test_allows_explicit_environment_subjects_alongside_referenced_actors(self):
+        plan = SubjectDirectivePlan(
+            shot_id="shot-1",
+            temporal_scope=TemporalScope(0, 4),
+            subjects=(
+                SubjectDirective(
+                    "singer", "singer", "front", "sings", temporal_scope=TemporalScope(0, 4)
+                ),
+                SubjectDirective(
+                    "stage_haze",
+                    "atmospheric effect",
+                    "background",
+                    "drifts",
+                    temporal_scope=TemporalScope(0, 4),
+                ),
+            ),
+        )
+        issues = validate_subject_directive_plan(
+            plan,
+            known_subject_ids={"singer"},
+            known_environment_ids={"festival_stage"},
+        )
+        self.assertEqual([], issues)
+
     def test_rejects_incomplete_temporal_coverage_and_contradictory_relations(self):
         plan = SubjectDirectivePlan.from_dict(
             {

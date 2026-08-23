@@ -71,7 +71,16 @@ class DspySubjectDirectivePlanner:
             raise ValueError("DSPy subject planner returned no structured staging plan")
         payload = _decode_nested_json(payload)
         payload, self.last_repairs = _repair_zero_length_scopes(payload, scene)
-        return build_shared_staging_plan(scene, generator=lambda _payload: payload)
+        plan = build_shared_staging_plan(scene, generator=lambda _payload: payload)
+        issues = validate_subject_directive_plan(
+            plan,
+            known_subject_ids=scene.get("allowed_subject_ids") or (),
+            known_environment_ids=scene.get("allowed_environment_ids") or (),
+            known_prop_ids=scene.get("allowed_prop_ids") or (),
+        )
+        if issues:
+            raise ValueError("Invalid subject staging: " + "; ".join(issues))
+        return plan
 
 
 def _decode_nested_json(value: Any) -> Any:

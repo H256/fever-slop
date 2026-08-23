@@ -518,6 +518,11 @@ def build_render_plan(
             issues = validate_subject_directive_plan(
                 directive_plan,
                 known_subject_ids=known_subject_ids,
+                known_environment_ids=tuple(
+                    location_id
+                    for location_id in [(scene.get("references") or {}).get("location_id")]
+                    if location_id
+                ),
                 known_prop_ids=known_prop_ids,
             )
             if issues:

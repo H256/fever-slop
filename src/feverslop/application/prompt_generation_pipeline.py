@@ -406,6 +406,21 @@ class PromptGenerationPipeline:
                 "concept": str(concept),
                 "scene_details": scene_details.get(segment_id, {}),
                 "global_context": global_context,
+                "allowed_subject_ids": list(
+                    (scene.get("references") or {}).get("actor_ids") or []
+                ),
+                "allowed_environment_ids": [
+                    str(location_id)
+                    for location_id in [
+                        (scene.get("references") or {}).get("location_id")
+                    ]
+                    if location_id
+                ],
+                "allowed_prop_ids": [
+                    str(item.get("id"))
+                    for item in (global_context.get("props") or [])
+                    if isinstance(item, dict) and item.get("id")
+                ],
             }
             plan = None
             last_error: Exception | None = None

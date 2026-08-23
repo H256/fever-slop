@@ -69,6 +69,14 @@ def build_subject_directive_signature(dspy_module: Any | None = None) -> Any:
         and end_seconds=duration_seconds, with end_seconds strictly greater than
         start_seconds. Every subject must have a valid temporal_scope. If
         repair_feedback is present, correct the previous validation failure.
+        Use IDs listed in allowed_subject_ids for referenced actor subjects and
+        allowed_environment_ids for the configured location/environment.
+        Locations, environments, crowds, visible effects, and other reusable
+        visible content may also be subjects when explicitly described by the
+        scene; give them an environment/effect/object role. Do not turn camera
+        metadata or shot instructions into subjects. Represent actor-bound
+        props through prop_bindings and relations. Spatial relation endpoints
+        must be a declared subject or prop ID.
         Return only the staging_plan object. Do not echo the input, guide, or
         DSPy formatting markers. Do not make independent subject decisions outside
         the shared staging plan.

@@ -6,6 +6,29 @@ from typing import Any, Iterable, Mapping
 
 SCHEMA_VERSION = "subject-directives/v1"
 PROP_STATES = frozenset({"held", "played", "attached", "placed", "absent"})
+_NON_ACTOR_ROLE_MARKERS = frozenset(
+    {
+        "atmosphere",
+        "atmospheric",
+        "audience",
+        "accessory",
+        "background",
+        "crowd",
+        "equipment",
+        "environment",
+        "effect",
+        "fog",
+        "haze",
+        "instrument",
+        "lighting",
+        "location",
+        "object",
+        "prop",
+        "scene",
+        "stage",
+        "visual",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -162,9 +185,11 @@ def validate_subject_directive_plan(
     plan: SubjectDirectivePlan,
     *,
     known_subject_ids: Iterable[str] = (),
+    known_environment_ids: Iterable[str] = (),
     known_prop_ids: Iterable[str] = (),
 ) -> list[str]:
     known_subjects = set(known_subject_ids)
+    known_environments = set(known_environment_ids)
     known_props = set(known_prop_ids)
     issues: list[str] = []
     seen: set[str] = set()
@@ -172,7 +197,12 @@ def validate_subject_directive_plan(
         if subject.subject_id in seen:
             issues.append(f"duplicate subject ID: {subject.subject_id}")
         seen.add(subject.subject_id)
-        if known_subjects and subject.subject_id not in known_subjects:
+        if (
+            known_subjects
+            and subject.subject_id not in known_subjects
+            and subject.subject_id not in known_environments
+            and not _is_non_actor_subject(subject.role)
+        ):
             issues.append(f"Unknown subject ID: {subject.subject_id}")
         if subject.visibility == "visible" and (not subject.position or not subject.action):
             issues.append(f"subject {subject.subject_id} needs position and action")
@@ -183,8 +213,18 @@ def validate_subject_directive_plan(
             if known_props and binding.prop_id not in known_props:
                 issues.append(f"Unknown prop ID: {binding.prop_id}")
 
+    declared_props = {
+        binding.prop_id
+        for subject in plan.subjects
+        for binding in subject.prop_bindings
+    }
+    relation_ids = seen | known_subjects | known_environments | known_props | declared_props
     relation_values: dict[tuple[str, str, str], str] = {}
     for relation in plan.spatial_relations:
+        if relation.subject_id not in relation_ids:
+            issues.append(f"unknown spatial relation subject: {relation.subject_id}")
+        if relation.target_id not in relation_ids:
+            issues.append(f"unknown spatial relation target: {relation.target_id}")
         key = (relation.subject_id, relation.relation, relation.target_id)
         previous = relation_values.setdefault(key, relation.detail)
         if previous != relation.detail:
@@ -193,3 +233,11 @@ def validate_subject_directive_plan(
                 f"{relation.subject_id} {relation.relation} {relation.target_id}"
             )
     return issues
+
+
+def _is_non_actor_subject(role: str) -> bool:
+    role_words = {
+        word.strip(".,:;()[]{}")
+        for word in role.lower().replace("/", " ").replace("-", " ").split()
+    }
+    return bool(role_words & _NON_ACTOR_ROLE_MARKERS)
