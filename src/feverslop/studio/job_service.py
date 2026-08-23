@@ -5,11 +5,10 @@ import json
 import logging
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.application.job_contracts import JobRequest
 from feverslop.composition.movie_pipeline_jobs import (  # noqa: F401
     backend_config_path,
     build_movie_full_auto_handler,
@@ -50,30 +49,7 @@ FullAutoHandlerFactory = Callable[..., Any]
 PipelineHandlerFactory = Callable[..., Any]
 
 
-@dataclass(frozen=True)
-class StudioJobRequest:
-    action: str
-    scenes: list[int] | None = None
-    pipeline_mode: str | None = None
-    thumbnails: list[dict[str, Any]] | None = None
-    reference_kind: str | None = None
-    reference_id: str | None = None
-    raw_clip: str | None = None
-    output_clip: str | None = None
-    raw_in_seconds: float | None = None
-    raw_out_seconds: float | None = None
-    exact: bool = False
-    plan: str | None = None
-    visual_consistency_mode: str | None = None
-    workflow_profile: str | None = None
-    preflight_mode: PreflightMode = PreflightMode.WARN
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "preflight_mode",
-            PreflightMode.parse(self.preflight_mode),
-        )
+StudioJobRequest = JobRequest
 
 
 class ActionHandler(Protocol):
