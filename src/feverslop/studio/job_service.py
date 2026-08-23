@@ -39,9 +39,9 @@ from feverslop.studio.jobs import (
     build_visual_consistency_preflight_handler,
     run_with_stream_logging,
 )
-from feverslop.studio.logging import render_log_lines
+from feverslop.composition.logging import render_log_lines
 
-from feverslop.studio.pipeline_actions import ensure_pipeline_action_available
+from feverslop.composition.pipeline_actions import ensure_pipeline_action_available
 from feverslop.config.project_validation import VIDEO_PIPELINE_BY_MODE
 from feverslop.studio.projects import ProjectStore
 
