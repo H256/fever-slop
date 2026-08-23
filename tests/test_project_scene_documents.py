@@ -9,7 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.project_scene_documents import ProjectSceneDocuments
-from feverslop.ports.scene_documents import SceneDocumentConflict
+from feverslop.application.scene_workspace import PatchSceneUseCase
+from feverslop.ports.scene_documents import SceneDocumentConflict, SceneLtxPromptField
 from feverslop.studio.artifact_catalog import ArtifactCatalog
 
 
@@ -125,6 +126,37 @@ class ProjectSceneDocumentsTests(unittest.TestCase):
         self.assertEqual(expected, snapshot.to_scenes())
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), snapshot.revision)
         self.assertFalse(any(path.parent.glob(f".{path.name}.*.tmp")))
+
+    def test_patch_selected_ltx_field_preserves_other_ltx_fields(self):
+        original = [
+            {
+                "scene": 1,
+                "ltx": {
+                    "base_prompt": "B",
+                    "weights": {"motion": 0.5},
+                    "i2v_prompt_from_t2i": "old",
+                },
+            },
+        ]
+        path, payload = self._write_plan("output/render/plans/base.json", original)
+        catalog = CatalogStub(
+            {"render_plans": [path.relative_to(self.project).as_posix()], "images": [], "videos": [], "generated_json": []}
+        )
+        documents = ProjectSceneDocuments(self._project_root, catalog=catalog)
+
+        PatchSceneUseCase(documents=documents).execute(
+            project_id="demo",
+            scene_number=1,
+            changes={"ltx.i2v_prompt_from_t2i": "new"},
+            selected_ltx_prompt_field=SceneLtxPromptField.I2V_PROMPT_FROM_T2I,
+            expected_revision=hashlib.sha256(payload).hexdigest(),
+        )
+
+        decoded = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {"base_prompt": "B", "weights": {"motion": 0.5}, "i2v_prompt_from_t2i": "new"},
+            decoded[0]["ltx"],
+        )
 
     def test_patch_rejects_missing_scene_without_writing(self):
         path, payload = self._write_plan("plan.json", [{"scene": 1}])
