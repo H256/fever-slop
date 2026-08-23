@@ -644,7 +644,7 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
         console.print("[green]Workflows re-prepared.[/green]")
     else:
         console.print(
-            f"[green]Resolution updated. Run '--stage ltx_render_scenes' to render at "
+            f"[green]Resolution updated. Run '--stage render_scenes' to render at "
             f"{width}x{height}.[/green]"
         )
 
@@ -920,7 +920,7 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: tuple[RenderScene, 
 
 def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
-        raise ValueError("ltx_prepare_workflows requires --video-pipeline ltx_msr or ltx_ingredients")
+        raise ValueError("prepare_workflows requires --video-pipeline ltx_msr or ltx_ingredients")
     all_scenes = _all_render_scenes(state) if state.plan_for_next_step.is_file() else []
     preflight = _run_visual_consistency_preflight(state, all_scenes)
     all_scenes = _project_visual_consistency_contracts(
@@ -1389,7 +1389,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         if missing:
             raise FileNotFoundError(
                 "Missing prepared scene workflows: " + ", ".join(str(path) for path in missing)
-                + ". Run --stage ltx_prepare_workflows first."
+                + ". Run --stage prepare_workflows first."
             )
         backend = _specialized_video_use_case(state).backend
         active_workflow_profile = (
@@ -1944,6 +1944,8 @@ STAGE_LABELS = {
     PipelineStage.SET_RESOLUTION: "Set resolution",
     PipelineStage.STORYBOARD_FRAMES: "Storyboard frames",
     PipelineStage.STORYBOARD_PAGE: "Storyboard page",
+    PipelineStage.REFERENCE_RENDER: "Reference render",
+    PipelineStage.REFERENCE_SHEETS: "Reference sheets",
     PipelineStage.MSR_REFERENCES: "MSR references",
     PipelineStage.MSR_REFERENCE_SHEETS: "MSR reference sheets",
     PipelineStage.MSR_PROMPT_ENRICH: "MSR prompt enrichment",
@@ -1983,6 +1985,8 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
     selected = getattr(args, "stages", None)
     if selected:
         aliases = {
+            PipelineStage.REFERENCE_RENDER.value: PipelineStage.MSR_REFERENCES,
+            PipelineStage.REFERENCE_SHEETS.value: PipelineStage.MSR_REFERENCE_SHEETS,
             PipelineStage.PREPARE_WORKFLOWS.value: PipelineStage.LTX_PREPARE_WORKFLOWS,
             PipelineStage.RENDER_SCENES.value: PipelineStage.LTX_RENDER_SCENES,
             PipelineStage.EXPORT_TIMELINE.value: PipelineStage.EXPORT_TIMELINE,

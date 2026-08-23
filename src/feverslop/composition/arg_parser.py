@@ -16,6 +16,8 @@ class PipelineStage(str, Enum):
     SET_RESOLUTION = "set_resolution"
     STORYBOARD_FRAMES = "storyboard_frames"
     STORYBOARD_PAGE = "storyboard_page"
+    REFERENCE_RENDER = "reference_render"
+    REFERENCE_SHEETS = "reference_sheets"
     MSR_REFERENCES = "msr_references"
     MSR_REFERENCE_SHEETS = "msr_reference_sheets"
     MSR_PROMPT_ENRICH = "msr_prompt_enrich"

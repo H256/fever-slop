@@ -27,6 +27,29 @@ class PipelineSkipFlagTests(unittest.TestCase):
             resolve_pipeline_stages(args),
         )
 
+    def test_neutral_stage_names_and_render_skip_flag_are_supported(self):
+        args = build_arg_parser().parse_args([
+            "project",
+            "--stage", "reference_render",
+            "--stage", "reference_sheets",
+            "--stage", "prepare_workflows",
+            "--stage", "render_scenes",
+            "--skip-render",
+            "--skip-reference-render",
+        ])
+
+        self.assertTrue(args.skip_ltx)
+        self.assertTrue(args.skip_msr_reference_render)
+        self.assertEqual(
+            [
+                PipelineStage.MSR_REFERENCES,
+                PipelineStage.MSR_REFERENCE_SHEETS,
+                PipelineStage.LTX_PREPARE_WORKFLOWS,
+                PipelineStage.LTX_RENDER_SCENES,
+            ],
+            resolve_pipeline_stages(args),
+        )
+
     def test_minimax_resume_rebuilds_h3_prompts_before_rendering(self):
         args = build_arg_parser().parse_args([
             "project",

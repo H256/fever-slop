@@ -63,10 +63,12 @@ RUNNER_ARGUMENTS = (
     ("skip_anchor_fix", ("--skip-anchor-fix",), {"action": "store_true"}),
     ("skip_storyboard", ("--skip-storyboard",), {"action": "store_true"}),
     ("skip_storyboard_page", ("--skip-storyboard-page",), {"action": "store_true"}),
-    ("skip_msr_reference_render", ("--skip-msr-reference-render",), {"action": "store_true"}),
+    ("skip_msr_reference_render", ("--skip-reference-render", "--skip-msr-reference-render"), {"dest": "skip_msr_reference_render", "action": "store_true"}),
     ("skip_msr_prompt_enrichment", ("--skip-msr-prompt-enrichment",), {"action": "store_true"}),
     ("skip_ingredients_sheets", ("--skip-ingredients-sheets",), {"action": "store_true"}),
-    ("skip_ltx", ("--skip-ltx",), {"action": "store_true"}),
+    # --skip-ltx is retained for existing scripts; renderer-neutral spellings
+    # are the preferred public interface.
+    ("skip_ltx", ("--skip-render", "--skip-renderer", "--skip-ltx"), {"dest": "skip_ltx", "action": "store_true"}),
     ("upscale", ("--upscale",), {"action": "store_true", "default": None, "help": "Run the configured SeedVR2 upscale stage."}),
     ("skip_final_concat", ("--skip-final-concat",), {"action": "store_true"}),
     ("skip_openshot_export", ("--skip-openshot-export",), {"action": "store_true"}),
