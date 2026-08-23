@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import base64
-import httpx
 import logging
 import os
-from pathlib import Path
-
-from openai import OpenAI, APIConnectionError, APITimeoutError, RateLimitError
 import random
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
-from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, default_api_metrics, record_api_call
+import httpx
+from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+
+from feverslop.adapters.api_observability import (
+    APIMetrics,
+    RequestRateLimiter,
+    default_api_metrics,
+    record_api_call,
+)
 from feverslop.errors import FeverSlopLMLError
 from feverslop.llm_concurrency import (
     LLMConcurrencySnapshot,
@@ -19,7 +24,6 @@ from feverslop.llm_concurrency import (
 )
 from feverslop.prompting.vision_references import prepare_vision_image
 from feverslop.security.url_validation import validate_api_url
-
 
 RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
 logger = logging.getLogger(__name__)
@@ -58,12 +62,12 @@ def _resolve_api_key(api_key: str | None) -> str:
         if api_key == "not-needed":
             raise ValueError(
                 "Hardcoded API key 'not-needed' detected. Set LLM_API_KEY "
-                "environment variable or pass a valid api_key."
+                "environment variable or pass a valid api_key.",
             )
         if not api_key:
             raise ValueError(
                 "LLM API key is empty. Set LLM_API_KEY, configure llm.api_key "
-                "in app_config.json or LLM_API_KEY in .env, or pass a valid api_key."
+                "in app_config.json or LLM_API_KEY in .env, or pass a valid api_key.",
             )
         return api_key
     env_key = os.environ.get("LLM_API_KEY", "")
@@ -71,12 +75,12 @@ def _resolve_api_key(api_key: str | None) -> str:
     if env_key == "not-needed":
         raise ValueError(
             "Hardcoded API key 'not-needed' in LLM_API_KEY. "
-            "Set a valid API key."
+            "Set a valid API key.",
         )
     if not env_key:
         raise ValueError(
             "No LLM API key provided. Set LLM_API_KEY, configure llm.api_key "
-            "in app_config.json or LLM_API_KEY in .env, or pass a valid api_key argument."
+            "in app_config.json or LLM_API_KEY in .env, or pass a valid api_key argument.",
         )
     return env_key
 
@@ -267,7 +271,7 @@ class LocalOpenAIClient:
                 retry_attempts=retry_attempts,
             )
         raise FeverSlopLMLError(
-            f"LLM API error after {self.max_retries} attempts: {last_error}"
+            f"LLM API error after {self.max_retries} attempts: {last_error}",
         ) from last_error
 
     def llm_concurrency_snapshot(self) -> LLMConcurrencySnapshot:
@@ -279,7 +283,7 @@ class LocalOpenAIClient:
             return self._vision_capability
         self.request_rate_limiter.wait()
         model_info = self.client.models.retrieve(
-            self.model, timeout=min(self.request_timeout_seconds, 10.0)
+            self.model, timeout=min(self.request_timeout_seconds, 10.0),
         )
         self._vision_capability = model_supports_vision(model_info)
         return self._vision_capability

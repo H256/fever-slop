@@ -1,12 +1,15 @@
 ﻿from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import json
 import random
+from dataclasses import dataclass
+from pathlib import Path
 
+from feverslop.adapters.lora_workflow_patcher import (
+    LoraPatchSettings,
+    LoraWorkflowPatcher,
+)
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.adapters.lora_workflow_patcher import LoraPatchSettings, LoraWorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.ltx_rendering import AudioWindowSpec, PromptRelayPayloadBuilder
 from feverslop.errors import FeverSlopWorkflowError
@@ -110,7 +113,7 @@ class LTXWorkflowPatcher:
                 [
                     self.settings.load_audio_node_title,
                     self.settings.trim_audio_node_title,
-                ]
+                ],
             )
         if mode != "single_prompt":
             required_titles.append(self.settings.prompt_relay_node_title)
@@ -265,7 +268,7 @@ class LTXWorkflowPatcher:
                     last_error = exc
 
             raise last_error or KeyError(
-                f"No prompt node found for single_prompt mode. Tried: {prompt_title_candidates}"
+                f"No prompt node found for single_prompt mode. Tried: {prompt_title_candidates}",
             )
 
         global_prompt, local_prompts, segment_lengths = self.build_prompt_relay_payload(

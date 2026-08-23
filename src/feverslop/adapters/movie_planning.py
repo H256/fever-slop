@@ -1,5 +1,4 @@
-"""
-Re-export module for backwards compatibility.
+"""Re-export module for backwards compatibility.
 
 All movie planning logic has been split into focused modules.
 Import from the new modules directly for clarity:
@@ -11,11 +10,8 @@ Import from the new modules directly for clarity:
 """
 from __future__ import annotations
 
-# Planners
-from feverslop.adapters.movie_planning_llm import LLMMoviePlanner
-from feverslop.adapters.movie_planning_deterministic import DeterministicMoviePlanner
-
 # Bible construction
+# Character action detection (used by tests)
 from feverslop.adapters.movie_planning_bible import (
     _actors_from_data,
     _actors_from_story_arch,
@@ -24,8 +20,9 @@ from feverslop.adapters.movie_planning_bible import (
     _configured_actors,
     _configured_locations,
     _continuity_from_data,
-    _display_name,
     _dialogue_actor_names,
+    _display_name,
+    _is_character_action,
     _location_base_collides,
     _location_base_name,
     _location_id_matches,
@@ -40,6 +37,7 @@ from feverslop.adapters.movie_planning_bible import (
     _split_screenplay_beats,
     _visual_location_action,
 )
+from feverslop.adapters.movie_planning_deterministic import DeterministicMoviePlanner
 
 # Shared helpers
 from feverslop.adapters.movie_planning_helpers import (
@@ -55,8 +53,8 @@ from feverslop.adapters.movie_planning_helpers import (
     _transition_from_previous,
 )
 
-# Character action detection (used by tests)
-from feverslop.adapters.movie_planning_bible import _is_character_action
+# Planners
+from feverslop.adapters.movie_planning_llm import LLMMoviePlanner
 
 __all__ = [
     # Planners

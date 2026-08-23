@@ -4,13 +4,16 @@ import hashlib
 import importlib
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.adapters.postprocessor_frame_extractor import (
     PostprocessorFrameExtractor,
 )
+from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.domain.movie_utils import transition_from_previous
 from feverslop.domain.visual_consistency import (
     ReferenceAnchor,
     SceneConsistencyContract,
@@ -22,10 +25,8 @@ from feverslop.domain.visual_consistency_runtime import (
     reference_look_id,
     resolve_reference_look,
 )
-from feverslop.adapters.video_postprocessor import VideoPostProcessor
-from feverslop.domain.movie_utils import transition_from_previous
-from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.errors import FeverSlopAdaptationError
+from feverslop.ports.rendering import VideoRenderRequest
 
 PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS = 30
 
@@ -48,7 +49,7 @@ def write_local_placeholder_clip(path: Path, *, duration_seconds: float = 1.0) -
         )
     except subprocess.TimeoutExpired as exc:
         raise FeverSlopAdaptationError(
-            f"FFmpeg timed out after {PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS}s while writing placeholder clip: {path}"
+            f"FFmpeg timed out after {PLACEHOLDER_FFMPEG_TIMEOUT_SECONDS}s while writing placeholder clip: {path}",
         ) from exc
     except subprocess.CalledProcessError as exc:
         details = (
@@ -57,7 +58,7 @@ def write_local_placeholder_clip(path: Path, *, duration_seconds: float = 1.0) -
             else "no stderr output"
         )
         raise FeverSlopAdaptationError(
-            f"FFmpeg failed (exit {exc.returncode}) while writing placeholder clip {path}: {details}"
+            f"FFmpeg failed (exit {exc.returncode}) while writing placeholder clip {path}: {details}",
         ) from exc
 
 
@@ -199,7 +200,7 @@ class ComfyUIMovieVisualAdapter:
                         audio_file=project_dir / "movie" / "ltx_native_audio.wav",
                         storyboard_dir=project_dir / "movie" / "storyboard",
                         upload_audio=False,
-                    )
+                    ),
                 )
                 rendered_count += 1
                 if on_clip_rendered is not None:
@@ -421,7 +422,7 @@ def _continuity_contract(
         or references.get("location_id")
         or references.get("location_msr_path")
         or references.get("location_sheet_path")
-        or ""
+        or "",
     ).strip()
     actors = tuple(
         _synthetic_anchor(str(actor_id).strip(), kind="actor")
@@ -437,7 +438,7 @@ def _continuity_contract(
         actors=actors,
         location=_synthetic_anchor(location_id, kind="location"),
         transition_from_previous=transition_from_previous(
-            scene.get("transition_from_previous")
+            scene.get("transition_from_previous"),
         ),
     )
 
@@ -463,14 +464,14 @@ def _default_continuity_handoff_factory(
     selected_rerender: bool,
 ):
     module = importlib.import_module(
-        "feverslop.application.continuity_handoff"
+        "feverslop.application.continuity_handoff",
     )
     return module.ContinuityHandoffUseCase(
         PostprocessorFrameExtractor(
             postprocessor,
             project_dir=project_dir,
             selected_rerender=selected_rerender,
-        )
+        ),
     )
 
 
@@ -518,7 +519,7 @@ def _references_from_ids(scene: dict[str, Any], manifest: dict[str, Any], projec
             for path in actor_paths
         ],
         "location_msr_path": location_path.relative_to(
-            project_dir.resolve()
+            project_dir.resolve(),
         ).as_posix(),
         "actor_reference_descriptions": [_reference_description(actor) for actor in actor_items],
         "location_reference_description": _reference_description(location_item),
@@ -543,7 +544,7 @@ def _required_manifest_path(item: dict, project_dir: Path) -> Path:
                 or item.get("sheet_path")
             )
         )
-        or ""
+        or "",
     ).strip()
     if not value:
         raise ValueError(f"Movie reference {item.get('id')} has no rendered MSR sheet path")
@@ -556,7 +557,7 @@ def _required_manifest_path(item: dict, project_dir: Path) -> Path:
     if not resolved.is_relative_to(project_dir.resolve()):
         raise ValueError(
             f"Movie reference {item.get('id')!r} path must be inside the "
-            f"project: {value}"
+            f"project: {value}",
         )
     return resolved
 

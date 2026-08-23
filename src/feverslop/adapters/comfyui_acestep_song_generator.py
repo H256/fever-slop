@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-import json
 
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.errors import FeverSlopRenderError
 from feverslop.domain.full_auto import GeneratedSong, SongSpec
+from feverslop.errors import FeverSlopRenderError
 
 
 class ComfyUIAceStepSongGenerator:
@@ -59,7 +59,7 @@ class ComfyUIAceStepSongGenerator:
             missing = inputs - node_inputs
             if missing:
                 raise ValueError(
-                    f"ACE-STEP workflow anchor {title} is missing inputs: {sorted(missing)}"
+                    f"ACE-STEP workflow anchor {title} is missing inputs: {sorted(missing)}",
                 )
 
     def generate(
@@ -144,6 +144,6 @@ class ComfyUIAceStepSongGenerator:
                             "filename": item["filename"],
                             "subfolder": item.get("subfolder", ""),
                             "type": item.get("type", "output"),
-                        }
+                        },
                     )
         return files

@@ -2,18 +2,27 @@ from __future__ import annotations
 
 import json
 import re
-
 from dataclasses import replace
 
-from feverslop.domain.movie import MovieActor, MovieBible, MovieContinuityRule, MovieLocation, StoryArch
+from feverslop.domain.movie import (
+    MovieActor,
+    MovieBible,
+    MovieContinuityRule,
+    MovieLocation,
+    StoryArch,
+)
 from feverslop.domain.movie_utils import (
+    clean_visual_description,
     configured_actors,
     configured_locations,
-    clean_visual_description,
     display_name,
     safe_id,
 )
-from feverslop.domain.screenplay import HEADING_RE, parse_screenplay, split_screenplay_dialogue
+from feverslop.domain.screenplay import (
+    HEADING_RE,
+    parse_screenplay,
+    split_screenplay_dialogue,
+)
 
 
 def _movie_bible_from_data(data: dict, *, title: str, source_type: str = "", source_text: str = "", story_arch: StoryArch, config: dict, desired_length: float) -> MovieBible:
@@ -76,7 +85,7 @@ def _actors_from_data(raw) -> list[MovieActor]:
                 name=str(actor.get("name") or actor.get("id") or f"Actor {index}").strip(),
                 role=str(actor.get("role") or "").strip(),
                 visual_description=clean_visual_description(actor.get("visual_description") or actor.get("description"), str(actor.get("name") or actor.get("id") or f"Actor {index}").strip()),
-            )
+            ),
         )
     return actors
 
@@ -91,7 +100,7 @@ def _locations_from_data(raw) -> list[MovieLocation]:
                 id=safe_id(location.get("id") or location.get("name")) or f"location_{index}",
                 name=str(location.get("name") or location.get("id") or f"Location {index}").strip(),
                 visual_description=clean_visual_description(location.get("visual_description") or location.get("description"), str(location.get("name") or location.get("id") or f"Location {index}").strip()),
-            )
+            ),
         )
     return locations
 

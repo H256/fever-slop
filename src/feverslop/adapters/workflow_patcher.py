@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from typing import Any
-import re
 
 
 class WorkflowPatcher:
-    """
-    Patches ComfyUI API workflow JSON.
+    """Patches ComfyUI API workflow JSON.
 
     Supports addressing nodes by:
     - node id
@@ -58,7 +57,7 @@ class WorkflowPatcher:
             if node.get("_meta", {}).get("title") == title
         ]
 
-    def apply_patch_spec(self, operations: list[dict], context: dict | None = None) -> "WorkflowPatcher":
+    def apply_patch_spec(self, operations: list[dict], context: dict | None = None) -> WorkflowPatcher:
         context = context or {}
         for operation in operations:
             op = operation.get("op")
@@ -152,7 +151,7 @@ class WorkflowPatcher:
         node_id: str | int,
         input_name: str,
         value: Any,
-    ) -> "WorkflowPatcher":
+    ) -> WorkflowPatcher:
         node = self.find_node_by_id(node_id)
         node.setdefault("inputs", {})[input_name] = value
         return self
@@ -162,7 +161,7 @@ class WorkflowPatcher:
         title: str,
         input_name: str,
         value: Any,
-    ) -> "WorkflowPatcher":
+    ) -> WorkflowPatcher:
         _, node = self.find_node_by_meta_title(title)
         node.setdefault("inputs", {})[input_name] = value
         return self
@@ -172,7 +171,7 @@ class WorkflowPatcher:
         title: str,
         input_name: str,
         value: Any,
-    ) -> "WorkflowPatcher":
+    ) -> WorkflowPatcher:
         _, node = self.find_node_by_meta_title(title)
         inputs = node.setdefault("inputs", {})
 
@@ -187,7 +186,7 @@ class WorkflowPatcher:
         title: str,
         input_name: str,
         value: Any,
-    ) -> "WorkflowPatcher":
+    ) -> WorkflowPatcher:
         nodes = self.find_nodes_by_meta_title(title)
         for _, node in nodes:
             inputs = node.setdefault("inputs", {})
@@ -217,7 +216,7 @@ class WorkflowPatcher:
         input_name: str,
         value: Any,
         index: int = 0,
-    ) -> "WorkflowPatcher":
+    ) -> WorkflowPatcher:
         nodes = self.find_nodes_by_class_type(class_type)
 
         if not nodes:
@@ -248,7 +247,7 @@ class WorkflowPatcher:
         if not patched:
             raise KeyError(
                 f"No known LoRA strength input found on node '{title}'. "
-                f"Tried: {', '.join(input_names)}"
+                f"Tried: {', '.join(input_names)}",
             )
 
         return patched
@@ -275,7 +274,7 @@ class WorkflowPatcher:
         if not model_strength_patched:
             raise KeyError(
                 f"No known LoRA model strength input found on node '{title}'. "
-                "Tried: strength_model, model_strength, strength"
+                "Tried: strength_model, model_strength, strength",
             )
 
         for input_name in ("strength_clip", "clip_strength"):
@@ -310,7 +309,7 @@ class WorkflowPatcher:
             if not model_strength_patched:
                 raise KeyError(
                     f"No known LoRA model strength input found on node '{title}'. "
-                    "Tried: strength_model, model_strength, strength"
+                    "Tried: strength_model, model_strength, strength",
                 )
 
         if strength_clip is not None:
@@ -345,7 +344,7 @@ class WorkflowPatcher:
         if not patched:
             raise KeyError(
                 f"No known LoRA strength input found on node '{title}'. "
-                "Tried model and clip strength inputs."
+                "Tried model and clip strength inputs.",
             )
 
         return patched

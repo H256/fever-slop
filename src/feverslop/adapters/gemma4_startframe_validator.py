@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import base64
 import ast
+import base64
 import json
 import logging
 import re
@@ -11,10 +11,13 @@ from typing import Any
 
 import requests
 
-from feverslop.adapters.api_observability import APIMetrics, default_api_metrics, record_api_call
-from feverslop.errors import FeverSlopLMLError
-
+from feverslop.adapters.api_observability import (
+    APIMetrics,
+    default_api_metrics,
+    record_api_call,
+)
 from feverslop.domain.llm_parsing import extract_json_object
+from feverslop.errors import FeverSlopLMLError
 
 logger = logging.getLogger(__name__)
 

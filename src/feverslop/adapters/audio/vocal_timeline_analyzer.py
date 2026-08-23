@@ -9,7 +9,10 @@ import torch
 import whisper
 
 from feverslop.domain.timeline import TimelineSegment
-from feverslop.domain.timeline_transform import merge_same_kind_segments, normalize_empty_vocals
+from feverslop.domain.timeline_transform import (
+    merge_same_kind_segments,
+    normalize_empty_vocals,
+)
 
 __all__ = [
     "VocalTimelineAnalyzer",
@@ -232,7 +235,7 @@ class VocalTimelineAnalyzer:
                     ),
                     key=lambda index: abs(
                         (word_start + word_end) / 2
-                        - (vocal_ranges[index][0] + vocal_ranges[index][1]) / 2
+                        - (vocal_ranges[index][0] + vocal_ranges[index][1]) / 2,
                     ),
                 )
                 assigned_words[best_index].append(
@@ -240,13 +243,13 @@ class VocalTimelineAnalyzer:
                         "word": text,
                         "start": round(word_start, 3),
                         "end": round(word_end, 3),
-                    }
+                    },
                 )
 
         result = []
         for index, (start, end) in enumerate(vocal_ranges):
             words = sorted(
-                assigned_words[index], key=lambda word: (word["start"], word["end"])
+                assigned_words[index], key=lambda word: (word["start"], word["end"]),
             )
             text = " ".join(word["word"] for word in words)
             if not words:
@@ -259,7 +262,7 @@ class VocalTimelineAnalyzer:
                     kind="vocals",
                     text=text,
                     word_timestamps=tuple(words),
-                )
+                ),
             )
 
         return result
@@ -279,7 +282,7 @@ class VocalTimelineAnalyzer:
                         start=round(cursor, 2),
                         end=round(seg.start, 2),
                         kind="instrumental",
-                    )
+                    ),
                 )
 
             timeline.append(seg)
@@ -291,7 +294,7 @@ class VocalTimelineAnalyzer:
                     start=round(cursor, 2),
                     end=round(total_duration, 2),
                     kind="instrumental",
-                )
+                ),
             )
 
         return timeline

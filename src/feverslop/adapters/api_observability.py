@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import math
+import re
+import time
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-import json
-import logging
-import math
 from threading import Lock
 from time import perf_counter
-import time
-import re
 from typing import Any
-import uuid
-
 
 _SENSITIVE_URL_PART = re.compile(
     r"(?P<key>(?:api[_-]?key|access[_-]?token|auth(?:orization)?|bearer|password|secret|token))"
@@ -74,7 +73,7 @@ class APIObservabilityContext:
 
 
 _observability_context: ContextVar[APIObservabilityContext | None] = ContextVar(
-    "feverslop_api_observability_context", default=None
+    "feverslop_api_observability_context", default=None,
 )
 
 
@@ -125,7 +124,7 @@ class APIMetrics:
         self._lock = Lock()
         self._max_samples_per_operation = int(max_samples_per_operation)
         self._totals: dict[tuple[str, str], list[float]] = defaultdict(
-            lambda: [0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0, 0]
+            lambda: [0, 0, 0, 0.0, 0.0, 0.0, 0, 0, 0, 0],
         )
         self._samples: dict[tuple[str, str], list[_APICallSample]] = defaultdict(list)
 

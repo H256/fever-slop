@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
-from pathlib import Path
-import json
 import time
 import uuid
-import requests
-from requests.adapters import HTTPAdapter
+from pathlib import Path
 from threading import Event
 
-from feverslop.adapters.api_observability import APIMetrics, RequestRateLimiter, default_api_metrics, record_api_call, redact_secrets, require_json_object
+import requests
+from requests.adapters import HTTPAdapter
+
+from feverslop.adapters.api_observability import (
+    APIMetrics,
+    RequestRateLimiter,
+    default_api_metrics,
+    record_api_call,
+    redact_secrets,
+    require_json_object,
+)
 from feverslop.errors import FeverSlopWorkflowError
 from feverslop.security.url_validation import validate_api_url
 
@@ -30,8 +38,7 @@ def json_dumps_compact(value: object) -> str:
 
 
 class ComfyUIClient:
-    """
-    Minimal ComfyUI HTTP API client.
+    """Minimal ComfyUI HTTP API client.
 
     Responsibilities:
     - queue workflow API JSON
@@ -200,7 +207,7 @@ class ComfyUIClient:
         )
         suffix = f": {exception}" if exception else ""
         raise ComfyUIExecutionError(
-            f"ComfyUI prompt {prompt_id} failed{node}{suffix}"
+            f"ComfyUI prompt {prompt_id} failed{node}{suffix}",
         )
 
     def upload_image(
@@ -211,8 +218,7 @@ class ComfyUIClient:
         overwrite: bool = True,
         upload_name: str | None = None,
     ) -> dict:
-        """
-        ComfyUI's default upload endpoint is /upload/image.
+        """ComfyUI's default upload endpoint is /upload/image.
         This also works for most image inputs.
 
         Returned JSON usually contains:
@@ -246,8 +252,7 @@ class ComfyUIClient:
         overwrite: bool = True,
         upload_name: str | None = None,
     ) -> dict:
-        """
-        Alias for workflows/custom nodes that accept uploaded files through ComfyUI's input folder.
+        """Alias for workflows/custom nodes that accept uploaded files through ComfyUI's input folder.
         For audio/video custom nodes this may still be enough if the node expects a filename in input/.
         """
         return self.upload_image(
@@ -320,7 +325,7 @@ class ComfyUIClient:
         detail = self._response_detail(response)
         raise ComfyUIHTTPError(
             f"ComfyUI {operation} failed with HTTP {response.status_code} for "
-            f"{redact_secrets(response.url)}: {redact_secrets(detail)}"
+            f"{redact_secrets(response.url)}: {redact_secrets(detail)}",
         ) from None
 
     @staticmethod
@@ -329,7 +334,7 @@ class ComfyUIClient:
             return json_dumps_compact(response.json())
         except ValueError:
             text = response.text.strip()
-            return text if text else "<empty response body>"
+            return text or "<empty response body>"
 
     def extract_output_images(self, history_entry: dict) -> list[dict]:
         images = []
@@ -347,8 +352,7 @@ class ComfyUIClient:
         return images
 
     def extract_output_files(self, history_entry: dict) -> list[dict]:
-        """
-        Some custom nodes return files/videos instead of images.
+        """Some custom nodes return files/videos instead of images.
         This collects common output keys defensively.
         """
         files = []

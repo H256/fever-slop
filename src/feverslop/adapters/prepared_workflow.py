@@ -8,13 +8,13 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.prepared_workflow import (
     PreparedSceneWorkflow,
     SceneWorkflowManifest,
     StoredArtifact,
     sha256_file,
 )
-from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.visual_consistency import SceneConsistencyContract
 from feverslop.ports.workflow import WorkflowMaterializationRequest
@@ -73,10 +73,10 @@ class WorkflowMaterializer:
                 ),
                 max_render_frames=getattr(self.backend, "max_render_frames", None),
                 max_render_duration_seconds=getattr(
-                    self.backend, "max_render_duration_seconds", None
+                    self.backend, "max_render_duration_seconds", None,
                 ),
                 round_render_frames_to_8n1=bool(
-                    getattr(self.backend, "round_render_frames_to_8n1", False)
+                    getattr(self.backend, "round_render_frames_to_8n1", False),
                 ),
             )
             old_offset = self.backend.seed_offset
@@ -124,23 +124,23 @@ class WorkflowMaterializer:
                 seed=seed,
                 fps=_coerce_int(scene.get("fps"), _rolling_value(rolling, "fps")),
                 frame_count=_coerce_int(
-                    scene.get("frame_count"), _rolling_value(rolling, "render_frame_count")
+                    scene.get("frame_count"), _rolling_value(rolling, "render_frame_count"),
                 ),
                 render_frame_count=_coerce_int(
-                    _rolling_value(rolling, "render_frame_count"), scene.get("frame_count")
+                    _rolling_value(rolling, "render_frame_count"), scene.get("frame_count"),
                 ),
                 trim_front_frames=_coerce_int(_rolling_value(rolling, "trim_front_frames")),
                 width=int(scene.get("width") or 0),
                 height=int(scene.get("height") or 0),
                 max_render_frames=getattr(self.backend, "max_render_frames", None),
                 max_render_duration_seconds=getattr(
-                    self.backend, "max_render_duration_seconds", None
+                    self.backend, "max_render_duration_seconds", None,
                 ),
                 render_budget_workflow_path=getattr(
-                    self.backend, "render_budget_workflow_path", None
+                    self.backend, "render_budget_workflow_path", None,
                 ),
                 round_render_frames_to_8n1=bool(
-                    getattr(self.backend, "round_render_frames_to_8n1", False)
+                    getattr(self.backend, "round_render_frames_to_8n1", False),
                 ),
                 consistency=consistency,
                 startframe_mode=keyframes.get("startframe_mode"),
@@ -151,7 +151,7 @@ class WorkflowMaterializer:
             )
             provenance_mismatches = manifest.verify_consistency_provenance()
             claimed_source_clip_sha = str(
-                keyframes.get("startframe_source_clip_sha256") or ""
+                keyframes.get("startframe_source_clip_sha256") or "",
             )
             requires_source_clip_claim = (
                 consistency is not None
@@ -167,7 +167,7 @@ class WorkflowMaterializer:
             ):
                 provenance_mismatches.append(
                     "consistency: continuous handoff requires a valid "
-                    "startframe source clip SHA-256 claim"
+                    "startframe source clip SHA-256 claim",
                 )
             if (
                 claimed_source_clip_sha
@@ -179,12 +179,12 @@ class WorkflowMaterializer:
             ):
                 provenance_mismatches.append(
                     "consistency: startframe source clip SHA-256 metadata "
-                    "does not match the predecessor clip"
+                    "does not match the predecessor clip",
                 )
             if provenance_mismatches:
                 raise ValueError(
                     "Prepared workflow consistency provenance failed: "
-                    + "; ".join(provenance_mismatches)
+                    + "; ".join(provenance_mismatches),
                 )
             workflow_artifact = StoredArtifact.from_path(
                 workflow_path, project_dir=self.layout.project_dir,
@@ -197,7 +197,7 @@ class WorkflowMaterializer:
                 workflow=replace(workflow_artifact, sha256=manifest.workflow.sha256),
             )
             temporary_manifest = manifest.write(
-                _write_json_temp(manifest_path, manifest.to_dict())
+                _write_json_temp(manifest_path, manifest.to_dict()),
             )
             os.replace(temporary_workflow, workflow_path)
             os.replace(temporary_manifest, manifest_path)
@@ -292,13 +292,13 @@ class WorkflowMaterializer:
             ]
             if len(sheets) != 1 or sha256_file(sheets[0]) != expected_sheet_sha:
                 raise ValueError(
-                    "Ingredients sheet hash does not match runtime metadata"
+                    "Ingredients sheet hash does not match runtime metadata",
                 )
         return assets
 
     @staticmethod
     def _consistency_contract(
-        scene: dict[str, Any], scene_number: int
+        scene: dict[str, Any], scene_number: int,
     ) -> SceneConsistencyContract | None:
         payload = scene.get("visual_consistency")
         if payload is None:
@@ -309,7 +309,7 @@ class WorkflowMaterializer:
             raise ValueError(f"invalid visual consistency contract: {exc}") from exc
         if contract.scene != scene_number:
             raise ValueError(
-                "visual consistency scene does not match materialized scene"
+                "visual consistency scene does not match materialized scene",
             )
         return contract
 
@@ -352,7 +352,7 @@ class PreparedWorkflowRenderer:
         if manifest.pipeline != self.expected_pipeline:
             raise ValueError(
                 f"Prepared workflow pipeline {manifest.pipeline!r} does not match "
-                f"expected pipeline {self.expected_pipeline!r}"
+                f"expected pipeline {self.expected_pipeline!r}",
             )
         if (
             manifest.consistency is not None
@@ -362,12 +362,12 @@ class PreparedWorkflowRenderer:
             raise ValueError(
                 "Prepared workflow profile "
                 f"{manifest.consistency.workflow_profile!r} does not match "
-                f"active workflow profile {self.expected_workflow_profile!r}"
+                f"active workflow profile {self.expected_workflow_profile!r}",
             )
         manifest_workflow_path = manifest.workflow.resolve(self.project_dir).resolve()
         if workflow_path.resolve() != manifest_workflow_path:
             raise ValueError(
-                f"Prepared path {workflow_path} does not match manifest workflow {manifest_workflow_path}"
+                f"Prepared path {workflow_path} does not match manifest workflow {manifest_workflow_path}",
             )
         mismatches = manifest.verify(self.project_dir)
         if mismatches:
@@ -447,7 +447,7 @@ class PreparedWorkflowRenderer:
         return final_path
 
     def _prepare_for_current_server(
-        self, workflow: dict[str, Any], manifest: SceneWorkflowManifest
+        self, workflow: dict[str, Any], manifest: SceneWorkflowManifest,
     ) -> dict[str, Any]:
         replacements: dict[str, str] = {}
         if self.asset_uploader is not None:

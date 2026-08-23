@@ -1,21 +1,23 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import random
 import re
 import subprocess
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
-from feverslop.adapters.comfyui_minimax_h3_video_backend import ComfyUIMiniMaxH3VideoRenderBackend
+from feverslop.adapters.comfyui_minimax_h3_video_backend import (
+    ComfyUIMiniMaxH3VideoRenderBackend,
+)
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
-from feverslop.config.video_settings import VideoSettings
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 
@@ -137,7 +139,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         # -- prompt -----------------------------------------------------------
         resolved_prompt = self._append_continuity_anchor_prompt(
-            str(prompt).strip(), scene, len(ref_image_paths or [])
+            str(prompt).strip(), scene, len(ref_image_paths or []),
         )
         patcher.set_input_by_title("#PROMPT", "value", resolved_prompt)
 
@@ -147,7 +149,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- frame count ---------------------------------------------------
         if duration_seconds is not None:
             patcher.set_input_by_title(
-                "#FRAMECOUNT", "value", int(round(float(duration_seconds) * 24))
+                "#FRAMECOUNT", "value", int(round(float(duration_seconds) * 24)),
             )
 
         # -- resolution (megapixels) ------------------------------------------
@@ -313,7 +315,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             keep_frames = int(scene_frame_count)
         else:
             keep_frames = self._frames_from_duration(
-                duration_seconds if duration_seconds else 5.0
+                duration_seconds or 5.0,
             )
         return self._postprocess_with_audio(
             raw_output,
@@ -344,13 +346,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if len(ref_image_paths) > self.MAX_REF_IMAGES:
             raise FeverSlopValidationError(
                 f"At most {self.MAX_REF_IMAGES} reference images allowed, "
-                f"got {len(ref_image_paths)}"
+                f"got {len(ref_image_paths)}",
             )
         for index, path in enumerate(ref_image_paths, start=1):
             title = f"#REF_{index}"
             image_name = self.asset_uploader.resolve_reference_image_name(path)
             self._patch_reference_asset(
-                patcher, title, "LoadImage", "image", image_name, "ref_images", index - 1
+                patcher, title, "LoadImage", "image", image_name, "ref_images", index - 1,
             )
 
     def _patch_reference_videos(
@@ -365,13 +367,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if len(ref_video_paths) > self.MAX_REF_VIDEOS:
             raise FeverSlopValidationError(
                 f"At most {self.MAX_REF_VIDEOS} reference videos allowed, "
-                f"got {len(ref_video_paths)}"
+                f"got {len(ref_video_paths)}",
             )
         for index, path in enumerate(ref_video_paths, start=1):
             title = f"#VIDEO_{index}"
             video_name = self.asset_uploader.resolve_reference_video_name(path)
             self._patch_reference_asset(
-                patcher, title, "LoadVideo", "video", video_name, "ref_videos", index - 1
+                patcher, title, "LoadVideo", "video", video_name, "ref_videos", index - 1,
             )
 
     @staticmethod
@@ -406,7 +408,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if len(ref_audio_paths) > self.MAX_REF_AUDIOS:
             raise FeverSlopValidationError(
                 f"At most {self.MAX_REF_AUDIOS} reference audio clips allowed, "
-                f"got {len(ref_audio_paths)}"
+                f"got {len(ref_audio_paths)}",
             )
         for slot_index, path in enumerate(ref_audio_paths):
             title = f"#AUDIO_{slot_index + 1}"
@@ -533,7 +535,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         MiniMaxH3ReferenceToVideo node and patches start_index from scene data.
         """
         if patcher.try_set_existing_input_by_title(
-            "#LOAD_AUDIO", "audio", comfy_audio_name
+            "#LOAD_AUDIO", "audio", comfy_audio_name,
         ):
             patcher.try_set_existing_input_by_title(
                 "#LOAD_AUDIO",
@@ -549,7 +551,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         patcher.try_set_existing_input_by_title("#TRIM_AUDIO", "start_index", start_index)
         if duration_seconds is not None:
             patcher.try_set_existing_input_by_title(
-                "#TRIM_AUDIO", "duration", float(duration_seconds)
+                "#TRIM_AUDIO", "duration", float(duration_seconds),
             )
         # -- wire trimmed audio to MiniMaxH3ReferenceToVideo ------------------
         self._wire_trimmed_audio_to_r2v(patcher)
@@ -640,10 +642,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # Build prompt tag
         if slot_type == "ref_images":
             return f"<Picture {slot_index + 1}>"
-        elif slot_type == "ref_videos":
+        if slot_type == "ref_videos":
             return f"<Video {slot_index + 1}>"
-        else:
-            return f"<Audio {slot_index + 1}>"
+        return f"<Audio {slot_index + 1}>"
 
     def _collect_scene_references(
         self,
@@ -756,7 +757,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             return []
 
         silent_mode = bool(
-            scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode")
+            scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode"),
         )
         if silent_mode:
             stem_names = [name for name in stem_names if name != "vocals"]
@@ -821,7 +822,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if not actor_paths:
             scene_number = scene.get("scene", "?")
             raise FeverSlopValidationError(
-                f"Scene {scene_number} requires at least one actor reference"
+                f"Scene {scene_number} requires at least one actor reference",
             )
         self._validate_h3_reference_contract(scene)
 
@@ -883,7 +884,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 f"missing_videos={sorted(missing_videos)!r}; "
                 f"unknown_videos={sorted(unknown_videos)!r}; "
                 f"missing_audio={sorted(missing_audio)!r}; "
-                f"unknown_audio={sorted(unknown_audio)!r}"
+                f"unknown_audio={sorted(unknown_audio)!r}",
             )
 
     # -----------------------------------------------------------------------
@@ -941,10 +942,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         references = scene.get("references") or {}
         audio_paths = list(references.get("reference_audio_paths", []))
         silent_mode = bool(
-            scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode")
+            scene.get("silent_mode") or (scene.get("metadata") or {}).get("silent_mode"),
         )
         vocal_path = str(
-            ((scene.get("stem_audio") or {}).get("paths") or {}).get("vocals") or ""
+            ((scene.get("stem_audio") or {}).get("paths") or {}).get("vocals") or "",
         )
         if silent_mode and vocal_path:
             audio_paths = [path for path in audio_paths if str(path) != vocal_path]

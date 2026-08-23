@@ -1,26 +1,30 @@
 ﻿from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import json
 import shutil
+from dataclasses import dataclass
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
-from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher, LTXWorkflowSettings, ResolvedLoraConfig
+from feverslop.adapters.ltx_workflow_patcher import (
+    LTXWorkflowPatcher,
+    LTXWorkflowSettings,
+    ResolvedLoraConfig,
+)
+from feverslop.adapters.video_postprocessor import TrimSpec, VideoPostProcessor
 from feverslop.config.video_settings import VideoSettings
-from feverslop.errors import FeverSlopRenderError, FeverSlopValidationError
-from feverslop.ports.rendering import VideoRenderRequest
-from feverslop.utils.io import file_is_valid
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     build_audio_window_spec,
     round_up_8n1,
 )
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
-from feverslop.adapters.video_postprocessor import VideoPostProcessor, TrimSpec
+from feverslop.errors import FeverSlopRenderError, FeverSlopValidationError
+from feverslop.ports.rendering import VideoRenderRequest
+from feverslop.utils.io import file_is_valid
 
 
 @dataclass(frozen=True)
@@ -300,7 +304,7 @@ class ComfyUIVideoRenderBackend:
                 segment_length_mode=self.segment_length_mode,
                 debug_workflows_dir=self.debug_workflows_dir,
                 video_settings=video_settings,
-            )
+            ),
         )
 
     def load_workflow(self, mode: str = "relay") -> dict:
@@ -375,7 +379,7 @@ class ComfyUIVideoRenderBackend:
             if not self.allow_out_of_range_clips and (duration < self.min_duration or duration > self.max_duration):
                 raise FeverSlopValidationError(
                     f"Scene {scene_number} duration {duration:.3f}s is outside "
-                    f"{self.min_duration:.3f}s..{self.max_duration:.3f}s."
+                    f"{self.min_duration:.3f}s..{self.max_duration:.3f}s.",
                 )
 
             startframe_path = storyboard_dir / f"scene_{scene_number:04}.png"

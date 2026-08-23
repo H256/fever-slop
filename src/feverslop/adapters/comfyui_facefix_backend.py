@@ -6,11 +6,11 @@ crops at 768x768 with feather-composite postprocessing.
 """
 from __future__ import annotations
 
-import warnings
-from pathlib import Path
-from copy import deepcopy
 import json
 import shutil
+import warnings
+from copy import deepcopy
+from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
@@ -191,16 +191,16 @@ class ComfyUIFaceFixRenderBackend:
     def _patch_facefix_params(self, patcher: WorkflowPatcher) -> None:
         cfg = self.config
         patcher.try_set_existing_input_by_title(
-            "#LOOPING_SAMPLER", "guiding_strength", cfg.guiding_strength
+            "#LOOPING_SAMPLER", "guiding_strength", cfg.guiding_strength,
         )
         patcher.try_set_existing_input_by_title(
-            "#LOOPING_SAMPLER", "cond_image_strength", cfg.cond_image_strength
+            "#LOOPING_SAMPLER", "cond_image_strength", cfg.cond_image_strength,
         )
         patcher.try_set_existing_input_by_title(
-            "#LOOPING_SAMPLER", "temporal_tile_size", cfg.temporal_tile_size
+            "#LOOPING_SAMPLER", "temporal_tile_size", cfg.temporal_tile_size,
         )
         patcher.try_set_existing_input_by_title(
-            "#LOOPING_SAMPLER", "temporal_overlap", cfg.temporal_overlap
+            "#LOOPING_SAMPLER", "temporal_overlap", cfg.temporal_overlap,
         )
         patcher.try_set_existing_input_by_title(
             "#LOOPING_SAMPLER", "temporal_overlap_cond_strength",
@@ -213,7 +213,7 @@ class ComfyUIFaceFixRenderBackend:
                 valid = [str(i) for i in indices if i < self._face_batch_size]
                 keyframes = ",".join(valid) if valid else "0"
             patcher.try_set_existing_input_by_title(
-                "#LOOPING_SAMPLER", "optional_cond_image_indices", keyframes
+                "#LOOPING_SAMPLER", "optional_cond_image_indices", keyframes,
             )
 
     def _patch_save_output(self, patcher: WorkflowPatcher, scene_number: int) -> None:

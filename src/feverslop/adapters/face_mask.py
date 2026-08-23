@@ -76,7 +76,7 @@ class FaceMaskAdapter(FaceMaskPort):
         return np.clip(result, 0, 255).astype(np.uint8)
 
     def validate_mask(
-        self, mask: np.ndarray, min_nonzero_ratio: float = 0.01
+        self, mask: np.ndarray, min_nonzero_ratio: float = 0.01,
     ) -> MaskValidationResult:
         """Validate that mask has meaningful content.
 
@@ -84,7 +84,7 @@ class FaceMaskAdapter(FaceMaskPort):
         """
         if mask.size == 0:
             return MaskValidationResult(
-                valid=False, nonzero_ratio=0.0, message="mask is empty"
+                valid=False, nonzero_ratio=0.0, message="mask is empty",
             )
 
         nonzero_ratio = np.count_nonzero(mask) / mask.size

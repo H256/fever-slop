@@ -22,7 +22,7 @@ _ADAFACE_NAME = "adaface_glint360k.onnx"
 
 def _load_analyzer() -> FaceAnalysis:
     model_dir = _ensure_model_dir()
-    analyzer = FaceAnalysis(name=_MODEL_NAME, root=str(model_dir), providers=['CPUExecutionProvider'])
+    analyzer = FaceAnalysis(name=_MODEL_NAME, root=str(model_dir), providers=["CPUExecutionProvider"])
     analyzer.prepare(ctx_id=-1, det_size=(640, 640))
     return analyzer
 
@@ -43,7 +43,7 @@ def _download_adaface(model_dir: Path) -> Path:
         return adaface_path
 
     logger.info("Downloading AdaFace ONNX model...")
-    urllib.request.urlretrieve(_ADAFACE_URL, str(adaface_path))  # noqa: S310
+    urllib.request.urlretrieve(_ADAFACE_URL, str(adaface_path))
     logger.info("AdaFace downloaded to %s", adaface_path)
     return adaface_path
 
@@ -236,7 +236,7 @@ class InsightFaceExtractor:
 
             logger.debug(
                 "[DIAG] Frame face %d: bbox=(%d,%d,%d,%d) area=%d det=%.3f emb=%s landmark=%s",
-                i, x1, y1, x2, y2, area, face.det_score, emb_src, face.landmark is not None
+                i, x1, y1, x2, y2, area, face.det_score, emb_src, face.landmark is not None,
             )
 
         return results
@@ -278,7 +278,7 @@ class InsightFaceExtractor:
                     reassigned.append(box)
             logger.warning(
                 "[DIAG] No embedding matches, fallback: %d face(s) -> %d actor(s) by size",
-                len(all_boxes), len(actor_ids)
+                len(all_boxes), len(actor_ids),
             )
             return reassigned
 
@@ -305,7 +305,7 @@ def _best_match_actor(
 
         logger.debug(
             "[DIAG] Cosine vs %s: %.4f (threshold %.2f)",
-            actor_id, score, threshold
+            actor_id, score, threshold,
         )
 
     if best_score >= threshold:

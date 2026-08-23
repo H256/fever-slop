@@ -115,7 +115,7 @@ class ProjectReferenceLibrary(
 
             if current_revision != expected_revision:
                 raise ValueError(
-                    f"Revision mismatch: expected {expected_revision!r}, got {current_revision!r}"
+                    f"Revision mismatch: expected {expected_revision!r}, got {current_revision!r}",
                 )
 
             new_revision = _next_revision(current_revision)

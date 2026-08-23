@@ -139,7 +139,7 @@ class FaceCompositor:
                     target_region = original_frames[frame_idx, box.y1:y2_clip, box.x1:x2_clip]
                     if target_region.shape[:2] == repaired_resized.shape[:2]:
                         repaired_resized = color_match(
-                            repaired_resized, target_region, self.color_match_strength
+                            repaired_resized, target_region, self.color_match_strength,
                         )
 
                 region_h = repaired_resized.shape[0]

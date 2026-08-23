@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from feverslop.adapters.workflow_patcher import WorkflowPatcher, _workflow_dependency_ids
+from feverslop.adapters.workflow_patcher import (
+    WorkflowPatcher,
+    _workflow_dependency_ids,
+)
 
 
 class MovieWorkflowPatcher:

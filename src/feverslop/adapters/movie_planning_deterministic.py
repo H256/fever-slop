@@ -2,20 +2,31 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from feverslop.domain.movie import CinematicShot, MovieBible, MovieScreenplayArtifact, StoryArch
+from feverslop.adapters.movie_planning_bible import (
+    _movie_bible_from_data,
+    _parse_screenplay_beat,
+)
 from feverslop.adapters.movie_planning_helpers import (
     _dialogue_actor_ids,
     _ensure_minimum_actors,
     _normalize_movie_shots,
     _safe_id,
 )
-from feverslop.adapters.movie_planning_bible import _movie_bible_from_data, _parse_screenplay_beat
+from feverslop.domain.movie import (
+    CinematicShot,
+    MovieBible,
+    MovieScreenplayArtifact,
+    StoryArch,
+)
 
 
 class DeterministicMoviePlanner:
     def generate_story_arch(self, *, title: str, source_type: str, story_text: str, desired_length: float) -> StoryArch:
         text = " ".join(story_text.strip().split())
-        from feverslop.adapters.movie_planning_bible import _split_beats, _split_screenplay_beats
+        from feverslop.adapters.movie_planning_bible import (
+            _split_beats,
+            _split_screenplay_beats,
+        )
         beats = _split_screenplay_beats(story_text) if source_type == "screenplay" else _split_beats(text)
         return StoryArch(title=title, premise=text, beats=tuple(beats))
 
@@ -103,7 +114,7 @@ class DeterministicMoviePlanner:
                         dialogue=screenplay["dialogue"],
                         actor_ids=tuple(_dialogue_actor_ids(screenplay["dialogue"])),
                         location_id=_safe_id(screenplay["location"]),
-                    )
+                    ),
                 )
                 continue
             shots.append(
@@ -117,7 +128,7 @@ class DeterministicMoviePlanner:
                     location="story-consistent cinematic location",
                     actor_ids=(),
                     location_id="",
-                )
+                ),
             )
         shots = _ensure_minimum_actors(shots, story_arch)
         return _normalize_movie_shots(

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import replace
 import json
 import os
-from pathlib import Path
 import shutil
 import tempfile
-from typing import Iterator
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import replace
+from pathlib import Path
 
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 from feverslop.utils.io import atomic_write_json
@@ -107,7 +107,7 @@ class GlobalLibraryAdapter:
             if current.revision != expected_revision:
                 raise ValueError(
                     f"revision conflict for {asset.kind.value}/{asset.id}: expected {expected_revision}, "
-                    f"current is {current.revision}"
+                    f"current is {current.revision}",
                 )
             if asset.revision <= current.revision:
                 raise ValueError("updated asset revision must increase")
@@ -141,7 +141,7 @@ class GlobalLibraryAdapter:
             if current.revision != expected_revision:
                 raise ValueError(
                     f"revision conflict for {current.kind.value}/{current.id}: expected {expected_revision}, "
-                    f"current is {current.revision}"
+                    f"current is {current.revision}",
                 )
             look = next((item for item in current.looks if item.id == look_id), None)
             if look is None:
