@@ -375,18 +375,35 @@ class RunnerScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = _write_movie_project(Path(temp_dir))
 
-            result = movie_pipeline.run(
-                movie_pipeline.build_arg_parser().parse_args(
-                    [
-                        str(project),
-                        "--reference-backend",
-                        "local",
-                        "--render-backend",
-                        "local",
-                        "--skip-movie-render",
-                    ],
-                ),
-            )
+            class OfflineMovieVisionModules:
+                def vision(self, _payload, _image_paths):
+                    return MSRPromptResult(
+                        references=[],
+                        relays=[{
+                            "index": 0,
+                            "prompt": "Mara enters the archive and looks toward the desk.",
+                        }],
+                    )
+
+            with patch(
+                "feverslop.application.movie_msr_enrichment.MSRPromptModules",
+                return_value=OfflineMovieVisionModules(),
+            ):
+                result = movie_pipeline.run(
+                    movie_pipeline.build_arg_parser().parse_args(
+                        [
+                            str(project),
+                            "--reference-backend",
+                            "local",
+                            "--render-backend",
+                            "local",
+                            "--movie-planner-backend",
+                            "deterministic",
+                            "--skip-movie-ingredients-sheets",
+                            "--skip-movie-render",
+                        ],
+                    ),
+                )
 
             manifest = json.loads((project / "movie" / "references" / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(project.resolve(), result.project_dir)
