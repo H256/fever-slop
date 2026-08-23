@@ -12,6 +12,7 @@ _NON_ACTOR_ROLE_MARKERS = frozenset(
         "atmospheric",
         "audience",
         "accessory",
+        "ambient",
         "background",
         "crowd",
         "equipment",
@@ -27,6 +28,21 @@ _NON_ACTOR_ROLE_MARKERS = frozenset(
         "scene",
         "stage",
         "visual",
+    }
+)
+_NON_ACTOR_ID_MARKERS = frozenset(
+    {
+        "audience",
+        "background",
+        "beam",
+        "crowd",
+        "environment",
+        "fog",
+        "haze",
+        "light",
+        "lighting",
+        "stage",
+        "spotlight",
     }
 )
 
@@ -202,6 +218,7 @@ def validate_subject_directive_plan(
             and subject.subject_id not in known_subjects
             and subject.subject_id not in known_environments
             and not _is_non_actor_subject(subject.role)
+            and not _is_non_actor_subject_id(subject.subject_id)
         ):
             issues.append(f"Unknown subject ID: {subject.subject_id}")
         if subject.visibility == "visible" and (not subject.position or not subject.action):
@@ -221,9 +238,15 @@ def validate_subject_directive_plan(
     relation_ids = seen | known_subjects | known_environments | known_props | declared_props
     relation_values: dict[tuple[str, str, str], str] = {}
     for relation in plan.spatial_relations:
-        if relation.subject_id not in relation_ids:
+        if (
+            relation.subject_id not in relation_ids
+            and not _is_non_actor_subject_id(relation.subject_id)
+        ):
             issues.append(f"unknown spatial relation subject: {relation.subject_id}")
-        if relation.target_id not in relation_ids:
+        if (
+            relation.target_id not in relation_ids
+            and not _is_non_actor_subject_id(relation.target_id)
+        ):
             issues.append(f"unknown spatial relation target: {relation.target_id}")
         key = (relation.subject_id, relation.relation, relation.target_id)
         previous = relation_values.setdefault(key, relation.detail)
@@ -241,3 +264,12 @@ def _is_non_actor_subject(role: str) -> bool:
         for word in role.lower().replace("/", " ").replace("-", " ").split()
     }
     return bool(role_words & _NON_ACTOR_ROLE_MARKERS)
+
+
+def _is_non_actor_subject_id(subject_id: str) -> bool:
+    id_words = {
+        word
+        for word in subject_id.lower().replace("-", "_").split("_")
+        if word
+    }
+    return bool(id_words & _NON_ACTOR_ID_MARKERS)

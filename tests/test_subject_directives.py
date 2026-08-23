@@ -4,6 +4,7 @@ from feverslop.domain.render_plan import RenderPlan
 from feverslop.application.render_plan_validation import validate_render_plan_subject_directives
 from feverslop.domain.subject_directives import (
     PROP_STATES,
+    SpatialRelation,
     SubjectDirective,
     SubjectDirectivePlan,
     TemporalScope,
@@ -78,6 +79,29 @@ class SubjectDirectiveContractTests(unittest.TestCase):
             known_subject_ids={"singer"},
             known_environment_ids={"festival_stage"},
         )
+        self.assertEqual([], issues)
+
+    def test_allows_crowd_roles_and_implicit_visual_effect_relations(self):
+        plan = SubjectDirectivePlan(
+            shot_id="shot-1",
+            temporal_scope=TemporalScope(0, 4),
+            subjects=(
+                SubjectDirective(
+                    "singer", "singer", "stage", "sings", temporal_scope=TemporalScope(0, 4)
+                ),
+                SubjectDirective(
+                    "front_row_crowd",
+                    "ambient_population",
+                    "foreground",
+                    "cheers",
+                    temporal_scope=TemporalScope(0, 4),
+                ),
+            ),
+            spatial_relations=(
+                SpatialRelation("white_light_and_fog", "framing", "singer"),
+            ),
+        )
+        issues = validate_subject_directive_plan(plan, known_subject_ids={"singer"})
         self.assertEqual([], issues)
 
     def test_rejects_incomplete_temporal_coverage_and_contradictory_relations(self):
