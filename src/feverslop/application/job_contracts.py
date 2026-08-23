@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
+from feverslop.domain.visual_consistency import PreflightMode
+
 
 class JobStatus(StrEnum):
     QUEUED = "queued"
@@ -24,6 +26,30 @@ class JobSubmission:
     pipeline_mode: str | None = None
     reject_if_project_active: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class JobRequest:
+    """Application request shared by headless job services."""
+
+    action: str
+    scenes: list[int] | None = None
+    pipeline_mode: str | None = None
+    thumbnails: list[dict[str, Any]] | None = None
+    reference_kind: str | None = None
+    reference_id: str | None = None
+    raw_clip: str | None = None
+    output_clip: str | None = None
+    raw_in_seconds: float | None = None
+    raw_out_seconds: float | None = None
+    exact: bool = False
+    plan: str | None = None
+    visual_consistency_mode: str | None = None
+    workflow_profile: str | None = None
+    preflight_mode: PreflightMode = PreflightMode.WARN
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "preflight_mode", PreflightMode.parse(self.preflight_mode))
 
 
 @dataclass(frozen=True)
