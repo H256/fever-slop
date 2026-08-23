@@ -3976,7 +3976,11 @@ class MovieProjectTests(unittest.TestCase):
         )
         from feverslop.studio.job_service import build_movie_reference_generator
 
-        generator = build_movie_reference_generator({"reference_generation": "sequence_sheet"})
+        with patch(
+            "feverslop.adapters.llm_client.LocalOpenAIClient",
+            return_value=object(),
+        ):
+            generator = build_movie_reference_generator({"reference_generation": "sequence_sheet"})
 
         self.assertIsInstance(generator.sequence_backend, ComfyUISequenceToSheetBackend)
 
