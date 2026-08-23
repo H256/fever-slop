@@ -387,6 +387,7 @@ class PromptGenerationPipeline:
         planner = DspySubjectDirectivePlanner(llm)
         by_segment = {str(item.get("segment_id")): item for item in stage1_segments}
         changed = 0
+        failures: list[str] = []
         for scene in prompts:
             if scene.get("subject_directives") is not None:
                 continue
@@ -406,24 +407,49 @@ class PromptGenerationPipeline:
                 "scene_details": scene_details.get(segment_id, {}),
                 "global_context": global_context,
             }
-            try:
-                plan = planner.plan(planner_input)
-            except Exception as exc:
+            plan = None
+            last_error: Exception | None = None
+            for attempt in range(1, 4):
+                try:
+                    plan = planner.plan(planner_input)
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    if attempt == 3:
+                        break
+                    planner_input = {
+                        **planner_input,
+                        "repair_feedback": (
+                            f"Previous staging plan was rejected: {type(exc).__name__}: {exc}. "
+                            "Return a complete valid plan. Every temporal scope must have "
+                            "end_seconds greater than start_seconds and cover the shot duration. "
+                            "Return only the structured staging plan."
+                        ),
+                    }
+                    reporter.message(
+                        f"[yellow]Subject staging retry {attempt + 1}/3 for {segment_id}: {exc}[/yellow]"
+                    )
+            if plan is None:
+                assert last_error is not None
                 debug_path = _write_subject_directive_debug_artifact(
                     planner=planner,
                     scene=planner_input,
-                    error=exc,
+                    error=last_error,
                     output_path=scene_prompts_json,
                     model=str(getattr(llm, "model", "unknown")),
                 )
-                raise RuntimeError(
-                    f"Subject staging failed for {segment_id}; full DSPy input/output trace: {debug_path}"
-                ) from exc
+                failures.append(f"{segment_id}: {last_error} (trace: {debug_path})")
+                continue
             scene["subject_directives"] = plan.to_dict()
             changed += 1
             reporter.message(f"[cyan]Subject staging generated: {changed}/{len(prompts)} scenes[/cyan]")
         if changed:
             artifact_store.write_json(scene_prompts_json, prompts)
+        if failures:
+            raise RuntimeError(
+                "Subject staging failed after three attempts for "
+                f"{len(failures)} scene(s):\n" + "\n".join(failures)
+            )
 
     def build_resolved_global_context(
         self,
