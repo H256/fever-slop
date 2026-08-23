@@ -38,6 +38,17 @@ class LLMConfig:
         return self._local_api_key
 
 
+def _require_float(raw: dict, key: str) -> float:
+    """Extract a required numeric config field; raises ValueError if missing or non-numeric."""
+    value = raw.get(key)
+    if value is None:
+        raise ValueError(f"Video workflow limit requires '{key}' field")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Video workflow limit '{key}' must be a number") from exc
+
+
 @dataclass(frozen=True)
 class VideoWorkflowLimitConfig:
     workflow: str
@@ -49,7 +60,7 @@ class VideoWorkflowLimitConfig:
         if not isinstance(raw_workflow, str):
             raise ValueError("Video workflow limit workflow must be a string")
         workflow = raw_workflow.strip()
-        duration = float(raw["max_render_duration_seconds"])
+        duration = _require_float(raw, "max_render_duration_seconds")
         if not workflow:
             raise ValueError("Video workflow limit requires a non-empty workflow")
         if not math.isfinite(duration) or duration <= 0:

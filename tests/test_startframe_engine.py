@@ -112,6 +112,31 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertEqual(2048, data["shots"][0]["width"])
         self.assertEqual(1152, data["shots"][0]["height"])
 
+    def test_director_prompts_fail_clearly_when_startframe_plan_is_missing(self):
+        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
+        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_startframe_project(Path(temp_dir))
+            build_startframe_identity_ledger(project_dir=project)
+
+            with self.assertRaisesRegex(ValueError, "Missing required startframe plan"):
+                build_startframe_director_prompts(project_dir=project)
+
+    def test_director_prompts_fail_clearly_when_identity_ledger_is_missing(self):
+        from feverslop.application.startframe_director_prompts import build_startframe_director_prompts
+        from feverslop.application.startframe_identity import build_startframe_identity_ledger
+        from feverslop.application.startframe_plan import build_startframe_plan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_startframe_project(Path(temp_dir))
+            build_startframe_identity_ledger(project_dir=project)
+            build_startframe_plan(project_dir=project)
+            (project / "movie" / "identity_ledger.json").unlink()
+
+            with self.assertRaisesRegex(ValueError, "Missing required identity ledger"):
+                build_startframe_director_prompts(project_dir=project)
+
     def test_ideogram_director_workflow_exposes_patch_anchors(self):
         workflow = json.loads(Path("workflows/image_t2i_startframe_ideogram_director_v1.json").read_text(encoding="utf-8-sig"))
         titles = {str(node.get("_meta", {}).get("title") or "") for node in workflow.values()}

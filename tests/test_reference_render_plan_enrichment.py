@@ -109,6 +109,52 @@ class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
                 enriched[0].get("visual_consistency_sources"),
             )
 
+    def test_fails_clearly_when_actor_manifest_is_malformed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor_dir = temp / "actors" / "singer"
+            actor_dir.mkdir(parents=True)
+            (actor_dir / "manifest.json").write_text("{not json", encoding="utf-8")
+            render_plan_path = temp / "render_plan.json"
+            render_plan_path.write_text(
+                json.dumps([{"scene": 1, "references": {"actor_ids": ["singer"]}}]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "actors/singer/manifest.json"):
+                enrich_render_plan_with_reference_sheets(render_plan_path, temp, temp / "enriched.json")
+
+    def test_fails_clearly_when_manifest_is_missing_id(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            actor_dir = temp / "actors" / "singer"
+            actor_dir.mkdir(parents=True)
+            (actor_dir / "manifest.json").write_text(json.dumps({"name": "Mara"}), encoding="utf-8")
+            render_plan_path = temp / "render_plan.json"
+            render_plan_path.write_text(
+                json.dumps([{"scene": 1, "references": {"actor_ids": ["singer"]}}]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "missing an id"):
+                enrich_render_plan_with_reference_sheets(render_plan_path, temp, temp / "enriched.json")
+
+    def test_fails_clearly_when_render_plan_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "Cannot read render plan"):
+                enrich_render_plan_with_reference_sheets(temp / "render_plan.json", temp, temp / "enriched.json")
+
+    def test_fails_clearly_when_render_plan_is_not_a_list(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan_path = temp / "render_plan.json"
+            render_plan_path.write_text(json.dumps({"scene": 1}), encoding="utf-8")
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "JSON array"):
+                enrich_render_plan_with_reference_sheets(render_plan_path, temp, temp / "enriched.json")
+
     def test_reports_progress_per_scene(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

@@ -180,10 +180,16 @@ class H3PromptPipeline:
         log_step("8.5. H3 Structured Prompts")
         llm = self.llm_factory(app_config)
         builder_factory = self.h3_prompt_builder_factory
+        reporter = context["reporter"] if "reporter" in context.keys() else None
         try:
             model_spec = resolve_model_type(config.video_pipeline)
-        except ValueError:
+        except ValueError as exc:
             model_spec = None
+            if reporter is not None:
+                reporter.message(
+                    f"video_pipeline '{config.video_pipeline}' has no H3 model spec ({exc}); "
+                    "falling back to the legacy H3 prompt builder with T2V mode"
+                )
         if model_spec and model_spec.is_minimax_h3 and self.dspy_prompt_builder_factory:
             builder_factory = self.dspy_prompt_builder_factory
         builder = builder_factory(llm)
@@ -198,7 +204,6 @@ class H3PromptPipeline:
                 if getattr(config, "input_audio", None) is not None:
                     audio_paths["full_mix"] = config.input_audio
 
-        reporter = context["reporter"] if "reporter" in context.keys() else None
         progress = SubStepProgress(reporter, "H3 prompts", len(stage1_segments))
         builder.build_all_h3_prompts(
             stage1_segments=stage1_segments,

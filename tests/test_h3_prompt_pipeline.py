@@ -167,7 +167,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         self.assertEqual(24, captured[0][0]["fps"])
 
-    def _run_pipeline(self, video_pipeline):
+    def _run_pipeline(self, video_pipeline, reporter=None):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 
         calls = []
@@ -207,6 +207,8 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
             "log_step": lambda message: None,
             "log_file": lambda label, path: None,
         }
+        if reporter is not None:
+            context["reporter"] = reporter
         pipeline.run(context)
         return calls
 
@@ -232,5 +234,32 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
                 self.assertEqual(1, len(calls))
                 expected_builder = "legacy" if video_pipeline == "ltx_i2v" else "dspy"
                 self.assertEqual(expected_builder, calls[0][0])
+
+    def test_unknown_video_pipeline_fallback_is_reported(self):
+        messages = []
+
+        class FakeReporter:
+            def message(self, text):
+                messages.append(text)
+
+        calls = self._run_pipeline("ltx_i2v", reporter=FakeReporter())
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual("legacy", calls[0][0])
+        self.assertEqual(1, len(messages))
+        self.assertIn("ltx_i2v", messages[0])
+
+    def test_minimax_pipeline_emits_no_fallback_warning(self):
+        messages = []
+
+        class FakeReporter:
+            def message(self, text):
+                messages.append(text)
+
+        calls = self._run_pipeline("minimax-h3-i2v", reporter=FakeReporter())
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual("dspy", calls[0][0])
+        self.assertEqual(0, len(messages))
 if __name__ == "__main__":
     unittest.main()

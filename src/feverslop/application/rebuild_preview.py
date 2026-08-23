@@ -89,6 +89,8 @@ class PreviewRebuildUseCase:
 
 class RequestRebuildUseCase:
     def __init__(self, executor: RebuildExecutionPort) -> None:
+        if not callable(getattr(executor, "request_rebuild", None)):
+            raise TypeError("executor must implement RebuildExecutionPort.request_rebuild")
         self._executor = executor
 
     def execute(
