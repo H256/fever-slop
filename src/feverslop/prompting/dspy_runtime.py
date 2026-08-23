@@ -46,7 +46,7 @@ class DspyRuntime:
     def context(self, *, lm: Any) -> AbstractContextManager[Any]:
         return self.context_factory(lm=lm)
 
-    def make_lm(self, llm: Any) -> Any:
+    def make_lm(self, llm: Any, *, max_tokens: int | None = None) -> Any:
         client = getattr(llm, "client", None)
         api_base = getattr(client, "base_url", None)
         if api_base is not None and not isinstance(api_base, str):
@@ -61,7 +61,7 @@ class DspyRuntime:
             "api_base": api_base,
             "api_key": getattr(client, "api_key", None),
             "temperature": getattr(llm, "dspy_temperature", 0.4),
-            "max_tokens": llm.max_tokens,
+            "max_tokens": max_tokens if max_tokens is not None else llm.max_tokens,
             "cache": cache,
             # Explicit instead of dspy's implicit 3, mirroring the direct
             # path retry budget (SDK max_retries=0 + app-level backoff).

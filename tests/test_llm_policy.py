@@ -8,7 +8,7 @@ class LLMPolicyTests(unittest.TestCase):
         policy = policy_for("lyric_alignment")
 
         self.assertEqual("structured", policy.profile)
-        self.assertEqual(512, policy.max_tokens)
+        self.assertEqual(2048, policy.max_tokens)
 
     def test_long_form_music_video_tasks_use_creative_budget(self):
         from feverslop.prompting.llm_policy import policy_for
@@ -40,11 +40,12 @@ class LLMPolicyTests(unittest.TestCase):
                     continue
                 self.assertIn(name, known)
 
-    def test_creative_tasks_have_a_larger_budget(self):
+    def test_creative_and_structured_defaults_have_headroom(self):
         from feverslop.prompting.llm_policy import policy_for
 
         self.assertEqual("creative", policy_for("song_brief").profile)
-        self.assertGreater(policy_for("song_brief").max_tokens, policy_for("lyric_alignment").max_tokens)
+        self.assertEqual(2048, policy_for("song_brief").max_tokens)
+        self.assertEqual(2048, policy_for("lyric_alignment").max_tokens)
 
     def test_unknown_tasks_use_structured_safe_default(self):
         from feverslop.prompting.llm_policy import policy_for
@@ -58,9 +59,9 @@ class LLMPolicyTests(unittest.TestCase):
             msr_segments_max_tokens,
         )
 
-        self.assertEqual(6144, concept_batch_max_tokens(10))
+        self.assertEqual(21504, concept_batch_max_tokens(10))
         self.assertEqual(4352, lyric_alignment_max_tokens(13))
-        self.assertEqual(3072, msr_segments_max_tokens(4))
+        self.assertEqual(9216, msr_segments_max_tokens(4))
 
     def test_prompt_result_allows_scene_layer_to_handle_overlength_text(self):
         from feverslop.prompting.general_signatures import PromptResult

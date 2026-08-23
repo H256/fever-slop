@@ -89,7 +89,7 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
                     }
                 }
 
-            def make_lm(self, _llm):
+            def make_lm(self, _llm, **_kwargs):
                 return object()
 
             def context(self, **_kwargs):

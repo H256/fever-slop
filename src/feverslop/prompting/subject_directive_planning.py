@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 import json
+import ast
 from typing import Any
 
 from feverslop.domain.subject_directives import (
@@ -42,7 +43,10 @@ class DspySubjectDirectivePlanner:
         import dspy
 
         self.predictor = self.runtime.predict(build_subject_directive_signature(dspy))
-        self.lm = self.runtime.make_lm(llm)
+        # A staging plan is compact. Do not inherit a project-wide generation
+        # budget (which may be 65k+) and let one malformed scene consume the
+        # whole response or get truncated before the JSON plan is complete.
+        self.lm = self.runtime.make_lm(llm, max_tokens=4096)
 
     def plan(self, scene: Mapping[str, Any]) -> SubjectDirectivePlan:
         from feverslop.domain.llm_parsing import extract_json_object
@@ -70,7 +74,10 @@ def _decode_nested_json(value: Any) -> Any:
             try:
                 return _decode_nested_json(json.loads(candidate))
             except json.JSONDecodeError:
-                pass
+                try:
+                    return _decode_nested_json(ast.literal_eval(candidate))
+                except (SyntaxError, ValueError):
+                    pass
     return value
 
 
