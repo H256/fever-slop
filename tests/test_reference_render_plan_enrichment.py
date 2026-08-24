@@ -12,11 +12,43 @@ from feverslop.application.reference_bible import (
 from feverslop.application.render_plan_ingredients_sheets import (
     enrich_render_plan_with_ingredients_sheets,
 )
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.errors import FeverSlopValidationError
 from feverslop.prompting.ingredients_signatures import IngredientsVisionResult
 
 
 class ReferenceRenderPlanEnrichmentTests(unittest.TestCase):
+    def test_reference_projection_uses_current_canonical_base_and_records_revision(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={PromptRole.LTX_I2V: "generated i2v"},
+            )
+            stale = json.loads(json.dumps(canonical))
+            canonical["roles"][PromptRole.LTX_I2V]["override"] = {"value": "human i2v"}
+            derived = temp / "anchored.json"
+            base = temp / "base.json"
+            output = temp / "references.json"
+            derived.write_text(json.dumps([{
+                "scene": 1,
+                "canonical": stale,
+                "references": {},
+                "ltx": {"i2v_prompt_from_t2i": "stale i2v"},
+            }]), encoding="utf-8")
+            base.write_text(json.dumps([{"scene": 1, "canonical": canonical}]), encoding="utf-8")
+
+            enrich_render_plan_with_reference_sheets(
+                derived,
+                temp,
+                output,
+                canonical_plan_path=base,
+            )
+
+            scene = json.loads(output.read_text(encoding="utf-8"))[0]
+            self.assertEqual("human i2v", scene["ltx"]["i2v_prompt_from_t2i"])
+            self.assertEqual(64, len(scene["canonical_projection"]["source_revision"]))
+
     def test_reports_all_missing_reference_manifests_with_stage_hint(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

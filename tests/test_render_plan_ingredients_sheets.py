@@ -16,6 +16,7 @@ from feverslop.application.visual_consistency_preflight import (
     preflight_visual_consistency,
 )
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.errors import FeverSlopValidationError
 
 
@@ -27,6 +28,71 @@ def _create_minimal_png(path: Path) -> Path:
 
 
 class TestIngredientsEnrichment(unittest.TestCase):
+    def test_current_canonical_overrides_are_projected_before_ingredients_materialization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={
+                    PromptRole.INGREDIENTS_GLOBAL: "generated global",
+                    PromptRole.INGREDIENTS_RELAY: [{
+                        "frame_start": 0,
+                        "frame_end": 47,
+                        "state": "instrumental",
+                        "prompt": "generated relay",
+                    }],
+                },
+            )
+            stale_canonical = json.loads(json.dumps(canonical))
+            canonical["roles"][PromptRole.INGREDIENTS_GLOBAL]["override"] = {
+                "value": "human Ingredients global",
+            }
+            canonical["roles"][PromptRole.INGREDIENTS_RELAY]["override"] = {
+                "value": [{
+                    "frame_start": 0,
+                    "frame_end": 47,
+                    "state": "instrumental",
+                    "prompt": "human Ingredients relay",
+                }],
+            }
+            derived = project / "references.json"
+            base = project / "base.json"
+            output = project / "ingredients.json"
+            references = project / "references"
+            references.mkdir()
+            scene = {
+                "scene": 1,
+                "frame_count": 48,
+                "width": 1280,
+                "height": 704,
+                "canonical": stale_canonical,
+                "ingredients_scene_sheet_description": "stale global",
+                "ltx": {"msr_prompt_relay": [{
+                    "frame_start": 0,
+                    "frame_end": 47,
+                    "state": "instrumental",
+                    "prompt": "stale relay",
+                }]},
+            }
+            derived.write_text(json.dumps([scene]), encoding="utf-8")
+            base.write_text(json.dumps([{"scene": 1, "canonical": canonical}]), encoding="utf-8")
+
+            with patch(
+                "feverslop.application.render_plan_ingredients_sheets._enrich_scene",
+                side_effect=lambda item, **_kwargs: item,
+            ):
+                enrich_render_plan_with_ingredients_sheets(
+                    derived,
+                    references,
+                    output,
+                    canonical_plan_path=base,
+                )
+
+            projected = json.loads(output.read_text(encoding="utf-8"))[0]
+            self.assertEqual("human Ingredients global", projected["ingredients"]["global_prompt"])
+            self.assertEqual("human Ingredients relay", projected["ltx"]["prompt_relay"][0]["prompt"])
+            self.assertEqual(64, len(projected["canonical_projection"]["source_revision"]))
+
     def test_equal_references_reuse_sheet_without_collapsing_song_content(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)

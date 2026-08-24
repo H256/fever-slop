@@ -1,4 +1,5 @@
 import json
+import copy
 import tempfile
 import unittest
 from contextlib import nullcontext
@@ -8,6 +9,7 @@ from unittest.mock import patch
 from feverslop.application.msr_prompt_enrichment import (
     enrich_render_plan_with_msr_prompts,
 )
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.prompting.msr_signatures import build_msr_signature_bundle
@@ -21,6 +23,88 @@ from tests.fakellm import (
 
 
 class MSRPromptEnrichmentTests(unittest.TestCase):
+    def test_canonical_msr_overrides_replace_generated_payload_and_preserve_relay_shape(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={
+                    PromptRole.LTX_MSR_GLOBAL: "old generated global",
+                    PromptRole.LTX_MSR_RELAY: [{
+                        "frame_start": 0,
+                        "frame_end": 47,
+                        "state": "instrumental",
+                        "prompt": "old generated relay",
+                    }],
+                },
+            )
+            stale_canonical = copy.deepcopy(canonical)
+            canonical["roles"][PromptRole.LTX_MSR_GLOBAL]["override"] = {
+                "value": "human MSR global",
+            }
+            canonical["roles"][PromptRole.LTX_MSR_RELAY]["override"] = {
+                "value": [{
+                    "frame_start": 0,
+                    "frame_end": 47,
+                    "state": "instrumental",
+                    "prompt": "human MSR relay",
+                }],
+            }
+            plan = temp / "references.json"
+            base_plan = temp / "base.json"
+            output = temp / "enriched.json"
+            plan.write_text(json.dumps([{
+                "scene": 1,
+                "frame_count": 48,
+                "canonical": stale_canonical,
+                "metadata": {"segment_id": "segment-a"},
+                "references": {
+                    "actor_reference_descriptions": [{
+                        "id": "mara",
+                        "name": "Mara",
+                        "visual_description": "Mara has a sharp black bob and silver coat.",
+                    }],
+                },
+                "ltx": {"prompt_relay": [{
+                    "frame_start": 0,
+                    "frame_end": 47,
+                    "state": "instrumental",
+                    "prompt": "source relay",
+                }]},
+            }]), encoding="utf-8")
+            base_plan.write_text(json.dumps([{
+                "scene": 1,
+                "canonical": canonical,
+            }]), encoding="utf-8")
+
+            enrich_render_plan_with_msr_prompts(
+                plan,
+                output,
+                canonical_plan_path=base_plan,
+            )
+
+            scene = json.loads(output.read_text(encoding="utf-8"))[0]
+            self.assertEqual("human MSR global", scene["ltx"]["msr_global_prompt"])
+            self.assertEqual(
+                [{
+                    "frame_start": 0,
+                    "frame_end": 47,
+                    "state": "instrumental",
+                    "prompt": "human MSR relay",
+                }],
+                scene["ltx"]["msr_prompt_relay"],
+            )
+            roles = scene["canonical"]["roles"]
+            self.assertNotEqual(
+                "old generated global",
+                roles[PromptRole.LTX_MSR_GLOBAL]["generated"]["value"],
+            )
+            self.assertEqual(
+                "msr-prompt-enrichment",
+                roles[PromptRole.LTX_MSR_RELAY]["generated"]["provenance"]["source"],
+            )
+            self.assertEqual("human MSR relay", roles[PromptRole.LTX_MSR_RELAY]["override"]["value"][0]["prompt"])
+
     def test_msr_contracts_have_typed_outputs_and_editable_guides(self):
         bundle = build_msr_signature_bundle()
 

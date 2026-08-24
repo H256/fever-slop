@@ -107,23 +107,46 @@ class CanonicalRoleResolutionTests(unittest.TestCase):
         ):
             resolve_effective_role(scene, PromptRole.H3_VIDEO)
 
-    def test_render_scene_exposes_the_shared_resolver_without_rewriting_legacy_accessors(self):
+    def test_render_scene_prompt_properties_resolve_canonical_roles(self):
         canonical = build_canonical_scene(
             segment_id="segment-a",
-            generated_roles={PromptRole.Z_IMAGE: "generated still"},
+            generated_roles={
+                PromptRole.Z_IMAGE: "generated still",
+                PromptRole.LTX_I2V: "generated video",
+                PromptRole.H3_VIDEO: "generated h3",
+            },
         )
         canonical["roles"][PromptRole.Z_IMAGE]["override"] = {"value": "human still"}
+        canonical["roles"][PromptRole.LTX_I2V]["override"] = {"value": "human video"}
+        canonical["roles"][PromptRole.H3_VIDEO]["override"] = {"value": "human h3"}
         scene = RenderScene.from_dict({
             "scene": 1,
             "z_image": {"prompt": "legacy still"},
+            "ltx": {"original_style_i2v_prompt": "legacy video"},
+            "h3": {"prompt": "legacy h3"},
             "canonical": canonical,
         })
 
-        self.assertEqual(
-            "human still",
-            scene.effective_role(PromptRole.Z_IMAGE, legacy_value=scene.z_image_prompt),
+        self.assertEqual("human still", scene.z_image_prompt)
+        self.assertEqual("human h3", scene.video_prompt)
+
+    def test_render_scene_classic_video_uses_effective_i2v_then_base(self):
+        canonical = build_canonical_scene(
+            segment_id="segment-a",
+            generated_roles={
+                PromptRole.LTX_BASE: "generated base",
+                PromptRole.LTX_I2V: "generated i2v",
+            },
         )
-        self.assertEqual("legacy still", scene.z_image_prompt)
+        canonical["roles"][PromptRole.LTX_I2V]["override"] = {"value": "human i2v"}
+
+        scene = RenderScene.from_dict({
+            "scene": 1,
+            "ltx": {"base_prompt": "legacy base", "i2v_prompt_from_t2i": "legacy i2v"},
+            "canonical": canonical,
+        })
+
+        self.assertEqual("human i2v", scene.video_prompt)
 
 
 class CanonicalSceneIdentityTests(unittest.TestCase):

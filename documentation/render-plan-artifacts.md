@@ -103,10 +103,57 @@ legacy fallback until it is migrated:
 
 Existing edits in legacy fields and derived plans can be inspected and migrated
 with `plan-migrate`, as described below. Canonical regeneration now preserves
-overrides by stable scene identity. Projection into every render backend and
-prepared-workflow invalidation remain separate migration steps. Until those
-steps land, a stored override is canonical data but is not necessarily consumed
-by every renderer.
+overrides by stable scene identity. Supported music-video renderers now project
+those effective values at their application boundary. Automatic cache and
+prepared-workflow invalidation remains a separate migration step; rerun the
+relevant enrichment/prepare stage after editing until canonical status/resume
+planning reports freshness directly.
+
+### Backend-specific effective projections
+
+`base.json` remains authority even when the CLI resumes from `anchored.json`,
+`references.json`, or `ingredients.json`. Scenes are matched by
+`canonical.scene_id`; an identified derived scene that has no match in the
+current base plan is rejected instead of being guessed by array position.
+Projection changes only a copied runtime/derived scene and never writes an
+`effective` value or a derived field back to `base.json`.
+
+| Canonical role | Classic / I2V projection | LTX MSR projection | LTX Ingredients projection | MiniMax H3 projection |
+| --- | --- | --- | --- | --- |
+| `z_image.prompt` | `z_image.prompt` for storyboard/start frame | Preserved when present | Not part of the compact runtime payload | Preserved when present |
+| `ltx.base` | `ltx.base_prompt` fallback | `ltx.base_prompt` fallback | Preserved only until Ingredients-specific global projection | Fallback only when no H3 prompt exists |
+| `ltx.i2v` | Both `ltx.i2v_prompt_from_t2i` and `ltx.original_style_i2v_prompt` | Motion fallback | Source context before Ingredients enrichment | Fallback only when no H3 prompt exists |
+| `ltx.static` | `ltx.static_prompt` when supported | Unchanged backend-specific payload | Exact V3/V4 static `#PROMPT_POSITIVE` value | Not used |
+| `ltx.relay` | `ltx.prompt_relay` | Legacy relay fallback | Legacy relay fallback | Not flattened into H3 text |
+| `ltx.msr.global` | Not used | `ltx.msr_global_prompt` / `#PROMPT_RELAY.global_prompt` | Upstream context only | Not used |
+| `ltx.msr.relay` | Not used | `ltx.msr_prompt_relay` / local prompt segments | Default source for Ingredients relay generation | Not used |
+| `ingredients.global` | Not used | Not used | `ingredients.global_prompt`, mirrored to `ltx.base_prompt` | Not used |
+| `ingredients.relay` | Not used | Not used | `ltx.prompt_relay`, retaining segment objects and frame boundaries | Not used |
+| `h3.video` | Not used when H3 is not selected | Not used | Not used | `h3.prompt`, passed unchanged to `#PROMPT` after reference-contract validation |
+| `performance.timing` | Preserved structured data | Preserved structured data | Preserved when available upstream | `performance_timing`; audio/reference slots remain separate H3 workflow inputs |
+
+MSR and Ingredients therefore continue to have separate global, relay, static,
+audio, and reference inputs. They are not concatenated into a universal prompt.
+H3 likewise keeps its reference-aware prompt and structured audio/performance
+handoffs; changing `h3.video` changes the workflow prompt but does not replace
+the reference or audio inputs.
+
+Every projected derived scene contains additive provenance:
+
+```json
+{
+  "canonical_projection": {
+    "schema": "feverslop.canonical-projection/v1",
+    "scene_id": "ef679fe8-0157-5c51-af5a-b3affc61ba8a",
+    "source": "output/render/plans/base.json",
+    "source_revision": "<deterministic SHA-256 of canonical scene data>"
+  }
+}
+```
+
+This provenance identifies the canonical source revision; it does not by
+itself declare prepared workflows fresh. Freshness and explainable resume
+decisions belong to the invalidation/status steps of this milestone.
 
 ### Regeneration ownership and conflicts
 
@@ -176,6 +223,7 @@ metadata.segment_id/type/silent_mode/lyrics
 references.actor_ids/location_id
 ingredients.sheet_path/anchors/global_prompt
 ltx.base_prompt/static_prompt/prompt_relay/native_audio
+canonical/canonical_projection
 ```
 
 `ltx.prompt_relay` is authoritative for V4 workflows. `ltx.static_prompt` is a deterministic compatibility summary for explicitly selected V3 workflows. V3 remains renderable, but its singing and instrumental transitions are best effort because a single `#PROMPT_POSITIVE` conditioning value cannot enforce frame boundaries.
@@ -249,6 +297,21 @@ normal render-plan stage from the compatible aggregate.
 - Changes to the projected scene or selected workflow invalidate its prepared manifest and require prepare before render.
 
 Generated project outputs are local artifacts and must not be committed.
+
+### Supported lower-level legacy inputs
+
+- Plans without `canonical` continue to use their existing `z_image`, `ltx`,
+  `h3`, and `performance_timing` fields.
+- Application-level storyboard/video requests that omit
+  `canonical_plan_path` continue to consume the supplied plan directly.
+- Existing filenames, including legacy `render_plan_*`,
+  `render_plan_*_refs.json`, and `render_plan_*_ingredients.json`, remain
+  readable through the existing artifact lookup.
+- MSR relay nodes, Ingredients relay/static workflows, reference images, audio
+  slots, and prepared-workflow JSON keep their existing backend-specific
+  shapes and anchor names.
+- Movie render plans are unchanged and are not projected through this
+  music-video canonical contract.
 
 ## Migrating existing plan edits
 

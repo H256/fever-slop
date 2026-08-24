@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from feverslop.domain.canonical_render_plan import resolve_effective_role
+from feverslop.domain.canonical_render_plan import PromptRole, resolve_effective_role
 from feverslop.domain.subject_directives import SubjectDirectivePlan
 from feverslop.errors import FeverSlopDataError
 
@@ -49,7 +49,14 @@ class RenderScene:
 
     @property
     def z_image_prompt(self) -> str:
-        return str(self.data.get("z_image", {}).get("prompt", ""))
+        legacy = str(self.data.get("z_image", {}).get("prompt", ""))
+        if not self._has_canonical_role(PromptRole.Z_IMAGE):
+            return legacy
+        return str(resolve_effective_role(
+            self.data,
+            PromptRole.Z_IMAGE,
+            legacy_value=legacy,
+        ))
 
     @property
     def width(self) -> int:
@@ -62,15 +69,38 @@ class RenderScene:
     @property
     def video_prompt(self) -> str:
         h3 = self.data.get("h3", {})
-        if h3 and h3.get("prompt"):
-            return str(h3["prompt"])
+        h3_prompt = str(h3.get("prompt") or "")
+        if h3_prompt or self._has_canonical_role(PromptRole.H3_VIDEO):
+            return str(resolve_effective_role(
+                self.data,
+                PromptRole.H3_VIDEO,
+                legacy_value=h3_prompt,
+            ))
         ltx = self.data.get("ltx", {})
-        return str(
+        i2v_prompt = str(
             ltx.get("original_style_i2v_prompt")
             or ltx.get("i2v_prompt_from_t2i")
-            or ltx.get("base_prompt")
             or "",
         )
+        if i2v_prompt or self._has_canonical_role(PromptRole.LTX_I2V):
+            return str(resolve_effective_role(
+                self.data,
+                PromptRole.LTX_I2V,
+                legacy_value=i2v_prompt,
+            ))
+        base_prompt = str(ltx.get("base_prompt") or "")
+        if not self._has_canonical_role(PromptRole.LTX_BASE):
+            return base_prompt
+        return str(resolve_effective_role(
+            self.data,
+            PromptRole.LTX_BASE,
+            legacy_value=base_prompt,
+        ))
+
+    def _has_canonical_role(self, role: PromptRole) -> bool:
+        canonical = self.data.get("canonical")
+        roles = canonical.get("roles") if isinstance(canonical, dict) else None
+        return isinstance(roles, dict) and str(role) in roles
 
     @property
     def subject_directive_plan(self) -> SubjectDirectivePlan | None:

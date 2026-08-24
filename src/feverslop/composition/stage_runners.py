@@ -29,6 +29,7 @@ from feverslop.adapters.project_visual_consistency import (
 from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
+from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
 from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.mlt_exporter import export_render_plan_to_mlt
@@ -694,6 +695,7 @@ def _run_storyboard_frames_stage(state: PipelineRunState) -> None:
         storyboard_use_case.execute(
             RenderStoryboardRequest(
                 render_plan_path=state.plan_for_next_step,
+                canonical_plan_path=_canonical_plan_path(state),
                 workflow_path=state.storyboard_workflow,
                 output_dir=state.context.storyboard_dir,
                 character_lora_strength=state.args.storyboard_lora_strength,
@@ -774,6 +776,7 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
             state.context.references_dir,
             state.context.reference_plan,
             on_scene_complete=_scene_progress_callback(reference_progress),
+            canonical_plan_path=_canonical_plan_path(state),
             **enrichment_options,
         )
 
@@ -797,6 +800,7 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
         state.plan_for_next_step = enrich_render_plan_with_msr_prompts(
             state.plan_for_next_step,
             state.context.reference_plan,
+            canonical_plan_path=_canonical_plan_path(state),
             llm=llm,
             on_analysis_status=msr_prompt_progress.analysis_attempt,
             on_scene_complete=_scene_progress_callback(msr_prompt_progress),
@@ -835,6 +839,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
             state.plan_for_next_step,
             state.context.references_dir,
             state.context.ingredients_plan,
+            canonical_plan_path=_canonical_plan_path(state),
             video_settings=video_settings,
             llm=llm,
             on_analysis_status=progress.analysis_attempt,
@@ -875,8 +880,20 @@ def _selected_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
 
 def _all_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
     payload = json.loads(state.plan_for_next_step.read_text(encoding="utf-8-sig"))
+    canonical_path = _canonical_plan_path(state)
+    canonical_payload = (
+        json.loads(canonical_path.read_text(encoding="utf-8-sig"))
+        if canonical_path is not None
+        else None
+    )
+    payload = project_effective_plan(payload, canonical_payload)
     validate_scene_sequence(payload)
     return RenderPlan.from_dicts(payload).scenes
+
+
+def _canonical_plan_path(state: PipelineRunState) -> Path | None:
+    path = getattr(state.context, "render_plan", None)
+    return Path(path) if path is not None and Path(path).is_file() else None
 
 
 def _select_render_scenes(state: PipelineRunState, scenes: tuple[RenderScene, ...]) -> tuple[RenderScene, ...]:
@@ -1637,6 +1654,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         video_use_case.execute(
             RenderVideoScenesRequest(
                 render_plan_path=state.plan_for_next_step,
+                canonical_plan_path=_canonical_plan_path(state),
                 workflow_path=ltx_workflow,
                 audio_file=state.context.input_audio,
                 storyboard_dir=state.context.storyboard_dir,

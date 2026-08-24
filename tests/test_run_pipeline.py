@@ -1050,13 +1050,27 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             use_case = Mock()
             use_case.execute.return_value = []
 
-            def enrich(input_plan, references_dir, output_plan, on_scene_complete=None):
+            def enrich(
+                input_plan,
+                references_dir,
+                output_plan,
+                on_scene_complete=None,
+                canonical_plan_path=None,
+            ):
                 self.assertIsNotNone(on_scene_complete)
                 Path(output_plan).write_text(json.dumps([{"scene": 1, "references": {}}]), encoding="utf-8")
                 on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
-            def enrich_msr(input_plan, output_plan, *, llm, on_analysis_status=None, on_scene_complete=None):
+            def enrich_msr(
+                input_plan,
+                output_plan,
+                *,
+                llm,
+                canonical_plan_path=None,
+                on_analysis_status=None,
+                on_scene_complete=None,
+            ):
                 self.assertIsNotNone(llm)
                 self.assertIsNotNone(on_analysis_status)
                 self.assertIsNotNone(on_scene_complete)
@@ -1126,7 +1140,13 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             use_case = Mock()
             use_case.execute.return_value = []
 
-            def enrich_refs(input_plan, references_dir, output_plan, on_scene_complete=None):
+            def enrich_refs(
+                input_plan,
+                references_dir,
+                output_plan,
+                on_scene_complete=None,
+                canonical_plan_path=None,
+            ):
                 Path(output_plan).write_text(Path(input_plan).read_text(encoding="utf-8"), encoding="utf-8")
                 return Path(output_plan)
 
@@ -1254,7 +1274,13 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 ],
             )
 
-            def enrich(_input_plan, _references_dir, output_plan, on_scene_complete=None):
+            def enrich(
+                _input_plan,
+                _references_dir,
+                output_plan,
+                on_scene_complete=None,
+                canonical_plan_path=None,
+            ):
                 Path(output_plan).parent.mkdir(parents=True, exist_ok=True)
                 Path(output_plan).write_text(plan_path.read_text(encoding="utf-8"), encoding="utf-8")
                 if on_scene_complete is not None:
