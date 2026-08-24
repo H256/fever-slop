@@ -5,6 +5,11 @@ import re
 from pathlib import Path
 
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.canonical_render_plan import (
+    PromptRole,
+    build_canonical_scene,
+    validate_canonical_plan,
+)
 from feverslop.domain.performance_sync import select_performance_stems
 from feverslop.domain.subject_directives import (
     SubjectDirectivePlan,
@@ -415,6 +420,9 @@ def build_render_plan(
             )
         frame_count = video_settings.scene_frame_count_between(ab_start, ab_end)
 
+        segment_id = str(
+            _require_key(scene, "segment_id", f"scene prompts, scene {scene_number}"),
+        )
         zimage_prompt = _require_key(scene, "zimage_prompt", f"scene prompts, scene {scene_number}")
         t2i_prompt = str(scene.get("t2i_prompt") or scene.get("zimage_prompt") or scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
         ltx_base_prompt = t2i_prompt
@@ -501,7 +509,7 @@ def build_render_plan(
                 "render_mode_hint": _render_mode_hint(str(scene.get("type", "")), prompt_relay),
             },
             "metadata": {
-                "segment_id": _require_key(scene, "segment_id", f"scene prompts, scene {scene_number}"),
+                "segment_id": segment_id,
                 "type": _require_key(scene, "type", f"scene prompts, scene {scene_number}"),
                 "silent_mode": _scene_silent_mode(scene),
                 "lyrics": scene.get("lyrics", ""),
@@ -536,6 +544,21 @@ def build_render_plan(
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
             if h3_entry.get("performance_timing"):
                 render_scene["performance_timing"] = h3_entry["performance_timing"]
+
+        generated_roles = {
+            PromptRole.Z_IMAGE: zimage_prompt,
+            PromptRole.LTX_BASE: ltx_base_prompt,
+            PromptRole.LTX_I2V: i2v_prompt_from_t2i,
+            PromptRole.LTX_RELAY: prompt_relay,
+        }
+        if render_scene.get("h3", {}).get("prompt"):
+            generated_roles[PromptRole.H3_VIDEO] = render_scene["h3"]["prompt"]
+        if render_scene.get("performance_timing"):
+            generated_roles[PromptRole.PERFORMANCE_TIMING] = render_scene["performance_timing"]
+        render_scene["canonical"] = build_canonical_scene(
+            segment_id=segment_id,
+            generated_roles=generated_roles,
+        )
 
         # -- stem audio paths (MiniMax H3 R2V) --
         # If H3 prompts already exist, their resolved <Audio N> references are
@@ -652,4 +675,5 @@ def build_render_plan(
                 }
         render_plan.append(render_scene)
 
+    validate_canonical_plan(render_plan)
     return artifact_store.write_json(output_json_file, render_plan)
