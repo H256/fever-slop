@@ -145,8 +145,8 @@ uv run python run_pipeline.py ./projects/my_song --upscale --skip-tests
 ```
 
 For repeatable project settings, put the `upscale` object in the project's
-`config.json`; project settings override the global application config because
-different projects may target different resolutions. Use exactly one of
+`config.json`. SeedVR2 currently has no global application-level configuration
+surface; the project object is the single persistent configuration layer. Use exactly one of
 `target_width`, `target_height`, or both, or neither for the default 2x target.
 For a one-off override, use `--upscale-resolution WIDTHxHEIGHT`.
 

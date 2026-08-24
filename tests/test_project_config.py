@@ -110,6 +110,70 @@ class ProjectConfigTests(unittest.TestCase):
             config = ProjectConfig.load(config_path)
 
         self.assertEqual((3840, 2160), (config.upscale.target_width, config.upscale.target_height))
+
+    def test_upscale_config_rejects_null_enabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": "song.mp3", "upscale": {"enabled": None}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "upscale enabled must be a boolean"):
+                ProjectConfig.load(config_path)
+
+    def test_upscale_config_rejects_null_paths_when_enabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "input_audio": "song.mp3",
+                    "upscale": {"enabled": True, "workflow_path": None},
+                }),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "upscale workflow_path is required when enabled"):
+                ProjectConfig.load(config_path)
+
+    def test_upscale_config_allows_null_paths_when_disabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "input_audio": "song.mp3",
+                    "upscale": {"workflow_path": None, "model": None, "vae": None},
+                }),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+            self.assertIsNone(config.upscale.workflow_path)
+            self.assertIsNone(config.upscale.model)
+            self.assertIsNone(config.upscale.vae)
+            with self.assertRaisesRegex(ValueError, "upscale workflow_path is required when enabled"):
+                config.upscale.validate_resources()
+
+    def test_upscale_config_rejects_unknown_keys(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": "song.mp3", "upscale": {"target_wdith": 3840}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, r"upscale contains unknown key\(s\): target_wdith"):
+                ProjectConfig.load(config_path)
+
     def test_reference_images_resolution_defaults_to_video_resolution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

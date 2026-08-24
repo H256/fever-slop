@@ -1931,6 +1931,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
     if not config.upscale.enabled and not getattr(state.args, "upscale", False):
         console.print("SeedVR2 upscale disabled in project config.")
         return
+    config.upscale.validate_resources()
     workflow_path = Path(config.upscale.workflow_path)
     if not workflow_path.is_absolute():
         workflow_path = runner_root() / workflow_path

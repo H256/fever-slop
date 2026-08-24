@@ -28,9 +28,9 @@ class ProjectWorkflowConfig:
 @dataclass(frozen=True)
 class UpscaleConfig:
     enabled: bool = False
-    workflow_path: str = "workflows/video_seedvr2_3b_api.json"
-    model: str = "seedvr2_3b_int8_convrot.safetensors"
-    vae: str = "seedvr2_ema_vae_fp16.safetensors"
+    workflow_path: str | None = "workflows/video_seedvr2_3b_api.json"
+    model: str | None = "seedvr2_3b_int8_convrot.safetensors"
+    vae: str | None = "seedvr2_ema_vae_fp16.safetensors"
     target_width: int | None = None
     target_height: int | None = None
     default_scale: float = 2.0
@@ -47,6 +47,10 @@ class UpscaleConfig:
     seed: int = 0
 
     def __post_init__(self) -> None:
+        if type(self.enabled) is not bool:
+            raise ValueError("upscale enabled must be a boolean")
+        if self.enabled:
+            self.validate_resources()
         if self.strategy not in {"auto", "single"}:
             raise ValueError("upscale strategy must be 'auto' or 'single'")
         if self.max_pass_scale <= 1.0:
@@ -65,6 +69,11 @@ class UpscaleConfig:
             raise ValueError("upscale segment_duration_seconds must be positive")
         if self.color_correction not in {"lab", "wavelet", "adain", "none"}:
             raise ValueError("upscale color_correction must be lab, wavelet, adain, or none")
+
+    def validate_resources(self) -> None:
+        for key in ("workflow_path", "model", "vae"):
+            if not getattr(self, key):
+                raise ValueError(f"upscale {key} is required when enabled")
 
 
 @dataclass(frozen=True)
@@ -307,6 +316,17 @@ def _optional_workflow_path(raw: dict, key: str) -> str | None:
     return value.strip()
 
 
+def _optional_upscale_string(raw: dict, key: str, default: str) -> str | None:
+    if key not in raw:
+        return default
+    value = raw[key]
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"upscale.{key} must be a non-empty string or null")
+    return value.strip()
+
+
 @dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
@@ -382,6 +402,36 @@ class ProjectConfig:
         # (studio/project_validation.py exempts it; movie_pipeline.py treats it as absent).
         input_audio = coerce_local_path(input_audio_raw, base_dir=project_dir)
         _validate_numeric_fields(video_raw, ("fps", "width", "height"))
+        valid_upscale_keys = {
+            "enabled",
+            "workflow_path",
+            "model",
+            "vae",
+            "target_width",
+            "target_height",
+            "default_scale",
+            "strategy",
+            "max_pass_scale",
+            "max_ai_passes",
+            "denoise",
+            "temporal_overlap",
+            "split_latent",
+            "vae_temporal_size",
+            "vae_temporal_overlap",
+            "segment_duration_seconds",
+            "color_correction",
+            "seed",
+        }
+        unknown_upscale_keys = set(upscale_raw) - valid_upscale_keys
+        if unknown_upscale_keys:
+            unknown_keys = ", ".join(sorted(unknown_upscale_keys))
+            valid_keys = ", ".join(sorted(valid_upscale_keys))
+            raise ValueError(
+                f"upscale contains unknown key(s): {unknown_keys}; valid keys are: {valid_keys}"
+            )
+        enabled_raw = upscale_raw.get("enabled", False)
+        if type(enabled_raw) is not bool:
+            raise ValueError("upscale enabled must be a boolean")
         _validate_numeric_fields(reference_images_raw, ("width", "height"))
         silent_mode = raw.get("silent_mode", False)
         if silent_mode is None:
@@ -446,10 +496,16 @@ class ProjectConfig:
                 reference_edit=_optional_workflow_path(workflows_raw, "reference_edit"),
             ),
             upscale=UpscaleConfig(
-                enabled=bool(upscale_raw.get("enabled", False)),
-                workflow_path=str(upscale_raw.get("workflow_path", "workflows/video_seedvr2_3b_api.json")),
-                model=str(upscale_raw.get("model", "seedvr2_3b_int8_convrot.safetensors")),
-                vae=str(upscale_raw.get("vae", "seedvr2_ema_vae_fp16.safetensors")),
+                enabled=enabled_raw,
+                workflow_path=_optional_upscale_string(
+                    upscale_raw, "workflow_path", "workflows/video_seedvr2_3b_api.json"
+                ),
+                model=_optional_upscale_string(
+                    upscale_raw, "model", "seedvr2_3b_int8_convrot.safetensors"
+                ),
+                vae=_optional_upscale_string(
+                    upscale_raw, "vae", "seedvr2_ema_vae_fp16.safetensors"
+                ),
                 target_width=(int(upscale_raw["target_width"]) if upscale_raw.get("target_width") is not None else None),
                 target_height=(int(upscale_raw["target_height"]) if upscale_raw.get("target_height") is not None else None),
                 default_scale=float(upscale_raw.get("default_scale", 2.0)),
