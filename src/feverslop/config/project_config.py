@@ -191,6 +191,8 @@ def _load_global_assets(raw, field_name: str) -> tuple[GlobalAssetConfig, ...]:
     for item in raw:
         if not isinstance(item, dict):
             raise ValueError(f"{field_name} entries must be objects")
+        if item.get("asset_id") is None:
+            raise ValueError(f"{field_name} asset_id is required")
         result.append(GlobalAssetConfig(
             asset_id=str(item.get("asset_id", "")).strip(),
             look_id=str(item.get("look_id", "default") or "default").strip(),
