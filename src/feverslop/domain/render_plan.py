@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+from feverslop.domain.canonical_render_plan import resolve_effective_role
 from feverslop.domain.subject_directives import SubjectDirectivePlan
 from feverslop.errors import FeverSlopDataError
 
@@ -35,6 +37,9 @@ class RenderScene:
 
     def to_dict(self) -> dict:
         return dict(self.data)
+
+    def effective_role(self, role: str, *, legacy_value: Any) -> Any:
+        return resolve_effective_role(self.data, role, legacy_value=legacy_value)
 
     @property
     def scene_number(self) -> int:

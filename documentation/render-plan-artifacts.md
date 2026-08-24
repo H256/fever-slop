@@ -10,6 +10,103 @@ Music-video render plans live in `output/render/plans/`. The filenames identify 
 | `references.json` | reference and MSR prompt enrichment | Final MSR render plan and source for Ingredients enrichment | MSR reference/prompt stages | Keep for MSR resume and Ingredients regeneration |
 | `ingredients.json` | Ingredients sheet enrichment | Compact runtime plan for Ingredients prepare/render | Ingredients sheets stage | Keep for Ingredients resume; regenerate after upstream prompt/reference edits |
 
+## Canonical scene contract in `base.json`
+
+Newly generated `base.json` scenes contain an additive `canonical` object. The
+existing `z_image`, `ltx`, `h3`, and `performance_timing` fields remain in place
+for backward compatibility. Older plans without `canonical` remain valid.
+
+```json
+{
+  "scene": 1,
+  "z_image": {"prompt": "legacy-compatible generated prompt"},
+  "metadata": {"segment_id": "segment_0001"},
+  "canonical": {
+    "schema": "feverslop.render-scene.v1",
+    "scene_id": "ef679fe8-0157-5c51-af5a-b3affc61ba8a",
+    "segment_id": "segment_0001",
+    "roles": {
+      "z_image.prompt": {
+        "generated": {
+          "value": "legacy-compatible generated prompt",
+          "provenance": {"source": "render-plan-builder"}
+        }
+      }
+    }
+  }
+}
+```
+
+`canonical.scene_id` is deterministically derived from `segment_id`, not from
+the scene's array position. Reordering scenes therefore does not change their
+identity. Both `scene_id` and `segment_id` must be non-empty and unique within a
+plan.
+
+The initial role vocabulary is:
+
+| Role | Meaning |
+| --- | --- |
+| `z_image.prompt` | Start-frame image prompt |
+| `ltx.base` | LTX base prompt |
+| `ltx.i2v` | LTX image-to-video prompt |
+| `ltx.static` | Static LTX compatibility prompt |
+| `ltx.relay` | LTX temporal prompt relay |
+| `ltx.msr.global` / `ltx.msr.relay` | MSR global and relay prompts |
+| `ingredients.global` / `ingredients.relay` | Ingredients global and relay prompts |
+| `h3.video` | MiniMax H3 video prompt |
+| `performance.timing` | Structured performance timing |
+
+Roles are deliberately extensible. Consumers must use the shared role resolver
+instead of copying precedence rules.
+
+### Human overrides and effective values
+
+Generator-owned and human-owned values are separate. To edit a generated role,
+add an `override` sibling; do not replace `generated`:
+
+```json
+{
+  "generated": {
+    "value": "the generated prompt",
+    "provenance": {"source": "render-plan-builder"}
+  },
+  "override": {
+    "value": "the operator's prompt",
+    "provenance": {"source": "human"}
+  }
+}
+```
+
+Effective values are resolved deterministically in this order:
+
+1. `override.value`, when the override exists and is valid.
+2. `generated.value`.
+3. An explicit legacy field supplied by a backward-compatible consumer.
+
+Never add an `effective` field to `base.json`. Effective values are computed at
+runtime so they cannot become a stale third copy. An override that is present
+but empty is an error; remove the whole `override` object to return to the
+generated value. Malformed entries report their JSON path, for example
+`canonical.roles.h3.video.override.value`.
+
+The following remains a valid legacy scene and resolves through the explicit
+legacy fallback until it is migrated:
+
+```json
+{
+  "scene": 1,
+  "z_image": {"prompt": "legacy still prompt"},
+  "h3": {"prompt": "legacy H3 prompt"},
+  "metadata": {"segment_id": "segment_0001"}
+}
+```
+
+This schema addition does not yet migrate edits from legacy fields, preserve
+overrides during plan regeneration, project overrides into every render backend,
+or invalidate prepared workflows. Those changes are separate migration steps;
+until they land, editing only legacy fields and regenerating `base.json` has the
+same limitations as before.
+
 ## Why `ingredients.json` is compact
 
 The Ingredients renderer needs timing and resolution, actor/location IDs, one composed sheet, one stable global prompt, and one temporal prompt relay. It does not need storyboard prompts, full reference manifests, MSR aliases, or every earlier LTX prompt variant.
