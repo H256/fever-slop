@@ -12,7 +12,7 @@ class TestVersion(unittest.TestCase):
     def test_version_attribute_exists(self):
         import feverslop
         self.assertTrue(hasattr(feverslop, "__version__"))
-        self.assertEqual(feverslop.__version__, "0.3.0")
+        self.assertEqual(feverslop.__version__, "0.4.0")
 
     def test_version_is_string(self):
         import feverslop
@@ -92,7 +92,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         code = """
 from feverslop import AutoProduceMovieUseCase, MovieProject, Reporter, slugify_project_name
 from feverslop import __version__
-assert __version__ == "0.3.0"
+assert __version__ == "0.4.0"
 """
         result = subprocess.run(
             [sys.executable, "-c", code],
@@ -104,7 +104,7 @@ assert __version__ == "0.3.0"
     def test_attr_access_syntax(self):
         code = """
 import feverslop
-assert feverslop.__version__ == "0.3.0"
+assert feverslop.__version__ == "0.4.0"
 assert feverslop.AutoProduceMovieUseCase is not None
 """
         result = subprocess.run(
