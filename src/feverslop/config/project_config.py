@@ -366,6 +366,14 @@ class ProjectConfig:
         locations_raw = _ensure_list(raw.get("locations", []), "locations")
         audio_refs_raw = _ensure_dict(raw.get("minimax_h3_audio_refs", {}), "minimax_h3_audio_refs")
         global_raw = _ensure_dict(raw.get("global_assets", {}), "global_assets")
+        unknown_global_keys = set(global_raw) - {"cast", "locations", "styles", "props"}
+        if unknown_global_keys:
+            valid_global_keys = "cast, locations, props, styles"
+            unknown_keys = ", ".join(sorted(unknown_global_keys))
+            raise ValueError(
+                f"global_assets contains unknown key(s): {unknown_keys}; "
+                f"valid keys are: {valid_global_keys}"
+            )
 
         input_audio_raw = raw.get("input_audio")
         if not isinstance(input_audio_raw, str):

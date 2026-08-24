@@ -790,6 +790,23 @@ class ProjectConfigValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "global_assets must be an object"):
                 ProjectConfig.load(config_path)
 
+    def test_rejects_unknown_global_assets_keys(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"global_assets": {"casts": []}, "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"global_assets contains unknown key\(s\): casts; valid keys are: cast, locations, props, styles",
+            ):
+                ProjectConfig.load(config_path)
+
     def test_rejects_null_global_asset_id_before_stringifying(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
