@@ -51,6 +51,7 @@ def build_render_storyboard_use_case(
             llm=llm,
             template_path=coerce_local_path(transform_config.template),
             debug_dir=Path(output_dir) / transform_config.debug_dir,
+            max_words=transform_config.max_words,
         )
         positive_prompt_input = transform_config.positive_prompt_input
 

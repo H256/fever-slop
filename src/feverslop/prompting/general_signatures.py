@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class SongBriefResult(BaseModel):
@@ -25,12 +25,7 @@ class PromptResult(BaseModel):
 
 
 class StoryboardPromptResult(PromptResult):
-    @field_validator("prompt")
-    @classmethod
-    def prompt_must_be_bounded(cls, value: str) -> str:
-        if len(value.split()) > 150:
-            raise ValueError("storyboard prompt must contain at most 150 words")
-        return value
+    """Transport model; the transformer applies the configured word limit."""
 
 
 def build_general_signature_bundle(dspy_module: Any | None = None):
@@ -74,6 +69,7 @@ def build_general_signature_bundle(dspy_module: Any | None = None):
         width: int = dspy_module.InputField()
         height: int = dspy_module.InputField()
         original_prompt: str = dspy_module.InputField()
+        max_words: int = dspy_module.InputField()
         result: StoryboardPromptResult = dspy_module.OutputField()
 
     return {

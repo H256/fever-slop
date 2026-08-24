@@ -6,6 +6,30 @@ from tests.prompt_fakes import GeneralModulesFake
 
 
 class StoryboardPromptTransformerTests(unittest.TestCase):
+    def test_template_transformer_trims_overlength_response_to_configured_limit(self):
+        from feverslop.prompting.storyboard_prompt_transformer import (
+            TemplateStoryboardPromptTransformer,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            template = temp / "template.md"
+            template.write_text("[SYSTEM]\nS\n\n[USER]\nU", encoding="utf-8")
+            result = TemplateStoryboardPromptTransformer(
+                llm=object(),
+                modules=GeneralModulesFake(storyboard="one two three four five"),
+                template_path=template,
+                debug_dir=temp / "debug",
+                max_words=3,
+            ).transform_prompt(
+                scene_number=1,
+                original_prompt="idea",
+                width=1280,
+                height=704,
+            )
+
+        self.assertEqual("one two three", result)
+
     def test_template_transformer_passes_system_and_filled_user_prompt_to_llm(self):
         from feverslop.prompting.storyboard_prompt_transformer import (
             TemplateStoryboardPromptTransformer,

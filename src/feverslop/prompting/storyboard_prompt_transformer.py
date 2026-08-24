@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 
 from feverslop.ports.llm import LLMPort
 from feverslop.prompting.general_modules import GeneralPromptModules
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -13,8 +17,11 @@ class TemplateStoryboardPromptTransformer:
     template_path: Path
     debug_dir: Path
     modules: object | None = None
+    max_words: int = 150
 
     def __post_init__(self) -> None:
+        if self.max_words < 1:
+            raise ValueError("max_words must be >= 1")
         self._modules = self.modules if self.modules is not None else GeneralPromptModules(self.llm)
 
     def transform_prompt(
@@ -39,8 +46,17 @@ class TemplateStoryboardPromptTransformer:
             "width": width,
             "height": height,
             "original_prompt": original_prompt,
+            "max_words": self.max_words,
         })
         response = result.prompt.strip()
+        words = response.split()
+        if len(words) > self.max_words:
+            logger.warning(
+                "Storyboard prompt exceeded the %d-word limit (%d words); trimmed.",
+                self.max_words,
+                len(words),
+            )
+            response = " ".join(words[: self.max_words])
         self._write_debug(scene_number, system_prompt, user_prompt, response)
         return response
 

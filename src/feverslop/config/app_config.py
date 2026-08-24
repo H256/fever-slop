@@ -95,6 +95,7 @@ class StoryboardPromptTransformConfig:
     template: str = ""
     positive_prompt_input: str = "text"
     debug_dir: str = "storyboard_prompt_debug"
+    max_words: int = 150
 
     @classmethod
     def from_dict(cls, raw: dict) -> StoryboardPromptTransformConfig:
@@ -104,12 +105,16 @@ class StoryboardPromptTransformConfig:
         raw_workflow = raw_workflow.strip()
         if not raw_workflow:
             raise ValueError("StoryboardPromptTransformConfig requires a non-empty workflow")
+        max_words = int(raw.get("max_words", 150))
+        if max_words < 1:
+            raise ValueError("StoryboardPromptTransformConfig max_words must be >= 1")
         return cls(
             workflow=raw_workflow,
             kind=str(raw.get("kind", "template")),
             template=str(raw.get("template", "")),
             positive_prompt_input=str(raw.get("positive_prompt_input", "text")),
             debug_dir=str(raw.get("debug_dir", "storyboard_prompt_debug")),
+            max_words=max_words,
         )
 
 
