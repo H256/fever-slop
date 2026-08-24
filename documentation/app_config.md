@@ -15,10 +15,46 @@ omitted, the default shown below is used.
 {
   "llm": {},
   "comfyui": {},
+  "execution": {},
   "video_workflow_profiles": [],
   "storyboard_prompt_transforms": []
 }
 ```
+
+## `execution`
+
+`execution.vram_handoff` controls machine-local resource transitions for the
+safe music-video resume command. It does not belong in a project config.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `vram_handoff` | `continuous` or `manual` | `continuous` | Whether safe resume may cross directly between LLM- and ComfyUI-owned stages. |
+
+Use `manual` when one GPU cannot keep the external LLM and ComfyUI models
+loaded together:
+
+```json
+{
+  "execution": {
+    "vram_handoff": "manual"
+  }
+}
+```
+
+One invocation then executes at most one contiguous LLM or ComfyUI phase.
+Neutral work such as plan synchronization, reference binding, workflow
+preparation, and muxing stays attached to the surrounding phase. At the next
+ownership change the command exits successfully and tells the operator what to
+unload/load. After the model swap, repeat the unchanged command:
+
+```bash
+uv run python main.py run PROJECT --resume
+```
+
+No cursor file is needed: the next invocation derives its position from the
+canonical artifacts and scene checkpoints. Explicit compatibility `--stage`
+commands are intentionally not partitioned; their resource lifecycle remains
+the operator's responsibility.
 
 ## `llm`
 

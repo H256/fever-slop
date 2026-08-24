@@ -19,6 +19,9 @@
     "default_max_render_duration_seconds": 18.0,
     "video_workflow_limits": []
   },
+  "execution": {
+    "vram_handoff": "continuous"
+  },
   "video_workflow_profiles": [
     {
       "name": "ingredients-final-v5-provisional",

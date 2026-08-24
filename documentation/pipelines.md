@@ -45,8 +45,24 @@ LLM:  h3_prompts
 ComfyUI: render_plan + ltx_render_scenes
 ```
 
-Run the stages as separate processes so the active model can be unloaded
-between phases. The artifacts under `output/` are the hand-off between them:
+The recommended safe CLI can enforce those process boundaries. Set
+`execution.vram_handoff` to `manual` in the machine's `app_config.json`, inspect
+the full plan, and repeat the same resume command after every printed unload/
+load instruction:
+
+```powershell
+uv run python main.py run PROJECT --dry-run
+uv run python main.py run PROJECT --resume
+# unload/load exactly as printed
+uv run python main.py run PROJECT --resume
+```
+
+Canonical artifacts and scene checkpoints are the handoff state, so no extra
+cursor is written. The default `continuous` mode runs without these stops.
+
+The explicit commands below remain an advanced compatibility workflow. They
+must be run as separate processes, and their model lifecycle is entirely the
+operator's responsibility:
 
 ```powershell
 # 1. LLM: timeline, scene prompts, and subject/action directives

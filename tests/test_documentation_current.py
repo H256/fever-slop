@@ -99,6 +99,19 @@ class DocumentationCurrentTests(unittest.TestCase):
         self.assertIn("video_workflow_limits", text)
         self.assertIn("Requested scene duration", text)
 
+    def test_operator_docs_explain_manual_vram_handoff(self):
+        app_config = Path("documentation/app_config.md").read_text(encoding="utf-8")
+        running = Path("documentation/running.md").read_text(encoding="utf-8")
+        pipelines = Path("documentation/pipelines.md").read_text(encoding="utf-8")
+        combined = "\n".join((app_config, running, pipelines))
+
+        self.assertIn("execution.vram_handoff", combined)
+        self.assertIn("continuous", app_config)
+        self.assertIn("manual", app_config)
+        self.assertIn("uv run python main.py run PROJECT --resume", combined)
+        self.assertIn("compatibility", combined.lower())
+        self.assertIn("unload", combined.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
