@@ -412,6 +412,13 @@ class ProjectConfig:
                 f"prompt_guidance.word_count_min ({word_count_min}) "
                 f"must be <= prompt_guidance.word_count_max ({word_count_max})",
             )
+        for index, item in enumerate(actors_raw):
+            if not isinstance(item, dict):
+                raise ValueError(f"actors[{index}] must be an object")
+        actors = tuple(
+            _load_actor(item, index)
+            for index, item in enumerate(actors_raw, start=1)
+        )
 
         return cls(
             project_dir=project_dir,
@@ -487,11 +494,7 @@ class ProjectConfig:
                 str(item.get("name") if isinstance(item, dict) else item)
                 for item in locations_raw
             ],
-            actors=tuple(
-                _load_actor(item, index)
-                for index, item in enumerate(actors_raw, start=1)
-                if isinstance(item, dict)
-            ),
+            actors=actors,
             structured_locations=tuple(
                 _load_structured_location(item, index)
                 for index, item in enumerate(locations_raw, start=1)
