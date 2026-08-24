@@ -1,3 +1,4 @@
+import os
 import json
 import tempfile
 import unittest
@@ -39,6 +40,55 @@ class TestMovieH3Preparation(unittest.TestCase):
 
             self.assertEqual(prepared, result)
             self.assertIn("subject_definitions", result.read_text(encoding="utf-8"))
+
+    def test_preparation_rebuilds_current_cache_when_source_plan_is_newer(self):
+        from feverslop.adapters.movie_minimax_visual import (
+            ComfyUIMiniMaxMovieVisualAdapter,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            source = project / "movie" / "render_plan.json"
+            source.parent.mkdir(parents=True)
+            source.write_text(json.dumps([{"scene": 1, "description": "A witch watches."}]), encoding="utf-8")
+            adapter = ComfyUIMiniMaxMovieVisualAdapter(
+                project_dir=project,
+                workflow_path="workflow.json",
+                video_pipeline="minimax-h3-t2v",
+            )
+            prepared = adapter.output_dir / "render_plan_h3.json"
+            prepared.parent.mkdir(parents=True)
+            prepared.write_text(
+                json.dumps([{
+                    "scene": 1,
+                    "h3": {
+                        "prompt": (
+                            "subject_definitions:\nsummary:\nretention_analysis:\n"
+                            "detailed_description:\noverall_soundscape:\nnon_diegetic_music:"
+                        ),
+                    },
+                }]),
+                encoding="utf-8",
+            )
+            newer_mtime = prepared.stat().st_mtime_ns + 1_000_000
+            os.utime(source, ns=(newer_mtime, newer_mtime))
+
+            class Builder:
+                def __init__(self):
+                    self.calls = 0
+
+                def build_h3_prompt(self, **_kwargs):
+                    self.calls += 1
+                    return {"prompt": "rebuilt after source plan changed"}
+
+            builder = Builder()
+            result = adapter.prepare_render_plan(source, project, prompt_builder=builder)
+
+            self.assertEqual(1, builder.calls)
+            self.assertEqual(
+                "rebuilt after source plan changed",
+                json.loads(result.read_text(encoding="utf-8"))[0]["h3"]["prompt"],
+            )
 
     def test_preparation_writes_h3_scene_list_when_missing(self):
         from feverslop.adapters.movie_minimax_visual import (
