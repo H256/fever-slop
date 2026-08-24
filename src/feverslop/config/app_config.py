@@ -4,6 +4,7 @@ import json
 import math
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
 from feverslop.config.comfyui import ComfyUIModelOverride
@@ -77,6 +78,16 @@ class ComfyUIConfig:
     video_workflow_limits: tuple[VideoWorkflowLimitConfig, ...] = field(default_factory=tuple)
 
 
+class VramHandoffMode(str, Enum):
+    CONTINUOUS = "continuous"
+    MANUAL = "manual"
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    vram_handoff: VramHandoffMode = VramHandoffMode.CONTINUOUS
+
+
 @dataclass(frozen=True)
 class StoryboardPromptTransformConfig:
     workflow: str
@@ -126,6 +137,7 @@ def _check_required_keys(raw: dict, required_keys: list[str]) -> None:
 class AppConfig:
     llm: LLMConfig
     comfyui: ComfyUIConfig
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     global_library_path: Path = field(default_factory=lambda: (Path.home() / ".feverslop" / "library").expanduser())
     storyboard_prompt_transforms: list[StoryboardPromptTransformConfig] = field(default_factory=list)
     video_workflow_profiles: tuple[VideoWorkflowProfile, ...] = field(default_factory=tuple)
@@ -200,6 +212,16 @@ class AppConfig:
     ) -> AppConfig:
         llm_raw = raw.get("llm", {})
         comfyui_raw = raw.get("comfyui", {})
+        execution_raw = raw.get("execution", {})
+        if not isinstance(execution_raw, dict):
+            raise ValueError("execution must be an object")
+        raw_vram_handoff = execution_raw.get("vram_handoff", "continuous")
+        try:
+            vram_handoff = VramHandoffMode(raw_vram_handoff)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "execution.vram_handoff must be 'continuous' or 'manual'",
+            ) from None
         default_max_render_duration_raw = comfyui_raw.get("default_max_render_duration_seconds")
         default_max_render_duration = (
             None
@@ -281,6 +303,7 @@ class AppConfig:
                 default_max_render_duration_seconds=default_max_render_duration,
                 video_workflow_limits=video_workflow_limits,
             ),
+            execution=ExecutionConfig(vram_handoff=vram_handoff),
             global_library_path=library_path.resolve(),
             storyboard_prompt_transforms=[
                 StoryboardPromptTransformConfig.from_dict(item)
