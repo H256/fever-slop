@@ -30,8 +30,15 @@ _OPERATIONAL_FIELDS = (
     "duration",
     "duration_seconds",
     "seed",
+    "render_settings",
 )
-_WORKFLOW_FIELDS = ("z_image", "ltx", "h3", "performance_timing", "keyframes")
+_WORKFLOW_FIELDS = (
+    "z_image",
+    "ltx",
+    "h3",
+    "performance_timing",
+    "keyframes",
+)
 
 
 @dataclass(frozen=True)

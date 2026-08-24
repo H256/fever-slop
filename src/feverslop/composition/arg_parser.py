@@ -14,6 +14,7 @@ class PipelineStage(str, Enum):
     RELAY_COMPACT = "relay_compact"
     ANCHOR_FIX = "anchor_fix"
     SET_RESOLUTION = "set_resolution"
+    SYNC_PROJECT_SETTINGS = "sync_project_settings"
     STORYBOARD_FRAMES = "storyboard_frames"
     STORYBOARD_PAGE = "storyboard_page"
     REFERENCE_RENDER = "reference_render"

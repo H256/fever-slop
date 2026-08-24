@@ -11,9 +11,15 @@ from rich.table import Table
 from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS
 from feverslop.composition.resume_plan import build_compatibility_plan, build_resume_plan
 from feverslop.composition.arg_parser import PipelineStage
+from feverslop.composition.config_loader import resolve_runner_path, runner_root
 from feverslop.composition.pipeline_runner import run as pipeline_run
 from feverslop.composition.stage_runners import resolve_pipeline_stages
+from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.execution_plan import ExecutionPlan, PlanAction
+from feverslop.domain.project_render_settings import (
+    ProjectRenderSettings,
+    WorkflowSelection,
+)
 from feverslop.errors import FeverSlopError
 from feverslop.tools.storyboard_page import parse_scene_list
 
@@ -54,6 +60,11 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
         args.project_config = str(project / "config.json")
         compatibility = _uses_compatibility_inputs(args)
         args.video_pipeline = args.video_pipeline or _configured_pipeline(project)
+        render_settings = None
+        args.project_render_settings = None
+        if not compatibility:
+            render_settings = _resolve_project_render_settings(project, args)
+            args.project_render_settings = render_settings
         selected = parse_scene_list(args.scenes)
         if compatibility:
             _apply_runner_defaults(args)
@@ -68,6 +79,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                 project,
                 video_pipeline=args.video_pipeline,
                 selected_scenes=selected,
+                render_settings=render_settings,
             )
         _render_plan(plan, output)
         if plan.blocked:
@@ -116,6 +128,48 @@ def _configured_pipeline(project: Path) -> str:
     if not isinstance(payload, dict):
         raise ValueError("Project config must be an object")
     return str(payload.get("video_pipeline") or "ltx_i2v")
+
+
+def _resolve_project_render_settings(
+    project: Path,
+    args: argparse.Namespace,
+) -> ProjectRenderSettings:
+    config = ProjectConfig.load(project / "config.json")
+    video_selection = None
+    if config.workflows.video is not None:
+        video_path = resolve_runner_path(config.workflows.video).resolve()
+        video_selection = WorkflowSelection.from_path(video_path, root=runner_root())
+        target = {
+            "ltx_msr": "msr_workflow",
+            "ltx_ingredients": "ingredients_workflow",
+        }.get(args.video_pipeline, "single_prompt_workflow")
+        setattr(args, target, str(video_path))
+
+    hero_selection = None
+    edit_selection = None
+    if config.workflows.reference_hero is not None or config.workflows.reference_edit is not None:
+        defaults = {
+            name: kwargs.get("default")
+            for name, _flags, kwargs in RUNNER_ARGUMENTS
+        }
+        hero_path = resolve_runner_path(
+            config.workflows.reference_hero or defaults["reference_hero_workflow"],
+        ).resolve()
+        edit_path = resolve_runner_path(
+            config.workflows.reference_edit or defaults["reference_edit_workflow"],
+        ).resolve()
+        hero_selection = WorkflowSelection.from_path(hero_path, root=runner_root())
+        edit_selection = WorkflowSelection.from_path(edit_path, root=runner_root())
+        args.reference_hero_workflow = str(hero_path)
+        args.reference_edit_workflow = str(edit_path)
+
+    return ProjectRenderSettings(
+        width=config.video.width,
+        height=config.video.height,
+        video_workflow=video_selection,
+        reference_hero_workflow=hero_selection,
+        reference_edit_workflow=edit_selection,
+    )
 
 
 def _uses_compatibility_inputs(args: argparse.Namespace) -> bool:

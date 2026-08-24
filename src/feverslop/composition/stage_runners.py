@@ -12,6 +12,7 @@ from tempfile import NamedTemporaryFile
 from rich.console import Console
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.postprocessor_frame_extractor import (
@@ -46,6 +47,9 @@ from feverslop.application.reference_bible import (
 )
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
+from feverslop.application.sync_project_render_settings import (
+    sync_project_render_settings,
+)
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
     preflight_visual_consistency,
@@ -682,6 +686,21 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
             f"[green]Resolution updated. Run '--stage render_scenes' to render at "
             f"{width}x{height}.[/green]",
         )
+
+
+def _run_sync_project_settings_stage(state: PipelineRunState) -> None:
+    settings = getattr(state.args, "project_render_settings", None)
+    if settings is None:
+        raise ValueError("sync_project_settings requires resolved project render settings")
+    changed = sync_project_render_settings(
+        CanonicalPlanStore(state.context.project_config_dir),
+        settings,
+    )
+    state.plan_for_next_step = state.context.artifact_layout.base_plan
+    if changed:
+        console.print("[green]Canonical project render settings synchronized.[/green]")
+    else:
+        console.print("[dim]Canonical project render settings already match.[/dim]")
 
 
 def _run_storyboard_frames_stage(state: PipelineRunState) -> None:
@@ -2072,6 +2091,7 @@ STAGE_RUNNERS = {
     PipelineStage.RELAY_COMPACT: _run_relay_compact_stage,
     PipelineStage.ANCHOR_FIX: _run_anchor_fix_stage,
     PipelineStage.SET_RESOLUTION: _run_set_resolution_stage,
+    PipelineStage.SYNC_PROJECT_SETTINGS: _run_sync_project_settings_stage,
     PipelineStage.STORYBOARD_FRAMES: _run_storyboard_frames_stage,
     PipelineStage.STORYBOARD_PAGE: _run_storyboard_page_stage,
     PipelineStage.MSR_REFERENCES: _run_msr_references_stage,
@@ -2100,6 +2120,7 @@ STAGE_LABELS = {
     PipelineStage.RELAY_COMPACT: "relay compact",
     PipelineStage.ANCHOR_FIX: "anchor fix",
     PipelineStage.SET_RESOLUTION: "Set resolution",
+    PipelineStage.SYNC_PROJECT_SETTINGS: "Sync project render settings",
     PipelineStage.STORYBOARD_FRAMES: "Storyboard frames",
     PipelineStage.STORYBOARD_PAGE: "Storyboard page",
     PipelineStage.REFERENCE_RENDER: "Reference render",

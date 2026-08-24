@@ -8,6 +8,7 @@ from pathlib import Path
 _RESUME_STAGE_ORDER = (
     "tests",
     "main_pipeline",
+    "sync_project_settings",
     "relay_compact",
     "anchor_fix",
     "msr_references",

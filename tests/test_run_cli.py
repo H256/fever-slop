@@ -77,7 +77,10 @@ class RunCliTests(unittest.TestCase):
             exit_code = run_project_command(self._args("--resume"), console=self.console)
 
         self.assertEqual(0, exit_code)
-        planner.assert_called_once_with(self.project.resolve(), video_pipeline="ltx_msr", selected_scenes=None)
+        call = planner.call_args
+        self.assertEqual(self.project.resolve(), call.args[0])
+        self.assertEqual("ltx_msr", call.kwargs["video_pipeline"])
+        self.assertIsNotNone(call.kwargs["render_settings"])
         executed_args = pipeline_run.call_args.args[0]
         self.assertEqual(["ltx_render_scenes"], executed_args.stages)
         self.assertEqual("2", executed_args.scenes)
@@ -161,6 +164,62 @@ class RunCliTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         pipeline_run.assert_not_called()
         self.assertIn("advanced stage", self.stream.getvalue())
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_plain_safe_run_resolves_project_dimensions_and_video_workflow(self, pipeline_run):
+        workflow = Path.cwd() / "workflows" / "test_project_selected_video.json"
+        workflow.write_text('{"steps": 8}', encoding="utf-8")
+        self.addCleanup(workflow.unlink, missing_ok=True)
+        (self.project / "config.json").write_text(json.dumps({
+            "input_audio": "song.mp3",
+            "video_pipeline": "minimax-h3-r2v",
+            "video": {"width": 1024, "height": 576},
+            "workflows": {"video": "workflows/test_project_selected_video.json"},
+        }), encoding="utf-8")
+
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=self._plan()) as planner:
+            exit_code = run_project_command(self._args("--dry-run"), console=self.console)
+
+        self.assertEqual(0, exit_code)
+        pipeline_run.assert_not_called()
+        call = planner.call_args
+        settings = call.kwargs["render_settings"]
+        self.assertEqual((1024, 576), (settings.width, settings.height))
+        self.assertEqual("workflows/test_project_selected_video.json", settings.video_workflow.path)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_project_workflows_are_passed_to_unchanged_resume_execution(self, pipeline_run):
+        video = Path.cwd() / "workflows" / "test_project_video.json"
+        hero = Path.cwd() / "workflows" / "test_project_hero.json"
+        edit = Path.cwd() / "workflows" / "test_project_edit.json"
+        for path in (video, hero, edit):
+            path.write_text("{}", encoding="utf-8")
+            self.addCleanup(path.unlink, missing_ok=True)
+        (self.project / "config.json").write_text(json.dumps({
+            "input_audio": "song.mp3",
+            "video_pipeline": "minimax-h3-r2v",
+            "workflows": {
+                "video": "workflows/test_project_video.json",
+                "reference_hero": "workflows/test_project_hero.json",
+                "reference_edit": "workflows/test_project_edit.json",
+            },
+        }), encoding="utf-8")
+        plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("sync", PlanAction.RUN, "settings", None, "sync_project_settings"),
+            ExecutionPlanItem("render", PlanAction.RUN, "workflow", 1, "ltx_render_scenes"),
+        ))
+
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+            exit_code = run_project_command(self._args("--resume"), console=self.console)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(2, pipeline_run.call_count)
+        sync_args = pipeline_run.call_args_list[0].args[0]
+        render_args = pipeline_run.call_args_list[1].args[0]
+        self.assertIsNotNone(sync_args.project_render_settings)
+        self.assertTrue(render_args.single_prompt_workflow.endswith("test_project_video.json"))
+        self.assertTrue(render_args.reference_hero_workflow.endswith("test_project_hero.json"))
+        self.assertTrue(render_args.reference_edit_workflow.endswith("test_project_edit.json"))
 
 
 if __name__ == "__main__":

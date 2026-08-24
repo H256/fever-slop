@@ -11,6 +11,10 @@ from feverslop.composition.resume_plan import build_resume_plan
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.project_render_settings import (
+    ProjectRenderSettings,
+    WorkflowSelection,
+)
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -273,6 +277,88 @@ class ResumePlanTests(unittest.TestCase):
                 self.assertNotIn("msr_references", plan.runnable_stages)
                 self.assertNotIn("msr_reference_sheets", plan.runnable_stages)
                 self.assertIn("ltx_prepare_workflows", plan.runnable_stages)
+
+    def test_project_resolution_change_syncs_canonical_plan_and_rerenders_all_scenes(self):
+        base = self._write_base_and_derived(2)
+        for scene in base:
+            self._prepare(scene)
+            self.layout.scene_final_video(int(scene["scene"])).write_bytes(b"clip")
+
+        plan = build_resume_plan(
+            self.project,
+            video_pipeline="ltx_msr",
+            render_settings=ProjectRenderSettings(width=1024, height=576),
+        )
+
+        self.assertEqual("sync_project_settings", plan.runnable_stages[0])
+        self.assertEqual((1, 2), plan.runnable_scenes_for_stage("ltx_prepare_workflows"))
+        self.assertEqual((1, 2), plan.runnable_scenes_for_stage("ltx_render_scenes"))
+        self.assertNotIn("main_pipeline", plan.runnable_stages)
+        self.assertNotIn("h3_prompts", plan.runnable_stages)
+
+    def test_project_video_workflow_change_invalidates_workflows_not_references(self):
+        base = self._write_base_and_derived(1)
+        self._prepare(base[0])
+        self.layout.scene_final_video(1).write_bytes(b"clip")
+        workflow = self.project / "custom-video.json"
+        workflow.write_text('{"steps": 8}', encoding="utf-8")
+
+        plan = build_resume_plan(
+            self.project,
+            video_pipeline="ltx_msr",
+            render_settings=ProjectRenderSettings(
+                width=1280,
+                height=704,
+                video_workflow=WorkflowSelection.from_path(workflow, root=self.project),
+            ),
+        )
+
+        self.assertIn("sync_project_settings", plan.runnable_stages)
+        self.assertIn("ltx_prepare_workflows", plan.runnable_stages)
+        self.assertIn("ltx_render_scenes", plan.runnable_stages)
+        self.assertNotIn("msr_references", plan.runnable_stages)
+        self.assertNotIn("msr_reference_sheets", plan.runnable_stages)
+
+    def test_project_reference_workflow_change_refreshes_h3_reference_dependents(self):
+        (self.project / "config.json").write_text(json.dumps({
+            "input_audio": "song.mp3", "video_pipeline": "minimax-h3-r2v",
+        }), encoding="utf-8")
+        scene = self._scene(1)
+        scene["canonical"]["roles"][str(PromptRole.H3_VIDEO)] = {
+            "generated": {"value": "h3", "provenance": {"input_fingerprint": "fp-1"}},
+        }
+        base = project_effective_plan([scene], [scene])
+        self.layout.base_plan.write_text(json.dumps(base), encoding="utf-8")
+        self.layout.anchored_plan.write_text(json.dumps(base), encoding="utf-8")
+        checkpoint = self.layout.scene_h3_prompt(1)
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint.write_text(json.dumps({"status": "good", "input_fingerprint": "fp-1"}), encoding="utf-8")
+        self.layout.scene_final_video(1).write_bytes(b"clip")
+        self._prepare(base[0], pipeline="minimax-h3-r2v")
+        hero = self.project / "hero.json"
+        edit = self.project / "edit.json"
+        hero.write_text("hero", encoding="utf-8")
+        edit.write_text("edit", encoding="utf-8")
+
+        plan = build_resume_plan(
+            self.project,
+            video_pipeline="minimax-h3-r2v",
+            render_settings=ProjectRenderSettings(
+                width=1280,
+                height=704,
+                reference_hero_workflow=WorkflowSelection.from_path(hero, root=self.project),
+                reference_edit_workflow=WorkflowSelection.from_path(edit, root=self.project),
+            ),
+        )
+
+        stages = plan.runnable_stages
+        self.assertEqual("sync_project_settings", stages[0])
+        self.assertIn("msr_references", stages)
+        self.assertIn("msr_reference_sheets", stages)
+        self.assertIn("h3_prompts", stages)
+        self.assertIn("render_plan", stages)
+        self.assertIn("ltx_render_scenes", stages)
+
 
     def test_scene_selection_marks_other_scenes_not_selected(self):
         self._write_base_and_derived(2)
