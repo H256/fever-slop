@@ -346,7 +346,13 @@ def resolve_rolling_frames(options: RenderVideoCompositionOptions) -> tuple[int,
     )
     preroll = profile_preroll if options.preroll_frames is None else options.preroll_frames
     tail = profile_tail if options.tail_loss_frames is None else options.tail_loss_frames
-    return max(0, int(preroll)), max(0, int(tail)), bool(profile_rounding)
+    preroll = int(preroll)
+    tail = int(tail)
+    if preroll < 0:
+        raise ValueError("preroll_frames must be non-negative")
+    if tail < 0:
+        raise ValueError("tail_loss_frames must be non-negative")
+    return preroll, tail, bool(profile_rounding)
 
 
 def _resolve_render_frame_budget(
