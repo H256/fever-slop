@@ -16,12 +16,16 @@ import sys
 
 def load_api_key(cfg_path: pathlib.Path) -> str:
     """Load LLM API key from app_config.json."""
-    cfg = json.loads(cfg_path.read_text())
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     llm_cfg = cfg.get("llm", {})
     key = llm_cfg.get("api_key")
     if key and key not in (None, "not-needed"):
         return key
     raise SystemExit("No API key in app_config.json (llm.api_key)")
+
+
+def missing_expected_fields(payload: dict, expected_keys: list[str]) -> list[str]:
+    return [key for key in expected_keys if not payload.get(key)]
 
 
 def main():
@@ -38,7 +42,7 @@ def main():
     api_key = load_api_key(cfg_path)
 
     # Load runtime config
-    cfg = json.loads(cfg_path.read_text())
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     llm_cfg = cfg.get("llm", {})
     base_url = args.base_url or llm_cfg.get("base_url", "http://your-llm-server.local/v1")
     model = args.model or llm_cfg.get("model", "gemma4-26b-a4b")
@@ -134,7 +138,7 @@ def main():
         # base mode only expects 3 fields
         expected_keys = ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"]
 
-    missing = [k for k in expected_keys if k not in parsed]
+    missing = missing_expected_fields(parsed, expected_keys)
     print(f"\n{'✅' if not missing else '❌'} Fields present: {list(parsed.keys())}")
     if missing:
         print(f"   Missing: {missing}")

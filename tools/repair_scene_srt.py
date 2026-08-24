@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import argparse
+import os
 
 from rich.console import Console
 from rich.panel import Panel
@@ -17,6 +18,15 @@ from feverslop.pipeline.scene_duration_enforcer import (
 console = Console()
 
 
+def ensure_output_writable(output_srt):
+    output_srt = coerce_local_path(output_srt)
+    target = output_srt if output_srt.exists() else output_srt.parent
+    if not target.exists():
+        raise FileNotFoundError(f"Output directory does not exist: {output_srt.parent}")
+    if not os.access(target, os.W_OK):
+        raise PermissionError(f"Output SRT is not writable: {output_srt}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Repair beat scene SRT so every scene respects min/max duration.",
@@ -29,6 +39,7 @@ def main():
 
     input_srt = coerce_local_path(args.input_srt)
     output_srt = coerce_local_path(args.output_srt)
+    ensure_output_writable(output_srt)
     before = parse_srt_scenes(input_srt)
     output = enforce_scene_srt_file(
         input_srt=input_srt,
