@@ -673,6 +673,32 @@ class RunPipelinePathTests(unittest.TestCase):
 
 
 class RunPipelineOrchestrationTests(unittest.TestCase):
+    def test_runner_reports_each_completed_stage_through_callback(self):
+        state = Namespace(
+            comfyui_client=None,
+            plan_for_next_step=Path("plan.json"),
+            final_video_path=None,
+            video_only_path=None,
+            openshot_project_path=None,
+            timeline_project_path=None,
+        )
+        completed = []
+        runner = Mock()
+        with patch(
+            "feverslop.composition.pipeline_runner.resolve_pipeline_stages",
+            return_value=[PipelineStage.ANCHOR_FIX],
+        ), patch(
+            "feverslop.composition.pipeline_runner.build_run_state",
+            return_value=state,
+        ), patch.dict(
+            "feverslop.composition.pipeline_runner.STAGE_RUNNERS",
+            {PipelineStage.ANCHOR_FIX: runner},
+        ):
+            run_pipeline.run(Namespace(), on_stage_complete=completed.append)
+
+        runner.assert_called_once_with(state)
+        self.assertEqual(["anchor_fix"], completed)
+
     def test_selected_video_workflows_match_specialized_pipelines_and_render_modes(self):
         paths = {
             "msr_workflow": Path("msr.json"),

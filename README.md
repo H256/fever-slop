@@ -94,6 +94,22 @@ exclusion for the local `.venv` directory.
 uv run python run_pipeline.py ./projects/my-song --skip-tests
 ```
 
+For an interrupted or previously completed project, inspect the exact safe
+execution plan before changing anything, then resume it:
+
+```bash
+uv run python main.py run ./projects/my-song --dry-run
+uv run python main.py run ./projects/my-song --resume
+```
+
+The plan explains every phase/scene as `RUN`, `REUSE`, `BLOCKED`, or
+`NOT_SELECTED`. It derives reuse from canonical fingerprints, H3 checkpoints,
+prepared workflow manifests, and rendered clips. `--dry-run` is read-only;
+`--resume` executes that same minimal plan when inputs are unchanged. See
+[documentation/running.md](documentation/running.md#safe-dry-run-and-resume)
+for recovery examples. Direct `run_pipeline.py --stage ...` and `--skip-*`
+commands remain available as the advanced compatibility interface.
+
 #### Reusing audio analysis artifacts
 
 The main pipeline can reuse individual audio-analysis artifacts instead of

@@ -39,38 +39,71 @@ uv run python full_auto.py \
 
 Add `--run-video-pipeline` to continue into the normal video pipeline after audio/project creation.
 
-## Resuming a failed pipeline
+## Safe dry-run and resume
 
-When a pipeline fails mid-render (e.g., ComfyUI timeout, network interruption), the already-rendered scene files remain on disk. You can resume from the point of failure instead of re-rendering everything.
-
-**Resume rendering remaining scenes:**
+When a pipeline is interrupted or `base.json` changes, first build the immutable
+execution plan. Planning reads project artifacts but writes nothing:
 
 ```bash
-uv run python run_pipeline.py ./projects/my-song \
-  --skip-tests \
-  --skip-main-pipeline \
-  --skip-msr-reference-render \
-  --skip-msr-prompt-enrichment \
-  --stage ltx_render_scenes \
-  --stage concat_video_only \
-  --stage mux_original_audio
+uv run python main.py run ./projects/my-song --dry-run
 ```
 
-This skips all pre-processing stages and goes straight to rendering. Existing scene files are detected automatically (default `skip_existing=true`), so only missing scenes are re-rendered.
+Every phase/scene is reported as:
 
-**Render only specific scenes:**
+| Action | Meaning |
+| --- | --- |
+| `RUN` | Missing or stale work must be recomputed. |
+| `REUSE` | The artifact and its stored fingerprints still match. |
+| `BLOCKED` | Provenance is unsafe or invalid; run the displayed repair command. |
+| `NOT_SELECTED` | The scene is outside the explicit `--scenes` selection. |
 
-Use `--scenes` to target individual scene numbers (comma-separated, ranges supported):
+Execute the same minimal plan with:
 
 ```bash
-uv run python run_pipeline.py ./projects/my-song \
+uv run python main.py run ./projects/my-song --resume
+```
+
+For unchanged inputs, dry-run and resume compute the same plan. The resume
+command passes only RUN scenes to the existing pipeline and reuses valid scene
+artifacts individually. If execution fails, the summary names the last
+completed stage and prints the exact safe resume command.
+
+Restrict both planning and execution with ranges:
+
+```bash
+uv run python main.py run ./projects/my-song --dry-run --scenes 19-20
+uv run python main.py run ./projects/my-song --resume --scenes 19-20
+```
+
+Typical decisions are:
+
+- prompt-only edit: RUN projection, preparation, rendering, and assembly for
+  that scene; REUSE unrelated scenes;
+- reference-binding edit: RUN reference assets/sheets, projection,
+  preparation, rendering, and assembly for affected scenes;
+- partial H3 batch: REUSE matching judged `h3_prompt.json` checkpoints and RUN
+  only missing/stale scenes;
+- partial render: REUSE valid `final.mp4` clips and RUN missing scenes plus
+  assembly;
+- stale workflow or changed timing/resolution/template: RUN preparation before
+  rendering, so a stale prepared workflow is never submitted silently;
+- ambiguous legacy edit or malformed override: BLOCKED with `plan-migrate` or
+  `plan validate`; no pipeline stage starts.
+
+### Advanced compatibility commands
+
+Atomic stages and skip flags remain supported for diagnostics, forced reruns,
+and scripts. They are translated into the same typed plan when used through
+`main.py run`, but they deliberately bypass normal minimal-resume selection.
+For example:
+
+```bash
+uv run python main.py run ./projects/my-song --resume \
   --stage ltx_render_scenes \
   --scenes 19-20
 ```
 
-**Force re-rendering all scenes:**
-
-Add `--no-skip-existing` to ignore existing scene files and re-render everything:
+The original entry point is unchanged:
 
 ```bash
 uv run python run_pipeline.py ./projects/my-song \
@@ -78,7 +111,7 @@ uv run python run_pipeline.py ./projects/my-song \
   --no-skip-existing
 ```
 
-**Typical skip flags for resuming:**
+Compatibility skip flags include:
 
 | Flag | Skips |
 | --- | --- |
@@ -89,7 +122,8 @@ uv run python run_pipeline.py ./projects/my-song \
 | `--skip-ltx` | Entire video rendering stage |
 | `--skip-final-concat` | Concatenation and audio muxing |
 
-Combine `--skip-*` flags with `--stage` to run only the stages you need.
+Prefer the normal dry-run/resume pair unless you intentionally need an atomic
+stage or forced regeneration.
 
 ## Recovering after editing `base.json`
 
@@ -101,16 +135,14 @@ prompt, timing, resolution, seed, or relay produces an error like:
 Stale prepared workflow from output/render/plans/base.json for scene 3: workflow fingerprint changed. Run --stage ltx_prepare_workflows first.
 ```
 
-Rebuild the affected prepared workflows (optionally restrict them with
-`--scenes`):
+The normal recovery command derives the affected scenes and prerequisite stages:
 
 ```bash
-uv run python run_pipeline.py ./projects/my-song \
-  --stage ltx_prepare_workflows \
-  --scenes 3
+uv run python main.py run ./projects/my-song --dry-run
+uv run python main.py run ./projects/my-song --resume
 ```
 
-Then rerun `--stage ltx_render_scenes`. Other scenes remain resumable when
+Other scenes remain resumable when
 their own dependency fingerprints and artifacts are unchanged. A changed
 overall canonical revision does not by itself force every scene to prepare.
 
@@ -121,9 +153,8 @@ example:
 Stale derived reference binding from output/render/plans/base.json for scene 3: reference binding fingerprint changed. Run --stage ingredients_sheets first.
 ```
 
-For Ingredients run `--stage ingredients_sheets`; for MSR run
-`--stage msr_reference_sheets`. Afterwards run
-`--stage ltx_prepare_workflows`. These checks do not delete existing reference
+Normal resume selects the appropriate Ingredients or MSR reference stages and
+then preparation automatically. These checks do not delete existing reference
 media. Actor/location sheets are reused when the new binding still selects the
 same files; only a changed/missing reference asset needs regeneration.
 
@@ -210,25 +241,21 @@ attempts completed but the final verdict remained BAD; `unjudged` records a
 completed result without a judge. Console progress prints the scene, verdict,
 status, and path without printing the prompt body.
 
-After an interruption, resume H3 generation from the existing upstream prompt
-and reference artifacts with:
+After an interruption, inspect and resume H3 generation from its per-scene
+checkpoints with:
 
 ```powershell
-uv run python run_pipeline.py .\projects\my-song `
-  --video-pipeline minimax-h3-r2v `
-  --skip-tests `
-  --skip-main-pipeline `
-  --skip-msr-reference-render `
-  --skip-msr-prompt-enrichment `
-  --stage h3_prompts
+uv run python main.py run .\projects\my-song --dry-run
+uv run python main.py run .\projects\my-song --resume
 ```
 
 Only checkpoints whose complete input fingerprints still match are reused.
 A changed concept, scene direction, relay, subject directive, reference/audio
 asset, H3 guide, model, or judge configuration regenerates the affected scene.
-To regenerate only selected scenes, append `--scenes 2,5-6`. Selection forces
-fresh generation for those scenes even when their old fingerprints match;
-other scene checkpoint files are not rewritten.
+To plan only selected scenes, append `--scenes 2,5-6`. Matching checkpoints in
+the selection are still reused; use the advanced atomic stage command only
+when deliberate forced generation is required. Other scene checkpoint files
+are not rewritten.
 
 The compatibility aggregate remains at
 `output/prompts/h3_prompts_<song>.json` and is rebuilt after a successful H3

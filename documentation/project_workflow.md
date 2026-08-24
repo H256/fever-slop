@@ -73,6 +73,29 @@ Paths inside `config.json` are resolved relative to the config file.
 
 ## One-Command Runner
 
+For normal operation on an existing project, preview the safe work first and
+then resume exactly the required phases:
+
+```powershell
+uv run python main.py run ./projects/my_song --dry-run
+uv run python main.py run ./projects/my_song --resume
+```
+
+The immutable plan is computed from `base.json`, per-scene canonical
+fingerprints, H3 checkpoints, prepared workflow manifests, clips, and final
+outputs. Actions are `RUN`, `REUSE`, `BLOCKED`, and `NOT_SELECTED`; every RUN or
+BLOCKED row includes its reason. A prompt-only change remains scene-local, a
+reference/timing/resolution change expands through the required dependencies,
+and valid partial H3/render output is reused. BLOCKED legacy edits must be
+resolved with the displayed `plan-migrate`/`plan validate` command before any
+stage can start.
+
+If a real run fails, its summary records the last completed stage and prints
+the exact `main.py run ... --resume` recovery command. The plan is recalculated
+on resume, so newly completed artifacts become REUSE.
+
+### Advanced and compatibility runner
+
 Python:
 
 ```powershell
@@ -85,7 +108,7 @@ The first positional argument is the project root containing `config.json`. Pass
 uv run python run_pipeline.py ./projects/my_song/config.json
 ```
 
-The runner performs:
+The legacy/advanced runner performs:
 
 1. optional unit tests
 2. `main.py`
