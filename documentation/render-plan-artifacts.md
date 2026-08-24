@@ -103,11 +103,10 @@ legacy fallback until it is migrated:
 
 Existing edits in legacy fields and derived plans can be inspected and migrated
 with `plan-migrate`, as described below. Canonical regeneration now preserves
-overrides by stable scene identity. Supported music-video renderers now project
-those effective values at their application boundary. Automatic cache and
-prepared-workflow invalidation remains a separate migration step; rerun the
-relevant enrichment/prepare stage after editing until canonical status/resume
-planning reports freshness directly.
+overrides by stable scene identity. Supported music-video renderers project
+those effective values at their application boundary. They also project
+authoritative timing, resolution, seed, and reference-binding fields from
+`base.json`; derived reference asset paths remain cache data.
 
 ### Backend-specific effective projections
 
@@ -146,14 +145,44 @@ Every projected derived scene contains additive provenance:
     "schema": "feverslop.canonical-projection/v1",
     "scene_id": "ef679fe8-0157-5c51-af5a-b3affc61ba8a",
     "source": "output/render/plans/base.json",
-    "source_revision": "<deterministic SHA-256 of canonical scene data>"
+    "source_revision": "<deterministic SHA-256 of canonical scene data>",
+    "dependencies": {
+      "schema": "feverslop.canonical-dependencies/v1",
+      "source": "output/render/plans/base.json",
+      "source_revision": "<same canonical revision>",
+      "scene_id": "ef679fe8-0157-5c51-af5a-b3affc61ba8a",
+      "workflow_fingerprint": "<normalized per-scene SHA-256>",
+      "reference_fingerprint": "<normalized binding SHA-256>"
+    }
   }
 }
 ```
 
-This provenance identifies the canonical source revision; it does not by
-itself declare prepared workflows fresh. Freshness and explainable resume
-decisions belong to the invalidation/status steps of this milestone.
+`source_revision` identifies the complete canonical plan revision for
+diagnostics. It is not a reuse key: changing scene 1 changes the revision but
+does not invalidate scene 2. Reuse is decided by the normalized per-scene
+fingerprints. `workflow_fingerprint` covers effective prompts and relays,
+performance timing, duration/frame settings, resolution, seed, and keyframe
+inputs. `reference_fingerprint` covers actor/location and other reference
+bindings while excluding generated paths, sheet metadata, and content hashes.
+Concrete reference assets and workflow templates are checked separately by the
+scene manifest SHA-256 records.
+
+### Invalidation matrix
+
+| Change | Derived reference projection | Prepared workflow | Expensive reference media |
+| --- | --- | --- | --- |
+| Effective prompt or prompt override | Reused | Affected scene requires `ltx_prepare_workflows` | Reused |
+| Performance timing or relay | Reused | Affected scene requires `ltx_prepare_workflows` | Reused |
+| Width, height, frame/duration settings | Reused | Affected scene requires `ltx_prepare_workflows` | Reused |
+| Seed | Reused | Affected scene requires `ltx_prepare_workflows` | Reused |
+| Actor/location reference binding | Stale; rerun `msr_reference_sheets` or `ingredients_sheets` | Prepare only after enrichment | Existing media is retained and reused when the new binding points to it |
+| Referenced asset content | Binding remains valid | Manifest asset hash rejects the old workflow; rerun prepare after intentional asset replacement | Only the changed asset must be regenerated/replaced |
+| Workflow template content | Reused | Manifest template hash rejects the old workflow; rerun prepare | Reused |
+| Unrelated scene edit | Reused | Unchanged scene remains resumable | Reused |
+
+No invalidation step deletes actor/location sheets or other reference media.
+It rejects stale use and names the stage that must refresh the projection.
 
 ### Regeneration ownership and conflicts
 
@@ -235,7 +264,11 @@ Each `output/render/scenes/scene_NNNN/` directory contains:
 - `h3_prompt.json`: atomically written MiniMax H3 generation checkpoint. It is
   available as soon as that scene finishes its final judge/repair attempt; it
   is generated inspection/resume data, not a human edit target.
-- `manifest.json`: hashes the selected workflow template, projected scene, assets, seed, and render settings. Prepare uses it to decide whether cached output is still valid.
+- `manifest.json`: schema v3 records the scene-local canonical dependency
+  snapshot and hashes the selected workflow template, concrete assets, seed,
+  and render settings. V1/v2 manifests remain readable, but canonical-aware
+  rendering treats their missing dependency provenance as stale and requires
+  prepare.
 - `workflow.json`: fully patched ComfyUI API workflow. It is generated output and is overwritten by prepare.
 - `raw.mp4`: downloaded ComfyUI result before rolling-window trimming.
 - `final.mp4`: scene clip after trimming.
@@ -294,7 +327,9 @@ normal render-plan stage from the compatible aggregate.
 - Deleting `compact.json` after `anchored.json` exists is harmless.
 - Deleting `references.json` requires reference/MSR enrichment before MSR or Ingredients preparation.
 - Deleting `ingredients.json` requires the Ingredients sheet stage before Ingredients preparation.
-- Changes to the projected scene or selected workflow invalidate its prepared manifest and require prepare before render.
+- Changes to a scene-local workflow dependency or selected workflow invalidate
+  only that prepared scene. A complete plan revision alone does not invalidate
+  unchanged scenes.
 
 Generated project outputs are local artifacts and must not be committed.
 

@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 from feverslop.domain.canonical_render_plan import (
@@ -14,8 +15,72 @@ from feverslop.domain.canonical_render_plan import (
 from feverslop.errors import FeverSlopDataError
 
 PROJECTION_SCHEMA = "feverslop.canonical-projection/v1"
+DEPENDENCY_SCHEMA = "feverslop.canonical-dependencies/v1"
 CANONICAL_SOURCE = "output/render/plans/base.json"
 _MISSING = object()
+
+_OPERATIONAL_FIELDS = (
+    "scene",
+    "fps",
+    "frame_count",
+    "render_frame_count",
+    "trim_front_frames",
+    "width",
+    "height",
+    "duration",
+    "duration_seconds",
+    "seed",
+)
+_WORKFLOW_FIELDS = ("z_image", "ltx", "h3", "performance_timing", "keyframes")
+
+
+@dataclass(frozen=True)
+class CanonicalSceneDependencies:
+    schema: str
+    source: str
+    source_revision: str
+    scene_id: str
+    workflow_fingerprint: str
+    reference_fingerprint: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "schema": self.schema,
+            "source": self.source,
+            "source_revision": self.source_revision,
+            "scene_id": self.scene_id,
+            "workflow_fingerprint": self.workflow_fingerprint,
+            "reference_fingerprint": self.reference_fingerprint,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> CanonicalSceneDependencies:
+        if payload.get("schema") != DEPENDENCY_SCHEMA:
+            raise FeverSlopDataError(
+                f"canonical dependencies schema must be {DEPENDENCY_SCHEMA!r}",
+            )
+        values = {
+            field: str(payload.get(field) or "")
+            for field in (
+                "source",
+                "source_revision",
+                "scene_id",
+                "workflow_fingerprint",
+                "reference_fingerprint",
+            )
+        }
+        for field, value in values.items():
+            if not value:
+                raise FeverSlopDataError(
+                    f"canonical dependencies {field} must not be empty",
+                )
+        for field in ("source_revision", "workflow_fingerprint", "reference_fingerprint"):
+            value = values[field]
+            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+                raise FeverSlopDataError(
+                    f"canonical dependencies {field} must be a SHA-256 hex digest",
+                )
+        return cls(schema=DEPENDENCY_SCHEMA, **values)
 
 _ROLE_PATHS: tuple[tuple[PromptRole, tuple[str, ...]], ...] = (
     (PromptRole.Z_IMAGE, ("z_image", "prompt")),
@@ -37,8 +102,12 @@ def canonical_plan_revision(scenes: Sequence[Mapping[str, Any]]) -> str:
     for scene in scenes:
         canonical = scene.get("canonical")
         if isinstance(canonical, Mapping):
-            canonical_scenes.append(deepcopy(dict(canonical)))
-    canonical_scenes.sort(key=lambda item: str(item.get("scene_id") or ""))
+            authoritative = deepcopy(dict(scene))
+            authoritative.pop("canonical_projection", None)
+            canonical_scenes.append(authoritative)
+    canonical_scenes.sort(
+        key=lambda item: str((item.get("canonical") or {}).get("scene_id") or ""),
+    )
     payload = json.dumps(
         canonical_scenes,
         ensure_ascii=False,
@@ -46,6 +115,51 @@ def canonical_plan_revision(scenes: Sequence[Mapping[str, Any]]) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def canonical_scene_dependencies(
+    scene: Mapping[str, Any],
+    *,
+    canonical_scene: Mapping[str, Any] | None = None,
+    source_revision: str | None = None,
+) -> CanonicalSceneDependencies:
+    source = canonical_scene or scene
+    canonical = source.get("canonical")
+    if not isinstance(canonical, Mapping):
+        raise FeverSlopDataError("canonical scene dependencies require canonical metadata")
+    scene_id = str(canonical.get("scene_id") or "")
+    if not scene_id:
+        raise FeverSlopDataError("canonical scene dependencies require canonical.scene_id")
+
+    workflow_payload: dict[str, Any] = {}
+    for field in _OPERATIONAL_FIELDS:
+        if field in source:
+            workflow_payload[field] = deepcopy(source[field])
+        elif field in scene:
+            workflow_payload[field] = deepcopy(scene[field])
+    for field in _WORKFLOW_FIELDS:
+        if field in scene:
+            workflow_payload[field] = deepcopy(scene[field])
+    ingredients = scene.get("ingredients")
+    if isinstance(ingredients, Mapping):
+        prompt_fields = {
+            str(key): deepcopy(value)
+            for key, value in ingredients.items()
+            if "prompt" in str(key) or "relay" in str(key)
+        }
+        if prompt_fields:
+            workflow_payload["ingredients"] = prompt_fields
+
+    reference_payload = _reference_dependency_payload(source.get("references"))
+    revision = source_revision or canonical_plan_revision([source])
+    return CanonicalSceneDependencies(
+        schema=DEPENDENCY_SCHEMA,
+        source=CANONICAL_SOURCE,
+        source_revision=revision,
+        scene_id=scene_id,
+        workflow_fingerprint=_fingerprint(workflow_payload),
+        reference_fingerprint=_fingerprint(reference_payload),
+    )
 
 
 def project_effective_plan(
@@ -84,6 +198,24 @@ def project_effective_scene(
         return projected
 
     projected["canonical"] = deepcopy(dict(canonical))
+    for field in _OPERATIONAL_FIELDS:
+        if field in source:
+            projected[field] = deepcopy(source[field])
+    source_references = source.get("references")
+    if isinstance(source_references, Mapping):
+        existing_references = projected.get("references")
+        merged_references = (
+            deepcopy(dict(existing_references))
+            if isinstance(existing_references, Mapping)
+            else {}
+        )
+        for key in list(merged_references):
+            if not _is_derived_reference_key(key):
+                merged_references.pop(key)
+        merged_references.update(
+            deepcopy(dict(_reference_dependency_payload(source_references))),
+        )
+        projected["references"] = merged_references
     for role, path in _ROLE_PATHS:
         if not _has_role(source, role):
             continue
@@ -113,6 +245,11 @@ def project_effective_scene(
         "scene_id": str(canonical["scene_id"]),
         "source": CANONICAL_SOURCE,
         "source_revision": revision,
+        "dependencies": canonical_scene_dependencies(
+            projected,
+            canonical_scene=source,
+            source_revision=revision,
+        ).to_dict(),
     }
     return projected
 
@@ -172,3 +309,33 @@ def _set(target: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
             current[key] = child
         current = child
     current[path[-1]] = deepcopy(value)
+
+
+def _reference_dependency_payload(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _reference_dependency_payload(item)
+            for key, item in value.items()
+            if not _is_derived_reference_key(key)
+        }
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_reference_dependency_payload(item) for item in value]
+    return deepcopy(value)
+
+
+def _is_derived_reference_key(key: Any) -> bool:
+    normalized = str(key).lower()
+    return any(
+        marker in normalized
+        for marker in ("path", "sha", "sheet", "anchor")
+    )
+
+
+def _fingerprint(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()

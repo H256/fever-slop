@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.prepared_workflow import (
     PreparedSceneWorkflow,
     SceneWorkflowManifest,
@@ -16,6 +17,18 @@ from feverslop.domain.visual_consistency import (
 
 SCHEMA_V1 = "feverslop.scene-workflow/v1"
 SCHEMA_V2 = "feverslop.scene-workflow/v2"
+SCHEMA_V3 = "feverslop.scene-workflow/v3"
+
+
+def _dependencies(*, workflow: str = "d", references: str = "e") -> CanonicalSceneDependencies:
+    return CanonicalSceneDependencies(
+        schema="feverslop.canonical-dependencies/v1",
+        source="output/render/plans/base.json",
+        source_revision="c" * 64,
+        scene_id="scene-id-1",
+        workflow_fingerprint=workflow * 64,
+        reference_fingerprint=references * 64,
+    )
 
 
 class PreparedWorkflowManifestTests(unittest.TestCase):
@@ -98,7 +111,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             manifest.write(path)
             payload = json.loads(path.read_text(encoding="utf-8"))
 
-            self.assertEqual(SCHEMA_V2, payload["schema"])
+            self.assertEqual(SCHEMA_V3, payload["schema"])
             self.assertEqual("output/render/scenes/scene_0005/workflow.json", payload["workflow"]["path"])
             self.assertEqual(sha256_file(workflow), payload["workflow"]["sha256"])
             self.assertNotIn("external", payload["template"])
@@ -146,7 +159,7 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
             manifest.write(path)
 
             restored = SceneWorkflowManifest.read(path)
-            self.assertEqual(SCHEMA_V2, restored.schema)
+            self.assertEqual(SCHEMA_V3, restored.schema)
             self.assertEqual(contract, restored.consistency)
             self.assertEqual(contract.to_dict(), json.loads(path.read_text())["consistency"])
             self.assertEqual([], restored.verify(project))
@@ -188,6 +201,67 @@ class PreparedWorkflowManifestTests(unittest.TestCase):
 
             self.assertEqual(SCHEMA_V1, restored.schema)
             self.assertIsNone(restored.consistency)
+
+    def test_v3_round_trip_records_canonical_scene_dependencies(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            workflow = project / "workflow.json"
+            template = project / "template.json"
+            plan = project / "plan.json"
+            for path in (workflow, template, plan):
+                path.write_text("{}", encoding="utf-8")
+
+            manifest = SceneWorkflowManifest.create(
+                project_dir=project,
+                scene=1,
+                pipeline="ltx_i2v",
+                workflow_path=workflow,
+                template_path=template,
+                render_plan_path=plan,
+                assets=[],
+                seed=1,
+                fps=24,
+                frame_count=25,
+                width=1280,
+                height=704,
+                canonical_dependencies=_dependencies(),
+            )
+
+            restored = SceneWorkflowManifest.from_dict(manifest.to_dict())
+
+            self.assertEqual(SCHEMA_V3, restored.schema)
+            self.assertEqual(_dependencies(), restored.canonical_dependencies)
+
+    def test_dependency_comparison_is_scene_local_and_ignores_plan_revision(self):
+        stored = _dependencies()
+        current = CanonicalSceneDependencies(
+            schema=stored.schema,
+            source=stored.source,
+            source_revision="f" * 64,
+            scene_id=stored.scene_id,
+            workflow_fingerprint=stored.workflow_fingerprint,
+            reference_fingerprint=stored.reference_fingerprint,
+        )
+        manifest = SceneWorkflowManifest.__new__(SceneWorkflowManifest)
+        object.__setattr__(manifest, "canonical_dependencies", stored)
+
+        self.assertEqual([], manifest.compare_canonical_dependencies(current))
+
+    def test_dependency_comparison_reports_workflow_reference_and_legacy_provenance(self):
+        stored = _dependencies()
+        current = _dependencies(workflow="a", references="b")
+        manifest = SceneWorkflowManifest.__new__(SceneWorkflowManifest)
+        object.__setattr__(manifest, "canonical_dependencies", stored)
+
+        self.assertEqual(
+            ["workflow fingerprint changed", "reference fingerprint changed"],
+            manifest.compare_canonical_dependencies(current),
+        )
+        object.__setattr__(manifest, "canonical_dependencies", None)
+        self.assertEqual(
+            ["canonical dependency provenance is missing"],
+            manifest.compare_canonical_dependencies(current),
+        )
 
     def test_verify_rejects_contract_asset_role_and_hash_mismatch(self):
         with tempfile.TemporaryDirectory() as temp_dir:

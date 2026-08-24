@@ -29,7 +29,10 @@ from feverslop.adapters.project_visual_consistency import (
 from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
-from feverslop.application.effective_render_plan import project_effective_plan
+from feverslop.application.effective_render_plan import (
+    CanonicalSceneDependencies,
+    project_effective_plan,
+)
 from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
 from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.mlt_exporter import export_render_plan_to_mlt
@@ -886,9 +889,71 @@ def _all_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
         if canonical_path is not None
         else None
     )
-    payload = project_effective_plan(payload, canonical_payload)
-    validate_scene_sequence(payload)
-    return RenderPlan.from_dicts(payload).scenes
+    projected = project_effective_plan(payload, canonical_payload)
+    _require_fresh_reference_projections(state, payload, projected)
+    validate_scene_sequence(projected)
+    return RenderPlan.from_dicts(projected).scenes
+
+
+def _canonical_dependencies_from_scene(
+    scene: dict,
+) -> CanonicalSceneDependencies | None:
+    projection = scene.get("canonical_projection")
+    dependencies = (
+        projection.get("dependencies")
+        if isinstance(projection, dict)
+        else None
+    )
+    if not isinstance(dependencies, dict):
+        return None
+    return CanonicalSceneDependencies.from_dict(dependencies)
+
+
+def _require_fresh_reference_projections(
+    state: PipelineRunState,
+    stored_scenes: list[dict],
+    current_scenes: list[dict],
+) -> None:
+    for stored, current in zip(stored_scenes, current_scenes, strict=True):
+        previous = _canonical_dependencies_from_scene(stored)
+        expected = _canonical_dependencies_from_scene(current)
+        if (
+            previous is None
+            or expected is None
+            or previous.reference_fingerprint == expected.reference_fingerprint
+        ):
+            continue
+        scene_number = int(current.get("scene") or stored.get("scene") or 0)
+        required_stage = (
+            "ingredients_sheets"
+            if state.args.video_pipeline == "ltx_ingredients"
+            else "msr_reference_sheets"
+        )
+        raise ValueError(
+            "Stale derived reference binding from "
+            f"{expected.source} for scene {scene_number}: reference binding "
+            f"fingerprint changed. Run --stage {required_stage} first.",
+        )
+
+
+def _prepared_scene_is_fresh(
+    state: PipelineRunState,
+    scene_number: int,
+    canonical_dependencies: CanonicalSceneDependencies,
+) -> bool:
+    workflow_path = state.context.artifact_layout.scene_workflow(scene_number)
+    manifest_path = state.context.artifact_layout.scene_manifest(scene_number)
+    if not workflow_path.is_file() or not manifest_path.is_file():
+        return False
+    try:
+        manifest = SceneWorkflowManifest.read(manifest_path)
+    except (OSError, KeyError, TypeError, ValueError):
+        return False
+    return (
+        manifest.pipeline == state.args.video_pipeline
+        and not manifest.compare_canonical_dependencies(canonical_dependencies)
+        and not manifest.verify(state.context.project_config_dir)
+    )
 
 
 def _canonical_plan_path(state: PipelineRunState) -> Path | None:
@@ -1023,12 +1088,29 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
                     f"{render_scene.scene_number} (awaiting predecessor handoff)",
                 )
                 continue
+            canonical_dependencies = _canonical_dependencies_from_scene(
+                render_scene.to_dict(),
+            )
+            if (
+                canonical_dependencies is not None
+                and _prepared_scene_is_fresh(
+                    state,
+                    render_scene.scene_number,
+                    canonical_dependencies,
+                )
+            ):
+                console.print(
+                    f"Reused prepared scene {completed}/{total}: "
+                    f"{render_scene.scene_number}",
+                )
+                continue
             materializer.prepare(WorkflowMaterializationRequest(
                 scene=render_scene.to_dict(),
                 prompt=render_scene.video_prompt,
                 audio_file=state.context.input_audio,
                 render_plan_path=state.plan_for_next_step,
                 pipeline=state.args.video_pipeline,
+                canonical_dependencies=canonical_dependencies,
             ))
             console.print(f"Prepared scene {completed}/{total}: {render_scene.scene_number}")
     except Exception:
@@ -1567,9 +1649,22 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                                     audio_file=state.context.input_audio,
                                     render_plan_path=state.plan_for_next_step,
                                     pipeline=state.args.video_pipeline,
+                                    canonical_dependencies=_canonical_dependencies_from_scene(
+                                        render_scene.to_dict(),
+                                    ),
                                 ),
                             )
-                        final_path = renderer.render(workflow)
+                        canonical_dependencies = _canonical_dependencies_from_scene(
+                            render_scene.to_dict(),
+                        )
+                        final_path = (
+                            renderer.render(workflow)
+                            if canonical_dependencies is None
+                            else renderer.render(
+                                workflow,
+                                canonical_dependencies=canonical_dependencies,
+                            )
+                        )
                     finally:
                         backend.randomize_seed = original_randomize_seed
                     rendered_this_run.add(scene.scene_number)
@@ -1604,6 +1699,14 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                         else:
                             dirty_marker.unlink(missing_ok=True)
                 else:
+                    canonical_dependencies = _canonical_dependencies_from_scene(
+                        scene.to_dict(),
+                    )
+                    if canonical_dependencies is not None:
+                        renderer.verify_canonical_dependencies(
+                            workflow,
+                            canonical_dependencies,
+                        )
                     manifest = SceneWorkflowManifest.read(state.context.artifact_layout.scene_manifest(scene.scene_number))
                     if manifest.pipeline != state.args.video_pipeline:
                         raise ValueError(
