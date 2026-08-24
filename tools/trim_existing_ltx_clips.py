@@ -9,24 +9,9 @@ from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.path_utils import coerce_local_path
 from feverslop.utils.rich_progress import build_progress
+from feverslop.utils.render_plan_selection import parse_scene_list
 
 console = Console()
-
-
-def parse_scene_list(value: str | None) -> set[int] | None:
-    if not value:
-        return None
-    result = set()
-    for part in value.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "-" in part:
-            a, b = part.split("-", 1)
-            result.update(range(int(a), int(b) + 1))
-        else:
-            result.add(int(part))
-    return result
 
 
 def main():

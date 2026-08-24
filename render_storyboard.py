@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
@@ -13,6 +11,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.utils.rich_progress import build_progress
+from feverslop.utils.render_plan_selection import load_render_plan_subset, parse_scene_list
 
 console = Console()
 
@@ -38,37 +37,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-title", default="#SAVE_IMAGE")
     parser.add_argument("--character-lora-title", default="#LORA_1")
     return parser
-
-
-def parse_scene_list(value: str | None) -> set[int] | None:
-    if not value:
-        return None
-
-    result = set()
-
-    for part in value.split(","):
-        part = part.strip()
-        if not part:
-            continue
-
-        if "-" in part:
-            start_raw, end_raw = part.split("-", 1)
-            start = int(start_raw)
-            end = int(end_raw)
-            result.update(range(start, end + 1))
-        else:
-            result.add(int(part))
-
-    return result
-
-
-def load_render_plan_subset(render_plan_path: str | Path, scene_numbers: set[int] | None, limit: int | None) -> list[dict]:
-    render_plan = json.loads(coerce_local_path(render_plan_path).read_text(encoding="utf-8"))
-    if scene_numbers is not None:
-        render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
-    if limit is not None:
-        render_plan = render_plan[:limit]
-    return render_plan
 
 
 def main():
