@@ -68,6 +68,37 @@ command passes only RUN scenes to the existing pipeline and reuses valid scene
 artifacts individually. If execution fails, the summary names the last
 completed stage and prints the exact safe resume command.
 
+### Manual VRAM handoff on a shared GPU
+
+If the LLM and ComfyUI cannot remain loaded together, set the machine-local
+`app_config.json` policy once:
+
+```json
+{
+  "execution": {
+    "vram_handoff": "manual"
+  }
+}
+```
+
+Dry-run still shows the complete artifact plan, plus the next resource phase.
+Resume executes only that phase and exits before ownership changes. Follow the
+printed instruction to unload the current service, load the next one, and run
+the identical command again:
+
+```bash
+uv run python main.py run PROJECT --resume
+```
+
+LLM-owned stages include main/H3 prompting, MSR prompt enrichment, and
+Ingredients sheet analysis. ComfyUI-owned stages include reference,
+storyboard, workflow preparation, video, FaceFix, and upscale work. Workflow
+preparation is ComfyUI-owned because it queries the live backend and uploads
+assets even though it does not render. CPU-only synchronization, reference
+binding, and assembly stages remain attached to a neighboring phase. The
+default `continuous` mode preserves the previous uninterrupted behavior.
+Advanced compatibility `--stage` commands are not partitioned.
+
 Restrict both planning and execution with ranges:
 
 ```bash

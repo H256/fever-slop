@@ -9,6 +9,56 @@ from unittest.mock import patch
 
 
 class AppConfigTests(unittest.TestCase):
+    def test_execution_config_does_not_change_existing_positional_arguments(self):
+        from feverslop.config.app_config import AppConfig, ComfyUIConfig, LLMConfig
+
+        library = Path("legacy-library")
+        config = AppConfig(LLMConfig(), ComfyUIConfig(), library)
+
+        self.assertEqual(library, config.global_library_path)
+
+    def test_vram_handoff_defaults_to_continuous(self):
+        from feverslop.config.app_config import AppConfig, VramHandoffMode
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text("{}", encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+
+        self.assertIs(VramHandoffMode.CONTINUOUS, config.execution.vram_handoff)
+
+    def test_loads_manual_vram_handoff(self):
+        from feverslop.config.app_config import AppConfig, VramHandoffMode
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"execution": {"vram_handoff": "manual"}}',
+                encoding="utf-8",
+            )
+
+            config = AppConfig.load(config_path)
+
+        self.assertIs(VramHandoffMode.MANUAL, config.execution.vram_handoff)
+
+    def test_rejects_invalid_vram_handoff(self):
+        from feverslop.config.app_config import AppConfig
+
+        for value in ("automatic", 1, None):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp_dir:
+                config_path = Path(temp_dir) / "app_config.json"
+                config_path.write_text(
+                    json.dumps({"execution": {"vram_handoff": value}}),
+                    encoding="utf-8",
+                )
+
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "execution.vram_handoff.*continuous.*manual",
+                ):
+                    AppConfig.load(config_path)
+
     def test_global_model_remains_fallback_for_optional_task_profiles(self):
         from feverslop.config.app_config import AppConfig
 

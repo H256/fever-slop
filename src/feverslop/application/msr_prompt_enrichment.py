@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -21,6 +22,30 @@ from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.utils.io import atomic_write_json
 
 logger = logging.getLogger(__name__)
+
+
+def msr_prompt_input_fingerprint(scene: dict) -> str:
+    """Fingerprint MSR prompt inputs without depending on generated MSR output."""
+    payload = deepcopy(scene)
+    payload.pop("canonical", None)
+    payload.pop("canonical_projection", None)
+    payload.pop("stage_provenance", None)
+    ltx = payload.get("ltx")
+    if isinstance(ltx, dict):
+        for key in (
+            "msr_global_prompt",
+            "msr_preroll_prompt",
+            "msr_tail_prompt",
+            "msr_prompt_relay",
+        ):
+            ltx.pop(key, None)
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def enrich_render_plan_with_msr_prompts(
@@ -49,12 +74,16 @@ def enrich_render_plan_with_msr_prompts(
     enriched = []
     total = len(render_plan)
     for index, scene in enumerate(render_plan, start=1):
+        input_fingerprint = msr_prompt_input_fingerprint(scene)
         enriched_scene = enrich_scene_with_msr_prompts(
             scene,
             llm=llm,
             project_base=_reference_base(render_plan_path, scene),
             on_analysis_status=on_analysis_status,
         )
+        enriched_scene.setdefault("stage_provenance", {})["msr_prompt_enrich"] = {
+            "input_fingerprint": input_fingerprint,
+        }
         enriched.append(enriched_scene)
         if on_scene_complete is not None:
             on_scene_complete(int(scene.get("scene", index)), index, total)

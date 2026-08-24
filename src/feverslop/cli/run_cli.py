@@ -11,12 +11,15 @@ from rich.table import Table
 from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS
 from feverslop.composition.resume_plan import build_compatibility_plan, build_resume_plan
 from feverslop.composition.arg_parser import PUBLIC_PIPELINE_STAGES
+from feverslop.composition.config_loader import resolve_runner_path
 from feverslop.composition.pipeline_runner import run as pipeline_run
 from feverslop.composition.project_render_settings import (
     resolve_project_render_settings,
 )
 from feverslop.composition.stage_runners import resolve_pipeline_stages
+from feverslop.config.app_config import AppConfig, VramHandoffMode
 from feverslop.domain.execution_plan import ExecutionPlan, PlanAction
+from feverslop.domain.resource_phase import ResourcePhase, StageResource, select_first_resource_phase
 from feverslop.errors import FeverSlopError
 from feverslop.tools.storyboard_page import parse_scene_list
 
@@ -55,12 +58,22 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
     try:
         args.project_root = str(project)
         args.project_config = str(project / "config.json")
+        requested_app_config = args.app_config
+        requested_video_pipeline = args.video_pipeline
+        args.app_config = args.app_config or _runner_default("app_config")
+        resume_command = _resume_command(
+            project,
+            app_config=requested_app_config,
+            scenes=args.scenes,
+            video_pipeline=requested_video_pipeline,
+        )
         explicit_runner_options = {
             name
             for name, _flags, _kwargs in RUNNER_ARGUMENTS
             if getattr(args, name, None) is not None
         }
         compatibility = _uses_compatibility_inputs(args)
+        app_config = AppConfig.load(resolve_runner_path(args.app_config))
         args.video_pipeline = args.video_pipeline or _configured_pipeline(project)
         resolved = resolve_project_render_settings(
             project,
@@ -91,6 +104,9 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
         _render_plan(plan, output)
         if plan.blocked:
             return 2
+        manual_phase = _manual_phase(plan, app_config, compatibility=compatibility)
+        if manual_phase is not None and manual_phase.stages:
+            _render_manual_phase_preview(manual_phase, output)
         if args.dry_run:
             output.print("[dim]Dry run: no project artifacts were changed.[/dim]")
             return 0
@@ -108,9 +124,14 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
             if plan.mode == "compatibility":
                 units = ((plan.runnable_stages, plan.runnable_scenes),)
             else:
+                runnable_stages = (
+                    manual_phase.stages
+                    if manual_phase is not None
+                    else plan.runnable_stages
+                )
                 units = tuple(
                     ((stage,), plan.runnable_scenes_for_stage(stage))
-                    for stage in plan.runnable_stages
+                    for stage in runnable_stages
                 )
             for stages, scenes in units:
                 run_args = argparse.Namespace(**vars(args))
@@ -121,8 +142,10 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
         except Exception as exc:
             output.print(f"[red]Run failed:[/red] {exc}")
             output.print(f"Last completed stage: {last_completed}")
-            output.print(f"Safe resume: {_resume_command(project)}")
+            output.print(f"Safe resume: {resume_command}")
             return 1
+        if manual_phase is not None and manual_phase.next_resource is not None:
+            _render_manual_handoff(manual_phase, output, resume_command)
         return 0
     except (FeverSlopError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         output.print(f"[red]Invalid/corrupt project:[/red] {exc}")
@@ -140,7 +163,7 @@ def _configured_pipeline(project: Path) -> str:
 def _uses_compatibility_inputs(args: argparse.Namespace) -> bool:
     if args.stages:
         return True
-    normal_options = {"scenes", "video_pipeline"}
+    normal_options = {"app_config", "scenes", "video_pipeline"}
     return any(
         name not in normal_options and getattr(args, name, None) is not None
         for name, _flags, _kwargs in RUNNER_ARGUMENTS
@@ -153,6 +176,48 @@ def _apply_runner_defaults(args: argparse.Namespace) -> None:
             setattr(args, name, kwargs["default"])
     if getattr(args, "timeline_format", None) is None:
         args.timeline_format = "openshot"
+
+
+def _runner_default(name: str):
+    return next(
+        kwargs.get("default")
+        for option_name, _flags, kwargs in RUNNER_ARGUMENTS
+        if option_name == name
+    )
+
+
+def _manual_phase(
+    plan: ExecutionPlan,
+    app_config: AppConfig,
+    *,
+    compatibility: bool,
+) -> ResourcePhase | None:
+    if compatibility or app_config.execution.vram_handoff is not VramHandoffMode.MANUAL:
+        return None
+    return select_first_resource_phase(plan.runnable_stages)
+
+
+def _render_manual_phase_preview(phase: ResourcePhase, output: Console) -> None:
+    resource = phase.resource.value if phase.resource is not None else "CPU-only"
+    output.print(f"[cyan]Next manual execution phase: {resource}[/cyan]")
+    output.print("[dim]Stages: " + ", ".join(phase.stages) + "[/dim]")
+    if phase.next_resource is not None:
+        output.print(
+            f"[yellow]Next required resource after that: {phase.next_resource.value}[/yellow]",
+        )
+
+
+def _render_manual_handoff(
+    phase: ResourcePhase,
+    output: Console,
+    resume_command: str,
+) -> None:
+    if phase.next_resource is StageResource.LLM:
+        action = "unload ComfyUI and load the LLM"
+    else:
+        action = "unload the LLM and load ComfyUI"
+    output.print(f"[yellow]Manual VRAM handoff required: {action}.[/yellow]")
+    output.print(f"Then rerun: {resume_command}")
 
 
 def _render_plan(plan: ExecutionPlan, output: Console) -> None:
@@ -168,5 +233,18 @@ def _render_plan(plan: ExecutionPlan, output: Console) -> None:
         output.print("[red]Execution blocked; no pipeline stage was started.[/red]")
 
 
-def _resume_command(project: Path) -> str:
-    return subprocess.list2cmdline(["uv", "run", "python", "main.py", "run", str(project), "--resume"])
+def _resume_command(
+    project: Path,
+    *,
+    app_config: str | None = None,
+    scenes: str | None = None,
+    video_pipeline: str | None = None,
+) -> str:
+    command = ["uv", "run", "python", "main.py", "run", str(project), "--resume"]
+    if app_config:
+        command.extend(["--app-config", app_config])
+    if scenes:
+        command.extend(["--scenes", scenes])
+    if video_pipeline:
+        command.extend(["--video-pipeline", video_pipeline])
+    return subprocess.list2cmdline(command)

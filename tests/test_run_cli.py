@@ -40,6 +40,14 @@ class RunCliTests(unittest.TestCase):
             digest.update(path.read_bytes())
         return digest.hexdigest()
 
+    def _app_config(self, handoff: str) -> Path:
+        path = self.project / "app_config.json"
+        path.write_text(
+            json.dumps({"execution": {"vram_handoff": handoff}}),
+            encoding="utf-8",
+        )
+        return path
+
     def _plan(self, *, blocked: bool = False) -> ExecutionPlan:
         action = PlanAction.BLOCKED if blocked else PlanAction.RUN
         stage = None if blocked else "ltx_render_scenes"
@@ -113,6 +121,126 @@ class RunCliTests(unittest.TestCase):
         self.assertEqual(2, len(calls))
         self.assertEqual((["msr_references"], "2"), (calls[0].args[0].stages, calls[0].args[0].scenes))
         self.assertEqual((["msr_prompt_enrich"], "1"), (calls[1].args[0].stages, calls[1].args[0].scenes))
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_manual_handoff_executes_only_first_safe_resource_phase(self, pipeline_run):
+        app_config = self._app_config("manual")
+        plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("references", PlanAction.RUN, "missing", 2, "msr_references"),
+            ExecutionPlanItem("bindings", PlanAction.RUN, "missing", 2, "msr_reference_sheets"),
+            ExecutionPlanItem("H3 prompts", PlanAction.RUN, "missing", 2, "h3_prompts"),
+            ExecutionPlanItem("render plan", PlanAction.RUN, "stale", 2, "render_plan"),
+            ExecutionPlanItem("render", PlanAction.RUN, "missing", 2, "ltx_render_scenes"),
+        ))
+
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+            exit_code = run_project_command(
+                self._args("--resume", "--app-config", str(app_config)),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(
+            [["msr_references"], ["msr_reference_sheets"]],
+            [call.args[0].stages for call in pipeline_run.call_args_list],
+        )
+        rendered = self.stream.getvalue()
+        self.assertIn("Manual VRAM handoff", rendered)
+        self.assertIn("unload ComfyUI", rendered)
+        self.assertIn("load the LLM", rendered)
+        self.assertIn("--app-config", rendered)
+        self.assertIn(str(app_config), rendered)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_manual_handoff_resume_command_preserves_explicit_pipeline(self, pipeline_run):
+        app_config = self._app_config("manual")
+        plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("prompts", PlanAction.RUN, "missing", 1, "h3_prompts"),
+            ExecutionPlanItem("render", PlanAction.RUN, "missing", 1, "ltx_render_scenes"),
+        ))
+
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+            exit_code = run_project_command(
+                self._args(
+                    "--resume",
+                    "--app-config",
+                    str(app_config),
+                    "--video-pipeline",
+                    "minimax-h3-r2v",
+                ),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("--video-pipeline minimax-h3-r2v", self.stream.getvalue())
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_manual_handoff_dry_run_shows_phase_without_execution(self, pipeline_run):
+        app_config = self._app_config("manual")
+        plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("prompts", PlanAction.RUN, "missing", 1, "h3_prompts"),
+            ExecutionPlanItem("plan", PlanAction.RUN, "stale", 1, "render_plan"),
+            ExecutionPlanItem("render", PlanAction.RUN, "missing", 1, "ltx_render_scenes"),
+        ))
+
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+            exit_code = run_project_command(
+                self._args("--dry-run", "--app-config", str(app_config)),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        pipeline_run.assert_not_called()
+        rendered = self.stream.getvalue()
+        self.assertIn("Next manual execution phase: LLM", rendered)
+        self.assertIn("Next required resource after that: ComfyUI", rendered)
+        self.assertIn("Dry run: no project artifacts were changed", rendered)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_continuous_handoff_keeps_executing_all_safe_stages(self, pipeline_run):
+        app_config = self._app_config("continuous")
+        plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("references", PlanAction.RUN, "missing", 1, "msr_references"),
+            ExecutionPlanItem("prompts", PlanAction.RUN, "missing", 1, "h3_prompts"),
+        ))
+
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+            exit_code = run_project_command(
+                self._args("--resume", "--app-config", str(app_config)),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(
+            [["msr_references"], ["h3_prompts"]],
+            [call.args[0].stages for call in pipeline_run.call_args_list],
+        )
+        self.assertNotIn("Manual VRAM handoff", self.stream.getvalue())
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_manual_handoff_does_not_slice_explicit_compatibility_stages(self, pipeline_run):
+        app_config = self._app_config("manual")
+
+        exit_code = run_project_command(
+            self._args(
+                "--resume",
+                "--app-config",
+                str(app_config),
+                "--stage",
+                "msr_references",
+                "--stage",
+                "h3_prompts",
+            ),
+            console=self.console,
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(1, pipeline_run.call_count)
+        self.assertEqual(
+            ["msr_references", "h3_prompts"],
+            pipeline_run.call_args.args[0].stages,
+        )
+        self.assertNotIn("Manual VRAM handoff", self.stream.getvalue())
 
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_blocked_plan_returns_two_without_execution(self, pipeline_run):
