@@ -92,10 +92,12 @@ uv run python main.py run PROJECT --resume
 
 LLM-owned stages include main/H3 prompting, MSR prompt enrichment, and
 Ingredients sheet analysis. ComfyUI-owned stages include reference,
-storyboard, video, FaceFix, and upscale rendering. CPU-only synchronization,
-binding, preparation, and assembly stages remain attached to a neighboring
-phase. The default `continuous` mode preserves the previous uninterrupted
-behavior. Advanced compatibility `--stage` commands are not partitioned.
+storyboard, workflow preparation, video, FaceFix, and upscale work. Workflow
+preparation is ComfyUI-owned because it queries the live backend and uploads
+assets even though it does not render. CPU-only synchronization, reference
+binding, and assembly stages remain attached to a neighboring phase. The
+default `continuous` mode preserves the previous uninterrupted behavior.
+Advanced compatibility `--stage` commands are not partitioned.
 
 Restrict both planning and execution with ranges:
 

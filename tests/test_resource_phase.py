@@ -54,7 +54,6 @@ class ResourcePhaseTests(unittest.TestCase):
         phase = select_first_resource_phase((
             "sync_project_settings",
             "render_plan",
-            "ltx_prepare_workflows",
             "concat_video_only",
         ))
 
@@ -62,7 +61,6 @@ class ResourcePhaseTests(unittest.TestCase):
             (
                 "sync_project_settings",
                 "render_plan",
-                "ltx_prepare_workflows",
                 "concat_video_only",
             ),
             phase.stages,
@@ -74,6 +72,11 @@ class ResourcePhaseTests(unittest.TestCase):
         from feverslop.domain.resource_phase import StageResource, stage_resource
 
         self.assertIs(StageResource.LLM, stage_resource("ingredients_sheets"))
+
+    def test_workflow_preparation_is_comfyui_owned(self):
+        from feverslop.domain.resource_phase import StageResource, stage_resource
+
+        self.assertIs(StageResource.COMFYUI, stage_resource("ltx_prepare_workflows"))
 
     def test_empty_stage_sequence_is_supported(self):
         from feverslop.domain.resource_phase import select_first_resource_phase

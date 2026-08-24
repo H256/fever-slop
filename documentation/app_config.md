@@ -42,17 +42,21 @@ loaded together:
 ```
 
 One invocation then executes at most one contiguous LLM or ComfyUI phase.
-Neutral work such as plan synchronization, reference binding, workflow
-preparation, and muxing stays attached to the surrounding phase. At the next
-ownership change the command exits successfully and tells the operator what to
-unload/load. After the model swap, repeat the unchanged command:
+Workflow preparation belongs to the ComfyUI phase because it contacts the live
+backend and uploads assets. Neutral work such as plan synchronization,
+reference binding, and muxing stays attached to the surrounding phase. At the
+next ownership change the command exits successfully and tells the operator
+what to unload/load. After the model swap, repeat the unchanged command:
 
 ```bash
 uv run python main.py run PROJECT --resume
 ```
 
 No cursor file is needed: the next invocation derives its position from the
-canonical artifacts and scene checkpoints. Explicit compatibility `--stage`
+canonical artifacts and scene checkpoints. MSR-derived plans record
+`stage_provenance.msr_prompt_enrich.input_fingerprint`, so a completed
+reference phase cannot be mistaken for completed prompt enrichment. Explicit
+compatibility `--stage`
 commands are intentionally not partitioned; their resource lifecycle remains
 the operator's responsibility.
 

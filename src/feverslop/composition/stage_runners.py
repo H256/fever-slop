@@ -2241,6 +2241,21 @@ def _initial_render_plan(context: PipelineRunContext, args: argparse.Namespace, 
     legacy_base = render_dir / f"render_plan_{context.song_id}.json"
     legacy_references = render_dir / f"render_plan_{context.song_id}_refs.json"
     legacy_ingredients = render_dir / f"render_plan_{context.song_id}_ingredients.json"
+    ingredients_projection_stages = {
+        PipelineStage.MSR_PROMPT_ENRICH,
+        PipelineStage.INGREDIENTS_SHEETS,
+    }
+    if (
+        args.video_pipeline == "ltx_ingredients"
+        and ingredients_projection_stages.intersection(stages)
+        and PipelineStage.MSR_REFERENCE_SHEETS not in stages
+    ):
+        existing = context.artifact_layout.find_plan(
+            context.reference_plan,
+            legacy_paths=[legacy_references],
+        )
+        if existing:
+            return existing
     if stages in ([PipelineStage.OPENSHOT_EXPORT], [PipelineStage.EXPORT_TIMELINE]):
         for plan_path, legacy_paths in (
             (context.render_plan, [legacy_base]),

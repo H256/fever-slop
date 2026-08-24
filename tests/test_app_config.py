@@ -9,6 +9,14 @@ from unittest.mock import patch
 
 
 class AppConfigTests(unittest.TestCase):
+    def test_execution_config_does_not_change_existing_positional_arguments(self):
+        from feverslop.config.app_config import AppConfig, ComfyUIConfig, LLMConfig
+
+        library = Path("legacy-library")
+        config = AppConfig(LLMConfig(), ComfyUIConfig(), library)
+
+        self.assertEqual(library, config.global_library_path)
+
     def test_vram_handoff_defaults_to_continuous(self):
         from feverslop.config.app_config import AppConfig, VramHandoffMode
 

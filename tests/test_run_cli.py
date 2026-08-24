@@ -152,6 +152,29 @@ class RunCliTests(unittest.TestCase):
         self.assertIn(str(app_config), rendered)
 
     @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_manual_handoff_resume_command_preserves_explicit_pipeline(self, pipeline_run):
+        app_config = self._app_config("manual")
+        plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("prompts", PlanAction.RUN, "missing", 1, "h3_prompts"),
+            ExecutionPlanItem("render", PlanAction.RUN, "missing", 1, "ltx_render_scenes"),
+        ))
+
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+            exit_code = run_project_command(
+                self._args(
+                    "--resume",
+                    "--app-config",
+                    str(app_config),
+                    "--video-pipeline",
+                    "minimax-h3-r2v",
+                ),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("--video-pipeline minimax-h3-r2v", self.stream.getvalue())
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
     def test_manual_handoff_dry_run_shows_phase_without_execution(self, pipeline_run):
         app_config = self._app_config("manual")
         plan = ExecutionPlan(self.project, "resume", (

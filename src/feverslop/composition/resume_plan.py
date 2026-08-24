@@ -8,6 +8,7 @@ from typing import Any
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.application.canonical_plan_migration import analyze_canonical_plan_migration
 from feverslop.application.effective_render_plan import project_effective_plan
+from feverslop.application.msr_prompt_enrichment import msr_prompt_input_fingerprint
 from feverslop.domain.canonical_render_plan import PromptRole
 from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
@@ -104,6 +105,8 @@ def _build_resume_plan(
     active_path = _active_plan(layout, video_pipeline)
     active = _read_plan(active_path) if active_path.is_file() else []
     stored_by_number = {int(scene["scene"]): scene for scene in active}
+    reference_plan = _read_plan(layout.references_plan) if layout.references_plan.is_file() else []
+    references_by_number = {int(scene["scene"]): scene for scene in reference_plan}
     items: list[ExecutionPlanItem] = []
     if desired_base != base:
         items.append(ExecutionPlanItem(
@@ -124,12 +127,24 @@ def _build_resume_plan(
         current = project_effective_plan([source], desired_base)[0]
         current_dependencies = _dependencies(current)
         changed = _dependency_changes(stored, current)
-        reference_changed = stored is None or "reference fingerprint changed" in changed
+        stored_reference = references_by_number.get(number)
+        reference_source = stored_reference or canonical_scene
+        current_reference = project_effective_plan([reference_source], desired_base)[0]
+        reference_changes = _dependency_changes(stored_reference, current_reference)
+        reference_changed = (
+            stored_reference is None
+            or "reference fingerprint changed" in reference_changes
+        )
+        msr_prompts_fresh = _msr_prompts_fresh(stored_reference, current_reference)
 
         h3_action = PlanAction.REUSE
         if video_pipeline in _H3_PIPELINES:
             h3_action, h3_reason = _h3_state(layout, canonical_scene, number)
-            if reference_changed:
+            if (
+                reference_changed
+                and video_pipeline in _REFERENCE_PIPELINES
+                and (stored_reference is not None or desired_base != base)
+            ):
                 h3_action = PlanAction.RUN
                 h3_reason = "reference generator or bindings changed"
             items.append(ExecutionPlanItem("h3 prompts", h3_action, h3_reason, number, "h3_prompts"))
@@ -162,11 +177,18 @@ def _build_resume_plan(
             if video_pipeline == "ltx_ingredients":
                 items.append(ExecutionPlanItem(
                     "MSR prompt enrichment",
-                    PlanAction.RUN if reference_changed else PlanAction.REUSE,
-                    "reference bindings changed" if reference_changed else "MSR prompts reusable",
+                    PlanAction.REUSE if msr_prompts_fresh else PlanAction.RUN,
+                    "MSR prompt input fingerprint matches" if msr_prompts_fresh else "MSR prompt inputs changed or provenance missing",
                     number,
                     "msr_prompt_enrich",
                 ))
+            elif video_pipeline == "ltx_msr":
+                projection_action = PlanAction.REUSE if msr_prompts_fresh else PlanAction.RUN
+                projection_reason = (
+                    "MSR prompt input fingerprint matches"
+                    if msr_prompts_fresh
+                    else "MSR prompt inputs changed or provenance missing"
+                )
             items.append(ExecutionPlanItem(
                 "effective projection", projection_action, projection_reason,
                 number, projection_stage,
@@ -301,6 +323,18 @@ def _dependency_changes(stored: Mapping[str, Any] | None, current: Mapping[str, 
     if before.get("workflow_fingerprint") != after.get("workflow_fingerprint"):
         changed.append("workflow fingerprint changed")
     return changed
+
+
+def _msr_prompts_fresh(
+    stored: Mapping[str, Any] | None,
+    current: Mapping[str, Any],
+) -> bool:
+    if stored is None:
+        return False
+    provenance = (stored.get("stage_provenance") or {}).get("msr_prompt_enrich")
+    if not isinstance(provenance, Mapping):
+        return False
+    return provenance.get("input_fingerprint") == msr_prompt_input_fingerprint(dict(current))
 
 
 def _projection_stage(pipeline: str) -> str | None:

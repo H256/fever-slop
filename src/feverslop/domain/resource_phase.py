@@ -20,6 +20,7 @@ _LLM_STAGES = frozenset({
 _COMFYUI_STAGES = frozenset({
     "storyboard_frames",
     "msr_references",
+    "ltx_prepare_workflows",
     "ltx_render_scenes",
     "facefix",
     "upscale",
@@ -31,7 +32,6 @@ _NEUTRAL_STAGES = frozenset({
     "msr_reference_sheets",
     "render_plan",
     "storyboard_page",
-    "ltx_prepare_workflows",
     "concat_video_only",
     "mux_original_audio",
     "diagnostic_scene_audio_concat",

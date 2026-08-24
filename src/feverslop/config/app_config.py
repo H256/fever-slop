@@ -137,7 +137,6 @@ def _check_required_keys(raw: dict, required_keys: list[str]) -> None:
 class AppConfig:
     llm: LLMConfig
     comfyui: ComfyUIConfig
-    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     global_library_path: Path = field(default_factory=lambda: (Path.home() / ".feverslop" / "library").expanduser())
     storyboard_prompt_transforms: list[StoryboardPromptTransformConfig] = field(default_factory=list)
     video_workflow_profiles: tuple[VideoWorkflowProfile, ...] = field(default_factory=tuple)
@@ -145,6 +144,7 @@ class AppConfig:
         default_factory=tuple,
         repr=False,
     )
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
 
     def resolve_video_workflow_profile(
         self,

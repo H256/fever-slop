@@ -59,11 +59,13 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
         args.project_root = str(project)
         args.project_config = str(project / "config.json")
         requested_app_config = args.app_config
+        requested_video_pipeline = args.video_pipeline
         args.app_config = args.app_config or _runner_default("app_config")
         resume_command = _resume_command(
             project,
             app_config=requested_app_config,
             scenes=args.scenes,
+            video_pipeline=requested_video_pipeline,
         )
         explicit_runner_options = {
             name
@@ -236,10 +238,13 @@ def _resume_command(
     *,
     app_config: str | None = None,
     scenes: str | None = None,
+    video_pipeline: str | None = None,
 ) -> str:
     command = ["uv", "run", "python", "main.py", "run", str(project), "--resume"]
     if app_config:
         command.extend(["--app-config", app_config])
     if scenes:
         command.extend(["--scenes", scenes])
+    if video_pipeline:
+        command.extend(["--video-pipeline", video_pipeline])
     return subprocess.list2cmdline(command)

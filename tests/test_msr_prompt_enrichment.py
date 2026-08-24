@@ -503,7 +503,14 @@ class MSRPromptEnrichmentTests(unittest.TestCase):
                 )
 
             result = json.loads(output.read_text(encoding="utf-8"))[0]
-            self.assertEqual({"scene", "references", "metadata", "ltx"}, set(result))
+            self.assertEqual(
+                {"scene", "references", "metadata", "ltx", "stage_provenance"},
+                set(result),
+            )
+            self.assertEqual(
+                64,
+                len(result["stage_provenance"]["msr_prompt_enrich"]["input_fingerprint"]),
+            )
             self.assertIn("Mara stays silent with mouth closed", result["ltx"]["msr_prompt_relay"][0]["prompt"])
 
     def test_silent_mode_rejects_singing_llm_segments(self):

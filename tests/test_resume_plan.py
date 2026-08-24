@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from feverslop.application.effective_render_plan import project_effective_plan
+from feverslop.application.msr_prompt_enrichment import msr_prompt_input_fingerprint
 from feverslop.composition.resume_plan import build_resume_plan
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
@@ -15,6 +16,7 @@ from feverslop.domain.project_render_settings import (
     ProjectRenderSettings,
     WorkflowSelection,
 )
+from feverslop.domain.resource_phase import StageResource, select_first_resource_phase
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -110,8 +112,27 @@ class ResumePlanTests(unittest.TestCase):
         self.layout.base_plan.write_text(json.dumps(base), encoding="utf-8")
         self.layout.anchored_plan.write_text(json.dumps(base), encoding="utf-8")
         derived = project_effective_plan(base, base)
+        for scene in derived:
+            scene.setdefault("stage_provenance", {})["msr_prompt_enrich"] = {
+                "input_fingerprint": msr_prompt_input_fingerprint(scene),
+            }
         self.layout.references_plan.write_text(json.dumps(derived), encoding="utf-8")
         return base
+
+    def _simulate_reference_sheets(self, base: list[dict]) -> list[dict]:
+        previous = json.loads(self.layout.references_plan.read_text(encoding="utf-8"))
+        references = project_effective_plan(previous, base)
+        self.layout.references_plan.write_text(json.dumps(references), encoding="utf-8")
+        return references
+
+    def _simulate_msr_prompt_enrichment(self, references: list[dict]) -> list[dict]:
+        enriched = json.loads(json.dumps(references))
+        for scene in enriched:
+            scene.setdefault("stage_provenance", {})["msr_prompt_enrich"] = {
+                "input_fingerprint": msr_prompt_input_fingerprint(scene),
+            }
+        self.layout.references_plan.write_text(json.dumps(enriched), encoding="utf-8")
+        return enriched
 
     def _prepare(self, scene: dict, *, pipeline: str = "ltx_msr") -> None:
         projected = project_effective_plan([scene], [scene])[0]
@@ -253,6 +274,64 @@ class ResumePlanTests(unittest.TestCase):
         stages = plan.runnable_stages
         self.assertLess(stages.index("msr_reference_sheets"), stages.index("msr_prompt_enrich"))
         self.assertLess(stages.index("msr_prompt_enrich"), stages.index("ingredients_sheets"))
+
+    def test_ltx_msr_replanning_advances_across_manual_resource_phases(self):
+        base = self._write_base_and_derived(1)
+        base[0]["references"]["location_id"] = "replacement-room"
+        self.layout.base_plan.write_text(json.dumps(base), encoding="utf-8")
+
+        first = build_resume_plan(self.project, video_pipeline="ltx_msr")
+        first_phase = select_first_resource_phase(first.runnable_stages)
+        self.assertIs(StageResource.COMFYUI, first_phase.resource)
+        self.assertEqual(("msr_references", "msr_reference_sheets"), first_phase.stages)
+
+        references = self._simulate_reference_sheets(base)
+        second = build_resume_plan(self.project, video_pipeline="ltx_msr")
+        second_phase = select_first_resource_phase(second.runnable_stages)
+        self.assertIs(StageResource.LLM, second_phase.resource)
+        self.assertEqual(("msr_prompt_enrich",), second_phase.stages)
+
+        self._simulate_msr_prompt_enrichment(references)
+        third = build_resume_plan(self.project, video_pipeline="ltx_msr")
+        third_phase = select_first_resource_phase(third.runnable_stages)
+        self.assertIs(StageResource.COMFYUI, third_phase.resource)
+        self.assertNotIn("msr_references", third.runnable_stages)
+        self.assertNotIn("msr_prompt_enrich", third.runnable_stages)
+        self.assertEqual("ltx_prepare_workflows", third_phase.stages[0])
+
+    def test_ingredients_replanning_advances_across_manual_resource_phases(self):
+        base = self._write_base_and_derived(1)
+        self.layout.ingredients_plan.write_text(
+            json.dumps(project_effective_plan(base, base)),
+            encoding="utf-8",
+        )
+        base[0]["references"]["location_id"] = "replacement-room"
+        self.layout.base_plan.write_text(json.dumps(base), encoding="utf-8")
+
+        first = build_resume_plan(self.project, video_pipeline="ltx_ingredients")
+        first_phase = select_first_resource_phase(first.runnable_stages)
+        self.assertIs(StageResource.COMFYUI, first_phase.resource)
+        self.assertEqual(("msr_references", "msr_reference_sheets"), first_phase.stages)
+
+        references = self._simulate_reference_sheets(base)
+        second = build_resume_plan(self.project, video_pipeline="ltx_ingredients")
+        second_phase = select_first_resource_phase(second.runnable_stages)
+        self.assertIs(StageResource.LLM, second_phase.resource)
+        self.assertEqual(
+            ("msr_prompt_enrich", "ingredients_sheets"),
+            second_phase.stages,
+        )
+
+        enriched = self._simulate_msr_prompt_enrichment(references)
+        ingredients = project_effective_plan(enriched, base)
+        self.layout.ingredients_plan.write_text(json.dumps(ingredients), encoding="utf-8")
+        third = build_resume_plan(self.project, video_pipeline="ltx_ingredients")
+        third_phase = select_first_resource_phase(third.runnable_stages)
+        self.assertIs(StageResource.COMFYUI, third_phase.resource)
+        self.assertNotIn("msr_references", third.runnable_stages)
+        self.assertNotIn("msr_prompt_enrich", third.runnable_stages)
+        self.assertNotIn("ingredients_sheets", third.runnable_stages)
+        self.assertEqual("ltx_prepare_workflows", third_phase.stages[0])
 
     def test_timing_and_resolution_changes_invalidate_only_changed_scene(self):
         for field, value in (("frame_count", 49), ("width", 1024), ("height", 576)):
