@@ -10,6 +10,12 @@
     "height": 704
   },
 
+  "workflows": {
+    "video": "workflows/video_ltxv_msr_1actor_1background_v4.json",
+    "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
+    "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
+  },
+
   "upscale": {
     "enabled": false,
     "workflow_path": "workflows/video_seedvr2_3b_api.json",

@@ -35,6 +35,28 @@ def _read_path(value: dict[str, Any], dotted_path: str) -> Any:
 
 
 class OverrideRegressionCorpusTests(unittest.TestCase):
+    def test_operator_docs_cover_project_render_settings_and_workflow_precedence(self):
+        root = Path(__file__).resolve().parents[1]
+        example = (root / "config.example.json").read_text(encoding="utf-8")
+        running = (root / "documentation" / "running.md").read_text(encoding="utf-8")
+        workflow = (root / "documentation" / "project_workflow.md").read_text(encoding="utf-8")
+        combined = "\n".join((example, running, workflow))
+
+        for required in (
+            '"workflows"',
+            '"video"',
+            '"reference_hero"',
+            '"reference_edit"',
+            "video_minimax_h3_r2v_eb57_8s_v1.json",
+            "CLI override",
+            "project config",
+            "resolution changed",
+            "video workflow changed",
+            "reference workflow changed",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, combined)
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.corpus = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))

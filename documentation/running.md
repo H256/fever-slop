@@ -125,6 +125,55 @@ Compatibility skip flags include:
 Prefer the normal dry-run/resume pair unless you intentionally need an atomic
 stage or forced regeneration.
 
+### Project render settings
+
+Resolution and recurring workflow choices belong in the project config. They
+are optional, so existing projects without a `workflows` object keep the
+legacy defaults:
+
+```json
+{
+  "video_pipeline": "minimax-h3-r2v",
+  "video": {
+    "fps": 24,
+    "width": 1024,
+    "height": 576
+  },
+  "workflows": {
+    "video": "workflows/video_minimax_h3_r2v_eb57_8s_v1.json",
+    "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
+    "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
+  }
+}
+```
+
+Workflow paths are repository-relative. An explicit CLI override still has
+priority over project config, and project config has priority over the legacy
+default. Existing CLI option names and invocations are unchanged.
+
+The normal commands detect these changes without additional flags:
+
+```powershell
+uv run python main.py run ./projects/my-song --dry-run
+uv run python main.py run ./projects/my-song --resume
+```
+
+The plan reports `resolution changed`, `video workflow changed`, or
+`reference workflow changed`. Resolution and video workflow changes reuse
+audio and prompts while rebuilding stale scene workflows, clips, and final
+assembly. A reference workflow change additionally refreshes reference assets,
+bindings, and reference-aware H3 prompts. Dry-run computes the canonical
+overlay in memory; only resume synchronizes it into `base.json`.
+
+Resolution and configured workflows are project-wide. If one of them changed,
+the safe CLI blocks a partial `--scenes` run instead of assembling old and new
+clips into one movie. Run the same dry-run/resume pair without `--scenes`.
+
+The `video` workflow must match `video_pipeline`. For example, the bundled
+MiniMax H3 R2V choices are the 20-step
+`workflows/video_minimax_h3_r2v_v1.json` and the 8-step Turbo
+`workflows/video_minimax_h3_r2v_eb57_8s_v1.json`.
+
 ## Recovering after editing `base.json`
 
 The CLI verifies each prepared scene against the current authoritative

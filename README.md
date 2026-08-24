@@ -73,7 +73,23 @@ audio path in `config.json`:
 }
 ```
 
-Paths in `config.json` are resolved relative to the config file.
+Input and project-media paths in `config.json` are resolved relative to the
+config file. Workflow paths below `workflows` are repository-relative.
+
+Recurring render choices can also be stored in `config.json`. For example,
+MiniMax H3 R2V can use the bundled 8-step workflow with:
+
+```json
+"workflows": {
+  "video": "workflows/video_minimax_h3_r2v_eb57_8s_v1.json",
+  "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
+  "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
+}
+```
+
+The normal dry-run detects resolution and workflow changes and explains the
+downstream work. Explicit CLI workflow flags remain available as one-off
+overrides. See [Project render settings](documentation/running.md#project-render-settings).
 
 ### 3. Preview, then run
 
@@ -332,6 +348,13 @@ Project and contributor references:
 - [Changelog](CHANGELOG.md)
 
 ## Development
+
+Python packages live under `src/feverslop`; tests live under `tests`.
+Composition code stays separate from adapters such as
+`feverslop.adapters.comfyui_video_backend`; see the architecture documentation
+for compatibility boundaries. The legacy
+`feverslop.composition.generate_render_plan` import remains available for
+existing integrations.
 
 ```bash
 ruff check .
