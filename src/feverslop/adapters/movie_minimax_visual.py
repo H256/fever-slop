@@ -167,8 +167,6 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             prompt = str(h3.get("prompt") or "")
             if any(section not in prompt for section in required):
                 return False
-            if "Reference files:" in prompt or "Continuity anchors" in prompt:
-                return False
         return True
 
     def _prepare_render_plan(
