@@ -23,6 +23,8 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     build_dspy_generator,
 )
 
+H3_PROMPT_PLAN_VERSION = "h3-prompt-sections-v1"
+
 
 class ComfyUIMiniMaxMovieVisualAdapter:
     """Render and concatenate Movie scenes through a MiniMax H3 pipeline."""
@@ -160,10 +162,10 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             h3 = scene.get("h3")
             if not isinstance(h3, dict):
                 return False
+            if h3.get("schema_version") not in {None, H3_PROMPT_PLAN_VERSION}:
+                return False
             prompt = str(h3.get("prompt") or "")
             if any(section not in prompt for section in required):
-                return False
-            if "Reference files:" in prompt or "Continuity anchors" in prompt:
                 return False
         return True
 
@@ -196,6 +198,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
                 raise ValueError(f"Movie scene {scene['scene']} is missing actor MSR references")
             scene["h3"] = {
                 **dict(scene.get("h3") or {}),
+                "schema_version": H3_PROMPT_PLAN_VERSION,
                 "prompt": _build_movie_h3_prompt(
                     scene,
                     builder=prompt_builder,

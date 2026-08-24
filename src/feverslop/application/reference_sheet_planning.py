@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.domain.reference_sheet import (
     CompiledReferenceSheetPlan,
@@ -133,11 +133,12 @@ class DeterministicReferenceSheetPlanner:
 class ReferenceSheetPlanner:
     """DSPy planner with a deterministic fallback at the application boundary."""
 
-    def __init__(self, *, llm: Any | None = None, dspy_runtime: Any | None = None):
+    def __init__(self, *, llm: Any | None = None, dspy_runtime: Any | None = None, on_event: Callable[[dict[str, str]], None] | None = None):
         self._fallback = DeterministicReferenceSheetPlanner()
         self._modules = None
         self.source = "deterministic"
         self.fallback_reason: str | None = None
+        self.on_event = on_event
         if llm is not None:
             try:
                 from feverslop.prompting.reference_sheet_modules import (
@@ -150,23 +151,31 @@ class ReferenceSheetPlanner:
                 self.fallback_reason = "dspy_unavailable_or_initialization_failed"
 
     def plan(self, *, kind: str, description: str, asset_context: dict[str, Any]) -> ReferenceSheetPlan:
+        self._emit("planning_start", kind=kind)
         if self._modules is None:
             self.source = "deterministic_fallback"
+            self._emit("planning_fallback", kind=kind, reason=self.fallback_reason or "dspy_unavailable")
             return self._fallback.plan(kind=kind, description=description, asset_context=asset_context)
         try:
             result = self._modules.plan(kind=kind, description=description, asset_context=asset_context)
             validated = ReferenceSheetPlan.model_validate(result)
             if (
                 validated.kind.strip().lower() != kind.strip().lower()
-                or validated.view_count < 1
+                or validated.view_count != len(validated.view_labels)
                 or not validated.view_labels
             ):
                 raise ValueError("DSPy reference-sheet plan omitted required contract fields")
             self.source = "dspy"
             self.fallback_reason = None
+            self._emit("planning_complete", kind=kind)
             return validated
         except Exception as exc:
             self.source = "deterministic_fallback"
             self.fallback_reason = type(exc).__name__
+            self._emit("planning_fallback", kind=kind, reason=self.fallback_reason)
             return self._fallback.plan(kind=kind, description=description, asset_context=asset_context)
+
+    def _emit(self, phase: str, *, kind: str, reason: str = "") -> None:
+        if self.on_event is not None:
+            self.on_event({"phase": phase, "kind": kind, **({"reason": reason} if reason else {})})
     source = "deterministic"

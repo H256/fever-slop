@@ -23,6 +23,7 @@ class VideoPostProcessor:
         audio_codec: str = "aac",
         audio_bitrate: str = "192k",
         debug: bool = False,
+        ffmpeg_timeout_seconds: float = FFMPEG_TIMEOUT_SECONDS,
     ):
         self.ffmpeg_path = ffmpeg_path
         self.reencode = reencode
@@ -32,6 +33,7 @@ class VideoPostProcessor:
         self.audio_codec = audio_codec
         self.audio_bitrate = audio_bitrate
         self.debug = debug
+        self.ffmpeg_timeout_seconds = ffmpeg_timeout_seconds
 
     def trim_clip(self, spec: TrimSpec) -> Path:
         spec.output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -214,6 +216,7 @@ class VideoPostProcessor:
         reencode: bool = False,
         fps: float | None = None,
         frame_count: int | None = None,
+        timeout_seconds: float | None = None,
     ) -> Path:
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -254,7 +257,7 @@ class VideoPostProcessor:
         else:
             cmd.extend(["-c", "copy"])
         cmd.append(str(output_file))
-        self._run_ffmpeg(cmd)
+        self._run_ffmpeg(cmd, timeout_seconds=timeout_seconds)
         self._validate_video_output(output_file, 0.1, "concat_clips")
         return output_file
 
@@ -360,9 +363,10 @@ class VideoPostProcessor:
         )
         return output_file
 
-    def _run_ffmpeg(self, cmd: list[str]) -> None:
+    def _run_ffmpeg(self, cmd: list[str], *, timeout_seconds: float | None = None) -> None:
+        timeout = timeout_seconds or self.ffmpeg_timeout_seconds
         if self.debug:
-            subprocess.run(cmd, check=True, timeout=FFMPEG_TIMEOUT_SECONDS)
+            subprocess.run(cmd, check=True, timeout=timeout)
             return
         try:
             subprocess.run(
@@ -371,11 +375,11 @@ class VideoPostProcessor:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=FFMPEG_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired as exc:
             raise FeverSlopAdaptationError(
-                f"FFmpeg timed out after {FFMPEG_TIMEOUT_SECONDS}s: {' '.join(cmd)}",
+                f"FFmpeg timed out after {timeout}s: {' '.join(cmd)}",
             ) from exc
         except subprocess.CalledProcessError as exc:
             details = str(exc.stderr or "").strip()
