@@ -14,13 +14,16 @@ from feverslop.composition.config_loader import PipelineRunState, build_run_cont
 from feverslop.composition.stage_runners import (
     STAGE_RUNNERS,
     _load_continuity_dirty,
+    _all_render_scenes,
     _merge_reference_paths_into_h3_segments,
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
+    _run_storyboard_frames_stage,
     _run_visual_consistency_preflight,
     _select_h3_segments,
     resolve_pipeline_stages,
 )
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.visual_consistency import (
     PreflightMode,
     ReferenceAnchor,
@@ -30,6 +33,66 @@ from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
 class MusicPreparedWorkflowStageTests(unittest.TestCase):
+    def test_active_derived_plan_is_projected_from_current_canonical_base(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients")
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={PromptRole.INGREDIENTS_GLOBAL: "generated global"},
+            )
+            stale = json.loads(json.dumps(canonical))
+            canonical["roles"][PromptRole.INGREDIENTS_GLOBAL]["override"] = {
+                "value": "human current global",
+            }
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([{
+                "scene": 1,
+                "canonical": stale,
+                "ingredients": {"global_prompt": "stale derived global"},
+            }]), encoding="utf-8")
+            state.context.render_plan.write_text(json.dumps([{
+                "scene": 1,
+                "canonical": canonical,
+                "ingredients": {"global_prompt": "generated global"},
+            }]), encoding="utf-8")
+
+            scenes = _all_render_scenes(state)
+
+            self.assertEqual(
+                "human current global",
+                scenes[0].to_dict()["ingredients"]["global_prompt"],
+            )
+
+    def test_storyboard_stage_supplies_current_canonical_base_to_use_case(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_i2v")
+            state.args.storyboard_lora_strength = None
+            state.plan_for_next_step = state.context.anchored_plan
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps([{
+                "scene": 1,
+                "z_image": {"prompt": "stale"},
+            }]), encoding="utf-8")
+            state.context.render_plan.write_text(json.dumps([{
+                "scene": 1,
+                "z_image": {"prompt": "current"},
+            }]), encoding="utf-8")
+            use_case = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.AppConfig.load",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.build_render_storyboard_use_case",
+                return_value=use_case,
+            ):
+                _run_storyboard_frames_stage(state)
+
+            request = use_case.execute.call_args.args[0]
+            self.assertEqual(state.context.render_plan, request.canonical_plan_path)
+
     def test_h3_scene_selection_happens_before_reference_merge(self):
         selected, segments = _select_h3_segments(
             [

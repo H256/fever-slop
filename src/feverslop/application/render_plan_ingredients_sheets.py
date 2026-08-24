@@ -8,6 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.ingredients_render_plan import (
     project_ingredients_runtime_scene,
 )
@@ -45,6 +46,7 @@ def enrich_render_plan_with_ingredients_sheets(
     references_dir: str | Path,
     output_path: str | Path,
     *,
+    canonical_plan_path: str | Path | None = None,
     video_settings: Any = None,
     sheet_scale: float = 2.0,
     llm: VisionLLMPort | None = None,
@@ -65,6 +67,11 @@ def enrich_render_plan_with_ingredients_sheets(
     references_dir = Path(references_dir)
     output_path = Path(output_path)
     render_plan = json.loads(render_plan_path.read_text(encoding="utf-8-sig"))
+    if canonical_plan_path is not None:
+        canonical_plan = json.loads(
+            Path(canonical_plan_path).read_text(encoding="utf-8-sig"),
+        )
+        render_plan = project_effective_plan(render_plan, canonical_plan)
 
     actor_manifests = _load_manifests_by_id(references_dir / "actors")
     location_manifests = _load_manifests_by_id(references_dir / "locations")

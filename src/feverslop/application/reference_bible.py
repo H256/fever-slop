@@ -1087,6 +1087,7 @@ def enrich_render_plan_with_reference_sheets(
     output_path: str | Path,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
     max_scene_actors: int = 4,
+    canonical_plan_path: str | Path | None = None,
 ) -> Path:
     render_plan_path = Path(render_plan_path)
     references_dir = Path(references_dir)
@@ -1097,6 +1098,13 @@ def enrich_render_plan_with_reference_sheets(
         raise FeverSlopValidationError(f"Cannot read render plan: {render_plan_path}: {exc}") from exc
     if not isinstance(render_plan, list):
         raise FeverSlopValidationError(f"Render plan must be a JSON array: {render_plan_path}")
+    if canonical_plan_path is not None:
+        from feverslop.application.effective_render_plan import project_effective_plan
+
+        canonical_plan = json.loads(
+            Path(canonical_plan_path).read_text(encoding="utf-8-sig"),
+        )
+        render_plan = project_effective_plan(render_plan, canonical_plan)
     actor_manifests = _load_manifests_by_id(references_dir / "actors")
     location_manifests = _load_manifests_by_id(references_dir / "locations")
     project_base = _infer_reference_artifact_base_dir(references_dir)

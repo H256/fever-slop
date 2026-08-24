@@ -8,6 +8,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from feverslop.application.effective_render_plan import (
+    project_effective_plan,
+    project_effective_scene,
+)
+from feverslop.domain.canonical_render_plan import PromptRole
 from feverslop.domain.vision_references import ReferenceImage
 from feverslop.errors import FeverSlopLMLError
 from feverslop.ports.llm import LLMPort, VisionLLMPort
@@ -22,6 +27,7 @@ def enrich_render_plan_with_msr_prompts(
     render_plan_path: str | Path,
     output_path: str | Path,
     *,
+    canonical_plan_path: str | Path | None = None,
     llm: VisionLLMPort | None = None,
     on_analysis_status: Callable[[int, list[dict[str, str]]], None] | None = None,
     on_scene_complete: Callable[[int, int, int], None] | None = None,
@@ -34,6 +40,11 @@ def enrich_render_plan_with_msr_prompts(
         raise ValueError(
             f"Render plan contains invalid JSON: {render_plan_path}\n{e}",
         ) from e
+    if canonical_plan_path is not None:
+        canonical_plan = json.loads(
+            Path(canonical_plan_path).read_text(encoding="utf-8-sig"),
+        )
+        render_plan = project_effective_plan(render_plan, canonical_plan)
 
     enriched = []
     total = len(render_plan)
@@ -89,7 +100,7 @@ def enrich_scene_with_msr_prompts(
     ltx["msr_preroll_prompt"] = _build_preroll_prompt(result)
     ltx["msr_tail_prompt"] = _build_tail_prompt(result)
     if not relays:
-        return result
+        return _project_msr_effective(result)
 
     vision = _build_vision_msr_prompts(
         result,
@@ -110,7 +121,29 @@ def enrich_scene_with_msr_prompts(
         msr_relay["prompt"] = _clean_segment_prompt(prompt)
         msr_relays.append(msr_relay)
     ltx["msr_prompt_relay"] = msr_relays
-    return result
+    return _project_msr_effective(result)
+
+
+def _project_msr_effective(scene: dict) -> dict:
+    canonical = scene.get("canonical")
+    roles = canonical.get("roles") if isinstance(canonical, dict) else None
+    if isinstance(roles, dict):
+        ltx = scene.get("ltx") or {}
+        generated_values = {
+            PromptRole.LTX_MSR_GLOBAL: ltx.get("msr_global_prompt"),
+            PromptRole.LTX_MSR_RELAY: ltx.get("msr_prompt_relay"),
+        }
+        for role_name, value in generated_values.items():
+            if value in (None, "", []):
+                continue
+            role = roles.setdefault(str(role_name), {})
+            if not isinstance(role, dict):
+                continue
+            role["generated"] = {
+                "value": deepcopy(value),
+                "provenance": {"source": "msr-prompt-enrichment"},
+            }
+    return project_effective_scene(scene)
 
 
 def _build_vision_msr_prompts(

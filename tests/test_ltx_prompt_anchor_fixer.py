@@ -1,10 +1,43 @@
 ﻿import unittest
 
+from feverslop.application.effective_render_plan import canonical_plan_revision
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer
 
 
 class LTXPromptAnchorFixerTests(unittest.TestCase):
+    def test_fixed_plan_projects_override_and_records_canonical_revision(self):
+        fixer = LTXPromptAnchorFixer(subject_anchor="singer")
+        canonical = build_canonical_scene(
+            segment_id="segment-a",
+            generated_roles={
+                PromptRole.LTX_BASE: "generated base",
+                PromptRole.LTX_I2V: "generated i2v",
+                PromptRole.LTX_RELAY: [{"state": "instrumental", "prompt": "generated relay"}],
+            },
+        )
+        canonical["roles"][PromptRole.LTX_BASE]["override"] = {"value": "human anchored base"}
+        scene = {
+            "scene": 1,
+            "canonical": canonical,
+            "z_image": {"prompt": "Singer at a microphone."},
+            "ltx": {
+                "base_prompt": "generated base",
+                "i2v_prompt_from_t2i": "generated i2v",
+                "prompt_relay": [{"state": "instrumental", "prompt": "generated relay"}],
+            },
+            "metadata": {"type": "instrumental"},
+        }
+
+        fixed = fixer.fix_render_plan([scene])[0]
+
+        self.assertEqual("human anchored base", fixed["ltx"]["base_prompt"])
+        self.assertEqual("feverslop.canonical-projection/v1", fixed["canonical_projection"]["schema"])
+        self.assertEqual(
+            canonical_plan_revision([scene]),
+            fixed["canonical_projection"]["source_revision"],
+        )
+
     def test_anchor_fix_updates_generated_roles_but_preserves_override_ownership(self):
         fixer = LTXPromptAnchorFixer(subject_anchor="singer")
         relay = [{"state": "singing", "prompt": "old relay"}]

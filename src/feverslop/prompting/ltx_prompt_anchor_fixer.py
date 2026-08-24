@@ -5,6 +5,10 @@ import re
 from copy import deepcopy
 from pathlib import Path
 
+from feverslop.domain.effective_render_plan import (
+    canonical_plan_revision,
+    project_effective_plan,
+)
 from feverslop.domain.canonical_render_plan import PromptRole
 
 FORBIDDEN_RELAY_PHRASES = [
@@ -84,7 +88,11 @@ class LTXPromptAnchorFixer:
         return output_render_plan
 
     def fix_render_plan(self, render_plan: list[dict]) -> list[dict]:
-        return [self.fix_scene(scene) for scene in render_plan]
+        source_revision = canonical_plan_revision(render_plan)
+        return project_effective_plan(
+            [self.fix_scene(scene) for scene in render_plan],
+            source_revision=source_revision,
+        )
 
     def fix_scene(self, scene: dict) -> dict:
         scene = deepcopy(scene)

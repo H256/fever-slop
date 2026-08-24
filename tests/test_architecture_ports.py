@@ -1,5 +1,6 @@
 ﻿import inspect
 import io
+import copy
 import json
 import tempfile
 import unittest
@@ -26,6 +27,7 @@ from feverslop.application.render_video import (
     RenderVideoScenesUseCase,
 )
 from feverslop.config.project_config import ProjectConfig, ProjectPaths
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.render_plan import (
     PromptSet,
     RenderPlan,
@@ -266,6 +268,38 @@ class ArchitecturePortsTests(unittest.TestCase):
                 transformer.calls,
             )
 
+    def test_storyboard_use_case_projects_current_canonical_still_override(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={PromptRole.Z_IMAGE: "generated still"},
+            )
+            stale_canonical = copy.deepcopy(canonical)
+            canonical["roles"][PromptRole.Z_IMAGE]["override"] = {"value": "human still"}
+            plans = temp / "output" / "render" / "plans"
+            plans.mkdir(parents=True)
+            derived_path = plans / "anchored.json"
+            base_path = plans / "base.json"
+            derived = self._render_plan()
+            derived[0]["canonical"] = stale_canonical
+            base = self._render_plan()
+            base[0]["canonical"] = canonical
+            derived_path.write_text(json.dumps(derived), encoding="utf-8")
+            base_path.write_text(json.dumps(base), encoding="utf-8")
+            backend = FakeImageBackend()
+
+            RenderStoryboardUseCase(backend, JsonArtifactStore()).execute(
+                RenderStoryboardRequest(
+                    render_plan_path=derived_path,
+                    canonical_plan_path=base_path,
+                    workflow_path=temp / "workflow.json",
+                    output_dir=temp / "storyboard",
+                ),
+            )
+
+            self.assertEqual("human still", backend.requests[0].prompt)
+
     def test_storyboard_use_case_does_not_transform_skipped_existing_frame(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -381,6 +415,41 @@ class ArchitecturePortsTests(unittest.TestCase):
                 [("scene_0001.mp4", 1, 2), ("scene_0002.mp4", 2, 2)],
                 progress,
             )
+
+    def test_video_use_case_projects_current_canonical_i2v_override(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={PromptRole.LTX_I2V: "generated video"},
+            )
+            stale_canonical = copy.deepcopy(canonical)
+            canonical["roles"][PromptRole.LTX_I2V]["override"] = {"value": "human video"}
+            plans = temp / "output" / "render" / "plans"
+            plans.mkdir(parents=True)
+            derived_path = plans / "anchored.json"
+            base_path = plans / "base.json"
+            derived = self._render_plan()
+            derived[0]["canonical"] = stale_canonical
+            base = self._render_plan()
+            base[0]["canonical"] = canonical
+            derived_path.write_text(json.dumps(derived), encoding="utf-8")
+            base_path.write_text(json.dumps(base), encoding="utf-8")
+            backend = FakeVideoBackend()
+
+            RenderVideoScenesUseCase(backend, JsonArtifactStore()).execute(
+                RenderVideoScenesRequest(
+                    render_plan_path=derived_path,
+                    canonical_plan_path=base_path,
+                    workflow_path=temp / "workflow.json",
+                    audio_file=temp / "song.mp3",
+                    storyboard_dir=temp / "storyboard",
+                    output_dir=temp / "ltx",
+                    render_mode="single_prompt",
+                ),
+            )
+
+            self.assertEqual("human video", backend.requests[0].prompt)
 
     def test_video_use_case_prints_rich_status_when_console_is_provided(self):
         with tempfile.TemporaryDirectory() as temp_dir:

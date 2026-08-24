@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import StoryboardPromptTransformerPort
@@ -27,6 +28,7 @@ class RenderStoryboardRequest:
     character_lora_strength: float | None = None
     anchors: WorkflowAnchorConfig = WorkflowAnchorConfig()
     on_frame_complete: Callable[[Path, int, int], None] | None = None
+    canonical_plan_path: Path | None = None
 
 
 class RenderStoryboardUseCase:
@@ -43,8 +45,14 @@ class RenderStoryboardUseCase:
         self.positive_prompt_input = positive_prompt_input
 
     def execute(self, request: RenderStoryboardRequest) -> list[Path]:
+        render_plan = self.artifact_store.read_render_plan(request.render_plan_path)
+        canonical_plan = (
+            self.artifact_store.read_render_plan(request.canonical_plan_path)
+            if request.canonical_plan_path is not None
+            else None
+        )
         plan = RenderPlan.from_dicts(
-            self.artifact_store.read_render_plan(request.render_plan_path),
+            project_effective_plan(render_plan, canonical_plan),
         ).select(
             scene_numbers=request.scene_numbers,
             limit=request.limit,

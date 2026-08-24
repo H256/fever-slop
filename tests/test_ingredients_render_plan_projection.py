@@ -6,6 +6,7 @@ from copy import deepcopy
 from feverslop.application.ingredients_render_plan import (
     project_ingredients_runtime_scene,
 )
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.visual_consistency import (
     ReferenceAnchor,
     SceneConsistencyContract,
@@ -15,6 +16,47 @@ from feverslop.errors import FeverSlopValidationError
 
 
 class IngredientsRenderPlanProjectionTests(unittest.TestCase):
+    def test_projection_uses_canonical_ingredients_overrides_and_retains_provenance(self):
+        scene = self._bloated_scene()
+        canonical = build_canonical_scene(
+            segment_id="segment_006",
+            generated_roles={
+                PromptRole.INGREDIENTS_GLOBAL: "generated Ingredients global",
+                PromptRole.INGREDIENTS_RELAY: scene["ltx"]["msr_prompt_relay"],
+                PromptRole.LTX_STATIC: "generated static",
+            },
+        )
+        canonical["roles"][PromptRole.INGREDIENTS_GLOBAL]["override"] = {
+            "value": "human Ingredients global",
+        }
+        canonical["roles"][PromptRole.INGREDIENTS_RELAY]["override"] = {
+            "value": [{
+                "frame_start": 0,
+                "frame_end": 57,
+                "state": "instrumental",
+                "prompt": "human Ingredients relay",
+            }],
+        }
+        canonical["roles"][PromptRole.LTX_STATIC]["override"] = {
+            "value": "human V4 static prompt",
+        }
+        scene["canonical"] = canonical
+        scene["canonical_projection"] = {
+            "schema": "feverslop.canonical-projection/v1",
+            "scene_id": canonical["scene_id"],
+            "source": "output/render/plans/base.json",
+            "source_revision": "a" * 64,
+        }
+
+        projected = project_ingredients_runtime_scene(scene)
+
+        self.assertEqual("human Ingredients global", projected["ingredients"]["global_prompt"])
+        self.assertEqual("human Ingredients global", projected["ltx"]["base_prompt"])
+        self.assertEqual("human Ingredients relay", projected["ltx"]["prompt_relay"][0]["prompt"])
+        self.assertEqual("human V4 static prompt", projected["ltx"]["static_prompt"])
+        self.assertEqual(canonical, projected["canonical"])
+        self.assertEqual("a" * 64, projected["canonical_projection"]["source_revision"])
+
     def test_scrub_removes_only_structural_continuity_directives(self):
         self.assertEqual(
             "Silk enters the tunnel.",

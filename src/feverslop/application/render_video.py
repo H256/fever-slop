@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.adapters.reporting import ConsoleReporter
+from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.rendering import (
@@ -35,6 +36,7 @@ class RenderVideoScenesRequest:
     upload_startframes: bool = True
     anchors: WorkflowAnchorConfig = WorkflowAnchorConfig()
     on_scene_complete: Callable[[Path, int, int], None] | None = None
+    canonical_plan_path: Path | None = None
 
 
 class RenderVideoScenesUseCase:
@@ -51,8 +53,13 @@ class RenderVideoScenesUseCase:
 
     def execute(self, request: RenderVideoScenesRequest) -> list[Path]:
         render_plan_data = self.artifact_store.read_render_plan(request.render_plan_path)
+        canonical_plan_data = (
+            self.artifact_store.read_render_plan(request.canonical_plan_path)
+            if request.canonical_plan_path is not None
+            else None
+        )
         plan = RenderPlan.from_dicts(
-            render_plan_data,
+            project_effective_plan(render_plan_data, canonical_plan_data),
         ).select(
             scene_numbers=request.scene_numbers,
             limit=request.limit,
