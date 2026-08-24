@@ -53,6 +53,10 @@ class SceneArtifactLayout:
         return self.plans_dir / "anchored.json"
 
     @property
+    def legacy_migration_dir(self) -> Path:
+        return self.plans_dir / "legacy-migration"
+
+    @property
     def scenes_dir(self) -> Path:
         return self.render_dir / "scenes"
 

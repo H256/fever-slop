@@ -34,10 +34,14 @@ class GlobalLibraryAdapter:
     def _manifest_path(self, kind: AssetKind | str, asset_id: str) -> Path:
         return self._directory(kind, asset_id) / "manifest.json"
 
+    def _lock_path(self, directory: Path) -> Path:
+        relative = directory.relative_to(self.root)
+        return self.root / ".locks" / relative.parent / f"{relative.name}.lock"
+
     @contextmanager
     def _lock(self, directory: Path, *, shared: bool = False) -> Iterator[None]:
-        directory.mkdir(parents=True, exist_ok=True)
-        lock_path = directory / ".lock"
+        lock_path = self._lock_path(directory)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("a+b") as handle:
             if os.name == "nt":
                 import msvcrt
@@ -219,29 +223,19 @@ class GlobalLibraryAdapter:
                 raise FileNotFoundError(f"global asset not found: {self._kind(kind).value}/{asset_id}")
             manifest.unlink()
             for entry in sorted(directory.iterdir()):
-                if entry.name == ".lock":
-                    continue
                 if entry.is_dir():
                     shutil.rmtree(entry)
                 else:
                     entry.unlink()
-        remove_lock = False
         with self._lock(directory):
             # A concurrent create may republish a new asset while the old one was removed;
             # leave any newly published state intact.
-            if manifest.is_file() or any(entry.name != ".lock" for entry in directory.iterdir()):
+            if manifest.is_file() or any(directory.iterdir()):
                 return
-            remove_lock = True
-        # The lock handle must be closed before removing the lock file on Windows.
-        if remove_lock:
             try:
-                (directory / ".lock").unlink()
+                directory.rmdir()
             except FileNotFoundError:
-                return
-        try:
-            directory.rmdir()
-        except FileNotFoundError:
-            pass
+                pass
 
     def materialize(
         self,

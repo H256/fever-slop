@@ -5,6 +5,10 @@ import sys
 
 from rich.console import Console
 
+from feverslop.cli.canonical_plan_migration_cli import (
+    build_canonical_plan_migration_parser,
+    run_canonical_plan_migration,
+)
 from feverslop.cli.movie_cli import build_movie_arg_parser
 from feverslop.cli.revision_commands import run_rebuild_preview, run_revisions
 from feverslop.cli.revisions import build_rebuild_preview_parser, build_revisions_parser
@@ -116,6 +120,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # --- rebuild-preview subcommand ---
     build_rebuild_preview_parser(subparsers)
 
+    # --- canonical plan migration subcommand ---
+    build_canonical_plan_migration_parser(subparsers)
+
     # --- backward-compatibility: top-level render-plan args ---
     # When no subcommand is given, these top-level args are parsed and the
     # render pipeline is executed automatically.
@@ -221,6 +228,10 @@ def main() -> None:
         run_revisions(args)
     elif args.command == "rebuild-preview":
         run_rebuild_preview(args)
+    elif args.command == "plan-migrate":
+        exit_code = run_canonical_plan_migration(args, console=console)
+        if exit_code:
+            raise SystemExit(exit_code)
     elif args.project:
         # Backward compatibility: --project at top level => render pipeline.
         _run_render(args)

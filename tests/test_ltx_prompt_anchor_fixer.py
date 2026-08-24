@@ -1,9 +1,53 @@
 ﻿import unittest
 
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.prompting.ltx_prompt_anchor_fixer import LTXPromptAnchorFixer
 
 
 class LTXPromptAnchorFixerTests(unittest.TestCase):
+    def test_anchor_fix_updates_generated_roles_but_preserves_override_ownership(self):
+        fixer = LTXPromptAnchorFixer(subject_anchor="singer")
+        relay = [{"state": "singing", "prompt": "old relay"}]
+        canonical = build_canonical_scene(
+            segment_id="segment-a",
+            generated_roles={
+                PromptRole.LTX_BASE: "old base",
+                PromptRole.LTX_I2V: "old i2v",
+                PromptRole.LTX_RELAY: relay,
+                PromptRole.H3_VIDEO: "unrelated h3",
+            },
+        )
+        override = {"value": "human base", "provenance": {"source": "human"}}
+        canonical["roles"][PromptRole.LTX_BASE]["override"] = override
+        scene = {
+            "scene": 1,
+            "canonical": canonical,
+            "z_image": {"prompt": "Singer at a microphone."},
+            "ltx": {
+                "base_prompt": "old base",
+                "i2v_prompt_from_t2i": "old i2v",
+                "prompt_relay": relay,
+            },
+            "metadata": {"type": "vocals"},
+        }
+
+        fixed = fixer.fix_scene(scene)
+
+        roles = fixed["canonical"]["roles"]
+        self.assertEqual(fixed["ltx"]["base_prompt"], roles[PromptRole.LTX_BASE]["generated"]["value"])
+        self.assertEqual(fixed["ltx"]["i2v_prompt_from_t2i"], roles[PromptRole.LTX_I2V]["generated"]["value"])
+        self.assertEqual(fixed["ltx"]["prompt_relay"], roles[PromptRole.LTX_RELAY]["generated"]["value"])
+        self.assertEqual(
+            {"source": "anchor-fix"},
+            roles[PromptRole.LTX_BASE]["generated"]["provenance"],
+        )
+        self.assertEqual(override, roles[PromptRole.LTX_BASE]["override"])
+        self.assertEqual("unrelated h3", roles[PromptRole.H3_VIDEO]["generated"]["value"])
+        self.assertEqual(
+            "old base",
+            scene["canonical"]["roles"][PromptRole.LTX_BASE]["generated"]["value"],
+        )
+
     def test_fixes_single_prompt_from_startframe_prompt(self):
         fixer = LTXPromptAnchorFixer(subject_anchor="old druid shaman man")
         plan = [

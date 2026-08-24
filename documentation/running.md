@@ -129,6 +129,45 @@ Running the H3 prompt-generation stage again regenerates
 `h3_prompts_<song>.json` and can overwrite the manual changes. Save or copy
 your edited file before regenerating prompts.
 
+## Migrating edits from existing render plans
+
+Older projects may contain manual edits in `base.json` legacy fields,
+`references.json`, `ingredients.json`, or their old
+`output/render/render_plan_*.json` counterparts. Preview evidence-backed
+imports into canonical `base.json` overrides with:
+
+```bash
+uv run python main.py plan-migrate projects/my-song
+```
+
+A successful preview reports the number of `importable` values and ends with
+`Dry run complete; no files were written`. Review the listed scene identity,
+role, field, source path, and reason. Prompt bodies are deliberately not printed.
+Apply only after the preview has no `UNRESOLVED` findings:
+
+```bash
+uv run python main.py plan-migrate projects/my-song --apply
+```
+
+Application first creates a timestamped backup below
+`output/render/plans/legacy-migration/`, then atomically updates only
+`output/render/plans/base.json`. Derived plans remain untouched.
+
+A blocked example looks like this:
+
+```text
+Found 0 importable, 1 unresolved, and 0 already applied value(s).
+  UNRESOLVED | ... | z_image.prompt | conflicting candidate values
+Blocked: resolve every unresolved finding before applying.
+```
+
+The command exits with status `2` in that case. Resolve the conflicting source
+edits or the existing canonical override, rerun the dry run, and apply only when
+the evidence is unambiguous. See
+[`render-plan-artifacts.md`](render-plan-artifacts.md#migrating-existing-plan-edits)
+for supported roles, matching rules, proof limits, backup contents, and failure
+recovery.
+
 FFmpeg, ComfyUI, and the configured LLM endpoint remain external pipeline requirements. Their addresses are defined by project and application configuration.
 LLM prompt-generation calls share the process-local
 `llm.max_concurrent_requests` budget from `app_config.json`; the default is

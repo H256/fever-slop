@@ -231,6 +231,46 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
         self.assertIsNone(calls[0]["h3_prompts_json"])
 
+    def test_render_plan_pipeline_captures_regeneration_before_builder_and_injects_writer(self):
+        events = []
+
+        class Store:
+            def read_json(self, _path):
+                return [{"scene": 1}]
+
+        class Regenerator:
+            def write(self, path, scenes):
+                events.append(("write", path, scenes))
+                return Path(path)
+
+        def factory(context):
+            events.append(("capture", context["render_plan_json"]))
+            return Regenerator()
+
+        def build_render_plan(**kwargs):
+            events.append(("build", kwargs["plan_writer"]))
+            kwargs["plan_writer"](kwargs["output_json_file"], [{"scene": 1}])
+
+        context = GenerateRenderPlanContext(
+            config=SimpleNamespace(project_dir=Path("/portable/project")),
+            scene_prompts_json=Path("scene_prompts.json"),
+            ltx_prompt_relay_json=Path("relay.json"),
+            render_plan_json=Path("base.json"),
+            video_settings=SimpleNamespace(),
+            artifact_store=Store(),
+            log_step=lambda _title: None,
+            log_file=lambda _label, _path: None,
+        )
+
+        RenderPlanPipeline(
+            build_render_plan=build_render_plan,
+            regenerator_factory=factory,
+        ).execute(context)
+
+        self.assertEqual("capture", events[0][0])
+        self.assertEqual("build", events[1][0])
+        self.assertEqual("write", events[2][0])
+
     def test_use_case_accepts_pipeline_services_and_runs_them_in_order(self):
         services = [
             RecordingService("audio", {"timeline_json": "timeline.json"}),
