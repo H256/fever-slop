@@ -115,10 +115,15 @@ class SequenceReferencePipelineTests(unittest.TestCase):
                 fake_extract,
             ), patch(
                 "feverslop.application.sequence_reference_pipeline.select_orbitsheet_frames",
-                lambda paths, **_: tuple(paths[:6]),
+                lambda paths, **kwargs: tuple(paths[: kwargs["count"]]),
             ):
                 result = pipeline.generate(request)
 
+            self.assertEqual(6, result.selected_frames)
+            self.assertEqual(
+                ("prompt", "A woman with long silver hair singing intensely.", "character", 6, 124),
+                sequence_backend.calls[0],
+            )
             prompt = anchor_backend.calls[0].prompt
             self.assertIn("A woman with long silver hair, pale skin, and dark leather armor", prompt)
             self.assertNotIn("dark gothic cinematic fantasy", prompt)
@@ -176,7 +181,7 @@ class SequenceReferencePipelineTests(unittest.TestCase):
                 fake_extract,
             ), patch(
                 "feverslop.application.sequence_reference_pipeline.select_orbitsheet_frames",
-                lambda paths, **_: tuple(paths[:6]),
+                lambda paths, **kwargs: tuple(paths[: kwargs["count"]]),
             ):
                 result = pipeline.generate(request)
 
@@ -187,6 +192,10 @@ class SequenceReferencePipelineTests(unittest.TestCase):
             self.assertTrue(Path(result.sheet_path).is_file())
             self.assertEqual(1, len(anchor_backend.calls))
             self.assertEqual(1, len([call for call in sequence_backend.calls if call[0] == "render"]))
+            self.assertEqual(
+                ("prompt", "a solitary astronaut", "character", 6, 124),
+                sequence_backend.calls[0],
+            )
             self.assertNotIn("comic, bright colors, anime style", anchor_backend.calls[0].prompt)
             self.assertNotIn("comic, bright colors, anime style", sequence_backend.calls[1][2])
             self.assertEqual((1088, 1920), (anchor_backend.calls[0].width, anchor_backend.calls[0].height))
@@ -197,6 +206,7 @@ class SequenceReferencePipelineTests(unittest.TestCase):
 
     def test_location_uses_five_views(self):
         with tempfile.TemporaryDirectory() as temp:
+            output_dir = Path(temp)
             pipeline = SequenceReferencePipeline(
                 anchor_backend=FakeAnchorBackend(),
                 sequence_backend=FakeSequenceBackend(),
@@ -206,14 +216,30 @@ class SequenceReferencePipelineTests(unittest.TestCase):
                 asset_id="ship",
                 name="Ship",
                 description="a weathered ship",
-                output_dir=Path(temp),
+                output_dir=output_dir,
             )
+
+            def fake_extract(_video, frame_dir, sample_count):
+                frame_dir.mkdir(parents=True, exist_ok=True)
+                paths = []
+                for index in range(sample_count):
+                    path = frame_dir / f"frame_{index:04}.png"
+                    Image.new("RGB", (64, 36), (index * 10 % 255, 20, 40)).save(path)
+                    paths.append(path)
+                return tuple(paths)
+
             with patch(
                 "feverslop.application.sequence_reference_pipeline.extract_video_frames",
-                lambda _video, _output_dir, sample_count: (),
+                fake_extract,
+            ), patch(
+                "feverslop.application.sequence_reference_pipeline.select_orbitsheet_frames",
+                lambda paths, **kwargs: tuple(paths[: kwargs["count"]]),
             ):
-                with self.assertRaises(ValueError):
-                    pipeline.generate(request)
+                result = pipeline.generate(request)
+
+            sequence_backend = pipeline.sequence_backend
+            self.assertEqual(5, result.selected_frames)
+            self.assertEqual(("prompt", "a weathered ship", "location", 5, 124), sequence_backend.calls[0])
 
     def test_rejects_unsafe_asset_ids_without_touching_filesystem(self):
         for asset_id in ("../evil", "a/b", "/abs", "..", "has space", "x\\y"):
