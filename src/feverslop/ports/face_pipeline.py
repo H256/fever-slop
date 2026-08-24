@@ -69,7 +69,11 @@ class FaceIdentityPort(Protocol):
 
 
 class FrameSourcePort(Protocol):
-    """Reads frames from video sources."""
+    """Stateful frame source with an explicit open/read/close lifecycle.
+
+    Implementations must release decoder resources with ``close`` even when
+    frame processing fails; context-manager support is recommended.
+    """
 
     def open(self, path: Path) -> None:
         """Open a video file for reading."""
@@ -82,6 +86,12 @@ class FrameSourcePort(Protocol):
 
     def close(self) -> None:
         """Close the video file and release resources."""
+
+    def __enter__(self) -> FrameSourcePort:
+        """Enter a managed decoder session."""
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        """Release the decoder session."""
 
     @property
     def frame_count(self) -> int:

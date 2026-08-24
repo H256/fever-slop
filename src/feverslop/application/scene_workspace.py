@@ -6,11 +6,10 @@ from types import MappingProxyType
 from typing import Protocol
 
 from feverslop.application.job_contracts import JobRequest
-from feverslop.domain.scene_workspace import SceneWorkspace
+from feverslop.domain.scene_workspace import SceneLtxPromptField, SceneWorkspace
 from feverslop.ports.scene_documents import (
     SceneDocumentPort,
     SceneDocumentSnapshot,
-    SceneLtxPromptField,
     SceneMediaPort,
 )
 

@@ -89,10 +89,10 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "VideoRenderRequest": ("feverslop.ports.rendering", "VideoRenderRequest"),
     "WorkflowAnchorConfig": ("feverslop.ports.rendering", "WorkflowAnchorConfig"),
     # -- Scene-document ports (feverslop.ports.scene_documents) --
-    "SceneDocumentConflict": ("feverslop.ports.scene_documents", "SceneDocumentConflict"),
+    "SceneDocumentConflict": ("feverslop.domain.scene_workspace", "SceneDocumentConflict"),
     "SceneDocumentPort": ("feverslop.ports.scene_documents", "SceneDocumentPort"),
     "SceneDocumentSnapshot": ("feverslop.ports.scene_documents", "SceneDocumentSnapshot"),
-    "SceneLtxPromptField": ("feverslop.ports.scene_documents", "SceneLtxPromptField"),
+    "SceneLtxPromptField": ("feverslop.domain.scene_workspace", "SceneLtxPromptField"),
     "SceneMediaPort": ("feverslop.ports.scene_documents", "SceneMediaPort"),
     # -- Workflow ports (feverslop.ports.workflow) --
     "PreparedWorkflowRendererPort": ("feverslop.ports.workflow", "PreparedWorkflowRendererPort"),

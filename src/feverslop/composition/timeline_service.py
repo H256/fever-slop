@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from feverslop.adapters.project_timeline_documents import ProjectTimelineDocuments
 from feverslop.domain.timeline_editing import (
+    AffectedArtifacts,
     BeatMarker,
     EditableTimelineSegment,
     SceneBoundary,
@@ -23,7 +24,6 @@ from feverslop.domain.timeline_editing import (
     validate_scene_boundaries,
 )
 from feverslop.ports.timeline_documents import (
-    AffectedArtifacts,
     TimelineReadPort,
     TimelineWritePort,
 )
