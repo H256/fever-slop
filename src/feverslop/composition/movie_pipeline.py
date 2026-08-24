@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import shutil
 from dataclasses import dataclass, replace
@@ -106,7 +107,10 @@ class MovieStageProgressReporter:
         self.progress.update(self.task_id, completed=self.completed)
 
 
-_stage_progress: MovieStageProgressReporter | None = None
+_stage_progress: contextvars.ContextVar[MovieStageProgressReporter | None] = contextvars.ContextVar(
+    "movie_stage_progress",
+    default=None,
+)
 
 
 @dataclass(frozen=True)
@@ -143,9 +147,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
         if not getattr(args, "skip_openshot_export", False) and not getattr(args, "skip_movie_render", False):
             stage_titles.add("Movie OpenShot export")
     with MovieStageProgressReporter(stage_titles=stage_titles, console=console) as progress:
-        global _stage_progress
-        previous_progress = _stage_progress
-        _stage_progress = progress
+        progress_token = _stage_progress.set(progress)
         try:
             result = _run(args, config)
             if (
@@ -157,7 +159,7 @@ def run(args: argparse.Namespace) -> MoviePipelineResult:
                 result = replace(result, openshot_project_path=export_result.openshot_project_path)
             return result
         finally:
-            _stage_progress = previous_progress
+            _stage_progress.reset(progress_token)
 
 
 def _movie_stage_titles(config: dict[str, Any]) -> set[str]:
@@ -236,7 +238,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         if args.force_movie_bible:
             planner_backend = args.movie_planner_backend or "llm"
             _log_stage("Movie bible", f"regenerating via {planner_backend}")
-            bible_path = _regenerate_movie_bible_artifact(project_dir, planner_backend)
+            bible_path = _regenerate_movie_bible_artifact(project_dir, planner_backend, config["app_config_path"])
         elif not args.skip_movie_bible:
             _log_stage("Movie bible", "ensuring artifact")
             bible_path = _ensure_movie_bible_artifact(project_dir)
@@ -279,7 +281,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         if args.force_movie_bible:
             planner_backend = args.movie_planner_backend or "llm"
             _log_stage("Movie bible", f"regenerating via {planner_backend}")
-            bible_path = _regenerate_movie_bible_artifact(project_dir, planner_backend)
+            bible_path = _regenerate_movie_bible_artifact(project_dir, planner_backend, config["app_config_path"])
         _log_stage("Movie planning", "ensuring bible, screenplay, cards, continuity, and render plan")
         planning = _ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay, force_story_design=args.force_movie_story_design)
         bible_path = planning.bible_path
@@ -801,8 +803,9 @@ def _movie_workflow_actions(write_debug_workflows: bool) -> tuple[bool, bool]:
 
 
 def _log_stage(title: str, detail: str = "") -> None:
-    if _stage_progress is not None:
-        _stage_progress.advance(title)
+    progress = _stage_progress.get()
+    if progress is not None:
+        progress.advance(title)
     message = f"[bold cyan]{title}[/bold cyan]"
     if detail:
         message = f"{message}: {detail}"
@@ -1004,11 +1007,17 @@ def _ensure_movie_bible_artifact(project_dir):
     return ensure_movie_bible(project_dir)
 
 
-def _regenerate_movie_bible_artifact(project_dir, planner_backend):
+def _regenerate_movie_bible_artifact(project_dir, planner_backend, app_config_path="app_config.json"):
     from feverslop.application.movie_artifacts import regenerate_movie_bible
     from feverslop.composition.movie_planner import build_movie_planner
 
-    return regenerate_movie_bible(project_dir, planner=build_movie_planner({"planner_backend": planner_backend}))
+    return regenerate_movie_bible(
+        project_dir,
+        planner=build_movie_planner({
+            "planner_backend": planner_backend,
+            "app_config_path": app_config_path,
+        }),
+    )
 
 
 def _ensure_movie_story_design_artifact(project_dir, force=False):

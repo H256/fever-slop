@@ -491,7 +491,7 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
     from feverslop.config.app_config import AppConfig
     from feverslop.ports.rendering import WorkflowAnchorConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(str(movie_runtime_config(movie_config).get("app_config_path") or "app_config.json"))
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -582,7 +582,7 @@ def build_movie_visual_adapter(
     )
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(str(config.get("app_config_path") or "app_config.json"))
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -621,7 +621,7 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
     )
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(str(config.get("app_config_path") or "app_config.json"))
     client = ComfyUIClient(
         base_url=str(config.get("startframe_comfyui_base_url") or app_config.comfyui.base_url),
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -670,7 +670,7 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
     )
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(str(config.get("app_config_path") or "app_config.json"))
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
@@ -744,6 +744,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
     ingredients_default = "workflows/video_ltxv_ingredients_2stage_v6.json" if movie_video_workflow == "ingredients" else ""
     return {
+        "app_config_path": str(raw.get("app_config_path") or "app_config.json"),
         "planner_backend": planner_backend,
         "reference_backend": _movie_backend(raw.get("reference_backend"), default="comfyui", supported={"comfyui", "local"}),
         "reference_generation": _movie_backend(raw.get("reference_generation"), default="image_views", supported={"image_views", "sequence_sheet"}),

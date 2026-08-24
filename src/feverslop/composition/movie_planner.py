@@ -15,7 +15,7 @@ def build_movie_planner(config: dict[str, Any] | None = None):
     from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
     from feverslop.config.app_config import AppConfig
 
-    app_config = AppConfig.load("app_config.json")
+    app_config = AppConfig.load(str((config or {}).get("app_config_path") or "app_config.json"))
     return LLMMoviePlanner(
         OpenAICompatibleLLMClient(
             base_url=app_config.llm.base_url,

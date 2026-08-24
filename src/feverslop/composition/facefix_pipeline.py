@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,6 +62,14 @@ class FaceFixCompositionOptions:
     color_match_strength: float = 0.65
     recognition_threshold: float = 0.85
     use_crop_pipeline: bool = True
+    max_skip_rate: float = 0.5
+    ffmpeg_timeout_seconds: float = 120.0
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.ffmpeg_timeout_seconds) or self.ffmpeg_timeout_seconds <= 0:
+            raise ValueError("ffmpeg_timeout_seconds must be a finite positive number")
+        if not 0.0 <= self.max_skip_rate <= 1.0:
+            raise ValueError("max_skip_rate must be between 0 and 1")
 
 
 def build_facefix_step(
@@ -173,6 +183,13 @@ def _run_crop_facefix(
 
     reporter = ConsoleReporter(console) if console is not None else None
     results = []
+    skipped_scenes = 0
+    skip_reasons: dict[str, int] = {}
+
+    def record_skip(reason: str) -> None:
+        nonlocal skipped_scenes
+        skipped_scenes += 1
+        skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
 
     # -- Actor sheet discovery (unchanged) --
     actor_sheets = options.reference_images or []
@@ -214,6 +231,7 @@ def _run_crop_facefix(
         scene_dir = scenes_dir / f"scene_{scene_number:04d}"
         source = scene_dir / "final.mp4"
         if not source.exists():
+            record_skip("missing_source")
             if reporter:
                 reporter.message(
                     f"[yellow]WARN[/yellow] FaceFix: final.mp4 missing for scene "
@@ -232,6 +250,7 @@ def _run_crop_facefix(
 
         original_frames = _load_video_frames(source)
         if original_frames is None:
+            record_skip("unreadable_source")
             if reporter:
                 reporter.message(
                     f"[yellow]WARN[/yellow] FaceFix: cannot load frames for scene "
@@ -347,6 +366,7 @@ def _run_crop_facefix(
                 continue
 
             if not frames_list:
+                skip_reasons["no_detected_faces"] = skip_reasons.get("no_detected_faces", 0) + 1
                 continue
 
             if reporter:
@@ -396,6 +416,7 @@ def _run_crop_facefix(
                     anchor_paths.append(anchor_path)
 
             if not track_entries:
+                skip_reasons["no_tracks"] = skip_reasons.get("no_tracks", 0) + 1
                 if reporter:
                     reporter.message(
                         f"[yellow]WARN[/yellow] FaceFix scene {scene_number}/"
@@ -406,7 +427,13 @@ def _run_crop_facefix(
             # --- Encode crop MP4 ---
             crop_mp4 = facefix_dir / "face_crop.mp4"
             if not crop_mp4.exists():
-                _encode_crop_mp4(crop_frames_dir, crop_mp4, source, options.ffmpeg_path)
+                _encode_crop_mp4(
+                    crop_frames_dir,
+                    crop_mp4,
+                    source,
+                    options.ffmpeg_path,
+                    options.ffmpeg_timeout_seconds,
+                )
 
             # --- Render through ComfyUI ---
             if reporter:
@@ -468,6 +495,7 @@ def _run_crop_facefix(
                 final_facefix,
                 source,
                 options.ffmpeg_path,
+                options.ffmpeg_timeout_seconds,
             )
             results.append(final_facefix)
 
@@ -476,11 +504,35 @@ def _run_crop_facefix(
                     f"[green]OK[/green] FaceFix scene {scene_number}: {final_facefix}",
                 )
         else:
+            record_skip("no_facefix_output")
             import shutil
 
             shutil.copy2(source, final_facefix)
             results.append(final_facefix)
 
+    total_scenes = len(scene_numbers)
+    skip_rate = skipped_scenes / total_scenes if total_scenes else 0.0
+    if reporter and (skipped_scenes or skip_reasons):
+        reporter.message(
+            "[yellow]WARN[/yellow] FaceFix batch summary: "
+            + json.dumps(
+                {
+                    "stage": "facefix",
+                    "event": "batch_summary",
+                    "total_scenes": total_scenes,
+                    "skipped_scenes": skipped_scenes,
+                    "skip_rate": round(skip_rate, 4),
+                    "skip_reasons": skip_reasons,
+                },
+                sort_keys=True,
+            ),
+        )
+    if total_scenes and skip_rate > options.max_skip_rate:
+        raise RuntimeError(
+            "FaceFix aborted: scene skip rate "
+            f"{skip_rate:.1%} exceeds configured limit "
+            f"{options.max_skip_rate:.1%} (reasons={skip_reasons})"
+        )
     return results
 
 
@@ -551,6 +603,7 @@ def _encode_crop_mp4(
     output_path: Path,
     reference_video: Path,
     ffmpeg_path: str = "ffmpeg",
+    timeout_seconds: float = 120.0,
 ) -> None:
     """Encode a directory of crop PNGs into an MP4 using ffmpeg."""
     import subprocess
@@ -573,6 +626,7 @@ def _encode_crop_mp4(
         ],
         check=True,
         capture_output=True,
+        timeout=timeout_seconds,
     )
 
 
@@ -592,7 +646,13 @@ def _load_video_frames(video_path: Path) -> np.ndarray | None:
     return np.array(frames)
 
 
-def _save_video_frames(frames: np.ndarray, output_path: Path, reference_video: Path, ffmpeg_path: str = "ffmpeg") -> None:
+def _save_video_frames(
+    frames: np.ndarray,
+    output_path: Path,
+    reference_video: Path,
+    ffmpeg_path: str = "ffmpeg",
+    timeout_seconds: float = 120.0,
+) -> None:
     import subprocess
     temp_dir = output_path.parent / "temp_frames_export"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -618,6 +678,7 @@ def _save_video_frames(frames: np.ndarray, output_path: Path, reference_video: P
         ],
         check=True,
         capture_output=True,
+        timeout=timeout_seconds,
     )
 
     import shutil
