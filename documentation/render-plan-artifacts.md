@@ -101,11 +101,11 @@ legacy fallback until it is migrated:
 }
 ```
 
-This schema addition does not yet migrate edits from legacy fields, preserve
-overrides during plan regeneration, project overrides into every render backend,
-or invalidate prepared workflows. Those changes are separate migration steps;
-until they land, editing only legacy fields and regenerating `base.json` has the
-same limitations as before.
+Existing edits in legacy fields and derived plans can be inspected and migrated
+with `plan-migrate`, as described below. Override preservation during plan
+regeneration, projection into every render backend, and prepared-workflow
+invalidation remain separate migration steps. Until those steps land, a stored
+override is canonical data but is not necessarily consumed by every renderer.
 
 ## Why `ingredients.json` is compact
 
@@ -136,12 +136,61 @@ Do not treat `workflow.json` as a planning source. Edit the appropriate plan and
 
 ## Editing and regeneration
 
-- Edit `base.json` or `anchored.json` when changing cast, location, concept, or source prompts and then rerun downstream enrichment.
-- Edit `references.json[].ltx.msr_prompt_relay` only when intentionally resuming after MSR enrichment.
-- Edit `ingredients.json[].ltx.prompt_relay` for a targeted V4 rerender when upstream regeneration is not desired.
+- Treat `base.json` as the only human-editable plan. Put intentional prompt
+  changes in `canonical.roles.<role>.override.value`; leave `generated.value`
+  intact so generation and human ownership remain distinguishable.
+- Treat `compact.json`, `anchored.json`, `references.json`, and
+  `ingredients.json` as derived resume/runtime caches. Do not make new edits in
+  them. Existing edits can be migrated using the workflow below.
 - Deleting `compact.json` after `anchored.json` exists is harmless.
 - Deleting `references.json` requires reference/MSR enrichment before MSR or Ingredients preparation.
 - Deleting `ingredients.json` requires the Ingredients sheet stage before Ingredients preparation.
 - Changes to the projected scene or selected workflow invalidate its prepared manifest and require prepare before render.
 
 Generated project outputs are local artifacts and must not be committed.
+
+## Migrating existing plan edits
+
+Always inspect first. The default command is a write-free dry run:
+
+```bash
+uv run python main.py plan-migrate projects/my-song
+```
+
+It compares only values for which a defensible baseline exists:
+
+- the legacy-compatible fields in `base.json` against their matching
+  `canonical.roles.*.generated.value`;
+- pass-through prompt fields in `references.json` (and legacy
+  `render_plan_*_refs.json`) against `anchored.json`;
+- `ingredients.json[].ltx.prompt_relay` against
+  `references.json[].ltx.msr_prompt_relay`.
+
+The supported base roles are `z_image.prompt`, `ltx.base`, `ltx.i2v`,
+`ltx.relay`, `h3.video`, and `performance.timing`. Ingredients relay edits are
+stored as `ingredients.relay`. Stage-generated MSR values without a historical
+baseline are intentionally not guessed.
+
+The tool matches scenes by `canonical.scene_id`, then by a unique `segment_id`,
+and only then by a unique legacy scene number. Reordered arrays are therefore
+safe. Duplicate identities, orphan scenes, malformed artifacts, missing
+baselines, competing candidate values, and conflicts with an existing override
+block application and are shown as `UNRESOLVED`.
+
+After reviewing a clean dry run, apply it explicitly:
+
+```bash
+uv run python main.py plan-migrate projects/my-song --apply
+```
+
+Before changing `base.json`, the command verifies that no analyzed source has
+changed, stores byte-identical copies of every analyzed artifact under
+`output/render/plans/legacy-migration/<run-id>/`, and writes `report.json` in
+the same directory. It then atomically replaces only `base.json`; derived plans
+are never rewritten. Repeating the command after a successful import is a
+write-free no-op.
+
+Exit status `0` means the dry run or application was clean, `2` means operator
+resolution is required, and `1` means the input could not be read or the write
+failed. If an apply fails after backup creation, `base.json` remains unchanged;
+fix the cause and run the dry run again rather than editing the backup.

@@ -32,6 +32,10 @@ class SceneArtifactLayoutTests(unittest.TestCase):
         self.assertEqual(project / "output" / "render" / "plans" / "base.json", layout.base_plan)
         self.assertEqual(project / "output" / "render" / "plans" / "references.json", layout.references_plan)
         self.assertEqual(project / "output" / "render" / "plans" / "ingredients.json", layout.ingredients_plan)
+        self.assertEqual(
+            project / "output" / "render" / "plans" / "legacy-migration",
+            layout.legacy_migration_dir,
+        )
         self.assertEqual(project / "output" / "render" / "plans" / "compact.json", layout.compact_plan)
         self.assertEqual(project / "output" / "render" / "plans" / "anchored.json", layout.anchored_plan)
         self.assertEqual(project / "output" / "render" / "scenes" / "scene_0005", layout.scene_dir(5))
