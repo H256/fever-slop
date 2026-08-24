@@ -9,11 +9,13 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from feverslop.domain.artifact_hash import sha256_file
+from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.visual_consistency import SceneConsistencyContract
 
 SCHEMA_V1 = "feverslop.scene-workflow/v1"
 SCHEMA_V2 = "feverslop.scene-workflow/v2"
-SCHEMA = SCHEMA_V2
+SCHEMA_V3 = "feverslop.scene-workflow/v3"
+SCHEMA = SCHEMA_V3
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,7 @@ class SceneWorkflowManifest:
     trim_front_frames: int
     width: int
     height: int
+    canonical_dependencies: CanonicalSceneDependencies | None = None
     consistency: SceneConsistencyContract | None = None
     startframe_mode: str | None = None
     startframe_source_scene: int | None = None
@@ -153,6 +156,7 @@ class SceneWorkflowManifest:
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
         round_render_frames_to_8n1: bool = False,
+        canonical_dependencies: CanonicalSceneDependencies | None = None,
         consistency: SceneConsistencyContract | None = None,
         startframe_mode: str | None = None,
         startframe_source_scene: int | None = None,
@@ -163,7 +167,7 @@ class SceneWorkflowManifest:
         last_frame_path: str | Path | None = None,
     ) -> SceneWorkflowManifest:
         return cls(
-            schema=SCHEMA_V2,
+            schema=SCHEMA_V3,
             scene=int(scene),
             pipeline=str(pipeline),
             workflow=StoredArtifact.from_path(workflow_path, project_dir=project_dir),
@@ -183,6 +187,7 @@ class SceneWorkflowManifest:
             render_frame_count=int(render_frame_count if render_frame_count is not None else frame_count),
             trim_front_frames=int(trim_front_frames),
             width=int(width), height=int(height),
+            canonical_dependencies=canonical_dependencies,
             consistency=consistency,
             startframe_mode=(
                 None if startframe_mode is None else str(startframe_mode)
@@ -236,6 +241,11 @@ class SceneWorkflowManifest:
             "render_frame_count": self.render_frame_count,
             "trim_front_frames": self.trim_front_frames,
             "width": self.width, "height": self.height,
+            "canonical_dependencies": (
+                None
+                if self.canonical_dependencies is None
+                else self.canonical_dependencies.to_dict()
+            ),
             "consistency": (
                 None if self.consistency is None else self.consistency.to_dict()
             ),
@@ -276,7 +286,7 @@ class SceneWorkflowManifest:
     def from_dict(cls, payload: dict[str, Any]) -> SceneWorkflowManifest:
         """Reconstruct a manifest from in-memory JSON data."""
         schema = payload.get("schema")
-        if schema not in {SCHEMA_V1, SCHEMA_V2}:
+        if schema not in {SCHEMA_V1, SCHEMA_V2, SCHEMA_V3}:
             raise ValueError(f"Unsupported scene workflow schema: {payload.get('schema')}")
         if "assets" not in payload or not isinstance(payload["assets"], list):
             raise ValueError("Scene workflow manifest requires an assets list")
@@ -309,6 +319,13 @@ class SceneWorkflowManifest:
             trim_front_frames=int(payload.get("trim_front_frames", 0)),
             width=int(payload["width"]),
             height=int(payload["height"]),
+            canonical_dependencies=(
+                None
+                if schema != SCHEMA_V3 or payload.get("canonical_dependencies") is None
+                else CanonicalSceneDependencies.from_dict(
+                    payload["canonical_dependencies"],
+                )
+            ),
             consistency=consistency,
             startframe_mode=(
                 None
@@ -361,7 +378,13 @@ class SceneWorkflowManifest:
 
     def verify(self, project_dir: str | Path) -> list[str]:
         mismatches: list[str] = []
-        artifacts = [("workflow", self.workflow), ("template", self.template), ("render_plan", self.render_plan)]
+        artifacts = [("workflow", self.workflow), ("template", self.template)]
+        if self.canonical_dependencies is None:
+            artifacts.append(("render_plan", self.render_plan))
+        elif not self.render_plan.resolve(project_dir).is_file():
+            mismatches.append(
+                f"render_plan: missing {self.render_plan.resolve(project_dir)}",
+            )
         artifacts.extend((f"asset[{asset.role}]", asset) for asset in self.assets)
         if self.startframe_source_clip is not None:
             artifacts.append(("startframe source clip", self.startframe_source_clip))
@@ -376,6 +399,24 @@ class SceneWorkflowManifest:
             elif sha256_file(path) != artifact.sha256:
                 mismatches.append(f"{label}: sha256 mismatch for {path}")
         mismatches.extend(self.verify_consistency_provenance())
+        return mismatches
+
+    def compare_canonical_dependencies(
+        self,
+        current: CanonicalSceneDependencies,
+    ) -> list[str]:
+        stored = self.canonical_dependencies
+        if stored is None:
+            return ["canonical dependency provenance is missing"]
+        mismatches: list[str] = []
+        if stored.source != current.source:
+            mismatches.append("canonical source changed")
+        if stored.scene_id != current.scene_id:
+            mismatches.append("canonical scene identity changed")
+        if stored.workflow_fingerprint != current.workflow_fingerprint:
+            mismatches.append("workflow fingerprint changed")
+        if stored.reference_fingerprint != current.reference_fingerprint:
+            mismatches.append("reference fingerprint changed")
         return mismatches
 
     def verify_consistency_provenance(self) -> list[str]:

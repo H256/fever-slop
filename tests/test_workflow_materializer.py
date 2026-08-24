@@ -20,6 +20,7 @@ from feverslop.adapters.prepared_workflow import (
 from feverslop.application.render_plan_ingredients_sheets import (
     enrich_render_plan_with_ingredients_sheets,
 )
+from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest, sha256_file
 from feverslop.domain.visual_consistency import (
     ReferenceAnchor,
@@ -145,6 +146,19 @@ class FakeCurrentServerResolver:
 
 
 class WorkflowMaterializerTests(unittest.TestCase):
+    @staticmethod
+    def _canonical_dependencies(
+        *, workflow: str = "a", references: str = "b", revision: str = "c",
+    ) -> CanonicalSceneDependencies:
+        return CanonicalSceneDependencies(
+            schema="feverslop.canonical-dependencies/v1",
+            source="output/render/plans/base.json",
+            source_revision=revision * 64,
+            scene_id="canonical-scene-1",
+            workflow_fingerprint=workflow * 64,
+            reference_fingerprint=references * 64,
+        )
+
     @staticmethod
     def _ingredients_contract(
         scene: int,
@@ -693,6 +707,87 @@ class WorkflowMaterializerTests(unittest.TestCase):
             self.assertEqual({"audio", "ingredients_sheet"}, {item.role for item in manifest.assets})
             self.assertIn("actual/scene_0005.png", {item.comfyui_name for item in manifest.assets})
             self.assertEqual([], manifest.verify(project))
+
+    def test_prepare_persists_canonical_scene_dependencies(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            plan = project / "plan.json"
+            template.write_text("{}", encoding="utf-8")
+            plan.write_text("[]", encoding="utf-8")
+            dependencies = self._canonical_dependencies()
+
+            prepared = WorkflowMaterializer(
+                FakeBackend(template), SceneArtifactLayout(project),
+            ).prepare(WorkflowMaterializationRequest(
+                scene={"scene": 1, "fps": 24, "frame_count": 9, "width": 64, "height": 64},
+                prompt="x", audio_file=None, render_plan_path=plan,
+                pipeline="test", seed=1, canonical_dependencies=dependencies,
+            ))
+
+            self.assertEqual(
+                dependencies,
+                SceneWorkflowManifest.read(prepared.manifest_path).canonical_dependencies,
+            )
+
+    def test_renderer_rejects_stale_canonical_workflow_before_queueing(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            plan = project / "plan.json"
+            template.write_text("{}", encoding="utf-8")
+            plan.write_text("[]", encoding="utf-8")
+            prepared = WorkflowMaterializer(
+                FakeBackend(template), SceneArtifactLayout(project),
+            ).prepare(WorkflowMaterializationRequest(
+                scene={"scene": 1, "fps": 24, "frame_count": 9, "width": 64, "height": 64},
+                prompt="x", audio_file=None, render_plan_path=plan,
+                pipeline="test", seed=1,
+                canonical_dependencies=self._canonical_dependencies(),
+            ))
+            queue = FakeQueue()
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"output/render/plans/base.json.*scene 1.*workflow fingerprint changed.*--stage ltx_prepare_workflows",
+            ):
+                PreparedWorkflowRenderer(
+                    project_dir=project, render_queue=queue,
+                    postprocessor=FakePostprocessor(), expected_pipeline="test",
+                ).render(
+                    prepared.workflow_path,
+                    canonical_dependencies=self._canonical_dependencies(workflow="d"),
+                )
+
+            self.assertEqual([], queue.workflows)
+
+    def test_renderer_reuses_unchanged_scene_after_unrelated_plan_revision(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            template = project / "template.json"
+            plan = project / "plan.json"
+            template.write_text("{}", encoding="utf-8")
+            plan.write_text("[]", encoding="utf-8")
+            prepared = WorkflowMaterializer(
+                FakeBackend(template), SceneArtifactLayout(project),
+            ).prepare(WorkflowMaterializationRequest(
+                scene={"scene": 1, "fps": 24, "frame_count": 9, "width": 64, "height": 64},
+                prompt="x", audio_file=None, render_plan_path=plan,
+                pipeline="test", seed=1,
+                canonical_dependencies=self._canonical_dependencies(),
+            ))
+            plan.write_text('[{"scene": 2, "changed": true}]', encoding="utf-8")
+            queue = FakeQueue()
+
+            PreparedWorkflowRenderer(
+                project_dir=project, render_queue=queue,
+                postprocessor=FakePostprocessor(), expected_pipeline="test",
+            ).render(
+                prepared.workflow_path,
+                canonical_dependencies=self._canonical_dependencies(revision="f"),
+            )
+
+            self.assertEqual(1, len(queue.workflows))
 
     def test_renderer_reports_every_hash_mismatch_before_queue(self):
         with TemporaryDirectory() as tmp:

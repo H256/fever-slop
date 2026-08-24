@@ -91,6 +91,52 @@ uv run python run_pipeline.py ./projects/my-song \
 
 Combine `--skip-*` flags with `--stage` to run only the stages you need.
 
+## Recovering after editing `base.json`
+
+The CLI verifies each prepared scene against the current authoritative
+`output/render/plans/base.json` before sending a workflow to ComfyUI. A changed
+prompt, timing, resolution, seed, or relay produces an error like:
+
+```text
+Stale prepared workflow from output/render/plans/base.json for scene 3: workflow fingerprint changed. Run --stage ltx_prepare_workflows first.
+```
+
+Rebuild the affected prepared workflows (optionally restrict them with
+`--scenes`):
+
+```bash
+uv run python run_pipeline.py ./projects/my-song \
+  --stage ltx_prepare_workflows \
+  --scenes 3
+```
+
+Then rerun `--stage ltx_render_scenes`. Other scenes remain resumable when
+their own dependency fingerprints and artifacts are unchanged. A changed
+overall canonical revision does not by itself force every scene to prepare.
+
+Changing actor/location IDs or another reference binding first reports, for
+example:
+
+```text
+Stale derived reference binding from output/render/plans/base.json for scene 3: reference binding fingerprint changed. Run --stage ingredients_sheets first.
+```
+
+For Ingredients run `--stage ingredients_sheets`; for MSR run
+`--stage msr_reference_sheets`. Afterwards run
+`--stage ltx_prepare_workflows`. These checks do not delete existing reference
+media. Actor/location sheets are reused when the new binding still selects the
+same files; only a changed/missing reference asset needs regeneration.
+
+Existing v1/v2 scene manifests and manifests without canonical dependency
+provenance remain readable for legacy tooling. When a current canonical scene
+is supplied, rendering fails closed with `canonical dependency provenance is
+missing`; running `ltx_prepare_workflows` upgrades that scene to a v3 manifest.
+
+An intentional change to a referenced file or workflow template is detected by
+its stored SHA-256 even when `base.json` is unchanged. Rerun prepare after the
+asset/template is in its intended final state; never edit generated
+`workflow.json` directly.
+
 ## Inspecting and resuming MiniMax H3 prompts
 
 Each judged scene becomes inspectable immediately, without waiting for the

@@ -9,6 +9,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.prepared_workflow import (
     PreparedSceneWorkflow,
     SceneWorkflowManifest,
@@ -142,6 +143,7 @@ class WorkflowMaterializer:
                 round_render_frames_to_8n1=bool(
                     getattr(self.backend, "round_render_frames_to_8n1", False),
                 ),
+                canonical_dependencies=request.canonical_dependencies,
                 consistency=consistency,
                 startframe_mode=keyframes.get("startframe_mode"),
                 startframe_source_scene=keyframes.get("startframe_source_scene"),
@@ -346,7 +348,31 @@ class PreparedWorkflowRenderer:
         self.model_resolver = model_resolver
         self.model_workflow_path = model_workflow_path
 
-    def render(self, prepared_workflow_path: str | Path) -> Path:
+    @staticmethod
+    def verify_canonical_dependencies(
+        prepared_workflow_path: str | Path,
+        canonical_dependencies: CanonicalSceneDependencies,
+    ) -> None:
+        manifest = SceneWorkflowManifest.read(
+            Path(prepared_workflow_path).with_name("manifest.json"),
+        )
+        dependency_mismatches = manifest.compare_canonical_dependencies(
+            canonical_dependencies,
+        )
+        if dependency_mismatches:
+            raise ValueError(
+                "Stale prepared workflow from "
+                f"{canonical_dependencies.source} for scene {manifest.scene}: "
+                + "; ".join(dependency_mismatches)
+                + ". Run --stage ltx_prepare_workflows first.",
+            )
+
+    def render(
+        self,
+        prepared_workflow_path: str | Path,
+        *,
+        canonical_dependencies: CanonicalSceneDependencies | None = None,
+    ) -> Path:
         workflow_path = Path(prepared_workflow_path)
         manifest = SceneWorkflowManifest.read(workflow_path.with_name("manifest.json"))
         if manifest.pipeline != self.expected_pipeline:
@@ -368,6 +394,11 @@ class PreparedWorkflowRenderer:
         if workflow_path.resolve() != manifest_workflow_path:
             raise ValueError(
                 f"Prepared path {workflow_path} does not match manifest workflow {manifest_workflow_path}",
+            )
+        if canonical_dependencies is not None:
+            self.verify_canonical_dependencies(
+                workflow_path,
+                canonical_dependencies,
             )
         mismatches = manifest.verify(self.project_dir)
         if mismatches:

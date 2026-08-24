@@ -4,6 +4,7 @@ import copy
 import unittest
 
 from feverslop.application.effective_render_plan import (
+    canonical_scene_dependencies,
     canonical_plan_revision,
     project_effective_plan,
     project_effective_scene,
@@ -106,6 +107,125 @@ class EffectiveRenderPlanProjectionTests(unittest.TestCase):
         second = {"canonical": first["canonical"], "scene": 1}
 
         self.assertEqual(canonical_plan_revision([first]), canonical_plan_revision([second]))
+
+    def test_revision_covers_authoritative_operational_and_reference_fields(self):
+        base = _canonical_scene()
+        changed = copy.deepcopy(base)
+        changed["width"] = 1920
+        changed["references"] = {"actor_ids": ["dancer"]}
+
+        self.assertNotEqual(
+            canonical_plan_revision([base]),
+            canonical_plan_revision([changed]),
+        )
+
+    def test_scene_dependencies_are_deterministic_and_scene_local(self):
+        base = _canonical_scene()
+        projected = project_effective_scene(_derived_scene(base["canonical"]), canonical_scene=base)
+        reordered = {key: projected[key] for key in reversed(projected)}
+
+        first = canonical_scene_dependencies(projected, canonical_scene=base)
+        second = canonical_scene_dependencies(reordered, canonical_scene={
+            "canonical": base["canonical"],
+            "scene": 1,
+        })
+
+        self.assertEqual(first, second)
+        self.assertEqual(64, len(first.workflow_fingerprint))
+        self.assertEqual(64, len(first.reference_fingerprint))
+
+    def test_workflow_fingerprint_covers_prompt_timing_resolution_seed_and_relay(self):
+        base = _canonical_scene()
+        base.update({"width": 1280, "height": 720, "seed": 7})
+        projected = project_effective_scene(_derived_scene(base["canonical"]), canonical_scene=base)
+        original = canonical_scene_dependencies(projected, canonical_scene=base)
+
+        mutations = []
+        prompt = copy.deepcopy(base)
+        prompt["canonical"]["roles"][PromptRole.LTX_BASE]["generated"]["value"] = "new prompt"
+        mutations.append(prompt)
+        timing = copy.deepcopy(base)
+        timing["canonical"]["roles"][PromptRole.PERFORMANCE_TIMING]["generated"]["value"] = {"intent": "dance"}
+        mutations.append(timing)
+        resolution = copy.deepcopy(base)
+        resolution["width"] = 1920
+        mutations.append(resolution)
+        seed = copy.deepcopy(base)
+        seed["seed"] = 8
+        mutations.append(seed)
+        relay = copy.deepcopy(base)
+        relay["canonical"]["roles"][PromptRole.LTX_MSR_RELAY]["override"]["value"] = [
+            {"prompt": "new relay", "frame_start": 0, "frame_end": 47},
+        ]
+        mutations.append(relay)
+
+        for changed in mutations:
+            with self.subTest(changed=changed):
+                current = project_effective_scene(projected, canonical_scene=changed)
+                dependencies = canonical_scene_dependencies(current, canonical_scene=changed)
+                self.assertNotEqual(original.workflow_fingerprint, dependencies.workflow_fingerprint)
+                self.assertEqual(original.reference_fingerprint, dependencies.reference_fingerprint)
+
+    def test_reference_bindings_have_an_independent_fingerprint(self):
+        base = _canonical_scene()
+        base["references"] = {"actor_ids": ["singer"], "location_id": "stage"}
+        projected = project_effective_scene(_derived_scene(base["canonical"]), canonical_scene=base)
+        original = canonical_scene_dependencies(projected, canonical_scene=base)
+        changed = copy.deepcopy(base)
+        changed["references"] = {"actor_ids": ["dancer"], "location_id": "roof"}
+
+        current = project_effective_scene(projected, canonical_scene=changed)
+        dependencies = canonical_scene_dependencies(current, canonical_scene=changed)
+
+        self.assertEqual(original.workflow_fingerprint, dependencies.workflow_fingerprint)
+        self.assertNotEqual(original.reference_fingerprint, dependencies.reference_fingerprint)
+
+    def test_projection_applies_authoritative_operational_fields_and_reference_bindings(self):
+        base = _canonical_scene()
+        base.update({
+            "fps": 30,
+            "frame_count": 61,
+            "width": 1920,
+            "height": 1080,
+            "seed": 17,
+            "references": {"actor_ids": ["dancer"], "location_id": "roof"},
+        })
+        derived = _derived_scene(base["canonical"])
+        derived.update({
+            "fps": 24,
+            "frame_count": 49,
+            "width": 1280,
+            "height": 720,
+            "seed": 7,
+            "references": {
+                "actor_ids": ["singer"],
+                "location_id": "stage",
+                "actor_msr_paths": ["output/references/actors/singer.png"],
+            },
+        })
+
+        projected = project_effective_scene(derived, canonical_scene=base)
+
+        self.assertEqual((30, 61, 1920, 1080, 17), tuple(
+            projected[key] for key in ("fps", "frame_count", "width", "height", "seed")
+        ))
+        self.assertEqual(["dancer"], projected["references"]["actor_ids"])
+        self.assertEqual("roof", projected["references"]["location_id"])
+        self.assertEqual(
+            ["output/references/actors/singer.png"],
+            projected["references"]["actor_msr_paths"],
+        )
+
+    def test_projection_persists_dependency_fingerprints(self):
+        base = _canonical_scene()
+
+        projected = project_effective_plan([_derived_scene(base["canonical"])], [base])[0]
+
+        dependencies = projected["canonical_projection"]["dependencies"]
+        self.assertEqual("feverslop.canonical-dependencies/v1", dependencies["schema"])
+        self.assertEqual(base["canonical"]["scene_id"], dependencies["scene_id"])
+        self.assertEqual(64, len(dependencies["workflow_fingerprint"]))
+        self.assertEqual(64, len(dependencies["reference_fingerprint"]))
 
     def test_legacy_scene_passes_through_without_projection_metadata(self):
         legacy = {"scene": 1, "z_image": {"prompt": "legacy"}, "ltx": {"base_prompt": "legacy video"}}

@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
 )
+from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.composition.arg_parser import PipelineStage
 from feverslop.composition.config_loader import PipelineRunState, build_run_context
 from feverslop.composition.stage_runners import (
@@ -16,6 +17,7 @@ from feverslop.composition.stage_runners import (
     _load_continuity_dirty,
     _all_render_scenes,
     _merge_reference_paths_into_h3_segments,
+    _prepared_scene_is_fresh,
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
     _run_storyboard_frames_stage,
@@ -63,6 +65,113 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "human current global",
                 scenes[0].to_dict()["ingredients"]["global_prompt"],
             )
+            self.assertEqual(
+                64,
+                len(scenes[0].to_dict()["canonical_projection"]["dependencies"]["workflow_fingerprint"]),
+            )
+
+    def test_reference_binding_edit_requires_enrichment_before_prepare(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients")
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={PromptRole.INGREDIENTS_GLOBAL: "prompt"},
+            )
+            initial_base = {
+                "scene": 1,
+                "canonical": canonical,
+                "references": {"actor_ids": ["singer"], "location_id": "stage"},
+            }
+            derived = project_effective_plan([{
+                **initial_base,
+                "ingredients": {"global_prompt": "prompt", "sheet_path": "old.png"},
+            }], [initial_base])
+            (project / "old.png").write_bytes(b"expensive reference media")
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps(derived), encoding="utf-8")
+            changed_base = json.loads(json.dumps(initial_base))
+            changed_base["references"] = {"actor_ids": ["dancer"], "location_id": "roof"}
+            state.context.render_plan.write_text(json.dumps([changed_base]), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"base.json.*scene 1.*reference binding.*--stage ingredients_sheets",
+            ):
+                _all_render_scenes(state)
+
+            self.assertEqual(
+                b"expensive reference media",
+                (project / "old.png").read_bytes(),
+            )
+
+    def test_prepare_passes_current_scene_dependencies_to_materializer(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients")
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            sheet = project / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={PromptRole.INGREDIENTS_GLOBAL: "prompt"},
+            )
+            base = {"scene": 1, "canonical": canonical}
+            derived = project_effective_plan([{
+                "scene": 1,
+                "canonical": canonical,
+                "fps": 24,
+                "frame_count": 49,
+                "width": 1280,
+                "height": 704,
+                "ingredients": {"global_prompt": "prompt", "sheet_path": str(sheet), "anchors": []},
+                "ltx": {"base_prompt": "prompt", "static_prompt": "prompt"},
+            }], [base])
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps(derived), encoding="utf-8")
+            state.context.render_plan.write_text(json.dumps([base]), encoding="utf-8")
+            materializer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(),
+            ), patch(
+                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                return_value=materializer,
+            ), patch(
+                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+            ):
+                _run_ltx_prepare_workflows_stage(state)
+
+            dependencies = materializer.prepare.call_args.args[0].canonical_dependencies
+            self.assertIsNotNone(dependencies)
+            self.assertEqual(canonical["scene_id"], dependencies.scene_id)
+
+    def test_prepare_reuses_only_scene_with_matching_dependencies_and_artifacts(self):
+        dependencies = Mock()
+        matching_manifest = Mock(
+            pipeline="ltx_ingredients",
+            compare_canonical_dependencies=Mock(return_value=[]),
+            verify=Mock(return_value=[]),
+        )
+        stale_manifest = Mock(
+            pipeline="ltx_ingredients",
+            compare_canonical_dependencies=Mock(return_value=["workflow fingerprint changed"]),
+            verify=Mock(return_value=[]),
+        )
+        state = Mock()
+        state.args.video_pipeline = "ltx_ingredients"
+        state.context.project_config_dir = Path("project")
+        state.context.artifact_layout.scene_workflow.return_value.is_file.return_value = True
+        state.context.artifact_layout.scene_manifest.return_value.is_file.return_value = True
+
+        with patch(
+            "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+            side_effect=(matching_manifest, stale_manifest),
+        ):
+            self.assertTrue(_prepared_scene_is_fresh(state, 1, dependencies))
+            self.assertFalse(_prepared_scene_is_fresh(state, 2, dependencies))
 
     def test_storyboard_stage_supplies_current_canonical_base_to_use_case(self):
         with TemporaryDirectory() as tmp:
@@ -1122,6 +1231,50 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 model_resolver=backend.model_resolver,
                 model_workflow_path=backend.workflow_label,
             )
+
+    def test_render_checks_canonical_dependencies_before_skipping_existing_output(self):
+        with TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            state = self._state(project, pipeline="ltx_ingredients")
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={},
+            )
+            base = {"scene": 1, "canonical": canonical}
+            derived = project_effective_plan([base], [base])
+            state.plan_for_next_step.parent.mkdir(parents=True)
+            state.plan_for_next_step.write_text(json.dumps(derived), encoding="utf-8")
+            state.context.render_plan.write_text(json.dumps([base]), encoding="utf-8")
+            layout = state.context.artifact_layout
+            layout.scene_workflow(1).parent.mkdir(parents=True)
+            layout.scene_workflow(1).write_text("{}", encoding="utf-8")
+            layout.scene_manifest(1).write_text("{}", encoding="utf-8")
+            layout.scene_final_video(1).write_bytes(b"existing video")
+            state.context.input_audio.write_bytes(b"audio")
+            state.ingredients_workflow.write_text("{}", encoding="utf-8")
+            backend = Mock(
+                max_render_frames=None,
+                max_render_duration_seconds=None,
+                render_budget_workflow_path=state.ingredients_workflow,
+                round_render_frames_to_8n1=False,
+                workflow_label=state.ingredients_workflow,
+            )
+            renderer = Mock()
+
+            with patch(
+                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                return_value=Mock(backend=backend),
+            ), patch(
+                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                return_value=renderer,
+            ), patch(
+                "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+                return_value=Mock(pipeline="ltx_ingredients", verify=Mock(return_value=[])),
+            ):
+                _run_ltx_render_scenes_stage(state)
+
+            renderer.verify_canonical_dependencies.assert_called_once()
+            renderer.render.assert_not_called()
 
     def test_prepare_aggregates_missing_plan_audio_and_template(self):
         with TemporaryDirectory() as tmp:
