@@ -137,6 +137,64 @@ its stored SHA-256 even when `base.json` is unchanged. Rerun prepare after the
 asset/template is in its intended final state; never edit generated
 `workflow.json` directly.
 
+## Inspecting canonical plans and artifact status
+
+All inspection commands are read-only. They do not regenerate plans, update
+checkpoints, prepare workflows, or create migration backups:
+
+```bash
+uv run python main.py plan path projects/my-song
+uv run python main.py plan validate projects/my-song
+uv run python main.py plan show projects/my-song --scene 3
+uv run python main.py plan overrides projects/my-song
+uv run python main.py plan overrides projects/my-song --orphans
+uv run python main.py status projects/my-song
+```
+
+`plan path` labels `output/render/plans/base.json` as the sole editable plan
+and the other plan files as derived caches. `plan show` is the explicit prompt
+inspection command: it prints generated, override, effective value, owner, and
+provenance for the selected scene. `plan overrides` lists override ownership;
+`--orphans` additionally shows unmatched legacy/derived records.
+
+`plan validate` checks canonical identities and role contracts, override and
+provenance structure, duplicate/orphaned identities, malformed artifacts, and
+unresolved legacy migration findings. `status` reports phase/scene states
+`READY`, `STALE`, `PARTIAL`, `BLOCKED`, and `MISSING`, including canonical
+revision, derived fingerprints, H3 judge/fingerprint state, prepared workflow
+freshness, cause, and required next phase. Routine status never prints prompt
+bodies.
+
+Exit codes are stable across these commands:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The requested inspection is valid; status has no required action. |
+| `2` | The project is readable but stale, partial, missing an artifact, or otherwise needs an operator action. |
+| `1` | The project or inspected artifact is invalid/corrupt. |
+
+Typical output includes `PARTIAL ... required next phase: h3_prompts`,
+`STALE ... workflow fingerprint changed; required next phase:
+ltx_prepare_workflows`, or `BLOCKED ... required next phase: plan-migrate`.
+These are observations only; construction and execution of a multi-stage
+resume plan are separate commands introduced after this inspection layer.
+
+Representative inspections:
+
+```text
+# generated-only / overridden roles (only plan show exposes values)
+z_image.prompt | generated | <generated value> | —                | <generated value>
+z_image.prompt | override  | <generated value> | <override value> | <override value>
+
+# unmatched legacy record
+9 | unmatched | - | ORPHAN output/render/plans/references.json: orphan scene
+
+# routine status (never includes the values above)
+h3 checkpoint    | 3 | PARTIAL | missing; required next phase: h3_prompts
+derived plan     | 3 | STALE   | reference fingerprint changed; required next phase: ingredients_sheets or msr_reference_sheets
+prepared workflow| 3 | STALE   | workflow fingerprint changed; required next phase: ltx_prepare_workflows
+```
+
 ## Inspecting and resuming MiniMax H3 prompts
 
 Each judged scene becomes inspectable immediately, without waiting for the

@@ -333,6 +333,17 @@ normal render-plan stage from the compatible aggregate.
 
 Generated project outputs are local artifacts and must not be committed.
 
+### Read-only CLI reference
+
+Use `main.py plan path PROJECT` to locate the sole editable `base.json`,
+`plan validate PROJECT` to validate canonical and legacy provenance, `plan show
+PROJECT --scene N` to explicitly inspect generated/override/effective prompt
+values, and `plan overrides PROJECT [--orphans]` to audit human ownership.
+`main.py status PROJECT` summarizes derived plans, H3 checkpoints, and prepared
+workflow freshness without printing prompts. All five commands are read-only;
+exit codes are `0` valid/ready, `2` action required, and `1` invalid/corrupt.
+Detailed examples are in [`running.md`](running.md#inspecting-canonical-plans-and-artifact-status).
+
 ### Supported lower-level legacy inputs
 
 - Plans without `canonical` continue to use their existing `z_image`, `ltx`,
