@@ -149,7 +149,7 @@ class ProjectRepository:
     def write_project_metadata(root: Path, metadata: dict[str, Any]) -> None:
         path = root / ".studio" / "project.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_json(path, metadata)
 
     @staticmethod
     def ensure_movie_config(root: Path, metadata: dict[str, Any]) -> None:

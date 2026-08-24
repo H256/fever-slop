@@ -190,26 +190,25 @@ class ProjectStore:
 
     def patch_render_plan(self, project_id: str, patch: RenderPlanPatch) -> dict[str, Any]:
         artifact_path = self.resolve_project_path(project_id, patch.path)
-        with artifact_write_lock(artifact_path):
-            render_plan = self._read_json_file(artifact_path, default=[])
-            if not isinstance(render_plan, list):
-                raise ValueError("Render plan must be a JSON array")
-            for scene in render_plan:
-                if int(scene.get("scene", -1)) == patch.scene:
-                    scene.update(patch.updates)
-                    written = self.write_artifact(
-                        project_id,
-                        ArtifactRequest(
-                            path=patch.path,
-                            data=render_plan,
-                            expected_revision=patch.expected_revision,
-                        ),
-                    )
-                    return {
-                        "path": patch.path,
-                        "scene": scene,
-                        "revision": written["revision"],
-                    }
+        render_plan = self._read_json_file(artifact_path, default=[])
+        if not isinstance(render_plan, list):
+            raise ValueError("Render plan must be a JSON array")
+        for scene in render_plan:
+            if int(scene.get("scene", -1)) == patch.scene:
+                scene.update(patch.updates)
+                written = self.write_artifact(
+                    project_id,
+                    ArtifactRequest(
+                        path=patch.path,
+                        data=render_plan,
+                        expected_revision=patch.expected_revision,
+                    ),
+                )
+                return {
+                    "path": patch.path,
+                    "scene": scene,
+                    "revision": written["revision"],
+                }
         raise KeyError(f"Scene {patch.scene} not found in {patch.path}")
 
     def project_root(self, project_id: str) -> Path:
@@ -224,7 +223,9 @@ class ProjectStore:
     def _write_project_metadata(root: Path, metadata: dict[str, Any]) -> None:
         path = root / ".studio" / "project.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        from feverslop.utils.io import atomic_write_json
+
+        atomic_write_json(path, metadata)
 
     def resolve_project_path(self, project_id: str, path: str) -> Path:
         root = self.project_root(project_id)
