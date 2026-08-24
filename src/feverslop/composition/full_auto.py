@@ -21,10 +21,11 @@ from feverslop.config.app_config import AppConfig
 def build_full_auto_use_case(
     *,
     app_config_path: str | Path = "app_config.json",
-    workflow_path: str | Path = Path("workflows") / "audio_song_v2.json",
+    workflow_path: str | Path | None = None,
     console: Console | None = None,
 ) -> FullAutoUseCase:
     app_config = AppConfig.load(app_config_path)
+    workflow_path = workflow_path or Path(__file__).resolve().parents[3] / "workflows" / "audio_song_v2.json"
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         api_key=app_config.llm.api_key,
