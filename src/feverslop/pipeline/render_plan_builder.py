@@ -2,6 +2,7 @@
 
 import random
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from feverslop.config.video_settings import VideoSettings
@@ -370,6 +371,7 @@ def build_render_plan(
     project_dir: Path | None = None,
     seed: int = 0,
     max_scene_actors: int = 4,
+    plan_writer: Callable[[str | Path, list[dict]], Path] | None = None,
 ) -> Path:
     """Combines:
     - scene_prompts_json: per-scene Z-Image and LTX prompts
@@ -676,4 +678,5 @@ def build_render_plan(
         render_plan.append(render_scene)
 
     validate_canonical_plan(render_plan)
-    return artifact_store.write_json(output_json_file, render_plan)
+    writer = plan_writer or artifact_store.write_json
+    return writer(output_json_file, render_plan)

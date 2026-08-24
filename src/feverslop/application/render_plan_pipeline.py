@@ -13,8 +13,14 @@ class RenderPlanPipeline:
     required_keys = {"scene_prompts_json", "ltx_prompt_relay_json", "render_plan_json", "video_settings"}
     produced_keys = {"render_plan"}
 
-    def __init__(self, *, build_render_plan: Callable[..., Any]):
+    def __init__(
+        self,
+        *,
+        build_render_plan: Callable[..., Any],
+        regenerator_factory: Callable[[GenerateRenderPlanContext], Any] | None = None,
+    ):
         self.build_render_plan = build_render_plan
+        self.regenerator_factory = regenerator_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -53,7 +59,8 @@ class RenderPlanPipeline:
                 input_audio = config.input_audio
 
         log_step("9. Render Plan")
-        self.build_render_plan(
+        regenerator = self.regenerator_factory(context) if self.regenerator_factory else None
+        build_kwargs = dict(
             scene_prompts_json=context["scene_prompts_json"],
             ltx_prompt_relay_json=context["ltx_prompt_relay_json"],
             output_json_file=render_plan_json,
@@ -69,6 +76,9 @@ class RenderPlanPipeline:
             else 0,
             max_scene_actors=getattr(config, "max_scene_actors", 4) if config is not None else 4,
         )
+        if regenerator is not None:
+            build_kwargs["plan_writer"] = regenerator.write
+        self.build_render_plan(**build_kwargs)
         log_file("Render Plan JSON", render_plan_json)
         context["render_plan"] = artifact_store.read_json(render_plan_json)
         return context

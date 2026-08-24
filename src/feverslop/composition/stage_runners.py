@@ -50,6 +50,7 @@ from feverslop.composition.generate_render_plan import (
     build_generate_render_plan_use_case,  # noqa: F401
     execute_generate_render_plan,
 )
+from feverslop.composition.canonical_plan_regenerator import CanonicalPlanRegenerator
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
 from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
@@ -502,6 +503,19 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
     stem_list: list[str] | None = list(config.minimax_h3_audio_refs.stems)
     input_audio: Path | None = config.input_audio
     stem_files = _discover_stem_files(paths.stems_dir, input_audio)
+    selected_scene_spec = getattr(state.args, "scenes", None)
+    selected_scene_numbers = parse_scene_list(selected_scene_spec) if selected_scene_spec else None
+    reference_plan_path = (
+        state.context.reference_plan
+        if config.video_pipeline == "minimax-h3-r2v"
+        else None
+    )
+    regenerator = CanonicalPlanRegenerator(
+        config.project_dir,
+        selected_scene_numbers=selected_scene_numbers,
+        reference_plan_path=reference_plan_path,
+        reporter=ConsoleReporter(console),
+    )
     build_render_plan(
         scene_prompts_json=paths.prompts_dir / f"scene_prompts_{song_id}.json",
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{song_id}.json",
@@ -514,22 +528,12 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         stem_files=stem_files,
         project_dir=config.project_dir,
         max_scene_actors=config.max_scene_actors,
+        plan_writer=regenerator.write,
     )
-    if config.video_pipeline == "minimax-h3-r2v":
-        _preserve_enriched_reference_paths(
-            output_path=state.context.render_plan,
-            reference_plan_path=state.context.reference_plan,
-        )
-    selected_scene_spec = getattr(state.args, "scenes", None)
     if selected_scene_spec:
-        selected_plan = _select_pipeline_scenes(
-            JsonArtifactStore().read_json(state.context.render_plan),
-            selected_scene_spec,
-        )
-        JsonArtifactStore().write_json(state.context.render_plan, selected_plan)
         console.print(
-            f"[cyan]Scene selection active: render plan limited to "
-            f"{len(selected_plan)} selected scene(s)[/cyan]",
+            "[cyan]Scene selection active: regenerated selected scenes while "
+            "preserving unselected canonical scenes[/cyan]",
         )
     state.plan_for_next_step = state.context.render_plan
     console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")

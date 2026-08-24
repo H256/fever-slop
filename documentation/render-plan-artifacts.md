@@ -102,10 +102,67 @@ legacy fallback until it is migrated:
 ```
 
 Existing edits in legacy fields and derived plans can be inspected and migrated
-with `plan-migrate`, as described below. Override preservation during plan
-regeneration, projection into every render backend, and prepared-workflow
-invalidation remain separate migration steps. Until those steps land, a stored
-override is canonical data but is not necessarily consumed by every renderer.
+with `plan-migrate`, as described below. Canonical regeneration now preserves
+overrides by stable scene identity. Projection into every render backend and
+prepared-workflow invalidation remain separate migration steps. Until those
+steps land, a stored override is canonical data but is not necessarily consumed
+by every renderer.
+
+### Regeneration ownership and conflicts
+
+Render-plan generation owns only `generated`. A regeneration may replace
+`generated.value` and its provenance, but it copies each existing `override`
+record unchanged to the same `canonical.scene_id` and role. The effective value
+therefore remains the human value while the newly generated alternative stays
+visible for comparison:
+
+```json
+{
+  "h3.video": {
+    "generated": {
+      "value": "new judged H3 prompt",
+      "provenance": {"source": "render-plan-builder"}
+    },
+    "override": {
+      "value": "human-approved H3 prompt",
+      "provenance": {"source": "human"}
+    }
+  }
+}
+```
+
+This generate → override → regenerate contract is also used when H3 generation
+is deferred until references exist and when an existing project resumes at the
+render-plan stage. Anchor-fix follows the same ownership rule: it updates the
+LTX `generated.value` records with `provenance.source = "anchor-fix"`, while
+leaving overrides and unrelated roles unchanged.
+
+The writer snapshots the current `base.json` SHA-256 before assembly and checks
+it again immediately before one atomic replacement. If the file changes,
+disappears, or appears concurrently, regeneration fails instead of overwriting
+the newer edit. Rerun regeneration against the new state; do not copy values
+from a stale temporary result.
+
+Scene matching never uses array position. Overrides and supported enriched
+reference bindings follow `canonical.scene_id`, with `segment_id` checked for
+consistency. Reordering is safe. Duplicate identities or a reused `scene_id`
+with a different `segment_id` are errors. Deleted/changed identities emit an
+`orphaned_override_scene` or `deleted_canonical_scene` diagnostic and are never
+reattached by scene number. Unmatched enriched bindings emit
+`orphaned_reference_scene`.
+
+With `--scenes`, only selected generated scenes are merged. Every unselected
+canonical scene object remains unchanged in `base.json`; the plan is no longer
+truncated to the selected subset. A selected regeneration without an existing
+canonical base is rejected because there is no safe source for the unselected
+scenes. If a selected identity is not regenerated, the old scene is retained
+and `selected_identity_missing` is reported.
+
+For MiniMax R2V resume, the identity-based merge preserves only the explicit
+reference handoff fields (actor/location sheet and MSR paths, their
+descriptions, and `visual_consistency_sources`). Other derived fields are not
+copied back into canonical generation. Derived-plan invalidation remains the
+responsibility of the later invalidation milestone step.
 
 ## Why `ingredients.json` is compact
 
