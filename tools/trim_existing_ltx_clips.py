@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 
 from rich.console import Console
 from rich.panel import Panel
@@ -12,6 +13,13 @@ from feverslop.utils.rich_progress import build_progress
 from feverslop.utils.render_plan_selection import parse_scene_list
 
 console = Console()
+
+
+def _resolve_ffmpeg_path(value: str) -> str:
+    resolved = shutil.which(value)
+    if resolved is None:
+        raise ValueError(f"ffmpeg executable not found or not executable: {value!r}")
+    return resolved
 
 
 def main():
@@ -35,7 +43,8 @@ def main():
     output_dir = coerce_local_path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    processor = VideoPostProcessor(ffmpeg_path=args.ffmpeg, reencode=not args.streamcopy)
+    ffmpeg_path = _resolve_ffmpeg_path(args.ffmpeg)
+    processor = VideoPostProcessor(ffmpeg_path=ffmpeg_path, reencode=not args.streamcopy)
 
     outputs = []
     manifest = []
