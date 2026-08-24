@@ -50,6 +50,77 @@ class ReferenceBibleToolTests(unittest.TestCase):
 
         self.assertEqual("full", args.view_set)
 
+    def test_sequence_mode_constructs_backend_and_uses_one_work_unit_per_asset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "input_audio": "song.mp3",
+                        "actors": [{"id": "singer", "name": "Singer", "image_prompt": "singer"}],
+                        "locations": [{"id": "stage", "name": "Stage", "image_prompt": "stage"}],
+                    },
+                ),
+                encoding="utf-8",
+            )
+            sequence_workflow = temp / "sequence.json"
+            args = build_arg_parser().parse_args(
+                [
+                    "--project-config",
+                    str(config_path),
+                    "--app-config",
+                    "app_config.json",
+                    "--hero-workflow",
+                    "hero.json",
+                    "--edit-workflow",
+                    "edit.json",
+                    "--view-set",
+                    "full",
+                    "--reference-generation",
+                    "sequence_sheet",
+                    "--sequence-workflow",
+                    str(sequence_workflow),
+                ],
+            )
+            self.assertEqual("sequence_sheet", args.reference_generation)
+            self.assertEqual(str(sequence_workflow), args.sequence_workflow)
+
+            sequence_backend = Mock()
+            sequence_backend_factory = Mock(return_value=sequence_backend)
+            planner_factory = Mock()
+            fake_generator = Mock()
+            fake_generator.generate_subject_bible.return_value = temp / "actor.json"
+            fake_generator.generate_location_bible.return_value = temp / "location.json"
+            generator_factory = Mock(return_value=fake_generator)
+            generator_factory.view_names = ("front", "right", "rear", "left", "wide", "close")
+            record_console = Console(file=io.StringIO(), record=True, force_terminal=False)
+
+            with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
+                    patch("feverslop.tools.reference_bible.ComfyUIClient"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIModelResolver"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIImageBackend"), \
+                    patch("feverslop.tools.reference_bible.ComfyUISequenceToSheetBackend", sequence_backend_factory), \
+                    patch("feverslop.tools.reference_bible.ReferenceSheetPlanner", planner_factory), \
+                    patch("feverslop.tools.reference_bible.LocalOpenAIClient"), \
+                    patch("feverslop.tools.reference_bible.ReferenceBibleGenerator", generator_factory), \
+                    patch("feverslop.tools.reference_bible.console", record_console):
+                app_config.return_value.comfyui.base_url = "http://localhost:8188"
+                app_config.return_value.comfyui.prompt_timeout_seconds = 1
+                app_config.return_value.comfyui.model_overrides = []
+
+                manifests = run(args)
+
+            printed = record_console.export_text()
+            self.assertEqual([temp / "actor.json", temp / "location.json"], manifests)
+            sequence_backend_factory.assert_called_once()
+            self.assertEqual(str(sequence_workflow), sequence_backend_factory.call_args.kwargs["workflow_path"])
+            self.assertIs(sequence_backend, generator_factory.call_args.kwargs["sequence_backend"])
+            self.assertIs(planner_factory.return_value, generator_factory.call_args.kwargs["sequence_planner"])
+            self.assertIn("Actor views: 6", printed)
+            self.assertIn("Location views: 6", printed)
+            self.assertIn("Total renders: 2", printed)
+
     def test_msr_view_set_uses_actor_sheet_views_and_single_location_background(self):
         actor_views, location_views = resolve_view_names("msr")
 
