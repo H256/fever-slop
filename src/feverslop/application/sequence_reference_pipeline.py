@@ -154,7 +154,8 @@ class SequenceReferencePipeline:
                 raise FileNotFoundError(f"anchor backend did not create an image: {anchor}")
             self._report_phase(request, "anchor_complete", path=anchor)
 
-            if hasattr(self.sequence_backend, "build_sheet_prompt_from_plan"):
+            has_compiled_plan_backend = hasattr(self.sequence_backend, "build_sheet_prompt_from_plan")
+            if has_compiled_plan_backend:
                 prompt = self.sequence_backend.build_sheet_prompt_from_plan(compiled_plan)
             else:
                 prompt = self.sequence_backend.build_sheet_prompt(
@@ -187,7 +188,7 @@ class SequenceReferencePipeline:
             self._report_phase(request, "sequence_complete", path=sequence)
             semantic_plan_hash = hashlib.sha256(
                 json.dumps(semantic_plan.model_dump() if hasattr(semantic_plan, "model_dump") else semantic_plan, sort_keys=True).encode(),
-            ).hexdigest()
+            ).hexdigest() if has_compiled_plan_backend else ""
             prompt_hash = hashlib.sha256(sequence_prompt.encode()).hexdigest()
 
             frames_dir = staging_dir / "frames"
@@ -265,9 +266,9 @@ class SequenceReferencePipeline:
                 contact_sheet_path=final_dir / "contact-sheet.png",
                 sheet_path=final_dir / "sheet.png",
                 selected_frames=len(selected),
-                planning_profile="reference-sheet-from-sequence/v1",
-                prompt_revision="reference-sheet-compiler/v1",
-                planner_source=getattr(self.planner, "source", "deterministic"),
+                planning_profile="reference-sheet-from-sequence/v1" if has_compiled_plan_backend else "legacy-sequence/v1",
+                prompt_revision="reference-sheet-compiler/v1" if has_compiled_plan_backend else "",
+                planner_source=(getattr(self.planner, "source", "deterministic") if has_compiled_plan_backend else "legacy_sequence_backend"),
                 fallback_reason=getattr(self.planner, "fallback_reason", None),
                 semantic_plan_hash=semantic_plan_hash,
                 prompt_hash=prompt_hash,

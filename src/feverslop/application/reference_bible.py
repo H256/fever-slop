@@ -117,6 +117,8 @@ class ReferenceBibleGenerator:
         self.sequence_planner = sequence_planner
         self.visual_style = str(visual_style or "").strip()
         self.on_sequence_phase = on_sequence_phase
+        if self.sequence_planner is not None and hasattr(self.sequence_planner, "on_event"):
+            self.sequence_planner.on_event = self._report_planner_event
 
     def generate_subject_bible(self, subject: ReferenceSubject) -> Path:
         if self.sequence_backend is not None:
@@ -130,11 +132,13 @@ class ReferenceBibleGenerator:
             shutil.rmtree(staging_dir, ignore_errors=True)
 
     def _generate_sequence_subject_bible(self, subject: ReferenceSubject) -> Path:
+        if self.sequence_planner is not None and hasattr(self.sequence_planner, "on_event"):
+            self.sequence_planner.on_event = lambda event: self._report_planner_event(event, asset_id=subject.id)
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
             planner=self.sequence_planner,
-            on_phase=self.on_sequence_phase,
+            on_phase=self._report_sequence_phase,
         ).generate(
             SequenceReferenceRequest(
                 kind="character",
@@ -295,11 +299,13 @@ class ReferenceBibleGenerator:
             shutil.rmtree(staging_dir, ignore_errors=True)
 
     def _generate_sequence_location_bible(self, location: ReferenceLocation) -> Path:
+        if self.sequence_planner is not None and hasattr(self.sequence_planner, "on_event"):
+            self.sequence_planner.on_event = lambda event: self._report_planner_event(event, asset_id=location.id)
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
             planner=self.sequence_planner,
-            on_phase=self.on_sequence_phase,
+            on_phase=self._report_sequence_phase,
         ).generate(
             SequenceReferenceRequest(
                 kind="location",
@@ -490,6 +496,23 @@ class ReferenceBibleGenerator:
                 "path": path,
             },
         )
+
+    def _report_sequence_phase(self, event: dict[str, Any]) -> None:
+        if self.on_sequence_phase is not None:
+            self.on_sequence_phase(event)
+        if event.get("phase") == "sequence_complete":
+            self._report_view_complete(
+                kind="actor" if event.get("kind") == "character" else "location",
+                item_id=str(event["id"]),
+                item_name=str(event.get("name") or event["id"]),
+                view="sequence_sheet",
+                index=1,
+                path=Path(event["path"]) if event.get("path") else self.output_dir,
+            )
+
+    def _report_planner_event(self, event: dict[str, str], *, asset_id: str | None = None) -> None:
+        if self.on_sequence_phase is not None:
+            self.on_sequence_phase({**event, "id": asset_id or "planning"})
 
 
 def compose_msr_reference_sheet(image_paths: list[Path], output_path: Path, *, size: tuple[int, int]) -> Path:
