@@ -264,6 +264,8 @@ class AppConfig:
             model = str(raw_model).strip()
             if not profile or not model:
                 raise ValueError("llm.models requires non-empty profile and model names")
+            if profile in llm_models:
+                raise ValueError(f"Duplicate llm.models profile: {profile}")
             llm_models[profile] = model
         if llm_temperature < 0:
             raise ValueError(f"llm.temperature must be >= 0, got {llm_temperature}")
