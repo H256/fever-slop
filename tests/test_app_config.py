@@ -73,6 +73,26 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual("story-model", config.llm.model_for("creative"))
         self.assertEqual("general", config.llm.model_for("structured"))
 
+    def test_rejects_duplicate_normalized_llm_model_profiles(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({
+                    "llm": {
+                        "models": {
+                            "Creative": "first-model",
+                            " creative ": "second-model",
+                        },
+                    },
+                }),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, r"Duplicate llm\.models profile: creative"):
+                AppConfig.load(config_path)
+
     def test_existing_single_model_configuration_has_no_profile_requirements(self):
         from feverslop.config.app_config import AppConfig
 
