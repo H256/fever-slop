@@ -1840,6 +1840,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
             concat_list=concat_list,
             output_file=output_path,
             video_only=True,
+            reencode=variant == "upscaled",
         )
 
     try:
