@@ -66,6 +66,9 @@ class SceneArtifactLayout:
     def scene_manifest(self, scene_number: int) -> Path:
         return self.scene_dir(scene_number) / "manifest.json"
 
+    def scene_h3_prompt(self, scene_number: int) -> Path:
+        return self.scene_dir(scene_number) / "h3_prompt.json"
+
     def scene_workflow(self, scene_number: int) -> Path:
         return self.scene_dir(scene_number) / "workflow.json"
 

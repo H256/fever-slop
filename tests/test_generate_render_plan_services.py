@@ -7,6 +7,7 @@ from feverslop.application.generate_render_plan import (
     GenerateRenderPlanExecutionRequest,
     GenerateRenderPlanUseCase,
 )
+from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
@@ -61,6 +62,17 @@ class RecordingReporter:
 
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
+    def test_production_h3_service_has_project_checkpoint_store_factory(self):
+        from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
+
+        use_case = build_generate_render_plan_use_case()
+        h3_service = next(
+            service for service in use_case.pipeline_services
+            if isinstance(service, H3PromptPipeline)
+        )
+
+        self.assertIsNotNone(h3_service.checkpoint_store_factory)
+
     def test_deferred_reference_services_are_skipped_when_requested(self):
         immediate = RecordingService("audio", {})
         deferred = DeferredRecordingService("h3", {})

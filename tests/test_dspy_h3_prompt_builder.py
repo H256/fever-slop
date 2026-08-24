@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from importlib.resources import files
@@ -5,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
@@ -73,6 +75,163 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_checkpoint_revision_hashes_bundled_guides_and_judge_contract(self):
+        generator = FakeGenerator()
+        generator.base_guide_path = "minimax-h3-base.md"
+        generator.reference_guide_path = "minimax-h3-references.md"
+        generator.judge_attempts = 5
+
+        revision = DspyH3PromptBuilder(generator).checkpoint_revision()
+
+        self.assertEqual(1, revision["contract"])
+        self.assertEqual(5, revision["judge_attempts"])
+        self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_writes_each_checkpoint_before_generating_the_next_scene(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            calls = []
+
+            def generate(_request):
+                calls.append(len(calls) + 1)
+                if len(calls) == 2:
+                    checkpoint = project / "output/render/scenes/scene_0001/h3_prompt.json"
+                    self.assertTrue(checkpoint.is_file())
+                return FakeGeneratedPrompt()
+
+            DspyH3PromptBuilder(generate).build_all_h3_prompts(
+                stage1_segments=[
+                    {"scene": 1, "segment_id": "seg-1"},
+                    {"scene": 2, "segment_id": "seg-2"},
+                ],
+                concept_prompts={"seg-1": "one", "seg-2": "two"},
+                scene_details={},
+                global_context={},
+                output_json_path=project / "h3.json",
+                artifact_store=JsonArtifactStore(),
+                checkpoint_store=H3PromptCheckpointStore(project),
+                generator_revision={"guide": "v1"},
+            )
+
+            self.assertEqual([1, 2], calls)
+
+    def test_interruption_keeps_only_completed_scene_checkpoints(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            calls = 0
+
+            def generate(_request):
+                nonlocal calls
+                calls += 1
+                if calls == 4:
+                    raise RuntimeError("provider interrupted")
+                return FakeGeneratedPrompt()
+
+            with self.assertRaisesRegex(RuntimeError, "provider interrupted"):
+                DspyH3PromptBuilder(generate, allow_fallback=False).build_all_h3_prompts(
+                    stage1_segments=[
+                        {"scene": number, "segment_id": f"seg-{number}"}
+                        for number in range(1, 6)
+                    ],
+                    concept_prompts={},
+                    scene_details={},
+                    global_context={},
+                    output_json_path=project / "h3.json",
+                    artifact_store=JsonArtifactStore(),
+                    checkpoint_store=H3PromptCheckpointStore(project),
+                    generator_revision={"guide": "v1"},
+                )
+
+            checkpoints = sorted(project.glob("output/render/scenes/*/h3_prompt.json"))
+            self.assertEqual(3, len(checkpoints))
+            self.assertFalse((project / "h3.json").exists())
+
+    def test_matching_checkpoint_resumes_without_generator_call(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            checkpoint_store = H3PromptCheckpointStore(project)
+            kwargs = {
+                "stage1_segments": [{"scene": 1, "segment_id": "seg-1"}],
+                "concept_prompts": {"seg-1": "one"},
+                "scene_details": {},
+                "global_context": {},
+                "output_json_path": project / "h3.json",
+                "artifact_store": JsonArtifactStore(),
+                "checkpoint_store": checkpoint_store,
+                "generator_revision": {"guide": "v1"},
+            }
+            DspyH3PromptBuilder(FakeGenerator()).build_all_h3_prompts(**kwargs)
+            generator = FakeGenerator()
+
+            DspyH3PromptBuilder(generator).build_all_h3_prompts(**kwargs)
+
+            self.assertEqual([], generator.requests)
+            aggregate = json.loads((project / "h3.json").read_text(encoding="utf-8"))
+            self.assertEqual("seg-1", aggregate[0]["segment_id"])
+
+    def test_selected_generation_replaces_only_matching_legacy_aggregate_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            aggregate_path = project / "h3.json"
+            aggregate_path.write_text(json.dumps([
+                {"segment_id": "seg-1", "prompt": "keep unchanged"},
+                {"segment_id": "seg-2", "prompt": "replace me"},
+            ]), encoding="utf-8")
+
+            DspyH3PromptBuilder(FakeGenerator()).build_all_h3_prompts(
+                stage1_segments=[{"scene": 2, "segment_id": "seg-2"}],
+                concept_prompts={"seg-2": "two"},
+                scene_details={},
+                global_context={},
+                output_json_path=aggregate_path,
+                artifact_store=JsonArtifactStore(),
+                checkpoint_store=H3PromptCheckpointStore(project),
+                generator_revision={"guide": "v1"},
+                preserve_existing_aggregate=True,
+            )
+
+            aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+            self.assertEqual("keep unchanged", aggregate[0]["prompt"])
+            self.assertEqual(FakeGeneratedPrompt.rendered_prompt, aggregate[1]["prompt"])
+
+    def test_selected_regeneration_replaces_selected_checkpoint_only(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            store = H3PromptCheckpointStore(project)
+            base_kwargs = {
+                "concept_prompts": {"seg-1": "one", "seg-2": "two"},
+                "scene_details": {},
+                "global_context": {},
+                "output_json_path": project / "h3.json",
+                "artifact_store": JsonArtifactStore(),
+                "checkpoint_store": store,
+                "generator_revision": {"guide": "v1"},
+            }
+            DspyH3PromptBuilder(FakeGenerator()).build_all_h3_prompts(
+                stage1_segments=[
+                    {"scene": 1, "segment_id": "seg-1"},
+                    {"scene": 2, "segment_id": "seg-2"},
+                ],
+                **base_kwargs,
+            )
+            first_path = project / "output/render/scenes/scene_0001/h3_prompt.json"
+            second_path = project / "output/render/scenes/scene_0002/h3_prompt.json"
+            first_before = first_path.read_bytes()
+            second_before = second_path.read_bytes()
+            generator = FakeGenerator(type("Generated", (), {"rendered_prompt": "regenerated scene two"})())
+
+            DspyH3PromptBuilder(generator).build_all_h3_prompts(
+                stage1_segments=[{"scene": 2, "segment_id": "seg-2"}],
+                preserve_existing_aggregate=True,
+                reuse_checkpoints=False,
+                **base_kwargs,
+            )
+
+            self.assertEqual(first_before, first_path.read_bytes())
+            self.assertNotEqual(second_before, second_path.read_bytes())
+            self.assertEqual(1, len(generator.requests))
+
     def test_build_all_forwards_reporter_warning_callback_to_generator(self):
         generator = CallbackGenerator()
         builder = DspyH3PromptBuilder(generator)

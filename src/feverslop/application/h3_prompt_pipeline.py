@@ -131,10 +131,12 @@ class H3PromptPipeline:
         llm_factory: Callable[[Any], Any],
         h3_prompt_builder_factory: H3PromptBuilderFactory,
         dspy_prompt_builder_factory: H3PromptBuilderFactory | None = None,
+        checkpoint_store_factory: Callable[[GenerateRenderPlanContext], Any] | None = None,
     ):
         self.llm_factory = llm_factory
         self.h3_prompt_builder_factory = h3_prompt_builder_factory
         self.dspy_prompt_builder_factory = dspy_prompt_builder_factory
+        self.checkpoint_store_factory = checkpoint_store_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -194,6 +196,17 @@ class H3PromptPipeline:
         if model_spec and model_spec.is_minimax_h3 and self.dspy_prompt_builder_factory:
             builder_factory = self.dspy_prompt_builder_factory
         builder = builder_factory(llm)
+        checkpoint_store = (
+            self.checkpoint_store_factory(context)
+            if model_spec and model_spec.is_minimax_h3 and self.checkpoint_store_factory is not None
+            else None
+        )
+        generator_revision = _generator_revision(app_config, builder)
+        selected_scene_numbers = (
+            context["selected_scene_numbers"]
+            if "selected_scene_numbers" in context.keys()
+            else None
+        )
 
         mode = model_spec.prompt_mode.value if model_spec else PromptMode.T2V.value
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
@@ -231,6 +244,10 @@ class H3PromptPipeline:
                 if reporter is not None
                 else None
             ),
+            checkpoint_store=checkpoint_store,
+            generator_revision=generator_revision,
+            preserve_existing_aggregate=selected_scene_numbers is not None,
+            reuse_checkpoints=selected_scene_numbers is None,
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
@@ -257,3 +274,19 @@ class H3PromptPipeline:
             else:
                 reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
         return context
+
+
+def _generator_revision(app_config: Any, builder: Any) -> dict[str, Any]:
+    revision = {"builder": f"{type(builder).__module__}.{type(builder).__qualname__}"}
+    builder_revision = getattr(builder, "checkpoint_revision", None)
+    if callable(builder_revision):
+        revision.update(builder_revision())
+    llm_config = getattr(app_config, "llm", None)
+    if llm_config is not None:
+        model_for = getattr(llm_config, "model_for", None)
+        if callable(model_for):
+            revision["model"] = str(model_for("structured"))
+        revision["prompt_judge_attempts"] = int(
+            getattr(llm_config, "prompt_judge_attempts", 3),
+        )
+    return revision

@@ -91,18 +91,23 @@ uv run python run_pipeline.py ./projects/my-song \
 
 Combine `--skip-*` flags with `--stage` to run only the stages you need.
 
-## Editing MiniMax H3 prompts after generation
+## Inspecting and resuming MiniMax H3 prompts
 
-For MiniMax H3 projects, the generated prompts are stored in:
+Each judged scene becomes inspectable immediately, without waiting for the
+complete batch:
 
 ```text
-projects/<project>/output/prompts/h3_prompts_<song>.json
+projects/<project>/output/render/scenes/scene_NNNN/h3_prompt.json
 ```
 
-You can edit the `prompt` value of an individual `segment_id` directly in
-this JSON file, for example to correct an action or add a directing detail.
-The renderer does not read this file directly. First copy the edited prompts
-into the render plan by running `render_plan`, then render the scenes:
+This is generated checkpoint/diagnostic data. Do not edit it. Status `good`
+means the final judge accepted the prompt; `bad_exhausted` means all repair
+attempts completed but the final verdict remained BAD; `unjudged` records a
+completed result without a judge. Console progress prints the scene, verdict,
+status, and path without printing the prompt body.
+
+After an interruption, resume H3 generation from the existing upstream prompt
+and reference artifacts with:
 
 ```powershell
 uv run python run_pipeline.py .\projects\my-song `
@@ -111,23 +116,23 @@ uv run python run_pipeline.py .\projects\my-song `
   --skip-main-pipeline `
   --skip-msr-reference-render `
   --skip-msr-prompt-enrichment `
-  --stage render_plan `
-  --stage ltx_render_scenes `
-  --stage concat_video_only `
-  --stage mux_original_audio
+  --stage h3_prompts
 ```
 
-The effective render source after this step is
-`output/render/plans/base.json`; ComfyUI receives the prompt from that plan.
-Keep the existing `references` data intact, especially for `r2v`, and change
-only the prompt text unless you intentionally want to alter reference or
-timing data. If only selected scenes should be regenerated, add
-`--scenes 2,5-6` to the command.
+Only checkpoints whose complete input fingerprints still match are reused.
+A changed concept, scene direction, relay, subject directive, reference/audio
+asset, H3 guide, model, or judge configuration regenerates the affected scene.
+To regenerate only selected scenes, append `--scenes 2,5-6`. Selection forces
+fresh generation for those scenes even when their old fingerprints match;
+other scene checkpoint files are not rewritten.
 
-These edits are manual overrides, not a second prompt-generation layer.
-Running the H3 prompt-generation stage again regenerates
-`h3_prompts_<song>.json` and can overwrite the manual changes. Save or copy
-your edited file before regenerating prompts.
+The compatibility aggregate remains at
+`output/prompts/h3_prompts_<song>.json` and is rebuilt after a successful H3
+batch. It is also generated data, not the edit target. Human corrections belong
+only in `output/render/plans/base.json` under
+`canonical.roles.h3.video.override.value`. Checkpoint save/reuse may update the
+matching `generated` value, but never that override. Backend consumption of the
+effective override is introduced by the subsequent canonical projection step.
 
 ## Migrating edits from existing render plans
 

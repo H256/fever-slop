@@ -43,6 +43,7 @@ class SceneArtifactLayoutTests(unittest.TestCase):
         self.assertEqual(layout.scene_dir(5) / "workflow.json", layout.scene_workflow(5))
         self.assertEqual(layout.scene_dir(5) / "raw.mp4", layout.scene_raw_video(5))
         self.assertEqual(layout.scene_dir(5) / "final.mp4", layout.scene_final_video(5))
+        self.assertEqual(layout.scene_dir(5) / "h3_prompt.json", layout.scene_h3_prompt(5))
         self.assertEqual(project / "output" / "render" / "storyboard", layout.storyboard_dir)
         self.assertEqual(project / "output" / "render" / "final" / "video_only.mp4", layout.video_only)
         self.assertEqual(project / "output" / "render" / "final" / "video_audio.mp4", layout.video_audio)

@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from feverslop.domain.performance_sync import select_performance_audio_paths
+from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
 from feverslop.prompting.dspy_h3_models import MusicIntent
+from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
     subject_directives_from_scene,
 )
+
+if TYPE_CHECKING:
+    from feverslop.ports.h3_prompt_checkpoints import H3PromptCheckpointPort
 
 
 def _reference(
@@ -296,6 +302,19 @@ class DspyH3PromptBuilder:
         self.reference_root = reference_root
         self.allow_fallback = allow_fallback
 
+    def checkpoint_revision(self) -> dict[str, Any]:
+        revision: dict[str, Any] = {
+            "contract": 1,
+            "generator": f"{type(self.generator).__module__}.{type(self.generator).__qualname__}",
+            "judge_attempts": int(getattr(self.generator, "judge_attempts", 0)),
+        }
+        for name in ("base_guide", "reference_guide"):
+            path = getattr(self.generator, f"{name}_path", None)
+            if path:
+                guide = load_markdown_guide(path)
+                revision[f"{name}_sha256"] = hashlib.sha256(guide.encode("utf-8")).hexdigest()
+        return revision
+
     def build_h3_prompt(
         self,
         *,
@@ -427,6 +446,10 @@ class DspyH3PromptBuilder:
         progress_callback: Callable[[int, int], None] | None = None,
         status_callback: Callable[[int, int, str], None] | None = None,
         warning_callback: Callable[..., None] | None = None,
+        checkpoint_store: H3PromptCheckpointPort | None = None,
+        generator_revision: dict[str, Any] | None = None,
+        preserve_existing_aggregate: bool = False,
+        reuse_checkpoints: bool = True,
     ) -> Path:
         set_warning_callback = getattr(self.generator, "set_warning_callback", None)
         if callable(set_warning_callback):
@@ -440,21 +463,60 @@ class DspyH3PromptBuilder:
             concept = concept_prompts.get(segment_id, "")
             if isinstance(concept, dict):
                 concept = concept.get("concept", "")
-            result = self.build_h3_prompt(
-                segment=segment,
-                concept=str(concept),
-                scene_details=scene_details.get(segment_id, {}),
-                global_context=global_context,
-                mode=mode,
-                video_type=video_type,
-                audio_paths=audio_paths,
-                reference_root=reference_root,
-            )
+            details = scene_details.get(segment_id, {})
+            checkpoint_input = None
+            checkpoint = None
+            if checkpoint_store is not None:
+                checkpoint_input = H3PromptCheckpointInput(
+                    scene_number=int(segment.get("scene") or segment.get("scene_number") or current),
+                    segment_id=str(segment_id),
+                    segment=segment,
+                    concept=str(concept),
+                    scene_details=details,
+                    global_context=global_context,
+                    mode=mode,
+                    video_type=video_type,
+                    audio_paths=audio_paths or {},
+                    generator_revision=generator_revision or {},
+                )
+                if reuse_checkpoints:
+                    checkpoint = checkpoint_store.load(checkpoint_input)
+            if checkpoint is not None:
+                result = checkpoint.generated
+            else:
+                result = self.build_h3_prompt(
+                    segment=segment,
+                    concept=str(concept),
+                    scene_details=details,
+                    global_context=global_context,
+                    mode=mode,
+                    video_type=video_type,
+                    audio_paths=audio_paths,
+                    reference_root=reference_root,
+                )
+                if checkpoint_store is not None and checkpoint_input is not None:
+                    checkpoint_store.save(checkpoint_input, result)
             results.append({"segment_id": segment_id, **result})
             if progress_callback is not None:
                 progress_callback(current, total)
             if status_callback is not None:
                 status_callback(current, total, "completed")
+        if preserve_existing_aggregate and Path(output_json_path).is_file():
+            existing = artifact_store.read_json(output_json_path)
+            if not isinstance(existing, list) or any(not isinstance(item, dict) for item in existing):
+                raise ValueError(f"H3 prompt aggregate must be a list of objects: {output_json_path}")
+            updates = {str(item.get("segment_id")): item for item in results}
+            merged = []
+            handled: set[str] = set()
+            for item in existing:
+                segment_id = str(item.get("segment_id"))
+                merged.append(updates.get(segment_id, item))
+                handled.add(segment_id)
+            merged.extend(
+                item for item in results
+                if str(item.get("segment_id")) not in handled
+            )
+            results = merged
         return artifact_store.write_json(output_json_path, results)
 
 

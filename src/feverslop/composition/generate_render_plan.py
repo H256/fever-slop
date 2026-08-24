@@ -14,6 +14,7 @@ from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyz
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.storyboard_renderer import StoryboardRenderer
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
@@ -90,6 +91,7 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                 dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
                     build_dspy_generator(llm), allow_fallback=False,
                 ),
+                checkpoint_store_factory=_build_h3_checkpoint_store,
             ),
             RenderPlanPipeline(
                 build_render_plan=build_render_plan,
@@ -184,6 +186,7 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
                 dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
                     build_dspy_generator(llm), allow_fallback=False,
                 ),
+                checkpoint_store_factory=_build_h3_checkpoint_store,
             ),
             RenderPlanPipeline(
                 build_render_plan=build_render_plan,
@@ -210,6 +213,13 @@ def _build_canonical_regenerator(context) -> CanonicalPlanRegenerator:
     return CanonicalPlanRegenerator(
         config.project_dir,
         reference_plan_path=paths.artifact_layout.references_plan,
+        reporter=context["reporter"],
+    )
+
+
+def _build_h3_checkpoint_store(context) -> H3PromptCheckpointStore:
+    return H3PromptCheckpointStore(
+        context["config"].project_dir,
         reporter=context["reporter"],
     )
 
