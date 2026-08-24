@@ -7,6 +7,7 @@ from unittest.mock import patch
 from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
     build_render_video_scenes_use_case,
+    resolve_rolling_frames,
 )
 
 
@@ -90,6 +91,14 @@ class RenderVideoCompositionProfileTests(unittest.TestCase):
             Path("workflows/profile-final.json"),
             backend_type.call_args.kwargs["workflow_path"],
         )
+
+    def test_negative_preroll_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "preroll_frames"):
+            resolve_rolling_frames(RenderVideoCompositionOptions(preroll_frames=-1))
+
+    def test_negative_tail_loss_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "tail_loss_frames"):
+            resolve_rolling_frames(RenderVideoCompositionOptions(tail_loss_frames=-1))
 
 
 if __name__ == "__main__":
