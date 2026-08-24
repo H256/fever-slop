@@ -7,6 +7,53 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
+    def test_workflow_config_defaults_to_unselected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({"input_audio": "song.mp3"}), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertIsNone(config.workflows.video)
+        self.assertIsNone(config.workflows.reference_hero)
+        self.assertIsNone(config.workflows.reference_edit)
+
+    def test_loads_project_workflow_selections(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "workflows": {
+                    "video": "workflows/video.json",
+                    "reference_hero": "workflows/hero.json",
+                    "reference_edit": "workflows/edit.json",
+                },
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual("workflows/video.json", config.workflows.video)
+        self.assertEqual("workflows/hero.json", config.workflows.reference_hero)
+        self.assertEqual("workflows/edit.json", config.workflows.reference_edit)
+
+    def test_project_workflow_selection_must_be_non_empty_string(self):
+        for value in ("", 42, False):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                (temp / "song.mp3").write_bytes(b"")
+                config_path = temp / "config.json"
+                config_path.write_text(json.dumps({
+                    "input_audio": "song.mp3",
+                    "workflows": {"video": value},
+                }), encoding="utf-8")
+
+                with self.assertRaisesRegex(ValueError, "workflows.video must be a non-empty string"):
+                    ProjectConfig.load(config_path)
+
     def test_reference_profile_is_not_part_of_project_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
