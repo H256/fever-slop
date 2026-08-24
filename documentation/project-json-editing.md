@@ -1,6 +1,9 @@
 # Editing Project JSON Artifacts
 
-This document explains which JSON files inside a FeverSlop project can be edited manually, and how to run the pipeline so those edits are actually used.
+This document explains the two supported JSON ownership boundaries: edit
+`config.json` for project inputs and edit canonical overrides in
+`output/render/plans/base.json` for post-generation scene corrections. Other
+JSON files under `output/` are generated inspection or cache artifacts.
 
 The examples use this project layout:
 
@@ -16,25 +19,18 @@ projects/well-of-youth/
 
 ## Key Rule
 
-`config.json` is project input. Most files under `output/` are generated artifacts.
+`config.json` is project input. `output/render/plans/base.json` is the sole
+human-editable render plan. Human prompt changes belong in
+`canonical.roles.<role>.override`; retain the generator-owned value next to it.
+Every other file under `output/` may be overwritten.
 
-When `run_pipeline.py` runs normally, the main pipeline regenerates timeline, prompt, and render-plan artifacts. Manual edits under `output/` can be overwritten.
-
-To use manual edits to an existing render plan, continue from the existing artifacts:
-
-```bash
-uv run python run_pipeline.py projects/well-of-youth \
-  --skip-tests \
-  --skip-main-pipeline
-```
-
-For rerendering scenes that already have output files, also pass:
+Preview and execute the required work with the safe runner. It handles existing
+clips and derived caches from scene-local fingerprints:
 
 ```bash
---no-skip-existing
+uv run python main.py run projects/well-of-youth --dry-run --scenes 3
+uv run python main.py run projects/well-of-youth --resume --scenes 3
 ```
-
-Otherwise existing rendered clips are skipped.
 
 ## File Roles
 
@@ -79,29 +75,33 @@ It is useful for inspection and debugging, but not the best long-term edit targe
 
 This maps each segment to a high-level scene concept and reference IDs.
 
-It is useful for understanding why a scene became what it became. However, `run_pipeline.py --skip-main-pipeline` does not rebuild the render plan from edited concept prompts. If you edit this file after a render plan already exists, that edit will not automatically affect rendering.
+It is useful for understanding why a scene became what it became. It is
+generated inspection data, not an edit target. Correct the matching canonical
+role in `base.json`, or change `config.json` and intentionally regenerate.
 
 ### `output/prompts/scene_details_*.json`
 
 This contains per-scene camera and character motion.
 
-Like `concept_prompts`, it is an intermediate artifact. Edits here only matter if the render plan is rebuilt from this stage. The standard resume path starts from the existing render plan instead.
+Like `concept_prompts`, it is generated intermediate inspection data. Do not
+edit it as a source for resume.
 
 ### `output/prompts/scene_prompts_*.json`
 
-This contains expanded per-scene prompts, timing, motion, and reference IDs before they are combined into the render plan.
-
-It is readable and useful for debugging. For manual post-generation edits, prefer editing the render plan directly unless you are intentionally rerunning the render-plan builder stage.
+This contains expanded per-scene prompts, timing, motion, and reference IDs
+before they are combined into the render plan. It is readable debugging data,
+not an edit target. Put post-generation prompt corrections in canonical
+overrides in `base.json`.
 
 ### `output/prompts/ltx_prompt_relay_*.json`
 
-This describes frame-relative singing and instrumental ranges for each scene.
+This describes generated frame-relative singing and instrumental ranges for
+each scene. Inspect it to diagnose generation, but put an intentional temporal
+correction in the appropriate structured relay override in `base.json`.
 
-It feeds the base render plan during generation. After the render plan exists, edits here are not used by `run_pipeline.py --skip-main-pipeline`.
+### `output/render/plans/base.json`
 
-### `output/render/plans/base.json` and `anchored.json`
-
-This is the best manual edit target after generation.
+This is the only manual render-plan edit target after generation.
 
 It combines:
 
@@ -113,15 +113,25 @@ It combines:
 - scene metadata
 - actor and location reference IDs
 
-`base.json` is the generated authoring checkpoint. `anchored.json` contains the corrected prompt anchors used by downstream reference enrichment. The resume path selects the latest appropriate canonical plan for the requested stages.
+`base.json` separates generator-owned and human-owned role values. Inspect a
+scene before editing:
+
+```bash
+uv run python main.py plan show projects/well-of-youth --scene 3
+```
+
+Add `canonical.roles.<role>.override.value` and human provenance; do not replace
+`generated`, add an `effective` field, or edit the legacy-compatible prompt
+copy. `anchored.json` contains derived anchor correction and is never an edit
+target.
 
 Use this file for targeted corrections such as:
 
 - swapping actors in a scene
 - changing a scene location
-- correcting prompt text
+- correcting prompt text through the matching canonical role override
 - adjusting per-scene render instructions
-- changing `ltx.prompt_relay` text
+- changing temporal prompt segments through a structured canonical relay override
 - changing scene metadata that should appear in review pages or enrichment prompts
 
 ### `output/render/plans/references.json`
@@ -138,9 +148,9 @@ It is generated from the current render plan plus `output/references/**/manifest
 - `ltx.msr_global_prompt`
 - `ltx.msr_prompt_relay`
 
-Do not use this as the primary edit target if you plan to run `run_pipeline.py --video-pipeline ltx_msr`, because the MSR enrichment step rewrites it from the base render plan.
-
-Edit this file only when you are passing this exact file directly to a lower-level renderer, or when you intentionally skip the enrichment step and know the existing MSR fields are already correct.
+Do not edit this file. MSR enrichment rewrites it from the effective canonical
+values in `base.json`. For a manual MSR correction, override
+`ltx.msr.global` or `ltx.msr.relay` in `base.json`.
 
 ### `output/render/plans/ingredients.json`
 
@@ -151,17 +161,19 @@ This is the compact Ingredients runtime plan. It intentionally omits storyboard 
 - `ltx.prompt_relay` controls frame-relative singing, silence, dialogue, and motion in V4 workflows.
 - `ltx.static_prompt` is a best-effort compatibility summary for explicitly selected V3 workflows.
 
-For a targeted V4 rerender, edit `ltx.prompt_relay` here and rerun prepare before render. A generated `scenes/scene_NNNN/workflow.json` is overwritten by prepare and should not be edited as the source.
+Do not edit this file. For a targeted V4 correction, override
+`ingredients.global` or `ingredients.relay` in `base.json`, preserving relay
+frame boundaries. A generated `scenes/scene_NNNN/workflow.json` is overwritten
+by prepare and is not a source.
 
 See [Render Plan Artifacts](render-plan-artifacts.md) for ownership and retention rules.
 
 ### `output/references/**/manifest.json`
 
-These manifests map actor and location IDs to generated reference images.
-
-The MSR enrichment step reads these files. They can be edited to point an existing actor or location ID at different reference images.
-
-Be careful: rerunning MSR reference rendering can regenerate these manifests.
+These generated manifests map actor and location IDs to reference images. They
+are inspection/cache data and can be regenerated. Change the canonical
+actor/location binding in `base.json` or the source project configuration, then
+let dry-run select reference regeneration. Do not redirect a manifest manually.
 
 ## Swapping Actors In Scenes
 
@@ -218,52 +230,59 @@ dragon_cavern
 lich_chamber
 ```
 
-Then run the pipeline from the existing render plan and rerender the changed scene:
+Then preview and rerender the changed scene:
 
 ```bash
-uv run python run_pipeline.py projects/well-of-youth \
-  --skip-tests \
-  --skip-main-pipeline \
-  --video-pipeline ltx_msr \
-  --skip-msr-reference-render \
-  --scenes 3 \
-  --no-skip-existing
+uv run python main.py run projects/well-of-youth --dry-run --scenes 3
+uv run python main.py run projects/well-of-youth --resume --scenes 3
 ```
 
 What happens:
 
-1. The main pipeline is skipped, so the edited base render plan is preserved.
-2. Existing MSR reference images are reused.
-3. `output/render/plans/references.json` is rebuilt from the edited base render plan.
-4. MSR prompt enrichment runs unless explicitly skipped.
-5. Scene 3 is rerendered even if an old clip already exists.
+1. The canonical edit in `base.json` remains authoritative.
+2. Dry-run detects the changed reference binding for scene 3.
+3. Existing matching reference media is reused; changed/missing media is
+   regenerated by the required reference stage.
+4. Derived reference plans and prepared workflows are rebuilt in dependency
+   order.
+5. Scene 3 is rerendered and final assembly is refreshed; unrelated scenes are
+   reused.
 
 ## Prompt Consistency
 
 Changing only `references.actor_ids` changes the MSR reference inputs, but it does not automatically rewrite every prompt string in the scene.
 
-For clean actor swaps, inspect and update related prompt fields in the same scene:
+For clean actor swaps, inspect the related canonical roles in the same scene:
 
 ```text
-z_image.prompt
-ltx.base_prompt
-ltx.t2i_prompt
-ltx.i2v_prompt_from_t2i
-ltx.prompt_relay[].prompt
-metadata.base_concept
-metadata.character_motion
+canonical.roles.z_image.prompt
+canonical.roles.ltx.base
+canonical.roles.ltx.i2v
+canonical.roles.ltx.relay
+canonical.roles.ltx.msr.global
+canonical.roles.ltx.msr.relay
+canonical.roles.ingredients.global
+canonical.roles.ingredients.relay
+canonical.roles.h3.video
 ```
 
-If these fields still mention the old actor by name, the model may still follow the old text even though the reference images point to the new actor.
+If their effective values still mention the old actor, add human overrides for
+the affected roles. `plan show` displays generated, override, and effective
+values without requiring edits to derived copies.
 
 ## Quick Decision Guide
 
 Use `config.json` when the change should be part of the project source and survive a full regeneration.
 
-Use `output/render/plans/base.json` or `anchored.json` when you want to manually correct existing scenes and continue the enrichment pipeline.
+Use only `output/render/plans/base.json` canonical overrides when you want to
+correct an existing generated scene. Regeneration preserves those overrides by
+stable scene identity.
 
-Use `output/render/plans/ingredients.json` for a targeted V4 Ingredients relay correction when you intentionally do not want to regenerate upstream enrichment.
+Inspect but do not edit `h3_prompt.json`, H3 aggregate files, `compact.json`,
+`anchored.json`, `references.json`, `ingredients.json`, reference manifests,
+scene manifests, or prepared workflows. Use `plan show`, `status`, and `run
+--dry-run` to decide what to regenerate.
 
-Use `output/references/**/manifest.json` only when you need to redirect existing actor or location IDs to different reference images.
-
-Avoid editing `output/render/plans/references.json` unless you are using that exact file directly or intentionally skipping MSR enrichment.
+See the complete [human prompt correction workflows](running.md#human-prompt-correction-workflows)
+for targeted rerender, interrupted H3, stale workflow, legacy migration, and
+full regeneration examples.

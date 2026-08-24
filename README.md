@@ -110,6 +110,17 @@ prepared workflow manifests, and rendered clips. `--dry-run` is read-only;
 for recovery examples. Direct `run_pipeline.py --stage ...` and `--skip-*`
 commands remain available as the advanced compatibility interface.
 
+For a human correction, inspect a scene with `main.py plan show`, then edit
+only `output/render/plans/base.json`: add or update
+`canonical.roles.<role>.override` and leave `generated` intact. Per-scene
+`h3_prompt.json`, aggregate H3 output, `anchored.json`, `references.json`,
+`ingredients.json`, manifests, and workflows are generated inspection/cache
+artifacts. Preview and rerender only the affected scene with `main.py run
+PROJECT --dry-run --scenes N` followed by `--resume --scenes N`. The complete
+[human correction workflow](documentation/running.md#human-prompt-correction-workflows)
+covers stale overrides, H3 interruption, legacy migration, reference changes,
+and full regeneration.
+
 #### Reusing audio analysis artifacts
 
 The main pipeline can reuse individual audio-analysis artifacts instead of
