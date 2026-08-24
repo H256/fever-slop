@@ -120,6 +120,63 @@ class ConfiguredAudioPathTests(unittest.TestCase):
 
 
 class DspyPromptPipelineSelectionTests(unittest.TestCase):
+    def test_minimax_pipeline_injects_checkpoint_store_revision_and_partial_aggregate_mode(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        captured = {}
+        sentinel_store = object()
+
+        class Builder:
+            def build_all_h3_prompts(self, **kwargs):
+                captured.update(kwargs)
+
+            def checkpoint_revision(self):
+                return {"builder_contract": 3, "guide_sha256": "abc"}
+
+        class ArtifactStore:
+            def read_json(self, _path):
+                return []
+
+        config = SimpleNamespace(
+            video_pipeline="minimax-h3-r2v",
+            minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+            project_dir=Path("project"),
+        )
+        app_config = SimpleNamespace(
+            llm=SimpleNamespace(
+                prompt_judge_attempts=4,
+                model_for=lambda purpose: "checkpoint-model",
+            ),
+        )
+        context = GenerateRenderPlanContext(
+            app_config=app_config,
+            config=config,
+            stage1_segments=[{"scene": 2, "segment_id": "s2"}],
+            concept_prompts={},
+            scene_details={},
+            global_context={},
+            h3_prompts_json=Path("h3.json"),
+            artifact_store=ArtifactStore(),
+            log_step=lambda _message: None,
+            log_file=lambda _label, _path: None,
+            selected_scene_numbers={2},
+        )
+        pipeline = H3PromptPipeline(
+            llm_factory=lambda _config: None,
+            h3_prompt_builder_factory=lambda _llm: Builder(),
+            dspy_prompt_builder_factory=lambda _llm: Builder(),
+            checkpoint_store_factory=lambda current: sentinel_store,
+        )
+
+        pipeline.run(context)
+
+        self.assertIs(sentinel_store, captured["checkpoint_store"])
+        self.assertTrue(captured["preserve_existing_aggregate"])
+        self.assertFalse(captured["reuse_checkpoints"])
+        self.assertEqual("checkpoint-model", captured["generator_revision"]["model"])
+        self.assertEqual(4, captured["generator_revision"]["prompt_judge_attempts"])
+        self.assertEqual("abc", captured["generator_revision"]["guide_sha256"])
+
     def test_run_accepts_typed_context_when_relay_path_is_optional(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 

@@ -12,6 +12,7 @@ from tempfile import NamedTemporaryFile
 from rich.console import Console
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.postprocessor_frame_extractor import (
     PostprocessorFrameExtractor,
@@ -467,6 +468,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         stem_files=_discover_stem_files(paths.stems_dir, config.input_audio),
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{config.song_id}.json",
         beat_json=paths.timeline_dir / f"beat_data_{config.song_id}.json",
+        selected_scene_numbers=selected if selected_scene_spec else None,
     )
     pipeline = H3PromptPipeline(
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(
@@ -486,6 +488,10 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             build_dspy_generator(llm),
             reference_root=paths.project_dir,
             allow_fallback=False,
+        ),
+        checkpoint_store_factory=lambda _context: H3PromptCheckpointStore(
+            paths.project_dir,
+            reporter=reporter,
         ),
     )
     pipeline.execute(context)

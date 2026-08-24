@@ -184,12 +184,56 @@ ltx.base_prompt/static_prompt/prompt_relay/native_audio
 
 Each `output/render/scenes/scene_NNNN/` directory contains:
 
+- `h3_prompt.json`: atomically written MiniMax H3 generation checkpoint. It is
+  available as soon as that scene finishes its final judge/repair attempt; it
+  is generated inspection/resume data, not a human edit target.
 - `manifest.json`: hashes the selected workflow template, projected scene, assets, seed, and render settings. Prepare uses it to decide whether cached output is still valid.
 - `workflow.json`: fully patched ComfyUI API workflow. It is generated output and is overwritten by prepare.
 - `raw.mp4`: downloaded ComfyUI result before rolling-window trimming.
 - `final.mp4`: scene clip after trimming.
 
 Do not treat `workflow.json` as a planning source. Edit the appropriate plan and rerun prepare.
+
+### MiniMax H3 scene checkpoints
+
+Every completed MiniMax H3 scene writes
+`output/render/scenes/scene_NNNN/h3_prompt.json` before generation begins for
+the next scene. The checkpoint uses schema
+`feverslop.h3-prompt-checkpoint.v1` and records:
+
+- the current scene number plus stable canonical `scene_id` and `segment_id`;
+- `generated`, containing the backward-compatible prompt result, references,
+  final judge record, and judge attempts;
+- status `good`, `bad_exhausted`, or `unjudged`;
+- an `input_fingerprint` and non-secret generator provenance.
+
+`bad_exhausted` is a completed checkpoint: every configured repair attempt was
+used and the final judge still returned BAD. It remains inspectable and can be
+resumed just like GOOD output. Routine console messages show scene, verdict,
+status, and path, but never the prompt body.
+
+The fingerprint covers scene/segment identity, concept, scene details, global
+context, H3 mode, relay and subject directives, reference/audio asset content,
+model and judge configuration, checkpoint contract, and both bundled H3 guide
+contents. Reuse requires an exact schema, identity, and fingerprint match.
+Changing one scene input therefore regenerates that scene; reordering cannot
+attach a checkpoint to a different segment. A malformed checkpoint is an
+explicit data error rather than a cache hit.
+
+An interrupted run leaves every already completed checkpoint readable. A
+later full run reuses matching checkpoints without an LLM call. `--scenes` is
+an explicit regeneration request: selected checkpoints are replaced even when
+their fingerprints still match, while unselected checkpoint bytes remain
+untouched. At successful batch completion, the legacy
+`output/prompts/h3_prompts_<song>.json` list is materialized for existing
+readers. A selected run replaces its matching aggregate entries and preserves
+the others.
+
+When canonical `base.json` already exists, saving or reusing a checkpoint also
+updates only `canonical.roles.h3.video.generated` for the matching stable
+identity using an optimistic atomic commit. An existing human `override`
+record is never changed. For a new project, `base.json` is created later by the
+normal render-plan stage from the compatible aggregate.
 
 ## Editing and regeneration
 
