@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 from feverslop.adapters.global_library import GlobalLibraryAdapter
@@ -190,10 +191,69 @@ class GlobalLibraryAdapterTests(unittest.TestCase):
         self.assertEqual([], violations)
         self.assertFalse(asset_dir.exists())
 
-    def test_delete_removes_lock_file_and_second_delete_fails_without_side_effects(self):
+    @unittest.skipUnless(os.name == "nt", "Windows unlink semantics")
+    def test_delete_tolerates_reader_that_passed_manifest_check_before_delete(self):
+        class CoordinatedAdapter(GlobalLibraryAdapter):
+            def __init__(self, root):
+                super().__init__(root)
+                self.coordinate = False
+                self.exclusive_exits = 0
+                self.reader_ready = threading.Event()
+                self.allow_reader = threading.Event()
+                self.reader_acquired = threading.Event()
+                self.release_reader = threading.Event()
+
+            @contextmanager
+            def _lock(self, directory, *, shared=False):
+                if self.coordinate and shared:
+                    self.reader_ready.set()
+                    if not self.allow_reader.wait(5):
+                        raise TimeoutError("delete did not release its validation lock")
+                with super()._lock(directory, shared=shared):
+                    if self.coordinate and shared:
+                        self.reader_acquired.set()
+                        if not self.release_reader.wait(5):
+                            raise TimeoutError("test did not release coordinated reader")
+                    yield
+                if self.coordinate and not shared:
+                    self.exclusive_exits += 1
+                    if self.exclusive_exits == 2:
+                        self.allow_reader.set()
+                        if not self.reader_acquired.wait(5):
+                            raise TimeoutError("reader did not acquire the released lock")
+
+        adapter = CoordinatedAdapter(self.root)
+        adapter.create(GlobalAsset("ava", AssetKind.CHARACTER, "Ava"))
+        adapter.coordinate = True
+        reader_error: list[Exception] = []
+
+        def reader():
+            try:
+                adapter.get("character", "ava")
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                reader_error.append(exc)
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+        self.assertTrue(adapter.reader_ready.wait(5))
+        delete_error = None
+        try:
+            adapter.delete("character", "ava")
+        except Exception as exc:
+            delete_error = exc
+        finally:
+            adapter.release_reader.set()
+            thread.join(5)
+
+        self.assertIsNone(delete_error)
+        self.assertEqual([], reader_error)
+        self.assertFalse(thread.is_alive())
+
+    def test_delete_removes_asset_directory_and_second_delete_has_no_side_effects(self):
         self.adapter.create(GlobalAsset("lamp", AssetKind.PROP, "Lamp"))
         asset_dir = self.root / "prop" / "lamp"
-        self.assertTrue((asset_dir / ".lock").is_file())
         self.adapter.delete(AssetKind.PROP, "lamp")
         self.assertFalse(asset_dir.exists())
         with self.assertRaises(FileNotFoundError):
