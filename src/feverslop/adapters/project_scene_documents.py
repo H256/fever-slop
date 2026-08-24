@@ -11,8 +11,8 @@ from typing import Any, Protocol
 
 from feverslop.adapters.artifact_catalog import ArtifactCatalog
 from feverslop.adapters.artifact_locking import artifact_write_lock
-from feverslop.domain.scene_workspace import SceneMedia
-from feverslop.ports.scene_documents import SceneDocumentConflict, SceneDocumentSnapshot
+from feverslop.domain.scene_workspace import SceneDocumentConflict, SceneMedia
+from feverslop.ports.scene_documents import SceneDocumentSnapshot
 
 
 class _ArtifactCatalog(Protocol):

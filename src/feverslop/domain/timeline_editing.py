@@ -168,6 +168,32 @@ class TimelineEditImpact:
     render_plan_invalidated: bool = False
 
 
+@dataclass(frozen=True)
+class AffectedArtifacts:
+    """Immutable downstream artifact invalidation state."""
+
+    timeline: bool = False
+    scene_srt: bool = False
+    beat_json: bool = False
+    stage1_segments: bool = False
+    ltx_prompt: bool = False
+    render_plan: bool = False
+
+    @staticmethod
+    def from_timeline_edit_impact(impact: TimelineEditImpact) -> AffectedArtifacts:
+        return AffectedArtifacts(
+            timeline=impact.timeline_invalidated,
+            scene_srt=impact.scene_srt_invalidated,
+            beat_json=impact.beat_json_invalidated,
+            stage1_segments=impact.stage1_segments_invalidated,
+            ltx_prompt=impact.ltx_prompt_invalidated,
+            render_plan=impact.render_plan_invalidated,
+        )
+
+    def any(self) -> bool:
+        return any((self.timeline, self.scene_srt, self.beat_json, self.stage1_segments, self.ltx_prompt, self.render_plan))
+
+
 # ---------------------------------------------------------------------------
 # Pure domain functions
 # ---------------------------------------------------------------------------

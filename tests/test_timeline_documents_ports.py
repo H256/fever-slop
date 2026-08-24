@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import unittest
+from dataclasses import FrozenInstanceError
 from typing import Any
 
 from feverslop.domain.timeline_editing import (
@@ -206,6 +207,10 @@ class AffectedArtifactsTest(unittest.TestCase):
             render_plan=True,
         )
         self.assertTrue(aa.any())
+
+    def test_flags_are_immutable(self):
+        with self.assertRaises(FrozenInstanceError):
+            AffectedArtifacts(timeline=True).timeline = False
 
 
 if __name__ == "__main__":
