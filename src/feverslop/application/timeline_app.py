@@ -7,6 +7,7 @@ read-edit-write cycles and computes downstream artifact impact.
 from __future__ import annotations
 
 from feverslop.domain.timeline_editing import (
+    AffectedArtifacts,
     BeatMarker,
     EditableTimelineSegment,
     SceneBoundary,
@@ -18,7 +19,6 @@ from feverslop.domain.timeline_editing import (
     validate_scene_boundaries,
 )
 from feverslop.ports.timeline_documents import (
-    AffectedArtifacts,
     TimelineReadPort,
     TimelineWritePort,
 )
@@ -29,7 +29,7 @@ class TimelineAppService:
 
     Bridges port I/O with domain editing primitives. Each public method
     follows the Load → Transform → Save pattern and returns
-    :class:`~feverslop.ports.timeline_documents.AffectedArtifacts`
+    :class:`~feverslop.domain.timeline_editing.AffectedArtifacts`
     describing which downstream pipeline outputs are stale.
     """
 

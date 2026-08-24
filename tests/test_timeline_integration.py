@@ -495,9 +495,7 @@ class TestRebuildJobFlow(unittest.TestCase):
             service.set_project_dir(str(project_dir))
             service.load()
 
-            affected = service.edit_segment(0, start_delta=1.0)
-            affected.beat_json = True
-            affected.scene_srt = True
+            affected = AffectedArtifacts(beat_json=True, scene_srt=True)
             job = service.rebuild_pipeline(affected)
 
             payload = job.get("payload", {})

@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
-from feverslop.domain.full_auto import GeneratedSong, ProjectScaffoldResult, SongSpec
+from feverslop.domain.full_auto import FullAutoRequest, GeneratedSong, ProjectScaffoldResult, SongSpec
 
 
 class SongBriefGeneratorPort(Protocol):
-    def generate(self, request: Any) -> SongSpec:
+    def generate(self, request: FullAutoRequest) -> SongSpec:
         """Generate a structured song and visual brief from a FullAutoRequest."""
 
 

@@ -3,9 +3,29 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from enum import Enum
 from typing import Any, Literal
 
 SceneDisplayStatus = Literal["missing", "planned", "rendered", "failed"]
+
+
+class SceneLtxPromptField(str, Enum):
+    ORIGINAL_STYLE_I2V_PROMPT = "original_style_i2v_prompt"
+    I2V_PROMPT_FROM_T2I = "i2v_prompt_from_t2i"
+    BASE_PROMPT = "base_prompt"
+
+
+class SceneDocumentConflict(RuntimeError):
+    """Raised when an optimistic-lock revision no longer matches."""
+
+    def __init__(self, project_id: str, expected_revision: str, actual_revision: str | None = None) -> None:
+        self.project_id = project_id
+        self.expected_revision = expected_revision
+        self.actual_revision = actual_revision
+        detail = f"Scene document changed for project {project_id!r}"
+        if actual_revision is not None:
+            detail += f" (expected revision {expected_revision!r}, found {actual_revision!r})"
+        super().__init__(detail)
 
 
 @dataclass(frozen=True)

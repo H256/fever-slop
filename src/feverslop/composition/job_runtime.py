@@ -30,7 +30,7 @@ from feverslop.composition.pipeline_runner import PipelineStage
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.visual_consistency import PreflightMode
-from feverslop.ports.timeline_documents import AffectedArtifacts
+from feverslop.domain.timeline_editing import AffectedArtifacts
 from feverslop.composition.logging import render_log_lines
 from feverslop.tools.reference_bible import (
     build_arg_parser as build_reference_bible_arg_parser,

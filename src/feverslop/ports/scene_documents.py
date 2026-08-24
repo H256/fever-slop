@@ -2,17 +2,22 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from feverslop.domain.scene_workspace import SceneMedia
+from feverslop.domain.scene_workspace import (
+    SceneDocumentConflict,
+    SceneLtxPromptField,
+    SceneMedia,
+)
 
-
-class SceneLtxPromptField(str, Enum):
-    ORIGINAL_STYLE_I2V_PROMPT = "original_style_i2v_prompt"
-    I2V_PROMPT_FROM_T2I = "i2v_prompt_from_t2i"
-    BASE_PROMPT = "base_prompt"
+__all__ = [
+    "SceneDocumentConflict",
+    "SceneDocumentPort",
+    "SceneDocumentSnapshot",
+    "SceneLtxPromptField",
+    "SceneMediaPort",
+]
 
 
 @dataclass(frozen=True)
@@ -34,25 +39,6 @@ class SceneDocumentSnapshot:
 
     def to_scenes(self) -> list[dict[str, Any]]:
         return [_thaw_json(scene) for scene in self.scenes]
-
-
-class SceneDocumentConflict(RuntimeError):
-    def __init__(
-        self,
-        project_id: str,
-        expected_revision: str,
-        actual_revision: str | None = None,
-    ) -> None:
-        self.project_id = project_id
-        self.expected_revision = expected_revision
-        self.actual_revision = actual_revision
-        detail = f"Scene document changed for project {project_id!r}"
-        if actual_revision is not None:
-            detail += (
-                f" (expected revision {expected_revision!r}, "
-                f"found {actual_revision!r})"
-            )
-        super().__init__(detail)
 
 
 class SceneDocumentPort(Protocol):

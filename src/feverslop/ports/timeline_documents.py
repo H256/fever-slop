@@ -6,10 +6,12 @@ All reads return snapshot-safe copies (deep-copied or freshly allocated).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Protocol
+from collections.abc import Mapping
+from typing import Protocol
 
-from feverslop.domain.timeline_editing import TimelineEditImpact
+from feverslop.domain.timeline_editing import AffectedArtifacts
+
+__all__ = ["AffectedArtifacts", "TimelineReadPort", "TimelineWritePort"]
 
 # ---------------------------------------------------------------------------
 # Port protocols
@@ -19,7 +21,7 @@ from feverslop.domain.timeline_editing import TimelineEditImpact
 class TimelineReadPort(Protocol):
     """Read-only access to timeline-editing artefacts."""
 
-    def read_timeline(self) -> list[dict[str, Any]]:
+    def read_timeline(self) -> list[Mapping[str, object]]:
         """Return a deep-copied timeline JSON payload."""
         ...
 
@@ -27,19 +29,19 @@ class TimelineReadPort(Protocol):
         """Return current scene SRT text, or *None* if absent."""
         ...
 
-    def read_beat_json(self) -> list[dict[str, Any]] | None:
+    def read_beat_json(self) -> list[Mapping[str, object]] | None:
         """Return current beat markers JSON, or *None* if absent."""
         ...
 
-    def read_stage1_segments(self) -> list[dict[str, Any]] | None:
+    def read_stage1_segments(self) -> list[Mapping[str, object]] | None:
         """Return current Stage 1 segments JSON, or *None* if absent."""
         ...
 
-    def read_ltx_prompt_relay(self) -> list[dict[str, Any]] | None:
+    def read_ltx_prompt_relay(self) -> list[Mapping[str, object]] | None:
         """Return current LTX prompt relay JSON, or *None* if absent."""
         ...
 
-    def read_render_plan(self) -> dict[str, Any] | None:
+    def read_render_plan(self) -> Mapping[str, object] | None:
         """Return current render plan JSON, or *None* if absent."""
         ...
 
@@ -52,53 +54,10 @@ class TimelineWritePort(Protocol):
     two documents that an editor modifies.
     """
 
-    def write_timeline(self, data: list[dict[str, Any]]) -> None:
+    def write_timeline(self, data: list[Mapping[str, object]]) -> None:
         """Persist a timeline JSON payload."""
         ...
 
     def write_scene_srt(self, content: str) -> None:
         """Persist scene SRT text."""
         ...
-
-
-# ---------------------------------------------------------------------------
-# AffectedArtifacts
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=False)
-class AffectedArtifacts:
-    """Which downstream artifacts may need rebuilding after an edit.
-
-    Each flag corresponds to one pipeline stage whose output is stale.
-    """
-
-    timeline: bool = False
-    scene_srt: bool = False
-    beat_json: bool = False
-    stage1_segments: bool = False
-    ltx_prompt: bool = False
-    render_plan: bool = False
-
-    @staticmethod
-    def from_timeline_edit_impact(impact: TimelineEditImpact) -> AffectedArtifacts:
-        """Convert a domain ``TimelineEditImpact`` into an ``AffectedArtifacts``."""
-        return AffectedArtifacts(
-            timeline=impact.timeline_invalidated,
-            scene_srt=impact.scene_srt_invalidated,
-            beat_json=impact.beat_json_invalidated,
-            stage1_segments=impact.stage1_segments_invalidated,
-            ltx_prompt=impact.ltx_prompt_invalidated,
-            render_plan=impact.render_plan_invalidated,
-        )
-
-    def any(self) -> bool:
-        """Return ``True`` if any artifact is affected."""
-        return any((
-            self.timeline,
-            self.scene_srt,
-            self.beat_json,
-            self.stage1_segments,
-            self.ltx_prompt,
-            self.render_plan,
-        ))
