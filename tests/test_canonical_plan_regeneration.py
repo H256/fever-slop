@@ -85,6 +85,48 @@ class CanonicalPlanRegenerationMergeTests(unittest.TestCase):
         self.assertEqual("override b", resolve_effective_role(result.scenes[0], PromptRole.H3_VIDEO))
         self.assertEqual("override a", resolve_effective_role(result.scenes[1], PromptRole.H3_VIDEO))
 
+    def test_regeneration_preserves_project_render_setting_provenance(self):
+        existing = _scene(1, "segment-a", "old")
+        existing["width"] = 1024
+        existing["height"] = 576
+        existing["render_settings"] = {
+            "video_workflow": {"path": "workflows/fast.json", "sha256": "a" * 64},
+        }
+        existing["references"] = {
+            "actor_ids": ["hero"],
+            "generator_fingerprint": "b" * 64,
+        }
+        regenerated = _scene(1, "segment-a", "new")
+        regenerated["width"] = 1024
+        regenerated["height"] = 576
+        regenerated["references"] = {"actor_ids": ["hero"]}
+
+        result = self.service.merge([existing], [regenerated])
+
+        self.assertEqual(existing["render_settings"], result.scenes[0]["render_settings"])
+        self.assertEqual(
+            "b" * 64,
+            result.scenes[0]["references"]["generator_fingerprint"],
+        )
+
+    def test_regeneration_applies_shared_project_setting_provenance_to_new_scenes(self):
+        existing = _scene(1, "segment-a", "old")
+        existing["render_settings"] = {
+            "video_workflow": {"path": "workflows/fast.json", "sha256": "a" * 64},
+        }
+        existing["references"] = {"generator_fingerprint": "b" * 64}
+
+        result = self.service.merge(
+            [existing],
+            [_scene(1, "segment-a", "new"), _scene(2, "segment-b", "new scene")],
+        )
+
+        self.assertEqual(existing["render_settings"], result.scenes[1]["render_settings"])
+        self.assertEqual(
+            "b" * 64,
+            result.scenes[1]["references"]["generator_fingerprint"],
+        )
+
     def test_disappearing_generated_role_retains_human_owned_role(self):
         existing = _scene(1, "segment-a", "old", override="human")
         regenerated = _scene(1, "segment-a", "new")

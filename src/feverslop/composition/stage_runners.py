@@ -12,6 +12,7 @@ from tempfile import NamedTemporaryFile
 from rich.console import Console
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.postprocessor_frame_extractor import (
@@ -46,6 +47,9 @@ from feverslop.application.reference_bible import (
 )
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import RenderVideoScenesRequest
+from feverslop.application.sync_project_render_settings import (
+    sync_project_render_settings,
+)
 from feverslop.application.visual_consistency_preflight import (
     VisualConsistencyPreflightResult,
     preflight_visual_consistency,
@@ -625,11 +629,7 @@ def _run_anchor_fix_stage(state: PipelineRunState) -> None:
 
 
 def _run_set_resolution_stage(state: PipelineRunState) -> None:
-    """Persist new resolution to config.json and render plan, then re-prepare workflows.
-
-    Does NOT render anything; purely updates prep files so a later render
-    picks up the new resolution automatically.
-    """
+    """Persist resolution to config and the canonical plan for safe resume."""
     set_res = getattr(state.args, "set_resolution", None)
     if set_res is None:
         raise ValueError("--set-resolution WxH is required for the set_resolution stage")
@@ -646,42 +646,41 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
     )
     console.print(f"[green]Updated config.json resolution to {width}x{height}[/green]")
 
-    # 2. Patch render plan resolution
-    #    - Music projects: list of scenes, each with width/height fields
-    #    - Movie projects: dict with top-level resolution field
-    # Update all render plans in the plans directory, not just the active one.
-    render_plan_path = state.plan_for_next_step
-    plans_dir = render_plan_path.parent if render_plan_path.parent.name == "plans" else None
-    target_paths = sorted(plans_dir.glob("*.json")) if plans_dir else [render_plan_path]
-    updated_count = 0
-    for plan_path in target_paths:
-        if not plan_path.is_file():
-            continue
-        raw = json.loads(plan_path.read_text(encoding="utf-8-sig"))
-        if isinstance(raw, list):
-            for item in raw:
-                item["width"] = width
-                item["height"] = height
-        elif isinstance(raw, dict):
-            if "resolution" in raw:
-                raw["resolution"] = {"width": width, "height": height}
-        plan_path.write_text(
-            json.dumps(raw, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        updated_count += 1
-    console.print(f"[green]Updated {updated_count} render plan(s) to {width}x{height}[/green]")
-
-    # 3. For MSR/ingredients: re-prepare workflows with new resolution
-    if state.args.video_pipeline in ("ltx_msr", "ltx_ingredients"):
-        console.print("Re-preparing workflows with new resolution...")
-        _run_ltx_prepare_workflows_stage(state)
-        console.print("[green]Workflows re-prepared.[/green]")
-    else:
+    # Keep derived plans and manifests untouched. Their old fingerprints are
+    # the evidence that makes the next normal resume rebuild the right work.
+    store = CanonicalPlanStore(state.context.project_config_dir)
+    snapshot = store.capture_regeneration()
+    if not snapshot.exists:
         console.print(
-            f"[green]Resolution updated. Run '--stage render_scenes' to render at "
-            f"{width}x{height}.[/green]",
+            "[green]Resolution saved. The canonical plan will receive it when "
+            "the normal pipeline creates the plan.[/green]",
         )
+        return
+    updated = [
+        {**scene, "width": width, "height": height}
+        for scene in snapshot.scenes
+    ]
+    store.commit_regeneration(snapshot, updated)
+    state.plan_for_next_step = state.context.artifact_layout.base_plan
+    console.print(
+        "[green]Updated canonical resolution. Use the normal --dry-run/--resume "
+        "pair to rebuild stale workflows and clips.[/green]",
+    )
+
+
+def _run_sync_project_settings_stage(state: PipelineRunState) -> None:
+    settings = getattr(state.args, "project_render_settings", None)
+    if settings is None:
+        raise ValueError("sync_project_settings requires resolved project render settings")
+    changed = sync_project_render_settings(
+        CanonicalPlanStore(state.context.project_config_dir),
+        settings,
+    )
+    state.plan_for_next_step = state.context.artifact_layout.base_plan
+    if changed:
+        console.print("[green]Canonical project render settings synchronized.[/green]")
+    else:
+        console.print("[dim]Canonical project render settings already match.[/dim]")
 
 
 def _run_storyboard_frames_stage(state: PipelineRunState) -> None:
@@ -2072,6 +2071,7 @@ STAGE_RUNNERS = {
     PipelineStage.RELAY_COMPACT: _run_relay_compact_stage,
     PipelineStage.ANCHOR_FIX: _run_anchor_fix_stage,
     PipelineStage.SET_RESOLUTION: _run_set_resolution_stage,
+    PipelineStage.SYNC_PROJECT_SETTINGS: _run_sync_project_settings_stage,
     PipelineStage.STORYBOARD_FRAMES: _run_storyboard_frames_stage,
     PipelineStage.STORYBOARD_PAGE: _run_storyboard_page_stage,
     PipelineStage.MSR_REFERENCES: _run_msr_references_stage,
@@ -2100,6 +2100,7 @@ STAGE_LABELS = {
     PipelineStage.RELAY_COMPACT: "relay compact",
     PipelineStage.ANCHOR_FIX: "anchor fix",
     PipelineStage.SET_RESOLUTION: "Set resolution",
+    PipelineStage.SYNC_PROJECT_SETTINGS: "Sync project render settings",
     PipelineStage.STORYBOARD_FRAMES: "Storyboard frames",
     PipelineStage.STORYBOARD_PAGE: "Storyboard page",
     PipelineStage.REFERENCE_RENDER: "Reference render",

@@ -12,6 +12,9 @@ from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.application.canonical_plan_inspection import inspect_overrides, inspect_scene_roles
 from feverslop.application.canonical_plan_migration import analyze_canonical_plan_migration
 from feverslop.application.effective_render_plan import project_effective_plan
+from feverslop.composition.project_render_settings import (
+    resolve_project_render_settings,
+)
 from feverslop.domain.effective_render_plan import CanonicalSceneDependencies, canonical_plan_revision
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.errors import FeverSlopDataError
@@ -125,8 +128,41 @@ def _status(project: Path, output: Console) -> int:
         inspect_scene_roles(base, int(scene.get("scene") or 0))
     migration = analyze_canonical_plan_migration(CanonicalPlanStore(project).load())
     table = Table("Phase", "Scene", "State", "Cause / required next phase")
-    table.add_row("canonical", "all", "READY", f"revision {canonical_plan_revision(base)[:12]}")
     action_required = False
+    stored_base = base
+    config_path = project / "config.json"
+    if config_path.is_file():
+        raw_config = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        pipeline = str(raw_config.get("video_pipeline") or "ltx_i2v")
+        settings = resolve_project_render_settings(
+            project,
+            video_pipeline=pipeline,
+        ).settings
+        base = settings.apply_to_scenes(base)
+    if base != stored_base:
+        reasons = []
+        if any(
+            (old.get("width"), old.get("height")) != (new.get("width"), new.get("height"))
+            for old, new in zip(stored_base, base, strict=True)
+        ):
+            reasons.append("resolution changed")
+        if any(old.get("render_settings") != new.get("render_settings") for old, new in zip(stored_base, base, strict=True)):
+            reasons.append("video workflow changed")
+        if any(
+            (old.get("references") or {}).get("generator_fingerprint")
+            != (new.get("references") or {}).get("generator_fingerprint")
+            for old, new in zip(stored_base, base, strict=True)
+        ):
+            reasons.append("reference workflow changed")
+        table.add_row(
+            "canonical",
+            "all",
+            "STALE",
+            f"{'; '.join(reasons)}; required next phase: sync_project_settings",
+        )
+        action_required = True
+    else:
+        table.add_row("canonical", "all", "READY", f"revision {canonical_plan_revision(base)[:12]}")
     if migration.unresolved or migration.importable:
         count = len(migration.unresolved) + len(migration.importable)
         table.add_row("legacy edits", "all", "BLOCKED", f"{count} finding(s); required next phase: plan-migrate")

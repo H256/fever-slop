@@ -19,6 +19,13 @@ class VideoConfig:
 
 
 @dataclass(frozen=True)
+class ProjectWorkflowConfig:
+    video: str | None = None
+    reference_hero: str | None = None
+    reference_edit: str | None = None
+
+
+@dataclass(frozen=True)
 class UpscaleConfig:
     enabled: bool = False
     workflow_path: str = "workflows/video_seedvr2_3b_api.json"
@@ -289,6 +296,15 @@ def _ensure_list(value, key: str) -> list:
     return value
 
 
+def _optional_workflow_path(raw: dict, key: str) -> str | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"workflows.{key} must be a non-empty string")
+    return value.strip()
+
+
 @dataclass(frozen=True)
 class ProjectConfig:
     project_dir: Path
@@ -298,6 +314,7 @@ class ProjectConfig:
     lyrics: str = ""
 
     video: VideoConfig = field(default_factory=VideoConfig)
+    workflows: ProjectWorkflowConfig = field(default_factory=ProjectWorkflowConfig)
     upscale: UpscaleConfig = field(default_factory=UpscaleConfig)
     reference_images: ReferenceImagesConfig = field(default_factory=ReferenceImagesConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
@@ -333,6 +350,7 @@ class ProjectConfig:
 
         project_dir = config_path.parent
         video_raw = _ensure_dict(raw.get("video", {}), "video")
+        workflows_raw = _ensure_dict(raw.get("workflows", {}), "workflows")
         upscale_raw = _ensure_dict(raw.get("upscale", {}), "upscale")
         reference_images_raw = _ensure_dict(raw.get("reference_images", {}), "reference_images")
         audio_raw = _ensure_dict(raw.get("audio", {}), "audio")
@@ -404,6 +422,11 @@ class ProjectConfig:
                 fps=int(video_raw.get("fps", 24)),
                 width=int(video_raw.get("width", 1280)),
                 height=int(video_raw.get("height", 704)),
+            ),
+            workflows=ProjectWorkflowConfig(
+                video=_optional_workflow_path(workflows_raw, "video"),
+                reference_hero=_optional_workflow_path(workflows_raw, "reference_hero"),
+                reference_edit=_optional_workflow_path(workflows_raw, "reference_edit"),
             ),
             upscale=UpscaleConfig(
                 enabled=bool(upscale_raw.get("enabled", False)),

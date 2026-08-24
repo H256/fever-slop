@@ -363,6 +363,29 @@ uv run python run_pipeline.py .\projects\dwarfventure-msr `
   --skip-tests
 ```
 
+For a recurring project choice, store the paths in the project config instead
+of repeating flags:
+
+```json
+{
+  "video_pipeline": "minimax-h3-r2v",
+  "workflows": {
+    "video": "workflows/video_minimax_h3_r2v_eb57_8s_v1.json",
+    "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
+    "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
+  }
+}
+```
+
+The safe CLI hashes the selected workflow files, not only their path. Changing
+the contents in place is therefore visible on the next dry-run. Precedence is:
+explicit CLI override, project config, then the existing CLI default. The
+precedence is applied per field, so an explicit video workflow still keeps
+configured reference workflows. The workflow flags remain useful for a one-off
+compatibility run and have not been renamed. Project-wide resolution or
+workflow changes cannot be resumed with a partial `--scenes` selection; omit
+the selector so the final assembly cannot mix incompatible clips.
+
 ## app_config.json
 
 `app_config.json` configures infrastructure:

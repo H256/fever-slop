@@ -10,8 +10,11 @@ from rich.table import Table
 
 from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS
 from feverslop.composition.resume_plan import build_compatibility_plan, build_resume_plan
-from feverslop.composition.arg_parser import PipelineStage
+from feverslop.composition.arg_parser import PUBLIC_PIPELINE_STAGES
 from feverslop.composition.pipeline_runner import run as pipeline_run
+from feverslop.composition.project_render_settings import (
+    resolve_project_render_settings,
+)
 from feverslop.composition.stage_runners import resolve_pipeline_stages
 from feverslop.domain.execution_plan import ExecutionPlan, PlanAction
 from feverslop.errors import FeverSlopError
@@ -28,7 +31,7 @@ def build_run_parser(subparsers) -> argparse.ArgumentParser:
         "--stage",
         dest="stages",
         action="append",
-        choices=[stage.value for stage in PipelineStage],
+        choices=[stage.value for stage in PUBLIC_PIPELINE_STAGES],
         default=None,
         help="Advanced compatibility: select an atomic stage.",
     )
@@ -52,8 +55,23 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
     try:
         args.project_root = str(project)
         args.project_config = str(project / "config.json")
+        explicit_runner_options = {
+            name
+            for name, _flags, _kwargs in RUNNER_ARGUMENTS
+            if getattr(args, name, None) is not None
+        }
         compatibility = _uses_compatibility_inputs(args)
         args.video_pipeline = args.video_pipeline or _configured_pipeline(project)
+        resolved = resolve_project_render_settings(
+            project,
+            video_pipeline=args.video_pipeline,
+            explicit_runner_options=explicit_runner_options,
+        )
+        render_settings = resolved.settings if not compatibility else None
+        args.project_render_settings = render_settings
+        for name, value in resolved.runner_overrides.items():
+            if getattr(args, name, None) is None:
+                setattr(args, name, value)
         selected = parse_scene_list(args.scenes)
         if compatibility:
             _apply_runner_defaults(args)
@@ -68,6 +86,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                 project,
                 video_pipeline=args.video_pipeline,
                 selected_scenes=selected,
+                render_settings=render_settings,
             )
         _render_plan(plan, output)
         if plan.blocked:

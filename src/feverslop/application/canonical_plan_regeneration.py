@@ -59,6 +59,12 @@ class CanonicalPlanRegenerationService:
                     scene_id=scene_id,
                 ))
 
+        shared_settings = _shared_project_setting_fields(existing_scenes)
+        for scene in merged:
+            scene_id = _canonical_identity(scene, "merged")[0]
+            if scene_id not in existing:
+                _apply_project_setting_fields(scene, shared_settings)
+
         return CanonicalRegenerationResult(
             tuple(deepcopy(scene) for scene in merged),
             tuple(diagnostics),
@@ -180,6 +186,20 @@ def _merge_scene(
             if not isinstance(target, dict):
                 raise FeverSlopDataError(f"generated canonical role {role_name!r} must be an object")
             target["override"] = deepcopy(old_role["override"])
+        old_render_settings = existing.get("render_settings")
+        if isinstance(old_render_settings, Mapping):
+            merged["render_settings"] = deepcopy(dict(old_render_settings))
+        old_references = existing.get("references")
+        generator_fingerprint = (
+            old_references.get("generator_fingerprint")
+            if isinstance(old_references, Mapping)
+            else None
+        )
+        if generator_fingerprint is not None:
+            target_references = merged.setdefault("references", {})
+            if not isinstance(target_references, dict):
+                raise FeverSlopDataError("generated scene references must be an object")
+            target_references["generator_fingerprint"] = deepcopy(generator_fingerprint)
 
     reference_bindings = reference_entry[1] if reference_entry is not None else None
     if reference_bindings:
@@ -188,6 +208,42 @@ def _merge_scene(
             raise FeverSlopDataError("generated scene references must be an object")
         target_references.update(deepcopy(dict(reference_bindings)))
     return merged
+
+
+def _shared_project_setting_fields(
+    scenes: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if not scenes:
+        return {}
+    result: dict[str, Any] = {}
+    render_settings = [scene.get("render_settings") for scene in scenes]
+    if (
+        all(isinstance(value, Mapping) for value in render_settings)
+        and all(value == render_settings[0] for value in render_settings[1:])
+    ):
+        result["render_settings"] = deepcopy(dict(render_settings[0]))
+    generators = [
+        references.get("generator_fingerprint")
+        if isinstance((references := scene.get("references")), Mapping)
+        else None
+        for scene in scenes
+    ]
+    if generators[0] is not None and all(value == generators[0] for value in generators[1:]):
+        result["generator_fingerprint"] = deepcopy(generators[0])
+    return result
+
+
+def _apply_project_setting_fields(scene: dict[str, Any], fields: Mapping[str, Any]) -> None:
+    render_settings = fields.get("render_settings")
+    if render_settings is not None:
+        scene.setdefault("render_settings", deepcopy(render_settings))
+    generator = fields.get("generator_fingerprint")
+    if generator is None:
+        return
+    references = scene.setdefault("references", {})
+    if not isinstance(references, dict):
+        raise FeverSlopDataError("generated scene references must be an object")
+    references.setdefault("generator_fingerprint", deepcopy(generator))
 
 
 def _reference_bindings(

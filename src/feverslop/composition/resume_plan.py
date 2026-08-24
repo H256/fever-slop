@@ -12,6 +12,7 @@ from feverslop.domain.canonical_render_plan import PromptRole
 from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.project_render_settings import ProjectRenderSettings
 from feverslop.errors import FeverSlopDataError
 from feverslop.scene_artifacts import SceneArtifactLayout
 
@@ -29,10 +30,16 @@ def build_resume_plan(
     *,
     video_pipeline: str,
     selected_scenes: Iterable[int] | None = None,
+    render_settings: ProjectRenderSettings | None = None,
 ) -> ExecutionPlan:
     root = Path(project).resolve()
     try:
-        return _build_resume_plan(root, video_pipeline=video_pipeline, selected_scenes=selected_scenes)
+        return _build_resume_plan(
+            root,
+            video_pipeline=video_pipeline,
+            selected_scenes=selected_scenes,
+            render_settings=render_settings,
+        )
     except (FeverSlopDataError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return ExecutionPlan(root, "resume", (
             ExecutionPlanItem(
@@ -48,6 +55,7 @@ def _build_resume_plan(
     *,
     video_pipeline: str,
     selected_scenes: Iterable[int] | None = None,
+    render_settings: ProjectRenderSettings | None = None,
 ) -> ExecutionPlan:
     root = project
     layout = SceneArtifactLayout(root)
@@ -68,8 +76,13 @@ def _build_resume_plan(
         ))
 
     base = _read_plan(layout.base_plan)
+    desired_base = (
+        render_settings.apply_to_scenes(base)
+        if render_settings is not None
+        else base
+    )
     requested = None if selected_scenes is None else {int(scene) for scene in selected_scenes}
-    available = {int(scene["scene"]) for scene in base}
+    available = {int(scene["scene"]) for scene in desired_base}
     unknown = sorted((requested or set()) - available)
     if unknown:
         numbers = ", ".join(str(scene) for scene in unknown)
@@ -80,26 +93,45 @@ def _build_resume_plan(
                 f"selected scene(s) not present in canonical plan: {numbers}",
             ),
         ))
+    if desired_base != base and requested is not None and requested != available:
+        return ExecutionPlan(root, "resume", (
+            ExecutionPlanItem(
+                "project render settings",
+                PlanAction.BLOCKED,
+                "global resolution or workflow changes require all scenes; rerun without --scenes",
+            ),
+        ))
     active_path = _active_plan(layout, video_pipeline)
     active = _read_plan(active_path) if active_path.is_file() else []
     stored_by_number = {int(scene["scene"]): scene for scene in active}
     items: list[ExecutionPlanItem] = []
+    if desired_base != base:
+        items.append(ExecutionPlanItem(
+            "project render settings",
+            PlanAction.RUN,
+            _settings_change_reason(base, desired_base),
+            stage="sync_project_settings",
+        ))
     any_render = False
 
-    for canonical_scene in base:
+    for canonical_scene in desired_base:
         number = int(canonical_scene["scene"])
         if requested is not None and number not in requested:
             items.append(ExecutionPlanItem("scene", PlanAction.NOT_SELECTED, "outside --scenes selection", number))
             continue
         stored = stored_by_number.get(number)
         source = stored or canonical_scene
-        current = project_effective_plan([source], base)[0]
+        current = project_effective_plan([source], desired_base)[0]
         current_dependencies = _dependencies(current)
         changed = _dependency_changes(stored, current)
+        reference_changed = stored is None or "reference fingerprint changed" in changed
 
         h3_action = PlanAction.REUSE
         if video_pipeline in _H3_PIPELINES:
             h3_action, h3_reason = _h3_state(layout, canonical_scene, number)
+            if reference_changed:
+                h3_action = PlanAction.RUN
+                h3_reason = "reference generator or bindings changed"
             items.append(ExecutionPlanItem("h3 prompts", h3_action, h3_reason, number, "h3_prompts"))
 
         projection_stage = _projection_stage(video_pipeline)
@@ -109,7 +141,6 @@ def _build_resume_plan(
             projection_action = PlanAction.RUN
             projection_reason = "derived plan missing" if stored is None else "; ".join(changed)
         if projection_stage:
-            reference_changed = stored is None or "reference fingerprint changed" in changed
             if video_pipeline in _REFERENCE_PIPELINES:
                 items.append(ExecutionPlanItem(
                     "reference assets",
@@ -191,6 +222,23 @@ def _build_resume_plan(
     ):
         items.append(ExecutionPlanItem(phase, assembly_action, assembly_reason, stage=stage))
     return ExecutionPlan(root, "resume", tuple(items))
+
+
+def _settings_change_reason(
+    before: list[Mapping[str, Any]],
+    after: list[Mapping[str, Any]],
+) -> str:
+    reasons: list[str] = []
+    for old, new in zip(before, after, strict=True):
+        if (old.get("width"), old.get("height")) != (new.get("width"), new.get("height")):
+            reasons.append("resolution changed")
+        if old.get("render_settings") != new.get("render_settings"):
+            reasons.append("video workflow changed")
+        old_generator = (old.get("references") or {}).get("generator_fingerprint")
+        new_generator = (new.get("references") or {}).get("generator_fingerprint")
+        if old_generator != new_generator:
+            reasons.append("reference workflow changed")
+    return "; ".join(dict.fromkeys(reasons)) or "project render settings changed"
 
 
 def build_compatibility_plan(

@@ -14,6 +14,7 @@ class PipelineStage(str, Enum):
     RELAY_COMPACT = "relay_compact"
     ANCHOR_FIX = "anchor_fix"
     SET_RESOLUTION = "set_resolution"
+    SYNC_PROJECT_SETTINGS = "sync_project_settings"
     STORYBOARD_FRAMES = "storyboard_frames"
     STORYBOARD_PAGE = "storyboard_page"
     REFERENCE_RENDER = "reference_render"
@@ -37,6 +38,12 @@ class PipelineStage(str, Enum):
     OPENSHOT_EXPORT = "openshot_export"
 
 
+PUBLIC_PIPELINE_STAGES = tuple(
+    stage for stage in PipelineStage
+    if stage is not PipelineStage.SYNC_PROJECT_SETTINGS
+)
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the FeverSlop pipeline from Python.")
     parser.add_argument("project_root", nargs="?", default=None)
@@ -45,7 +52,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--stage",
         dest="stages",
         action="append",
-        choices=[stage.value for stage in PipelineStage],
+        choices=[stage.value for stage in PUBLIC_PIPELINE_STAGES],
         default=None,
         help="Run only a specific atomic pipeline stage. May be passed more than once.",
     )
