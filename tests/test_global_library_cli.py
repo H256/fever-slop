@@ -16,10 +16,18 @@ class GlobalLibraryCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             args = ["--library-root", temp, "create", "--kind", "prop", "--id", "lamp", "--name", "Lamp"]
             self.assertEqual(0, main(args))
+            human_output = StringIO()
+            with redirect_stdout(human_output):
+                self.assertEqual(0, main(["--library-root", temp, "show", "--kind", "prop", "--id", "lamp"]))
+            self.assertEqual("prop/lamp: Lamp\n", human_output.getvalue())
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(0, main(["--library-root", temp, "list", "--json"]))
             self.assertEqual("lamp", json.loads(output.getvalue())[0]["id"])
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(0, main(["--library-root", temp, "show", "--kind", "prop", "--id", "lamp", "--json"]))
+            self.assertEqual("lamp", json.loads(output.getvalue())["id"])
 
     def test_invalid_input_returns_nonzero_and_actionable_error(self):
         with tempfile.TemporaryDirectory() as temp:

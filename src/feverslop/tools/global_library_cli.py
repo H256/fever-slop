@@ -105,7 +105,11 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else "\n".join(f"{a.kind.value}/{a.id}: {a.name}" for a in assets))
         elif args.command == "show":
             asset = library.get(args.kind, args.id)
-            print(json.dumps(asset.to_dict(), ensure_ascii=False, indent=2) if args.json else json.dumps(asset.to_dict(), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(asset.to_dict(), ensure_ascii=False, indent=2)
+                if args.json
+                else f"{asset.kind.value}/{asset.id}: {asset.name}"
+            )
         elif args.command == "create":
             asset = GlobalAsset.from_dict(json.loads(args.manifest.read_text(encoding="utf-8"))) if args.manifest else GlobalAsset(args.id, args.kind, args.name, args.description)
             library.create(asset)
