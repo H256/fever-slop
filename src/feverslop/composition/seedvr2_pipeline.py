@@ -131,6 +131,25 @@ def _pass_segment_cap(upscale, pass_spec: SeedVR2Pass, final_size: tuple[int, in
     return max(1.0, upscale.segment_duration_seconds * final_area / pass_area)
 
 
+def _usable_artifact(
+    path: Path,
+    probe_duration: Callable[[Path], float | None] | None = None,
+    *,
+    require_probe: bool = False,
+) -> bool:
+    try:
+        if not path.is_file():
+            return False
+        if path.stat().st_size <= 0:
+            return False
+        if probe_duration is None:
+            return True
+        duration = probe_duration(path)
+        return duration is not None and duration > 0.0 or duration is None and not require_probe
+    except OSError:
+        return False
+
+
 def _render_segmented_pass(
     *,
     backend: SeedVR2Backend,
@@ -145,13 +164,13 @@ def _render_segmented_pass(
     output: Path,
     reporter: Any,
     skip_existing: bool,
-    frame_count: int,
+    probe_duration: Callable[[Path], float | None],
 ) -> Path:
     segment_outputs: list[Path] = []
     for segment in segments:
         segment_output = scene_dir / f"upscale_pass_{pass_number:02d}_segment_{segment.index:04d}.mp4"
         segment_outputs.append(segment_output)
-        if skip_existing and segment_output.is_file():
+        if skip_existing and _usable_artifact(segment_output, probe_duration, require_probe=True):
             reporter.message(
                 f"[yellow]SeedVR2 scene {scene_number} pass {pass_number} segment {segment.index}/{len(segments)} skipped: existing {segment_output}[/yellow]",
             )
@@ -179,6 +198,12 @@ def _render_segmented_pass(
         )
     concat_list = scene_dir / f"upscale_pass_{pass_number:02d}_segments.txt"
     postprocessor.write_concat_list(segment_outputs, concat_list)
+    frame_count = max(1, round(sum(segment.duration_seconds for segment in segments) * settings.fps))
+    if hasattr(postprocessor, "ffmpeg_timeout_seconds"):
+        postprocessor.ffmpeg_timeout_seconds = max(
+            120.0,
+            sum(segment.duration_seconds for segment in segments) * 20.0,
+        )
     return postprocessor.concat_clips(
         concat_list,
         output,
@@ -204,11 +229,18 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     layout = SceneArtifactLayout(config.project_dir)
     backend = options.backend or ComfyUISeedVR2Backend(
         client=_build_comfy_client(config),
-        workflow_path=Path(config.project_dir, config.upscale.workflow_path),
+        workflow_path=(
+            Path(config.upscale.workflow_path)
+            if Path(config.upscale.workflow_path).is_absolute()
+            else Path(__file__).resolve().parents[3] / config.upscale.workflow_path
+        ),
     )
     probe_size = options.probe_size or _probe_size
     probe_duration = options.probe_duration or _probe_duration
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    postprocessor = VideoPostProcessor(
+        ffmpeg_path="ffmpeg",
+        audio_bitrate="320k",
+    )
     plan = json.loads(Path(options.render_plan_path).read_text(encoding="utf-8-sig"))
     if options.scene_numbers is not None:
         plan = [
@@ -221,7 +253,8 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     for scene_index, entry in enumerate(plan, start=1):
         scene_number = int(entry.get("scene") or entry.get("scene_number"))
         final_output = layout.scene_upscaled_video(scene_number)
-        if options.skip_existing and final_output.is_file():
+        require_probe = probe_duration is _probe_duration
+        if options.skip_existing and _usable_artifact(final_output, probe_duration):
             segment_lists = sorted(layout.scene_dir(scene_number).glob("upscale_pass_*_segments.txt"))
             if segment_lists:
                 segment_list = segment_lists[-1]
@@ -230,22 +263,34 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                     for line in segment_list.read_text(encoding="utf-8").splitlines()
                     if line.strip().startswith("file '") and line.strip().endswith("'")
                 ]
-                if segment_outputs and all(path.is_file() for path in segment_outputs):
+                if segment_outputs and all(
+                    _usable_artifact(path, probe_duration, require_probe=require_probe)
+                    for path in segment_outputs
+                ):
                     source = _source_clip(layout, scene_number)
                     source_duration = probe_duration(source)
                     if source_duration is not None:
-                        frame_count = max(1, round(source_duration * config.video.fps))
                         options.reporter.message(
                             f"[cyan]SeedVR2 scene {scene_index}/{len(plan)} rebuilding existing final "
                             f"from {len(segment_outputs)} segments: {final_output}[/cyan]",
                         )
+                        probed_durations = [probe_duration(path) for path in segment_outputs]
+                        segment_duration = min(
+                            source_duration,
+                            sum(duration for duration in probed_durations if duration is not None),
+                        ) if all(duration is not None for duration in probed_durations) else source_duration
+                        if hasattr(postprocessor, "ffmpeg_timeout_seconds"):
+                            postprocessor.ffmpeg_timeout_seconds = max(
+                                120.0,
+                                (segment_duration or source_duration) * 20.0,
+                            )
                         postprocessor.concat_clips(
                             segment_list,
                             final_output,
                             video_only=True,
                             reencode=True,
                             fps=config.video.fps,
-                            frame_count=frame_count,
+                            frame_count=max(1, round((segment_duration or source_duration) * config.video.fps)),
                         )
                         outputs.append(final_output)
                         progress.update(scene_index, detail=f"scene {scene_number} rebuilt", force=True)
@@ -310,7 +355,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
         )
         for pass_number, pass_spec in enumerate(passes, start=1):
             output = _pass_path(layout, scene_number, pass_number, pass_number == len(passes))
-            if options.skip_existing and output.is_file():
+            if options.skip_existing and _usable_artifact(output, probe_duration, require_probe=require_probe):
                 current = output
                 records.append(_pass_record(pass_spec, output, pass_number))
                 options.reporter.message(
@@ -344,7 +389,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
                         output=output,
                         reporter=options.reporter,
                         skip_existing=options.skip_existing,
-                        frame_count=max(1, round((source_duration or current_duration) * settings.fps)),
+                        probe_duration=probe_duration,
                     )
                 else:
                     rendered = backend.render(
