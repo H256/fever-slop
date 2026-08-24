@@ -1,8 +1,13 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetBackend
+
+
+REPO_ROOT = Path(__file__).parents[1]
+WORKFLOW_PATH = REPO_ROOT / "workflows" / "sequence_to_sheet_minimax_h3_i2va_v1.json"
 
 
 class FakeUploader:
@@ -31,7 +36,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
     def test_builds_neutral_character_prompt_with_hard_cut_views(self):
         backend = ComfyUISequenceToSheetBackend(
             client=object(),
-            workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+            workflow_path=WORKFLOW_PATH,
             backend="minimax",
         )
 
@@ -50,7 +55,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
     def test_builds_neutral_location_prompt_with_continuous_move(self):
         backend = ComfyUISequenceToSheetBackend(
             client=object(),
-            workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+            workflow_path=WORKFLOW_PATH,
             backend="minimax",
         )
 
@@ -73,7 +78,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             anchor.write_bytes(b"anchor")
             backend = ComfyUISequenceToSheetBackend(
                 client=object(),
-                workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+                workflow_path=WORKFLOW_PATH,
                 backend="minimax",
                 asset_uploader=FakeUploader(),
             )
@@ -94,7 +99,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             anchor.write_bytes(b"anchor")
             backend = ComfyUISequenceToSheetBackend(
                 client=object(),
-                workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+                workflow_path=WORKFLOW_PATH,
                 backend="minimax",
                 asset_uploader=FakeUploader(),
             )
@@ -111,7 +116,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             anchor.write_bytes(b"anchor")
             backend = ComfyUISequenceToSheetBackend(
                 client=object(),
-                workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+                workflow_path=WORKFLOW_PATH,
                 backend="minimax",
                 asset_uploader=FakeUploader(),
             )
@@ -131,7 +136,7 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             anchor.write_bytes(b"anchor")
             backend = ComfyUISequenceToSheetBackend(
                 client=FakeSchemaClient(),
-                workflow_path=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
+                workflow_path=WORKFLOW_PATH,
                 backend="minimax",
                 asset_uploader=FakeUploader(),
             )
@@ -144,6 +149,25 @@ class SequenceToSheetBackendTests(unittest.TestCase):
             )
 
             self.assertEqual("9:16 (Vertical)", patched["115"]["inputs"]["aspect_ratio"])
+
+    def test_workflow_fixture_is_usable_from_non_repository_cwd(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_cwd = os.getcwd()
+            anchor = Path(temp_dir) / "anchor.png"
+            anchor.write_bytes(b"anchor")
+            os.chdir(temp_dir)
+            try:
+                backend = ComfyUISequenceToSheetBackend(
+                    client=object(),
+                    workflow_path=WORKFLOW_PATH,
+                    backend="minimax",
+                    asset_uploader=FakeUploader(),
+                )
+                patched = backend.build_workflow(anchor_images=[anchor], prompt="turnaround", seed=7)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual("turnaround", patched["131"]["inputs"]["prompt"])
 
 
 if __name__ == "__main__":
