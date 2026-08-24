@@ -387,6 +387,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual("documentation/ideogram4_prompt_template.md", transform.template)
         self.assertEqual("text", transform.positive_prompt_input)
         self.assertEqual("ideogram4_prompt_debug", transform.debug_dir)
+        self.assertEqual(150, transform.max_words)
 
 
 @contextmanager

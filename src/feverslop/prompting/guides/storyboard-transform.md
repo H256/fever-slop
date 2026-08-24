@@ -1,1 +1,1 @@
-Transform the original storyboard prompt using the supplied editable system and user templates. Substitute width, height, and original prompt values as requested by the template. Return only the transformed prompt, using at most 150 words.
+Transform the original storyboard prompt using the supplied editable system and user templates. Substitute width, height, and original prompt values as requested by the template. Return only the transformed prompt and obey the supplied max_words limit.

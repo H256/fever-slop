@@ -74,11 +74,12 @@ class LLMPolicyTests(unittest.TestCase):
 
         self.assertEqual(151, len(result.prompt.split()))
 
-    def test_storyboard_prompt_result_keeps_its_separate_safety_limit(self):
+    def test_storyboard_prompt_result_allows_transformer_to_handle_overlength_text(self):
         from feverslop.prompting.general_signatures import StoryboardPromptResult
 
-        with self.assertRaises(ValueError):
-            StoryboardPromptResult(prompt="word " * 151)
+        result = StoryboardPromptResult(prompt="word " * 151)
+
+        self.assertEqual(151, len(result.prompt.split()))
 
 
 if __name__ == "__main__":
