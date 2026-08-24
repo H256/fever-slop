@@ -4,11 +4,11 @@ Music-video render plans live in `output/render/plans/`. The filenames identify 
 
 | File | Owner | Purpose | Recreated by | Retention |
 | --- | --- | --- | --- | --- |
-| `base.json` | main render-plan generation | Complete authoring plan and base resume point | main pipeline | Keep while the project may be regenerated |
-| `compact.json` | relay compaction | Intermediate input for anchor correction | relay compact stage | Disposable after `anchored.json` exists |
-| `anchored.json` | anchor correction | Corrected prompts for storyboard/reference enrichment | anchor fix stage | Keep while downstream plans may be regenerated |
-| `references.json` | reference and MSR prompt enrichment | Final MSR render plan and source for Ingredients enrichment | MSR reference/prompt stages | Keep for MSR resume and Ingredients regeneration |
-| `ingredients.json` | Ingredients sheet enrichment | Compact runtime plan for Ingredients prepare/render | Ingredients sheets stage | Keep for Ingredients resume; regenerate after upstream prompt/reference edits |
+| `base.json` | generator (`generated`) and operator (`override`) | Sole editable authoring plan and base resume point | main pipeline, preserving human overrides | Keep while the project may be regenerated |
+| `compact.json` | relay compaction | Derived input for anchor correction; never an edit target | relay compact stage | Disposable after `anchored.json` exists |
+| `anchored.json` | anchor correction | Derived prompts for storyboard/reference enrichment; never an edit target | anchor fix stage | Keep while downstream plans may be regenerated |
+| `references.json` | reference and MSR prompt enrichment | Derived MSR runtime/resume cache; never an edit target | MSR reference/prompt stages | Keep for MSR resume and Ingredients regeneration |
+| `ingredients.json` | Ingredients sheet enrichment | Derived Ingredients runtime/resume cache; never an edit target | Ingredients sheets stage | Keep for Ingredients resume; regenerate after upstream prompt/reference edits |
 
 ## Canonical scene contract in `base.json`
 

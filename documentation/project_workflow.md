@@ -94,6 +94,24 @@ If a real run fails, its summary records the last completed stage and prints
 the exact `main.py run ... --resume` recovery command. The plan is recalculated
 on resume, so newly completed artifacts become REUSE.
 
+### Human correction checkpoint
+
+`output/render/plans/base.json` is the sole editable render-plan artifact. Use
+`uv run python main.py plan show ./projects/my_song --scene N` to compare the
+generator-owned value, the optional human-owned override, and the effective
+value. Put an intentional correction only in
+`canonical.roles.<role>.override`; do not replace `generated` and do not add a
+persisted `effective` field.
+
+Scene-local `h3_prompt.json` files make judged H3 output inspectable as each
+scene completes, but remain generated checkpoints. The aggregate H3 file,
+`compact.json`, `anchored.json`, `references.json`, `ingredients.json`, scene
+manifests, and prepared workflows are also derived artifacts. After editing
+`base.json`, use the normal dry-run/resume pair with `--scenes N`; it selects
+reference enrichment, preparation, rendering, and assembly according to the
+scene-local fingerprints. See the complete
+[human prompt correction workflows](running.md#human-prompt-correction-workflows).
+
 ### Advanced and compatibility runner
 
 Python:

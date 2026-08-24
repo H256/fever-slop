@@ -265,6 +265,142 @@ only in `output/render/plans/base.json` under
 matching `generated` value, but never that override. Backend consumption of the
 effective override is introduced by the subsequent canonical projection step.
 
+## Human prompt correction workflows
+
+The ownership rule is the same for every music-video pipeline:
+
+- edit only `output/render/plans/base.json`;
+- keep `canonical.roles.<role>.generated` unchanged;
+- add or update `canonical.roles.<role>.override` with a `value` and human
+  provenance;
+- never persist `effective`, because it is resolved at runtime;
+- inspect, dry-run, and resume before using lower-level stage flags.
+
+For example, an H3 correction is represented as:
+
+```json
+{
+  "h3.video": {
+    "generated": {
+      "value": "The drummer sings while the singer watches.",
+      "provenance": {"source": "dspy-h3-prompt-builder"}
+    },
+    "override": {
+      "value": "The referenced singer sings; the drummer remains silent.",
+      "provenance": {"source": "human", "note": "correct actor/action mismatch"}
+    }
+  }
+}
+```
+
+Use the corresponding canonical roles for other backends: `ltx.i2v` for
+classic I2V, `ltx.msr.global` / `ltx.msr.relay` for MSR, and
+`ingredients.global` / `ingredients.relay` for Ingredients. Relay overrides
+remain structured arrays with their frame boundaries; do not flatten temporal
+corrections into one string.
+
+### New project
+
+Create `config.json` and the input audio as described above, then let the safe
+runner create the missing plan and downstream artifacts:
+
+```bash
+uv run python main.py run ./projects/my-song --dry-run
+uv run python main.py run ./projects/my-song --resume
+uv run python main.py plan path ./projects/my-song
+```
+
+The last command must label `base.json` as `SOLE EDITABLE PLAN`. Do not create
+an override before a canonical role exists; first complete plan generation,
+then inspect and correct it.
+
+### Legacy project migration
+
+Do not copy old edits manually between derived plans. Preview and then apply
+only evidence-backed imports:
+
+```bash
+uv run python main.py plan-migrate ./projects/my-song
+uv run python main.py plan-migrate ./projects/my-song --apply
+uv run python main.py plan validate ./projects/my-song
+```
+
+Stop on `UNRESOLVED`. Application backs up analyzed artifacts and changes only
+`base.json`; `references.json`, `ingredients.json`, and legacy plan files remain
+derived migration evidence.
+
+### Correct and rerender one scene
+
+Inspect scene 3, edit its canonical override in `base.json`, validate, and let
+the planner select the minimal dependency closure:
+
+```bash
+uv run python main.py plan show ./projects/my-song --scene 3
+# edit output/render/plans/base.json
+uv run python main.py plan validate ./projects/my-song
+uv run python main.py run ./projects/my-song --dry-run --scenes 3
+uv run python main.py run ./projects/my-song --resume --scenes 3
+```
+
+A prompt-only edit reuses reference media and invalidates preparation/rendering
+only for the affected scene. A changed actor/location binding first requires
+the MSR or Ingredients reference stage reported by dry-run. Replacing the
+content of a referenced image requires regeneration or intentional replacement
+of that asset before prepare; never repair this by editing a manifest hash.
+
+### Interrupted H3 generation
+
+Inspect completed scenes immediately under
+`output/render/scenes/scene_NNNN/h3_prompt.json`. These files contain the final
+judge result and attempts, but are generated checkpoints, not overrides:
+
+```bash
+uv run python main.py status ./projects/my-song
+uv run python main.py run ./projects/my-song --dry-run
+uv run python main.py run ./projects/my-song --resume
+```
+
+Matching checkpoints are reused and only missing/stale H3 scenes run. After the
+canonical plan exists, put a human correction in its `h3.video.override`, not
+in the checkpoint or aggregate H3 JSON.
+
+### Stale prepared workflow
+
+After a prompt, timing, resolution, seed, reference, asset, or template change,
+inspect the cause and follow the required next phase:
+
+```bash
+uv run python main.py status ./projects/my-song
+uv run python main.py run ./projects/my-song --dry-run --scenes 3
+uv run python main.py run ./projects/my-song --resume --scenes 3
+```
+
+Do not edit `workflow.json` or `manifest.json` to make the hashes agree. Resume
+recreates the affected derived projection/workflow and keeps unrelated scenes
+reusable.
+
+### Intentional full plan regeneration
+
+Regenerate upstream generator-owned values with explicit atomic stages, then
+return to the safe runner for downstream work:
+
+```bash
+uv run python main.py run ./projects/my-song --resume \
+  --stage main_pipeline \
+  --stage h3_prompts \
+  --stage render_plan
+uv run python main.py plan overrides ./projects/my-song
+uv run python main.py run ./projects/my-song --dry-run
+uv run python main.py run ./projects/my-song --resume
+```
+
+Regeneration replaces `generated` while preserving the matching override by
+stable scene identity. Afterwards, inspect each long-lived override with
+`plan show`: update it when the operator intent changed, keep it when it still
+wins deliberately, or remove the entire `override` object to return ownership
+to the new generated value. An override is never assumed stale merely because
+the generated alternative changed.
+
 ## Migrating edits from existing render plans
 
 Older projects may contain manual edits in `base.json` legacy fields,

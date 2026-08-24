@@ -1,0 +1,105 @@
+{
+  "schema": "feverslop.override-regression-corpus.v1",
+  "cases": [
+    {
+      "id": "h3_actor_action_mismatch",
+      "pipeline": "minimax_h3",
+      "role": "h3.video",
+      "runtime_path": "h3.prompt",
+      "operator_intent": "The referenced singer, not the drummer, must perform the lyric.",
+      "generated": "The drummer at frame right sings the chorus while the singer watches.",
+      "override": "The referenced singer at frame left sings the chorus; the drummer remains silent and plays behind her.",
+      "regenerated": "The drummer steps forward and performs the chorus while the singer watches."
+    },
+    {
+      "id": "h3_wrong_pose_or_location",
+      "pipeline": "minimax_h3",
+      "role": "h3.video",
+      "runtime_path": "h3.prompt",
+      "operator_intent": "The subject must leave the chair and finish beside the window.",
+      "generated": "The subject remains seated in the center of the rehearsal room.",
+      "override": "The subject rises from the chair, crosses left, and finishes standing beside the window.",
+      "regenerated": "The subject stays seated beside the chair in the center of the room."
+    },
+    {
+      "id": "msr_temporally_impossible_motion",
+      "pipeline": "ltx_msr",
+      "role": "ltx.msr.relay",
+      "runtime_path": "ltx.msr_prompt_relay",
+      "operator_intent": "Preserve identity while making the motion physically sequential.",
+      "generated": [
+        {
+          "frame_start": 0,
+          "frame_end": 47,
+          "prompt": "The same dancer is simultaneously kneeling and leaping across the stage."
+        }
+      ],
+      "override": [
+        {
+          "frame_start": 0,
+          "frame_end": 23,
+          "prompt": "The referenced dancer lowers into a kneel while keeping the same face and costume."
+        },
+        {
+          "frame_start": 24,
+          "frame_end": 47,
+          "prompt": "The dancer then rises and leaps toward frame right."
+        }
+      ],
+      "regenerated": [
+        {
+          "frame_start": 0,
+          "frame_end": 47,
+          "prompt": "The same dancer kneels and lands a leap at the same instant."
+        }
+      ]
+    },
+    {
+      "id": "ingredients_singing_transition",
+      "pipeline": "ltx_ingredients",
+      "role": "ingredients.relay",
+      "runtime_path": "ltx.prompt_relay",
+      "operator_intent": "Singing must stop exactly when the instrumental section begins.",
+      "generated": [
+        {
+          "frame_start": 0,
+          "frame_end": 95,
+          "state": "singing",
+          "prompt": "The vocalist sings throughout the scene."
+        }
+      ],
+      "override": [
+        {
+          "frame_start": 0,
+          "frame_end": 47,
+          "state": "singing",
+          "prompt": "The vocalist sings with visible lip sync."
+        },
+        {
+          "frame_start": 48,
+          "frame_end": 95,
+          "state": "instrumental",
+          "prompt": "The vocalist closes their mouth and listens during the instrumental section."
+        }
+      ],
+      "regenerated": [
+        {
+          "frame_start": 0,
+          "frame_end": 95,
+          "state": "singing",
+          "prompt": "The vocalist continues singing over the instrumental break."
+        }
+      ]
+    },
+    {
+      "id": "classic_camera_action_contradiction",
+      "pipeline": "classic_i2v",
+      "role": "ltx.i2v",
+      "runtime_path": "ltx.i2v_prompt_from_t2i",
+      "operator_intent": "Keep the camera locked while the actor supplies the movement.",
+      "generated": "A locked-off camera rapidly orbits the actor while the actor remains still.",
+      "override": "The camera remains locked off; the actor walks from frame left to frame right.",
+      "regenerated": "The static camera circles the motionless actor in a fast arc."
+    }
+  ]
+}
