@@ -6,20 +6,13 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
 from feverslop.config.app_config import AppConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
+from feverslop.utils.rich_progress import build_progress
 
 console = Console()
 
@@ -107,15 +100,7 @@ def main():
         output_dir=output_dir,
     )
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
+    with build_progress(console=console) as progress:
         task = progress.add_task("Rendering storyboard startframes", total=len(planned))
 
         rendered = use_case.execute(
