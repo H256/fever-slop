@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -63,7 +64,11 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
     return state
 
 
-def run(args: argparse.Namespace) -> PipelineRunResult:
+def run(
+    args: argparse.Namespace,
+    *,
+    on_stage_complete: Callable[[str], None] | None = None,
+) -> PipelineRunResult:
     stages = resolve_pipeline_stages(args)
     state = build_run_state(args, stages)
     for stage in stages:
@@ -78,6 +83,8 @@ def run(args: argparse.Namespace) -> PipelineRunResult:
             raise
         except Exception as exc:
             raise RuntimeError(f"{STAGE_LABELS[stage]} failed: {exc}") from exc
+        if on_stage_complete is not None:
+            on_stage_complete(stage.value)
 
     console.print("Pipeline complete.")
     console.print(f"Render plan: {state.plan_for_next_step}")

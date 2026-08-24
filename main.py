@@ -14,6 +14,7 @@ from feverslop.cli.canonical_plan_cli import (
     run_canonical_plan_command,
 )
 from feverslop.cli.movie_cli import build_movie_arg_parser
+from feverslop.cli.run_cli import build_run_parser, run_project_command
 from feverslop.cli.revision_commands import run_rebuild_preview, run_revisions
 from feverslop.cli.revisions import build_rebuild_preview_parser, build_revisions_parser
 from feverslop.composition.generate_render_plan import execute_generate_render_plan
@@ -127,6 +128,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # --- canonical plan migration subcommand ---
     build_canonical_plan_migration_parser(subparsers)
     build_canonical_plan_parsers(subparsers)
+    build_run_parser(subparsers)
 
     # --- backward-compatibility: top-level render-plan args ---
     # When no subcommand is given, these top-level args are parsed and the
@@ -239,6 +241,10 @@ def main() -> None:
             raise SystemExit(exit_code)
     elif args.command in {"plan", "status"}:
         exit_code = run_canonical_plan_command(args, console=console)
+        if exit_code:
+            raise SystemExit(exit_code)
+    elif args.command == "run":
+        exit_code = run_project_command(args, console=console)
         if exit_code:
             raise SystemExit(exit_code)
     elif args.project:
