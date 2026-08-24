@@ -34,7 +34,7 @@ class LyricTimelineAligner:
         corrected = self._modules.lyric_alignment(payload).segments
         expected_keys = [f"segment{index}" for index in range(1, len(vocal_segments) + 1)]
         actual_keys = list(corrected.keys())
-        if actual_keys != expected_keys:
+        if set(actual_keys) != set(expected_keys):
             raise ValueError(
                 f"Expected {len(expected_keys)} corrected lyric segments with keys "
                 f"{expected_keys}, got {actual_keys}",
