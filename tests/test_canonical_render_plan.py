@@ -203,6 +203,46 @@ class CanonicalRenderPlanBuilderTests(unittest.TestCase):
             )
             self.assertNotIn("effective", scene["canonical"]["roles"][PromptRole.H3_VIDEO])
 
+    def test_builder_can_delegate_the_final_plan_write(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scenes = [{
+                "scene": 1,
+                "start": 0.0,
+                "end": 2.0,
+                "duration": 2.0,
+                "zimage_prompt": "still",
+                "t2i_prompt": "base",
+                "i2v_prompt_from_t2i": "video",
+                "segment_id": "segment-a",
+                "type": "vocals",
+            }]
+            relays = [{
+                "scene": 1,
+                "prompt_relay": [{"frame_start": 0, "frame_end": 48, "state": "singing"}],
+            }]
+            (temp / "scenes.json").write_text(json.dumps(scenes), encoding="utf-8")
+            (temp / "relays.json").write_text(json.dumps(relays), encoding="utf-8")
+            calls = []
+
+            def plan_writer(path, value):
+                calls.append((Path(path), value))
+                return Path(path)
+
+            output = build_render_plan(
+                temp / "scenes.json",
+                temp / "relays.json",
+                temp / "base.json",
+                VideoSettings(width=1280, height=720, fps=24),
+                artifact_store=JsonArtifactStore(),
+                plan_writer=plan_writer,
+            )
+
+            self.assertEqual(temp / "base.json", output)
+            self.assertEqual(1, len(calls))
+            self.assertEqual("segment-a", calls[0][1][0]["canonical"]["segment_id"])
+            self.assertFalse((temp / "base.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

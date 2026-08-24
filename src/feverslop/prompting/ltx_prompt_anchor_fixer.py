@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from pathlib import Path
+
+from feverslop.domain.canonical_render_plan import PromptRole
 
 FORBIDDEN_RELAY_PHRASES = [
     "no subject visible",
@@ -84,7 +87,7 @@ class LTXPromptAnchorFixer:
         return [self.fix_scene(scene) for scene in render_plan]
 
     def fix_scene(self, scene: dict) -> dict:
-        scene = dict(scene)
+        scene = deepcopy(scene)
         scene["ltx"] = dict(scene["ltx"])
 
         scene_type = scene.get("metadata", {}).get("type", "")
@@ -102,7 +105,32 @@ class LTXPromptAnchorFixer:
             for relay in relays
         ]
 
+        self._update_canonical_generated(scene)
+
         return scene
+
+    @staticmethod
+    def _update_canonical_generated(scene: dict) -> None:
+        canonical = scene.get("canonical")
+        if not isinstance(canonical, dict):
+            return
+        roles = canonical.get("roles")
+        if not isinstance(roles, dict):
+            return
+        values = {
+            PromptRole.LTX_BASE: scene["ltx"]["base_prompt"],
+            PromptRole.LTX_I2V: scene["ltx"]["i2v_prompt_from_t2i"],
+            PromptRole.LTX_RELAY: scene["ltx"]["prompt_relay"],
+        }
+        for role_name, value in values.items():
+            role = roles.setdefault(str(role_name), {})
+            if not isinstance(role, dict):
+                continue
+            generated = role.setdefault("generated", {})
+            if not isinstance(generated, dict):
+                continue
+            generated["value"] = deepcopy(value)
+            generated["provenance"] = {"source": "anchor-fix"}
 
     def _scene_subject_anchor(self, scene: dict) -> str:
         actor_ids = [

@@ -14,6 +14,7 @@ from feverslop.domain.canonical_plan_migration import (
     MigrationInput,
     MigrationReport,
 )
+from feverslop.domain.canonical_plan_regeneration import CanonicalPlanSnapshot
 from feverslop.errors import FeverSlopDataError
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.io import atomic_write_bytes, atomic_write_json
@@ -44,6 +45,50 @@ class CanonicalPlanStore:
             else:
                 documents.append(MigrationDocument(relative, digest, value=value))
         return MigrationInput(str(self.project_dir), tuple(documents))
+
+    def capture_regeneration(self) -> CanonicalPlanSnapshot:
+        path = self.layout.base_plan
+        artifact_id = str(path.resolve())
+        if not path.is_file():
+            return CanonicalPlanSnapshot(artifact_id, False, None, ())
+        raw = path.read_bytes()
+        try:
+            value = json.loads(raw.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise FeverSlopDataError(f"Cannot capture canonical base plan: {path}: {exc}") from exc
+        if not isinstance(value, list) or any(not isinstance(scene, dict) for scene in value):
+            raise FeverSlopDataError(f"Canonical base plan must be a list of objects: {path}")
+        return CanonicalPlanSnapshot(
+            artifact_id,
+            True,
+            hashlib.sha256(raw).hexdigest(),
+            tuple(value),
+        )
+
+    def commit_regeneration(
+        self,
+        snapshot: CanonicalPlanSnapshot,
+        scenes: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    ) -> Path:
+        path = self.layout.base_plan
+        if snapshot.artifact_id != str(path.resolve()):
+            raise FeverSlopDataError("Canonical regeneration snapshot belongs to another artifact")
+        if not snapshot.exists:
+            if path.exists():
+                raise FeverSlopDataError(
+                    "Canonical base plan appeared during regeneration; refusing to overwrite it",
+                )
+        else:
+            if not path.is_file():
+                raise FeverSlopDataError(
+                    "Canonical base plan changed during regeneration: source disappeared",
+                )
+            current_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            if current_hash != snapshot.sha256:
+                raise FeverSlopDataError(
+                    "Canonical base plan changed during regeneration; refusing stale write",
+                )
+        return atomic_write_json(path, list(scenes))
 
     def apply(
         self,

@@ -29,6 +29,7 @@ from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig, ProjectPaths
+from feverslop.composition.canonical_plan_regenerator import CanonicalPlanRegenerator
 from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
 from feverslop.domain.scene_duration_limits import resolve_scene_duration_policy
 from feverslop.domain.timeline_transform import (
@@ -90,7 +91,10 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                     build_dspy_generator(llm), allow_fallback=False,
                 ),
             ),
-            RenderPlanPipeline(build_render_plan=build_render_plan),
+            RenderPlanPipeline(
+                build_render_plan=build_render_plan,
+                regenerator_factory=_build_canonical_regenerator,
+            ),
         ],
         storyboard_renderer_factory=_build_storyboard_renderer,
     )
@@ -181,7 +185,10 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
                     build_dspy_generator(llm), allow_fallback=False,
                 ),
             ),
-            RenderPlanPipeline(build_render_plan=build_render_plan),
+            RenderPlanPipeline(
+                build_render_plan=build_render_plan,
+                regenerator_factory=_build_canonical_regenerator,
+            ),
         ],
         storyboard_renderer_factory=_build_storyboard_renderer,
     )
@@ -195,6 +202,16 @@ def execute_rebuild_render_plan(
     """Rebuild render plan from existing timeline data, skipping audio analysis."""
     use_case = build_rebuild_render_plan_use_case(console=console)
     return use_case.execute(build_generate_render_plan_execution_request(request))
+
+
+def _build_canonical_regenerator(context) -> CanonicalPlanRegenerator:
+    config = context["config"]
+    paths = context["paths"]
+    return CanonicalPlanRegenerator(
+        config.project_dir,
+        reference_plan_path=paths.artifact_layout.references_plan,
+        reporter=context["reporter"],
+    )
 
 
 def _build_vocal_analyzer(config):

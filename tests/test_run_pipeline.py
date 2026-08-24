@@ -18,6 +18,7 @@ from feverslop.composition.stage_runners import (
     _run_main_pipeline_stage,
     _run_msr_reference_sheets_stage,
     _run_mux_original_audio_stage,
+    _run_render_plan_stage,
     _seed_reference_bindings,
     _selected_video_workflows,
 )
@@ -26,10 +27,129 @@ from feverslop.config.project_config import (
     ProjectConfig,
     StructuredLocationConfig,
 )
+from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_render_plan_stage_uses_one_regenerator_for_selection_and_reference_handoff(self):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            prompts = project / "output/prompts"
+            prompts.mkdir(parents=True)
+            paths = Namespace(
+                prompts_dir=prompts,
+                stems_dir=project / "output/stems",
+            )
+            config = Namespace(
+                paths=paths,
+                song_id="song",
+                minimax_h3_audio_refs=Namespace(stems=()),
+                input_audio=project / "song.wav",
+                project_dir=project,
+                max_scene_actors=4,
+                video_pipeline="minimax-h3-r2v",
+                to_video_settings=lambda: object(),
+            )
+            context = Namespace(
+                project_config_path=project / "config.json",
+                render_plan=project / "output/render/plans/base.json",
+                reference_plan=project / "output/render/plans/references.json",
+            )
+            state = Namespace(
+                args=Namespace(scenes="1", video_pipeline="minimax-h3-r2v"),
+                context=context,
+                plan_for_next_step=None,
+            )
+            regenerator = Mock()
+            regenerator.write = Mock()
+
+            with patch("feverslop.composition.stage_runners.ProjectConfig.load", return_value=config), \
+                patch("feverslop.composition.stage_runners.CanonicalPlanRegenerator", return_value=regenerator) as factory, \
+                patch("feverslop.composition.stage_runners.build_render_plan") as builder:
+                _run_render_plan_stage(state)
+
+        factory.assert_called_once()
+        self.assertEqual({1}, factory.call_args.kwargs["selected_scene_numbers"])
+        self.assertEqual(context.reference_plan, factory.call_args.kwargs["reference_plan_path"])
+        self.assertIs(regenerator.write, builder.call_args.kwargs["plan_writer"])
+        self.assertEqual(context.render_plan, state.plan_for_next_step)
+
+    def test_deferred_h3_partial_resume_preserves_override_and_reference_bindings(self):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            prompts = project / "output/prompts"
+            plans = project / "output/render/plans"
+            prompts.mkdir(parents=True)
+            plans.mkdir(parents=True)
+            scene_prompt = {
+                "scene": 1,
+                "start": 0.0,
+                "end": 2.0,
+                "duration": 2.0,
+                "zimage_prompt": "new still",
+                "t2i_prompt": "new base",
+                "i2v_prompt_from_t2i": "new i2v",
+                "segment_id": "segment-a",
+                "type": "vocals",
+            }
+            relay = {
+                "scene": 1,
+                "prompt_relay": [{"frame_start": 0, "frame_end": 48, "state": "singing"}],
+            }
+            (prompts / "scene_prompts_song.json").write_text(json.dumps([scene_prompt]), encoding="utf-8")
+            (prompts / "ltx_prompt_relay_song.json").write_text(json.dumps([relay]), encoding="utf-8")
+            (prompts / "h3_prompts_song.json").write_text(
+                json.dumps([{"segment_id": "segment-a", "prompt": "new judged h3"}]),
+                encoding="utf-8",
+            )
+            canonical = build_canonical_scene(
+                segment_id="segment-a",
+                generated_roles={PromptRole.H3_VIDEO: "old h3"},
+            )
+            canonical["roles"][PromptRole.H3_VIDEO]["override"] = {
+                "value": "human approved h3",
+                "provenance": {"source": "human"},
+            }
+            existing = {"scene": 1, "canonical": canonical}
+            base = plans / "base.json"
+            base.write_text(json.dumps([existing]), encoding="utf-8")
+            enriched = json.loads(json.dumps(existing))
+            enriched["references"] = {"actor_msr_paths": ["actors/a.png"]}
+            references = plans / "references.json"
+            references.write_text(json.dumps([enriched]), encoding="utf-8")
+            paths = Namespace(prompts_dir=prompts, stems_dir=project / "output/stems")
+            config = Namespace(
+                paths=paths,
+                song_id="song",
+                minimax_h3_audio_refs=Namespace(stems=()),
+                input_audio=None,
+                project_dir=project,
+                max_scene_actors=4,
+                video_pipeline="minimax-h3-r2v",
+                to_video_settings=lambda: VideoSettings(width=1280, height=720, fps=24),
+            )
+            state = Namespace(
+                args=Namespace(scenes=None, video_pipeline="minimax-h3-r2v"),
+                context=Namespace(
+                    project_config_path=project / "config.json",
+                    render_plan=base,
+                    reference_plan=references,
+                ),
+                plan_for_next_step=None,
+            )
+
+            with patch("feverslop.composition.stage_runners.ProjectConfig.load", return_value=config):
+                _run_render_plan_stage(state)
+
+            saved = json.loads(base.read_text(encoding="utf-8"))[0]
+
+        role = saved["canonical"]["roles"][PromptRole.H3_VIDEO]
+        self.assertEqual("new judged h3", role["generated"]["value"])
+        self.assertEqual("human approved h3", role["override"]["value"])
+        self.assertEqual(["actors/a.png"], saved["references"]["actor_msr_paths"])
+
     def test_stem_discovery_requires_exact_input_audio_basename(self):
         with TemporaryDirectory() as temp_dir:
             stems_dir = Path(temp_dir) / "stems"
