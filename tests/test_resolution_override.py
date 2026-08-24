@@ -4,7 +4,10 @@ import json
 import shutil
 import tempfile
 import unittest
+from argparse import Namespace
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 class TestResolutionTuple(unittest.TestCase):
@@ -279,6 +282,80 @@ class TestSetResolutionStageLabel(unittest.TestCase):
         from feverslop.composition.stage_runners import STAGE_LABELS, STAGE_RUNNERS
         self.assertIn(PipelineStage.SET_RESOLUTION, STAGE_LABELS)
         self.assertIn(PipelineStage.SET_RESOLUTION, STAGE_RUNNERS)
+
+
+class TestSetResolutionSafeInvalidation(unittest.TestCase):
+    def test_set_resolution_updates_config_and_base_but_leaves_derived_artifacts_stale(self):
+        from feverslop.adapters.pipeline_runner_options import ResolutionTuple
+        from feverslop.composition.stage_runners import _run_set_resolution_stage
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        config_path = tmpdir / "config.json"
+        config_path.write_text(json.dumps({
+            "input_audio": "song.mp3",
+            "video_pipeline": "ltx_msr",
+            "video": {"width": 1280, "height": 704},
+        }), encoding="utf-8")
+        (tmpdir / "song.mp3").write_bytes(b"audio")
+        layout = SceneArtifactLayout(tmpdir)
+        layout.plans_dir.mkdir(parents=True)
+        scene = {"scene": 1, "width": 1280, "height": 704}
+        layout.base_plan.write_text(json.dumps([scene]), encoding="utf-8")
+        layout.references_plan.write_text(json.dumps([scene]), encoding="utf-8")
+        derived_before = layout.references_plan.read_bytes()
+        state = SimpleNamespace(
+            args=Namespace(
+                set_resolution=ResolutionTuple(1024, 576),
+                video_pipeline="ltx_msr",
+            ),
+            context=SimpleNamespace(
+                project_config_path=config_path,
+                project_config_dir=tmpdir,
+                artifact_layout=layout,
+            ),
+            plan_for_next_step=layout.base_plan,
+        )
+
+        with patch("feverslop.composition.stage_runners._run_ltx_prepare_workflows_stage") as prepare:
+            _run_set_resolution_stage(state)
+
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        base = json.loads(layout.base_plan.read_text(encoding="utf-8"))
+        self.assertEqual((1024, 576), (config["video"]["width"], config["video"]["height"]))
+        self.assertEqual((1024, 576), (base[0]["width"], base[0]["height"]))
+        self.assertEqual(derived_before, layout.references_plan.read_bytes())
+        prepare.assert_not_called()
+
+    def test_set_resolution_still_works_before_canonical_plan_exists(self):
+        from feverslop.adapters.pipeline_runner_options import ResolutionTuple
+        from feverslop.composition.stage_runners import _run_set_resolution_stage
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        config_path = tmpdir / "config.json"
+        config_path.write_text(json.dumps({
+            "input_audio": "song.mp3",
+            "video": {"width": 1280, "height": 704},
+        }), encoding="utf-8")
+        layout = SceneArtifactLayout(tmpdir)
+        state = SimpleNamespace(
+            args=Namespace(set_resolution=ResolutionTuple(1024, 576)),
+            context=SimpleNamespace(
+                project_config_path=config_path,
+                project_config_dir=tmpdir,
+                artifact_layout=layout,
+            ),
+            plan_for_next_step=layout.base_plan,
+        )
+
+        _run_set_resolution_stage(state)
+
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual((1024, 576), (config["video"]["width"], config["video"]["height"]))
+        self.assertFalse(layout.base_plan.exists())
 
 
 if __name__ == "__main__":

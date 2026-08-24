@@ -57,6 +57,10 @@ class RunCliTests(unittest.TestCase):
         self.assertEqual("2,4", resume.scenes)
         self.assertEqual(["anchor_fix"], advanced.stages)
 
+    def test_parser_does_not_expose_internal_settings_sync_stage(self):
+        with self.assertRaises(SystemExit):
+            self._args("--dry-run", "--stage", "sync_project_settings")
+
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_dry_run_is_read_only_and_never_executes(self, pipeline_run):
         before = self._hash()
@@ -164,6 +168,56 @@ class RunCliTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         pipeline_run.assert_not_called()
         self.assertIn("advanced stage", self.stream.getvalue())
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_explicit_workflow_override_keeps_other_project_workflows(self, pipeline_run):
+        hero = Path.cwd() / "workflows" / "test_project_precedence_hero.json"
+        edit = Path.cwd() / "workflows" / "test_project_precedence_edit.json"
+        for path in (hero, edit):
+            path.write_text("{}", encoding="utf-8")
+            self.addCleanup(path.unlink, missing_ok=True)
+        (self.project / "config.json").write_text(json.dumps({
+            "input_audio": "song.mp3",
+            "video_pipeline": "ltx_msr",
+            "workflows": {
+                "reference_hero": "workflows/test_project_precedence_hero.json",
+                "reference_edit": "workflows/test_project_precedence_edit.json",
+            },
+        }), encoding="utf-8")
+        args = self._args(
+            "--dry-run",
+            "--msr-workflow",
+            "workflows/one-off-video.json",
+        )
+
+        exit_code = run_project_command(args, console=self.console)
+
+        self.assertEqual(0, exit_code)
+        pipeline_run.assert_not_called()
+        self.assertEqual("workflows/one-off-video.json", args.msr_workflow)
+        self.assertTrue(args.reference_hero_workflow.endswith("test_project_precedence_hero.json"))
+        self.assertTrue(args.reference_edit_workflow.endswith("test_project_precedence_edit.json"))
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_explicit_workflow_override_shadows_missing_config_workflow(self, pipeline_run):
+        (self.project / "config.json").write_text(json.dumps({
+            "input_audio": "song.mp3",
+            "video_pipeline": "ltx_msr",
+            "workflows": {"video": "workflows/missing-on-this-machine.json"},
+        }), encoding="utf-8")
+
+        exit_code = run_project_command(
+            self._args(
+                "--dry-run",
+                "--msr-workflow",
+                "workflows/one-off-video.json",
+            ),
+            console=self.console,
+        )
+
+        self.assertEqual(0, exit_code)
+        pipeline_run.assert_not_called()
+        self.assertNotIn("Invalid/corrupt project", self.stream.getvalue())
 
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_plain_safe_run_resolves_project_dimensions_and_video_workflow(self, pipeline_run):

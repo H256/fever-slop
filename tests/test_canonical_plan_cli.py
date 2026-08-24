@@ -189,6 +189,25 @@ class CanonicalPlanCliTests(unittest.TestCase):
         self.assertIn("workflow fingerprint changed", rendered)
         self.assertNotIn("changed private prompt", rendered)
 
+    def test_status_reports_project_config_resolution_change_without_writing(self):
+        scene = self._write_base()
+        scene["width"] = 1280
+        scene["height"] = 704
+        (self.plans / "base.json").write_text(json.dumps([scene]), encoding="utf-8")
+        (self.project / "song.mp3").write_bytes(b"audio")
+        (self.project / "config.json").write_text(json.dumps({
+            "input_audio": "song.mp3",
+            "video_pipeline": "ltx_i2v",
+            "video": {"width": 1024, "height": 576},
+        }), encoding="utf-8")
+        before = self._tree_hash()
+
+        exit_code = self._run(["status", str(self.project)])
+
+        self.assertEqual(2, exit_code)
+        self.assertIn("resolution changed", self.output.getvalue())
+        self.assertEqual(before, self._tree_hash())
+
     def test_every_inspection_command_preserves_complete_project_tree(self):
         self._write_base(override=True)
         commands = (

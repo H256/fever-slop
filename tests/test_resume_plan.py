@@ -296,6 +296,20 @@ class ResumePlanTests(unittest.TestCase):
         self.assertNotIn("main_pipeline", plan.runnable_stages)
         self.assertNotIn("h3_prompts", plan.runnable_stages)
 
+    def test_global_project_setting_change_blocks_partial_scene_selection(self):
+        self._write_base_and_derived(2)
+
+        plan = build_resume_plan(
+            self.project,
+            video_pipeline="ltx_msr",
+            selected_scenes={1},
+            render_settings=ProjectRenderSettings(width=1024, height=576),
+        )
+
+        self.assertTrue(plan.blocked)
+        self.assertEqual((), plan.runnable_stages)
+        self.assertIn("all scenes", plan.items[0].reason)
+
     def test_project_video_workflow_change_invalidates_workflows_not_references(self):
         base = self._write_base_and_derived(1)
         self._prepare(base[0])
