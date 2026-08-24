@@ -820,6 +820,20 @@ class ProjectConfigValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "actors must be an array"):
                 ProjectConfig.load(config_path)
 
+    def test_rejects_non_object_actor_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            audio = temp / "song.mp3"
+            audio.write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"actors": ["Mara"], "input_audio": "song.mp3"}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, r"actors\[0\] must be an object"):
+                ProjectConfig.load(config_path)
+
     def test_rejects_non_list_locations(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
