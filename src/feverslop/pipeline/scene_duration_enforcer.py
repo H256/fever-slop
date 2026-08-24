@@ -4,24 +4,23 @@ from pathlib import Path
 
 from feverslop.domain.srt import (
     SrtBlock,
-    SrtScene,
+    SrtScene as _SrtScene,
     format_srt_timestamp,
     parse_srt_blocks,
 )
 from feverslop.ports.artifacts import ArtifactStore
 
+def _to_srt_scene(block: SrtBlock) -> _SrtScene:
+    return _SrtScene(scene=block.index, start=block.start, end=block.end, text=block.text)
 
-def _to_srt_scene(block: SrtBlock) -> SrtScene:
-    return SrtScene(scene=block.index, start=block.start, end=block.end, text=block.text)
 
-
-def parse_srt_scenes(path: str | Path) -> list[SrtScene]:
+def parse_srt_scenes(path: str | Path) -> list[_SrtScene]:
     """Parse SRT file to SrtScene objects using shared domain parser."""
     blocks = parse_srt_blocks(path)
     return [_to_srt_scene(block) for block in blocks]
 
 
-def parse_scene_srt(path: str | Path) -> list[SrtScene]:
+def parse_scene_srt(path: str | Path) -> list[_SrtScene]:
     """Parse SRT file to SrtScene objects.
 
     .. deprecated::
@@ -42,7 +41,7 @@ def parse_scene_srt(path: str | Path) -> list[SrtScene]:
 
 def write_scene_srt(
     path: str | Path,
-    scenes: list[SrtScene],
+    scenes: list[_SrtScene],
     *,
     artifact_store: ArtifactStore,
 ) -> Path:
@@ -62,10 +61,10 @@ def write_scene_srt(
 
 
 def enforce_scene_duration_constraints(
-    scenes: list[SrtScene],
+    scenes: list[_SrtScene],
     min_duration: float,
     max_duration: float,
-) -> list[SrtScene]:
+) -> list[_SrtScene]:
     """Repairs scene durations after beat-based SRT generation.
 
     Goal:
@@ -97,22 +96,22 @@ def enforce_scene_duration_constraints(
     )
 
 
-def split_long_scenes(scenes: list[SrtScene], *, max_duration: float) -> list[SrtScene]:
-    split_scenes: list[SrtScene] = []
+def split_long_scenes(scenes: list[_SrtScene], *, max_duration: float) -> list[_SrtScene]:
+    split_scenes: list[_SrtScene] = []
     for scene in scenes:
         split_scenes.extend(_split_scene_to_max(scene, max_duration))
     return split_scenes
 
 
-def merge_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_duration: float) -> list[SrtScene]:
-    merged: list[SrtScene] = []
-    buffer: SrtScene | None = None
+def merge_short_scenes(scenes: list[_SrtScene], *, min_duration: float, max_duration: float) -> list[_SrtScene]:
+    merged: list[_SrtScene] = []
+    buffer: _SrtScene | None = None
 
     for scene in scenes:
         if buffer is None:
             buffer = scene
         else:
-            buffer = SrtScene(
+            buffer = _SrtScene(
                 scene=buffer.scene,
                 start=buffer.start,
                 end=scene.end,
@@ -128,7 +127,7 @@ def merge_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_durat
             merged.append(buffer)
         else:
             previous = merged.pop()
-            combined = SrtScene(
+            combined = _SrtScene(
                 scene=previous.scene,
                 start=previous.start,
                 end=buffer.end,
@@ -139,7 +138,11 @@ def merge_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_durat
     return merge_remaining_short_scenes(merged, min_duration=min_duration, max_duration=max_duration)
 
 
-def merge_remaining_short_scenes(scenes: list[SrtScene], *, min_duration: float, max_duration: float) -> list[SrtScene]:
+def merge_remaining_short_scenes(scenes: list[_SrtScene], *, min_duration: float, max_duration: float) -> list[_SrtScene]:
+    if min_duration <= 0:
+        raise ValueError("min_duration must be > 0")
+    if max_duration < min_duration:
+        raise ValueError("max_duration must be >= min_duration")
     merged = list(scenes)
     prev_short_count = len(scenes) + 1  # ensure first iteration runs
     for _ in range(100):  # hard safety cap
@@ -150,13 +153,13 @@ def merge_remaining_short_scenes(scenes: list[SrtScene], *, min_duration: float,
             stable = False
             if i < len(merged) - 1:
                 neighbor = merged[i + 1]
-                combined = SrtScene(scene=scene.scene, start=scene.start, end=neighbor.end, text=scene.text or neighbor.text)
+                combined = _SrtScene(scene=scene.scene, start=scene.start, end=neighbor.end, text=scene.text or neighbor.text)
                 del merged[i:i + 2]
                 merged[i:i] = _split_scene_to_max(combined, max_duration)
                 break
             if i > 0:
                 neighbor = merged[i - 1]
-                combined = SrtScene(scene=neighbor.scene, start=neighbor.start, end=scene.end, text=neighbor.text or scene.text)
+                combined = _SrtScene(scene=neighbor.scene, start=neighbor.start, end=scene.end, text=neighbor.text or scene.text)
                 del merged[i - 1:i + 1]
                 merged[i - 1:i - 1] = _split_scene_to_max(combined, max_duration)
                 break
@@ -170,9 +173,9 @@ def merge_remaining_short_scenes(scenes: list[SrtScene], *, min_duration: float,
     return merged
 
 
-def renumber_scenes(scenes: list[SrtScene]) -> list[SrtScene]:
+def renumber_scenes(scenes: list[_SrtScene]) -> list[_SrtScene]:
     return [
-        SrtScene(
+        _SrtScene(
             scene=index,
             start=scene.start,
             end=scene.end,
@@ -182,7 +185,7 @@ def renumber_scenes(scenes: list[SrtScene]) -> list[SrtScene]:
     ]
 
 
-def _split_scene_to_max(scene: SrtScene, max_duration: float) -> list[SrtScene]:
+def _split_scene_to_max(scene: _SrtScene, max_duration: float) -> list[_SrtScene]:
     if scene.duration <= max_duration:
         return [scene]
 
@@ -197,7 +200,7 @@ def _split_scene_to_max(scene: SrtScene, max_duration: float) -> list[SrtScene]:
         start = scene.start + i * part_duration
         end = scene.end if i == parts - 1 else scene.start + (i + 1) * part_duration
         result.append(
-            SrtScene(
+            _SrtScene(
                 scene=scene.scene,
                 start=start,
                 end=end,
@@ -226,7 +229,7 @@ def enforce_scene_srt_file(
 
 
 def validate_scene_durations(
-    scenes: list[SrtScene],
+    scenes: list[_SrtScene],
     min_duration: float,
     max_duration: float,
     allow_single_short_tail: bool = True,
