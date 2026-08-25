@@ -30,6 +30,34 @@ and composes a regular sheet from the selected tiles. Actor sheets use a
 portrait-oriented 2x3 layout; location sheets use a landscape-oriented 3x2
 layout. The original contact sheet is kept for inspection and later tooling.
 
+## Standalone hero-image import
+
+An existing hero image can be used as the real sequence anchor without
+rendering a replacement anchor first:
+
+```powershell
+uv run python -m feverslop.tools.generate_sequence_sheet `
+  --source-image .\hero.png `
+  --kind character `
+  --id the_dark_man `
+  --description "dark-haired man, black coat, pale skin" `
+  --publish local `
+  --json
+```
+
+The command validates the asset ID and source image before contacting ComfyUI.
+It writes `hero.png`, `anchor.png`, `sequence.mp4`, selected frames,
+`contact-sheet.png`, `sheet.png`, and an inspectable `manifest.json` below
+`references/<kind-directory>/<id>/`. Character imports select six views by
+default; locations select five. Use `--publish project --project <dir>` to
+write below `<dir>/references`, or `--publish global --library-root <dir>` to
+publish the completed look to the global asset library.
+
+Use `--dry-run --json` to validate the source and inspect the planned output
+without loading ComfyUI or calling a vision model. If the description is not
+known, `--description-mode auto` uses the configured vision-capable LLM and
+records its model in the manifest; the hero image remains the visual source.
+
 Generated artifacts are stored below the project output directory:
 
 ```text
