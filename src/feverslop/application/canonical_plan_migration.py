@@ -155,6 +155,11 @@ def _analyze_pass_through(
             findings.append(_identity_finding("unresolved", source, "missing comparison baseline", derived))
             continue
         for role, path in _BASE_FIELDS:
+            # references.json is regenerated before H3 prompts.  Its H3 field
+            # can therefore lag behind the canonical plan without being a
+            # manual edit that should be migrated back into the canonical plan.
+            if role == PromptRole.H3_VIDEO and source.endswith("/references.json"):
+                continue
             candidate = _get(derived, path)
             previous = _get(baseline, path)
             if candidate is _MISSING or previous is _MISSING or candidate == previous:
