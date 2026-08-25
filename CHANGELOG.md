@@ -5,6 +5,21 @@ All notable changes to FeverSlop are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-08-25
+
+### Fixed
+
+- Safe resume now reports the required LLM handoff when the configured model is
+  still loading instead of failing without an actionable next step.
+- Unchanged MSR reference assets and bindings are reused during resume instead
+  of being rendered again when their fingerprints still match.
+- Stale generated H3 prompts in `references.json` are no longer misclassified
+  as manual legacy edits that block the next resume.
+- Reference-generation settings and sequence-to-sheet workflow selection remain
+  stable across resume and migration checks.
+- Fresh derived reference plans without a legacy comparison baseline no longer
+  block execution as unresolved manual edits.
+
 ## [0.4.0] - 2026-08-24
 
 ### Added
@@ -70,5 +85,6 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Previous tagged release.
 
+[0.4.1]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.4.0...v0.4.1
 [0.4.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.3.0...v0.4.0
 [0.3.0]: https://forgejo.elysium.lan/H256/fever-slop/releases/tag/v0.3.0
