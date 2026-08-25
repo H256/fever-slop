@@ -1,342 +1,53 @@
-﻿from __future__ import annotations
-
+# ruff: noqa: F401
 import argparse
-from pathlib import Path
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import (
+from feverslop.cli import render_ltx as _cli
+from feverslop.cli.render_ltx import (
+    AppConfig,
     BarColumn,
+    Console,
+    Panel,
+    Path,
     Progress,
+    ProjectConfig,
+    RenderVideoScenesRequest,
+    ResolvedLoraConfig,
+    ROLLING_FRAME_PROFILES,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-)
-
-from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
-from feverslop.application.render_video import RenderVideoScenesRequest
-from feverslop.composition.render_video import (
-    ROLLING_FRAME_PROFILES,
+    WorkflowAnchorConfig,
+    build_arg_parser,
     build_render_video_scenes_use_case,
+    coerce_local_path,
+    console,
+    final_concat_paths,
+    load_render_plan_subset,
+    main as _package_main,
     namespace_to_options,
+    parse_scene_list,
+    resolve_composition_rolling_frames,
+    resolve_project_config_defaults,
+    resolve_rolling_frames,
+    rewrite_concat_list,
+    sanitize_file_stem,
+    safe_file_stem,
+    write_media_concat_list,
 )
-from feverslop.composition.render_video import (
-    resolve_rolling_frames as resolve_composition_rolling_frames,
-)
-from feverslop.config.app_config import AppConfig
-from feverslop.config.project_config import ProjectConfig
-from feverslop.path_utils import coerce_local_path
-from feverslop.ports.rendering import WorkflowAnchorConfig
-from feverslop.utils.render_plan_selection import load_render_plan_subset, parse_scene_list
-from feverslop.utils.media_paths import safe_file_stem, write_concat_list as write_media_concat_list
-
-console = Console()
-
-
-def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Render LTX I2V videos with optional rolling-frame preroll/tail trimming.")
-
-    parser.add_argument("--app-config", default="./app_config.json")
-    parser.add_argument("--project-config", default=None)
-    parser.add_argument("--render-plan", required=True)
-    parser.add_argument("--workflow", required=True)
-    parser.add_argument("--video-pipeline", choices=["ltx_i2v", "ltx_msr"], default="ltx_i2v")
-    parser.add_argument(
-        "--render-mode",
-        choices=["relay", "single_prompt", "auto"],
-        default="single_prompt",
-        help="single_prompt uses #PROMPT, relay uses #PROMPT_RELAY, auto uses ltx.render_mode_hint per scene.",
-    )
-    parser.add_argument(
-        "--single-prompt-workflow",
-        default=None,
-        help="Workflow for single_prompt/auto scenes. If omitted, --workflow is used.",
-    )
-    parser.add_argument("--single-prompt-title", default="#PROMPT")
-    parser.add_argument("--single-prompt-input", default="text")
-    parser.add_argument("--audio", required=True)
-    parser.add_argument("--storyboard-dir", required=True)
-    parser.add_argument("--output-dir", required=True)
-
-    parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--scenes", default=None)
-    parser.add_argument("--no-skip-existing", action="store_true")
-
-    parser.add_argument("--character-lora-strength", type=float, default=None)
-    parser.add_argument("--lora-1-enabled", action=argparse.BooleanOptionalAction, default=None)
-    parser.add_argument("--lora-1-name", default=None)
-    parser.add_argument("--lora-1-strength-model", type=float, default=None)
-    parser.add_argument("--lora-1-strength-clip", type=float, default=None)
-    parser.add_argument("--lora-split-enabled", action=argparse.BooleanOptionalAction, default=None)
-    parser.add_argument("--randomize-seed", action="store_true")
-    parser.add_argument("--seed-offset", type=int, default=100000)
-
-    parser.add_argument("--no-upload-audio", action="store_true")
-    parser.add_argument("--uploaded-audio-name", default=None)
-    parser.add_argument("--no-upload-startframes", action="store_true")
-
-    parser.add_argument("--segment-length-mode", choices=["frames_minus_one", "frames"], default="frames_minus_one")
-    parser.add_argument("--min-duration", type=float, default=None)
-    parser.add_argument("--max-duration", type=float, default=None)
-    parser.add_argument("--allow-out-of-range-clips", action="store_true")
-    parser.add_argument("--debug-workflows-dir", default=None)
-    parser.add_argument("--debug", action="store_true", help="Show verbose debug output, including FFmpeg output.")
-
-    parser.add_argument(
-        "--rolling-frame-profile",
-        choices=sorted(ROLLING_FRAME_PROFILES),
-        default="original",
-        help="original=pre 50/tail 25 plus 8N+1 rounding, safe=6/0 no rounding, off=0/0.",
-    )
-    parser.add_argument("--preroll-frames", type=int, default=None)
-    parser.add_argument("--tail-loss-frames", type=int, default=None)
-    parser.add_argument("--no-postprocess", action="store_true")
-    parser.add_argument("--ffmpeg", default="ffmpeg")
-    parser.add_argument("--postprocess-streamcopy", action="store_true")
-    return parser
-
-
-def _discover_project_config_path(render_plan_path: str | Path) -> Path | None:
-    render_plan_path = coerce_local_path(render_plan_path).resolve()
-    for parent in render_plan_path.parents:
-        candidate = parent / "config.json"
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def resolve_project_config_defaults(args: argparse.Namespace) -> dict:
-    project_config_path = args.project_config
-    if not project_config_path and getattr(args, "render_plan", None):
-        discovered = _discover_project_config_path(args.render_plan)
-        if discovered:
-            project_config_path = str(discovered)
-
-    project_config = ProjectConfig.load(project_config_path) if project_config_path else None
-    scene_generation = project_config.scene_generation if project_config else None
-    lora_1 = project_config.lora_1 if project_config else None
-    loras = _resolve_loras(args, project_config)
-    first_lora = loras[0] if loras else None
-
-    min_duration = args.min_duration if args.min_duration is not None else (scene_generation.min_duration if scene_generation else 2.0)
-    max_duration = args.max_duration if args.max_duration is not None else (scene_generation.max_duration if scene_generation else 10.0)
-
-    lora_1_enabled = args.lora_1_enabled if args.lora_1_enabled is not None else (
-        first_lora.enabled if first_lora else (lora_1.enabled if lora_1 else False)
-    )
-    lora_1_name = args.lora_1_name if args.lora_1_name is not None else (
-        first_lora.name if first_lora else (lora_1.name if lora_1 else "")
-    )
-    lora_1_strength_model = (
-        args.lora_1_strength_model
-        if args.lora_1_strength_model is not None
-        else (first_lora.strength_model if first_lora else (lora_1.strength_model if lora_1 else 1.0))
-    )
-    lora_1_strength_clip = (
-        args.lora_1_strength_clip
-        if args.lora_1_strength_clip is not None
-        else (first_lora.strength_clip if first_lora else (lora_1.strength_clip if lora_1 else 1.0))
-    )
-    lora_1_strengths_explicit = (
-        args.lora_1_strength_model is not None
-        or args.lora_1_strength_clip is not None
-    )
-    lora_split_enabled = (
-        args.lora_split_enabled
-        if args.lora_split_enabled is not None
-        else (project_config.lora_split_enabled if project_config else False)
-    )
-
-    return {
-        "project_config": project_config,
-        "min_duration": float(min_duration),
-        "max_duration": float(max_duration),
-        "lora_1_enabled": bool(lora_1_enabled),
-        "lora_1_name": str(lora_1_name or ""),
-        "lora_1_strength_model": float(lora_1_strength_model),
-        "lora_1_strength_clip": float(lora_1_strength_clip),
-        "lora_1_strengths_explicit": bool(lora_1_strengths_explicit),
-        "loras": loras,
-        "lora_split_enabled": bool(lora_split_enabled),
-    }
-
-
-def _resolve_loras(args: argparse.Namespace, project_config: ProjectConfig | None) -> tuple[ResolvedLoraConfig, ...]:
-    loras = [
-        ResolvedLoraConfig(
-            index=index,
-            enabled=lora.enabled,
-            name=lora.name,
-            strength_model=lora.strength_model,
-            strength_clip=lora.strength_clip,
-            name_explicit=lora.name_explicit,
-            strength_model_explicit=lora.strength_model_explicit,
-            strength_clip_explicit=lora.strength_clip_explicit,
-        )
-        for index, lora in enumerate(project_config.loras, start=1)
-    ] if project_config else []
-
-    has_lora_1_override = (
-        args.lora_1_enabled is not None
-        or args.lora_1_name is not None
-        or args.lora_1_strength_model is not None
-        or args.lora_1_strength_clip is not None
-    )
-    if has_lora_1_override:
-        while len(loras) < 1:
-            loras.append(ResolvedLoraConfig(index=1))
-        current = loras[0]
-        loras[0] = ResolvedLoraConfig(
-            index=1,
-            enabled=args.lora_1_enabled if args.lora_1_enabled is not None else current.enabled,
-            name=args.lora_1_name if args.lora_1_name is not None else current.name,
-            name_explicit=(
-                bool(str(args.lora_1_name).strip())
-                if args.lora_1_name is not None
-                else current.name_explicit
-            ),
-            strength_model=(
-                args.lora_1_strength_model
-                if args.lora_1_strength_model is not None
-                else current.strength_model
-            ),
-            strength_model_explicit=(
-                True
-                if args.lora_1_strength_model is not None
-                else current.strength_model_explicit
-            ),
-            strength_clip=(
-                args.lora_1_strength_clip
-                if args.lora_1_strength_clip is not None
-                else current.strength_clip
-            ),
-            strength_clip_explicit=(
-                True
-                if args.lora_1_strength_clip is not None
-                else current.strength_clip_explicit
-            ),
-        )
-
-    return tuple(loras)
-
-
-def resolve_rolling_frames(args: argparse.Namespace) -> tuple[int, int, bool]:
-    return resolve_composition_rolling_frames(namespace_to_options(args))
-
-
-def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:
-    output_dir = coerce_local_path(output_dir)
-    return write_media_concat_list(rendered_files, output_dir / "concat_list.txt")
-
-
-def sanitize_file_stem(value: str | None, fallback: str = "final_concat") -> str:
-    return safe_file_stem(value, fallback)
-
-
-def final_concat_paths(output_dir: str | Path, project_name: str | None = None) -> tuple[Path, Path]:
-    output_dir = coerce_local_path(output_dir)
-    if project_name:
-        file_stem = sanitize_file_stem(project_name, "final_concat")
-        return output_dir / f"{file_stem}_video_only.mp4", output_dir / f"{file_stem}.mp4"
-
-    return output_dir / "final_concat_video_only.mp4", output_dir / "final_concat.mp4"
 
 
 def main():
-    parser = build_arg_parser()
-    args = parser.parse_args()
-    resolved = resolve_project_config_defaults(args)
-
-    if args.render_mode == "auto" and not args.single_prompt_workflow:
-        raise ValueError("--single-prompt-workflow is required when --render-mode auto is used")
-    preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(args)
-
-    app_config_path = coerce_local_path(args.app_config)
-    render_plan_path = coerce_local_path(args.render_plan)
-    workflow_path = coerce_local_path(args.workflow)
-    audio_path = coerce_local_path(args.audio)
-    storyboard_dir = coerce_local_path(args.storyboard_dir)
-    output_dir = coerce_local_path(args.output_dir)
-    single_prompt_workflow_path = coerce_local_path(args.single_prompt_workflow) if args.single_prompt_workflow else None
-    app_config = AppConfig.load(app_config_path)
-    scene_numbers = parse_scene_list(args.scenes)
-    planned = load_render_plan_subset(render_plan_path, scene_numbers, args.limit)
-
-    console.print(Panel.fit(
-        f"[bold]LTX Video Renderer[/bold]\n\n"
-        f"ComfyUI: [cyan]{app_config.comfyui.base_url}[/cyan]\n"
-        f"Render plan: [cyan]{render_plan_path}[/cyan]\n"
-        f"Workflow: [cyan]{workflow_path}[/cyan]\n"
-        f"Video pipeline: [yellow]{args.video_pipeline}[/yellow]\n"
-        f"Render mode: [yellow]{args.render_mode}[/yellow]\n"
-        f"Single-prompt workflow: [cyan]{single_prompt_workflow_path or workflow_path}[/cyan]\n"
-        f"Audio: [cyan]{audio_path}[/cyan]\n"
-        f"Storyboard: [cyan]{storyboard_dir}[/cyan]\n"
-        f"Output: [cyan]{output_dir}[/cyan]\n"
-        f"Scenes: [yellow]{len(planned)}[/yellow]\n"
-        f"Rolling profile: [yellow]{args.rolling_frame_profile}[/yellow]\n"
-        f"Preroll frames: [yellow]{preroll_frames}[/yellow]\n"
-        f"Tail loss frames: [yellow]{tail_loss_frames}[/yellow]\n"
-        f"Round render frames to 8N+1: [yellow]{round_render_frames_to_8n1}[/yellow]\n"
-        f"LoRA 1 enabled: [yellow]{resolved['lora_1_enabled']}[/yellow]\n"
-        f"LoRA 1 name: [cyan]{resolved['lora_1_name']}[/cyan]\n"
-        f"LoRA split enabled: [yellow]{resolved['lora_split_enabled']}[/yellow]\n"
-        f"Postprocess: [yellow]{not args.no_postprocess}[/yellow]\n"
-        f"Debug: [yellow]{args.debug}[/yellow]",
-        title="Startup",
-        border_style="cyan",
-    ))
-
-    use_case = build_render_video_scenes_use_case(namespace_to_options(args), console=console)
-
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Rendering LTX scenes", total=len(planned))
-
-        rendered = use_case.execute(
-            RenderVideoScenesRequest(
-                render_plan_path=render_plan_path,
-                workflow_path=workflow_path,
-                audio_file=audio_path,
-                storyboard_dir=storyboard_dir,
-                output_dir=output_dir,
-                render_mode=args.render_mode,
-                single_prompt_workflow_path=single_prompt_workflow_path,
-                limit=args.limit,
-                scene_numbers=scene_numbers,
-                skip_existing=not args.no_skip_existing,
-                uploaded_audio_name=args.uploaded_audio_name,
-                upload_audio=not args.no_upload_audio,
-                upload_startframes=not args.no_upload_startframes,
-                anchors=WorkflowAnchorConfig(
-                    single_prompt_title=args.single_prompt_title,
-                    single_prompt_input=args.single_prompt_input,
-                ),
-                on_scene_complete=lambda _output, completed, _total: progress.update(
-                    task,
-                    completed=completed,
-                ),
-            ),
-        )
-        progress.update(task, completed=len(rendered))
-
-    concat_file = rewrite_concat_list(rendered, output_dir)
-    console.print(f"[green]OK[/green] Rendered/available LTX clips: [yellow]{len(rendered)}[/yellow]")
-    console.print(f"[green]OK[/green] FFmpeg concat list: [cyan]{concat_file}[/cyan]")
-    console.print()
-    project_name = resolved["project_config"].project_name if resolved["project_config"] else None
-    video_only, final_concat = final_concat_paths(output_dir, project_name)
-    console.print("Concat + original-audio mux commands:")
-    console.print(f'[bold]ffmpeg -y -f concat -safe 0 -i "{concat_file}" -an -c:v copy "{video_only}"[/bold]')
-    console.print(f'[bold]ffmpeg -y -i "{video_only}" -i "{audio_path}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 320k -shortest "{final_concat}"[/bold]')
+    for name in (
+        "AppConfig", "ProjectConfig", "ResolvedLoraConfig", "RenderVideoScenesRequest",
+        "ROLLING_FRAME_PROFILES", "WorkflowAnchorConfig", "build_render_video_scenes_use_case",
+        "coerce_local_path", "console", "namespace_to_options", "resolve_composition_rolling_frames",
+        "load_render_plan_subset", "parse_scene_list", "safe_file_stem", "write_media_concat_list",
+        "Panel", "Progress", "BarColumn", "TaskProgressColumn", "TextColumn",
+        "TimeElapsedColumn", "TimeRemainingColumn",
+    ):
+        setattr(_cli, name, globals()[name])
+    return _package_main()
 
 
 if __name__ == "__main__":

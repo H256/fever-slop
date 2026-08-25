@@ -16,6 +16,7 @@ import render_storyboard
 import run_pipeline
 import storyboard_renderer
 import workflow_patcher
+from feverslop.cli import render_ltx as canonical_render_ltx
 from feverslop.cli.movie_cli import build_movie_arg_parser
 from feverslop.composition.generate_render_plan import (
     build_generate_render_plan_execution_request,
@@ -150,7 +151,7 @@ class PublicCompatibilityTests(unittest.TestCase):
         self.assertTrue(hasattr(storyboard_page, "generate_storyboard_page"))
 
     def test_render_ltx_uses_importable_composition_root(self):
-        source = inspect.getsource(render_ltx.main)
+        source = inspect.getsource(canonical_render_ltx.main)
 
         self.assertIn("build_render_video_scenes_use_case", source)
         self.assertIn("namespace_to_options(args)", source)
