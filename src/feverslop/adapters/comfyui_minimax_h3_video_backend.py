@@ -122,16 +122,18 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
     def _patch_megapixels(
         patcher: WorkflowPatcher,
         megapixels: float,
+        *,
+        explicit: bool = False,
     ) -> None:
         """Patch the megapixels anchor (#MEGAPIXELS or #MEGAPIXEL).
 
         Tries the plural anchor first (R2V convention), then falls back to
         the singular anchor (T2V convention).
         """
-        rounded = math.floor(float(megapixels) * 10) / 10
-        if patcher.try_set_existing_input_by_title("#MEGAPIXELS", "megapixels", rounded):
+        value = float(megapixels) if explicit else math.floor(float(megapixels) * 10) / 10
+        if patcher.try_set_existing_input_by_title("#MEGAPIXELS", "megapixels", value):
             return
-        if patcher.try_set_existing_input_by_title("#MEGAPIXEL", "megapixels", rounded):
+        if patcher.try_set_existing_input_by_title("#MEGAPIXEL", "megapixels", value):
             return
         raise KeyError("Workflow has neither #MEGAPIXELS nor #MEGAPIXEL anchor")
 

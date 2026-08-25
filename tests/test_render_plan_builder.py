@@ -251,7 +251,7 @@ class BuildRenderPlanTests(unittest.TestCase):
                 scene_prompts_json=scene_prompts_path,
                 ltx_prompt_relay_json=relay_path,
                 output_json_file=output_path,
-                video_settings=VideoSettings(fps=24, width=1280, height=704),
+                video_settings=VideoSettings(fps=24, width=1280, height=704, megapixels=0.98),
                 artifact_store=JsonArtifactStore(),
                 seed=4242,
             )
@@ -261,6 +261,7 @@ class BuildRenderPlanTests(unittest.TestCase):
 
             self.assertTrue(all(item["ltx"].get("original_style_i2v_prompt") for item in plan))
             self.assertEqual({4242}, {item["seed"] for item in plan})
+            self.assertEqual({0.98}, {item["megapixels"] for item in plan})
             self.assertEqual("single_prompt", by_scene[1]["ltx"]["render_mode_hint"])
             self.assertEqual("relay", by_scene[16]["ltx"]["render_mode_hint"])
             self.assertEqual("single_prompt", by_scene[3]["ltx"]["render_mode_hint"])

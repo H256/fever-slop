@@ -25,6 +25,13 @@ class TestResolutionTuple(unittest.TestCase):
         self.assertEqual(res.width, 1920)
         self.assertEqual(res.height, 1080)
 
+    def test_parse_megapixels(self):
+        from feverslop.adapters.pipeline_runner_options import ResolutionTuple
+        res = ResolutionTuple.parse("0.98")
+        self.assertIsNone(res.width)
+        self.assertIsNone(res.height)
+        self.assertEqual(res.megapixels, 0.98)
+
     def test_parse_fails_no_separator(self):
         from feverslop.adapters.pipeline_runner_options import ResolutionTuple
         with self.assertRaises(ValueError):
@@ -228,6 +235,12 @@ class TestSetResolutionCliParsing(unittest.TestCase):
         # --resolution should still be None
         self.assertIsNone(args.resolution)
 
+    def test_set_resolution_megapixels_flag_parsed(self):
+        from feverslop.composition.arg_parser import build_arg_parser
+        parser = build_arg_parser()
+        args = parser.parse_args(["./projects/test", "--set-resolution", "0.98"])
+        self.assertEqual(args.set_resolution.megapixels, 0.98)
+
     def test_set_resolution_flag_missing_is_none(self):
         from feverslop.composition.arg_parser import build_arg_parser
         parser = build_arg_parser()
@@ -285,6 +298,32 @@ class TestSetResolutionStageLabel(unittest.TestCase):
 
 
 class TestSetResolutionSafeInvalidation(unittest.TestCase):
+    def test_set_resolution_megapixels_updates_config_and_base(self):
+        from feverslop.adapters.pipeline_runner_options import ResolutionTuple
+        from feverslop.composition.stage_runners import _run_set_resolution_stage
+        from feverslop.scene_artifacts import SceneArtifactLayout
+
+        tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        config_path = tmpdir / "config.json"
+        config_path.write_text(json.dumps({"input_audio": "song.mp3", "video": {"width": 1280, "height": 704}}), encoding="utf-8")
+        (tmpdir / "song.mp3").write_bytes(b"audio")
+        layout = SceneArtifactLayout(tmpdir)
+        layout.plans_dir.mkdir(parents=True)
+        layout.base_plan.write_text(json.dumps([{"scene": 1, "width": 1280, "height": 704}]), encoding="utf-8")
+        state = SimpleNamespace(
+            args=Namespace(set_resolution=ResolutionTuple.parse("0.98")),
+            context=SimpleNamespace(project_config_path=config_path, project_config_dir=tmpdir, artifact_layout=layout),
+            plan_for_next_step=layout.base_plan,
+        )
+
+        _run_set_resolution_stage(state)
+
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        base = json.loads(layout.base_plan.read_text(encoding="utf-8"))
+        self.assertEqual(0.98, config["video"]["megapixels"])
+        self.assertEqual(0.98, base[0]["megapixels"])
+
     def test_set_resolution_updates_config_and_base_but_leaves_derived_artifacts_stale(self):
         from feverslop.adapters.pipeline_runner_options import ResolutionTuple
         from feverslop.composition.stage_runners import _run_set_resolution_stage
