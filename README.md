@@ -5,7 +5,7 @@
 
 **A local, inspectable CLI pipeline for turning music, lyrics, and visual direction into music videos.**
 
-[![Release](https://img.shields.io/badge/release-v0.4.1-8A2BE2)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v0.5.0-8A2BE2)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Interface](https://img.shields.io/badge/interface-CLI-111111)](#command-line-interfaces)
