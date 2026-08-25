@@ -18,6 +18,11 @@ Compatibility facades remain available for older imports:
 - `storyboard_renderer.StoryboardRenderer`; new code should import from `feverslop.adapters.storyboard_renderer`.
 - `workflow_patcher.WorkflowPatcher`; new code should import from `feverslop.adapters.workflow_patcher`.
 
+The larger root CLI scripts are also compatibility facades. Their canonical
+implementations are listed in [CLI and H3 compatibility](cli-and-h3-compatibility.md).
+Shared render arguments are defined once in `feverslop.cli.shared_args` and
+used by both the unified parser and legacy render commands.
+
 The deprecated `feverslop.studio` namespace has been removed. The on-disk
 `.studio/` project metadata format remains a separate compatibility contract.
 
