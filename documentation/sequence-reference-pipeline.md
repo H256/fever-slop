@@ -186,3 +186,28 @@ required project and workflow options for the local configuration.
 - DSPy remains responsible for prompt enrichment in the supported MiniMax H3
   prompt stages; it is not used to compose the image tiles.
 
+## Benchmarking a replacement
+
+Before replacing `image_views` or `sequence_sheet`, record pinned inputs and
+machine-readable measurements in a benchmark JSON file. The evaluator does not
+render media and does not commit generated artifacts; it evaluates recorded
+runs and retains only artifact/provenance references in the report:
+
+```powershell
+uv run python -m feverslop.tools.reference_sheet_benchmark `
+  --config .\benchmarks\reference-sheets\2026-08-25.json `
+  --report .\benchmarks\reference-sheets\reports\2026-08-25.json
+```
+
+Each candidate run must identify its fixture and provide scores for identity
+consistency, view coverage, sharpness, layout continuity, and reproducibility.
+Failures force the `fallback` decision even when the quality scores pass. A
+candidate is recommended for `replace` only when every configured gate passes;
+runtime, retry counts, model/workflow revisions, and artifact hashes should be
+kept in the candidate's provenance records.
+
+This scaffold intentionally does not claim visual quality, perform human
+review, or decide deprecation policy by itself. Those measurements and the
+human checklist remain inputs to the pinned report. It also does not include
+generated images or videos in Git.
+
