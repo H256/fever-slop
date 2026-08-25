@@ -49,3 +49,44 @@ class SeedVR2TimelineExportTests(unittest.TestCase):
             [("song.mlt", "final.mp4"), ("song_facefix.mlt", "final_facefix.mp4"), ("song_upscaled.mlt", "upscale_final.mp4")],
             written,
         )
+
+    def test_default_export_writes_mlt_and_openshot_projects(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            audio = root / "song.mp3"
+            audio.write_bytes(b"audio")
+            config = root / "config.json"
+            config.write_text(json.dumps({"input_audio": "song.mp3", "video": {"width": 640, "height": 360, "fps": 24}}), encoding="utf-8")
+            layout = SceneArtifactLayout(root)
+            plan = layout.base_plan
+            plan.parent.mkdir(parents=True, exist_ok=True)
+            plan.write_text(json.dumps([{"scene": 1, "duration_seconds": 1}]), encoding="utf-8")
+            clip = layout.scene_final_video(1)
+            clip.parent.mkdir(parents=True, exist_ok=True)
+            clip.write_bytes(b"video")
+            state = Namespace(
+                plan_for_next_step=plan,
+                context=Namespace(
+                    project_config_path=config,
+                    artifact_layout=layout,
+                    ltx_dir=layout.scenes_dir,
+                    project_output_dir=layout.output_dir,
+                    project_file_stem="song",
+                    input_audio=audio,
+                ),
+                args=Namespace(stages=[], timeline_format="both"),
+            )
+            written = []
+
+            def fake_export(**kwargs):
+                written.append(Path(kwargs["output_path"]).suffix)
+                return Path(kwargs["output_path"])
+
+            with patch("feverslop.composition.stage_runners.export_render_plan_to_mlt", side_effect=fake_export), patch(
+                "feverslop.composition.stage_runners.export_render_plan_to_openshot", side_effect=fake_export,
+            ):
+                _run_timeline_export_stage(state)
+
+        self.assertEqual([".mlt", ".osp"], written)
+        self.assertEqual(Path(temp_dir) / "output" / "timeline" / "song.mlt", state.timeline_project_path)
+        self.assertEqual(Path(temp_dir) / "output" / "openshot" / "song.osp", state.openshot_project_path)

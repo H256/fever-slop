@@ -559,10 +559,12 @@ class RunPipelinePathTests(unittest.TestCase):
         parser = build_arg_parser()
         mlt_args = parser.parse_args(["--stage", "export_timeline", "--format", "mlt"])
         openshot_args = parser.parse_args(["--stage", "export_timeline", "--format", "openshot"])
+        default_args = parser.parse_args(["--stage", "export_timeline"])
 
         self.assertEqual(resolve_pipeline_stages(mlt_args), [PipelineStage.EXPORT_TIMELINE])
         self.assertEqual(mlt_args.timeline_format, "mlt")
         self.assertEqual(openshot_args.timeline_format, "openshot")
+        self.assertEqual(default_args.timeline_format, "both")
 
     @patch("feverslop.composition.stage_runners._run_render_plan_stage")
     @patch("feverslop.composition.stage_runners.enrich_render_plan_with_reference_sheets")

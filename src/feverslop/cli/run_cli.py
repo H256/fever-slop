@@ -45,7 +45,7 @@ def build_run_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--format",
         dest="timeline_format",
-        choices=["mlt", "openshot"],
+        choices=["mlt", "openshot", "both"],
         default=None,
         help="Advanced compatibility: timeline export format.",
     )
@@ -203,7 +203,7 @@ def _apply_runner_defaults(args: argparse.Namespace) -> None:
         if getattr(args, name, None) is None and "default" in kwargs:
             setattr(args, name, kwargs["default"])
     if getattr(args, "timeline_format", None) is None:
-        args.timeline_format = "openshot"
+        args.timeline_format = "both"
 
 
 def _runner_default(name: str):
