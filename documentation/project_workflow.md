@@ -1238,6 +1238,8 @@ uv run python run_pipeline.py projects/my_project --stage export_timeline --form
 uv run python run_pipeline.py projects/my_project --stage export_timeline --format openshot
 ```
 
+Without `--format`, both projects are generated.
+
 The MLT project is written below `output/timeline/` and can be opened by
 Shotcut or Kdenlive. It contains the rendered clips in render-plan order and
 the original input audio on a separate track. The OpenShot `.osp` export is

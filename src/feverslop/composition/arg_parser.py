@@ -60,8 +60,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--format",
         dest="timeline_format",
-        choices=["mlt", "openshot"],
-        default="openshot",
-        help="Timeline export format for export_timeline (default: openshot).",
+        choices=["mlt", "openshot", "both"],
+        default="both",
+        help="Timeline export format for export_timeline (default: both; MLT and OpenShot).",
     )
     return parser

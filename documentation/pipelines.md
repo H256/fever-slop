@@ -277,8 +277,10 @@ passed. Concat prefers `upscale_final.mp4` when present and writes
 
 Timeline export writes independent projects when the corresponding artifacts
 exist: `<project>.osp`/`.mlt`, `<project>_facefix.osp`/`.mlt`, and
-`<project>_upscaled.osp`/`.mlt`. The Shotcut-compatible MLT export is selected
-with `--stage export_timeline --format mlt`.
+`<project>_upscaled.osp`/`.mlt`. By default, the export writes both the
+Shotcut-compatible MLT project and the OpenShot project. Use
+`--stage export_timeline --format mlt` or `--format openshot` to write only one
+format.
 
 Important CLI options:
 

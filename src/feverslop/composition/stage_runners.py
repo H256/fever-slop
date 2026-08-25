@@ -1973,9 +1973,8 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
     config = ProjectConfig.load(state.context.project_config_path)
     video = config.to_video_settings()
     legacy_openshot_stage = PipelineStage.OPENSHOT_EXPORT.value in (getattr(state.args, "stages", None) or [])
-    export_format = "openshot" if legacy_openshot_stage else getattr(state.args, "timeline_format", "openshot")
-    extension = "mlt" if export_format == "mlt" else "osp"
-    output_dir_name = "timeline" if export_format == "mlt" else "openshot"
+    requested_format = "openshot" if legacy_openshot_stage else getattr(state.args, "timeline_format", "both")
+    export_formats = [requested_format] if requested_format != "both" else ["mlt", "openshot"]
     layout = state.context.artifact_layout
     plan_entries = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
     has_facefix = any(
@@ -1995,35 +1994,38 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
     def report(completed: int, total: int, label: str) -> None:
         console.print(f"[dim]Timeline export: {completed}/{total} ({label})[/dim]")
 
-    for suffix, prefer_facefix, prefer_upscaled in variants:
-        clips = collect_render_plan_scene_clips(
-            state.plan_for_next_step,
-            state.context.ltx_dir,
-            layout=layout,
-            prefer_facefix=prefer_facefix,
-            prefer_upscaled=prefer_upscaled,
-        )
-        output_path = state.context.project_output_dir / output_dir_name / f"{state.context.project_file_stem}{suffix}.{extension}"
-        console.print(f"Timeline export ({export_format}, {suffix or 'final'}): writing {len(clips)} rendered clips")
-        if export_format == "mlt":
-            written = export_render_plan_to_mlt(
-                render_plan_path=state.plan_for_next_step, clip_paths=clips,
-                audio_path=state.context.input_audio, output_path=output_path,
-                width=video.width, height=video.height, fps=video.fps,
-                project_name=f"{state.context.project_file_stem}{suffix}",
+    for export_format in export_formats:
+        extension = "mlt" if export_format == "mlt" else "osp"
+        output_dir_name = "timeline" if export_format == "mlt" else "openshot"
+        for suffix, prefer_facefix, prefer_upscaled in variants:
+            clips = collect_render_plan_scene_clips(
+                state.plan_for_next_step,
+                state.context.ltx_dir,
+                layout=layout,
+                prefer_facefix=prefer_facefix,
+                prefer_upscaled=prefer_upscaled,
             )
-            if not suffix:
-                state.timeline_project_path = written
-        else:
-            written = export_render_plan_to_openshot(
-                render_plan_path=state.plan_for_next_step, clip_paths=clips,
-                audio_path=state.context.input_audio, output_path=output_path,
-                width=video.width, height=video.height, fps=video.fps,
-                on_progress=report,
-            )
-            if not suffix:
-                state.openshot_project_path = written
-        console.print(f"[green]Timeline project written: {output_path}[/green]")
+            output_path = state.context.project_output_dir / output_dir_name / f"{state.context.project_file_stem}{suffix}.{extension}"
+            console.print(f"Timeline export ({export_format}, {suffix or 'final'}): writing {len(clips)} rendered clips")
+            if export_format == "mlt":
+                written = export_render_plan_to_mlt(
+                    render_plan_path=state.plan_for_next_step, clip_paths=clips,
+                    audio_path=state.context.input_audio, output_path=output_path,
+                    width=video.width, height=video.height, fps=video.fps,
+                    project_name=f"{state.context.project_file_stem}{suffix}",
+                )
+                if not suffix:
+                    state.timeline_project_path = written
+            else:
+                written = export_render_plan_to_openshot(
+                    render_plan_path=state.plan_for_next_step, clip_paths=clips,
+                    audio_path=state.context.input_audio, output_path=output_path,
+                    width=video.width, height=video.height, fps=video.fps,
+                    on_progress=report,
+                )
+                if not suffix:
+                    state.openshot_project_path = written
+            console.print(f"[green]Timeline project written: {output_path}[/green]")
 
 
 def _run_facefix_stage(state: PipelineRunState) -> None:
