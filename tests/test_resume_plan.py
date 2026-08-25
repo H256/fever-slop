@@ -299,6 +299,18 @@ class ResumePlanTests(unittest.TestCase):
         self.assertNotIn("msr_prompt_enrich", third.runnable_stages)
         self.assertEqual("ltx_prepare_workflows", third_phase.stages[0])
 
+    def test_h3_resume_reuses_msr_assets_when_reference_provenance_projection_is_stale(self):
+        self._write_base_and_derived(1)
+        references = json.loads(self.layout.references_plan.read_text(encoding="utf-8"))
+        dependencies = references[0]["canonical_projection"]["dependencies"]
+        dependencies["reference_fingerprint"] = "0" * 64
+        self.layout.references_plan.write_text(json.dumps(references), encoding="utf-8")
+
+        plan = build_resume_plan(self.project, video_pipeline="minimax-h3-r2v")
+
+        self.assertNotIn("msr_references", plan.runnable_stages)
+        self.assertNotIn("msr_reference_sheets", plan.runnable_stages)
+
     def test_ingredients_replanning_advances_across_manual_resource_phases(self):
         base = self._write_base_and_derived(1)
         self.layout.ingredients_plan.write_text(

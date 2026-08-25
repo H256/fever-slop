@@ -128,13 +128,11 @@ def _build_resume_plan(
         current_dependencies = _dependencies(current)
         changed = _dependency_changes(stored, current)
         stored_reference = references_by_number.get(number)
-        reference_source = stored_reference or canonical_scene
-        current_reference = project_effective_plan([reference_source], desired_base)[0]
-        reference_changes = _dependency_changes(stored_reference, current_reference)
         reference_changed = (
             stored_reference is None
-            or "reference fingerprint changed" in reference_changes
+            or _reference_inputs(stored_reference) != _reference_inputs(canonical_scene)
         )
+        current_reference = project_effective_plan([stored_reference or canonical_scene], desired_base)[0]
         msr_prompts_fresh = _msr_prompts_fresh(stored_reference, current_reference)
 
         h3_action = PlanAction.REUSE
@@ -323,6 +321,24 @@ def _dependency_changes(stored: Mapping[str, Any] | None, current: Mapping[str, 
     if before.get("workflow_fingerprint") != after.get("workflow_fingerprint"):
         changed.append("workflow fingerprint changed")
     return changed
+
+
+def _reference_inputs(scene: Mapping[str, Any]) -> Any:
+    """Return only user/config-owned reference inputs, excluding generated paths."""
+    return _strip_derived_reference_values(scene.get("references"))
+
+
+def _strip_derived_reference_values(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _strip_derived_reference_values(item)
+            for key, item in value.items()
+            if str(key) != "_stem_audio_tags"
+            and not any(marker in str(key).lower() for marker in ("path", "sha", "sheet", "anchor"))
+        }
+    if isinstance(value, list):
+        return [_strip_derived_reference_values(item) for item in value]
+    return value
 
 
 def _msr_prompts_fresh(
