@@ -141,8 +141,12 @@ def preflight_visual_consistency(
         cast = resolve_scene_cast(
             selected_actor_ids=known_selected,
             available_actors=available_actors,
-            subject_mode=subject_mode,
+            subject_mode=str(
+                (scene.get("references") or {}).get("subject_mode")
+                or subject_mode
+            ),
             max_scene_actors=max_scene_actors,
+            scene_number=scene_number,
         )
         if known_selected and cast.visible_actor_ids != known_selected:
             issues.append(

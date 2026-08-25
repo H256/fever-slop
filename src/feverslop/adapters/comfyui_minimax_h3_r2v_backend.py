@@ -813,16 +813,22 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         return result
 
     def _validate_scene(self, scene: dict) -> None:
-        """Validate that the scene has at least one actor reference."""
+        """Validate that the scene has an actor or location reference."""
         references = scene.get("references") or {}
         actor_paths = (
             references.get("actor_sheet_paths", [])
             or references.get("actor_msr_paths", [])
         )
-        if not actor_paths:
+        if str(references.get("subject_mode") or "").strip().lower() == "location_only":
+            actor_paths = []
+        location_paths = (
+            references.get("location_sheet_path", "")
+            or references.get("location_msr_path", "")
+        )
+        if not actor_paths and not location_paths:
             scene_number = scene.get("scene", "?")
             raise FeverSlopValidationError(
-                f"Scene {scene_number} requires at least one actor reference",
+                f"Scene {scene_number} requires at least one actor or location reference",
             )
         self._validate_h3_reference_contract(scene)
 
@@ -902,6 +908,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             references.get("actor_sheet_paths", [])
             or references.get("actor_msr_paths", [])
         )
+        if str(references.get("subject_mode") or "").strip().lower() == "location_only":
+            actor_paths = []
         paths: list[Path] = [self._resolve_project_path(p) for p in actor_paths]
 
         location_path = (
