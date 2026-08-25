@@ -1,0 +1,323 @@
+{
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 1.1,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "#MEGAPIXELS"
+    }
+  },
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "121": {
+    "inputs": {
+      "samples": [
+        "141",
+        0
+      ],
+      "vae": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE Decode Audio"
+    }
+  },
+  "122": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 1,
+      "model": [
+        "159",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "124",
+        0
+      ],
+      "latent_image": [
+        "136",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "159",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "127": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": 494915751971348
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "#SEED"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 201
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "#FRAMECOUNT"
+    }
+  },
+  "136": {
+    "inputs": {
+      "prompt": [
+        "138",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "132",
+        0
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "137",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "157",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "158",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "#R2V_COMBINE"
+    }
+  },
+  "137": {
+    "inputs": {
+      "image": "feverslop/references/sheet-f4b6026100d1.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_1"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": "subject_definitions:\n<Subject 1> (The Performer): A slender, ethereal individual with pale skin and messy silver hair, wearing translucent, iridescent clothing that appears tattered and fades from reality. Source references: <Picture 1>.\n<Subject 2> (The Ash Memory Fields): A desolate, skeletal landscape composed of grey ash, crumbling architectural ruins, and floating echoes of past objects. Source references: <Picture 2>.\n<Audio 1> is the synchronized full_mix audio reference and is reused for the scene.\n\nsummary: [reference generation + audio reuse] The target video depicts <Subject 1> singing amidst the desolate <Subject 2>. The scene uses a continuous 360-degree orbiting tracking shot at a low angle to capture <Subject 1>'s emotional performance. <Audio 1> is reused as the synchronized audio track, providing the singing voice and instrumental rhythm that dictates the lip-sync and temporal structure.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - <Subject 1>'s identity as a slender, ethereal individual with pale skin, messy silver hair, and tattered iridescent clothing is fully preserved.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - <Subject 2>'s desolate, skeletal landscape of grey ash and crumbling ruins is fully preserved.\n<Audio 1> (appears in [Shot 1], [Shot 2]): fully_copy - <Audio 1> is reused 1:1 as the synchronized audio track for the singing and instrumental sections.\n\ndetailed_description: The target video is in a cinematic, haunting, and ethereal style with a monochromatic, somber color palette of soft whites, pale greys, and bright silver accents, featuring low contrast and soft, washed-out lighting.\n\n[Shot 1] The scene opens with a low-angle shot from the front, establishing <Subject 1>, the slender, ethereal protagonist with pale skin and messy silver hair, positioned in the midground centered and facing the camera. <Subject 1> is wearing translucent, iridescent clothing that appears tattered and is visibly fluttering in a phantom wind. In the foreground, layers of grey ash are visible, while the background is filled by <Subject 2>, the desolate, skeletal landscape of the Ash Memory Fields, featuring crumbling architectural ruins and a vast expanse of grey ash. <Subject 1> sings with expressive lip-sync, performing the lyrics from <Audio 1>, <d>[German] ganz verglimme.</d> As they sing, their eyes remain closed, and they slowly tilt their head back toward the sky. The camera begins a slow, continuous 360-degree orbiting tracking shot around <Subject 1>.\n\n[Shot 2] At 00:02.040, the continuous 360-degree orbiting tracking shot continues around <Subject 1> in the midground. The audio transitions into an instrumental section. <Subject 1> is no longer singing, and their lips remain closed, but they continue the emotional performance by slowly tilting their head back further while reaching their hands upward toward the sky, their fingers trembling slightly against the phantom wind that keeps their iridescent, tattered clothing fluttering. The low-angle perspective remains, maintaining the view of the performer against the vast, desolate background of <Subject 2> and the grey ash layers in the foreground.\n\noverall_soundscape: The scene is driven by the synchronized audio from <Audio 1>, featuring the performer's singing of the lyrics <d>[German] ganz verglimme.</d> followed by a haunting instrumental section.\n\nnon_diegetic_music: N/A"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "#PROMPT"
+    }
+  },
+  "141": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": false,
+      "anything": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "142": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "scene_0022/raw",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "122",
+        0
+      ],
+      "audio": [
+        "121",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "#SAVE_VIDEO"
+    }
+  },
+  "154": {
+    "inputs": {
+      "audio": "feverslop/references/Stille im Spiegel-587751b51200.mp3"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "#AUDIO_1"
+    }
+  },
+  "157": {
+    "inputs": {
+      "image": "feverslop/references/sheet-2c5daae2214e.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_2"
+    }
+  },
+  "158": {
+    "inputs": {
+      "start_index": 106.1,
+      "duration": 8.37,
+      "audio": [
+        "154",
+        0
+      ]
+    },
+    "class_type": "TrimAudioDuration",
+    "_meta": {
+      "title": "#TRIM_AUDIO_1"
+    }
+  },
+  "159": {
+    "inputs": {
+      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "strength_model": 0.85,
+      "model": [
+        "127",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  }
+}
