@@ -325,7 +325,7 @@ class ValidateSceneTests(unittest.TestCase):
     def test_no_refs_raises(self):
         with self.assertRaises(FeverSlopValidationError) as ctx:
             self.backend._validate_scene({"scene": 1})
-        self.assertIn("actor reference", str(ctx.exception).lower())
+        self.assertIn("actor or location reference", str(ctx.exception).lower())
 
     def test_empty_refs_raises(self):
         with self.assertRaises(FeverSlopValidationError):
@@ -335,6 +335,13 @@ class ValidateSceneTests(unittest.TestCase):
         scene = {
             "scene": 1,
             "references": {"actor_sheet_paths": ["/tmp/actor.png"]},
+        }
+        self.backend._validate_scene(scene)
+
+    def test_location_reference_ok_without_actor(self):
+        scene = {
+            "scene": 1,
+            "references": {"location_msr_path": "/tmp/forest.png"},
         }
         self.backend._validate_scene(scene)
 
@@ -1802,6 +1809,20 @@ class CollectSceneReferencesTests(unittest.TestCase):
         self.assertEqual(3, len(img))
         self.assertEqual(1, len(vid))
         self.assertEqual(1, len(aud))
+
+    def test_location_only_ignores_stale_actor_paths(self):
+        backend = self._backend()
+        scene = {
+            "references": {
+                "subject_mode": "location_only",
+                "actor_sheet_paths": ["stale.png"],
+                "location_msr_path": "loc.png",
+            },
+        }
+        img, vid, aud = backend._collect_scene_references(scene)
+        self.assertEqual(["loc.png"], img)
+        self.assertEqual([], vid)
+        self.assertEqual([], aud)
 
     def test_only_actors(self):
         backend = self._backend()

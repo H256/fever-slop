@@ -73,8 +73,14 @@ def normalize_scene_references(references: dict, global_context: dict) -> dict:
     max_scene_actors = max(1, max_scene_actors)
 
     output = dict(references or {})
+    scene_subject_mode = str(output.get("subject_mode") or "").strip().lower()
+    if scene_subject_mode == "location_only":
+        output["subject_mode"] = scene_subject_mode
+        output["actor_ids"] = []
     if actors:
-        if subject_mode == "single":
+        if scene_subject_mode == "location_only":
+            pass
+        elif subject_mode == "single":
             output["actor_ids"] = [actors[0]]
         else:
             selected = [
@@ -236,8 +242,9 @@ class ScenePromptBuilder:
             cast = resolve_scene_cast(
                 selected_actor_ids=references.get("actor_ids") or [],
                 available_actors=global_context.get("actors") or [],
-                subject_mode=str(global_context.get("subject_mode") or "multi"),
+                subject_mode=str(references.get("subject_mode") or global_context.get("subject_mode") or "multi"),
                 max_scene_actors=int(global_context.get("max_scene_actors") or 4),
+                scene_number=segment.get("scene") or segment_id,
             )
             scene_cast = scene_cast_to_prompt_payload(cast)
             details = scene_details.get(segment_id, {})

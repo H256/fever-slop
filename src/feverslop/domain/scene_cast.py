@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from typing import Any
+import warnings
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class SceneActor:
 class SceneCast:
     actors: tuple[SceneActor, ...]
     primary_actor_id: str = ""
+    subject_mode: str = "multi"
 
     @property
     def visible_actor_ids(self) -> tuple[str, ...]:
@@ -29,6 +31,7 @@ def resolve_scene_cast(
     available_actors: Iterable[dict[str, Any]],
     subject_mode: str = "multi",
     max_scene_actors: int = 4,
+    scene_number: object | None = None,
 ) -> SceneCast:
     actors_by_id = {
         actor.id: actor
@@ -38,16 +41,28 @@ def resolve_scene_cast(
     limit = 1 if str(subject_mode).strip().lower() == "single" else max(1, int(max_scene_actors))
     selected = tuple(dict.fromkeys(str(value).strip() for value in selected_actor_ids if str(value).strip()))
     valid = tuple(actor_id for actor_id in selected if actor_id in actors_by_id)[:limit]
-    if not valid and actors_by_id:
+    normalized_mode = str(subject_mode).strip().lower() or "multi"
+    if not valid and actors_by_id and normalized_mode != "location_only":
         valid = (next(iter(actors_by_id)),)
+        if scene_number is not None:
+            warnings.warn(
+                f"Scene {scene_number}: reconstructed actor IDs {list(valid)!r} from malformed cast data",
+                UserWarning,
+                stacklevel=2,
+            )
     actors = tuple(actors_by_id[actor_id] for actor_id in valid)
-    return SceneCast(actors=actors, primary_actor_id=actors[0].id if actors else "")
+    return SceneCast(
+        actors=actors,
+        primary_actor_id=actors[0].id if actors else "",
+        subject_mode=normalized_mode,
+    )
 
 
 def scene_cast_to_prompt_payload(cast: SceneCast) -> dict[str, Any]:
     return {
         "visible_actor_ids": list(cast.visible_actor_ids),
         "primary_actor_id": cast.primary_actor_id,
+        "subject_mode": cast.subject_mode,
         "requires_group_staging": len(cast.actors) > 1,
         "actors": [asdict(actor) for actor in cast.actors],
     }
