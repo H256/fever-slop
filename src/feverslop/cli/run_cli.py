@@ -143,6 +143,11 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                 pipeline_run(run_args, on_stage_complete=remember)
         except Exception as exc:
             output.print(f"[red]Run failed:[/red] {exc}")
+            if _is_llm_loading_failure(exc):
+                output.print(
+                    "[yellow]LLM ist noch nicht bereit; Modell laden lassen oder den LLM-Dienst starten "
+                    "und danach denselben Resume-Befehl erneut ausführen.[/yellow]",
+                )
             output.print(f"Last completed stage: {last_completed}")
             output.print(f"Safe resume: {resume_command}")
             return 1
@@ -226,6 +231,15 @@ def _render_manual_phase_preview(phase: ResourcePhase, output: Console) -> None:
         output.print(
             f"[yellow]Next required resource after that: {phase.next_resource.value}[/yellow]",
         )
+
+
+def _is_llm_loading_failure(error: BaseException) -> bool:
+    message = str(error).lower()
+    return (
+        "model is still loading" in message
+        or "serviceunavailableerror" in message
+        or "error code: 503" in message
+    )
 
 
 def _render_manual_handoff(

@@ -303,6 +303,27 @@ class RunCliTests(unittest.TestCase):
         self.assertIn(f"uv run python main.py run {self.project.resolve()} --resume", rendered)
 
     @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_llm_loading_failure_explains_required_resource(self, pipeline_run):
+        app_config = self._app_config("manual")
+        pipeline_run.side_effect = RuntimeError(
+            "DSPy H3 generation failed: ServiceUnavailableError: model is still loading",
+        )
+        plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("H3 prompts", PlanAction.RUN, "missing", 7, "h3_prompts"),
+        ))
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+            exit_code = run_project_command(
+                self._args("--resume", "--app-config", str(app_config)),
+                console=self.console,
+            )
+
+        self.assertEqual(1, exit_code)
+        rendered = self.stream.getvalue()
+        self.assertIn("LLM", rendered)
+        self.assertIn("noch nicht bereit", rendered)
+        self.assertIn("laden", rendered)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
     def test_advanced_stage_is_translated_to_execution_plan(self, pipeline_run):
         exit_code = run_project_command(
             self._args("--dry-run", "--stage", "anchor_fix"),
