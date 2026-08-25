@@ -23,6 +23,11 @@ implementations are listed in [CLI and H3 compatibility](cli-and-h3-compatibilit
 Shared render arguments are defined once in `feverslop.cli.shared_args` and
 used by both the unified parser and legacy render commands.
 
+The legacy helper CLIs follow the same rule: their implementations live under
+`feverslop.tools`; repository-level `tools/*.py` modules and root scripts are
+compatibility facades. New code should import the packaged modules, for
+example `feverslop.tools.repair_scene_srt`.
+
 The deprecated `feverslop.studio` namespace has been removed. The on-disk
 `.studio/` project metadata format remains a separate compatibility contract.
 
