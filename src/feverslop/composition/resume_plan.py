@@ -167,10 +167,23 @@ def _build_resume_plan(
             projection_reason = "derived plan missing" if stored is None else "; ".join(changed)
         if projection_stage:
             if video_pipeline in _REFERENCE_PIPELINES:
+                reference_inputs = canonical_scene.get("references") or {}
+                reference_assets_reusable = (
+                    not reference_changed
+                    or reference_manifests_reusable(
+                        root / "output" / "references",
+                        actor_ids=reference_inputs.get("actor_ids", ()),
+                        location_id=reference_inputs.get("location_id"),
+                    )
+                )
                 items.append(ExecutionPlanItem(
                     "reference assets",
-                    PlanAction.RUN if reference_changed else PlanAction.REUSE,
-                    "reference bindings changed or missing" if reference_changed else "reference assets reusable",
+                    PlanAction.REUSE if reference_assets_reusable else PlanAction.RUN,
+                    "existing reference manifests reusable"
+                    if reference_assets_reusable and reference_changed
+                    else "reference bindings changed or missing"
+                    if reference_changed
+                    else "reference assets reusable",
                     number,
                     "msr_references",
                 ))
@@ -339,6 +352,50 @@ def _dependency_changes(stored: Mapping[str, Any] | None, current: Mapping[str, 
 def _reference_inputs(scene: Mapping[str, Any]) -> Any:
     """Return only user/config-owned reference inputs, excluding generated paths."""
     return _strip_derived_reference_values(scene.get("references"))
+
+
+def reference_manifests_reusable(
+    references_dir: Path,
+    *,
+    actor_ids: Iterable[str],
+    location_id: str | Iterable[str] | None,
+) -> bool:
+    """Return whether all configured MSR references have usable local sheets."""
+    required = [("actors", str(identifier)) for identifier in actor_ids if str(identifier).strip()]
+    locations = (location_id,) if isinstance(location_id, str) else (location_id or ())
+    required.extend(
+        ("locations", str(identifier))
+        for identifier in locations
+        if str(identifier).strip()
+    )
+    if not required:
+        return False
+    return all(_reference_manifest_reusable(references_dir, kind, identifier) for kind, identifier in required)
+
+
+def _reference_manifest_reusable(references_dir: Path, kind: str, identifier: str) -> bool:
+    manifest_path = references_dir / kind / identifier / "manifest.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, TypeError, ValueError):
+        return False
+    if not isinstance(manifest, Mapping):
+        return False
+    paths = [manifest.get("sheet_path"), manifest.get("msr_input_path"), manifest.get("sequence_sheet_path")]
+    for raw_path in paths:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            continue
+        candidate = Path(raw_path)
+        for resolved in (
+            manifest_path.parent / candidate,
+            references_dir / candidate,
+            references_dir.parent.parent / candidate,
+        ):
+            if resolved.is_file():
+                return True
+    return any((manifest_path.parent / name).is_file() for name in ("sheet.png", "msr_sheet.png"))
 
 
 def _strip_derived_reference_values(value: Any) -> Any:

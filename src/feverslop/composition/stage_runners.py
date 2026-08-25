@@ -60,6 +60,7 @@ from feverslop.composition.generate_render_plan import (
     execute_generate_render_plan,
 )
 from feverslop.composition.canonical_plan_regenerator import CanonicalPlanRegenerator
+from feverslop.composition.resume_plan import reference_manifests_reusable
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
 from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
@@ -732,10 +733,18 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         )
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
+        config = ProjectConfig.load(project_config_path)
         _report_reference_fallbacks(_seed_reference_bindings(
             state.plan_for_next_step,
-            ProjectConfig.load(project_config_path),
+            config,
         ))
+        if reference_manifests_reusable(
+            state.context.references_dir,
+            actor_ids=(actor.id for actor in config.actors),
+            location_id=(location.id for location in config.structured_locations),
+        ):
+            console.print("[yellow]Skipping MSR reference rendering; existing reference manifests are reusable.[/yellow]")
+            return
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
         str(state.context.project_config_path),
