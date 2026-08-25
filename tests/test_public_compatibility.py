@@ -16,12 +16,96 @@ import render_storyboard
 import run_pipeline
 import storyboard_renderer
 import workflow_patcher
+from feverslop.cli.movie_cli import build_movie_arg_parser
 from feverslop.composition.generate_render_plan import (
     build_generate_render_plan_execution_request,
 )
 
 
 class PublicCompatibilityTests(unittest.TestCase):
+    def test_unified_render_forms_share_argument_defaults(self):
+        options = [
+            "--project", "config.json",
+            "--app-config", "global.json",
+            "--render-storyboard",
+            "--zimage-workflow", "zimage.json",
+            "--concept-batch-size", "3",
+            "--video-workflow", "video.json",
+            "--rolling-frame-profile", "safe",
+        ]
+        subcommand = main.build_arg_parser().parse_args(["render", *options])
+        legacy = main.build_arg_parser().parse_args(options)
+
+        for name in (
+            "project",
+            "app_config",
+            "render_storyboard",
+            "zimage_workflow",
+            "concept_batch_size",
+            "video_workflow",
+            "rolling_frame_profile",
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(getattr(subcommand, name), getattr(legacy, name))
+
+    def test_unified_movie_parser_matches_canonical_movie_parser(self):
+        options = [
+            "projects/demo",
+            "--stage", "openshot_export",
+            "--skip-openshot-export",
+            "--app-config", "global.json",
+            "--reference-backend", "local",
+            "--reference-generation", "sequence_sheet",
+            "--render-backend", "local",
+            "--hero-workflow", "hero.json",
+            "--edit-workflow", "edit.json",
+            "--director-workflow", "director.json",
+            "--startframe-director-backend", "krea2",
+            "--mask-workflow", "mask.json",
+            "--identity-repair-workflow", "identity.json",
+            "--detail-workflow", "detail.json",
+            "--startframe-comfyui-base-url", "http://comfy",
+            "--startframe-validator-base-url", "http://validator",
+            "--startframe-validator-model", "model",
+            "--msr-workflow", "msr.json",
+            "--msr-i2v-workflow", "msr-i2v.json",
+            "--i2v-workflow", "i2v.json",
+            "--r2v-workflow", "r2v.json",
+            "--sequence-to-sheet-workflow", "sheet.json",
+            "--t2v-workflow", "t2v.json",
+            "--ingredients-workflow", "ingredients.json",
+            "--skip-movie-bible",
+            "--force-movie-bible",
+            "--movie-planner-backend", "deterministic",
+            "--skip-movie-story-design",
+            "--force-movie-story-design",
+            "--skip-movie-screenplay",
+            "--force-movie-screenplay",
+            "--skip-movie-narrative",
+            "--skip-movie-scene-cards",
+            "--skip-movie-shot-cards",
+            "--skip-movie-continuity",
+            "--skip-movie-plan",
+            "--skip-movie-references",
+            "--skip-movie-msr-enrich",
+            "--skip-movie-ingredients-sheets",
+            "--skip-movie-render",
+            "--force-movie-references",
+            "--keyframe-mode", "start-end",
+            "--movie-video-workflow", "minimax-h3-r2v",
+            "--continuity-keyframes", "last-to-start",
+            "--scenes", "1,3",
+            "--write-debug-workflows",
+            "--debug-workflows-dir", "debug",
+        ]
+        canonical = build_movie_arg_parser().parse_args(options)
+        unified = main.build_arg_parser().parse_args(["movie", *options])
+
+        self.assertEqual(
+            vars(canonical),
+            {key: getattr(unified, key) for key in vars(canonical)},
+        )
+
     def test_legacy_renderer_imports_remain_available(self):
         self.assertTrue(hasattr(ltx_video_renderer, "LTXVideoRenderer"))
         self.assertTrue(hasattr(storyboard_renderer, "StoryboardRenderer"))
