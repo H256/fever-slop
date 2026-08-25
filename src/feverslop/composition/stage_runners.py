@@ -636,15 +636,18 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
 
     width = set_res.width
     height = set_res.height
-    console.print(f"Setting resolution to {width}x{height}...")
+    megapixels = set_res.megapixels
+    label = f"{width}x{height}" if megapixels is None else f"{megapixels} MP"
+    console.print(f"Setting resolution to {label}...")
 
     # 1. Patch config.json
     ProjectConfig.set_resolution_on_disk(
         state.context.project_config_path,
         width=width,
         height=height,
+        megapixels=megapixels,
     )
-    console.print(f"[green]Updated config.json resolution to {width}x{height}[/green]")
+    console.print(f"[green]Updated config.json resolution to {label}[/green]")
 
     # Keep derived plans and manifests untouched. Their old fingerprints are
     # the evidence that makes the next normal resume rebuild the right work.
@@ -656,10 +659,16 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
             "the normal pipeline creates the plan.[/green]",
         )
         return
-    updated = [
-        {**scene, "width": width, "height": height}
-        for scene in snapshot.scenes
-    ]
+    updated = []
+    for scene in snapshot.scenes:
+        patched = dict(scene)
+        if width is not None:
+            patched["width"] = width
+        if height is not None:
+            patched["height"] = height
+        if megapixels is not None:
+            patched["megapixels"] = megapixels
+        updated.append(patched)
     store.commit_regeneration(snapshot, updated)
     state.plan_for_next_step = state.context.artifact_layout.base_plan
     console.print(

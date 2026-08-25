@@ -6,6 +6,7 @@ class VideoSettings:
     fps: int = 24
     width: int = 1280
     height: int = 704
+    megapixels: float | None = None
 
     def seconds_to_frame(self, seconds: float) -> int:
         return round(seconds * self.fps)

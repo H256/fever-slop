@@ -210,6 +210,24 @@ class ProjectConfigTests(unittest.TestCase):
 
         self.assertEqual((1920, 1080), config.reference_images.resolve(config.video))
 
+    def test_video_resolution_accepts_explicit_megapixels_without_dimensions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({
+                    "project_name": "test",
+                    "input_audio": "song.mp3",
+                    "video": {"megapixels": 0.98},
+                }),
+                encoding="utf-8",
+            )
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual(0.98, config.video.megapixels)
+
     def test_reference_images_resolution_can_override_video_resolution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

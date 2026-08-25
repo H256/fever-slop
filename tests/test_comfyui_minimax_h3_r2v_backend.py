@@ -437,6 +437,13 @@ class PatchMegapixelsTests(unittest.TestCase):
         mf2 = round(1024 * 768 / 1_000_000, 1)
         self.assertEqual(0.8, mf2)
 
+    def test_explicit_megapixels_are_not_reduced_by_flooring(self):
+        wf = _native_r2v_workflow()
+        patcher = WorkflowPatcher(wf)
+        ComfyUIMiniMaxH3R2VBackend._patch_megapixels(patcher, 0.98, explicit=True)
+
+        self.assertEqual(0.98, patcher.get()["10"]["inputs"]["megapixels"])
+
 
 # ---------------------------------------------------------------------------
 # _patch_reference_images tests

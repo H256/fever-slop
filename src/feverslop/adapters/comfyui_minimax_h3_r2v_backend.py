@@ -104,6 +104,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         frame_count: int | None = None,
         width: int | None = None,
         height: int | None = None,
+        megapixels: float | None = None,
         ref_image_paths: list[str | Path] | None = None,
         ref_video_paths: list[str | Path] | None = None,
         ref_audio_paths: list[str | Path] | None = None,
@@ -153,7 +154,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             )
 
         # -- resolution (megapixels) ------------------------------------------
-        if width is not None and height is not None:
+        if megapixels is not None:
+            self._patch_megapixels(patcher, megapixels, explicit=True)
+        elif width is not None and height is not None:
             megapixels = (int(width) * int(height)) / 1_000_000
             self._patch_megapixels(patcher, megapixels)
 
@@ -266,6 +269,11 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             frame_count=frame_count,
             width=int(request.scene.get("width", 0) or 0) or None,
             height=int(request.scene.get("height", 0) or 0) or None,
+            megapixels=(
+                float(request.scene["megapixels"])
+                if request.scene.get("megapixels") is not None
+                else (self.video_settings.megapixels if self.video_settings else None)
+            ),
             ref_image_paths=ref_image_paths,
             ref_video_paths=ref_video_paths,
             ref_audio_paths=ref_audio_paths,

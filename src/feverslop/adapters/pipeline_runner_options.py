@@ -8,12 +8,23 @@ from feverslop.domain.visual_consistency import PreflightMode
 
 
 class ResolutionTuple(NamedTuple):
-    width: int
-    height: int
+    width: int | None = None
+    height: int | None = None
+    megapixels: float | None = None
 
     @staticmethod
     def parse(value: str) -> ResolutionTuple:
-        parts = value.split("x")
+        if "x" not in value and "X" not in value and "." in value:
+            try:
+                megapixels = float(value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid resolution format '{value}': expected 'WxH' or megapixels (e.g. 1280x720 or 0.98)",
+                ) from exc
+            if megapixels <= 0:
+                raise ValueError("megapixels must be positive")
+            return ResolutionTuple(megapixels=megapixels)
+        parts = value.lower().split("x")
         if len(parts) != 2:
             raise ValueError(f"Invalid resolution format '{value}': expected 'WxH' (e.g. 1280x720)")
         return ResolutionTuple(

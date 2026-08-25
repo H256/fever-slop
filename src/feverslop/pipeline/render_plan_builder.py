@@ -675,6 +675,9 @@ def build_render_plan(
                     stem_path: stem_tag_map.get(stem_name, f"{stem_name} stem")
                     for stem_name, stem_path in resolved_stem_paths.items()
                 }
+        megapixels = getattr(video_settings, "megapixels", None)
+        if megapixels is not None:
+            render_scene["megapixels"] = megapixels
         render_plan.append(render_scene)
 
     validate_canonical_plan(render_plan)
