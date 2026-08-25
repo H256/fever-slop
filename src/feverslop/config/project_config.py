@@ -16,6 +16,7 @@ class VideoConfig:
     fps: int = 24
     width: int = 1280
     height: int = 704
+    megapixels: float | None = None
 
 
 @dataclass(frozen=True)
@@ -289,7 +290,7 @@ def _validate_numeric_fields(raw: dict, fields: tuple[str, ...]) -> None:
     for field_name in fields:
         if field_name in raw:
             try:
-                val = int(raw[field_name])
+                val = float(raw[field_name]) if field_name == "megapixels" else int(raw[field_name])
                 if val <= 0:
                     raise ValueError("must be positive")
             except (TypeError, ValueError) as exc:
@@ -403,7 +404,7 @@ class ProjectConfig:
         # Blank is the established "no audio" sentinel for movie projects
         # (studio/project_validation.py exempts it; movie_pipeline.py treats it as absent).
         input_audio = coerce_local_path(input_audio_raw, base_dir=project_dir)
-        _validate_numeric_fields(video_raw, ("fps", "width", "height"))
+        _validate_numeric_fields(video_raw, ("fps", "width", "height", "megapixels"))
         valid_upscale_keys = {
             "enabled",
             "workflow_path",
@@ -494,6 +495,7 @@ class ProjectConfig:
                 fps=int(video_raw.get("fps", 24)),
                 width=int(video_raw.get("width", 1280)),
                 height=int(video_raw.get("height", 704)),
+                megapixels=(float(video_raw["megapixels"]) if video_raw.get("megapixels") is not None else None),
             ),
             workflows=ProjectWorkflowConfig(
                 video=_optional_workflow_path(workflows_raw, "video"),
@@ -627,13 +629,15 @@ class ProjectConfig:
             fps=self.video.fps,
             width=self.video.width,
             height=self.video.height,
+            megapixels=self.video.megapixels,
         )
 
     def apply_resolution_override(
         self, *, width: int | None = None, height: int | None = None,
+        megapixels: float | None = None,
     ) -> ProjectConfig:
         """Return a new ProjectConfig with overridden video resolution."""
-        if width is None and height is None:
+        if width is None and height is None and megapixels is None:
             return self
         return replace(
             self,
@@ -641,6 +645,7 @@ class ProjectConfig:
                 self.video,
                 width=width if width is not None else self.video.width,
                 height=height if height is not None else self.video.height,
+                megapixels=megapixels if megapixels is not None else self.video.megapixels,
             ),
         )
 
@@ -648,8 +653,9 @@ class ProjectConfig:
     def set_resolution_on_disk(
         config_path: str | Path,
         *,
-        width: int,
-        height: int,
+        width: int | None = None,
+        height: int | None = None,
+        megapixels: float | None = None,
     ) -> None:
         """Patch config.json with new resolution and write it back to disk.
 
@@ -659,8 +665,12 @@ class ProjectConfig:
         raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
         if "video" not in raw:
             raw["video"] = {}
-        raw["video"]["width"] = width
-        raw["video"]["height"] = height
+        if width is not None:
+            raw["video"]["width"] = width
+        if height is not None:
+            raw["video"]["height"] = height
+        if megapixels is not None:
+            raw["video"]["megapixels"] = megapixels
         config_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     @property

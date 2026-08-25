@@ -396,6 +396,18 @@ class BuildWorkflowTests(unittest.TestCase):
         expected_mp = round(1344 * 768 / 1_000_000, 1)
         self.assertEqual(expected_mp, result["115"]["inputs"]["megapixels"])
 
+    def test_explicit_megapixels_override_dimensions(self):
+        backend = self._backend(workflow=_t2v_workflow())
+        result = backend.build_workflow(
+            {"scene": 1},
+            prompt="test",
+            width=1344,
+            height=768,
+            megapixels=0.98,
+        )
+
+        self.assertEqual(0.98, result["115"]["inputs"]["megapixels"])
+
     def test_duration_not_set_when_none(self):
         backend = self._backend(workflow=_t2v_workflow())
         result = backend.build_workflow(
