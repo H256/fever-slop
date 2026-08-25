@@ -16,6 +16,7 @@ from feverslop.composition.stage_runners import (
     _read_h3_input,
     _run_concat_video_only_stage,
     _run_main_pipeline_stage,
+    _run_msr_references_stage,
     _run_msr_reference_sheets_stage,
     _run_mux_original_audio_stage,
     _run_render_plan_stage,
@@ -599,6 +600,48 @@ class RunPipelinePathTests(unittest.TestCase):
 
         run_render_plan.assert_called_once_with(state)
         enrich_render_plan.assert_called_once()
+
+    @patch("feverslop.composition.stage_runners.render_reference_bible")
+    def test_msr_references_reuses_complete_existing_manifests(self, render_reference_bible):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            config_path = project / "config.json"
+            config_path.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "video_pipeline": "minimax-h3-r2v",
+                "actors": [{"id": "actor_01", "name": "Actor"}],
+                "locations": [{"id": "loc_01", "name": "Location"}],
+            }), encoding="utf-8")
+            references_dir = project / "output" / "references"
+            for kind, identifier in (("actors", "actor_01"), ("locations", "loc_01")):
+                reference_dir = references_dir / kind / identifier
+                reference_dir.mkdir(parents=True)
+                (reference_dir / "sheet.png").write_bytes(b"sheet")
+                (reference_dir / "manifest.json").write_text(json.dumps({
+                    "sheet_path": "sheet.png",
+                    "msr_input_path": "sheet.png",
+                }), encoding="utf-8")
+            plan = project / "plan.json"
+            plan.write_text("[]", encoding="utf-8")
+            state = Namespace(
+                args=Namespace(
+                    video_pipeline="minimax-h3-r2v",
+                    reference_generation="sequence_sheet",
+                    sequence_to_sheet_workflow="workflow.json",
+                ),
+                plan_for_next_step=plan,
+                app_config_path=project / "app.json",
+                reference_hero_workflow=project / "hero.json",
+                reference_edit_workflow=project / "edit.json",
+                context=Namespace(
+                    project_config_path=config_path,
+                    references_dir=references_dir,
+                ),
+            )
+
+            _run_msr_references_stage(state)
+
+        render_reference_bible.assert_not_called()
 
     def test_rebuilt_minimax_plan_preserves_existing_reference_paths(self):
         with TemporaryDirectory() as temp_dir:

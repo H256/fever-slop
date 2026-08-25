@@ -262,6 +262,27 @@ class ResumePlanTests(unittest.TestCase):
             plan.runnable_stages,
         )
 
+    def test_reference_binding_change_reuses_existing_reference_manifests(self):
+        base = self._write_base_and_derived(1)
+        self._prepare(base[0])
+        self.layout.scene_final_video(1).write_bytes(b"clip")
+        base[0]["references"]["actor_ids"] = ["replacement"]
+        self.layout.base_plan.write_text(json.dumps(base), encoding="utf-8")
+
+        for kind, identifier in (("actors", "replacement"), ("locations", "room")):
+            reference_dir = self.project / "output" / "references" / kind / identifier
+            reference_dir.mkdir(parents=True, exist_ok=True)
+            (reference_dir / "sheet.png").write_bytes(b"sheet")
+            (reference_dir / "manifest.json").write_text(json.dumps({
+                "sheet_path": "sheet.png",
+                "msr_input_path": "sheet.png",
+            }), encoding="utf-8")
+
+        plan = build_resume_plan(self.project, video_pipeline="ltx_msr")
+
+        self.assertNotIn("msr_references", plan.runnable_stages)
+        self.assertIn("msr_reference_sheets", plan.runnable_stages)
+
     def test_ingredients_reference_change_runs_msr_enrichment_before_sheet_projection(self):
         base = self._write_base_and_derived(1)
         derived = project_effective_plan(base, base)
