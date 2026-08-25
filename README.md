@@ -208,6 +208,16 @@ uv run python main.py plan show PROJECT --scene N
 The complete command reference and exit-code contract are in
 [Running FeverSlop](documentation/running.md).
 
+When the package is installed, `feverslop` is the canonical command. The root
+Python scripts remain supported compatibility entry points:
+
+```bash
+uv run feverslop --help
+uv run feverslop run ./projects/my-song --dry-run
+uv run feverslop status ./projects/my-song
+uv run feverslop full-auto --idea "A neon chase" --style "dark synthwave"
+```
+
 ### Advanced and compatibility interface
 
 `run_pipeline.py` remains available for explicit stages, forced rerenders,

@@ -60,6 +60,9 @@ test = [
     "coverage>=7.0.0",
 ]
 
+[project.scripts]
+feverslop = "feverslop.cli.app:main"
+
 [tool.setuptools.package-data]
 "feverslop.tools" = ["templates/*.html"]
 "feverslop.prompting" = ["guides/*.md"]
