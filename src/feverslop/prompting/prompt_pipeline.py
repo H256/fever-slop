@@ -97,8 +97,9 @@ class MusicVideoPromptPipeline:
             scene_cast = scene_cast_to_prompt_payload(resolve_scene_cast(
                 selected_actor_ids=references.get("actor_ids") or [],
                 available_actors=context.get("actors") or [],
-                subject_mode=str(context.get("subject_mode") or "multi"),
+                subject_mode=str(references.get("subject_mode") or context.get("subject_mode") or "multi"),
                 max_scene_actors=int(context.get("max_scene_actors") or 4),
+                scene_number=references.get("scene") or segment_id,
             ))
 
             detail_payload = {

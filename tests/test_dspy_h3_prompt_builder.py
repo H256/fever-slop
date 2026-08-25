@@ -36,6 +36,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _normalize_relay_segments,
     _scene_references,
 )
+from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
 
 
@@ -339,6 +340,14 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual(["crowd.png"], [reference["source"] for reference in references])
         self.assertEqual(["environment"], [reference["role"] for reference in references])
+
+    def test_location_only_reference_normalization_preserves_empty_cast(self):
+        references = normalize_scene_references(
+            {"subject_mode": "location_only", "actor_ids": []},
+            {"actors": [{"id": "leo"}], "structured_locations": [{"id": "forest"}]},
+        )
+        self.assertEqual("location_only", references["subject_mode"])
+        self.assertEqual([], references["actor_ids"])
 
     def test_scene_references_deduplicate_audio_paths_from_scene_and_global_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
