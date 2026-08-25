@@ -19,6 +19,12 @@ def build_movie_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run movie pipeline stages for an existing FeverSlop movie project.",
     )
+    add_movie_args(parser)
+    return parser
+
+
+def add_movie_args(parser: argparse.ArgumentParser) -> None:
+    """Add movie options explicitly to an existing parser."""
     parser.add_argument("project_dir", help="Movie project directory, for example projects/tm3")
     parser.add_argument(
         "--stage",
@@ -78,7 +84,6 @@ def build_movie_arg_parser() -> argparse.ArgumentParser:
         help="Deprecated alias: prepare canonical movie scene workflows without queueing ComfyUI.",
     )
     parser.add_argument("--debug-workflows-dir", default=None, help="Deprecated compatibility option; canonical scene paths are always used.")
-    return parser
 
 
 def config_from_args(args: argparse.Namespace) -> dict[str, Any]:
