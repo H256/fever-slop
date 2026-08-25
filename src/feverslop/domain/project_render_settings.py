@@ -39,6 +39,8 @@ class ProjectRenderSettings:
     video_workflow: WorkflowSelection | None = None
     reference_hero_workflow: WorkflowSelection | None = None
     reference_edit_workflow: WorkflowSelection | None = None
+    reference_generation: str = "image_views"
+    reference_sequence_workflow: WorkflowSelection | None = None
 
     def apply_to_scene(self, scene: Mapping[str, Any]) -> dict[str, Any]:
         result = deepcopy(dict(scene))
@@ -58,16 +60,23 @@ class ProjectRenderSettings:
 
         references = result.get("references")
         references = deepcopy(dict(references)) if isinstance(references, Mapping) else {}
-        reference_workflows = tuple(
-            workflow
-            for workflow in (
-                self.reference_hero_workflow,
-                self.reference_edit_workflow,
-            )
-            if workflow is not None
-        )
-        if reference_workflows:
-            payload = [workflow.to_dict() for workflow in reference_workflows]
+        reference_payload = {
+            "generation": self.reference_generation,
+            "hero": self.reference_hero_workflow.to_dict() if self.reference_hero_workflow else None,
+            "edit": self.reference_edit_workflow.to_dict() if self.reference_edit_workflow else None,
+            "sequence": (
+                self.reference_sequence_workflow.to_dict()
+                if self.reference_generation == "sequence_sheet" and self.reference_sequence_workflow
+                else None
+            ),
+        }
+        if (
+            self.reference_generation != "image_views"
+            or self.reference_hero_workflow is not None
+            or self.reference_edit_workflow is not None
+            or self.reference_sequence_workflow is not None
+        ):
+            payload = reference_payload
             references["generator_fingerprint"] = _fingerprint(payload)
         else:
             references.pop("generator_fingerprint", None)

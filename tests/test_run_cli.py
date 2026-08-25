@@ -110,12 +110,19 @@ class RunCliTests(unittest.TestCase):
 
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_resume_executes_each_stage_with_its_own_scene_selection(self, pipeline_run):
+        app_config = self._app_config("continuous")
         plan = ExecutionPlan(self.project, "resume", (
             ExecutionPlanItem("references", PlanAction.RUN, "binding", 2, "msr_references"),
             ExecutionPlanItem("projection", PlanAction.RUN, "prompt", 1, "msr_prompt_enrich"),
         ))
         with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
-            self.assertEqual(0, run_project_command(self._args("--resume"), console=self.console))
+            self.assertEqual(
+                0,
+                run_project_command(
+                    self._args("--resume", "--app-config", str(app_config)),
+                    console=self.console,
+                ),
+            )
 
         calls = pipeline_run.call_args_list
         self.assertEqual(2, len(calls))
@@ -195,6 +202,31 @@ class RunCliTests(unittest.TestCase):
         self.assertIn("Next manual execution phase: LLM", rendered)
         self.assertIn("Next required resource after that: ComfyUI", rendered)
         self.assertIn("Dry run: no project artifacts were changed", rendered)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_manual_handoff_replans_after_completed_phase(self, pipeline_run):
+        app_config = self._app_config("manual")
+        initial_plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("main", PlanAction.RUN, "missing", 1, "main_pipeline"),
+        ))
+        next_plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("references", PlanAction.RUN, "missing", 2, "msr_references"),
+        ))
+
+        with patch(
+            "feverslop.cli.run_cli.build_resume_plan",
+            side_effect=[initial_plan, next_plan],
+        ):
+            exit_code = run_project_command(
+                self._args("--resume", "--app-config", str(app_config)),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual([["main_pipeline"]], [call.args[0].stages for call in pipeline_run.call_args_list])
+        rendered = self.stream.getvalue()
+        self.assertIn("Manual VRAM handoff required", rendered)
+        self.assertIn("unload the LLM and load ComfyUI", rendered)
 
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_continuous_handoff_keeps_executing_all_safe_stages(self, pipeline_run):

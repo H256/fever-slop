@@ -211,6 +211,15 @@ class CanonicalPlanMigrationAnalysisTests(unittest.TestCase):
         finding = next(item for item in report.importable if item.role == PromptRole.H3_VIDEO)
         self.assertTrue(finding.source_path.endswith("render_plan_song_refs.json"))
 
+    def test_references_without_anchored_plan_use_canonical_base_as_baseline(self):
+        scene = self._scene(1, "segment-a")
+        self._write("base.json", [scene])
+        self._write("references.json", json.loads(json.dumps([scene])))
+
+        report = self._analyze()
+
+        self.assertFalse(report.unresolved)
+
     def test_ingredients_relay_is_compared_to_msr_relay(self):
         scene = self._scene(1, "segment-a")
         self._write("base.json", [scene])

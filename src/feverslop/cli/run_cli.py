@@ -79,6 +79,8 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
             project,
             video_pipeline=args.video_pipeline,
             explicit_runner_options=explicit_runner_options,
+            reference_generation=args.reference_generation,
+            sequence_to_sheet_workflow=args.sequence_to_sheet_workflow,
         )
         render_settings = resolved.settings if not compatibility else None
         args.project_render_settings = render_settings
@@ -144,8 +146,27 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
             output.print(f"Last completed stage: {last_completed}")
             output.print(f"Safe resume: {resume_command}")
             return 1
-        if manual_phase is not None and manual_phase.next_resource is not None:
-            _render_manual_handoff(manual_phase, output, resume_command)
+        if manual_phase is not None:
+            next_resource = manual_phase.next_resource
+            if next_resource is None and not compatibility:
+                # A completed phase can materialize artifacts that make the
+                # following resource phase visible only after replanning.
+                next_plan = build_resume_plan(
+                    project,
+                    video_pipeline=args.video_pipeline,
+                    selected_scenes=selected,
+                    render_settings=render_settings,
+                )
+                next_phase = _manual_phase(next_plan, app_config, compatibility=False)
+                if next_phase is not None and next_phase.stages:
+                    next_resource = next_phase.resource
+            if next_resource is not None:
+                _render_manual_handoff(
+                    manual_phase,
+                    output,
+                    resume_command,
+                    target_resource=next_resource,
+                )
         return 0
     except (FeverSlopError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         output.print(f"[red]Invalid/corrupt project:[/red] {exc}")
@@ -211,8 +232,11 @@ def _render_manual_handoff(
     phase: ResourcePhase,
     output: Console,
     resume_command: str,
+    *,
+    target_resource: StageResource | None = None,
 ) -> None:
-    if phase.next_resource is StageResource.LLM:
+    next_resource = target_resource if target_resource is not None else phase.next_resource
+    if next_resource is StageResource.LLM:
         action = "unload ComfyUI and load the LLM"
     else:
         action = "unload the LLM and load ComfyUI"

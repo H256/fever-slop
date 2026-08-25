@@ -662,6 +662,23 @@ and provide a compatible I2VA workflow through
 selected frames, contact sheet, and final tiled sheet so the intermediate
 result can be reviewed before R2V/I2V rendering.
 
+For reproducible project runs, store the choice in `config.json` instead of
+repeating the CLI options:
+
+```json
+{
+  "video_pipeline": "minimax-h3-r2v",
+  "reference_generation": "sequence_sheet",
+  "workflows": {
+    "reference_sequence": "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"
+  }
+}
+```
+
+Explicit CLI options override the project configuration. Changing the
+reference mode or configured sequence workflow invalidates incompatible
+reference artifacts on the next safe resume.
+
 The complete tutorial and copyable commands are in
 [`documentation/sequence-reference-pipeline.md`](sequence-reference-pipeline.md).
 
