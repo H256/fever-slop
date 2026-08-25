@@ -7,6 +7,7 @@ from pathlib import Path
 
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopAdaptationError
+from feverslop.utils.media_paths import write_concat_list as write_media_concat_list
 
 FFMPEG_TIMEOUT_SECONDS = 120
 FFPROBE_TIMEOUT_SECONDS = 30
@@ -341,17 +342,7 @@ class VideoPostProcessor:
 
     @staticmethod
     def write_concat_list(video_files: list[Path], output_file: str | Path) -> Path:
-        output_file = Path(output_file)
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-
-        lines = []
-        for path in video_files:
-            absolute = Path(path).resolve()
-            escaped = str(absolute).replace("'", r"'\''")
-            lines.append(f"file '{escaped}'")
-
-        output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return output_file
+        return write_media_concat_list(video_files, output_file)
 
     @staticmethod
     def write_manifest(entries: list[dict], output_file: str | Path) -> Path:
