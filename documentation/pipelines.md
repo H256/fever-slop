@@ -181,6 +181,24 @@ audio reference slots, regardless of list order. Up to 3 audio reference
 slots exist on the MiniMax H3 R2V node; the first is reserved for the main
 (comfy) audio, leaving slots 1–2 for stem audio.
 
+For scenes with multiple visible performers, an explicit optional binding can
+be stored in the scene references. It is validated before prompt generation
+and is serialized into the audio definition without changing slot numbering:
+
+```json
+{
+  "actor_ids": ["singer", "drummer"],
+  "audio_subject_bindings": {
+    "vocals": {"subject_id": "singer", "speaker_id": "S1"},
+    "drums": {"subject_id": "drummer"}
+  }
+}
+```
+
+The vocal binding requires a speaker ID; `full_mix` deliberately cannot be
+bound to a subject because it remains a global beat/rhythm reference. Missing
+bindings remain explicitly unbound rather than being inferred.
+
 ## Standard Pipeline
 
 CLI:

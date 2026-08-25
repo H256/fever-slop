@@ -76,6 +76,45 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_audio_subject_bindings_are_serialized_without_inventing_full_mix_subject(self):
+        from feverslop.prompting.dspy_h3_prompt_builder import _scene_references
+
+        references, _images = _scene_references(
+            {
+                "references": {
+                    "actor_ids": ["singer", "drummer"],
+                    "reference_audio_paths": ["vocals.wav", "drums.wav", "song.wav"],
+                    "_stem_audio_tags": {
+                        "vocals.wav": "audio_transfer - vocal singing lip-synced to the audio signal",
+                        "drums.wav": "drums stem",
+                        "song.wav": "full_mix - original song for beat and rhythm continuity",
+                    },
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "singer", "speaker_id": "S1"},
+                        "drums": {"subject_id": "drummer"},
+                    },
+                },
+            },
+            None,
+            None,
+        )
+        audio = {item["name"]: item for item in references if item["kind"] == "audio"}
+        self.assertIn("<Subject 1> (S1)", audio["vocals"]["description"])
+        self.assertIn("<Subject 2>", audio["drums"]["description"])
+        full_mix = [item for item in audio.values() if "full_mix" in item["description"]]
+        self.assertEqual(1, len(full_mix))
+        self.assertNotIn("Subject", full_mix[0]["description"])
+
+    def test_vocal_binding_requires_speaker_id_and_known_subject(self):
+        from feverslop.prompting.dspy_h3_prompt_builder import _scene_references
+
+        with self.assertRaisesRegex(ValueError, "speaker_id"):
+            _scene_references(
+                {"references": {"actor_ids": ["singer"], "audio_subject_bindings": {"vocals": {"subject_id": "singer"}}}},
+                {"vocals": Path("vocals.wav")},
+                None,
+            )
+
     def test_checkpoint_revision_hashes_bundled_guides_and_judge_contract(self):
         generator = FakeGenerator()
         generator.base_guide_path = "minimax-h3-base.md"
