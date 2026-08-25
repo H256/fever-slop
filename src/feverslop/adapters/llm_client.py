@@ -299,3 +299,12 @@ class LocalOpenAIClient:
             raise
         record_api_call(self.metrics, logger, "llm", "health_check", started_at, success=True)
         return True
+
+
+def describe_image_with_llm(llm: LocalOpenAIClient, image_path: Path) -> str:
+    """Describe one image through the transport-owned vision boundary."""
+    return llm.complete_prompt_with_images(
+        "Describe the stable visual identity of the supplied reference asset.",
+        "Return one concise description for deterministic multi-view reference planning. Do not invent identity changes.",
+        [image_path.resolve()],
+    )

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
+
 from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 from feverslop.application.reference_sheet_planning import (
     DeterministicReferenceSheetPlanner,
@@ -45,6 +47,7 @@ class SequenceReferenceRequest:
     asset_context: dict[str, Any] | None = None
     reference_image_size: tuple[int, int] | None = None
     reference_mode: str = "empty_environment"
+    source_image: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +69,8 @@ class SequenceReferenceResult:
     seed: int = 0
     frames: int = 124
     anchor_prompt: str = ""
+    selected_frame_paths: tuple[Path, ...] = ()
+    source_image_path: Path | None = None
 
 
 class SequenceReferencePipeline:
@@ -137,19 +142,27 @@ class SequenceReferencePipeline:
                     reference_mode=request.reference_mode,
                 )
             self._report_phase(request, "anchor_start")
-            anchor = self.anchor_backend.render_image(
-                ImageRenderRequest(
-                    scene={"reference_id": request.asset_id, "kind": kind, "view": "anchor"},
-                    scene_number=1,
-                    prompt=anchor_prompt,
-                    workflow_path=Path(),
-                    output_dir=anchor_dir,
-                    width=(request.reference_image_size or (1920, 1080))[0],
-                    height=(request.reference_image_size or (1920, 1080))[1],
-                    reference_image=None,
-                ),
-            )
-            anchor = Path(anchor)
+            if request.source_image is not None:
+                source = Path(request.source_image)
+                if not source.is_file():
+                    raise FileNotFoundError(f"source image not found: {source}")
+                anchor = anchor_dir / "anchor.png"
+                with Image.open(source) as image:
+                    image.convert("RGB").save(anchor, format="PNG")
+            else:
+                anchor = self.anchor_backend.render_image(
+                    ImageRenderRequest(
+                        scene={"reference_id": request.asset_id, "kind": kind, "view": "anchor"},
+                        scene_number=1,
+                        prompt=anchor_prompt,
+                        workflow_path=Path(),
+                        output_dir=anchor_dir,
+                        width=(request.reference_image_size or (1920, 1080))[0],
+                        height=(request.reference_image_size or (1920, 1080))[1],
+                        reference_image=None,
+                    ),
+                )
+                anchor = Path(anchor)
             if not anchor.is_file():
                 raise FileNotFoundError(f"anchor backend did not create an image: {anchor}")
             self._report_phase(request, "anchor_complete", path=anchor)
@@ -276,6 +289,8 @@ class SequenceReferencePipeline:
                 seed=request.seed,
                 frames=request.frames,
                 anchor_prompt=anchor_prompt,
+                selected_frame_paths=tuple(final_dir / "frames" / f"frame_{index:04}.png" for index in range(len(selected))),
+                source_image_path=(Path(request.source_image) if request.source_image is not None else None),
             )
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)

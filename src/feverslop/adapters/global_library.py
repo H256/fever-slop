@@ -124,6 +124,7 @@ class GlobalLibraryAdapter:
         asset_id: str,
         look_id: str,
         *,
+        hero_image: str | Path | None = None,
         anchor_image: str | Path | None = None,
         sequence_video: str | Path | None = None,
         selected_frames: tuple[str | Path, ...] = (),
@@ -154,6 +155,7 @@ class GlobalLibraryAdapter:
                 look = AssetLook(look_id, look_id)
 
             supplied = {
+                "hero_image": hero_image,
                 "anchor_image": anchor_image,
                 "sequence_video": sequence_video,
                 "sheet_image": sheet_image,
@@ -174,6 +176,7 @@ class GlobalLibraryAdapter:
                     if source is None:
                         continue
                     destination_name = {
+                        "hero_image": "hero.png",
                         "anchor_image": "anchor.png",
                         "sequence_video": "sequence.mp4",
                         "sheet_image": "sheet.png",
@@ -197,6 +200,7 @@ class GlobalLibraryAdapter:
                 updated_look = replace(
                     look,
                     anchor_image=destinations.get("anchor_image", look.anchor_image),
+                    hero_image=destinations.get("hero_image", look.hero_image),
                     sequence_video=destinations.get("sequence_video", look.sequence_video),
                     selected_frames=tuple(frame_destinations) if selected_frames else look.selected_frames,
                     sheet_image=destinations.get("sheet_image", look.sheet_image),
