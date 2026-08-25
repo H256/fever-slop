@@ -51,6 +51,7 @@ class GenerateRenderPlanContext:
     render_plan: list[dict] | None = None
     h3_prompts: list[dict] | None = None
     selected_scene_numbers: set[int] | None = None
+    selected_scene_selection_complete: bool = False
     order: list[str] | None = None
 
     def __getitem__(self, key: str) -> Any:

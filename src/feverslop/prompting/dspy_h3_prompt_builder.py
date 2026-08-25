@@ -508,8 +508,6 @@ class DspyH3PromptBuilder:
         total = len(stage1_segments)
         for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
-            if status_callback is not None:
-                status_callback(current, total, "started")
             concept = concept_prompts.get(segment_id, "")
             if isinstance(concept, dict):
                 concept = concept.get("concept", "")
@@ -532,8 +530,12 @@ class DspyH3PromptBuilder:
                 if reuse_checkpoints:
                     checkpoint = checkpoint_store.load(checkpoint_input)
             if checkpoint is not None:
+                if status_callback is not None:
+                    status_callback(current, total, "reused")
                 result = checkpoint.generated
             else:
+                if status_callback is not None:
+                    status_callback(current, total, "started")
                 result = self.build_h3_prompt(
                     segment=segment,
                     concept=str(concept),

@@ -207,6 +207,11 @@ class H3PromptPipeline:
             if "selected_scene_numbers" in context.keys()
             else None
         )
+        selected_scene_selection_complete = bool(
+            context["selected_scene_selection_complete"]
+            if "selected_scene_selection_complete" in context.keys()
+            else False
+        )
 
         mode = model_spec.prompt_mode.value if model_spec else PromptMode.T2V.value
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
@@ -234,7 +239,7 @@ class H3PromptPipeline:
             status_callback=lambda current, total, status: (
                 reporter.message(
                     f"[cyan]H3 prompts: {current}/{total} scenes - "
-                    f"{'start' if status == 'started' else 'completed'}[/cyan]",
+                    f"{'start' if status == 'started' else 'reused' if status == 'reused' else 'completed'}[/cyan]",
                 )
                 if reporter is not None
                 else None
@@ -247,7 +252,7 @@ class H3PromptPipeline:
             checkpoint_store=checkpoint_store,
             generator_revision=generator_revision,
             preserve_existing_aggregate=selected_scene_numbers is not None,
-            reuse_checkpoints=selected_scene_numbers is None,
+            reuse_checkpoints=selected_scene_numbers is None or selected_scene_selection_complete,
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
