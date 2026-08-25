@@ -23,6 +23,7 @@ class ProjectWorkflowConfig:
     video: str | None = None
     reference_hero: str | None = None
     reference_edit: str | None = None
+    reference_sequence: str | None = None
 
 
 @dataclass(frozen=True)
@@ -363,6 +364,7 @@ class ProjectConfig:
     loras: tuple[LoraConfig, ...] = field(default_factory=tuple)
     lora_split_enabled: bool = False
     video_pipeline: str = "ltx_i2v"
+    reference_generation: str = "image_views"
     minimax_h3_audio_refs: AudioRefsConfig = field(default_factory=AudioRefsConfig)
 
     @classmethod
@@ -453,6 +455,9 @@ class ProjectConfig:
         if subject_mode not in {"single", "multi"}:
             raise ValueError("subject_mode must be 'single' or 'multi'")
         video_pipeline = str(raw.get("video_pipeline", "ltx_i2v") or "ltx_i2v").strip()
+        reference_generation = str(raw.get("reference_generation", "image_views") or "image_views").strip()
+        if reference_generation not in {"image_views", "sequence_sheet"}:
+            raise ValueError("reference_generation must be 'image_views' or 'sequence_sheet'")
         max_actor_limit = 8 if video_pipeline in {"minimax-h3-r2v", "minimax-h3-i2v"} else 4
         max_scene_actors = int(raw.get("max_scene_actors", 1 if subject_mode == "single" else max_actor_limit))
         if max_scene_actors < 1 or max_scene_actors > max_actor_limit:
@@ -494,6 +499,7 @@ class ProjectConfig:
                 video=_optional_workflow_path(workflows_raw, "video"),
                 reference_hero=_optional_workflow_path(workflows_raw, "reference_hero"),
                 reference_edit=_optional_workflow_path(workflows_raw, "reference_edit"),
+                reference_sequence=_optional_workflow_path(workflows_raw, "reference_sequence"),
             ),
             upscale=UpscaleConfig(
                 enabled=enabled_raw,
@@ -596,6 +602,7 @@ class ProjectConfig:
                 word_count_max=word_count_max,
             ),
             video_pipeline=video_pipeline or "ltx_i2v",
+            reference_generation=reference_generation,
             lora_1=lora_1,
             loras=loras,
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),

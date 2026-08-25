@@ -25,11 +25,28 @@ def resolve_project_render_settings(
     *,
     video_pipeline: str,
     explicit_runner_options: Collection[str] = (),
+    reference_generation: str | None = None,
+    sequence_to_sheet_workflow: str | None = None,
 ) -> ResolvedProjectRenderSettings:
     root = Path(project).resolve()
     config = ProjectConfig.load(root / "config.json")
     explicit = frozenset(explicit_runner_options)
     overrides: dict[str, str] = {}
+    effective_reference_generation = reference_generation or config.reference_generation
+    if "reference_generation" not in explicit:
+        overrides["reference_generation"] = effective_reference_generation
+    configured_sequence_workflow = (
+        sequence_to_sheet_workflow
+        or config.workflows.reference_sequence
+        or next(
+            kwargs.get("default")
+            for name, _flags, kwargs in RUNNER_ARGUMENTS
+            if name == "sequence_to_sheet_workflow"
+        )
+    )
+    if config.workflows.reference_sequence is not None and "sequence_to_sheet_workflow" not in explicit:
+        sequence_path = resolve_runner_path(configured_sequence_workflow).resolve()
+        overrides["sequence_to_sheet_workflow"] = str(sequence_path)
     video_selection = None
     video_target = {
         "ltx_msr": "msr_workflow",
@@ -73,6 +90,15 @@ def resolve_project_render_settings(
             video_workflow=video_selection,
             reference_hero_workflow=hero_selection,
             reference_edit_workflow=edit_selection,
+            reference_generation=effective_reference_generation,
+            reference_sequence_workflow=(
+                WorkflowSelection.from_path(
+                    resolve_runner_path(configured_sequence_workflow).resolve(),
+                    root=runner_root(),
+                )
+                if effective_reference_generation == "sequence_sheet"
+                else None
+            ),
         ),
         runner_overrides=overrides,
     )

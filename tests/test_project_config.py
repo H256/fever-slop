@@ -40,6 +40,24 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertEqual("workflows/hero.json", config.workflows.reference_hero)
         self.assertEqual("workflows/edit.json", config.workflows.reference_edit)
 
+    def test_loads_project_reference_generation_selection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({
+                "input_audio": "song.mp3",
+                "reference_generation": "sequence_sheet",
+                "workflows": {
+                    "reference_sequence": "workflows/custom-sequence.json",
+                },
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual("sequence_sheet", config.reference_generation)
+        self.assertEqual("workflows/custom-sequence.json", config.workflows.reference_sequence)
+
     def test_project_workflow_selection_must_be_non_empty_string(self):
         for value in ("", 42, False):
             with self.subTest(value=value), tempfile.TemporaryDirectory() as temp_dir:

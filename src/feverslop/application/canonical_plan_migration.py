@@ -203,7 +203,7 @@ def _reference_baseline(
     if anchored is not None:
         return anchored
     legacy_base = source.removesuffix("_refs.json") + ".json"
-    return documents.get(legacy_base)
+    return documents.get(legacy_base) or documents.get("output/render/plans/base.json")
 
 
 def _ingredients_baseline(

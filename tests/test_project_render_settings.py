@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.composition.project_render_settings import resolve_project_render_settings
+from feverslop.composition.config_loader import resolve_runner_path
 from feverslop.domain.project_render_settings import (
     ProjectRenderSettings,
     WorkflowSelection,
@@ -113,6 +115,42 @@ class ProjectRenderSettingsTests(unittest.TestCase):
             first["references"]["generator_fingerprint"],
             second["references"]["generator_fingerprint"],
         )
+
+    def test_project_reference_generation_overrides_runner_defaults(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","reference_generation":"sequence_sheet",'
+                '"workflows":{"reference_sequence":"workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"}}',
+                encoding="utf-8",
+            )
+
+            resolved = resolve_project_render_settings(root, video_pipeline="minimax-h3-r2v")
+
+        self.assertEqual("sequence_sheet", resolved.runner_overrides["reference_generation"])
+        self.assertEqual(
+            str(resolve_runner_path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json").resolve()),
+            resolved.runner_overrides["sequence_to_sheet_workflow"],
+        )
+
+    def test_explicit_reference_generation_overrides_project_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","reference_generation":"sequence_sheet"}',
+                encoding="utf-8",
+            )
+
+            resolved = resolve_project_render_settings(
+                root,
+                video_pipeline="minimax-h3-r2v",
+                explicit_runner_options={"reference_generation"},
+                reference_generation="image_views",
+            )
+
+        self.assertEqual("image_views", resolved.settings.reference_generation)
 
 
 if __name__ == "__main__":
