@@ -28,6 +28,12 @@ def parse_optional_bool(value: str | None) -> bool:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate a full FeverSlop project from an idea and style.")
+    add_full_auto_args(parser)
+    return parser
+
+
+def add_full_auto_args(parser: argparse.ArgumentParser) -> None:
+    """Add Full-Auto options to a standalone or unified CLI parser."""
     parser.add_argument("--idea", required=True)
     parser.add_argument("--style", required=True)
     parser.add_argument("--music-style", default=None)
@@ -52,7 +58,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Disable singing, lip-sync, and vocal performance prompts while preserving emotional acting.",
     )
     add_runner_options(parser)
-    return parser
 
 
 def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
