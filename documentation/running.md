@@ -2,6 +2,22 @@
 
 This document covers CLI startup and pipeline operation.
 
+## Installed CLI
+
+The packaged command is the canonical interface for the unified pipeline:
+
+```bash
+uv run feverslop --help
+uv run feverslop run ./projects/my-song --dry-run
+uv run feverslop run ./projects/my-song --resume
+uv run feverslop status ./projects/my-song
+uv run feverslop full-auto --idea "A neon chase" --style "dark synthwave"
+```
+
+The repository scripts (`main.py`, `run_pipeline.py`, `movie_pipeline.py`, and
+`full_auto.py`) remain available as compatibility entry points for existing
+automation and documented legacy commands.
+
 ## CLI Pipeline
 
 Run an existing standard project:

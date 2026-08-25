@@ -17,6 +17,7 @@ import run_pipeline
 import storyboard_renderer
 import workflow_patcher
 from feverslop.cli import render_ltx as canonical_render_ltx
+from feverslop.cli import app as canonical_cli
 from feverslop.cli.movie_cli import build_movie_arg_parser
 from feverslop.composition.generate_render_plan import (
     build_generate_render_plan_execution_request,
@@ -127,6 +128,30 @@ class PublicCompatibilityTests(unittest.TestCase):
             with self.subTest(module=module.__name__):
                 parser = module.build_arg_parser()
                 self.assertIsInstance(parser, argparse.ArgumentParser)
+
+    def test_installed_cli_parser_matches_unified_parser(self):
+        legacy = main.build_arg_parser().parse_args(["run", "projects/demo", "--dry-run"])
+        installed = canonical_cli.build_arg_parser().parse_args(["run", "projects/demo", "--dry-run"])
+        self.assertEqual("run", installed.command)
+        self.assertEqual("projects/demo", installed.project)
+        self.assertTrue(installed.dry_run)
+        self.assertEqual(vars(legacy), vars(installed))
+
+    def test_installed_cli_exposes_full_auto_subcommand(self):
+        args = canonical_cli.build_arg_parser().parse_args([
+            "full-auto", "--idea", "idea", "--style", "style", "--duration-seconds", "42",
+        ])
+        self.assertEqual("full-auto", args.command)
+        self.assertEqual("idea", args.idea)
+        self.assertEqual("style", args.style)
+        self.assertEqual(42.0, args.duration_seconds)
+
+    def test_installed_cli_dispatches_full_auto(self):
+        with patch("sys.argv", ["feverslop", "full-auto", "--idea", "idea", "--style", "style"]):
+            with patch.object(canonical_cli, "run_full_auto_command") as run_command:
+                canonical_cli.main()
+        run_command.assert_called_once()
+        self.assertEqual("idea", run_command.call_args.args[0].idea)
 
     def test_root_compatibility_modules_document_new_import_paths(self):
         self.assertIn("adapters.comfyui_video_backend", inspect.getdoc(ltx_video_renderer) or "")
