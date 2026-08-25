@@ -177,6 +177,52 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         self.assertEqual(4, captured["generator_revision"]["prompt_judge_attempts"])
         self.assertEqual("abc", captured["generator_revision"]["guide_sha256"])
 
+    def test_run_reuses_checkpoints_for_a_complete_scene_selection(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        captured = {}
+
+        class Builder:
+            def build_all_h3_prompts(self, **kwargs):
+                captured.update(kwargs)
+
+            def checkpoint_revision(self):
+                return {}
+
+        class ArtifactStore:
+            def read_json(self, _path):
+                return []
+
+        context = GenerateRenderPlanContext(
+            app_config=SimpleNamespace(
+                llm=SimpleNamespace(prompt_judge_attempts=3, model_for=lambda _: "model"),
+            ),
+            config=SimpleNamespace(
+                video_pipeline="minimax-h3-r2v",
+                minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+                project_dir=Path("project"),
+            ),
+            stage1_segments=[{"scene": 1, "segment_id": "s1"}],
+            concept_prompts={},
+            scene_details={},
+            global_context={},
+            h3_prompts_json=Path("h3.json"),
+            artifact_store=ArtifactStore(),
+            log_step=lambda _: None,
+            log_file=lambda *_: None,
+            selected_scene_numbers={1},
+        )
+        context.selected_scene_selection_complete = True
+        pipeline = H3PromptPipeline(
+            llm_factory=lambda _: None,
+            h3_prompt_builder_factory=lambda _: Builder(),
+            dspy_prompt_builder_factory=lambda _: Builder(),
+        )
+
+        pipeline.run(context)
+
+        self.assertTrue(captured["reuse_checkpoints"])
+
     def test_run_accepts_typed_context_when_relay_path_is_optional(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 

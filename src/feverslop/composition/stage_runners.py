@@ -426,7 +426,12 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     paths = config.paths
     stage1_segments = _read_h3_input(state.context.stage1_segments, "stage 1 segments")
     selected_scene_spec = getattr(state.args, "scenes", None)
+    all_scene_numbers = {
+        int(segment.get("scene") or segment.get("scene_number") or 0)
+        for segment in stage1_segments
+    }
     selected, stage1_segments = _select_h3_segments(stage1_segments, selected_scene_spec)
+    selected_scene_selection_complete = bool(selected_scene_spec) and selected == all_scene_numbers
     if state.args.video_pipeline == "minimax-h3-r2v":
         _report_reference_fallbacks(_seed_reference_bindings(state.plan_for_next_step, config))
         state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
@@ -478,6 +483,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{config.song_id}.json",
         beat_json=paths.timeline_dir / f"beat_data_{config.song_id}.json",
         selected_scene_numbers=selected if selected_scene_spec else None,
+        selected_scene_selection_complete=selected_scene_selection_complete,
     )
     pipeline = H3PromptPipeline(
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(
