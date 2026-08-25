@@ -220,6 +220,18 @@ class CanonicalPlanMigrationAnalysisTests(unittest.TestCase):
 
         self.assertFalse(report.unresolved)
 
+    def test_stale_h3_prompt_in_derived_references_plan_is_not_importable(self):
+        scene = self._scene(1, "segment-a")
+        self._write("base.json", [scene])
+        references = json.loads(json.dumps([scene]))
+        references[0]["h3"]["prompt"] = "h3 prompt from the previous generation"
+        self._write("references.json", references)
+
+        report = self._analyze()
+
+        self.assertFalse(report.importable)
+        self.assertFalse(report.unresolved)
+
     def test_ingredients_relay_is_compared_to_msr_relay(self):
         scene = self._scene(1, "segment-a")
         self._write("base.json", [scene])
