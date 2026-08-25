@@ -203,7 +203,7 @@ class ArchitecturePortsTests(unittest.TestCase):
         self.assertIn("GenerateRenderPlanRequest", source_render)
 
     def test_render_storyboard_cli_uses_composition_root(self):
-        import render_storyboard
+        from feverslop.cli import render_storyboard
 
         source = inspect.getsource(render_storyboard.main)
 
