@@ -152,10 +152,12 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
             output.print(f"Safe resume: {resume_command}")
             return 1
         if manual_phase is not None:
-            next_resource = manual_phase.next_resource
-            if next_resource is None and not compatibility:
-                # A completed phase can materialize artifacts that make the
-                # following resource phase visible only after replanning.
+            next_resource = None
+            if not compatibility:
+                # Always replan after a manual phase.  The phase preview is
+                # calculated before execution and can describe a resource
+                # boundary that disappears once the phase materializes its
+                # artifacts.
                 next_plan = build_resume_plan(
                     project,
                     video_pipeline=args.video_pipeline,

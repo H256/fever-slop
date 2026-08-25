@@ -311,6 +311,21 @@ class ResumePlanTests(unittest.TestCase):
         self.assertNotIn("msr_references", plan.runnable_stages)
         self.assertNotIn("msr_reference_sheets", plan.runnable_stages)
 
+    def test_completed_h3_render_with_manifest_is_a_noop_without_base_projection(self):
+        base = self._write_base_and_derived(1)
+        self._prepare(base[0], pipeline="minimax-h3-r2v")
+        manifest = json.loads(self.layout.scene_manifest(1).read_text(encoding="utf-8"))
+        manifest["canonical_dependencies"] = None
+        self.layout.scene_manifest(1).write_text(json.dumps(manifest), encoding="utf-8")
+        self.layout.scene_h3_prompt(1).write_text(json.dumps({"status": "good"}), encoding="utf-8")
+        self.layout.scene_final_video(1).write_bytes(b"rendered clip")
+        self.layout.final_dir.mkdir(parents=True, exist_ok=True)
+        self.layout.movie.write_bytes(b"final movie")
+
+        plan = build_resume_plan(self.project, video_pipeline="minimax-h3-r2v")
+
+        self.assertEqual((), plan.runnable_stages)
+
     def test_ingredients_replanning_advances_across_manual_resource_phases(self):
         base = self._write_base_and_derived(1)
         self.layout.ingredients_plan.write_text(

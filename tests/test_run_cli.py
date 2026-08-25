@@ -139,8 +139,14 @@ class RunCliTests(unittest.TestCase):
             ExecutionPlanItem("render plan", PlanAction.RUN, "stale", 2, "render_plan"),
             ExecutionPlanItem("render", PlanAction.RUN, "missing", 2, "ltx_render_scenes"),
         ))
+        next_plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("prompts", PlanAction.RUN, "missing", 2, "h3_prompts"),
+        ))
 
-        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan):
+        with patch(
+            "feverslop.cli.run_cli.build_resume_plan",
+            side_effect=[plan, next_plan],
+        ):
             exit_code = run_project_command(
                 self._args("--resume", "--app-config", str(app_config)),
                 console=self.console,
@@ -227,6 +233,28 @@ class RunCliTests(unittest.TestCase):
         rendered = self.stream.getvalue()
         self.assertIn("Manual VRAM handoff required", rendered)
         self.assertIn("unload the LLM and load ComfyUI", rendered)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_manual_handoff_is_not_printed_when_replan_is_complete(self, pipeline_run):
+        app_config = self._app_config("manual")
+        initial_plan = ExecutionPlan(self.project, "resume", (
+            ExecutionPlanItem("prompts", PlanAction.RUN, "missing", 1, "h3_prompts"),
+            ExecutionPlanItem("plan", PlanAction.RUN, "stale", 1, "render_plan"),
+            ExecutionPlanItem("render", PlanAction.RUN, "missing", 1, "ltx_render_scenes"),
+        ))
+        completed_plan = ExecutionPlan(self.project, "resume", ())
+
+        with patch(
+            "feverslop.cli.run_cli.build_resume_plan",
+            side_effect=[initial_plan, completed_plan],
+        ):
+            exit_code = run_project_command(
+                self._args("--resume", "--app-config", str(app_config)),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertNotIn("Manual VRAM handoff", self.stream.getvalue())
 
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_continuous_handoff_keeps_executing_all_safe_stages(self, pipeline_run):
