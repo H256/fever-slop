@@ -51,6 +51,50 @@ def _reference_source_key(source: str | Path, reference_root: Path | None) -> st
         return str(path).replace("\\", "/").casefold()
 
 
+def _audio_subject_bindings(references: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """Validate explicit stem-to-subject bindings without inventing subjects."""
+    raw = references.get("audio_subject_bindings") or {}
+    if isinstance(raw, list):
+        raw = {str(item.get("stem") or ""): item for item in raw if isinstance(item, dict)}
+    if not isinstance(raw, dict):
+        raise ValueError("audio_subject_bindings must be an object or list")
+    actor_ids = [str(value) for value in references.get("actor_ids") or []]
+    actor_labels = {value: f"<Subject {index}>" for index, value in enumerate(actor_ids, start=1)}
+    result: dict[str, dict[str, str]] = {}
+    seen_subjects: set[str] = set()
+    for stem, value in raw.items():
+        stem_name = str(stem).strip()
+        if not stem_name or not isinstance(value, dict):
+            raise ValueError("each audio subject binding requires a stem and object value")
+        if stem_name == "full_mix":
+            raise ValueError("full_mix is global audio and cannot bind to a subject")
+        subject_id = str(value.get("subject_id") or value.get("subject") or "").strip()
+        subject_label = str(value.get("subject_label") or actor_labels.get(subject_id) or "").strip()
+        if not subject_label:
+            raise ValueError(f"audio binding for {stem_name!r} has no known subject")
+        if subject_label in seen_subjects:
+            raise ValueError(f"multiple audio stems bind to subject {subject_label}")
+        seen_subjects.add(subject_label)
+        speaker_id = str(value.get("speaker_id") or "").strip()
+        if stem_name == "vocals" and not speaker_id:
+            raise ValueError("vocal audio binding requires speaker_id")
+        result[stem_name] = {
+            "subject_label": subject_label,
+            "speaker_id": speaker_id,
+            "subject_id": subject_id,
+        }
+    return result
+
+
+def _audio_description(name: str, binding: dict[str, str] | None) -> str:
+    if name == "full_mix":
+        return "full_mix - original song for beat and rhythm continuity"
+    if binding is None:
+        return f"{name} stem; no subject binding was supplied"
+    speaker = f" ({binding['speaker_id']})" if binding.get("speaker_id") else ""
+    return f"{name} stem bound to {binding['subject_label']}{speaker}"
+
+
 def _scene_references(
     segment: dict[str, Any],
     audio_paths: dict[str, Path] | None,
@@ -69,6 +113,7 @@ def _scene_references(
         for item in relay
     )
     audio_tags = references.get("_stem_audio_tags") or {}
+    audio_bindings = _audio_subject_bindings(references)
     audio_tags_by_key = {
         _reference_source_key(source, reference_root): str(description)
         for source, description in audio_tags.items()
@@ -192,12 +237,17 @@ def _scene_references(
         if fully_instrumental and "vocal" in tag.casefold() and "full_mix" not in tag.casefold():
             continue
         copy_mode = "fully_copy" if "full_mix" in tag.casefold() else "partially_copy"
+        description = tag or _audio_description(path.stem, audio_bindings.get(path.stem))
+        if tag and path.stem in audio_bindings:
+            binding = audio_bindings[path.stem]
+            speaker = f" ({binding['speaker_id']})" if binding.get("speaker_id") else ""
+            description = f"{tag}; bound to {binding['subject_label']}{speaker}"
         pending_audio_references.append(_reference(
             label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
             source=path,
             kind="audio",
             name=path.stem,
-            description=tag or "Use this synchronized reference for the scene's audio behavior.",
+            description=description,
             role="audio_reuse",
         ) | {"copy_mode": copy_mode})
 
@@ -209,7 +259,7 @@ def _scene_references(
             source=source,
             kind="audio",
             name=name,
-            description="Use this synchronized stem for the scene's audio behavior.",
+            description=_audio_description(name, audio_bindings.get(name)),
             role="audio_reuse",
         ) | {"copy_mode": "fully_copy" if name == "full_mix" else "partially_copy"})
 

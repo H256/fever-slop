@@ -132,10 +132,8 @@ def _deterministic_reference_definitions(refs: list[ResolvedReference]) -> list[
     definitions: list[str] = []
     for ref in refs:
         if ref.kind is ReferenceKind.AUDIO:
-            name = (ref.name or "audio").strip()
-            definitions.append(
-                f"{ref.label} is the synchronized {name} audio reference and is reused for the scene.",
-            )
+            description = (ref.description or "synchronized audio reference").strip()
+            definitions.append(f"{ref.label} is the {description} and is reused for the scene.")
     return definitions
 
 
