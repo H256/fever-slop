@@ -127,6 +127,18 @@ def _build_resume_plan(
         current = project_effective_plan([source], desired_base)[0]
         current_dependencies = _dependencies(current)
         changed = _dependency_changes(stored, current)
+        legacy_h3_workflow_reusable = (
+            video_pipeline in _H3_PIPELINES
+            and layout.scene_final_video(number).is_file()
+            and not _workflow_mismatches(
+                root,
+                layout,
+                number,
+                video_pipeline,
+                current_dependencies,
+                allow_legacy_provenance=True,
+            )
+        )
         stored_reference = references_by_number.get(number)
         reference_changed = (
             stored_reference is None
@@ -150,7 +162,7 @@ def _build_resume_plan(
         projection_stage = _projection_stage(video_pipeline)
         projection_action = PlanAction.REUSE
         projection_reason = "effective projection fingerprint matches"
-        if projection_stage and (stored is None or changed):
+        if projection_stage and (stored is None or changed) and not legacy_h3_workflow_reusable:
             projection_action = PlanAction.RUN
             projection_reason = "derived plan missing" if stored is None else "; ".join(changed)
         if projection_stage:
@@ -211,6 +223,7 @@ def _build_resume_plan(
             else:
                 render_mismatches = _workflow_mismatches(
                     root, layout, number, video_pipeline, current_dependencies,
+                    allow_legacy_provenance=video_pipeline in _H3_PIPELINES,
                 )
         render_action = PlanAction.REUSE
         render_reason = "rendered clip exists and dependencies match"
@@ -386,6 +399,8 @@ def _workflow_mismatches(
     scene: int,
     pipeline: str,
     dependencies: CanonicalSceneDependencies,
+    *,
+    allow_legacy_provenance: bool = False,
 ) -> list[str]:
     workflow = layout.scene_workflow(scene)
     manifest_path = layout.scene_manifest(scene)
@@ -395,6 +410,12 @@ def _workflow_mismatches(
     mismatches = []
     if manifest.pipeline != pipeline:
         mismatches.append("prepared workflow pipeline changed")
-    mismatches.extend(manifest.compare_canonical_dependencies(dependencies))
+    dependency_mismatches = manifest.compare_canonical_dependencies(dependencies)
+    if allow_legacy_provenance:
+        dependency_mismatches = [
+            mismatch for mismatch in dependency_mismatches
+            if mismatch != "canonical dependency provenance is missing"
+        ]
+    mismatches.extend(dependency_mismatches)
     mismatches.extend(manifest.verify(project))
     return mismatches
