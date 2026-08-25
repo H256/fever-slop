@@ -1,11 +1,29 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import full_auto
+from feverslop.cli import full_auto as canonical_full_auto
 from feverslop.domain.visual_consistency import PreflightMode
 
 
 class FullAutoCliTests(unittest.TestCase):
+    def test_root_cli_is_a_compatibility_facade_for_package_cli(self):
+        self.assertIs(full_auto.build_arg_parser, canonical_full_auto.build_arg_parser)
+        self.assertIs(full_auto.parse_optional_bool, canonical_full_auto.parse_optional_bool)
+        self.assertIs(full_auto.request_from_args, canonical_full_auto.request_from_args)
+
+    @patch("feverslop.cli.full_auto.build_full_auto_use_case")
+    def test_package_cli_runs_full_auto_request(self, build_use_case):
+        args = canonical_full_auto.build_arg_parser().parse_args(
+            ["--idea", "friendship", "--style", "bright pop"],
+        )
+
+        canonical_full_auto.run_full_auto_command(args)
+
+        build_use_case.assert_called_once()
+        build_use_case.return_value.execute.assert_called_once()
+
     def test_parser_accepts_required_idea_style_and_runner_passthrough(self):
         args = full_auto.build_arg_parser().parse_args(
             [
