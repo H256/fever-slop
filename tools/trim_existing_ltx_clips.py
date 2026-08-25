@@ -1,98 +1,31 @@
-from __future__ import annotations
+"""Legacy facade for the packaged LTX clip-trimming CLI."""
 
-import argparse
-import json
 import shutil
 
-from rich.console import Console
-from rich.panel import Panel
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
-from feverslop.domain.postprocessing import TrimSpec
-from feverslop.path_utils import coerce_local_path
+from feverslop.tools import trim_existing_ltx_clips as _cli
 from feverslop.utils.rich_progress import build_progress
-from feverslop.utils.render_plan_selection import parse_scene_list
+from rich.console import Console
 
+__all__ = ["_resolve_ffmpeg_path", "main"]
 console = Console()
 
 
+def _sync_legacy_seams():
+    _cli.shutil = shutil
+    _cli.VideoPostProcessor = VideoPostProcessor
+    _cli.build_progress = build_progress
+    _cli.console = console
+
+
 def _resolve_ffmpeg_path(value: str) -> str:
-    resolved = shutil.which(value)
-    if resolved is None:
-        raise ValueError(f"ffmpeg executable not found or not executable: {value!r}")
-    return resolved
+    _sync_legacy_seams()
+    return _cli._resolve_ffmpeg_path(value)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Trim existing raw LTX clips with rolling-frame parameters.")
-    parser.add_argument("--render-plan", required=True)
-    parser.add_argument("--raw-dir", required=True)
-    parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--preroll-frames", type=int, default=6)
-    parser.add_argument("--ffmpeg", default="ffmpeg")
-    parser.add_argument("--streamcopy", action="store_true")
-    parser.add_argument("--scenes", default=None)
-    args = parser.parse_args()
-
-    render_plan = coerce_local_path(args.render_plan)
-    plan = json.loads(render_plan.read_text(encoding="utf-8"))
-    scene_numbers = parse_scene_list(args.scenes)
-    if scene_numbers:
-        plan = [s for s in plan if int(s["scene"]) in scene_numbers]
-
-    raw_dir = coerce_local_path(args.raw_dir)
-    output_dir = coerce_local_path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    ffmpeg_path = _resolve_ffmpeg_path(args.ffmpeg)
-    processor = VideoPostProcessor(ffmpeg_path=ffmpeg_path, reencode=not args.streamcopy)
-
-    outputs = []
-    manifest = []
-
-    console.print(Panel.fit(
-        f"[bold]Trim Existing LTX Clips[/bold]\n\n"
-        f"Raw: [cyan]{raw_dir}[/cyan]\n"
-        f"Output: [cyan]{output_dir}[/cyan]\n"
-        f"Scenes: [yellow]{len(plan)}[/yellow]\n"
-        f"Preroll: [yellow]{args.preroll_frames}[/yellow]",
-        title="Startup",
-        border_style="cyan",
-    ))
-
-    with build_progress(console=console) as progress:
-        task = progress.add_task("Trimming clips", total=len(plan))
-
-        for scene in plan:
-            scene_no = int(scene["scene"])
-            raw_file = raw_dir / f"scene_{scene_no:04}_raw.mp4"
-            if not raw_file.exists():
-                raw_file = raw_dir / f"scene_{scene_no:04}.mp4"
-            if not raw_file.exists():
-                raise FileNotFoundError(raw_file)
-
-            preroll = 0 if scene_no == 1 else args.preroll_frames
-            output_file = output_dir / f"scene_{scene_no:04}.mp4"
-
-            spec = TrimSpec(
-                source_file=raw_file,
-                output_file=output_file,
-                fps=int(scene["fps"]),
-                trim_front_frames=preroll,
-                keep_frames=int(scene["frame_count"]),
-                scene=scene_no,
-            )
-
-            progress.update(task, description=f"Trimming scene {scene_no:04}")
-            processor.trim_clip(spec)
-            outputs.append(output_file)
-            manifest.append({"scene": scene_no, "raw": str(raw_file), "output": str(output_file), "trim_front_frames": preroll})
-            progress.advance(task)
-
-    concat = processor.write_concat_list(outputs, output_dir / "concat_list.txt")
-    processor.write_manifest(manifest, output_dir / "trim_manifest.json")
-    console.print(f"[green]OK[/green] Trimmed clips: [yellow]{len(outputs)}[/yellow]")
-    console.print(f"[green]OK[/green] Concat list: [cyan]{concat}[/cyan]")
-
+    _sync_legacy_seams()
+    return _cli.main()
 
 if __name__ == "__main__":
     main()

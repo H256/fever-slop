@@ -18,6 +18,14 @@ The repository scripts (`main.py`, `run_pipeline.py`, `movie_pipeline.py`, and
 `full_auto.py`) remain available as compatibility entry points for existing
 automation and documented legacy commands.
 
+The helper commands can also be invoked from their packaged locations:
+
+```bash
+uv run python -m feverslop.tools.normalize_render_plan --help
+uv run python -m feverslop.tools.repair_scene_srt --help
+uv run python -m feverslop.tools.trim_existing_ltx_clips --help
+```
+
 ## CLI Pipeline
 
 Run an existing standard project:
