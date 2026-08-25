@@ -29,6 +29,7 @@ from feverslop.config.project_config import ProjectConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.utils.render_plan_selection import load_render_plan_subset, parse_scene_list
+from feverslop.utils.media_paths import safe_file_stem, write_concat_list as write_media_concat_list
 
 console = Console()
 
@@ -226,18 +227,11 @@ def resolve_rolling_frames(args: argparse.Namespace) -> tuple[int, int, bool]:
 
 def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:
     output_dir = coerce_local_path(output_dir)
-    concat_file = output_dir / "concat_list.txt"
-    with concat_file.open("w", encoding="utf-8") as f:
-        for path in rendered_files:
-            f.write(f"file '{Path(path).resolve().as_posix()}'\n")
-    return concat_file
+    return write_media_concat_list(rendered_files, output_dir / "concat_list.txt")
 
 
 def sanitize_file_stem(value: str | None, fallback: str = "final_concat") -> str:
-    raw = str(value or "").strip() or fallback
-    safe = "".join(char if char.isascii() and (char.isalnum() or char in "._-") else "_" for char in raw)
-    safe = safe.strip("._-")
-    return safe or fallback
+    return safe_file_stem(value, fallback)
 
 
 def final_concat_paths(output_dir: str | Path, project_name: str | None = None) -> tuple[Path, Path]:

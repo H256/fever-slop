@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from feverslop.path_utils import coerce_local_path
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.utils.media_paths import safe_file_stem, write_concat_list as write_media_concat_list
 
 
 @dataclass(frozen=True)
@@ -80,10 +80,7 @@ class PipelineRunState:
 
 
 def convert_to_safe_file_stem(value, fallback: str) -> str:
-    raw = str(value or "").strip() or fallback
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
-    safe = safe.strip("._-")
-    return safe or fallback
+    return safe_file_stem(value, fallback)
 
 
 def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> Path:
@@ -92,12 +89,7 @@ def rewrite_concat_list(rendered_files: list[Path], output_dir: str | Path) -> P
 
 def write_concat_list(rendered_files: list[Path], output_dir: str | Path, filename: str) -> Path:
     output_dir = Path(output_dir)
-    concat_file = output_dir / filename
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with concat_file.open("w", encoding="utf-8") as f:
-        for path in rendered_files:
-            f.write(f"file '{Path(path).resolve().as_posix()}'\n")
-    return concat_file
+    return write_media_concat_list(rendered_files, output_dir / filename)
 
 
 def _validate_render_plan_entries(render_plan: list) -> None:

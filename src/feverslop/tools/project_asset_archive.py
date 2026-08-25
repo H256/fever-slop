@@ -9,6 +9,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from feverslop.path_utils import coerce_local_path
+from feverslop.utils.media_paths import safe_file_stem
 
 ARCHIVES_DIR_NAME = "archives"
 STORYBOARD_RELATIVE_PARTS = ("output", "render", "storyboard")
@@ -51,10 +52,7 @@ def _is_inside_storyboard_dir(path: Path, project_dir: Path) -> bool:
 
 
 def sanitize_file_stem(value: str | None, fallback: str) -> str:
-    raw = str(value or "").strip() or fallback
-    safe = "".join(char if char.isascii() and (char.isalnum() or char in "._-") else "_" for char in raw)
-    safe = safe.strip("._-")
-    return safe or fallback
+    return safe_file_stem(value, fallback)
 
 
 def _is_final_muxed_video(path: Path, project_dir: Path, project_name: str | None) -> bool:
