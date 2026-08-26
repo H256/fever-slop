@@ -9,7 +9,7 @@ class H3TwoPassWorkflowTests(unittest.TestCase):
     def test_generated_profiles_have_native_two_pass_topology(self):
         root = Path(__file__).resolve().parents[1]
         paths = sorted((root / "workflows" / "video" / "minimax_h3").glob("*_two_pass.json"))
-        self.assertEqual(2, len(paths))
+        self.assertEqual(3, len(paths))
         for path in paths:
             with self.subTest(path=path.name):
                 workflow = json.loads(path.read_text(encoding="utf-8"))
