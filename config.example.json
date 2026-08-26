@@ -1,22 +1,20 @@
 {
   "project_name": "forest_song",
-  "input_audio": "input/comfyui_00056_.mp3",
+  "input_audio": "input/song.mp3",
+  "silent_mode": false,
   "lyrics": "",
-  "video_pipeline": "ltx_msr",
-
-  "video": {
-    "fps": 24,
-    "width": 1280,
-    "height": 704,
-    "megapixels": null
-  },
-
+  "video_pipeline": "ltx_i2v",
+  "render_profile": "ltx25-i2v-draft",
+  "reference_generation": "image_views",
+  "subject_mode": "multi",
+  "max_scene_actors": 4,
+  "video": {"fps": 24, "width": 1280, "height": 704, "megapixels": 1.0},
   "workflows": {
-    "video": "workflows/video_ltxv_msr_1actor_1background_v4.json",
-    "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
-    "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
+    "video": "workflows/video/ltx_25/i2v/i2v_draft.json",
+    "reference_hero": "workflows/image_t2i_startframe_v1.json",
+    "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json",
+    "reference_sequence": "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"
   },
-
   "upscale": {
     "enabled": false,
     "workflow_path": "workflows/video_seedvr2_3b_api.json",
@@ -37,72 +35,25 @@
     "color_correction": "none",
     "seed": 0
   },
-
-  "reference_images": {
-    "width": 2048,
-    "height": 1152
-  },
-
-  "audio": {
-    "demucs_model": "htdemucs_ft",
-    "whisper_model": "large",
-    "language": "de"
-  },
-
-  "scene_generation": {
-    "min_duration": 2.0,
-    "max_duration": 10.0,
-    "bias": 0.7,
-    "duration_preset": "impact_weighted",
-    "seed": 42
-  },
-
-  "vocal_detection": {
-    "merge_gap": 0.5,
-    "min_vocal_duration": 0.4,
-    "min_silence_duration": 0.8,
-    "rms_low_percentile": 20,
-    "rms_high_percentile": 85,
-    "rms_ratio": 0.35,
-    "smooth_frames": 10
-  },
-
+  "reference_images": {"width": 2048, "height": 1152},
+  "audio": {"demucs_model": "htdemucs_6s", "whisper_model": "large-v3", "language": "en"},
+  "scene_generation": {"min_duration": 2.0, "max_duration": 10.0, "bias": 0.7, "duration_preset": "impact_weighted", "seed": -1},
+  "vocal_detection": {"merge_gap": 0.5, "min_vocal_duration": 0.4, "min_silence_duration": 0.8, "rms_low_percentile": 20, "rms_high_percentile": 85, "rms_ratio": 0.35, "smooth_frames": 10},
   "story_idea": "",
   "style": "",
+  "music_style": "",
   "subject": "",
-  "locations": [],
-
-  "steering": {
-    "global": "",
-    "story_idea": "",
-    "style": "",
-    "subject": "",
-    "locations": "",
-    "concepts": "",
-    "zimage": "",
-    "ltx": "",
-    "final_prompts": ""
-  },
-
-  "prompt_guidance": {
-    "character_visibility": "",
-    "shot_types": "",
-    "environments": "",
-    "lighting": "",
-    "camera_motion": "",
-    "physical_interaction": "",
-    "facial_expression": "",
-    "outfit_rules": "",
-    "prompt_structure": "",
-    "list_handling": "",
-    "word_count_min": 40,
-    "word_count_max": 50
-  },
-
-  "lora_1": {
-    "enabled": false,
-    "name": "",
-    "strength_model": 1.0,
-    "strength_clip": 1.0
-  }
+  "locations": [{"id": "forest", "name": "Forest clearing", "visual_description": "", "image_prompt": "", "reference_mode": "empty_environment"}],
+  "actors": [{"id": "hero", "name": "Hero", "role": "lead", "visual_description": "", "image_prompt": ""}],
+  "global_assets": {"cast": [], "locations": [], "styles": [], "props": []},
+  "global_cast": [],
+  "global_locations": [],
+  "global_styles": [],
+  "global_props": [],
+  "steering": {"global": "", "story_idea": "", "style": "", "subject": "", "locations": "", "concepts": "", "zimage": "", "ltx": "", "final_prompts": ""},
+  "prompt_guidance": {"character_visibility": "", "shot_types": "", "environments": "", "lighting": "", "camera_motion": "", "physical_interaction": "", "facial_expression": "", "outfit_rules": "", "prompt_structure": "", "list_handling": "", "word_count_min": 40, "word_count_max": 50},
+  "lora_1": {"enabled": false, "name": "", "strength_model": 1.0, "strength_clip": 1.0},
+  "loras": [],
+  "lora_split_enabled": false,
+  "minimax_h3_audio_refs": {"stems": ["vocals", "full_mix"]}
 }
