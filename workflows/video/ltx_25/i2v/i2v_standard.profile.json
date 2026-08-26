@@ -1,0 +1,9 @@
+{
+  "profile_id": "ltx25-i2v-standard",
+  "model_version": "2.5",
+  "mode": "i2v",
+  "quality": "standard",
+  "pass_strategy": "two_pass",
+  "audio_policy": "native_audio_when_declared",
+  "anchor_policy": "start_frame_and_optional_end_frame"
+}

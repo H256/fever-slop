@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Any
 
 from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
+from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import MusicIntent
+from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
@@ -376,7 +378,14 @@ class DspyH3PromptBuilder:
         video_type: str = "music_video",
         audio_paths: dict[str, Path] | None = None,
         reference_root: Path | None = None,
+        structured_sections: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if structured_sections is not None:
+            return self._build_structured_prompt(
+                mode=mode,
+                segment=segment,
+                sections=structured_sections,
+            )
         references, images = _scene_references(
             segment,
             audio_paths,
@@ -480,6 +489,51 @@ class DspyH3PromptBuilder:
             result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
+    @staticmethod
+    def _build_structured_prompt(
+        *,
+        mode: str,
+        segment: dict[str, Any],
+        sections: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Compile planner-owned sections without invoking the legacy prose generator.
+
+        The planner may return JSON-compatible dictionaries; validation is kept at
+        this boundary so backend labels, timing, and locked facts cannot bypass the
+        deterministic compiler contract.
+        """
+        raw_facts = sections.get("facts")
+        facts = (
+            raw_facts
+            if isinstance(raw_facts, LockedSceneFacts)
+            else LockedSceneFacts.model_validate(raw_facts)
+        )
+        from feverslop.prompting.dspy_h3_models import CreativeShotPayload
+
+        shots = [
+            shot if isinstance(shot, CreativeShotPayload) else CreativeShotPayload.model_validate(shot)
+            for shot in sections.get("shots") or []
+        ]
+        windows = sections.get("shot_windows") or {}
+        references = sections.get("references") or {}
+        prompt = DeterministicH3Compiler().compile(
+            mode="base" if str(mode).lower() == "base" else "reference",
+            facts=facts,
+            shots=shots,
+            shot_windows=windows,
+            references=references,
+        )
+        return {
+            "prompt": prompt,
+            "references": sections.get("resolved_references") or [],
+            "segment_id": segment.get("segment_id"),
+            "prompt_provenance": {
+                "compiler": "deterministic_h3_compiler",
+                "compiler_version": 1,
+                "source": "structured_sections",
+            },
+        }
+
     def build_all_h3_prompts(
         self,
         *,
@@ -500,6 +554,7 @@ class DspyH3PromptBuilder:
         generator_revision: dict[str, Any] | None = None,
         preserve_existing_aggregate: bool = False,
         reuse_checkpoints: bool = True,
+        structured_sections_by_segment: dict[str, dict[str, Any]] | None = None,
     ) -> Path:
         set_warning_callback = getattr(self.generator, "set_warning_callback", None)
         if callable(set_warning_callback):
@@ -545,6 +600,7 @@ class DspyH3PromptBuilder:
                     video_type=video_type,
                     audio_paths=audio_paths,
                     reference_root=reference_root,
+                    structured_sections=(structured_sections_by_segment or {}).get(segment_id),
                 )
                 if checkpoint_store is not None and checkpoint_input is not None:
                     checkpoint_store.save(checkpoint_input, result)

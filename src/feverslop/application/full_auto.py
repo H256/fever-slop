@@ -78,6 +78,7 @@ class FullAutoUseCase:
             height=int(request.height),
             fps=int(request.fps),
             video_pipeline=str(request.runner_options.get("video_pipeline") or "ltx_i2v"),
+            render_profile=str(request.runner_options.get("render_profile") or "ltx25-i2v-draft"),
             silent_mode=bool(request.silent_mode),
         )
         self.log_file("Project config", scaffold.project_config_path)

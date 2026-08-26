@@ -67,6 +67,19 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertIsNotNone(reused)
         self.assertEqual(result, reused.generated)
 
+    def test_save_persists_structured_payload_and_compiler_fingerprints(self):
+        result = {
+            "prompt": "compiled prompt",
+            "prompt_provenance": {"compiler": "deterministic_h3_compiler", "compiler_version": 1},
+            "creative_sections": {"shots": [{"shot_id": "shot-1", "visible_action": "turn"}]},
+            "locked_facts": {"scene_id": "segment-a", "facts": [{"key": "wardrobe", "value": "cloak"}]},
+        }
+        saved = self.store.save(self.request(), result)
+        provenance = json.loads(saved.path.read_text(encoding="utf-8"))["provenance"]
+        self.assertEqual("deterministic_h3_compiler", provenance["compiler"])
+        self.assertTrue(provenance["creative_sections_sha256"].startswith("sha256:"))
+        self.assertTrue(provenance["locked_facts_sha256"].startswith("sha256:"))
+
     def test_exhausted_bad_and_unjudged_results_have_distinct_statuses(self):
         bad = self.store.save(
             self.request(),

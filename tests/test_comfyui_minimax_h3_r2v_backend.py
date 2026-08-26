@@ -721,6 +721,33 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertIn("Continuity anchor: <Picture 3>", result["40"]["inputs"]["value"])
         self.assertIn("previous scene", result["40"]["inputs"]["value"])
 
+    def test_uses_only_verified_boundary_manifest_anchor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            frame = project / "output" / "scene_0001" / "lastframe.png"
+            clip = project / "output" / "scene_0001" / "final.mp4"
+            frame.parent.mkdir(parents=True)
+            frame.write_bytes(b"frame")
+            clip.write_bytes(b"clip")
+            digest = __import__("hashlib").sha256
+            backend = ComfyUIMiniMaxH3R2VBackend(
+                client=FakeClient(), workflow_path=Path("wf.json"), output_dir=project / "out",
+                project_dir=project, workflow=_native_r2v_workflow(), asset_uploader=FakeAssetUploader(),
+            )
+            scene = {"keyframes": {"boundary_frame_manifest": {
+                "source_clip_path": "output/scene_0001/final.mp4",
+                "source_clip_sha256": digest(b"clip").hexdigest(),
+                "frame_index": 10,
+                "extractor_revision": "last-frame-v2",
+                "frame_path": "output/scene_0001/lastframe.png",
+                "frame_sha256": digest(b"frame").hexdigest(),
+            }}}
+            self.assertEqual(frame, backend._resolve_continuity_anchor_path(scene))
+
+            frame.write_bytes(b"stale")
+            with self.assertRaisesRegex(ValueError, "boundary frame"):
+                backend._resolve_continuity_anchor_path(scene)
+
     def test_seed_set(self):
         backend = self._backend(workflow=_native_r2v_workflow())
         backend.seed_offset = 50000
@@ -1224,7 +1251,7 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
         self.assertIn("aud789", result["64"]["inputs"]["audio"])
 
     def test_production_audio_workflow_adds_stem_loaders_and_trims(self):
-        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / "r2v_audio_v1.json"
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
         backend = self._backend(workflow=workflow)
 
@@ -1267,7 +1294,7 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
         self.assertEqual([full_mix], result)
 
     def test_audio_wiring_does_not_mutate_generated_prompt(self):
-        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / "r2v_audio_v1.json"
         backend = self._backend(workflow=json.loads(workflow_path.read_text(encoding="utf-8")))
         generated_prompt = """subject_definitions:
 <Subject 1> (Bard): A singer.
@@ -1392,7 +1419,7 @@ non_diegetic_music: N/A"""},
         backend._validate_scene(scene)
 
     def test_production_audio_workflow_maps_reference_audio_from_slot_zero(self):
-        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / "r2v_audio_v1.json"
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
         backend = self._backend(workflow=workflow)
 
