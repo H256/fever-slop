@@ -52,6 +52,33 @@ def resolve_project_render_settings(
         "ltx_msr": "msr_workflow",
         "ltx_ingredients": "ingredients_workflow",
     }.get(video_pipeline, "single_prompt_workflow")
+    pipeline_defaults = {
+        "minimax-h3-r2v": "workflows/video/minimax_h3/r2v_audio_two_pass.json",
+        "minimax-h3-t2v": "workflows/video/minimax_h3/t2v_two_pass.json",
+    }
+    pipeline_default = pipeline_defaults.get(video_pipeline)
+    if pipeline_default and config.workflows.video is None and video_target not in explicit:
+        profile_path = resolve_runner_path(pipeline_default).resolve()
+        video_selection = WorkflowSelection.from_path(profile_path, root=runner_root())
+        overrides[video_target] = str(profile_path)
+    if config.workflows.video is None and not pipeline_default and config.render_profile.startswith("ltx25-"):
+        profile_parts = config.render_profile.split("-")
+        if len(profile_parts) == 3 and profile_parts[1] in {"t2v", "i2v", "r2v", "msr", "ingredients"} and profile_parts[2] in {"draft", "standard", "final"}:
+            mode, quality = profile_parts[1], profile_parts[2]
+            profile_path = runner_root() / "workflows" / "video" / "ltx_25" / mode / f"{mode}_{quality}.json"
+            if profile_path.exists() and video_target not in explicit:
+                manifest_path = runner_root() / "workflows" / "video" / "ltx_25" / "capabilities.json"
+                manifest = WorkflowCapabilityManifest.create(
+                    **json.loads(manifest_path.read_text(encoding="utf-8"))
+                )
+                validation = manifest.validate_workflow_payload(
+                    json.loads(profile_path.read_text(encoding="utf-8-sig"))
+                )
+                if not validation.ok:
+                    missing = ", ".join((*validation.missing_models, *validation.missing_nodes))
+                    raise ValueError(f"LTX 2.5 workflow capability validation failed: {missing}")
+                video_selection = WorkflowSelection.from_path(profile_path.resolve(), root=runner_root())
+                overrides[video_target] = str(profile_path.resolve())
     if config.workflows.video is not None and video_target not in explicit:
         video_path = resolve_runner_path(config.workflows.video).resolve()
         video_selection = WorkflowSelection.from_path(video_path, root=runner_root())
