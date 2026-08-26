@@ -258,9 +258,18 @@ def _build_resume_plan(
             "render", render_action, render_reason, number, "ltx_render_scenes",
         ))
 
+    partial_selection = requested is not None and len(requested) < len(desired_base)
     assembly_run = any_render or not layout.movie.is_file()
-    assembly_action = PlanAction.RUN if assembly_run else PlanAction.REUSE
-    assembly_reason = "scene render changed" if any_render else "final movie missing" if assembly_run else "final movie exists"
+    assembly_action = PlanAction.RUN if assembly_run and not partial_selection else PlanAction.REUSE
+    assembly_reason = (
+        "partial scene selection; final assembly deferred"
+        if partial_selection
+        else "scene render changed"
+        if any_render
+        else "final movie missing"
+        if assembly_run
+        else "final movie exists"
+    )
     for phase, stage in (
         ("assemble video", "concat_video_only"),
         ("mux audio", "mux_original_audio"),

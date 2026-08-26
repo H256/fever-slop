@@ -510,6 +510,18 @@ class ResumePlanTests(unittest.TestCase):
         self.assertEqual(PlanAction.NOT_SELECTED, excluded.action)
         self.assertEqual((2,), plan.runnable_scenes)
 
+    def test_partial_scene_selection_defers_global_assembly(self):
+        self._write_base_and_derived(2)
+
+        plan = build_resume_plan(self.project, video_pipeline="ltx_msr", selected_scenes={1})
+
+        self.assertNotIn("concat_video_only", plan.runnable_stages)
+        self.assertNotIn("mux_original_audio", plan.runnable_stages)
+        self.assertNotIn("export_timeline", plan.runnable_stages)
+        assembly = [item for item in plan.items if item.phase == "assemble video"]
+        self.assertEqual(PlanAction.REUSE, assembly[0].action)
+        self.assertIn("partial", assembly[0].reason)
+
     def test_unknown_scene_selection_blocks_before_assembly(self):
         self._write_base_and_derived(2)
 
