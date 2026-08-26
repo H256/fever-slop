@@ -48,12 +48,16 @@ def build(template: Path, output: Path, *, audio: bool = False) -> None:
     sampler_inputs["sampler"] = [pass1_sampler, 0]
     sampler_inputs["sigmas"] = [pass1_scheduler, 0]
     separate = _node(workflow, "LTXVSeparateAVLatent", "#SEPARATE_AV", {"av_latent": [sampler_id, 0]})
-    scale = _node(workflow, "PrimitiveFloat", "#LATENT_UPSCALE_SCALE", {"value": 2.0})
+    # Keep the template's node numbering stable for existing debug artifacts.
+    _node(workflow, "PrimitiveFloat", "#LATENT_UPSCALE_SCALE", {"value": 2.0})
     upscale = _node(workflow, "MinimaxH3LatentUpscaler3D", "#LATENT_UPSCALE", {
         "latent": [separate, 0],
         "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
         "mode": "scale by multiplier",
-        "scale": [scale, 0],
+        # The native H3 node expects this required input as a literal value.
+        # A PrimitiveFloat link is serialized correctly but is rejected by
+        # some installed node versions during API prompt validation.
+        "scale": 2.0,
         "align": 32,
         "enable_chunking": False,
         "device": "cuda",
