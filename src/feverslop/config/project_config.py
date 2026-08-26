@@ -457,7 +457,17 @@ class ProjectConfig:
         if subject_mode not in {"single", "multi"}:
             raise ValueError("subject_mode must be 'single' or 'multi'")
         video_pipeline = str(raw.get("video_pipeline", "ltx_i2v") or "ltx_i2v").strip()
-        render_profile = str(raw.get("render_profile", "ltx25-i2v-draft") or "ltx25-i2v-draft").strip().lower()
+        raw_render_profile = raw.get("render_profile", "ltx25-i2v-draft")
+        if isinstance(raw_render_profile, dict):
+            quality = str(raw_render_profile.get("quality", "draft") or "draft").strip().lower()
+            mode_by_pipeline = {
+                "ltx_i2v": "i2v", "ltx_msr": "msr", "ltx_ingredients": "ingredients",
+                "minimax-h3-r2v": "r2v", "minimax-h3-t2v": "t2v",
+            }
+            mode = mode_by_pipeline.get(video_pipeline, "i2v")
+            render_profile = f"ltx25-{mode}-{quality}"
+        else:
+            render_profile = str(raw_render_profile or "ltx25-i2v-draft").strip().lower()
         reference_generation = str(raw.get("reference_generation", "image_views") or "image_views").strip()
         if reference_generation not in {"image_views", "sequence_sheet"}:
             raise ValueError("reference_generation must be 'image_views' or 'sequence_sheet'")
