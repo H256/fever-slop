@@ -21,6 +21,24 @@ class PromptJudgeResult(BaseModel):
     verdict: Literal["good", "bad"]
     issues: list[str] = Field(default_factory=list)
     repair_instruction: str = ""
+    field_issues: list["CreativeFieldIssue"] = Field(default_factory=list)
+
+
+class CreativeFieldIssue(BaseModel):
+    """Addressable judge feedback for one mutable creative shot field."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_id: str = Field(min_length=1)
+    field: Literal[
+        "visible_action",
+        "performance",
+        "camera_behavior",
+        "environmental_motion",
+        "transition_intent",
+    ]
+    issue_code: str = Field(min_length=1)
+    repair_instruction: str = Field(min_length=1)
 
 
 class ReferenceKind(str, Enum):

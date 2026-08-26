@@ -10,8 +10,8 @@ from feverslop.domain.cutless_boundaries import (
     validate_cutless_chain,
 )
 from feverslop.adapters.cutless_assembly import CutlessAssemblyService
-from feverslop.prompting.dspy_h3_models import PromptPlan
-from feverslop.prompting.creative_field_repair import repair_creative_fields
+from feverslop.prompting.dspy_h3_models import CreativeShotPayload, PromptJudgeResult, PromptPlan
+from feverslop.prompting.creative_field_repair import repair_creative_fields, repair_creative_payloads
 
 
 class ContinuationContractsTests(unittest.TestCase):
@@ -25,6 +25,30 @@ class ContinuationContractsTests(unittest.TestCase):
         validate_cutless_chain([CutlessBoundary("s1", "s2", digest)], ["s1", "s2"])
         self.assertEqual({"camera": "pan", "action": "walk"}, repair_creative_fields(
             {"camera": "shake", "action": "walk"}, ["camera"], {"camera": "pan"}))
+
+    def test_repairs_only_addressed_creative_payload_fields(self):
+        payload = CreativeShotPayload(
+            shot_id="shot-0001", visible_action="walks", performance="calm", camera_behavior="shake",
+        )
+        repaired = repair_creative_payloads(
+            [payload],
+            [{"shot_id": "shot-0001", "field": "camera_behavior", "issue_code": "camera.invalid", "repair_instruction": "Use a slow pan."}],
+            {("shot-0001", "camera_behavior"): "slow pan"},
+        )
+        self.assertEqual("slow pan", repaired[0].camera_behavior)
+        self.assertEqual("walks", repaired[0].visible_action)
+        self.assertEqual("calm", repaired[0].performance)
+
+    def test_judge_can_describe_field_addressable_issues(self):
+        result = PromptJudgeResult(
+            verdict="bad",
+            field_issues=[{
+                "shot_id": "shot-0001", "field": "camera_behavior",
+                "issue_code": "camera.invalid", "repair_instruction": "Use a slow pan.",
+            }],
+        )
+        self.assertEqual("shot-0001", result.field_issues[0].shot_id)
+        self.assertEqual("camera.invalid", result.field_issues[0].issue_code)
 
     def test_cutless_plan_trims_only_proven_duplicate_boundary_frame(self):
         digest = "a" * 64
