@@ -504,10 +504,7 @@
       ],
       "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
       "mode": "scale by multiplier",
-      "scale": [
-        "161",
-        0
-      ],
+      "scale": 2.0,
       "align": 32,
       "enable_chunking": false,
       "device": "cuda",
