@@ -608,9 +608,9 @@ def _run_ingredients_workflow(
             workflow_profile=Path(
                 config.get(
                     "ingredients_workflow",
-                    "workflows/video_ltxv_ingredients_2stage_v6.json",
+                    "workflows/video/ltx_25/ingredients/ingredients_draft.json",
                 )
-                or "workflows/video_ltxv_ingredients_2stage_v6.json",
+                or "workflows/video/ltx_25/ingredients/ingredients_draft.json",
             ).stem,
         )
     elif not render_plan_ingredients_path.exists():
@@ -705,9 +705,9 @@ def _run_msr_workflow(
             workflow_profile=Path(
                 config.get(
                     "ingredients_workflow",
-                    "workflows/video_ltxv_ingredients_2stage_v6.json",
+                    "workflows/video/ltx_25/ingredients/ingredients_draft.json",
                 )
-                or "workflows/video_ltxv_ingredients_2stage_v6.json",
+                or "workflows/video/ltx_25/ingredients/ingredients_draft.json",
             ).stem,
         )
 
@@ -876,7 +876,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
     ltx_dir = project_dir / "output" / "movie" / "ltx_ingredients"
     backend = ComfyUIIngredientsVideoRenderBackend(
         client=client,
-        workflow_path=config.get("ingredients_workflow", "workflows/video_ltxv_ingredients_2stage_v6.json"),
+        workflow_path=config.get("ingredients_workflow", "workflows/video/ltx_25/ingredients/ingredients_draft.json"),
         output_dir=ltx_dir,
         project_dir=project_dir,
         model_resolver=model_resolver,
@@ -884,9 +884,9 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
         workflow_profile=Path(
             config.get(
                 "ingredients_workflow",
-                "workflows/video_ltxv_ingredients_2stage_v6.json",
+                "workflows/video/ltx_25/ingredients/ingredients_draft.json",
             )
-            or "workflows/video_ltxv_ingredients_2stage_v6.json",
+            or "workflows/video/ltx_25/ingredients/ingredients_draft.json",
         ).stem,
     )
     return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
