@@ -128,12 +128,17 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         """
         self._validate_scene(scene)
         scene_number = int(scene.get("scene", 0))
+        continuity_manifest = self._continuity_manifest(scene)
         continuity_anchor = self._resolve_continuity_anchor_path(scene)
         if continuity_anchor:
             scene = dict(scene)
             keyframes = dict(scene.get("keyframes") or {})
             keyframes["continuity_anchor_path"] = continuity_anchor.as_posix()
             scene["keyframes"] = keyframes
+            if continuity_manifest is not None:
+                refs = list(ref_image_paths or [])
+                refs = [path for path in refs if Path(path).resolve() != continuity_anchor]
+                ref_image_paths = [*refs[: self.MAX_REF_IMAGES - 1], continuity_anchor]
 
         patcher = WorkflowPatcher(self.load_workflow())
 
@@ -157,6 +162,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- prompt -----------------------------------------------------------
         resolved_prompt = self._append_continuity_anchor_prompt(
             str(prompt).strip(), scene, len(ref_image_paths or []),
+            manifest=continuity_manifest,
         )
         patcher.set_input_by_title("#PROMPT", "value", resolved_prompt)
 
@@ -213,42 +219,50 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         prompt: str,
         scene: dict,
         reference_count: int,
+        *,
+        manifest: BoundaryFrameManifest | None = None,
     ) -> str:
         """Declare the reserved final R2V image slot as a prior-scene anchor."""
-        keyframes = scene.get("keyframes") or {}
-        if not keyframes.get("continuity_anchor_path") or reference_count < 1:
+        if manifest is None or reference_count < 1:
             return prompt
+        return f"{prompt}\n\n{ComfyUIMiniMaxH3R2VBackend._compile_continuity_start_state(manifest, picture_slot=reference_count)}".strip()
+
+    @staticmethod
+    def _compile_continuity_start_state(
+        manifest: BoundaryFrameManifest,
+        *,
+        picture_slot: int,
+    ) -> str:
+        """Compile deterministic H3 instructions from a verified boundary."""
         return (
-            f"{prompt}\n\nContinuity anchor: <Picture {reference_count}> is the final frame "
-            "from the previous scene. Preserve its established composition, subject identity, "
-            "spatial layout, lighting, and motion direction at the start of this scene."
-        ).strip()
+            f"Start state: <Picture {picture_slot}> is the verified predecessor boundary "
+            f"frame {manifest.frame_index} from extractor {manifest.extractor_revision}. "
+            "Preserve composition, subject identity, spatial layout, lighting, "
+            "and motion direction."
+        )
+
+    def _continuity_manifest(self, scene: dict) -> BoundaryFrameManifest | None:
+        payload = (scene.get("keyframes") or {}).get("boundary_frame_manifest")
+        if payload is None:
+            transition = (scene.get("visual_consistency") or {}).get("transition_from_previous")
+            if transition == "continuous" and int(scene.get("scene") or 0) > 1:
+                raise ValueError("continuous H3 successor requires a verified boundary frame manifest")
+            return None
+        return BoundaryFrameManifest.from_dict(payload)
 
     def _resolve_continuity_anchor_path(self, scene: dict) -> Path | None:
-        keyframes = scene.get("keyframes") or {}
-        boundary_payload = keyframes.get("boundary_frame_manifest")
-        if boundary_payload is not None:
-            manifest = BoundaryFrameManifest.from_dict(boundary_payload)
-            if self.project_dir is None:
-                raise ValueError("verified boundary frame requires a project directory")
-            frame = self._resolve_project_path(manifest.frame_path)
-            source_clip = self._resolve_project_path(manifest.source_clip_path)
-            if not frame.is_file() or sha256_file(frame) != manifest.frame_sha256:
-                raise ValueError("verified boundary frame is missing or stale")
-            if not source_clip.is_file() or sha256_file(source_clip) != manifest.source_clip_sha256:
-                raise ValueError("verified boundary source clip is missing or stale")
-            return frame
-        explicit = keyframes.get("continuity_anchor_path")
-        if explicit:
-            return self._resolve_project_path(explicit)
-
-        transition = (scene.get("visual_consistency") or {}).get("transition_from_previous")
-        scene_number = int(scene.get("scene") or 0)
-        output_dir = getattr(self, "output_dir", None)
-        if transition != "continuous" or scene_number <= 1 or output_dir is None:
+        manifest = self._continuity_manifest(scene)
+        if manifest is None:
             return None
-        candidate = Path(output_dir) / f"scene_{scene_number - 1:04}" / "lastframe.png"
-        return candidate if candidate.is_file() else None
+        if self.project_dir is None:
+            raise ValueError("verified boundary frame requires a project directory")
+        frame = self._resolve_project_path(manifest.frame_path)
+        source_clip = self._resolve_project_path(manifest.source_clip_path)
+        if not frame.is_file() or sha256_file(frame) != manifest.frame_sha256:
+            raise ValueError("verified boundary frame is missing or stale")
+        if not source_clip.is_file() or sha256_file(source_clip) != manifest.source_clip_sha256:
+            raise ValueError("verified boundary source clip is missing or stale")
+        return frame
 
     def render_video(self, request: VideoRenderRequest) -> Path:
         """Complete render flow for one R2V scene."""
@@ -966,6 +980,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     def _resolve_ref_image_paths(self, scene: dict) -> list[Path]:
         """Extract and resolve reference image paths from a scene dict."""
+        self._continuity_manifest(scene)
         references = scene.get("references") or {}
 
         actor_paths = (

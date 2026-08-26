@@ -10,6 +10,7 @@ from feverslop.adapters.comfyui_minimax_h3_r2v_backend import (
     ComfyUIMiniMaxH3R2VBackend,
 )
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
@@ -707,19 +708,22 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertEqual("scene_0003/raw", result["70"]["inputs"]["filename_prefix"])
 
     def test_marks_last_reference_as_continuity_anchor(self):
-        backend = self._backend(workflow=_native_r2v_workflow())
-        result = backend.build_workflow(
-            {
-                "scene": 3,
-                "references": {"actor_sheet_paths": ["refs/actor.png"]},
-                "keyframes": {"continuity_anchor_path": "keyframes/scene_0002_last.png"},
-            },
-            prompt="cinematic shot",
-            ref_image_paths=["/tmp/actor.png", "/tmp/loc.png", "/tmp/scene_0002_last.png"],
+        manifest = BoundaryFrameManifest.create(
+            source_clip_path="output/scene_0002/final.mp4",
+            source_clip_sha256="a" * 64,
+            frame_index=120,
+            extractor_revision="last-frame-v1",
+            frame_path="output/scene_0002/lastframe.png",
+            frame_sha256="b" * 64,
         )
-
-        self.assertIn("Continuity anchor: <Picture 3>", result["40"]["inputs"]["value"])
-        self.assertIn("previous scene", result["40"]["inputs"]["value"])
+        result = ComfyUIMiniMaxH3R2VBackend._append_continuity_anchor_prompt(
+            "cinematic shot",
+            {"keyframes": {"continuity_anchor_path": "ignored"}},
+            3,
+            manifest=manifest,
+        )
+        self.assertIn("Start state: <Picture 3>", result)
+        self.assertIn("frame 120", result)
 
     def test_uses_only_verified_boundary_manifest_anchor(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -747,6 +751,38 @@ class BuildWorkflowTests(unittest.TestCase):
             frame.write_bytes(b"stale")
             with self.assertRaisesRegex(ValueError, "boundary frame"):
                 backend._resolve_continuity_anchor_path(scene)
+
+    def test_continuous_successor_requires_verified_manifest(self):
+        backend = object.__new__(ComfyUIMiniMaxH3R2VBackend)
+        backend.project_dir = Path("E:/project")
+        backend.output_dir = Path("E:/project/output")
+
+        with self.assertRaisesRegex(ValueError, "verified boundary frame manifest"):
+            backend._resolve_ref_image_paths({
+                "scene": 2,
+                "references": {"actor_msr_paths": ["refs/actor.png"]},
+                "visual_consistency": {"transition_from_previous": "continuous"},
+            })
+
+    def test_compiles_manifest_start_state_for_reserved_picture_slot(self):
+        manifest = {
+            "source_clip_path": "output/scene_0001/final.mp4",
+            "source_clip_sha256": "a" * 64,
+            "frame_index": 47,
+            "extractor_revision": "last-frame-v1",
+            "frame_path": "output/scene_0001/lastframe.png",
+            "frame_sha256": "b" * 64,
+        }
+        instruction = ComfyUIMiniMaxH3R2VBackend._compile_continuity_start_state(
+            BoundaryFrameManifest.from_dict(manifest),
+            picture_slot=3,
+        )
+        self.assertEqual(
+            "Start state: <Picture 3> is the verified predecessor boundary "
+            "frame 47 from extractor last-frame-v1. Preserve composition, "
+            "subject identity, spatial layout, lighting, and motion direction.",
+            instruction,
+        )
 
     def test_seed_set(self):
         backend = self._backend(workflow=_native_r2v_workflow())
@@ -1008,7 +1044,7 @@ class RenderVideoTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class ResolveRefImagePathsTests(unittest.TestCase):
-    def test_resolves_continuity_anchor_after_declared_reference_images(self):
+    def test_ignores_unverified_legacy_anchor_path(self):
         backend = object.__new__(ComfyUIMiniMaxH3R2VBackend)
         backend.project_dir = Path("E:/project")
 
@@ -1021,15 +1057,11 @@ class ResolveRefImagePathsTests(unittest.TestCase):
         })
 
         self.assertEqual(
-            [
-                Path("E:/project/refs/actor.png"),
-                Path("E:/project/refs/location.png"),
-                Path("E:/project/keyframes/scene_0001_last.png"),
-            ],
+            [Path("E:/project/refs/actor.png"), Path("E:/project/refs/location.png")],
             paths,
         )
 
-    def test_uses_previous_scene_lastframe_for_continuous_transition(self):
+    def test_rejects_unverified_previous_scene_lastframe_for_continuous_transition(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
             previous_frame = output_dir / "scene_0002" / "lastframe.png"
@@ -1039,16 +1071,12 @@ class ResolveRefImagePathsTests(unittest.TestCase):
             backend.project_dir = output_dir
             backend.output_dir = output_dir
 
-            paths = backend._resolve_ref_image_paths({
-                "scene": 3,
-                "references": {"actor_msr_paths": ["refs/actor.png"]},
-                "visual_consistency": {"transition_from_previous": "continuous"},
-            })
-
-            self.assertEqual(
-                output_dir / "scene_0002" / "lastframe.png",
-                paths[-1],
-            )
+            with self.assertRaisesRegex(ValueError, "verified boundary frame manifest"):
+                backend._resolve_ref_image_paths({
+                    "scene": 3,
+                    "references": {"actor_msr_paths": ["refs/actor.png"]},
+                    "visual_consistency": {"transition_from_previous": "continuous"},
+                })
 
     def test_actors_and_location(self):
         backend = ComfyUIMiniMaxH3R2VBackend(
