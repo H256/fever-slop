@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import hashlib
+import json
 from math import isfinite
 from numbers import Real
 from pathlib import PurePosixPath, PureWindowsPath
@@ -181,3 +183,71 @@ class RenderProfileRegistry:
                 f"render profile '{key}' lacks capabilities: {', '.join(missing)}"
             )
         return entry
+
+
+@dataclass(frozen=True)
+class RenderProfileResolution:
+    """The fully resolved, fingerprintable render-profile provenance."""
+
+    requested_profile_id: str
+    entry: RegisteredRenderProfile
+    workflow_sha256: str
+    model_assets: tuple[str, ...]
+    fingerprint: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        requested_profile_id: str,
+        entry: RegisteredRenderProfile,
+        workflow_sha256: str,
+        model_assets: Any = (),
+    ) -> RenderProfileResolution:
+        requested = str(requested_profile_id).strip().lower()
+        if not requested:
+            raise RenderProfileSchemaError("requested_profile_id is required")
+        digest = str(workflow_sha256).strip().lower()
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            raise RenderProfileSchemaError("workflow_sha256 must be a SHA-256 hex digest")
+        if not isinstance(entry, RegisteredRenderProfile):
+            raise RenderProfileSchemaError("entry must be a RegisteredRenderProfile")
+        try:
+            assets = tuple(sorted({str(asset).strip() for asset in model_assets}))
+        except TypeError as exc:
+            raise RenderProfileSchemaError("model_assets must be iterable") from exc
+        if any(not asset for asset in assets):
+            raise RenderProfileSchemaError("model asset names cannot be blank")
+        semantic = {
+            "requested_profile_id": requested,
+            "profile": entry.profile.to_dict(),
+            "workflow_path": entry.workflow_path,
+            "workflow_sha256": digest,
+            "model_assets": list(assets),
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(semantic, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return cls(
+            requested_profile_id=requested,
+            entry=entry,
+            workflow_sha256=digest,
+            model_assets=assets,
+            fingerprint=fingerprint,
+        )
+
+    @property
+    def profile(self) -> RenderProfile:
+        return self.entry.profile
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "requested_profile_id": self.requested_profile_id,
+            "resolved_profile_id": self.profile.profile_id,
+            "profile": self.profile.to_dict(),
+            "workflow_path": self.entry.workflow_path,
+            "workflow_sha256": self.workflow_sha256,
+            "capabilities": list(self.profile.capabilities),
+            "model_assets": list(self.model_assets),
+            "fingerprint": self.fingerprint,
+        }
