@@ -22,6 +22,7 @@
   "execution": {
     "vram_handoff": "continuous"
   },
+  "global_library_path": "~/.feverslop/library",
   "video_workflow_profiles": [
     {
       "name": "ingredients-final-v5-provisional",
@@ -36,5 +37,14 @@
       "default": true
     }
   ],
-  "storyboard_prompt_transforms": []
+  "storyboard_prompt_transforms": [
+    {
+      "workflow": "workflows/image_t2i_startframe_v1.json",
+      "kind": "template",
+      "template": "",
+      "positive_prompt_input": "text",
+      "debug_dir": "storyboard_prompt_debug",
+      "max_words": 150
+    }
+  ]
 }
