@@ -1,0 +1,7 @@
+{
+  "profile_id": "ltx25-t2v-draft",
+  "model_version": "2.5",
+  "quality": "draft",
+  "pass_strategy": "two_pass",
+  "audio_policy": "native_audio_when_declared"
+}
