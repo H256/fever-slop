@@ -126,6 +126,7 @@ def apply_h3_two_pass_patch(workflow: Mapping[str, Any], spec: H3TwoPassSpec) ->
         raise TypeError("spec must be an H3TwoPassSpec")
     result = {str(node_id): dict(node) for node_id, node in workflow.items()}
     validate_audio_latent_preservation(result, spec)
+    validate_h3_two_pass_topology(result, spec)
     by_title = {
         str(node.get("_meta", {}).get("title")): node
         for node in result.values()
@@ -219,3 +220,30 @@ def validate_audio_latent_preservation(
             "audio latent branch must bypass spatial upscale; offending nodes: "
             + ", ".join(sorted(forbidden))
         )
+
+
+def validate_h3_two_pass_topology(
+    workflow: Mapping[str, Any], spec: H3TwoPassSpec,
+) -> None:
+    """Validate the structural nodes required by native H3 latent refinement."""
+    if not isinstance(spec, H3TwoPassSpec):
+        raise TypeError("spec must be an H3TwoPassSpec")
+    nodes = list(workflow.values())
+    titles = {
+        str(node.get("_meta", {}).get("title"))
+        for node in nodes
+        if node.get("_meta", {}).get("title")
+    }
+    spec.validate_workflow_anchors(titles)
+    classes = {str(node.get("class_type", "")) for node in nodes}
+    required_groups = {
+        "AV latent separation": {"MiniMaxH3AVLatentSeparateT8", "MiniMaxH3AVLatentSeparate"},
+        "learned video latent upscale": {"VRGDG_MiniMaxH3LearnedLatentUpscale", "MiniMaxH3LatentUpscale"},
+        "AV latent recombination": {"VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent", "MiniMaxH3ReplaceUpscaledVideoLatent"},
+    }
+    missing = [name for name, aliases in required_groups.items() if not classes.intersection(aliases)]
+    if missing:
+        raise H3TwoPassSchemaError("workflow is missing H3 two-pass topology: " + ", ".join(missing))
+    sampler_count = sum(node.get("class_type") == "SamplerCustomAdvanced" for node in nodes)
+    if sampler_count < 2:
+        raise H3TwoPassSchemaError("workflow must contain separate sampler nodes for pass 1 and pass 2")
