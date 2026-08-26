@@ -4,16 +4,16 @@ This tracked project is the stable input fixture for video-profile, prompting,
 continuation, and rendering comparisons. Generated plans and media remain
 untracked.
 
-## Add the benchmark song
+## Benchmark song
 
-1. Copy the final one-minute MP3 to `input/song.mp3`.
-2. Add the complete lyrics to the `lyrics` field in `config.json`.
-3. Complete `asset-provenance.json`, including the MP3 SHA-256 and the rights
-   information required for repository redistribution.
-4. Keep the original MP3 unchanged after its hash has been recorded.
+The fixed input is `input/the-parts-they-left.mp3`. The complete lyrics are
+stored in the `lyrics` field of `config.json`; the musical coverage contract is
+stored in `benchmark.json`.
 
-The project intentionally contains no placeholder audio. Until the real song
-is added, pipeline commands should fail with a missing-input-audio diagnostic.
+The technical MP3 metadata and SHA-256 are recorded in
+`asset-provenance.json`. Complete its remaining rights fields before treating
+the binary as release-ready. Keep the MP3 unchanged after its hash has been
+recorded.
 
 ## Run
 

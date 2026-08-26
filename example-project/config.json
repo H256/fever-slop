@@ -1,5 +1,6 @@
 {
   "project_name": "feverslop-quality-benchmark",
-  "input_audio": "input/song.mp3",
-  "lyrics": ""
+  "input_audio": "input/the-parts-they-left.mp3",
+  "lyrics": "[Verse]\nPixels dance on my retina\nThey sold me “perfect” in a feed\nBut the seams keep showing through it\nLittle glitches I can’t unsee\n\n[Chorus]\nSo I blink and the frame shakes loose\nWhat looked so clean starts cutting through\nIf this is all there is to hold\nI want the parts they left uncontrolled",
+  "music_style": "symphonic power metal, gothic metal ballad, medieval folk metal, 168 BPM, half-time pulse, double-kick drums, twin-guitar harmonies, tolling toms, electric violin, operatic choir, male lead vocals, organ drones, plate reverb, analog saturation, cinematic strings, minor key, anthemic sorrow, dark grandeur"
 }
