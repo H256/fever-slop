@@ -47,16 +47,20 @@ def build(template: Path, output: Path, *, audio: bool = False) -> None:
     sampler_inputs = sampler.setdefault("inputs", {})
     sampler_inputs["sampler"] = [pass1_sampler, 0]
     sampler_inputs["sigmas"] = [pass1_scheduler, 0]
-    separate = _node(workflow, "MiniMaxH3AVLatentSeparateT8", "#SEPARATE_AV", {"av_latent": [sampler_id, 0]})
+    separate = _node(workflow, "LTXVSeparateAVLatent", "#SEPARATE_AV", {"av_latent": [sampler_id, 0]})
     scale = _node(workflow, "PrimitiveFloat", "#LATENT_UPSCALE_SCALE", {"value": 2.0})
-    upscale_model = _node(workflow, "VRGDG_MiniMaxH3LatentUpscaleModelLoader", "#LATENT_UPSCALE_MODEL", {
-        "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors", "device": "cuda", "precision": "bf16",
+    upscale = _node(workflow, "MinimaxH3LatentUpscaler3D", "#LATENT_UPSCALE", {
+        "latent": [separate, 0],
+        "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        "mode": "scale by multiplier",
+        "scale": [scale, 0],
+        "align": 32,
+        "enable_chunking": False,
+        "device": "cuda",
+        "precision": "bf16",
     })
-    upscale = _node(workflow, "VRGDG_MiniMaxH3LearnedLatentUpscale", "#LATENT_UPSCALE", {
-        "scale": [scale, 0], "latent": [separate, 0], "upscale_model": [upscale_model, 0],
-    })
-    recombine = _node(workflow, "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent", "#RECOMBINE_AV", {
-        "original_av_latent": [sampler_id, 0], "upscaled_video_latent": [upscale, 0],
+    recombine = _node(workflow, "LTXVConcatAVLatent", "#RECOMBINE_AV", {
+        "video_latent": [upscale, 0], "audio_latent": [separate, 1],
     })
     pass2_sampler_select = _node(workflow, "KSamplerSelect", "#PASS2_SAMPLER", {"sampler_name": "res_multistep"})
     pass2_scheduler = _node(workflow, "BasicScheduler", "#PASS2_SCHEDULER", {

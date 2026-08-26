@@ -235,7 +235,7 @@
       "pingpong": false,
       "save_output": true,
       "images": [
-        "151",
+        "150",
         0
       ],
       "audio": [
@@ -302,7 +302,7 @@
     }
   },
   "141": {
-    "class_type": "MiniMaxH3AVLatentSeparateT8",
+    "class_type": "LTXVSeparateAVLatent",
     "inputs": {
       "av_latent": [
         "125",
@@ -323,53 +323,44 @@
     }
   },
   "143": {
-    "class_type": "VRGDG_MiniMaxH3LatentUpscaleModelLoader",
+    "class_type": "MinimaxH3LatentUpscaler3D",
     "inputs": {
-      "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
-      "device": "cuda",
-      "precision": "bf16"
-    },
-    "_meta": {
-      "title": "#LATENT_UPSCALE_MODEL"
-    }
-  },
-  "144": {
-    "class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale",
-    "inputs": {
-      "scale": [
-        "142",
-        0
-      ],
       "latent": [
         "141",
         0
       ],
-      "upscale_model": [
-        "143",
+      "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      "mode": "scale by multiplier",
+      "scale": [
+        "142",
         0
-      ]
+      ],
+      "align": 32,
+      "enable_chunking": false,
+      "device": "cuda",
+      "precision": "bf16"
     },
     "_meta": {
       "title": "#LATENT_UPSCALE"
     }
   },
-  "145": {
-    "class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+  "144": {
+    "class_type": "LTXVConcatAVLatent",
     "inputs": {
-      "original_av_latent": [
-        "125",
+      "video_latent": [
+        "143",
         0
       ],
-      "upscaled_video_latent": [
-        "144",
-        0
+      "audio_latent": [
+        "141",
+        1
       ]
     },
     "_meta": {
       "title": "#RECOMBINE_AV"
     }
   },
-  "146": {
+  "145": {
     "class_type": "KSamplerSelect",
     "inputs": {
       "sampler_name": "res_multistep"
@@ -378,7 +369,7 @@
       "title": "#PASS2_SAMPLER"
     }
   },
-  "147": {
+  "146": {
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
@@ -393,7 +384,7 @@
       "title": "#PASS2_SCHEDULER"
     }
   },
-  "148": {
+  "147": {
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
@@ -409,7 +400,7 @@
       "title": "#PASS2_GUIDER"
     }
   },
-  "149": {
+  "148": {
     "class_type": "RandomNoise",
     "inputs": {
       "noise_seed": 0
@@ -418,27 +409,27 @@
       "title": "#PASS2_NOISE"
     }
   },
-  "150": {
+  "149": {
     "class_type": "SamplerCustomAdvanced",
     "inputs": {
       "noise": [
-        "149",
-        0
-      ],
-      "guider": [
         "148",
         0
       ],
-      "sampler": [
-        "146",
-        0
-      ],
-      "sigmas": [
+      "guider": [
         "147",
         0
       ],
-      "latent_image": [
+      "sampler": [
         "145",
+        0
+      ],
+      "sigmas": [
+        "146",
+        0
+      ],
+      "latent_image": [
+        "144",
         0
       ]
     },
@@ -446,11 +437,11 @@
       "title": "#PASS2"
     }
   },
-  "151": {
+  "150": {
     "class_type": "VAEDecode",
     "inputs": {
       "samples": [
-        "150",
+        "149",
         0
       ],
       "vae": [
