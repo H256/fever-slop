@@ -17,6 +17,7 @@ from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.h3_two_pass import H3TwoPassSpec, apply_h3_two_pass_patch
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.errors import FeverSlopValidationError
@@ -110,6 +111,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         ref_image_paths: list[str | Path] | None = None,
         ref_video_paths: list[str | Path] | None = None,
         ref_audio_paths: list[str | Path] | None = None,
+        two_pass_spec: H3TwoPassSpec | dict | None = None,
     ) -> dict:
         """Build a patched R2V workflow dict from *scene*.
 
@@ -178,6 +180,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         # -- dynamic ref wiring: fill remaining slots from scene refs -------
         self._patch_dynamic_ref_inputs(patcher, scene)
+
+        if two_pass_spec is not None:
+            spec = two_pass_spec if isinstance(two_pass_spec, H3TwoPassSpec) else H3TwoPassSpec.from_dict(two_pass_spec)
+            patcher = WorkflowPatcher(apply_h3_two_pass_patch(patcher.get(), spec))
 
         # -- output filename --------------------------------------------------
         self._patch_save_video(patcher, scene_number)

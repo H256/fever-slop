@@ -1,6 +1,10 @@
 import unittest
 
-from feverslop.domain.h3_two_pass import H3TwoPassSchemaError, H3TwoPassSpec
+from feverslop.domain.h3_two_pass import (
+    H3TwoPassSchemaError,
+    H3TwoPassSpec,
+    apply_h3_two_pass_patch,
+)
 
 
 class H3TwoPassTests(unittest.TestCase):
@@ -28,6 +32,17 @@ class H3TwoPassTests(unittest.TestCase):
         self.assertEqual("euler", spec.pass1_sampler)
         self.assertTrue(spec.preserve_audio_latent)
         self.assertEqual(spec, H3TwoPassSpec.from_dict(spec.to_dict()))
+
+    def test_patches_sampler_scheduler_steps_and_denoise_anchors(self):
+        spec = self.make_spec(required_anchors=["#PASS1", "#PASS2"])
+        workflow = {
+            "1": {"class_type": "KSampler", "inputs": {"sampler_name": "old", "scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS1"}},
+            "2": {"class_type": "KSampler", "inputs": {"sampler_name": "old", "scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS2"}},
+        }
+        patched = apply_h3_two_pass_patch(workflow, spec)
+        self.assertEqual("euler", patched["1"]["inputs"]["sampler_name"])
+        self.assertEqual(20, patched["1"]["inputs"]["steps"])
+        self.assertEqual(0.35, patched["2"]["inputs"]["denoise"])
 
     def test_rejects_invalid_pass_parameters_and_three_pass_shape(self):
         for overrides in (

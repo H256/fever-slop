@@ -113,3 +113,43 @@ class H3TwoPassSpec:
             raise H3TwoPassSchemaError(
                 "workflow is missing required H3 two-pass anchors: " + ", ".join(missing)
             )
+
+
+def apply_h3_two_pass_patch(workflow: Mapping[str, Any], spec: H3TwoPassSpec) -> dict[str, Any]:
+    """Patch sampler parameters on a validated two-pass workflow.
+
+    The workflow remains a plain API dictionary. Only explicitly declared
+    ``#PASS1`` and ``#PASS2`` anchors are modified; graph wiring and audio
+    latents are deliberately left untouched.
+    """
+    if not isinstance(spec, H3TwoPassSpec):
+        raise TypeError("spec must be an H3TwoPassSpec")
+    result = {str(node_id): dict(node) for node_id, node in workflow.items()}
+    by_title = {
+        str(node.get("_meta", {}).get("title")): node
+        for node in result.values()
+        if node.get("_meta", {}).get("title")
+    }
+    spec.validate_workflow_anchors(by_title)
+    for title, prefix in (("#PASS1", "pass1"), ("#PASS2", "pass2")):
+        node = by_title[title]
+        inputs = dict(node.get("inputs") or {})
+        values = {
+            "sampler_name": getattr(spec, f"{prefix}_sampler"),
+            "scheduler": getattr(spec, f"{prefix}_scheduler"),
+            "steps": getattr(spec, f"{prefix}_steps"),
+            "denoise": getattr(spec, f"{prefix}_denoise"),
+        }
+        aliases = {
+            "sampler_name": ("sampler_name", "sampler"),
+            "scheduler": ("scheduler",),
+            "steps": ("steps",),
+            "denoise": ("denoise",),
+        }
+        for field, value in values.items():
+            target = next((name for name in aliases[field] if name in inputs), None)
+            if target is None:
+                raise H3TwoPassSchemaError(f"workflow anchor {title} has no {field} input")
+            inputs[target] = value
+        node["inputs"] = inputs
+    return result
