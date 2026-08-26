@@ -10,6 +10,7 @@ from feverslop.adapters.comfyui_minimax_h3_r2v_backend import (
     ComfyUIMiniMaxH3R2VBackend,
 )
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.domain.audio_timing_contract import AudioTimingWindow
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
@@ -1298,8 +1299,8 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
             loader_id = trim["inputs"]["audio"][0]
             loader = result[loader_id]
             self.assertEqual(loader["inputs"]["audio"], f"feverslop/references/{expected_name}-aud789.wav")
-            self.assertEqual(trim["inputs"]["start_index"], 15.01)
-            self.assertEqual(trim["inputs"]["duration"], 4.44)
+            self.assertEqual(trim["inputs"]["start_index"], 15.0)
+            self.assertEqual(trim["inputs"]["duration"], 4.458333)
 
     def test_audio_filter_skips_source_that_ends_before_scene_window(self):
         backend = self._backend()
@@ -1468,8 +1469,8 @@ non_diegetic_music: N/A"""},
             loader_id = trim["inputs"]["audio"][0]
             loader = result[loader_id]
             self.assertEqual(loader["inputs"]["audio"], f"feverslop/references/{expected_name}-aud789.wav")
-            self.assertEqual(trim["inputs"]["start_index"], 15.01)
-            self.assertEqual(trim["inputs"]["duration"], 4.44)
+            self.assertEqual(trim["inputs"]["start_index"], 15.0)
+            self.assertEqual(trim["inputs"]["duration"], 4.458333)
         self.assertFalse(any(node.get("_meta", {}).get("title") == "#LOAD_AUDIO" for node in result.values()))
         self.assertFalse(any(node.get("_meta", {}).get("title") == "#TRIM_AUDIO" for node in result.values()))
         self.assertFalse(any(node.get("_meta", {}).get("title") == "#AUDIO_3" for node in result.values()))
@@ -2430,6 +2431,34 @@ class PatchReferenceAudiosTrimmedTests(unittest.TestCase):
             trim_node_id = audio_0_ref[0]
             trim_node = patched.get(str(trim_node_id), patched.get(trim_node_id))
             self.assertEqual(trim_node.get("class_type"), "TrimAudioDuration")
+
+    def test_trimmed_audio_uses_frame_aligned_absolute_window(self):
+        wf = _native_r2v_workflow()
+        wf["42"] = {
+            "class_type": "MiniMaxH3ReferenceToVideo",
+            "_meta": {"title": "#R2V_COMBINE"},
+            "inputs": {},
+        }
+        backend = self._backend(workflow=wf)
+        patched = backend.build_workflow(
+            {
+                "scene": 2,
+                "abs_start_seconds": 1.01,
+                "abs_end_seconds": 2.02,
+                "references": {"actor_sheet_paths": ["/tmp/actor.png"]},
+            },
+            prompt="test",
+            duration_seconds=1.01,
+            ref_audio_paths=["/tmp/vocals.wav"],
+        )
+
+        trim = next(
+            node for node in patched.values()
+            if node.get("_meta", {}).get("title") == "#TRIM_AUDIO_1"
+        )
+        expected = AudioTimingWindow(1.0, 2.0)
+        self.assertEqual(expected.start_seconds, trim["inputs"]["start_index"])
+        self.assertEqual(expected.duration_seconds, trim["inputs"]["duration"])
 
     def test_no_trim_wires_loadaudio_direct(self):
         """Without duration, LoadAudio wires directly to R2V (existing behavior)."""
