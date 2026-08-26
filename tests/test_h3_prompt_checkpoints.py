@@ -92,6 +92,28 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertIsNone(self.store.load(changed_concept))
         self.assertIsNone(self.store.load(changed_revision))
 
+    def test_model_or_transport_change_does_not_invalidate_checkpoint(self):
+        request = self.request(
+            generator_revision={
+                "contract": 1,
+                "model": "remote-model",
+                "base_url": "https://remote.example/v1",
+                "guide": "guide-v1",
+            },
+        )
+        self.store.save(request, {"prompt": "cached", "prompt_judge": {"verdict": "good"}})
+
+        switched = self.request(
+            generator_revision={
+                "contract": 1,
+                "model": "local-model",
+                "base_url": "http://localhost:1919/v1",
+                "guide": "guide-v1",
+            },
+        )
+
+        self.assertIsNotNone(self.store.load(switched))
+
     def test_scene_number_cannot_reuse_another_canonical_identity(self):
         self.store.save(
             self.request(),
