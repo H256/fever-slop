@@ -2,6 +2,7 @@ import unittest
 
 from feverslop.domain.continuation_segments import split_semantic_action
 from feverslop.domain.continuity import BoundaryFrameManifest
+from feverslop.domain.duration_capability import DurationCapability
 
 
 class ContinuationSegmentTests(unittest.TestCase):
@@ -36,6 +37,23 @@ class ContinuationSegmentTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual([6.5, 6.5], [item.duration_seconds for item in first])
+
+    def test_uses_profile_fps_limits_and_alignment(self):
+        capability = DurationCapability.create(
+            fps=24, min_seconds=2, max_seconds=12, preferred_seconds=8,
+            frame_alignment=17, frame_offset=5,
+        )
+        segments = split_semantic_action(
+            action_id="ritual", start_seconds=10, duration_seconds=25,
+            max_duration_seconds=99, fps=50, capability=capability,
+        )
+
+        self.assertEqual(24, round(sum(item.duration_seconds for item in segments) / 25 * 24))
+        self.assertEqual(10, segments[0].start_seconds)
+        self.assertEqual(35, segments[-1].end_seconds)
+        self.assertTrue(all(item.duration_seconds <= 12 for item in segments))
+        self.assertEqual(5, round(segments[0].duration_seconds * 24) % 17)
+        self.assertTrue(all(round(item.duration_seconds * 24) % 17 == 0 for item in segments[1:]))
 
     def test_rejects_impossible_or_invalid_inputs(self):
         with self.assertRaises(ValueError):
