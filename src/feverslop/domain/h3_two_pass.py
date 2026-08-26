@@ -245,9 +245,21 @@ def validate_h3_two_pass_topology(
     spec.validate_workflow_anchors(titles)
     classes = {str(node.get("class_type", "")) for node in nodes}
     required_groups = {
-        "AV latent separation": {"MiniMaxH3AVLatentSeparateT8", "MiniMaxH3AVLatentSeparate"},
-        "learned video latent upscale": {"VRGDG_MiniMaxH3LearnedLatentUpscale", "MiniMaxH3LatentUpscale"},
-        "AV latent recombination": {"VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent", "MiniMaxH3ReplaceUpscaledVideoLatent"},
+        "AV latent separation": {
+            "MiniMaxH3AVLatentSeparateT8",
+            "MiniMaxH3AVLatentSeparate",
+            "LTXVSeparateAVLatent",
+        },
+        "learned video latent upscale": {
+            "VRGDG_MiniMaxH3LearnedLatentUpscale",
+            "MiniMaxH3LatentUpscale",
+            "MinimaxH3LatentUpscaler3D",
+        },
+        "AV latent recombination": {
+            "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent",
+            "MiniMaxH3ReplaceUpscaledVideoLatent",
+            "LTXVConcatAVLatent",
+        },
     }
     missing = [name for name, aliases in required_groups.items() if not classes.intersection(aliases)]
     if missing:
