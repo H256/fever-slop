@@ -52,6 +52,14 @@ def resolve_project_render_settings(
         "ltx_msr": "msr_workflow",
         "ltx_ingredients": "ingredients_workflow",
     }.get(video_pipeline, "single_prompt_workflow")
+    if config.workflows.video is None and config.render_profile.startswith("ltx25-"):
+        profile_parts = config.render_profile.split("-")
+        if len(profile_parts) == 3 and profile_parts[1] in {"t2v", "i2v", "r2v", "msr", "ingredients"} and profile_parts[2] in {"draft", "standard", "final"}:
+            mode, quality = profile_parts[1], profile_parts[2]
+            profile_path = runner_root() / "workflows" / "video" / "ltx_25" / mode / f"{mode}_{quality}.json"
+            if profile_path.exists() and video_target not in explicit:
+                video_selection = WorkflowSelection.from_path(profile_path.resolve(), root=runner_root())
+                overrides[video_target] = str(profile_path.resolve())
     if config.workflows.video is not None and video_target not in explicit:
         video_path = resolve_runner_path(config.workflows.video).resolve()
         video_selection = WorkflowSelection.from_path(video_path, root=runner_root())
