@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from feverslop.domain.continuation_intent import ContinuationIntent
+
 
 class PromptMode(str, Enum):
     T2V = "t2v"
@@ -158,6 +160,7 @@ class PlannedShot(BaseModel):
     description: str
     involved_subjects: list[str] = Field(default_factory=list)
     reference_labels: list[str] = Field(default_factory=list)
+    hard_cut_after: bool = False
 
 
 class CreativeShotPayload(BaseModel):
@@ -195,6 +198,7 @@ class PromptPlan(BaseModel):
     subjects: list[PlannedSubject] = Field(default_factory=list)
     reference_usage: list[ReferenceUsage] = Field(default_factory=list)
     shots: list[PlannedShot] = Field(default_factory=list)
+    continuation_intents: list[ContinuationIntent] = Field(default_factory=list)
     overall_soundscape: str
     music_intent: MusicIntent
     non_diegetic_music: str | None = None
@@ -227,6 +231,7 @@ class ResolvedPromptPlan(BaseModel):
     subjects: list[SubjectDefinition] = Field(default_factory=list)
     reference_usage: list[ReferenceUsage] = Field(default_factory=list)
     shots: list[PlannedShot] = Field(default_factory=list)
+    continuation_intents: list[ContinuationIntent] = Field(default_factory=list)
     overall_soundscape: str
     music_intent: MusicIntent
     non_diegetic_music: str | None = None
@@ -247,6 +252,7 @@ class H3PromptSections(BaseModel):
     subjects: list[SubjectDefinition] = Field(default_factory=list)
     reference_usage: list[ReferenceUsage] = Field(default_factory=list)
     shots: list[PlannedShot] = Field(default_factory=list)
+    continuation_intents: list[ContinuationIntent] = Field(default_factory=list)
     overall_soundscape: str
     music_intent: MusicIntent
     non_diegetic_music: str | None = None

@@ -103,6 +103,14 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         If relay_segments are supplied, preserve their temporal ordering and attach each
         action, prop, state, and camera instruction to the corresponding planned shot.
 
+        For each semantic action that should continue across technical render segments,
+        add a continuation_intents entry with a stable action_id, requires_continuation=true,
+        and the desired semantic duration in seconds. This is creative intent only: never
+        choose backend frame counts, workflow limits, or technical segment boundaries.
+        If the user requests a hard cut after a planned shot, preserve it with
+        hard_cut_after=true and do not mark that boundary as continuation. When the input
+        is ambiguous, default to a normal cut rather than inventing continuation intent.
+
         Across shots, preserve identity, wardrobe, props, environment, spatial state, and
         action continuity unless the input explicitly changes them.
 

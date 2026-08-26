@@ -10,13 +10,13 @@ class ContinuationIntent:
     action_id: str
     requires_continuation: bool
     rationale: str = ""
-    preferred_max_duration_seconds: float | None = None
+    desired_duration_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not str(self.action_id).strip():
             raise ValueError("action_id is required")
-        if self.preferred_max_duration_seconds is not None and self.preferred_max_duration_seconds <= 0:
-            raise ValueError("preferred_max_duration_seconds must be positive")
+        if self.desired_duration_seconds is not None and self.desired_duration_seconds <= 0:
+            raise ValueError("desired_duration_seconds must be positive")
 
 
 def continuation_intents_from_plan(actions: list[dict]) -> tuple[ContinuationIntent, ...]:
@@ -29,6 +29,6 @@ def continuation_intents_from_plan(actions: list[dict]) -> tuple[ContinuationInt
             action_id=str(action.get("action_id") or action.get("id") or "").strip(),
             requires_continuation=bool(action.get("requires_continuation", False)),
             rationale=str(action.get("rationale") or "").strip(),
-            preferred_max_duration_seconds=action.get("preferred_max_duration_seconds"),
+            desired_duration_seconds=action.get("desired_duration_seconds"),
         ))
     return tuple(result)
