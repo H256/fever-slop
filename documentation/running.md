@@ -195,7 +195,7 @@ legacy defaults:
     "height": 576
   },
   "workflows": {
-    "video": "workflows/video_minimax_h3_r2v_eb57_8s_v1.json",
+    "video": "workflows/video/minimax_h3/r2v_eb57_8s_v1.json",
     "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
     "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
   }
@@ -226,8 +226,8 @@ clips into one movie. Run the same dry-run/resume pair without `--scenes`.
 
 The `video` workflow must match `video_pipeline`. For example, the bundled
 MiniMax H3 R2V choices are the 20-step
-`workflows/video_minimax_h3_r2v_v1.json` and the 8-step Turbo
-`workflows/video_minimax_h3_r2v_eb57_8s_v1.json`.
+`workflows/video/minimax_h3/r2v_v1.json` and the 8-step Turbo
+`workflows/video/minimax_h3/r2v_eb57_8s_v1.json`.
 
 ## Recovering after editing `base.json`
 

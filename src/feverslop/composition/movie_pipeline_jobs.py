@@ -740,7 +740,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json" if movie_video_workflow == "msr-i2v-startframe" else ""
     i2v_default = "workflows/video_ltxv_i2v_native_audio_v2.json" if movie_video_workflow == "startframe-director" else "workflows/video_ltxv_i2v_v2.json"
     if movie_video_workflow in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
-        i2v_default = "workflows/video_minimax_h3_t2v.json"
+        i2v_default = "workflows/video/minimax_h3/t2v.json"
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
     ingredients_default = "workflows/video_ltxv_ingredients_2stage_v6.json" if movie_video_workflow == "ingredients" else ""
     return {
@@ -767,8 +767,8 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v4.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
         "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), i2v_default),
-        "r2v_workflow": _movie_workflow_path(raw.get("r2v_workflow"), "workflows/video_minimax_h3_r2v.json"),
-        "t2v_workflow": _movie_workflow_path(raw.get("t2v_workflow"), "workflows/video_minimax_h3_t2v.json"),
+        "r2v_workflow": _movie_workflow_path(raw.get("r2v_workflow"), "workflows/video/minimax_h3/r2v_audio_v1.json"),
+        "t2v_workflow": _movie_workflow_path(raw.get("t2v_workflow"), "workflows/video/minimax_h3/t2v.json"),
         "sequence_to_sheet_workflow": _movie_workflow_path(raw.get("sequence_to_sheet_workflow"), "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"),
         "ingredients_workflow": _movie_workflow_path(raw.get("ingredients_workflow"), ingredients_default) if ingredients_default or raw.get("ingredients_workflow") else "",
         "movie_video_workflow": movie_video_workflow,
