@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
-from feverslop.prompting.dspy_h3_models import H3PromptSections, MusicIntent
+from feverslop.prompting.dspy_h3_models import AudioSubjectBinding, H3PromptSections, MusicIntent
 from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
 from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
 from feverslop.prompting.guide_loader import load_markdown_guide
@@ -54,7 +54,11 @@ def _reference_source_key(source: str | Path, reference_root: Path | None) -> st
         return str(path).replace("\\", "/").casefold()
 
 
-def _audio_subject_bindings(references: dict[str, Any]) -> dict[str, dict[str, str]]:
+def _audio_subject_bindings(
+    references: dict[str, Any],
+    *,
+    available_stems: set[str] | None = None,
+) -> dict[str, dict[str, str]]:
     """Validate explicit stem-to-subject bindings without inventing subjects."""
     raw = references.get("audio_subject_bindings") or {}
     if isinstance(raw, list):
@@ -71,14 +75,22 @@ def _audio_subject_bindings(references: dict[str, Any]) -> dict[str, dict[str, s
             raise ValueError("each audio subject binding requires a stem and object value")
         if stem_name == "full_mix":
             raise ValueError("full_mix is global audio and cannot bind to a subject")
+        if available_stems is not None and stem_name not in available_stems:
+            raise ValueError(f"audio binding refers to an unselected stem: {stem_name}")
         subject_id = str(value.get("subject_id") or value.get("subject") or "").strip()
         subject_label = str(value.get("subject_label") or actor_labels.get(subject_id) or "").strip()
         if not subject_label:
             raise ValueError(f"audio binding for {stem_name!r} has no known subject")
+        if subject_label not in actor_labels.values():
+            raise ValueError(f"audio binding refers to an unknown subject: {subject_label}")
         if subject_label in seen_subjects:
             raise ValueError(f"multiple audio stems bind to subject {subject_label}")
         seen_subjects.add(subject_label)
         speaker_id = str(value.get("speaker_id") or "").strip()
+        if speaker_id and not re.fullmatch(r"S[1-9][0-9]*", speaker_id):
+            raise ValueError(f"invalid speaker_id for {stem_name!r}: {speaker_id}")
+        if speaker_id and int(speaker_id[1:]) > len(actor_ids):
+            raise ValueError(f"speaker_id does not identify a visible subject: {speaker_id}")
         if stem_name == "vocals" and not speaker_id:
             raise ValueError("vocal audio binding requires speaker_id")
         result[stem_name] = {
@@ -269,6 +281,8 @@ def _scene_references(
     for reference in pending_audio_references:
         add_reference(reference)
 
+    available_stems = {str(reference["name"]) for reference in result if reference["kind"] == "audio"}
+    _audio_subject_bindings(references, available_stems=available_stems)
     return result, images
 
 
@@ -393,6 +407,19 @@ class DspyH3PromptBuilder:
             reference_root or self.reference_root,
             mode=mode,
         )
+        raw_bindings = _audio_subject_bindings(
+            segment.get("references") or {},
+            available_stems={str(reference["name"]) for reference in references if reference["kind"] == "audio"},
+        )
+        audio_subject_bindings = [
+            AudioSubjectBinding(
+                audio_label=next(reference["label"] for reference in references if reference["kind"] == "audio" and reference["name"] == stem),
+                stem=stem,
+                subject_label=binding["subject_label"],
+                speaker_id=binding["speaker_id"] or None,
+            )
+            for stem, binding in raw_bindings.items()
+        ]
         relay_segments = _normalize_relay_segments(segment)
         directive_plan = subject_directives_from_scene(segment)
         generator_references = [dict(reference) for reference in references]
@@ -436,6 +463,7 @@ class DspyH3PromptBuilder:
             "relay_segments": relay_segments,
             "strict_fidelity": True,
             "_section_only": True,
+            "audio_subject_bindings": audio_subject_bindings,
         }
         has_reused_audio_reference = any(
             reference.get("kind") == "audio" and reference.get("role") == "audio_reuse"

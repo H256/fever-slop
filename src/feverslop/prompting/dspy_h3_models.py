@@ -96,6 +96,7 @@ class VideoPromptRequest(BaseModel):
     strict_fidelity: bool = True
     music_intent: MusicIntent | None = None
     relay_segments: list[dict] = Field(default_factory=list)
+    audio_subject_bindings: list[AudioSubjectBinding] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_mode(self) -> VideoPromptRequest:
@@ -119,6 +120,13 @@ class ResolvedReference(BaseModel):
     description: str
     name: str | None = None
     use_audio: bool = False
+
+
+class AudioSubjectBinding(BaseModel):
+    audio_label: str
+    stem: str
+    subject_label: str
+    speaker_id: str | None = None
 
 
 class ImageAnalysis(BaseModel):
@@ -287,6 +295,7 @@ class ReferenceVideoPrompt(BaseModel):
     detailed_description: str
     overall_soundscape: str
     non_diegetic_music: str | None = None
+    audio_subject_bindings: list[AudioSubjectBinding] = Field(default_factory=list)
 
     def render(self) -> str:
         subjects = "\n".join(item.render() for item in self.subject_definitions)
@@ -295,11 +304,19 @@ class ReferenceVideoPrompt(BaseModel):
         )
         definitions = "\n".join(part for part in (subjects, reference_defs) if part)
         retention = "\n".join(item.render() for item in self.retention_analysis)
+        bindings = "\n".join(
+            f"{item.audio_label} ({item.stem}) -> {item.subject_label}"
+            f"{f' ({item.speaker_id})' if item.speaker_id else ''}"
+            for item in self.audio_subject_bindings
+        )
+        detailed = self.detailed_description.strip()
+        if bindings:
+            detailed += "\nAudio subject bindings:\n" + bindings
         return "\n\n".join([
             f"subject_definitions:\n{definitions}",
             f"summary: {self.summary.strip()}",
             f"retention_analysis:\n{retention}",
-            "detailed_description: " + self.detailed_description.strip(),
+            "detailed_description: " + detailed,
             "overall_soundscape: " + self.overall_soundscape.strip(),
             "non_diegetic_music: " + (self.non_diegetic_music.strip() if self.non_diegetic_music else "N/A"),
         ])

@@ -65,6 +65,7 @@ class PromptGenerationServiceTests(unittest.TestCase):
                 "duration_seconds": 6.0,
                 "music_intent": "none",
                 "relay_segments": [],
+                "audio_subject_bindings": [],
                 "strict_fidelity": False,
             },
             generator.requests[0],

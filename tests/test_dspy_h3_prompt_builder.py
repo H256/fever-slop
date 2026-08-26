@@ -115,6 +115,29 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 None,
             )
 
+    def test_audio_binding_rejects_unknown_subject_stem_and_speaker(self):
+        from feverslop.prompting.dspy_h3_prompt_builder import _scene_references
+
+        base = {"actor_ids": ["singer"], "reference_audio_paths": ["vocals.wav"]}
+        with self.assertRaisesRegex(ValueError, "known subject"):
+            _scene_references({"references": {**base, "audio_subject_bindings": {"vocals": {"subject_id": "ghost", "speaker_id": "S1"}}}}, None, None)
+        with self.assertRaisesRegex(ValueError, "unselected stem"):
+            _scene_references({"references": {**base, "audio_subject_bindings": {"drums": {"subject_id": "singer"}}}}, None, None)
+        with self.assertRaisesRegex(ValueError, "invalid speaker_id"):
+            _scene_references({"references": {**base, "audio_subject_bindings": {"vocals": {"subject_id": "singer", "speaker_id": "speaker-1"}}}}, None, None)
+
+    def test_structured_audio_binding_is_rendered_in_prompt_sections(self):
+        from feverslop.prompting.dspy_h3_models import AudioSubjectBinding
+
+        prompt = ReferenceVideoPrompt(
+            subject_definitions=[], summary="summary", retention_analysis=[], detailed_description="shot",
+            overall_soundscape="music", audio_subject_bindings=[
+                AudioSubjectBinding(audio_label="<Audio 1>", stem="vocals", subject_label="<Subject 1>", speaker_id="S1"),
+            ],
+        ).render()
+        self.assertIn("<Audio 1> (vocals) -> <Subject 1> (S1)", prompt)
+        self.assertIn("Audio subject bindings:", prompt)
+
     def test_checkpoint_revision_hashes_bundled_guides_and_judge_contract(self):
         generator = FakeGenerator()
         generator.base_guide_path = "minimax-h3-base.md"

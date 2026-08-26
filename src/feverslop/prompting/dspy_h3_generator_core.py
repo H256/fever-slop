@@ -507,6 +507,7 @@ class VideoPromptGenerator:
                         detailed_description=output.detailed_description,
                         overall_soundscape=output.overall_soundscape,
                         non_diegetic_music=output.non_diegetic_music,
+                        audio_subject_bindings=request.audio_subject_bindings,
                     )
                 else:
                     output = self.base_renderer(
