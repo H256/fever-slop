@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS
@@ -10,6 +11,7 @@ from feverslop.domain.project_render_settings import (
     ProjectRenderSettings,
     WorkflowSelection,
 )
+from feverslop.domain.workflow_capability_manifest import WorkflowCapabilityManifest
 
 from .config_loader import resolve_runner_path, runner_root
 

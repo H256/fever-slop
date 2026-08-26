@@ -1,0 +1,14 @@
+[
+  {"profile_id":"ltx25-t2v-draft","mode":"t2v","quality":"draft","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-t2v-standard","mode":"t2v","quality":"standard","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-t2v-final","mode":"t2v","quality":"final","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-i2v-draft","mode":"i2v","quality":"draft","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","start_frame","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-i2v-standard","mode":"i2v","quality":"standard","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","start_frame","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-i2v-final","mode":"i2v","quality":"final","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","start_frame","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-msr-draft","mode":"msr","quality":"draft","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","subject_references","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-msr-standard","mode":"msr","quality":"standard","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","subject_references","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-msr-final","mode":"msr","quality":"final","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","subject_references","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-ingredients-draft","mode":"ingredients","quality":"draft","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","ingredients","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-ingredients-standard","mode":"ingredients","quality":"standard","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","ingredients","native_audio","two_pass"],"max_duration_seconds":12},
+  {"profile_id":"ltx25-ingredients-final","mode":"ingredients","quality":"final","pass_strategy":"two_pass","postprocess":"none","capabilities":["prompt","ingredients","native_audio","two_pass"],"max_duration_seconds":12}
+]

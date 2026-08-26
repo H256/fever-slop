@@ -72,6 +72,38 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 | `workflows/video/minimax_h3/t2v.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/t2v_two_pass.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/t2v_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
+| `workflows/video/ltx_25/capabilities.json` | video | ltx_2.5 | capability manifest | workflows/video/ltx_25/ |
+| `workflows/video/ltx_25/profile-matrix.json` | video | ltx_2.5 | profile matrix | workflows/video/ltx_25/ |
+| `workflows/video/ltx_25/t2v/t2v_draft.json` | video | ltx_2.5 | t2v | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_draft.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_standard.json` | video | ltx_2.5 | t2v | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_standard.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_final.json` | video | ltx_2.5 | t2v | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_final.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/i2v/i2v_draft.json` | video | ltx_2.5 | i2v | workflows/video/ltx_25/i2v/ |
+| `workflows/video/ltx_25/i2v/i2v_draft.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/i2v/ |
+| `workflows/video/ltx_25/i2v/i2v_standard.json` | video | ltx_2.5 | i2v | workflows/video/ltx_25/i2v/ |
+| `workflows/video/ltx_25/i2v/i2v_standard.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/i2v/ |
+| `workflows/video/ltx_25/i2v/i2v_final.json` | video | ltx_2.5 | i2v | workflows/video/ltx_25/i2v/ |
+| `workflows/video/ltx_25/i2v/i2v_final.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/i2v/ |
+| `workflows/video/ltx_25/r2v/r2v_draft.json` | video | ltx_2.5 | r2v | workflows/video/ltx_25/r2v/ |
+| `workflows/video/ltx_25/r2v/r2v_draft.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/r2v/ |
+| `workflows/video/ltx_25/r2v/r2v_standard.json` | video | ltx_2.5 | r2v | workflows/video/ltx_25/r2v/ |
+| `workflows/video/ltx_25/r2v/r2v_standard.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/r2v/ |
+| `workflows/video/ltx_25/r2v/r2v_final.json` | video | ltx_2.5 | r2v | workflows/video/ltx_25/r2v/ |
+| `workflows/video/ltx_25/r2v/r2v_final.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/r2v/ |
+| `workflows/video/ltx_25/msr/msr_draft.json` | video | ltx_2.5 | msr | workflows/video/ltx_25/msr/ |
+| `workflows/video/ltx_25/msr/msr_draft.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/msr/ |
+| `workflows/video/ltx_25/msr/msr_standard.json` | video | ltx_2.5 | msr | workflows/video/ltx_25/msr/ |
+| `workflows/video/ltx_25/msr/msr_standard.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/msr/ |
+| `workflows/video/ltx_25/msr/msr_final.json` | video | ltx_2.5 | msr | workflows/video/ltx_25/msr/ |
+| `workflows/video/ltx_25/msr/msr_final.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/msr/ |
+| `workflows/video/ltx_25/ingredients/ingredients_draft.json` | video | ltx_2.5 | ingredients | workflows/video/ltx_25/ingredients/ |
+| `workflows/video/ltx_25/ingredients/ingredients_draft.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/ingredients/ |
+| `workflows/video/ltx_25/ingredients/ingredients_standard.json` | video | ltx_2.5 | ingredients | workflows/video/ltx_25/ingredients/ |
+| `workflows/video/ltx_25/ingredients/ingredients_standard.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/ingredients/ |
+| `workflows/video/ltx_25/ingredients/ingredients_final.json` | video | ltx_2.5 | ingredients | workflows/video/ltx_25/ingredients/ |
+| `workflows/video/ltx_25/ingredients/ingredients_final.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/ingredients/ |
 | `workflows/video_seedvr2_3b_api.json` | video | seedvr | other | workflows/video/seedvr/ |
 
 ## Migration rules

@@ -3865,7 +3865,7 @@ class MovieProjectTests(unittest.TestCase):
         config = movie_runtime_config({"movie_video_workflow": "ingredients"})
 
         self.assertEqual(
-            "workflows/video_ltxv_ingredients_2stage_v6.json",
+            "workflows/video/ltx_25/ingredients/ingredients_draft.json",
             config["ingredients_workflow"],
         )
 
