@@ -14,6 +14,39 @@ uv run feverslop status ./projects/my-song
 uv run feverslop full-auto --idea "A neon chase" --style "dark synthwave"
 ```
 
+### Inspecting workflow profiles
+
+Workflow profiles are shared by all configured video families. The inspection
+commands therefore apply to both classic LTX profiles and MiniMax H3 profiles;
+they do not contact ComfyUI or start a render.
+
+List the configured profiles, grouped by pipeline and purpose:
+
+```bash
+uv run feverslop profiles list --app-config app_config.json
+```
+
+Resolve the default profile for a pipeline/purpose, or validate a named profile
+explicitly:
+
+```bash
+uv run feverslop profiles preflight \
+  --app-config app_config.json \
+  --pipeline ltx_i2v \
+  --purpose final
+
+uv run feverslop profiles preflight \
+  --app-config app_config.json \
+  --pipeline minimax-h3-r2v \
+  --purpose final
+```
+
+Pass `--profile PROFILE_NAME` when the app config contains multiple profiles
+for the same pipeline and purpose. `preflight` prints the requested and
+resolved profile, workflow path, stage count, and output scale. An unknown
+profile, a profile from another pipeline or purpose, or a missing default is
+rejected with exit code `1`, before any ComfyUI backend is constructed.
+
 The repository scripts (`main.py`, `run_pipeline.py`, `movie_pipeline.py`, and
 `full_auto.py`) remain available as compatibility entry points for existing
 automation and documented legacy commands.
