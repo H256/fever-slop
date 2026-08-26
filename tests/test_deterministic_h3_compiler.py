@@ -2,7 +2,11 @@ import unittest
 
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
-from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
+from feverslop.prompting.deterministic_h3_compiler import (
+    DeterministicH3Compiler,
+    creative_shots_from_plan,
+)
+from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan, MusicIntent, PlannedShot
 
 
 class DeterministicH3CompilerTests(unittest.TestCase):
@@ -52,6 +56,18 @@ class DeterministicH3CompilerTests(unittest.TestCase):
                 mode="base", facts=self.facts, shots=self.shots,
                 shot_windows={"shot-01": (0.0, 4.5), "shot-02": (4.5, 9.0)},
             )
+
+    def test_converts_resolved_plan_to_backend_neutral_shots(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="solemn performance",
+            shots=[PlannedShot(shot_number=2, start_seconds=2, end_seconds=4, description="The lantern rises.")],
+            overall_soundscape="wind",
+            music_intent=MusicIntent.NONE,
+        )
+        shots = creative_shots_from_plan(plan)
+        self.assertEqual("shot-0002", shots[0].shot_id)
+        self.assertEqual("The lantern rises.", shots[0].visible_action)
+        self.assertEqual("solemn performance", shots[0].performance)
 
 
 if __name__ == "__main__":
