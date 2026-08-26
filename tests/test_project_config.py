@@ -463,6 +463,7 @@ class ProjectConfigTests(unittest.TestCase):
                                 "id": "singer",
                                 "name": "Mara",
                                 "role": "lead singer",
+                                "gender": "female",
                                 "visual_description": "short silver hair",
                                 "image_prompt": "portrait of Mara",
                             },
@@ -484,6 +485,7 @@ class ProjectConfigTests(unittest.TestCase):
 
             self.assertEqual("singer", config.actors[0].id)
             self.assertEqual("Mara", config.actors[0].name)
+            self.assertEqual("female", config.actors[0].gender)
             self.assertEqual("portrait of Mara", config.actors[0].image_prompt)
             self.assertEqual(["Mirror Stage"], config.locations)
             self.assertEqual("stage", config.structured_locations[0].id)

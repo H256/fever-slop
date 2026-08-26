@@ -91,6 +91,37 @@ def config_items_as_dicts(items: Any) -> list[dict]:
     return output
 
 
+def _actor_needs_llm_enrichment(actor: dict[str, Any]) -> bool:
+    return any(not str(actor.get(field) or "").strip() for field in (
+        "role", "gender", "visual_description", "image_prompt",
+    ))
+
+
+def _merge_configured_actors(configured: list[dict], generated: Any) -> list[dict]:
+    generated_items = config_items_as_dicts(generated)
+    by_key = {
+        key: item
+        for item in generated_items
+        for key in (
+            str(item.get("id") or "").strip().casefold(),
+            str(item.get("name") or "").strip().casefold(),
+        )
+        if key
+    }
+    merged = []
+    for configured_actor in configured:
+        actor = dict(configured_actor)
+        key = str(actor.get("id") or actor.get("name") or "").strip().casefold()
+        generated_actor = by_key.get(key, {})
+        for field in ("role", "gender", "visual_description", "image_prompt"):
+            if not str(actor.get(field) or "").strip():
+                value = str(generated_actor.get(field) or "").strip()
+                if value:
+                    actor[field] = value
+        merged.append(actor)
+    return merged
+
+
 def normalize_location_names(items: Any) -> list[str]:
     names = []
     for item in items or []:
@@ -524,10 +555,20 @@ class PromptGenerationPipeline:
             get_steering_value(config, "global_"),
             get_steering_value(config, "style"),
         )
+        configured_actor_items = config_items_as_dicts(get_config_value(config, "actors", []) or [])
+        cast_anchor_notes = "\n".join(
+            f"- id={actor.get('id')}; name={actor.get('name')}; "
+            f"role={actor.get('role') or '(generate)'}; gender={actor.get('gender') or '(generate)'}"
+            for actor in configured_actor_items
+        )
         subject_location_notes = join_notes(
             get_steering_value(config, "global_"),
             get_steering_value(config, "subject"),
             get_steering_value(config, "locations"),
+            "Configured cast anchors. Preserve these ids and any non-empty role/gender values. "
+            "Generate missing role/gender and all missing visual_description/image_prompt fields "
+            "from the story and character arc; do not invent a conflicting gender.\n" + cast_anchor_notes
+            if cast_anchor_notes else "",
         )
 
         config_story_idea = str(get_config_value(config, "story_idea", "") or "").strip()
@@ -576,6 +617,7 @@ class PromptGenerationPipeline:
         subject_locations = (
             {}
             if has_configured_subject_assets
+            and not any(_actor_needs_llm_enrichment(actor) for actor in configured_actor_items)
             else run_spinner(
                 "Generating subject and locations fallback...",
                 lambda: prompt_pipeline.create_subject_and_locations(
@@ -597,7 +639,12 @@ class PromptGenerationPipeline:
             reporter=reporter,
         )
 
-        actors = config_items_as_dicts(config_actors) or config_items_as_dicts(subject_locations.get("actors", []))
+        actors = config_items_as_dicts(config_actors)
+        generated_actors = config_items_as_dicts(subject_locations.get("actors", []))
+        actors = (
+            _merge_configured_actors(actors, generated_actors)
+            if actors else generated_actors
+        )
         structured_locations = (
             config_items_as_dicts(config_structured_locations)
             or config_items_as_dicts(subject_locations.get("locations", []))
