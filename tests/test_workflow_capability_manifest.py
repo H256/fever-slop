@@ -34,3 +34,15 @@ class WorkflowCapabilityManifestTests(unittest.TestCase):
         manifest = WorkflowCapabilityManifest.create(**payload)
         self.assertEqual("2.5", manifest.model_version)
         self.assertTrue(all("2.3" not in name.lower() for name in manifest.required_models))
+
+    def test_ltx25_profile_matrix_covers_modes_and_quality(self):
+        import json
+        from pathlib import Path
+        from feverslop.domain.render_profile import RenderProfile
+
+        root = Path(__file__).resolve().parents[1]
+        entries = json.loads((root / "workflows/video/ltx_25/profile-matrix.json").read_text(encoding="utf-8"))
+        profiles = [RenderProfile.create(model_family="ltx-2.5", **entry) for entry in entries]
+        self.assertEqual(12, len(profiles))
+        self.assertTrue(all(profile.pass_strategy.value == "two_pass" for profile in profiles))
+        self.assertEqual({"t2v", "i2v", "msr", "ingredients"}, {profile.mode.value for profile in profiles})
