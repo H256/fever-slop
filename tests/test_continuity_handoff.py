@@ -94,6 +94,7 @@ class ContinuityHandoffTests(unittest.TestCase):
                 frame,
                 scene,
             )
+            self.assertTrue((project / "output" / "keyframes" / "handoff.manifest.json").is_file())
 
         self.assertEqual({"scene": 2, "keyframes": {"kept": True}, "ltx": {"base_prompt": "next"}}, scene)
         self.assertEqual([(clip.resolve(), frame)], extractor.calls)
@@ -109,6 +110,10 @@ class ContinuityHandoffTests(unittest.TestCase):
             result["keyframes"]["startframe_source_clip_path"],
         )
         self.assertEqual("last-frame-v1", result["keyframes"]["startframe_extractor"])
+        manifest = result["keyframes"]["boundary_frame_manifest"]
+        self.assertEqual("output/scene_0001.mp4", manifest["source_clip_path"])
+        self.assertEqual("output/keyframes/handoff.png", manifest["frame_path"])
+        self.assertEqual(0, manifest["frame_index"])
         handoff = result["keyframes"]["continuity_handoff"]
         self.assertEqual(1, handoff["source_scene"])
         self.assertEqual("continuous", handoff["transition"])
@@ -147,6 +152,25 @@ class ContinuityHandoffTests(unittest.TestCase):
                         {"scene": current.scene},
                     )
         self.assertEqual([], extractor.calls)
+
+    def test_reuses_matching_boundary_manifest_without_reextracting(self):
+        from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            clip = project / "output" / "scene_0001.mp4"
+            clip.parent.mkdir(parents=True)
+            clip.write_bytes(b"clip")
+            frame = project / "output" / "keyframes" / "handoff.png"
+            extractor = _Extractor()
+            extractor.project_dir = project
+            use_case = ContinuityHandoffUseCase(extractor)
+            previous, current = _contract(1), _contract(2, mode="i2v", transition="continuous")
+
+            use_case.execute(previous, current, clip, frame, {"scene": 2})
+            use_case.execute(previous, current, clip, frame, {"scene": 2})
+
+        self.assertEqual(1, len(extractor.calls))
 
     def test_rejects_missing_or_external_clip(self):
         from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
