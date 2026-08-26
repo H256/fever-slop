@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from enum import Enum
+import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PromptMode(str, Enum):
@@ -149,6 +150,36 @@ class PlannedShot(BaseModel):
     description: str
     involved_subjects: list[str] = Field(default_factory=list)
     reference_labels: list[str] = Field(default_factory=list)
+
+
+class CreativeShotPayload(BaseModel):
+    """Backend-neutral creative decisions consumed by a deterministic compiler."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_id: str = Field(min_length=1)
+    visible_action: str = Field(min_length=1)
+    performance: str = Field(min_length=1)
+    camera_behavior: str | None = None
+    environmental_motion: str | None = None
+    transition_intent: str | None = None
+
+    @model_validator(mode="after")
+    def reject_backend_syntax(self) -> "CreativeShotPayload":
+        fields = (
+            self.visible_action,
+            self.performance,
+            self.camera_behavior,
+            self.environmental_motion,
+            self.transition_intent,
+        )
+        for value in fields:
+            text = str(value or "")
+            if "<picture " in text.lower() or "<audio " in text.lower() or "<video " in text.lower():
+                raise ValueError("creative shot fields must not contain backend reference labels")
+            if re.search(r"\b\d{2}:\d{2}(?:[:.]\d{2,3})\b", text):
+                raise ValueError("creative shot fields must not contain timecodes")
+        return self
 
 
 class PromptPlan(BaseModel):
