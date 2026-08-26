@@ -31,7 +31,7 @@
   "121": {
     "inputs": {
       "samples": [
-        "141",
+        "125",
         0
       ],
       "vae": [
@@ -268,20 +268,6 @@
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
       "title": "#PROMPT"
-    }
-  },
-  "141": {
-    "inputs": {
-      "offload_model": true,
-      "offload_cache": false,
-      "anything": [
-        "125",
-        0
-      ]
-    },
-    "class_type": "VRAMCleanup",
-    "_meta": {
-      "title": "🎈VRAM-Cleanup"
     }
   },
   "142": {

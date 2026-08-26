@@ -282,20 +282,6 @@
       "title": "#PROMPT"
     }
   },
-  "141": {
-    "inputs": {
-      "offload_model": true,
-      "offload_cache": false,
-      "anything": [
-        "125",
-        0
-      ]
-    },
-    "class_type": "VRAMCleanup",
-    "_meta": {
-      "title": "🎈VRAM-Cleanup"
-    }
-  },
   "142": {
     "inputs": {
       "frame_rate": 24,

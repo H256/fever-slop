@@ -33,6 +33,17 @@ class H3TwoPassWorkflowTests(unittest.TestCase):
                 self.assertNotIn("height", upscaler["inputs"])
                 self.assertNotIn("megapixels", upscaler["inputs"])
 
+    def test_generated_profiles_have_only_the_video_save_output(self):
+        root = Path(__file__).resolve().parents[1]
+        paths = sorted((root / "workflows" / "video" / "minimax_h3").glob("*_two_pass.json"))
+        for path in paths:
+            with self.subTest(path=path.name):
+                workflow = json.loads(path.read_text(encoding="utf-8"))
+                self.assertFalse(
+                    any(node.get("class_type") == "VRAMCleanup" for node in workflow.values()),
+                    "VRAMCleanup is an additional ComfyUI output node; it must not compete with #SAVE_VIDEO",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

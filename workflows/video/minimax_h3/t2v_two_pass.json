@@ -208,20 +208,6 @@
       "title": "#FRAMECOUNT"
     }
   },
-  "134": {
-    "inputs": {
-      "offload_model": true,
-      "offload_cache": true,
-      "anything": [
-        "125",
-        0
-      ]
-    },
-    "class_type": "VRAMCleanup",
-    "_meta": {
-      "title": "🎈VRAM-Cleanup"
-    }
-  },
   "135": {
     "inputs": {
       "frame_rate": 24,
