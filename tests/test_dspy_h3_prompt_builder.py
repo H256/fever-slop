@@ -1302,6 +1302,26 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual(request["music_intent"], "none")
         self.assertEqual(result["prompt"], FakeGeneratedPrompt.rendered_prompt)
 
+    def test_rejects_contradictory_locked_facts_before_generator_call(self):
+        generator = FakeGenerator()
+        builder = DspyH3PromptBuilder(generator)
+
+        with self.assertRaisesRegex(ValueError, "source-a.*source-b"):
+            builder.build_h3_prompt(
+                segment={
+                    "segment_id": "seg-1",
+                    "locked_facts": [
+                        {"category": "wardrobe", "key": "hero", "value": "coat", "source_id": "source-a"},
+                        {"category": "wardrobe", "key": "hero", "value": "jacket", "source_id": "source-b"},
+                    ],
+                },
+                concept="A hero waits.",
+                scene_details={},
+                global_context={},
+            )
+
+        self.assertEqual([], generator.requests)
+
     def test_keeps_reference_contract_out_of_guide_prompt(self):
         builder = DspyH3PromptBuilder(FakeGenerator())
         result = builder.build_h3_prompt(

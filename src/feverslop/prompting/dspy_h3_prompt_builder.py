@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
-from feverslop.domain.locked_scene_facts import LockedSceneFacts
+from feverslop.domain.locked_scene_facts import LockedSceneFacts, locked_scene_facts_from_scene
 from feverslop.prompting.dspy_h3_models import AudioSubjectBinding, H3PromptSections, MusicIntent
 from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
 from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
@@ -475,21 +475,15 @@ class DspyH3PromptBuilder:
             # be explicit even when the audio reference came from segment
             # metadata rather than the managed audio_paths argument.
             request["music_intent"] = MusicIntent.NONE.value
+        # Resolve immutable inputs before the planner runs. Creative planning
+        # may add actions, but it must not be the authority for scene facts.
+        facts = locked_scene_facts_from_scene(segment)
         generated = None
         try:
             generated = self.generator(request)
             if hasattr(generated, "plan"):
                 sections = H3PromptSections.from_plan(generated.plan)
                 plan = sections.to_plan()
-                facts_payload = segment.get("locked_facts") or []
-                if not facts_payload:
-                    facts_payload = [
-                        {"category": "scene", "key": "concept", "value": str(concept), "source_id": "planner:concept"},
-                    ] if str(concept).strip() else []
-                facts = LockedSceneFacts.create(
-                    scene_id=str(segment.get("segment_id") or segment.get("scene") or "scene"),
-                    facts=facts_payload,
-                )
                 shots = creative_shots_from_plan(plan)
                 windows = {}
                 references_by_shot = {}
