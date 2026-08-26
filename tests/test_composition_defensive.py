@@ -124,7 +124,24 @@ class TestSelectedVideoWorkflows(unittest.TestCase):
         state.relay_workflow = Path()
 
         self.assertEqual(
-            Path("workflows/video/minimax_h3/r2v_v1.json"),
+            Path("workflows/video/minimax_h3/r2v_audio_two_pass.json"),
+            _selected_video_workflows(state)[0],
+        )
+
+    def test_minimax_r2v_replaces_i2v_draft_default_with_two_pass_workflow(self):
+        from feverslop.composition.stage_runners import _selected_video_workflows
+
+        args = MagicMock()
+        args.video_pipeline = "minimax-h3-r2v"
+        args.render_mode = "single_prompt"
+
+        state = MagicMock()
+        state.args = args
+        state.single_prompt_workflow = Path("workflows/video/ltx_25/i2v/i2v_draft.json")
+        state.relay_workflow = Path()
+
+        self.assertEqual(
+            Path("workflows/video/minimax_h3/r2v_audio_two_pass.json"),
             _selected_video_workflows(state)[0],
         )
 
