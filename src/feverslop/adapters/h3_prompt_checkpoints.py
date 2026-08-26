@@ -73,6 +73,7 @@ class H3PromptCheckpointStore:
             "provenance": {
                 "source": "dspy-h3-prompt-builder",
                 "generator": _json_value(request.generator_revision),
+                **_structured_provenance(generated),
             },
         }
         atomic_write_json(path, payload)
@@ -233,6 +234,26 @@ def _json_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return str(value)
+
+
+def _structured_provenance(generated: Mapping[str, Any]) -> dict[str, Any]:
+    provenance = generated.get("prompt_provenance")
+    result: dict[str, Any] = {}
+    if isinstance(provenance, Mapping):
+        if provenance.get("compiler"):
+            result["compiler"] = str(provenance["compiler"])
+        if provenance.get("compiler_version") is not None:
+            result["compiler_version"] = provenance["compiler_version"]
+    for source_key, output_key in (
+        ("creative_sections", "creative_sections_sha256"),
+        ("locked_facts", "locked_facts_sha256"),
+    ):
+        value = generated.get(source_key)
+        if value is None:
+            continue
+        encoded = json.dumps(_json_value(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        result[output_key] = "sha256:" + hashlib.sha256(encoded).hexdigest()
+    return result
 
 
 def _project_path(path: Path, project_dir: Path) -> str:

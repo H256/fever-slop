@@ -5,6 +5,7 @@ from typing import Any
 
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
+from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
 
 
 class DeterministicH3Compiler:
@@ -64,6 +65,25 @@ class DeterministicH3Compiler:
         if self.max_words is not None and len(result.split()) > self.max_words:
             raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
         return result
+
+
+def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayload, ...]:
+    """Project DSPy plan shots into backend-neutral creative payloads."""
+    if not isinstance(plan, ResolvedPromptPlan):
+        raise TypeError("plan must be a ResolvedPromptPlan")
+    result: list[CreativeShotPayload] = []
+    seen: set[int] = set()
+    for shot in plan.shots:
+        number = int(shot.shot_number)
+        if number in seen:
+            raise ValueError(f"duplicate planned shot number: {number}")
+        seen.add(number)
+        result.append(CreativeShotPayload(
+            shot_id=f"shot-{number:04d}",
+            visible_action=shot.description,
+            performance=plan.creative_intent,
+        ))
+    return tuple(result)
 
 
 def _time(value: Any) -> str:
