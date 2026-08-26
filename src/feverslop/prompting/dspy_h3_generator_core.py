@@ -464,6 +464,7 @@ class VideoPromptGenerator:
         raise AssertionError("unreachable")
 
     def __call__(self, request_data: dict[str, Any]) -> GeneratedVideoPrompt:
+        section_only = bool(request_data.get("_section_only"))
         if request_data.get("mode") == "ref":
             request_data = {**request_data, "mode": PromptMode.R2V.value}
         request = VideoPromptRequest.model_validate(request_data)
@@ -474,6 +475,23 @@ class VideoPromptGenerator:
         with self.dspy_runtime.context(lm=self.lm):
             refs = self._resolve_references(request.references)
             plan = self._plan(request, refs)
+            if section_only:
+                # The planner is the only generative step in this mode.  The
+                # backend prompt is compiled by DspyH3PromptBuilder from the
+                # typed plan, so no model-generated prose can alter anchors or
+                # locked structure.
+                placeholder = BaseVideoPrompt(
+                    integrated_multimodal_description=plan.creative_intent,
+                    overall_soundscape=plan.overall_soundscape,
+                    non_diegetic_music=plan.non_diegetic_music,
+                    alignment_instruction=plan.alignment_instruction,
+                )
+                return GeneratedVideoPrompt(
+                    mode=request.mode,
+                    prompt=placeholder,
+                    plan=plan,
+                    references=refs,
+                )
             effective_request = request
             prompt = None
             judge = None

@@ -225,6 +225,33 @@ class ResolvedPromptPlan(BaseModel):
     alignment_instruction: str | None = None
 
 
+class H3PromptSections(BaseModel):
+    """Backend-neutral section contract returned by the H3 planning pass.
+
+    This object deliberately contains content fields, not rendered H3 syntax.
+    Reference labels and timing remain structured values until the deterministic
+    compiler assembles the final prompt.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    creative_intent: str
+    subjects: list[SubjectDefinition] = Field(default_factory=list)
+    reference_usage: list[ReferenceUsage] = Field(default_factory=list)
+    shots: list[PlannedShot] = Field(default_factory=list)
+    overall_soundscape: str
+    music_intent: MusicIntent
+    non_diegetic_music: str | None = None
+    alignment_instruction: str | None = None
+
+    @classmethod
+    def from_plan(cls, plan: ResolvedPromptPlan) -> "H3PromptSections":
+        return cls.model_validate(plan.model_dump())
+
+    def to_plan(self) -> ResolvedPromptPlan:
+        return ResolvedPromptPlan.model_validate(self.model_dump())
+
+
 class RetentionAnalysis(BaseModel):
     target_label: str
     mode: str

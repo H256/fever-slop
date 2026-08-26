@@ -102,14 +102,10 @@ def _build_resume_plan(
                 f"selected scene(s) not present in canonical plan: {numbers}",
             ),
         ))
-    if desired_base != base and requested is not None and requested != available:
-        return ExecutionPlan(root, "resume", (
-            ExecutionPlanItem(
-                "project render settings",
-                PlanAction.BLOCKED,
-                "global resolution or workflow changes require all scenes; rerun without --scenes",
-            ),
-        ))
+    # A global settings sync updates the canonical plan for every scene, but it
+    # is safe to prepare/render only the explicitly selected scenes afterwards.
+    # Keeping the unselected scenes in the canonical plan preserves the global
+    # invariant while allowing targeted benchmark iterations.
     active_path = _active_plan(layout, video_pipeline)
     active = _read_plan(active_path) if active_path.is_file() else []
     stored_by_number = {int(scene["scene"]): scene for scene in active}

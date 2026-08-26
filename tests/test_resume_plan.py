@@ -436,7 +436,7 @@ class ResumePlanTests(unittest.TestCase):
         self.assertNotIn("main_pipeline", plan.runnable_stages)
         self.assertNotIn("h3_prompts", plan.runnable_stages)
 
-    def test_global_project_setting_change_blocks_partial_scene_selection(self):
+    def test_global_project_setting_change_syncs_before_partial_scene_selection(self):
         self._write_base_and_derived(2)
 
         plan = build_resume_plan(
@@ -446,9 +446,10 @@ class ResumePlanTests(unittest.TestCase):
             render_settings=ProjectRenderSettings(width=1024, height=576),
         )
 
-        self.assertTrue(plan.blocked)
-        self.assertEqual((), plan.runnable_stages)
-        self.assertIn("all scenes", plan.items[0].reason)
+        self.assertFalse(plan.blocked)
+        self.assertEqual("sync_project_settings", plan.runnable_stages[0])
+        self.assertEqual((1,), plan.runnable_scenes_for_stage("ltx_prepare_workflows"))
+        self.assertEqual((1,), plan.runnable_scenes_for_stage("ltx_render_scenes"))
 
     def test_project_video_workflow_change_invalidates_workflows_not_references(self):
         base = self._write_base_and_derived(1)
