@@ -50,6 +50,17 @@ class RenderDefaultsTests(unittest.TestCase):
             }), encoding="utf-8")
             self.assertEqual("ltx25-msr-draft", ProjectConfig.load(root / "config.json").render_profile)
 
+    def test_ltx25_profile_resolves_to_canonical_workflow_when_project_has_no_override(self):
+        from feverslop.composition.project_render_settings import resolve_project_render_settings
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config.json").write_text(json.dumps({
+                "input_audio": "", "video_pipeline": "ltx_i2v",
+                "render_profile": "ltx25-i2v-draft",
+            }), encoding="utf-8")
+            resolved = resolve_project_render_settings(root, video_pipeline="ltx_i2v")
+            self.assertTrue(str(resolved.settings.video_workflow.path).replace("\\", "/").endswith("workflows/video/ltx_25/i2v/i2v_draft.json"))
+
 
 if __name__ == "__main__":
     unittest.main()
