@@ -60,12 +60,12 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 | `workflows/video_ltxv_ingredients_audio_2stage_gguf_v6.json` | video | ltx_legacy | ingredients | workflows/video/ltx_legacy/ |
 | `workflows/video_ltxv_ingredients_audio_2stage_v6.json` | video | ltx_legacy | ingredients | workflows/video/ltx_legacy/ |
 | `workflows/video_ltxv_msr_1actor_1background_v4.json` | video | ltx_legacy | msr | workflows/video/ltx_legacy/ |
-| `workflows/video_minimax_h3_r2v_audio_eb57_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
-| `workflows/video_minimax_h3_r2v_audio_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
-| `workflows/video_minimax_h3_r2v_eb57_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
-| `workflows/video_minimax_h3_r2v_turbo_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
-| `workflows/video_minimax_h3_r2v_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
-| `workflows/video_minimax_h3_t2v.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_audio_eb57_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_audio_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_eb57_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_turbo_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/t2v.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
 | `workflows/video_seedvr2_3b_api.json` | video | seedvr | other | workflows/video/seedvr/ |
 
 ## Migration rules
@@ -75,4 +75,6 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 - Keep old LTX assets in the retirement set until the LTX 2.5 cutover explicitly replaces them.
 - Validate every moved JSON as an object and preserve its anchor/title contract before changing callers.
 - Update this map in the same change as any workflow add, move, or retirement.
+
+
 

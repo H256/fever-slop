@@ -24,8 +24,8 @@
 
 Workflow JSONs are stored in `workflows/`:
 
-- Video MiniMax H3 Text-To-Video (T2V): `workflows/video_minimax_h3_t2v.json`
-- Video MiniMax H3 Reference-To-Video (R2V): `workflows/video_minimax_h3_r2v_audio_v1.json`
+- Video MiniMax H3 Text-To-Video (T2V): `workflows/video/minimax_h3/t2v.json`
+- Video MiniMax H3 Reference-To-Video (R2V): `workflows/video/minimax_h3/r2v_audio_v1.json`
 
 Place or reference them in `app_config.json` if the default locations differ.
 

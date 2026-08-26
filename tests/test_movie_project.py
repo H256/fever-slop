@@ -3871,9 +3871,9 @@ class MovieProjectTests(unittest.TestCase):
                 config = movie_runtime_config({"movie_video_workflow": mode})
 
                 self.assertEqual(mode, config["movie_video_workflow"])
-                self.assertEqual("workflows/video_minimax_h3_r2v.json", config["r2v_workflow"])
-                self.assertEqual("workflows/video_minimax_h3_t2v.json", config["t2v_workflow"])
-                self.assertEqual("workflows/video_minimax_h3_t2v.json", config["i2v_workflow"])
+                self.assertEqual("workflows/video/minimax_h3/r2v_audio_v1.json", config["r2v_workflow"])
+                self.assertEqual("workflows/video/minimax_h3/t2v.json", config["t2v_workflow"])
+                self.assertEqual("workflows/video/minimax_h3/t2v.json", config["i2v_workflow"])
 
     def test_movie_visual_factory_selects_minimax_adapter(self):
         from feverslop.adapters.movie_minimax_visual import (
