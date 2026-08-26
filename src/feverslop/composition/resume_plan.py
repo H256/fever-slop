@@ -306,7 +306,7 @@ def build_compatibility_plan(
     )
     if scenes:
         items += tuple(
-            ExecutionPlanItem("scene selection", PlanAction.REUSE, "selected by --scenes", scene)
+            ExecutionPlanItem("scene selection", PlanAction.RUN, "selected by --scenes", scene)
             for scene in scenes
         )
     return ExecutionPlan(Path(project).resolve(), "compatibility", items)
