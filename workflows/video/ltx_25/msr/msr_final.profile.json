@@ -1,0 +1,9 @@
+{
+  "profile_id": "ltx25-msr-final",
+  "model_version": "2.5",
+  "mode": "msr",
+  "quality": "final",
+  "pass_strategy": "two_pass",
+  "audio_policy": "native_audio_when_declared",
+  "anchor_policy": "none"
+}
