@@ -47,7 +47,7 @@ RUNNER_ARGUMENTS = (
     ("msr_workflow", ("--msr-workflow",), {"default": str(Path("workflows") / "video" / "ltx_25" / "msr" / "msr_draft.json")}),
     ("ingredients_workflow", ("--ingredients-workflow",), {"default": str(Path("workflows") / "video" / "ltx_25" / "ingredients" / "ingredients_draft.json")}),
     ("relay_workflow", ("--relay-workflow",), {"default": ""}),
-    ("single_prompt_workflow", ("--single-prompt-workflow",), {"default": None}),
+    ("single_prompt_workflow", ("--single-prompt-workflow",), {"default": str(Path("workflows") / "video" / "ltx_25" / "i2v" / "i2v_draft.json")}),
     ("video_pipeline", ("--video-pipeline",), {"choices": ["ltx_i2v", "ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v", "minimax-h3-fl2v", "minimax-h3-l2v"], "default": "ltx_i2v"}),
     ("render_mode", ("--render-mode",), {"choices": ["auto", "relay", "single_prompt"], "default": "single_prompt"}),
     ("single_prompt_title", ("--single-prompt-title",), {"default": "#PROMPT"}),
@@ -90,6 +90,22 @@ RUNNER_ARGUMENTS = (
     ("no_original_audio_mux", ("--no-original-audio-mux",), {"action": "store_true"}),
     ("minimax_audio_ref_stems", ("--minimax-audio-ref-stems",), {"type": str, "default": None}),
 )
+
+
+def default_single_prompt_workflow(video_pipeline: str | None) -> str:
+    """Return the canonical single-prompt workflow for a pipeline.
+
+    This is intentionally shared by both CLI entry points so compatibility
+    runs cannot silently fall back to an LTX workflow when H3 was requested.
+    """
+    h3_defaults = {
+        "minimax-h3-r2v": "workflows/video/minimax_h3/r2v_audio_two_pass.json",
+        "minimax-h3-t2v": "workflows/video/minimax_h3/t2v_two_pass.json",
+    }
+    return h3_defaults.get(
+        video_pipeline,
+        str(Path("workflows") / "video" / "ltx_25" / "i2v" / "i2v_draft.json"),
+    )
 
 
 def add_runner_options(parser: argparse.ArgumentParser) -> None:

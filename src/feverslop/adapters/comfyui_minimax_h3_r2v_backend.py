@@ -137,6 +137,18 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         patcher = WorkflowPatcher(self.load_workflow())
 
+        required_titles = ("#PROMPT", "#SAVE_VIDEO")
+        missing_titles = [
+            title for title in required_titles
+            if not patcher.find_nodes_by_meta_title(title)
+        ]
+        if missing_titles:
+            raise FeverSlopValidationError(
+                "MiniMax H3 R2V workflow is incompatible: missing required anchors "
+                + ", ".join(missing_titles)
+                + ". Select a MiniMax H3 R2V workflow with the native anchor contract.",
+            )
+
         # MiniMax R2V uses the explicitly numbered reference-audio anchors.
         # The legacy main-audio chain would otherwise occupy ref_audio_0 with
         # a duplicate full mix and shift all prompt references by one slot.
@@ -306,6 +318,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             workflow,
             workflow_path=self.workflow_label,
         )
+        self._preflight_comfy_node_classes(workflow)
 
         # -- per-scene output directory ---------------------------------------
         scene_dir = self.output_dir / f"scene_{scene_number:04}"
@@ -361,6 +374,25 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 extract_boundary_frames=True,
             ),
         )
+
+    def _preflight_comfy_node_classes(self, workflow: dict) -> None:
+        """Fail before queueing when ComfyUI cannot provide workflow nodes."""
+        get_object_info = getattr(self.client, "get_object_info", None)
+        if not callable(get_object_info):
+            return
+        available = set(get_object_info())
+        required = {
+            str(node.get("class_type"))
+            for node in workflow.values()
+            if node.get("class_type")
+        }
+        missing = sorted(required - available)
+        if missing:
+            raise FeverSlopValidationError(
+                "ComfyUI is missing required H3 workflow nodes: "
+                + ", ".join(missing)
+                + ". Install/load the matching native H3 node package before rendering.",
+            )
 
     # -----------------------------------------------------------------------
     # Patching helpers
