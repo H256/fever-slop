@@ -114,5 +114,18 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 - Validate every moved JSON as an object and preserve its anchor/title contract before changing callers.
 - Update this map in the same change as any workflow add, move, or retirement.
 
+## Legacy aliases
+
+`feverslop.path_utils.WORKFLOW_PATH_ALIASES` is the single compatibility table
+for the exact pre-typed paths listed above. `resolve_workflow_reference()`
+normalizes separators, resolves only exact full-path matches, and emits a
+`DeprecationWarning`; it never maps by basename. Project and runner workflow
+resolution use this helper before reading a file.
+
+Removal point: delete these aliases only after all maintained project configs
+have been migrated to the typed paths and a repository-wide search confirms
+that no supported project or fixture still contains a legacy key. Until that
+audit is complete, old paths remain supported with diagnostics.
+
 
 

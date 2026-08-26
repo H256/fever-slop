@@ -3,6 +3,41 @@ from __future__ import annotations
 import os
 from os import PathLike
 from pathlib import Path, PureWindowsPath
+import warnings
+
+
+WORKFLOW_PATH_ALIASES = {
+    "workflows/audio_song_v2.json": "workflows/audio/audio-model/audio_song_v2.json",
+    "workflows/image_detail_easyuse_startframe_v1.json": "workflows/image/image-model/image_detail_easyuse_startframe_v1.json",
+    "workflows/image_edit_flux2_klein_1ref_v1.json": "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json",
+    "workflows/image_edit_flux2_klein_2ref_v1.json": "workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json",
+    "workflows/image_mask_sam3_actor_regions_v1.json": "workflows/image/image-model/image_mask_sam3_actor_regions_v1.json",
+    "workflows/image_repair_sdxl_ipadapter_identity_v1.json": "workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json",
+    "workflows/image_t2i_startframe_ideogram_director_v1.json": "workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json",
+    "workflows/image_t2i_startframe_ideogram_v1.json": "workflows/image/image-model/image_t2i_startframe_ideogram_v1.json",
+    "workflows/image_t2i_startframe_krea_v1.json": "workflows/image/image-model/image_t2i_startframe_krea_v1.json",
+    "workflows/image_t2i_startframe_v1.json": "workflows/image/image-model/image_t2i_startframe_v1.json",
+    "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json": "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json",
+}
+
+
+def resolve_workflow_reference(value: str | PathLike[str]) -> str:
+    """Normalize a workflow reference and resolve only explicitly known aliases."""
+    raw = os.fspath(value)
+    if _is_native_absolute(Path(raw)) or _looks_like_windows_absolute(raw):
+        return raw
+    normalized = raw.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    replacement = WORKFLOW_PATH_ALIASES.get(normalized.casefold())
+    if replacement is None:
+        return normalized
+    warnings.warn(
+        f"Legacy workflow path '{normalized}' is deprecated; use '{replacement}'.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return replacement
 
 
 def coerce_local_path(

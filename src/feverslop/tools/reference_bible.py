@@ -27,6 +27,7 @@ from feverslop.application.reference_bible import (
 from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
+from feverslop.path_utils import resolve_workflow_reference
 from feverslop.ports.rendering import WorkflowAnchorConfig
 
 console = Console()
@@ -138,13 +139,13 @@ def run(args: argparse.Namespace) -> list[Path]:
     model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
     hero_backend = ComfyUIImageBackend(
         client=client,
-        workflow_path=args.hero_workflow,
+        workflow_path=resolve_workflow_reference(args.hero_workflow),
         output_dir=output_dir,
         model_resolver=model_resolver,
     )
     edit_backend = ComfyUIImageBackend(
         client=client,
-        workflow_path=args.edit_workflow,
+        workflow_path=resolve_workflow_reference(args.edit_workflow),
         output_dir=output_dir,
         model_resolver=model_resolver,
     )
@@ -153,7 +154,7 @@ def run(args: argparse.Namespace) -> list[Path]:
     if args.reference_generation == "sequence_sheet":
         sequence_backend = ComfyUISequenceToSheetBackend(
             client=client,
-            workflow_path=args.sequence_workflow,
+            workflow_path=resolve_workflow_reference(args.sequence_workflow),
             backend="minimax",
             model_resolver=model_resolver,
         )

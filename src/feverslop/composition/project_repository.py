@@ -21,6 +21,7 @@ from feverslop.config.project_validation import (
     validate_pipeline_mode,
 )
 from feverslop.ports.project_requests import ProjectCreateRequest, StudioPathError
+from feverslop.path_utils import resolve_workflow_reference
 from feverslop.utils.io import atomic_write_json
 
 
@@ -348,7 +349,7 @@ def _supported_backend(value: str, field: str, supported: set[str], *, default: 
 
 
 def _project_workflow_path(value: str, field: str) -> str:
-    path = str(value or "").strip()
+    path = resolve_workflow_reference(str(value or "").strip())
     if not path:
         raise ValueError(f"{field} is required")
     parsed = Path(path)

@@ -29,7 +29,7 @@ def _build_render_parser(subparsers) -> argparse.ArgumentParser:
 
 def _run_render(args: argparse.Namespace) -> None:
     from feverslop.application.generate_render_plan import GenerateRenderPlanRequest
-    from feverslop.path_utils import coerce_local_path
+    from feverslop.path_utils import coerce_local_path, resolve_workflow_reference
 
     execute_generate_render_plan(
         GenerateRenderPlanRequest(
@@ -39,7 +39,11 @@ def _run_render(args: argparse.Namespace) -> None:
             video_workflow_paths=tuple(coerce_local_path(path) for path in args.video_workflow),
             rolling_frame_profile=args.rolling_frame_profile,
             render_storyboard=bool(args.render_storyboard),
-            zimage_workflow_path=coerce_local_path(args.zimage_workflow) if args.zimage_workflow else None,
+            zimage_workflow_path=(
+                coerce_local_path(resolve_workflow_reference(args.zimage_workflow))
+                if args.zimage_workflow
+                else None
+            ),
         ),
         console=console,
     )

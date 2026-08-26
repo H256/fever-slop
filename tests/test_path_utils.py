@@ -1,8 +1,9 @@
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 
-from feverslop.path_utils import coerce_local_path
+from feverslop.path_utils import WORKFLOW_PATH_ALIASES, coerce_local_path, resolve_workflow_reference
 
 
 class PathUtilsTests(unittest.TestCase):
@@ -27,6 +28,43 @@ class PathUtilsTests(unittest.TestCase):
         absolute = Path.cwd().resolve() / "app_config.json"
 
         self.assertEqual(absolute, coerce_local_path(absolute))
+
+    def test_known_legacy_workflow_path_warns_and_resolves_exactly(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            resolved = resolve_workflow_reference(
+                r".\workflows\image_t2i_startframe_krea_v1.json",
+            )
+
+        self.assertEqual("workflows/image/image-model/image_t2i_startframe_krea_v1.json", resolved)
+        self.assertEqual(1, len(caught))
+        self.assertIs(caught[0].category, DeprecationWarning)
+        self.assertIn("deprecated", str(caught[0].message))
+
+    def test_aliases_do_not_guess_by_basename(self):
+        value = "image_t2i_startframe_krea_v1.json"
+
+        self.assertEqual(value, resolve_workflow_reference(value))
+
+    def test_maintained_sources_do_not_add_flat_workflow_literals(self):
+        allowed = {
+            Path("src/feverslop/path_utils.py"),
+            Path("documentation/workflow-path-map.md"),
+        }
+        candidates = [
+            path
+            for root in (Path("src"), Path("tests"), Path("documentation"))
+            for path in root.rglob("*")
+            if path.suffix in {".md", ".py", ".json"} and path not in allowed
+        ]
+        violations = [
+            f"{path}:{legacy}"
+            for path in candidates
+            for legacy in WORKFLOW_PATH_ALIASES
+            if legacy in path.read_text(encoding="utf-8")
+        ]
+
+        self.assertEqual([], violations)
 
 
 if __name__ == "__main__":
