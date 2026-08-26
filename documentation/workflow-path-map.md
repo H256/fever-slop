@@ -73,6 +73,7 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 | `workflows/video/minimax_h3/t2v_two_pass.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/t2v_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
 | `workflows/video/ltx_25/capabilities.json` | video | ltx_2.5 | capability manifest | workflows/video/ltx_25/ |
+| `workflows/video/ltx_25/profile-matrix.json` | video | ltx_2.5 | profile matrix | workflows/video/ltx_25/ |
 | `workflows/video_seedvr2_3b_api.json` | video | seedvr | other | workflows/video/seedvr/ |
 
 ## Migration rules
