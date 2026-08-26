@@ -513,6 +513,9 @@ class DspyH3PromptBuilder:
                         "shot_windows": {key: list(value) for key, value in windows.items()},
                         "references": references_by_shot,
                     },
+                    "continuation_intents": [
+                        intent.model_dump() for intent in sections.continuation_intents
+                    ],
                     "prompt_provenance": {
                         "compiler": "deterministic_h3_compiler",
                         "compiler_version": 1,
@@ -599,6 +602,7 @@ class DspyH3PromptBuilder:
             "references": sections.get("resolved_references") or [],
             "segment_id": segment.get("segment_id"),
             "sections": sections,
+            "continuation_intents": list(sections.get("continuation_intents") or []),
             "prompt_provenance": {
                 "compiler": "deterministic_h3_compiler",
                 "compiler_version": 1,

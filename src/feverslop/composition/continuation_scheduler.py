@@ -7,6 +7,41 @@ from feverslop.domain.continuation_dependencies import ContinuationDependencyGra
 from feverslop.utils.sub_step_progress import SubStepProgress
 
 
+def chains_from_predecessors(
+    scene_numbers: list[int] | tuple[int, ...],
+    predecessors: Mapping[int, int],
+) -> dict[str, tuple[str, ...]]:
+    """Build deterministic scheduler chains from the render-path handoffs."""
+    ordered = tuple(sorted({int(number) for number in scene_numbers}))
+    selected = set(ordered)
+    successors: dict[int, int] = {}
+    for successor, predecessor in predecessors.items():
+        successor_number = int(successor)
+        predecessor_number = int(predecessor)
+        if successor_number not in selected or predecessor_number not in selected:
+            continue
+        if predecessor_number in successors:
+            raise ValueError(f"scene {predecessor_number} has multiple continuation successors")
+        successors[predecessor_number] = successor_number
+
+    chains: dict[str, tuple[str, ...]] = {}
+    visited: set[int] = set()
+    for first in ordered:
+        if first in visited or first in predecessors:
+            continue
+        chain: list[str] = []
+        current = first
+        while current in selected and current not in visited:
+            visited.add(current)
+            chain.append(f"scene-{current}")
+            current = successors.get(current, -1)
+        chains[chain[0]] = tuple(chain)
+    for number in ordered:
+        if number not in visited:
+            chains[f"scene-{number}"] = (f"scene-{number}",)
+    return chains
+
+
 class ContinuationScheduler:
     """Run continuation segments in dependency order with observable progress."""
 
