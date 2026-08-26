@@ -34,7 +34,7 @@ class H3TwoPassTests(unittest.TestCase):
         self.assertEqual(spec, H3TwoPassSpec.from_dict(spec.to_dict()))
 
     def test_patches_sampler_scheduler_steps_and_denoise_anchors(self):
-        spec = self.make_spec(required_anchors=["#PASS1", "#PASS2"])
+        spec = self.make_spec(required_anchors=["#PASS1", "#PASS2"], preserve_audio_latent=False)
         workflow = {
             "1": {"class_type": "KSampler", "inputs": {"sampler_name": "old", "scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS1"}},
             "2": {"class_type": "KSampler", "inputs": {"sampler_name": "old", "scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS2"}},
@@ -70,6 +70,17 @@ class H3TwoPassTests(unittest.TestCase):
             self.assertGreater(spec.pass1_steps, 0)
             self.assertTrue(spec.preserve_audio_latent)
             self.assertIn("#PASS2", spec.required_anchors)
+
+    def test_audio_preservation_rejects_spatial_upscale_on_audio_branch(self):
+        from feverslop.domain.h3_two_pass import validate_audio_latent_preservation
+
+        spec = self.make_spec()
+        workflow = {
+            "a": {"class_type": "AudioLatent", "inputs": {}, "_meta": {"title": "#AUDIO_LATENT"}},
+            "b": {"class_type": "LatentUpscale", "inputs": {"samples": ["a", 0]}, "_meta": {"title": "audio upscale"}},
+        }
+        with self.assertRaises(H3TwoPassSchemaError):
+            validate_audio_latent_preservation(workflow, spec)
 
 
 if __name__ == "__main__":
