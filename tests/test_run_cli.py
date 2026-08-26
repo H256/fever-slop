@@ -348,8 +348,8 @@ class RunCliTests(unittest.TestCase):
         self.assertEqual(1, exit_code)
         rendered = self.stream.getvalue()
         self.assertIn("LLM", rendered)
-        self.assertIn("noch nicht bereit", rendered)
-        self.assertIn("laden", rendered)
+        self.assertIn("LLM is not ready yet", rendered)
+        self.assertIn("finish loading", rendered)
 
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_advanced_stage_is_translated_to_execution_plan(self, pipeline_run):
