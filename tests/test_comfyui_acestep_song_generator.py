@@ -68,7 +68,7 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
 
         generator = ComfyUIAceStepSongGenerator(
             client=FakeComfyUIClient(),
-            workflow_path=Path("workflows/audio_song_v2.json"),
+            workflow_path=Path("workflows/audio/audio-model/audio_song_v2.json"),
             model_resolver=FakeModelResolver(),
         )
 
@@ -83,7 +83,7 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             workflow_path = temp / "audio_song.json"
-            workflow_path.write_text(Path("workflows/audio_song_v2.json").read_text(encoding="utf-8-sig"), encoding="utf-8")
+            workflow_path.write_text(Path("workflows/audio/audio-model/audio_song_v2.json").read_text(encoding="utf-8-sig"), encoding="utf-8")
             client = FakeComfyUIClient()
             resolver = FakeModelResolver()
             generator = ComfyUIAceStepSongGenerator(
@@ -141,7 +141,7 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             workflow_path = temp / "audio_song.json"
-            workflow_path.write_text(Path("workflows/audio_song_v2.json").read_text(encoding="utf-8-sig"), encoding="utf-8")
+            workflow_path.write_text(Path("workflows/audio/audio-model/audio_song_v2.json").read_text(encoding="utf-8-sig"), encoding="utf-8")
             client = FakeComfyUIClient()
             resolver = FakeModelResolver()
             generator = ComfyUIAceStepSongGenerator(

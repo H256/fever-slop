@@ -367,7 +367,7 @@ class AppConfigTests(unittest.TestCase):
                 {
                   "storyboard_prompt_transforms": [
                     {
-                      "workflow": "workflows/image_t2i_startframe_ideogram_v1.json",
+                      "workflow": "workflows/image/image-model/image_t2i_startframe_ideogram_v1.json",
                       "kind": "template",
                       "template": "documentation/ideogram4_prompt_template.md",
                       "positive_prompt_input": "text",
@@ -382,7 +382,7 @@ class AppConfigTests(unittest.TestCase):
             config = AppConfig.load(config_path)
 
         [transform] = config.storyboard_prompt_transforms
-        self.assertEqual("workflows/image_t2i_startframe_ideogram_v1.json", transform.workflow)
+        self.assertEqual("workflows/image/image-model/image_t2i_startframe_ideogram_v1.json", transform.workflow)
         self.assertEqual("template", transform.kind)
         self.assertEqual("documentation/ideogram4_prompt_template.md", transform.template)
         self.assertEqual("text", transform.positive_prompt_input)

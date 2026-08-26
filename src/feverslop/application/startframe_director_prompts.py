@@ -65,8 +65,8 @@ def _director_backend(value: str) -> str:
 
 def _director_workflow(backend: str) -> str:
     if backend == "ideogram":
-        return "workflows/image_t2i_startframe_ideogram_director_v1.json"
-    return "workflows/image_t2i_startframe_krea_v1.json"
+        return "workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json"
+    return "workflows/image/image-model/image_t2i_startframe_krea_v1.json"
 
 
 def _positive_prompt(shot: dict[str, Any], identity: dict[str, Any], *, backend: str) -> str:

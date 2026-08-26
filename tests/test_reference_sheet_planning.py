@@ -97,7 +97,7 @@ class ReferenceSheetPlanningTests(unittest.TestCase):
     def test_h3_location_serializer_emits_anchor_rule(self):
         backend = ComfyUISequenceToSheetBackend(
             client=object(),
-            workflow_path="workflows/sequence_to_sheet_minimax_h3_i2va_v1.json",
+            workflow_path="workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json",
             backend="minimax",
         )
         prompt = backend.build_sheet_prompt_from_plan(

@@ -96,7 +96,7 @@ class StartframeEngineTests(unittest.TestCase):
 
         shot = data["shots"][0]
         self.assertEqual("krea2", shot["director_backend"])
-        self.assertEqual("workflows/image_t2i_startframe_krea_v1.json", shot["workflow"])
+        self.assertEqual("workflows/image/image-model/image_t2i_startframe_krea_v1.json", shot["workflow"])
         self.assertEqual(2, shot["candidate_count"])
         self.assertIn("single cinematic film still", shot["positive_prompt"])
         self.assertIn("Mara", shot["positive_prompt"])
@@ -163,7 +163,7 @@ class StartframeEngineTests(unittest.TestCase):
                 build_startframe_director_prompts(project_dir=project)
 
     def test_ideogram_director_workflow_exposes_patch_anchors(self):
-        workflow = json.loads(Path("workflows/image_t2i_startframe_ideogram_director_v1.json").read_text(encoding="utf-8-sig"))
+        workflow = json.loads(Path("workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json").read_text(encoding="utf-8-sig"))
         titles = {str(node.get("_meta", {}).get("title") or "") for node in workflow.values()}
 
         self.assertIn("#PROMPT_POSITIVE", titles)
@@ -173,7 +173,7 @@ class StartframeEngineTests(unittest.TestCase):
         self.assertIn("#HEIGHT", titles)
 
     def test_krea2_director_workflow_exposes_patch_anchors(self):
-        workflow = json.loads(Path("workflows/image_t2i_startframe_krea_v1.json").read_text(encoding="utf-8-sig"))
+        workflow = json.loads(Path("workflows/image/image-model/image_t2i_startframe_krea_v1.json").read_text(encoding="utf-8-sig"))
         titles = {str(node.get("_meta", {}).get("title") or "") for node in workflow.values()}
         classes = {str(node.get("class_type") or "") for node in workflow.values()}
 
@@ -187,11 +187,11 @@ class StartframeEngineTests(unittest.TestCase):
 
     def test_startframe_comfyui_stage_workflows_expose_patch_anchors(self):
         expected = {
-            "workflows/image_mask_sam3_actor_regions_v1.json": {
+            "workflows/image/image-model/image_mask_sam3_actor_regions_v1.json": {
                 "classes": {"LoadImage", "easy sam3ModelLoader", "easy sam3ImageSegmentation", "MaskToImage", "SaveImage"},
                 "anchors": {"#INPUT_IMAGE", "#SAM3_MODEL", "#SEGMENT_PROMPT", "#MASK_PREVIEW", "#SAVE_MASK"},
             },
-            "workflows/image_repair_sdxl_ipadapter_identity_v1.json": {
+            "workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json": {
                 "classes": {
                     "LoadImage",
                     "CheckpointLoaderSimple",
@@ -215,7 +215,7 @@ class StartframeEngineTests(unittest.TestCase):
                     "#SAVE_IMAGE",
                 },
             },
-            "workflows/image_detail_easyuse_startframe_v1.json": {
+            "workflows/image/image-model/image_detail_easyuse_startframe_v1.json": {
                 "classes": {
                     "LoadImage",
                     "easy fullLoader",
@@ -276,10 +276,10 @@ class StartframeEngineTests(unittest.TestCase):
 
             final_video = ComfyUIStartframeDirectorVisualAdapter(
                 client=client,
-                director_workflow_path=Path("workflows/image_t2i_startframe_krea_v1.json"),
-                mask_workflow_path=Path("workflows/image_mask_sam3_actor_regions_v1.json"),
-                identity_repair_workflow_path=Path("workflows/image_repair_sdxl_ipadapter_identity_v1.json"),
-                detail_workflow_path=Path("workflows/image_detail_easyuse_startframe_v1.json"),
+                director_workflow_path=Path("workflows/image/image-model/image_t2i_startframe_krea_v1.json"),
+                mask_workflow_path=Path("workflows/image/image-model/image_mask_sam3_actor_regions_v1.json"),
+                identity_repair_workflow_path=Path("workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json"),
+                detail_workflow_path=Path("workflows/image/image-model/image_detail_easyuse_startframe_v1.json"),
                 video_use_case=video,
                 validator=validator,
                 debug_workflows_dir=project / "output" / "movie" / "startframes" / "debug_workflows",

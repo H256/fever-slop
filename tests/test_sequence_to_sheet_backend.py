@@ -7,7 +7,7 @@ from feverslop.adapters.sequence_to_sheet_backend import ComfyUISequenceToSheetB
 
 
 REPO_ROOT = Path(__file__).parents[1]
-WORKFLOW_PATH = REPO_ROOT / "workflows" / "sequence_to_sheet_minimax_h3_i2va_v1.json"
+WORKFLOW_PATH = REPO_ROOT / "workflows" / "sequence" / "minimax_h3" / "sequence_to_sheet_minimax_h3_i2va_v1.json"
 
 
 class FakeUploader:

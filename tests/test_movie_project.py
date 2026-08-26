@@ -2502,7 +2502,7 @@ class MovieProjectTests(unittest.TestCase):
             self.assertIn("Ich kann den Boden nicht mehr spüren", render_plan["shots"][1]["dialogue"])
 
     def test_movie_two_ref_edit_workflow_exposes_required_anchors(self):
-        workflow = json.loads(Path("workflows/image_edit_flux2_klein_2ref_v1.json").read_text(encoding="utf-8-sig"))
+        workflow = json.loads(Path("workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json").read_text(encoding="utf-8-sig"))
         titles = {str(node.get("_meta", {}).get("title") or "") for node in workflow.values()}
 
         self.assertIn("#BASE_IMAGE", titles)
@@ -4582,7 +4582,7 @@ class MovieProjectTests(unittest.TestCase):
             metadata = json.loads((project_dir / ".studio" / "project.json").read_text())
 
             self.assertEqual("succeeded", status["status"])
-            self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", metadata["movie"]["edit_workflow"])
+            self.assertEqual("workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json", metadata["movie"]["edit_workflow"])
             self.assertTrue((project_dir / "movie" / "visual_plan.json").exists())
             self.assertTrue((project_dir / "movie" / "render_plan_i2v.json").exists())
             self.assertTrue((project_dir / "output" / "movie" / "storyboard" / "index.html").exists())

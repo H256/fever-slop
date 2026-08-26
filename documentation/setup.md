@@ -16,7 +16,7 @@ Required:
 Full-Auto also requires an ACE-Step ComfyUI workflow:
 
 ```text
-workflows/audio_song_v2.json
+workflows/audio/audio-model/audio_song_v2.json
 ```
 
 ## Install Dependencies
@@ -110,10 +110,10 @@ API host policy.
 The selected workflows must exist and use the node anchors expected by the pipeline. Common workflow files:
 
 ```text
-workflows/audio_song_v2.json
-workflows/image_t2i_startframe_v1.json
-workflows/image_t2i_startframe_krea_v1.json
-workflows/image_edit_flux2_klein_1ref_v1.json
+workflows/audio/audio-model/audio_song_v2.json
+workflows/image/image-model/image_t2i_startframe_v1.json
+workflows/image/image-model/image_t2i_startframe_krea_v1.json
+workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json
 workflows/video_ltxv_i2v_v2.json
 workflows/video_ltxv_msr_1actor_1background_v4.json
 workflows/video_seedvr2_3b_api.json
@@ -134,7 +134,7 @@ uv run python -m feverslop.tools.validate_comfyui_workflows \
   --workflows-dir ./workflows
 ```
 
-Full-Auto ACE-Step workflow contract for `workflows/audio_song_v2.json`:
+Full-Auto ACE-Step workflow contract for `workflows/audio/audio-model/audio_song_v2.json`:
 
 | Node title | Patched inputs |
 | --- | --- |

@@ -6,16 +6,16 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 
 | Current path | Medium | Model family | Mode | Planned target |
 |---|---|---|---|---|
-| `workflows/audio_song_v2.json` | audio | audio-model | other | workflows/audio/audio-model/ |
-| `workflows/image_detail_easyuse_startframe_v1.json` | image | image-model | other | workflows/image/image-model/ |
-| `workflows/image_edit_flux2_klein_1ref_v1.json` | image | image-model | edit | workflows/image/image-model/ |
-| `workflows/image_edit_flux2_klein_2ref_v1.json` | image | image-model | edit | workflows/image/image-model/ |
-| `workflows/image_mask_sam3_actor_regions_v1.json` | image | image-model | mask | workflows/image/image-model/ |
-| `workflows/image_repair_sdxl_ipadapter_identity_v1.json` | image | image-model | repair | workflows/image/image-model/ |
-| `workflows/image_t2i_startframe_ideogram_director_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
-| `workflows/image_t2i_startframe_ideogram_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
-| `workflows/image_t2i_startframe_krea_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
-| `workflows/image_t2i_startframe_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
+| `workflows/audio/audio-model/audio_song_v2.json` | audio | audio-model | other | workflows/audio/audio-model/ |
+| `workflows/image/image-model/image_detail_easyuse_startframe_v1.json` | image | image-model | other | workflows/image/image-model/ |
+| `workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json` | image | image-model | edit | workflows/image/image-model/ |
+| `workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json` | image | image-model | edit | workflows/image/image-model/ |
+| `workflows/image/image-model/image_mask_sam3_actor_regions_v1.json` | image | image-model | mask | workflows/image/image-model/ |
+| `workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json` | image | image-model | repair | workflows/image/image-model/ |
+| `workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
+| `workflows/image/image-model/image_t2i_startframe_ideogram_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
+| `workflows/image/image-model/image_t2i_startframe_krea_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
+| `workflows/image/image-model/image_t2i_startframe_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
 | `workflows/old/audio_song.json` | audio | audio-model | other | retire-or-review |
 | `workflows/old/autoprompt_image_z_image_turbo.json` | other | other | other | retire-or-review |
 | `workflows/old/autoprompt_ltxv_i2v.json` | other | ltx_legacy | i2v | retire-or-review |
@@ -49,7 +49,7 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 | `workflows/old/video_ltxv_msr_1actor_1background_v1.json` | video | ltx_legacy | msr | retire-or-review |
 | `workflows/old/video_ltxv_msr_1actor_1background_v2.json` | video | ltx_legacy | msr | retire-or-review |
 | `workflows/old/video_ltxv_msr_1actor_1background_v3.json` | video | ltx_legacy | msr | retire-or-review |
-| `workflows/sequence_to_sheet_minimax_h3_i2va_v1.json` | sequence | minimax_h3 | i2v | workflows/sequence/minimax_h3/ |
+| `workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json` | sequence | minimax_h3 | i2v | workflows/sequence/minimax_h3/ |
 | `workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json` | video | ltx_legacy | i2v | workflows/video/ltx_legacy/ |
 | `workflows/video_default_ltxv_msr_1actor_1background_v4.json` | video | ltx_legacy | msr | workflows/video/ltx_legacy/ |
 | `workflows/video_ltxv_facefix_v1.json` | video | ltx_legacy | facefix | workflows/video/ltx_legacy/ |

@@ -363,7 +363,7 @@ Full-Auto stages exposed in Studio:
 3. `Project scaffold`
 4. `Video pipeline`
 
-The ACE-Step stage queues `workflows/audio_song_v2.json` in ComfyUI. FeverSlop patches the prompt/tags/lyrics/timing/seed inputs, waits for ComfyUI history completion, downloads the audio file, and writes it to:
+The ACE-Step stage queues `workflows/audio/audio-model/audio_song_v2.json` in ComfyUI. FeverSlop patches the prompt/tags/lyrics/timing/seed inputs, waits for ComfyUI history completion, downloads the audio file, and writes it to:
 
 ```text
 projects/<slug>/input/<slug>.mp3
@@ -690,7 +690,7 @@ repeating the CLI options:
   "video_pipeline": "minimax-h3-r2v",
   "reference_generation": "sequence_sheet",
   "workflows": {
-    "reference_sequence": "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"
+    "reference_sequence": "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json"
   }
 }
 ```
@@ -786,8 +786,8 @@ Example:
 ```powershell
 uv run python movie_pipeline.py .\projects\blackwood `
   --movie-video-workflow i2v-edit `
-  --hero-workflow .\workflows\image_t2i_startframe_krea_v1.json `
-  --edit-workflow .\workflows\image_edit_flux2_klein_2ref_v1.json `
+  --hero-workflow .\workflows\image\image-model\image_t2i_startframe_krea_v1.json `
+  --edit-workflow .\workflows\image\image-model\image_edit_flux2_klein_2ref_v1.json `
   --i2v-workflow .\workflows\video_ltxv_i2v_v2.json
 ```
 
@@ -831,10 +831,10 @@ CLI:
 uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow startframe-director `
   --startframe-director-backend krea2 `
-  --director-workflow .\workflows\image_t2i_startframe_krea_v1.json `
-  --mask-workflow .\workflows\image_mask_sam3_actor_regions_v1.json `
-  --identity-repair-workflow .\workflows\image_repair_sdxl_ipadapter_identity_v1.json `
-  --detail-workflow .\workflows\image_detail_easyuse_startframe_v1.json `
+  --director-workflow .\workflows\image\image-model\image_t2i_startframe_krea_v1.json `
+  --mask-workflow .\workflows\image\image-model\image_mask_sam3_actor_regions_v1.json `
+  --identity-repair-workflow .\workflows\image\image-model\image_repair_sdxl_ipadapter_identity_v1.json `
+  --detail-workflow .\workflows\image\image-model\image_detail_easyuse_startframe_v1.json `
   --i2v-workflow .\workflows\video_ltxv_i2v_native_audio_v2.json
 ```
 
@@ -848,10 +848,10 @@ Required ComfyUI workflows:
 
 | Workflow | Default path | Purpose |
 | --- | --- | --- |
-| Director | `workflows/image_t2i_startframe_krea_v1.json` or `image_t2i_startframe_ideogram_director_v1.json` | Initial layout |
-| Mask | `workflows/image_mask_sam3_actor_regions_v1.json` | Actor segmentation |
-| Repair | `workflows/image_repair_sdxl_ipadapter_identity_v1.json` | Identity inpaint |
-| Detail | `workflows/image_detail_easyuse_startframe_v1.json` | Final refinement |
+| Director | `workflows/image/image-model/image_t2i_startframe_krea_v1.json` or `image_t2i_startframe_ideogram_director_v1.json` | Initial layout |
+| Mask | `workflows/image/image-model/image_mask_sam3_actor_regions_v1.json` | Actor segmentation |
+| Repair | `workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json` | Identity inpaint |
+| Detail | `workflows/image/image-model/image_detail_easyuse_startframe_v1.json` | Final refinement |
 | I2V | `workflows/video_ltxv_i2v_native_audio_v2.json` | Video handoff |
 
 ### Movie Ingredients Mode
@@ -1032,8 +1032,8 @@ Movie projects also default to `reference_backend: "comfyui"` for reference
 sheet generation. The default workflows stored in project metadata are:
 
 ```text
-workflows/image_t2i_startframe_krea_v1.json
-workflows/image_edit_flux2_klein_1ref_v1.json
+workflows/image/image-model/image_t2i_startframe_krea_v1.json
+workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json
 ```
 
 Override them in the movie creation form's advanced execution section or by

@@ -9,8 +9,8 @@ with `--reference-generation sequence_sheet`.
 
 When `sequence_sheet` is enabled, the default workflow pair is:
 
-- Anchor image: `workflows/image_t2i_startframe_krea_v1.json` (Krea2 T2I).
-- Multi-view sequence: `workflows/sequence_to_sheet_minimax_h3_i2va_v1.json`
+- Anchor image: `workflows/image/image-model/image_t2i_startframe_krea_v1.json` (Krea2 T2I).
+- Multi-view sequence: `workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json`
   (MiniMax H3 I2VA).
 
 Both workflows can be overridden. The anchor workflow is optional in the
@@ -81,7 +81,7 @@ pipeline:
 uv run python run_pipeline.py .\projects\my-song `
   --video-pipeline minimax-h3-r2v `
   --reference-generation sequence_sheet `
-  --sequence-to-sheet-workflow .\workflows\sequence_to_sheet_minimax_h3_i2va_v1.json `
+  --sequence-to-sheet-workflow .\workflows\sequence\minimax_h3\sequence_to_sheet_minimax_h3_i2va_v1.json `
   --stage main_pipeline `
   --stage anchor_fix `
   --stage msr_references `
@@ -103,7 +103,7 @@ The same option works with the LTX MSR path:
 uv run python run_pipeline.py .\projects\my-song `
   --video-pipeline ltx_msr `
   --reference-generation sequence_sheet `
-  --sequence-to-sheet-workflow .\workflows\sequence_to_sheet_minimax_h3_i2va_v1.json `
+  --sequence-to-sheet-workflow .\workflows\sequence\minimax_h3\sequence_to_sheet_minimax_h3_i2va_v1.json `
   --skip-tests
 ```
 
@@ -116,7 +116,7 @@ movie render:
 uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow minimax-h3-r2v `
   --reference-generation sequence_sheet `
-  --sequence-to-sheet-workflow .\workflows\sequence_to_sheet_minimax_h3_i2va_v1.json `
+  --sequence-to-sheet-workflow .\workflows\sequence\minimax_h3\sequence_to_sheet_minimax_h3_i2va_v1.json `
   --r2v-workflow .\workflows\video\minimax_h3\r2v_v1.json `
   --skip-movie-render
 ```
@@ -139,7 +139,7 @@ uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow minimax-h3-r2v `
   --reference-generation sequence_sheet `
   --hero-workflow .\workflows\my_reference_workflow.json `
-  --sequence-to-sheet-workflow .\workflows\sequence_to_sheet_minimax_h3_i2va_v1.json `
+  --sequence-to-sheet-workflow .\workflows\sequence\minimax_h3\sequence_to_sheet_minimax_h3_i2va_v1.json `
   --skip-movie-render
 ```
 
@@ -160,7 +160,7 @@ uv run python -m feverslop.tools.reference_bible `
   --hero-workflow .\workflows\my_reference_workflow.json `
   --edit-workflow .\workflows\my_reference_edit_workflow.json `
   --reference-generation sequence_sheet `
-  --sequence-workflow .\workflows\sequence_to_sheet_minimax_h3_i2va_v1.json
+  --sequence-workflow .\workflows\sequence\minimax_h3\sequence_to_sheet_minimax_h3_i2va_v1.json
 ```
 
 Use `uv run python -m feverslop.tools.reference_bible --help` to see the

@@ -204,7 +204,7 @@ projects/joy_demo/
     `-- joy_demo.mp3
 ```
 
-ACE-STEP workflow contract for `workflows/audio_song_v2.json`:
+ACE-STEP workflow contract for `workflows/audio/audio-model/audio_song_v2.json`:
 
 | Node title | Class | Patched inputs |
 | --- | --- | --- |
@@ -233,7 +233,7 @@ uv run python full_auto.py `
   --video-pipeline ltx_i2v `
   --render-mode single_prompt `
   --single-prompt-workflow ./workflows/video_ltxv_i2v_v2.json `
-  --storyboard-workflow ./workflows/image_t2i_startframe_v1.json `
+  --storyboard-workflow ./workflows/image/image-model/image_t2i_startframe_v1.json `
   --video-lora-1-strength-model 0.7 `
   --video-lora-1-strength-clip 0.6 `
   --smoke-only `
@@ -251,9 +251,9 @@ uv run python full_auto.py `
 | `--project-config` | derived from `project_root` | Explicit path to project `config.json`. |
 | `--app-config` | `./app_config.json` | Global LLM and ComfyUI config. |
 | `--concept-batch-size` | `10` | Number of scenes per concept-generation LLM batch. Use `0` to disable batching. |
-| `--storyboard-workflow` | `./workflows/image_t2i_startframe_v1.json` | ComfyUI API workflow for Z-Image startframes. |
-| `--reference-hero-workflow` | `./workflows/image_t2i_startframe_krea_v1.json` | ComfyUI API workflow for MSR actor/location hero reference images. |
-| `--reference-edit-workflow` | `./workflows/image_edit_flux2_klein_1ref_v1.json` | ComfyUI API workflow for MSR actor reference edit views. |
+| `--storyboard-workflow` | `./workflows/image/image-model/image_t2i_startframe_v1.json` | ComfyUI API workflow for Z-Image startframes. |
+| `--reference-hero-workflow` | `./workflows/image/image-model/image_t2i_startframe_krea_v1.json` | ComfyUI API workflow for MSR actor/location hero reference images. |
+| `--reference-edit-workflow` | `./workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json` | ComfyUI API workflow for MSR actor reference edit views. |
 | `--msr-workflow` | `./workflows/video_ltxv_msr_1actor_1background_v4.json` | ComfyUI API workflow used when `--video-pipeline ltx_msr` is selected. |
 | `--relay-workflow` | unset | Optional LTX workflow with `#PROMPT_RELAY`; required only for `relay` or `auto`. |
 | `--single-prompt-workflow` | `./workflows/video_ltxv_i2v_v2.json` | LTX workflow with single prompt node. |
@@ -357,8 +357,8 @@ Override the workflow paths when the render machine uses different workflow file
 ```powershell
 uv run python run_pipeline.py .\projects\dwarfventure-msr `
   --video-pipeline ltx_msr `
-  --reference-hero-workflow .\workflows\image_t2i_startframe_krea_v1.json `
-  --reference-edit-workflow .\workflows\image_edit_flux2_klein_1ref_v1.json `
+  --reference-hero-workflow .\workflows\image\image-model\image_t2i_startframe_krea_v1.json `
+  --reference-edit-workflow .\workflows\image\image-model\image_edit_flux2_klein_1ref_v1.json `
   --msr-workflow .\workflows\video_ltxv_msr_1actor_1background_v4.json `
   --skip-tests
 ```
@@ -371,8 +371,8 @@ of repeating flags:
   "video_pipeline": "minimax-h3-r2v",
   "workflows": {
     "video": "workflows/video/minimax_h3/r2v_eb57_8s_v1.json",
-    "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
-    "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
+    "reference_hero": "workflows/image/image-model/image_t2i_startframe_krea_v1.json",
+    "reference_edit": "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json"
   }
 }
 ```
@@ -436,7 +436,7 @@ Ideogram4 storyboard workflows can opt into a raw LLM prompt transform:
 {
   "storyboard_prompt_transforms": [
     {
-      "workflow": "workflows/image_t2i_startframe_ideogram_v1.json",
+      "workflow": "workflows/image/image-model/image_t2i_startframe_ideogram_v1.json",
       "kind": "template",
       "template": "documentation/ideogram4_prompt_template.md",
       "positive_prompt_input": "text",
@@ -817,7 +817,7 @@ Options:
 uv run python render_storyboard.py `
   --app-config ./app_config.json `
   --render-plan ./projects/my_song/output/render/plans/anchored.json `
-  --workflow ./workflows/image_t2i_startframe_v1.json `
+  --workflow ./workflows/image/image-model/image_t2i_startframe_v1.json `
   --output-dir ./projects/my_song/output/render/storyboard
 ```
 

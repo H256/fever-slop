@@ -23,14 +23,14 @@ class ReferenceBibleToolTests(unittest.TestCase):
                 "--project-config",
                 "projects/demo/config.json",
                 "--hero-workflow",
-                "workflows/image_t2i_startframe_v1.json",
+                "workflows/image/image-model/image_t2i_startframe_v1.json",
                 "--edit-workflow",
-                "workflows/image_edit_flux2_klein_1ref_v1.json",
+                "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json",
             ],
         )
 
         self.assertEqual("projects/demo/config.json", args.project_config)
-        self.assertEqual("workflows/image_edit_flux2_klein_1ref_v1.json", args.edit_workflow)
+        self.assertEqual("workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json", args.edit_workflow)
         self.assertEqual("msr", args.view_set)
         self.assertEqual("image_views", args.reference_generation)
 
@@ -40,9 +40,9 @@ class ReferenceBibleToolTests(unittest.TestCase):
                 "--project-config",
                 "projects/demo/config.json",
                 "--hero-workflow",
-                "workflows/image_t2i_startframe_v1.json",
+                "workflows/image/image-model/image_t2i_startframe_v1.json",
                 "--edit-workflow",
-                "workflows/image_edit_flux2_klein_1ref_v1.json",
+                "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json",
                 "--view-set",
                 "full",
             ],
@@ -182,9 +182,9 @@ class ReferenceBibleToolTests(unittest.TestCase):
                     "--app-config",
                     "app_config.json",
                     "--hero-workflow",
-                    "workflows/image_t2i_startframe_v1.json",
+                    "workflows/image/image-model/image_t2i_startframe_v1.json",
                     "--edit-workflow",
-                    "workflows/image_edit_flux2_klein_1ref_v1.json",
+                    "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json",
                 ],
             )
 
@@ -206,9 +206,9 @@ class ReferenceBibleToolTests(unittest.TestCase):
                     "--app-config",
                     "app_config.json",
                     "--hero-workflow",
-                    "workflows/image_t2i_startframe_v1.json",
+                    "workflows/image/image-model/image_t2i_startframe_v1.json",
                     "--edit-workflow",
-                    "workflows/image_edit_flux2_klein_1ref_v1.json",
+                    "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json",
                 ],
             )
             fake_generator = Mock()
@@ -252,9 +252,9 @@ class ReferenceBibleToolTests(unittest.TestCase):
                     "--app-config",
                     "app_config.json",
                     "--hero-workflow",
-                    "workflows/image_t2i_startframe_v1.json",
+                    "workflows/image/image-model/image_t2i_startframe_v1.json",
                     "--edit-workflow",
-                    "workflows/image_edit_flux2_klein_1ref_v1.json",
+                    "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json",
                 ],
             )
             fake_generator = Mock()
