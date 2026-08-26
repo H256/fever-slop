@@ -11,6 +11,9 @@ from feverslop.domain.canonical_render_plan import (
     build_canonical_scene,
     validate_canonical_plan,
 )
+from feverslop.domain.continuation_contract import ContinuationGroup
+from feverslop.domain.continuation_segments import split_semantic_action
+from feverslop.domain.duration_capability import DurationCapability
 from feverslop.domain.performance_sync import select_performance_stems
 from feverslop.domain.subject_directives import (
     SubjectDirectivePlan,
@@ -357,6 +360,46 @@ def _render_audio_path(path_value: str | Path, project_dir: Path | None) -> str:
         return _project_relative_path(path, project_dir)
     return path.as_posix()
 
+
+def _continuation_groups_for_scene(
+    *,
+    h3_entry: dict | None,
+    segment_id: str,
+    start_seconds: float,
+    duration_capability: DurationCapability | None,
+) -> list[dict]:
+    if h3_entry is None or duration_capability is None:
+        return []
+
+    groups: list[dict] = []
+    for raw_intent in h3_entry.get("continuation_intents") or []:
+        if not isinstance(raw_intent, dict) or not raw_intent.get("requires_continuation"):
+            continue
+        action_id = str(raw_intent.get("action_id") or "").strip()
+        desired_duration = raw_intent.get("desired_duration_seconds")
+        if not action_id or desired_duration is None:
+            continue
+        duration = float(desired_duration)
+        if duration <= duration_capability.max_seconds:
+            continue
+        segments = split_semantic_action(
+            action_id=action_id,
+            start_seconds=start_seconds,
+            duration_seconds=duration,
+            max_duration_seconds=duration_capability.max_seconds,
+            fps=duration_capability.fps,
+            capability=duration_capability,
+        )
+        group = ContinuationGroup.create(
+            group_id=f"{segment_id}:{action_id}",
+            semantic_action=action_id,
+            semantic_start_seconds=start_seconds,
+            semantic_end_seconds=start_seconds + duration,
+            segments=segments,
+        )
+        groups.append(group.to_dict())
+    return groups
+
 def build_render_plan(
     scene_prompts_json: str | Path,
     ltx_prompt_relay_json: str | Path,
@@ -371,6 +414,7 @@ def build_render_plan(
     project_dir: Path | None = None,
     seed: int = 0,
     max_scene_actors: int = 4,
+    duration_capability: DurationCapability | None = None,
     plan_writer: Callable[[str | Path, list[dict]], Path] | None = None,
 ) -> Path:
     """Combines:
@@ -550,6 +594,14 @@ def build_render_plan(
             render_scene.setdefault("metadata", {})["continuation_intents"] = list(
                 h3_entry["continuation_intents"],
             )
+            continuation_groups = _continuation_groups_for_scene(
+                h3_entry=h3_entry,
+                segment_id=segment_id,
+                start_seconds=ab_start,
+                duration_capability=duration_capability,
+            )
+            if continuation_groups:
+                render_scene["metadata"]["continuation_groups"] = continuation_groups
 
         generated_roles = {
             PromptRole.Z_IMAGE: zimage_prompt,

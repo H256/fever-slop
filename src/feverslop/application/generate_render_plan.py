@@ -10,6 +10,7 @@ from feverslop.adapters.api_observability import redact_secrets
 from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
+from feverslop.domain.duration_capability import DurationCapability
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import Reporter
@@ -39,6 +40,7 @@ class GenerateRenderPlanExecutionRequest:
     video_settings: Any
     song_id: str
     scene_duration_policy: ResolvedSceneDurationPolicy | None = None
+    duration_capability: DurationCapability | None = None
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,7 @@ class GenerateRenderPlanUseCase:
             video_settings=video_settings,
             song_id=song_id,
             scene_duration_policy=request.scene_duration_policy,
+            duration_capability=request.duration_capability,
             artifact_store=self.artifact_store,
             reporter=self.reporter,
             console=_ReporterConsole(self.reporter),
