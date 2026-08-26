@@ -18,10 +18,10 @@ class TestRefineActorPromptsPrompt(unittest.TestCase):
     def test_krea_guide_is_selected_only_for_krea_workflow(self):
         from feverslop.adapters.movie_planning_prompts import _krea_reference_guides
 
-        location_guide, actor_guide = _krea_reference_guides("workflows/image_t2i_startframe_krea_v1.json")
+        location_guide, actor_guide = _krea_reference_guides("workflows/image/image-model/image_t2i_startframe_krea_v1.json")
         self.assertIn("Krea Location", location_guide)
         self.assertIn("Krea Actor", actor_guide)
-        self.assertEqual(("", ""), _krea_reference_guides("workflows/image_t2i_startframe_v1.json"))
+        self.assertEqual(("", ""), _krea_reference_guides("workflows/image/image-model/image_t2i_startframe_v1.json"))
 
 
 class TestLLMMoviePlannerRefineActors(unittest.TestCase):

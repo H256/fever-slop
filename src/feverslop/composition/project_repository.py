@@ -368,21 +368,21 @@ def _project_optional_relative_path(value: str, field: str) -> str:
 
 
 def _movie_edit_workflow(value: str, *, movie_video_workflow: str) -> str:
-    default_1ref = "workflows/image_edit_flux2_klein_1ref_v1.json"
+    default_1ref = "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json"
     if movie_video_workflow == "i2v-edit" and str(value or "").strip() in {"", default_1ref}:
-        return "workflows/image_edit_flux2_klein_2ref_v1.json"
+        return "workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json"
     return _project_workflow_path(value, "movie_edit_workflow")
 
 
 def _default_movie_director_workflow(value: str, backend: str) -> str:
     raw = str(value or "").strip()
-    krea_default = "workflows/image_t2i_startframe_krea_v1.json"
+    krea_default = "workflows/image/image-model/image_t2i_startframe_krea_v1.json"
     if raw:
         if backend == "ideogram" and raw == krea_default:
-            return "workflows/image_t2i_startframe_ideogram_director_v1.json"
+            return "workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json"
         return raw
     if backend == "ideogram":
-        return "workflows/image_t2i_startframe_ideogram_director_v1.json"
+        return "workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json"
     return krea_default
 
 

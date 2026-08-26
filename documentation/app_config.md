@@ -181,7 +181,7 @@ Example:
 
 ```json
 {
-  "workflow": "workflows/image_t2i_startframe_ideogram_v1.json",
+  "workflow": "workflows/image/image-model/image_t2i_startframe_ideogram_v1.json",
   "kind": "template",
   "template": "documentation/ideogram4_prompt_template.md",
   "positive_prompt_input": "text",

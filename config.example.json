@@ -11,9 +11,9 @@
   "video": {"fps": 24, "width": 1280, "height": 704, "megapixels": 1.0},
   "workflows": {
     "video": "workflows/video/ltx_25/i2v/i2v_draft.json",
-    "reference_hero": "workflows/image_t2i_startframe_v1.json",
-    "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json",
-    "reference_sequence": "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"
+    "reference_hero": "workflows/image/image-model/image_t2i_startframe_v1.json",
+    "reference_edit": "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json",
+    "reference_sequence": "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json"
   },
   "upscale": {
     "enabled": false,

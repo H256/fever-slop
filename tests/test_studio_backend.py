@@ -1125,7 +1125,7 @@ class StudioBackendTests(unittest.TestCase):
             metadata = json.loads((Path(temp_dir) / "i2v-movie" / ".studio" / "project.json").read_text())
 
             self.assertEqual("i2v-edit", metadata["movie"]["movie_video_workflow"])
-            self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", metadata["movie"]["edit_workflow"])
+            self.assertEqual("workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json", metadata["movie"]["edit_workflow"])
 
     def test_create_movie_project_persists_startframe_director_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1146,10 +1146,10 @@ class StudioBackendTests(unittest.TestCase):
 
             self.assertEqual("startframe-director", metadata["movie"]["movie_video_workflow"])
             self.assertEqual("krea2", metadata["movie"]["startframe_director_backend"])
-            self.assertEqual("workflows/image_t2i_startframe_krea_v1.json", metadata["movie"]["director_workflow"])
-            self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", metadata["movie"]["mask_workflow"])
-            self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", metadata["movie"]["identity_repair_workflow"])
-            self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", metadata["movie"]["detail_workflow"])
+            self.assertEqual("workflows/image/image-model/image_t2i_startframe_krea_v1.json", metadata["movie"]["director_workflow"])
+            self.assertEqual("workflows/image/image-model/image_mask_sam3_actor_regions_v1.json", metadata["movie"]["mask_workflow"])
+            self.assertEqual("workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json", metadata["movie"]["identity_repair_workflow"])
+            self.assertEqual("workflows/image/image-model/image_detail_easyuse_startframe_v1.json", metadata["movie"]["detail_workflow"])
             self.assertEqual("http://localhost:8188", metadata["movie"]["startframe_comfyui_base_url"])
             self.assertFalse(metadata["movie"]["startframe_write_debug_workflows"])
             self.assertEqual("http://your-llm-server.local/v1", metadata["movie"]["startframe_validator_base_url"])
@@ -1174,7 +1174,7 @@ class StudioBackendTests(unittest.TestCase):
             metadata = json.loads((Path(temp_dir) / "ideogram-director-movie" / ".studio" / "project.json").read_text())
 
             self.assertEqual("ideogram", metadata["movie"]["startframe_director_backend"])
-            self.assertEqual("workflows/image_t2i_startframe_ideogram_director_v1.json", metadata["movie"]["director_workflow"])
+            self.assertEqual("workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json", metadata["movie"]["director_workflow"])
 
     def test_create_movie_project_persists_startframe_debug_workflow_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -47,7 +47,7 @@ class SequenceToSheetWorkflowProfileTests(unittest.TestCase):
         self.assertIn("class_type:VRAMCleanup", missing)
 
     def test_minimax_reference_workflow_is_patcher_compatible_without_external_media_inputs(self):
-        workflow_path = Path(__file__).parents[1] / "workflows" / "sequence_to_sheet_minimax_h3_i2va_v1.json"
+        workflow_path = Path(__file__).parents[1] / "workflows" / "sequence" / "minimax_h3" / "sequence_to_sheet_minimax_h3_i2va_v1.json"
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
 
         self.assertEqual((), MINIMAX_H3_SEQUENCE_TO_SHEET_PROFILE.validate(workflow))

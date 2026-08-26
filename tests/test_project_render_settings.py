@@ -122,7 +122,7 @@ class ProjectRenderSettingsTests(unittest.TestCase):
             (root / "song.wav").write_bytes(b"")
             (root / "config.json").write_text(
                 '{"input_audio":"song.wav","reference_generation":"sequence_sheet",'
-                '"workflows":{"reference_sequence":"workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"}}',
+                '"workflows":{"reference_sequence":"workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json"}}',
                 encoding="utf-8",
             )
 
@@ -130,7 +130,7 @@ class ProjectRenderSettingsTests(unittest.TestCase):
 
         self.assertEqual("sequence_sheet", resolved.runner_overrides["reference_generation"])
         self.assertEqual(
-            str(resolve_runner_path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json").resolve()),
+            str(resolve_runner_path("workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json").resolve()),
             resolved.runner_overrides["sequence_to_sheet_workflow"],
         )
 

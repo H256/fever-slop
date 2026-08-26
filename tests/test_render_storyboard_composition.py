@@ -20,7 +20,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
             comfyui=ComfyUIConfig(),
             storyboard_prompt_transforms=[
                 StoryboardPromptTransformConfig(
-                    workflow="workflows/image_t2i_startframe_ideogram_v1.json",
+                    workflow="workflows/image/image-model/image_t2i_startframe_ideogram_v1.json",
                     kind="template",
                     template="documentation/ideogram4_prompt_template.md",
                     positive_prompt_input="text",
@@ -31,7 +31,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
 
         transform = matching_storyboard_prompt_transform(
             config,
-            Path(tempfile.gettempdir()) / "repo" / "workflows" / "image_t2i_startframe_ideogram_v1.json",
+            Path(tempfile.gettempdir()) / "repo" / "workflows" / "image" / "image-model" / "image_t2i_startframe_ideogram_v1.json",
         )
 
         self.assertIsNotNone(transform)
@@ -53,7 +53,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
             comfyui=ComfyUIConfig(),
             storyboard_prompt_transforms=[
                 StoryboardPromptTransformConfig(
-                    workflow="workflows/image_t2i_startframe_ideogram_v1.json",
+                    workflow="workflows/image/image-model/image_t2i_startframe_ideogram_v1.json",
                     template="documentation/ideogram4_prompt_template.md",
                 ),
             ],
@@ -61,7 +61,7 @@ class RenderStoryboardCompositionTests(unittest.TestCase):
 
         transform = matching_storyboard_prompt_transform(
             config,
-            r".\workflows\image_t2i_startframe_ideogram_v1.json",
+            r".\workflows\image\image-model\image_t2i_startframe_ideogram_v1.json",
         )
 
         self.assertIsNotNone(transform)

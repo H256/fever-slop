@@ -31,7 +31,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--name", default=None)
     parser.add_argument("--description", default=None)
     parser.add_argument("--description-mode", choices=("explicit", "auto"), default="explicit")
-    parser.add_argument("--workflow", type=Path, default=Path("workflows/sequence_to_sheet_minimax_h3_i2va_v1.json"))
+    parser.add_argument("--workflow", type=Path, default=Path("workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json"))
     parser.add_argument("--profile", default="minimax_h3")
     parser.add_argument("--output-dir", type=Path, default=Path("references"))
     parser.add_argument("--project", type=Path, default=None)

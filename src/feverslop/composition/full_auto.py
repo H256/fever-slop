@@ -25,7 +25,7 @@ def build_full_auto_use_case(
     console: Console | None = None,
 ) -> FullAutoUseCase:
     app_config = AppConfig.load(app_config_path)
-    workflow_path = workflow_path or Path(__file__).resolve().parents[3] / "workflows" / "audio_song_v2.json"
+    workflow_path = workflow_path or Path(__file__).resolve().parents[3] / "workflows" / "audio" / "audio-model" / "audio_song_v2.json"
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
         api_key=app_config.llm.api_key,

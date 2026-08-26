@@ -109,9 +109,9 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertIsNone(args.project_config)
         self.assertEqual("app_config.json", args.app_config)
         self.assertEqual(10, args.concept_batch_size)
-        self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_v1.json"), args.storyboard_workflow)
-        self.assertEqual(os.fspath(Path("workflows") / "image_t2i_startframe_krea_v1.json"), args.reference_hero_workflow)
-        self.assertEqual(os.fspath(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json"), args.reference_edit_workflow)
+        self.assertEqual(os.fspath(Path("workflows/image/image-model") / "image_t2i_startframe_v1.json"), args.storyboard_workflow)
+        self.assertEqual(os.fspath(Path("workflows/image/image-model") / "image_t2i_startframe_krea_v1.json"), args.reference_hero_workflow)
+        self.assertEqual(os.fspath(Path("workflows/image/image-model") / "image_edit_flux2_klein_1ref_v1.json"), args.reference_edit_workflow)
         self.assertEqual(os.fspath(Path("workflows") / "video" / "ltx_25" / "msr" / "msr_draft.json"), args.msr_workflow)
         self.assertEqual("", args.relay_workflow)
         self.assertEqual(
@@ -321,8 +321,8 @@ class RunnerScriptTests(unittest.TestCase):
 
         self.assertEqual("i2v-edit", args.movie_video_workflow)
         self.assertEqual("i2v-edit", config["movie_video_workflow"])
-        self.assertEqual("workflows/image_t2i_startframe_krea_v1.json", config["hero_workflow"])
-        self.assertEqual("workflows/image_edit_flux2_klein_2ref_v1.json", config["edit_workflow"])
+        self.assertEqual("workflows/image/image-model/image_t2i_startframe_krea_v1.json", config["hero_workflow"])
+        self.assertEqual("workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json", config["edit_workflow"])
         self.assertEqual("workflows/video/ltx_25/i2v/i2v_draft.json", config["i2v_workflow"])
 
     def test_movie_pipeline_accepts_startframe_director_workflow_mode(self):
@@ -339,10 +339,10 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual("startframe-director", args.movie_video_workflow)
         self.assertEqual("startframe-director", config["movie_video_workflow"])
         self.assertEqual("krea2", config["startframe_director_backend"])
-        self.assertEqual("workflows/image_t2i_startframe_krea_v1.json", config["director_workflow"])
-        self.assertEqual("workflows/image_mask_sam3_actor_regions_v1.json", config["mask_workflow"])
-        self.assertEqual("workflows/image_repair_sdxl_ipadapter_identity_v1.json", config["identity_repair_workflow"])
-        self.assertEqual("workflows/image_detail_easyuse_startframe_v1.json", config["detail_workflow"])
+        self.assertEqual("workflows/image/image-model/image_t2i_startframe_krea_v1.json", config["director_workflow"])
+        self.assertEqual("workflows/image/image-model/image_mask_sam3_actor_regions_v1.json", config["mask_workflow"])
+        self.assertEqual("workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json", config["identity_repair_workflow"])
+        self.assertEqual("workflows/image/image-model/image_detail_easyuse_startframe_v1.json", config["detail_workflow"])
         self.assertEqual("http://your-llm-server.local/v1", config["startframe_validator_base_url"])
         self.assertEqual("gemma4-26b-a4b:vision", config["startframe_validator_model"])
         self.assertFalse(config["startframe_write_debug_workflows"])
@@ -383,7 +383,7 @@ class RunnerScriptTests(unittest.TestCase):
         config = movie_pipeline.config_from_args(args)
 
         self.assertEqual("ideogram", config["startframe_director_backend"])
-        self.assertEqual("workflows/image_t2i_startframe_ideogram_director_v1.json", config["director_workflow"])
+        self.assertEqual("workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json", config["director_workflow"])
 
     def test_movie_pipeline_cli_can_run_references_only_with_local_backend(self):
         with tempfile.TemporaryDirectory() as temp_dir:

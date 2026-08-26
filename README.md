@@ -82,8 +82,8 @@ MiniMax H3 R2V can use the bundled 8-step workflow with:
 ```json
 "workflows": {
   "video": "workflows/video/minimax_h3/r2v_eb57_8s_v1.json",
-  "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
-  "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
+  "reference_hero": "workflows/image/image-model/image_t2i_startframe_krea_v1.json",
+  "reference_edit": "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json"
 }
 ```
 
@@ -330,7 +330,7 @@ Most useful runs require:
 - ComfyUI reachable through `app_config.json`;
 - the custom nodes, models, and API workflows for the selected renderer;
 - an OpenAI-compatible LLM endpoint;
-- ACE-Step nodes and `workflows/audio_song_v2.json` for Full-Auto audio.
+- ACE-Step nodes and `workflows/audio/audio-model/audio_song_v2.json` for Full-Auto audio.
 
 ## Documentation
 

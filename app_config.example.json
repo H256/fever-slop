@@ -39,7 +39,7 @@
   ],
   "storyboard_prompt_transforms": [
     {
-      "workflow": "workflows/image_t2i_startframe_v1.json",
+      "workflow": "workflows/image/image-model/image_t2i_startframe_v1.json",
       "kind": "template",
       "template": "",
       "positive_prompt_input": "text",

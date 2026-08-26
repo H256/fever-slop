@@ -48,7 +48,7 @@ multi-view sequence instead of independent image views:
 uv run python run_pipeline.py ./projects/my-song \
   --video-pipeline minimax-h3-r2v \
   --reference-generation sequence_sheet \
-  --sequence-to-sheet-workflow workflows/sequence_to_sheet_minimax_h3_i2va_v1.json \
+  --sequence-to-sheet-workflow workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json \
   --stage msr_references --stage msr_reference_sheets \
   --stage h3_prompts --stage render_plan --skip-tests
 ```
@@ -59,7 +59,7 @@ The Movie equivalent is:
 uv run python movie_pipeline.py ./projects/my-movie \
   --movie-video-workflow minimax-h3-r2v \
   --reference-generation sequence_sheet \
-  --sequence-to-sheet-workflow workflows/sequence_to_sheet_minimax_h3_i2va_v1.json \
+  --sequence-to-sheet-workflow workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json \
   --skip-movie-render
 ```
 

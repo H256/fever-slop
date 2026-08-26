@@ -762,7 +762,7 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         "--reference-generation",
         str(getattr(state.args, "reference_generation", "image_views")),
         "--sequence-workflow",
-        str(getattr(state.args, "sequence_to_sheet_workflow", "workflows/sequence_to_sheet_minimax_h3_i2va_v1.json")),
+        str(getattr(state.args, "sequence_to_sheet_workflow", "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json")),
     ])
     render_reference_bible(reference_args)
 

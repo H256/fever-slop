@@ -56,7 +56,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="msr renders direct 4-panel actor sheets and hero location references; full renders hero plus edit views and sheets.",
     )
     parser.add_argument("--reference-generation", choices=["image_views", "sequence_sheet"], default="image_views")
-    parser.add_argument("--sequence-workflow", default="workflows/sequence_to_sheet_minimax_h3_i2va_v1.json")
+    parser.add_argument("--sequence-workflow", default="workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json")
     parser.add_argument("--only-kind", choices=["actor", "location"], default=None)
     parser.add_argument("--only-id", default=None)
     return parser
