@@ -74,6 +74,12 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 | `workflows/video/minimax_h3/t2v_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
 | `workflows/video/ltx_25/capabilities.json` | video | ltx_2.5 | capability manifest | workflows/video/ltx_25/ |
 | `workflows/video/ltx_25/profile-matrix.json` | video | ltx_2.5 | profile matrix | workflows/video/ltx_25/ |
+| `workflows/video/ltx_25/t2v/t2v_draft.json` | video | ltx_2.5 | t2v | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_draft.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_standard.json` | video | ltx_2.5 | t2v | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_standard.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_final.json` | video | ltx_2.5 | t2v | workflows/video/ltx_25/t2v/ |
+| `workflows/video/ltx_25/t2v/t2v_final.profile.json` | video | ltx_2.5 | profile | workflows/video/ltx_25/t2v/ |
 | `workflows/video_seedvr2_3b_api.json` | video | seedvr | other | workflows/video/seedvr/ |
 
 ## Migration rules

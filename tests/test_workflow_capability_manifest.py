@@ -46,3 +46,19 @@ class WorkflowCapabilityManifestTests(unittest.TestCase):
         self.assertEqual(12, len(profiles))
         self.assertTrue(all(profile.pass_strategy.value == "two_pass" for profile in profiles))
         self.assertEqual({"t2v", "i2v", "msr", "ingredients"}, {profile.mode.value for profile in profiles})
+
+    def test_ltx25_t2v_profiles_use_only_25_model_assets(self):
+        import json
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        paths = sorted(
+            path for path in (root / "workflows/video/ltx_25/t2v").glob("t2v_*.json")
+            if not path.name.endswith(".profile.json")
+        )
+        self.assertEqual(3, len(paths))
+        for path in paths:
+            workflow = json.loads(path.read_text(encoding="utf-8"))
+            serialized = json.dumps(workflow).lower()
+            self.assertNotIn("2.3", serialized)
+            self.assertIn("ltx-2.5", serialized)
