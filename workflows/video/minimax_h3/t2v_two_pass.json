@@ -1,0 +1,439 @@
+{
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.4,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "#MEGAPIXEL"
+    }
+  },
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "121": {
+    "inputs": {
+      "samples": [
+        "134",
+        0
+      ],
+      "vae": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE Decode Audio"
+    }
+  },
+  "122": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "127",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "139",
+        0
+      ],
+      "sigmas": [
+        "140",
+        0
+      ],
+      "latent_image": [
+        "131",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "#PASS1"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "127",
+        0
+      ],
+      "conditioning": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "127": {
+    "inputs": {
+      "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": 1
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "#SEED"
+    }
+  },
+  "131": {
+    "inputs": {
+      "prompt": "Vaporwave title sequence look: pink and blue gradient palette, VHS tracking artifacts, Greek statue motifs, chrome palm trees, RGB chromatic aberration, lo-fi retro atmosphere, mood languid and nostalgic.\n\nTimeline:\n[0s-1s] VHS static opens the frame, the title \"COMFYUI\" appears with RGB split and a slight horizontal jitter.\n[1s-2.5s] Hard cut, a Greek plaster bust close-up, pink-purple gradient sky, a pixelated sun.\n[2.5s-4s] Clean \"STARRING\" credits appear, \"LATENT\" and \"CONTROLNET\" each shown exactly once.\n[4s-5s] Final card \"DIRECTED BY COMFYUI\" holds, one VHS tracking glitch settling into stability.\n\nHard cuts only, transitions landing with tape jumps, no push-ins, no dissolves.\n\nAudio: lo-fi vaporwave score, slow drum machine with soft bass, VHS tape-noise sample joins at 2.5s, melody fading for the last 1s.\n\nAll text must be clearly legible, do not misspell English, no Chinese characters, do not repeat names or job titles, no soft dissolves, no subtitle bars.",
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "133",
+        0
+      ],
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "first_frame": [
+        "136",
+        0
+      ],
+      "last_frame": [
+        "137",
+        0
+      ],
+      "text_data": [
+        "138",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ImageToVideo",
+    "_meta": {
+      "title": "#PROMPT"
+    }
+  },
+  "133": {
+    "inputs": {
+      "value": 144
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "#FRAMECOUNT"
+    }
+  },
+  "135": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "AnimateDiff",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "150",
+        0
+      ],
+      "audio": [
+        "121",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "#SAVE_VIDEO"
+    }
+  },
+  "136": {
+    "inputs": {
+      "image": "empty_placeholder.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#T2V_START"
+    }
+  },
+  "137": {
+    "inputs": {
+      "image": "empty_placeholder.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#T2V_END"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "#T2V_TEXT"
+    }
+  },
+  "139": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "_meta": {
+      "title": "#PASS1_SAMPLER"
+    }
+  },
+  "140": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "127",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "#PASS1_SCHEDULER"
+    }
+  },
+  "141": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "125",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "#SEPARATE_AV"
+    }
+  },
+  "142": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": 2.0
+    },
+    "_meta": {
+      "title": "#LATENT_UPSCALE_SCALE"
+    }
+  },
+  "143": {
+    "class_type": "MinimaxH3LatentUpscaler3D",
+    "inputs": {
+      "latent": [
+        "141",
+        0
+      ],
+      "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      "mode": "scale by multiplier",
+      "mode.scale": 2.0,
+      "align": 32,
+      "enable_chunking": false,
+      "device": "cuda",
+      "precision": "bf16"
+    },
+    "_meta": {
+      "title": "#LATENT_UPSCALE"
+    }
+  },
+  "144": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "143",
+        0
+      ],
+      "audio_latent": [
+        "141",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "#RECOMBINE_AV"
+    }
+  },
+  "145": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "_meta": {
+      "title": "#PASS2_SAMPLER"
+    }
+  },
+  "146": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "127",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 4,
+      "denoise": 0.55
+    },
+    "_meta": {
+      "title": "#PASS2_SCHEDULER"
+    }
+  },
+  "147": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "127",
+        0
+      ],
+      "conditioning": [
+        "131",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "#PASS2_GUIDER"
+    }
+  },
+  "148": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "#PASS2_NOISE"
+    }
+  },
+  "149": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "148",
+        0
+      ],
+      "guider": [
+        "147",
+        0
+      ],
+      "sampler": [
+        "145",
+        0
+      ],
+      "sigmas": [
+        "146",
+        0
+      ],
+      "latent_image": [
+        "144",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "#PASS2"
+    }
+  },
+  "150": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "149",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "#PASS2_DECODE"
+    }
+  }
+}

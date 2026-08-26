@@ -13,6 +13,7 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.domain.h3_two_pass import H3TwoPassSpec, apply_h3_two_pass_patch
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
@@ -93,6 +94,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         start_frame_path: str | Path | None = None,
         end_frame_path: str | Path | None = None,
         text_data: str | None = None,
+        two_pass_spec: H3TwoPassSpec | dict | None = None,
     ) -> dict:
         """Build a patched T2V workflow dict from *scene*.
 
@@ -141,6 +143,12 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- optional: text_data
         if text_data is not None:
             self._patch_t2v_text(patcher, text_data)
+
+        if two_pass_spec is not None:
+            spec = two_pass_spec if isinstance(two_pass_spec, H3TwoPassSpec) else H3TwoPassSpec.from_dict(two_pass_spec)
+            self._progress("h3_passes_validating")
+            patcher = WorkflowPatcher(apply_h3_two_pass_patch(patcher.get(), spec))
+            self._progress("h3_passes_ready")
 
         return patcher.get()
 
@@ -204,11 +212,13 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self._write_debug_workflow(scene_number, workflow)
 
         # -- queue and download
+        self._progress("h3_render_submitting")
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
             scene_number=scene_number,
             output_path=scene_dir / "raw.mp4",
         )
+        self._progress("h3_render_completed")
 
         if not self.postprocess:
             return raw_output

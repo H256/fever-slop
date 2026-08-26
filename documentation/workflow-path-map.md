@@ -62,10 +62,16 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 | `workflows/video_ltxv_msr_1actor_1background_v4.json` | video | ltx_legacy | msr | workflows/video/ltx_legacy/ |
 | `workflows/video/minimax_h3/r2v_audio_eb57_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/r2v_audio_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_audio_two_pass.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_audio_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/r2v_eb57_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/r2v_turbo_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/r2v_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_two_pass.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/r2v_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/t2v.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/t2v_two_pass.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/t2v_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
 | `workflows/video_seedvr2_3b_api.json` | video | seedvr | other | workflows/video/seedvr/ |
 
 ## Migration rules

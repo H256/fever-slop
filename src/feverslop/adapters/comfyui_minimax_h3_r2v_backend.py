@@ -17,6 +17,7 @@ from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.h3_two_pass import H3TwoPassSpec, apply_h3_two_pass_patch
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.errors import FeverSlopValidationError
@@ -110,6 +111,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         ref_image_paths: list[str | Path] | None = None,
         ref_video_paths: list[str | Path] | None = None,
         ref_audio_paths: list[str | Path] | None = None,
+        two_pass_spec: H3TwoPassSpec | dict | None = None,
     ) -> dict:
         """Build a patched R2V workflow dict from *scene*.
 
@@ -178,6 +180,12 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         # -- dynamic ref wiring: fill remaining slots from scene refs -------
         self._patch_dynamic_ref_inputs(patcher, scene)
+
+        if two_pass_spec is not None:
+            spec = two_pass_spec if isinstance(two_pass_spec, H3TwoPassSpec) else H3TwoPassSpec.from_dict(two_pass_spec)
+            self._progress("h3_passes_validating")
+            patcher = WorkflowPatcher(apply_h3_two_pass_patch(patcher.get(), spec))
+            self._progress("h3_passes_ready")
 
         # -- output filename --------------------------------------------------
         self._patch_save_video(patcher, scene_number)
@@ -321,11 +329,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self._write_debug_workflow(scene_number, workflow)
 
         # -- queue and download -------------------------------------------------
+        self._progress("h3_render_submitting")
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
             scene_number=scene_number,
             output_path=scene_dir / "raw.mp4",
         )
+        self._progress("h3_render_completed")
 
         if not self.postprocess:
             return raw_output

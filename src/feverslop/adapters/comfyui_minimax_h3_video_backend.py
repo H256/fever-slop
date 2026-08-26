@@ -5,6 +5,7 @@ import math
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+from collections.abc import Callable
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
@@ -46,6 +47,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         video_settings: VideoSettings | None = None,
         project_dir: str | Path | None = None,
         workflow: dict | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -66,6 +68,12 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         )
         self.model_resolver = model_resolver
         self.video_settings = video_settings
+        self.progress_callback = progress_callback
+
+    def _progress(self, stage: str) -> None:
+        callback = self.progress_callback
+        if callback is not None:
+            callback(str(stage))
 
     def load_workflow(self) -> dict:
         """Load the ComfyUI workflow JSON (in-memory or from file)."""

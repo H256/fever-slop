@@ -22,6 +22,19 @@ Used by `audio_song_v2.json` and the historical `old/audio_song.json`:
 | `qwen_0.6b_ace15.safetensors` | `DualCLIPLoader.tclip_name1` | ACE-Step text encoder 1 |
 | `qwen_4b_ace15.safetensors` | `DualCLIPLoader.tclip_name2` | ACE-Step text encoder 2 |
 
+## MiniMax H3 two-pass generation
+
+Die Zwei-Pass-Profile trennen den AV-Latent mit den eingebauten ComfyUI-Nodes
+`LTXVSeparateAVLatent` und `LTXVConcatAVLatent`. Dadurch bleibt der Audio-Latent
+unverändert und wird nicht durch den räumlichen Upscaler geführt. Für das
+neuronale H3-Upscaling ist zusätzlich die H3-spezifische Node
+`MinimaxH3LatentUpscaler3D` sowie das Modell
+`minimax_h3_latent_upscaler_3d_bf16.safetensors` erforderlich. Die Profile
+benötigen keine VRGDG-H3-Wrapper-Nodes mehr. Der Upscaler unterstützt in den
+Workflows die Betriebsart `scale by multiplier` mit dem bestehenden
+`#LATENT_UPSCALE_SCALE`-Anker; Zielgröße, Ausrichtung, Gerät und Präzision sind
+explizit im Node hinterlegt.
+
 ## LTX video generation
 
 The LTX workflows use separate components. The following references occur in

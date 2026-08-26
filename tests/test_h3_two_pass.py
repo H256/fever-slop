@@ -1,6 +1,11 @@
 import unittest
 
-from feverslop.domain.h3_two_pass import H3TwoPassSchemaError, H3TwoPassSpec
+from feverslop.domain.h3_two_pass import (
+    H3TwoPassSchemaError,
+    H3TwoPassSpec,
+    apply_h3_two_pass_patch,
+    validate_h3_two_pass_topology,
+)
 
 
 class H3TwoPassTests(unittest.TestCase):
@@ -29,6 +34,20 @@ class H3TwoPassTests(unittest.TestCase):
         self.assertTrue(spec.preserve_audio_latent)
         self.assertEqual(spec, H3TwoPassSpec.from_dict(spec.to_dict()))
 
+    def test_patches_sampler_scheduler_steps_and_denoise_anchors(self):
+        spec = self.make_spec(required_anchors=["#PASS1", "#PASS2"], preserve_audio_latent=False)
+        workflow = {
+            "1": {"class_type": "SamplerCustomAdvanced", "inputs": {"sampler_name": "old", "scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS1"}},
+            "2": {"class_type": "SamplerCustomAdvanced", "inputs": {"sampler_name": "old", "scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS2"}},
+            "3": {"class_type": "MiniMaxH3AVLatentSeparateT8", "inputs": {}, "_meta": {"title": "#SEPARATE_AV"}},
+            "4": {"class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale", "inputs": {}, "_meta": {"title": "#LATENT_UPSCALE"}},
+            "5": {"class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent", "inputs": {}, "_meta": {"title": "#RECOMBINE_AV"}},
+        }
+        patched = apply_h3_two_pass_patch(workflow, spec)
+        self.assertEqual("euler", patched["1"]["inputs"]["sampler_name"])
+        self.assertEqual(20, patched["1"]["inputs"]["steps"])
+        self.assertEqual(0.35, patched["2"]["inputs"]["denoise"])
+
     def test_rejects_invalid_pass_parameters_and_three_pass_shape(self):
         for overrides in (
             {"pass1_steps": 0},
@@ -46,6 +65,54 @@ class H3TwoPassTests(unittest.TestCase):
         spec.validate_workflow_anchors({"#PROMPT", "#FRAMECOUNT", "#PASS1", "#PASS2", "#AUDIO_LATENT"})
         with self.assertRaises(H3TwoPassSchemaError):
             spec.validate_workflow_anchors({"#PROMPT", "#FRAMECOUNT", "#PASS1"})
+
+    def test_default_spec_is_available_for_every_quality_profile(self):
+        from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
+
+        for quality in ("draft", "standard", "final"):
+            spec = default_h3_two_pass_spec(quality, audio=True)
+            self.assertGreater(spec.pass1_steps, 0)
+            self.assertTrue(spec.preserve_audio_latent)
+            self.assertIn("#PASS2", spec.required_anchors)
+
+    def test_audio_preservation_rejects_spatial_upscale_on_audio_branch(self):
+        from feverslop.domain.h3_two_pass import validate_audio_latent_preservation
+
+        spec = self.make_spec()
+        workflow = {
+            "a": {"class_type": "AudioLatent", "inputs": {}, "_meta": {"title": "#AUDIO_LATENT"}},
+            "b": {"class_type": "LatentUpscale", "inputs": {"samples": ["a", 0]}, "_meta": {"title": "audio upscale"}},
+        }
+        with self.assertRaises(H3TwoPassSchemaError):
+            validate_audio_latent_preservation(workflow, spec)
+
+    def test_topology_requires_separation_upscale_recombine_and_refinement(self):
+        spec = self.make_spec(required_anchors=["#PASS1", "#PASS2"], preserve_audio_latent=False)
+        workflow = {
+            "1": {"class_type": "MiniMaxH3AVLatentSeparateT8", "inputs": {}, "_meta": {"title": "#SEPARATE_AV"}},
+            "2": {"class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale", "inputs": {}, "_meta": {"title": "#LATENT_UPSCALE"}},
+            "3": {"class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent", "inputs": {}, "_meta": {"title": "#RECOMBINE_AV"}},
+            "4": {"class_type": "SamplerCustomAdvanced", "inputs": {}, "_meta": {"title": "#PASS1"}},
+            "5": {"class_type": "SamplerCustomAdvanced", "inputs": {}, "_meta": {"title": "#PASS2"}},
+        }
+        validate_h3_two_pass_topology(workflow, spec)
+
+    def test_split_sampler_and_scheduler_anchors_are_patchable(self):
+        spec = self.make_spec(required_anchors=["#PASS1", "#PASS2"], preserve_audio_latent=False)
+        workflow = {
+            "1": {"class_type": "SamplerCustomAdvanced", "inputs": {}, "_meta": {"title": "#PASS1"}},
+            "2": {"class_type": "SamplerCustomAdvanced", "inputs": {}, "_meta": {"title": "#PASS2"}},
+            "3": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "old"}, "_meta": {"title": "#PASS1_SAMPLER"}},
+            "4": {"class_type": "BasicScheduler", "inputs": {"scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS1_SCHEDULER"}},
+            "5": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "old"}, "_meta": {"title": "#PASS2_SAMPLER"}},
+            "6": {"class_type": "BasicScheduler", "inputs": {"scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS2_SCHEDULER"}},
+            "7": {"class_type": "MiniMaxH3AVLatentSeparateT8", "inputs": {}, "_meta": {"title": "#SEPARATE_AV"}},
+            "8": {"class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale", "inputs": {}, "_meta": {"title": "#LATENT_UPSCALE"}},
+            "9": {"class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent", "inputs": {}, "_meta": {"title": "#RECOMBINE_AV"}},
+        }
+        patched = apply_h3_two_pass_patch(workflow, spec)
+        self.assertEqual("euler", patched["3"]["inputs"]["sampler_name"])
+        self.assertEqual(8, patched["6"]["inputs"]["steps"])
 
 
 if __name__ == "__main__":

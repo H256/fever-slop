@@ -114,7 +114,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertEqual(os.fspath(Path("workflows") / "image_edit_flux2_klein_1ref_v1.json"), args.reference_edit_workflow)
         self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_msr_1actor_1background_v4.json"), args.msr_workflow)
         self.assertEqual("", args.relay_workflow)
-        self.assertEqual(os.fspath(Path("workflows") / "video_ltxv_i2v_v2.json"), args.single_prompt_workflow)
+        self.assertIsNone(args.single_prompt_workflow)
         self.assertEqual("ltx_i2v", args.video_pipeline)
         self.assertEqual("single_prompt", args.render_mode)
         self.assertEqual("#PROMPT", args.single_prompt_title)

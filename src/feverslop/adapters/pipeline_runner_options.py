@@ -47,7 +47,7 @@ RUNNER_ARGUMENTS = (
     ("msr_workflow", ("--msr-workflow",), {"default": str(Path("workflows") / "video_ltxv_msr_1actor_1background_v4.json")}),
     ("ingredients_workflow", ("--ingredients-workflow",), {"default": str(Path("workflows") / "video_ltxv_ingredients_audio_2stage_v6.json")}),
     ("relay_workflow", ("--relay-workflow",), {"default": ""}),
-    ("single_prompt_workflow", ("--single-prompt-workflow",), {"default": str(Path("workflows") / "video_ltxv_i2v_v2.json")}),
+    ("single_prompt_workflow", ("--single-prompt-workflow",), {"default": None}),
     ("video_pipeline", ("--video-pipeline",), {"choices": ["ltx_i2v", "ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v", "minimax-h3-fl2v", "minimax-h3-l2v"], "default": "ltx_i2v"}),
     ("render_mode", ("--render-mode",), {"choices": ["auto", "relay", "single_prompt"], "default": "single_prompt"}),
     ("single_prompt_title", ("--single-prompt-title",), {"default": "#PROMPT"}),
