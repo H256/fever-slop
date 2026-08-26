@@ -83,7 +83,42 @@ def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayl
             visible_action=shot.description,
             performance=plan.creative_intent,
         ))
-    return tuple(result)
+    return validate_creative_shots_against_plan(plan, result)
+
+
+def validate_creative_shots_against_plan(
+    plan: ResolvedPromptPlan,
+    shots: Sequence[CreativeShotPayload],
+) -> tuple[CreativeShotPayload, ...]:
+    """Validate and order creative payloads against their enclosing plan.
+
+    Shot IDs are derived from the plan's stable shot numbers.  Keeping this
+    check at the plan boundary prevents a structurally valid payload from
+    smuggling an unrelated shot into deterministic prompt compilation.
+    """
+    if not isinstance(plan, ResolvedPromptPlan):
+        raise TypeError("plan must be a ResolvedPromptPlan")
+    expected: list[str] = []
+    for planned in plan.shots:
+        shot_id = f"shot-{int(planned.shot_number):04d}"
+        if shot_id in expected:
+            raise ValueError(f"duplicate planned shot ID: {shot_id}")
+        expected.append(shot_id)
+
+    by_id: dict[str, CreativeShotPayload] = {}
+    for shot in shots:
+        if not isinstance(shot, CreativeShotPayload):
+            raise TypeError("shots must contain CreativeShotPayload values")
+        if shot.shot_id not in expected:
+            raise ValueError(f"unknown shot ID: {shot.shot_id}")
+        if shot.shot_id in by_id:
+            raise ValueError(f"duplicate creative shot ID: {shot.shot_id}")
+        by_id[shot.shot_id] = shot
+
+    for shot_id in expected:
+        if shot_id not in by_id:
+            raise ValueError(f"missing creative shot payload: {shot_id}")
+    return tuple(by_id[shot_id] for shot_id in expected)
 
 
 def _time(value: Any) -> str:
