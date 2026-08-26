@@ -3853,6 +3853,12 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertEqual("last-to-start", config["continuity_keyframes"])
 
+        h3_config = movie_runtime_config({
+            "movie_video_workflow": "minimax-h3-r2v",
+            "continuity_keyframes": "last-to-start",
+        })
+        self.assertEqual("last-to-start", h3_config["continuity_keyframes"])
+
     def test_movie_runtime_config_uses_v6_ingredients_workflow_by_default(self):
         from feverslop.composition.movie_pipeline_jobs import movie_runtime_config
 
@@ -3871,9 +3877,9 @@ class MovieProjectTests(unittest.TestCase):
                 config = movie_runtime_config({"movie_video_workflow": mode})
 
                 self.assertEqual(mode, config["movie_video_workflow"])
-                self.assertEqual("workflows/video_minimax_h3_r2v.json", config["r2v_workflow"])
-                self.assertEqual("workflows/video_minimax_h3_t2v.json", config["t2v_workflow"])
-                self.assertEqual("workflows/video_minimax_h3_t2v.json", config["i2v_workflow"])
+                self.assertEqual("workflows/video/minimax_h3/r2v_audio_v1.json", config["r2v_workflow"])
+                self.assertEqual("workflows/video/minimax_h3/t2v.json", config["t2v_workflow"])
+                self.assertEqual("workflows/video/minimax_h3/t2v.json", config["i2v_workflow"])
 
     def test_movie_visual_factory_selects_minimax_adapter(self):
         from feverslop.adapters.movie_minimax_visual import (

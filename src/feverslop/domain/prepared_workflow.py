@@ -143,6 +143,7 @@ class SceneWorkflowManifest:
     max_render_duration_seconds: float | None = None
     render_budget_workflow_path: str | None = None
     round_render_frames_to_8n1: bool = False
+    render_profile_provenance: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -156,6 +157,7 @@ class SceneWorkflowManifest:
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
         round_render_frames_to_8n1: bool = False,
+        render_profile_provenance: dict[str, Any] | None = None,
         canonical_dependencies: CanonicalSceneDependencies | None = None,
         consistency: SceneConsistencyContract | None = None,
         startframe_mode: str | None = None,
@@ -229,6 +231,9 @@ class SceneWorkflowManifest:
                 else str(render_budget_workflow_path)
             ),
             round_render_frames_to_8n1=bool(round_render_frames_to_8n1),
+            render_profile_provenance=(
+                None if render_profile_provenance is None else dict(render_profile_provenance)
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -264,6 +269,7 @@ class SceneWorkflowManifest:
             "max_render_duration_seconds": self.max_render_duration_seconds,
             "render_budget_workflow_path": self.render_budget_workflow_path,
             "round_render_frames_to_8n1": self.round_render_frames_to_8n1,
+            "render_profile_provenance": self.render_profile_provenance,
         }
 
     def write(self, path: str | Path) -> Path:
@@ -374,6 +380,11 @@ class SceneWorkflowManifest:
             ),
             render_budget_workflow_path=payload.get("render_budget_workflow_path"),
             round_render_frames_to_8n1=bool(payload.get("round_render_frames_to_8n1", False)),
+            render_profile_provenance=(
+                None
+                if payload.get("render_profile_provenance") is None
+                else dict(payload["render_profile_provenance"])
+            ),
         )
 
     def verify(self, project_dir: str | Path) -> list[str]:

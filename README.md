@@ -81,7 +81,7 @@ MiniMax H3 R2V can use the bundled 8-step workflow with:
 
 ```json
 "workflows": {
-  "video": "workflows/video_minimax_h3_r2v_eb57_8s_v1.json",
+  "video": "workflows/video/minimax_h3/r2v_eb57_8s_v1.json",
   "reference_hero": "workflows/image_t2i_startframe_krea_v1.json",
   "reference_edit": "workflows/image_edit_flux2_klein_1ref_v1.json"
 }

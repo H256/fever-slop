@@ -124,7 +124,7 @@ class TestSelectedVideoWorkflows(unittest.TestCase):
         state.relay_workflow = Path()
 
         self.assertEqual(
-            Path("workflows/video_minimax_h3_r2v_v1.json"),
+            Path("workflows/video/minimax_h3/r2v_v1.json"),
             _selected_video_workflows(state)[0],
         )
 

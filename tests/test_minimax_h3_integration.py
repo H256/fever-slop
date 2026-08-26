@@ -56,7 +56,7 @@ class MiniMaxH3RenderContractTests(unittest.TestCase):
     def test_r2v_composition_builds_the_production_use_case(self):
         options = RenderVideoCompositionOptions(
             app_config_path="app_config.json",
-            workflow_path="workflows/video_minimax_h3_r2v_audio_v1.json",
+            workflow_path="workflows/video/minimax_h3/r2v_audio_v1.json",
             output_dir="test-output",
             video_pipeline="minimax-h3-r2v",
         )
@@ -69,7 +69,7 @@ class MiniMaxH3RenderContractTests(unittest.TestCase):
     def test_t2v_composition_builds_the_production_use_case(self):
         options = RenderVideoCompositionOptions(
             app_config_path="app_config.json",
-            workflow_path="workflows/video_minimax_h3_t2v.json",
+            workflow_path="workflows/video/minimax_h3/t2v.json",
             output_dir="test-output",
             video_pipeline="minimax-h3-t2v",
         )

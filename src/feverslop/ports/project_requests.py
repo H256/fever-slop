@@ -79,6 +79,9 @@ class ProjectCreateRequest:
     movie_continuity_keyframes: str = "none"
     movie_refine_location_prompts: bool = False
     movie_refine_actor_prompts: bool = False
+    render_quality: str = "draft"
+    render_pass_strategy: str = "two_pass"
+    render_postprocess: str = "none"
 
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}

@@ -117,7 +117,7 @@ uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow minimax-h3-r2v `
   --reference-generation sequence_sheet `
   --sequence-to-sheet-workflow .\workflows\sequence_to_sheet_minimax_h3_i2va_v1.json `
-  --r2v-workflow .\workflows\video_minimax_h3_r2v_v1.json `
+  --r2v-workflow .\workflows\video\minimax_h3\r2v_v1.json `
   --skip-movie-render
 ```
 
