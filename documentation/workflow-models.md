@@ -22,6 +22,15 @@ Used by `audio_song_v2.json` and the historical `old/audio_song.json`:
 | `qwen_0.6b_ace15.safetensors` | `DualCLIPLoader.tclip_name1` | ACE-Step text encoder 1 |
 | `qwen_4b_ace15.safetensors` | `DualCLIPLoader.tclip_name2` | ACE-Step text encoder 2 |
 
+## MiniMax H3 two-pass generation
+
+Die Zwei-Pass-Profile benötigen zusätzlich zur H3-Video-/Audio-VAE-Kette die
+installierten Custom Nodes `MiniMaxH3AVLatentSeparateT8`,
+`VRGDG_MiniMaxH3LearnedLatentUpscale` und
+`VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent`. Der erwartete learned Upscaler ist
+`minimax_h3_latent_upscaler_3d_bf16.safetensors`. Der Audio-Latent-Zweig bleibt
+unverändert und wird nicht durch diesen Upscaler geführt.
+
 ## LTX video generation
 
 The LTX workflows use separate components. The following references occur in
