@@ -8,7 +8,7 @@ from pathlib import Path
 
 from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.msr_prompt_enrichment import msr_prompt_input_fingerprint
-from feverslop.composition.resume_plan import build_resume_plan
+from feverslop.composition.resume_plan import build_compatibility_plan, build_resume_plan
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
@@ -40,6 +40,19 @@ class ExecutionPlanTests(unittest.TestCase):
             plan.runnable_stages,
         )
         self.assertEqual((2,), plan.runnable_scenes)
+
+    def test_compatibility_plan_defers_global_assembly_for_scene_selection(self):
+        plan = build_compatibility_plan(
+            Path("project"),
+            ("ltx_render_scenes", "concat_video_only", "mux_original_audio", "export_timeline"),
+            selected_scenes={1},
+        )
+
+        self.assertEqual(("ltx_render_scenes",), plan.runnable_stages)
+        self.assertEqual((1,), plan.runnable_scenes)
+        deferred = [item for item in plan.items if item.phase == "advanced stage" and item.stage == "concat_video_only"]
+        self.assertEqual(PlanAction.REUSE, deferred[0].action)
+        self.assertIn("partial", deferred[0].reason)
 
     def test_blocked_plan_has_no_runnable_work(self):
         plan = ExecutionPlan(

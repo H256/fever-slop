@@ -24,6 +24,14 @@ _H3_PIPELINES = frozenset({
 })
 _LTX_PIPELINES = frozenset({"ltx_msr", "ltx_ingredients"})
 _REFERENCE_PIPELINES = _LTX_PIPELINES | frozenset({"minimax-h3-r2v"})
+_GLOBAL_ASSEMBLY_STAGES = frozenset({
+    "concat_video_only",
+    "mux_original_audio",
+    "diagnostic_scene_audio_concat",
+    "facefix_concat",
+    "export_timeline",
+    "openshot_export",
+})
 
 
 def build_resume_plan(
@@ -306,8 +314,16 @@ def build_compatibility_plan(
     items = tuple(
         ExecutionPlanItem(
             "advanced stage",
-            PlanAction.RUN,
-            "selected by compatibility flags",
+            (
+                PlanAction.REUSE
+                if scenes and str(stage) in _GLOBAL_ASSEMBLY_STAGES
+                else PlanAction.RUN
+            ),
+            (
+                "partial scene selection; global assembly deferred"
+                if scenes and str(stage) in _GLOBAL_ASSEMBLY_STAGES
+                else "selected by compatibility flags"
+            ),
             None,
             str(stage),
         )
