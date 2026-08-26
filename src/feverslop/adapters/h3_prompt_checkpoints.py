@@ -34,6 +34,15 @@ class H3PromptCheckpointStore:
         self.reporter = reporter
 
     def load(self, request: H3PromptCheckpointInput) -> H3PromptCheckpoint | None:
+        checkpoint = self.load_for_resume(request)
+        if checkpoint is None or checkpoint.input_fingerprint != self._fingerprint(request):
+            return None
+        self._sync_canonical(checkpoint)
+        self._report("reused", checkpoint)
+        return checkpoint
+
+    def load_for_resume(self, request: H3PromptCheckpointInput) -> H3PromptCheckpoint | None:
+        """Load an identity-matching checkpoint, even when inputs are stale."""
         path = self.layout.scene_h3_prompt(request.scene_number)
         if not path.is_file():
             return None
@@ -44,12 +53,31 @@ class H3PromptCheckpointStore:
             checkpoint.scene_number != request.scene_number
             or checkpoint.scene_id != expected_scene_id
             or checkpoint.segment_id != request.segment_id
-            or checkpoint.input_fingerprint != self._fingerprint(request)
         ):
             return None
-        self._sync_canonical(checkpoint)
-        self._report("reused", checkpoint)
         return checkpoint
+
+    def invalidated_stages(
+        self,
+        request: H3PromptCheckpointInput,
+        checkpoint: H3PromptCheckpoint,
+    ) -> frozenset[str]:
+        """Report which resumable inputs differ from a checkpoint.
+
+        Checkpoints written before stage fingerprints were introduced have no
+        safe way to identify the affected stage, so they conservatively report
+        ``all``.  The final prompt remains an all-or-nothing cache entry; this
+        method gives pipeline callers the information needed for future
+        intermediate-stage resume without weakening current reuse validation.
+        """
+        if not checkpoint.stage_fingerprints:
+            return frozenset({"all"})
+        expected = self._stage_fingerprints(request)
+        return frozenset(
+            stage
+            for stage, fingerprint in expected.items()
+            if checkpoint.stage_fingerprints.get(stage) != fingerprint
+        )
 
     def save(
         self,
@@ -58,6 +86,7 @@ class H3PromptCheckpointStore:
     ) -> H3PromptCheckpoint:
         scene_id = stable_scene_id(request.segment_id)
         fingerprint = self._fingerprint(request)
+        stage_fingerprints = self._stage_fingerprints(request)
         status = checkpoint_status(generated)
         path = self.layout.scene_h3_prompt(request.scene_number)
         payload = {
@@ -67,6 +96,7 @@ class H3PromptCheckpointStore:
             "segment_id": request.segment_id,
             "status": status,
             "input_fingerprint": fingerprint,
+            "stage_fingerprints": stage_fingerprints,
             "generated": deepcopy(generated),
             "judge": deepcopy(generated.get("prompt_judge")),
             "judge_attempts": deepcopy(generated.get("prompt_judge_attempts") or []),
@@ -85,6 +115,7 @@ class H3PromptCheckpointStore:
             status,
             fingerprint,
             deepcopy(generated),
+            stage_fingerprints,
         )
         self._sync_canonical(checkpoint)
         self._report("generated", checkpoint)
@@ -159,6 +190,27 @@ class H3PromptCheckpointStore:
             separators=(",", ":"),
         ).encode("utf-8")
         return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+    def _stage_fingerprints(self, request: H3PromptCheckpointInput) -> dict[str, str]:
+        return {
+            stage: _fingerprint_value(value)
+            for stage, value in {
+                "creative": {
+                    "concept": request.concept,
+                    "scene_details": request.scene_details,
+                    "global_context": request.global_context,
+                    "segment": _without_keys(request.segment, *_LOCKED_SEGMENT_KEYS),
+                },
+                "locked_facts": _locked_fact_material(request),
+                "compiler": self._checkpoint_generator_revision(request.generator_revision),
+                "workflow": {
+                    "mode": request.mode,
+                    "video_type": request.video_type,
+                    "audio_paths": request.audio_paths,
+                    "assets": self._asset_evidence(request),
+                },
+            }.items()
+        }
 
     def _asset_evidence(self, request: H3PromptCheckpointInput) -> list[dict[str, Any]]:
         candidates = list(request.audio_paths.values())
@@ -236,6 +288,12 @@ class H3PromptCheckpointStore:
                 status,
                 str(value["input_fingerprint"]),
                 deepcopy(generated),
+                {
+                    str(key): str(item)
+                    for key, item in (value.get("stage_fingerprints") or {}).items()
+                }
+                if isinstance(value.get("stage_fingerprints"), Mapping)
+                else {},
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise FeverSlopDataError(f"Invalid H3 prompt checkpoint identity: {path}") from exc
@@ -263,16 +321,66 @@ def _structured_provenance(generated: Mapping[str, Any]) -> dict[str, Any]:
             result["compiler"] = str(provenance["compiler"])
         if provenance.get("compiler_version") is not None:
             result["compiler_version"] = provenance["compiler_version"]
-    for source_key, output_key in (
-        ("creative_sections", "creative_sections_sha256"),
-        ("locked_facts", "locked_facts_sha256"),
-    ):
-        value = generated.get(source_key)
+    values = {
+        "creative_sections_sha256": generated.get("creative_sections"),
+        "locked_facts_sha256": generated.get("locked_facts"),
+    }
+    sections = generated.get("sections")
+    if isinstance(sections, Mapping):
+        values["creative_sections_sha256"] = {
+            str(key): value
+            for key, value in sections.items()
+            if str(key) != "facts"
+        }
+        values["locked_facts_sha256"] = sections.get("facts")
+    for output_key, value in values.items():
         if value is None:
             continue
-        encoded = json.dumps(_json_value(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        encoded = json.dumps(
+            _json_value(value),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
         result[output_key] = "sha256:" + hashlib.sha256(encoded).hexdigest()
     return result
+
+
+def _fingerprint_value(value: Any) -> str:
+    encoded = json.dumps(
+        _json_value(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _without_keys(value: Mapping[str, Any], *keys: str) -> dict[str, Any]:
+    excluded = set(keys)
+    return {str(key): item for key, item in value.items() if str(key) not in excluded}
+
+
+_LOCKED_SEGMENT_KEYS = (
+    "canonical",
+    "duration",
+    "duration_seconds",
+    "locked_facts",
+    "performance_timing",
+    "references",
+    "subject_directives",
+)
+
+
+def _locked_fact_material(request: H3PromptCheckpointInput) -> dict[str, Any]:
+    return {
+        "segment_id": request.segment_id,
+        "segment": {
+            key: request.segment.get(key)
+            for key in _LOCKED_SEGMENT_KEYS
+            if key in request.segment
+        },
+    }
 
 
 def _project_path(path: Path, project_dir: Path) -> str:

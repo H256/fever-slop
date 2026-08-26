@@ -598,6 +598,7 @@ class DspyH3PromptBuilder:
             "prompt": prompt,
             "references": sections.get("resolved_references") or [],
             "segment_id": segment.get("segment_id"),
+            "sections": sections,
             "prompt_provenance": {
                 "compiler": "deterministic_h3_compiler",
                 "compiler_version": 1,
@@ -660,6 +661,40 @@ class DspyH3PromptBuilder:
                     status_callback(current, total, "reused")
                 result = checkpoint.generated
             else:
+                stale_loader = getattr(checkpoint_store, "load_for_resume", None)
+                stage_classifier = getattr(checkpoint_store, "invalidated_stages", None)
+                stale_checkpoint = (
+                    stale_loader(checkpoint_input)
+                    if callable(stale_loader) and checkpoint_input is not None and reuse_checkpoints
+                    else None
+                )
+                if (
+                    stale_checkpoint is not None
+                    and callable(stage_classifier)
+                    and stage_classifier(checkpoint_input, stale_checkpoint) == frozenset({"compiler"})
+                    and isinstance(stale_checkpoint.generated.get("sections"), dict)
+                ):
+                    result = self.build_h3_prompt(
+                        segment=segment,
+                        concept=str(concept),
+                        scene_details=details,
+                        global_context=global_context,
+                        mode=mode,
+                        video_type=video_type,
+                        audio_paths=audio_paths,
+                        reference_root=reference_root,
+                        structured_sections=stale_checkpoint.generated["sections"],
+                    )
+                    if checkpoint_store is not None and checkpoint_input is not None:
+                        checkpoint_store.save(checkpoint_input, result)
+                    if status_callback is not None:
+                        status_callback(current, total, "recompiled")
+                    results.append({"segment_id": segment_id, **result})
+                    if progress_callback is not None:
+                        progress_callback(current, total)
+                    if status_callback is not None:
+                        status_callback(current, total, "completed")
+                    continue
                 if status_callback is not None:
                     status_callback(current, total, "started")
                 result = self.build_h3_prompt(
