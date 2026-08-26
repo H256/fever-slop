@@ -1,0 +1,9 @@
+{
+  "profile_id": "ltx25-r2v-final",
+  "model_version": "2.5",
+  "mode": "r2v",
+  "quality": "final",
+  "pass_strategy": "two_pass",
+  "audio_policy": "native_audio_when_declared",
+  "anchor_policy": "start_frame_and_optional_end_frame"
+}
