@@ -176,6 +176,11 @@ class PlannedShot(BaseModel):
     start_seconds: float | None = Field(default=None, ge=0)
     end_seconds: float | None = Field(default=None, ge=0)
     description: str
+    visible_action: str | None = None
+    performance: str | None = None
+    camera_behavior: str | None = None
+    environmental_motion: str | None = None
+    transition_intent: str | None = None
     involved_subjects: list[str] = Field(default_factory=list)
     reference_labels: list[str] = Field(default_factory=list)
     hard_cut_after: bool = False

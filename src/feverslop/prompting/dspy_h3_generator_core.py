@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
+from feverslop.prompting.creative_field_repair import repair_creative_payloads
+from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
 from feverslop.prompting.dspy_h3_models import (
     BaseVideoPrompt,
     GeneratedVideoPrompt,
@@ -464,6 +466,83 @@ class VideoPromptGenerator:
             ).strip()
         raise AssertionError("unreachable")
 
+    def _repair_creative_plan(
+        self,
+        request: VideoPromptRequest,
+        plan: ResolvedPromptPlan,
+        refs: list[ResolvedReference],
+        field_issues: list,
+    ) -> ResolvedPromptPlan:
+        """Ask the planner for candidates, then apply only addressed fields."""
+        if not field_issues:
+            return plan
+        issue_notes = "; ".join(
+            f"{issue.shot_id}.{issue.field} ({issue.issue_code}): {issue.repair_instruction}"
+            for issue in field_issues
+        )
+        try:
+            prediction = self.planner(
+                mode=request.mode.value,
+                user_prompt=request.user_prompt,
+                duration_seconds=request.duration_seconds,
+                references=refs,
+                notes=(
+                    f"{request.notes or ''}\n\nRepair only these creative fields: {issue_notes}. "
+                    "Return the same plan structure and preserve all other fields."
+                ).strip(),
+                strict_fidelity=request.strict_fidelity,
+                requested_music_intent=request.music_intent.value if request.music_intent else "",
+                relay_segments=request.relay_segments,
+            )
+            candidate_plan = prediction.plan
+            _normalize_plan_reference_labels(candidate_plan)
+            current_payloads = creative_shots_from_plan(plan)
+            candidate_payloads = creative_shots_from_plan(
+                ResolvedPromptPlan(
+                    creative_intent=candidate_plan.creative_intent,
+                    subjects=[SubjectDefinition(
+                        label=f"<Subject {index}>",
+                        name=subject.name,
+                        description=subject.description,
+                        source_references=subject.source_references,
+                    ) for index, subject in enumerate(candidate_plan.subjects, 1)],
+                    reference_usage=candidate_plan.reference_usage,
+                    shots=candidate_plan.shots,
+                    overall_soundscape=candidate_plan.overall_soundscape,
+                    music_intent=candidate_plan.music_intent,
+                    non_diegetic_music=candidate_plan.non_diegetic_music,
+                    alignment_instruction=candidate_plan.alignment_instruction,
+                    continuation_intents=candidate_plan.continuation_intents,
+                ),
+            )
+            candidates = {payload.shot_id: payload for payload in candidate_payloads}
+            replacements = {}
+            for issue in field_issues:
+                payload = candidates.get(issue.shot_id)
+                value = None if payload is None else getattr(payload, issue.field)
+                if value is not None and str(value).strip():
+                    replacements[(issue.shot_id, issue.field)] = str(value).strip()
+            repaired_payloads = repair_creative_payloads(
+                list(current_payloads), field_issues, replacements,
+            )
+            repaired_by_id = {payload.shot_id: payload for payload in repaired_payloads}
+            shots = []
+            for shot in plan.shots:
+                shot_id = f"shot-{int(shot.shot_number):04d}"
+                payload = repaired_by_id[shot_id]
+                updates = {
+                    issue.field: getattr(payload, issue.field)
+                    for issue in field_issues
+                    if issue.shot_id == shot_id
+                }
+                shots.append(shot.model_copy(update=updates))
+            return plan.model_copy(update={
+                "shots": shots,
+            })
+        except Exception as exc:
+            self._warning(f"H3 creative field repair unavailable: {exc}")
+            return plan
+
     def __call__(self, request_data: dict[str, Any]) -> GeneratedVideoPrompt:
         section_only = bool(request_data.get("_section_only"))
         if request_data.get("mode") == "ref":
@@ -527,6 +606,13 @@ class VideoPromptGenerator:
                     judge_attempts.append(judge)
                 if judge is None or judge.verdict == "good" or attempt == self.judge_attempts:
                     break
+                if judge.field_issues:
+                    plan = self._repair_creative_plan(
+                        effective_request,
+                        plan,
+                        refs,
+                        judge.field_issues,
+                    )
                 feedback = "; ".join(judge.issues) or "the prompt did not satisfy the supplied guide and plan"
                 if judge.repair_instruction:
                     feedback += f" Repair instruction: {judge.repair_instruction}"
