@@ -17,6 +17,11 @@ class ExampleProjectFixtureTests(unittest.TestCase):
         )
 
         self.assertEqual("feverslop-example-project", config["project_name"])
+        self.assertEqual("single", config["subject_mode"])
+        self.assertEqual(1, config["max_scene_actors"])
+        self.assertEqual("protagonist", config["actors"][0]["id"])
+        self.assertIn("adult man", config["actors"][0]["visual_description"])
+        self.assertIn("male vocalist", config["actors"][0]["role"])
         self.assertEqual("input/the-parts-they-left.mp3", config["input_audio"])
         self.assertGreaterEqual(len(config["lyrics"]), 200)
         self.assertGreaterEqual(len(config["lyrics"].splitlines()), 10)
