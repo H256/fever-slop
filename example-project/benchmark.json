@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "title": "The Parts They Left",
+  "duration_seconds": 72.400167,
+  "scene_target_count": {
+    "minimum": 8,
+    "maximum": 12
+  },
+  "music_profile": {
+    "genres": [
+      "symphonic power metal",
+      "gothic metal ballad",
+      "medieval folk metal"
+    ],
+    "bpm": 168,
+    "pulse": "half-time",
+    "rhythm": [
+      "double-kick drums",
+      "tolling toms"
+    ],
+    "instrumentation": [
+      "twin-guitar harmonies",
+      "electric violin",
+      "organ drones",
+      "cinematic strings"
+    ],
+    "vocals": [
+      "male lead vocals",
+      "operatic choir"
+    ],
+    "production": [
+      "plate reverb",
+      "analog saturation"
+    ],
+    "tonality": "minor key",
+    "mood": [
+      "anthemic sorrow",
+      "dark grandeur"
+    ]
+  },
+  "coverage_goals": [
+    "lead-vocal timing and visible performer binding",
+    "choir and ensemble staging",
+    "dense guitar and drum motion",
+    "classical and folk instrumentation",
+    "quiet-to-dense arrangement changes",
+    "multi-segment continuous R2V action"
+  ],
+  "continuation_case": {
+    "required": true,
+    "semantic_duration_seconds": {
+      "minimum": 18,
+      "maximum": 30
+    }
+  }
+}

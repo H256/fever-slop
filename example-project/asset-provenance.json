@@ -1,0 +1,15 @@
+{
+  "status": "pending_rights",
+  "asset": "input/the-parts-they-left.mp3",
+  "sha256": "e2bbfb8cb25ae859421ddbf115c2aaadeb922e7256d103f59c7e3400a574fbda",
+  "created_at": null,
+  "source_service": "Suno",
+  "source_model": null,
+  "account_tier": null,
+  "duration_seconds": 72.400167,
+  "sample_rate_hz": 48000,
+  "channels": 2,
+  "bitrate_kbps": 187.473,
+  "embedded_cover_art": true,
+  "rights_notes": "Pending confirmation of generation date, source model, account tier, and repository redistribution rights."
+}

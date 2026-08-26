@@ -1,0 +1,18 @@
+{
+  "schema": "feverslop.benchmark-plan/v1",
+  "audio": "input/the-parts-they-left.mp3",
+  "fps": 24,
+  "profile": "ltx25-r2v-draft",
+  "segments": [
+    {"id":"scene-01","start":0.000,"end":7.200,"section":"intro","action":"the performer enters the ruined hall","continuation":false},
+    {"id":"scene-02","start":7.200,"end":14.400,"section":"verse","action":"the performer raises the lantern and begins the journey","continuation":true},
+    {"id":"scene-03","start":14.400,"end":21.600,"section":"verse","action":"the journey continues through rain and stone arches","continuation":true},
+    {"id":"scene-04","start":21.600,"end":28.800,"section":"pre-chorus","action":"the performer reaches the sealed gate","continuation":true},
+    {"id":"scene-05","start":28.800,"end":36.000,"section":"chorus","action":"the gate opens as choir and strings surge","continuation":true},
+    {"id":"scene-06","start":36.000,"end":43.200,"section":"chorus","action":"the performer crosses the threshold into blue firelight","continuation":true},
+    {"id":"scene-07","start":43.200,"end":50.400,"section":"bridge","action":"the instruments fall back while the performer stands still","continuation":true},
+    {"id":"scene-08","start":50.400,"end":57.600,"section":"final-chorus","action":"the performer turns toward the returning choir","continuation":true},
+    {"id":"scene-09","start":57.600,"end":64.800,"section":"final-chorus","action":"the hall fills with sweeping strings and sparks","continuation":true},
+    {"id":"scene-10","start":64.800,"end":72.400,"section":"outro","action":"the performer lowers the lantern as dawn reaches the gate","continuation":true}
+  ]
+}
