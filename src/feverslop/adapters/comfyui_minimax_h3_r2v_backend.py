@@ -16,6 +16,7 @@ from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.audio_timing_contract import AudioTimingWindow
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.h3_two_pass import H3TwoPassSpec, apply_h3_two_pass_patch
 from feverslop.domain.artifact_hash import sha256_file
@@ -194,6 +195,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             ref_audio_paths or [],
             duration_seconds=duration_seconds,
             abs_start_seconds=scene.get("abs_start_seconds"),
+            audio_timing_window=self._audio_timing_window(scene, duration_seconds),
         )
 
         # -- dynamic ref wiring: fill remaining slots from scene refs -------
@@ -473,6 +475,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         *,
         duration_seconds: float | None = None,
         abs_start_seconds: float | None = None,
+        audio_timing_window: AudioTimingWindow | None = None,
     ) -> None:
         """Map reference audio paths through LoadAudio → [TrimAudioDuration] → R2V slots.
 
@@ -528,9 +531,17 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                     # Update existing trim node to point at the loader
                     trim.setdefault("inputs", {})["audio"] = [loader_id, 0]
 
-                start = float(abs_start_seconds) if abs_start_seconds is not None else 0.0
+                start = (
+                    audio_timing_window.start_seconds
+                    if audio_timing_window is not None
+                    else float(abs_start_seconds) if abs_start_seconds is not None else 0.0
+                )
                 trim.setdefault("inputs", {})["start_index"] = start
-                trim.setdefault("inputs", {})["duration"] = float(duration_seconds)
+                trim.setdefault("inputs", {})["duration"] = (
+                    audio_timing_window.duration_seconds
+                    if audio_timing_window is not None
+                    else float(duration_seconds)
+                )
 
                 self._wire_ref_audio_slot(patcher, trim_id, slot_index)
             else:
@@ -793,6 +804,22 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             return float(result.stdout.strip())
         except (OSError, ValueError, subprocess.SubprocessError):
             return None
+
+    @staticmethod
+    def _audio_timing_window(
+        scene: dict,
+        duration_seconds: float | None,
+        *,
+        fps: int = FPS,
+    ) -> AudioTimingWindow | None:
+        """Derive one absolute, frame-aligned audio window for a segment."""
+        if duration_seconds is None:
+            return None
+        start = float(scene.get("abs_start_seconds", 0.0) or 0.0)
+        end = float(scene.get("abs_end_seconds", start + float(duration_seconds)))
+        start_frame = round(start * fps)
+        end_frame = round(end * fps)
+        return AudioTimingWindow(start_frame / fps, end_frame / fps)
 
     @classmethod
     def _filter_audio_paths_for_window(
