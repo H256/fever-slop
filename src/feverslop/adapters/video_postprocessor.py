@@ -265,6 +265,9 @@ class VideoPostProcessor:
     def extract_last_frame(self, source_file: str | Path, output_file: str | Path) -> Path:
         return self._extract_frame(source_file, output_file, "last")
 
+    def last_frame_index(self, source_file: str | Path) -> int:
+        return max(0, self._frame_count(Path(source_file)) - 1)
+
     def extract_first_frame(self, source_file: str | Path, output_file: str | Path) -> Path:
         return self._extract_frame(source_file, output_file, "first")
 

@@ -19,6 +19,7 @@ class PostprocessorFrameExtractor:
         self.postprocessor = postprocessor
         self.project_dir = Path(project_dir).resolve()
         self.selected_rerender = selected_rerender
+        self.last_frame_index = 0
 
     def extract_last_frame(
         self,
@@ -56,6 +57,9 @@ class PostprocessorFrameExtractor:
                     video_path,
                     temporary,
                 )
+            index_reader = getattr(self.postprocessor, "last_frame_index", None)
+            if callable(index_reader):
+                self.last_frame_index = int(index_reader(video_path))
             self._require_regular_input(video_path)
             extracted = self._contained(extracted, "extracted frame")
             if extracted != temporary.resolve():
