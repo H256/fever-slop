@@ -7,6 +7,8 @@ from feverslop.domain.render_profile import (
     RenderProfile,
     RenderProfileSchemaError,
     RenderPassStrategy,
+    RenderProfileRegistry,
+    RegisteredRenderProfile,
 )
 
 
@@ -88,6 +90,30 @@ class RenderProfileTests(unittest.TestCase):
             with self.subTest(overrides=overrides):
                 with self.assertRaises(RenderProfileSchemaError):
                     self.make_profile(**overrides)
+
+    def test_registry_resolves_exact_profile_and_capabilities(self):
+        profile = self.make_profile()
+        registry = RenderProfileRegistry(
+            [RegisteredRenderProfile(profile=profile, workflow_path="workflows/video/minimax_h3/r2v.json")]
+        )
+
+        resolved = registry.resolve(
+            profile_id=profile.profile_id,
+            required_capabilities={"audio", "continuation"},
+        )
+
+        self.assertEqual(profile, resolved.profile)
+        self.assertEqual("workflows/video/minimax_h3/r2v.json", resolved.workflow_path)
+
+    def test_registry_rejects_duplicates_and_unsupported_capabilities(self):
+        profile = self.make_profile()
+        entry = RegisteredRenderProfile(profile=profile, workflow_path="workflows/video/minimax_h3/r2v.json")
+        with self.assertRaises(RenderProfileSchemaError):
+            RenderProfileRegistry([entry, entry])
+
+        registry = RenderProfileRegistry([entry])
+        with self.assertRaises(RenderProfileSchemaError):
+            registry.resolve(profile_id=profile.profile_id, required_capabilities={"does_not_exist"})
 
 
 if __name__ == "__main__":

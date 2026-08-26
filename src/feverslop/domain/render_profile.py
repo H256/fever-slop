@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from math import isfinite
 from numbers import Real
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Mapping
 
 
@@ -133,3 +134,50 @@ class RenderProfile:
             "capabilities": list(self.capabilities),
             "max_duration_seconds": self.max_duration_seconds,
         }
+
+
+@dataclass(frozen=True)
+class RegisteredRenderProfile:
+    profile: RenderProfile
+    workflow_path: str
+
+    def __post_init__(self) -> None:
+        raw_path = str(self.workflow_path).strip().replace("\\", "/")
+        path = PurePosixPath(raw_path)
+        if not raw_path or PureWindowsPath(raw_path).drive or path.is_absolute() or ".." in path.parts:
+            raise RenderProfileSchemaError("workflow_path must be repository-relative")
+        object.__setattr__(self, "workflow_path", path.as_posix())
+
+
+class RenderProfileRegistry:
+    """Deterministic lookup for validated profiles and their workflow assets."""
+
+    def __init__(self, entries: Any) -> None:
+        try:
+            normalized = tuple(entries)
+        except TypeError as exc:
+            raise RenderProfileSchemaError("registry entries must be iterable") from exc
+        ids = [entry.profile.profile_id for entry in normalized if isinstance(entry, RegisteredRenderProfile)]
+        if len(ids) != len(normalized):
+            raise RenderProfileSchemaError("registry entries must be RegisteredRenderProfile values")
+        if len(ids) != len(set(ids)):
+            raise RenderProfileSchemaError("duplicate render profile IDs are not allowed")
+        self._entries = {entry.profile.profile_id: entry for entry in normalized}
+
+    def resolve(self, *, profile_id: str, required_capabilities: Any = ()) -> RegisteredRenderProfile:
+        key = str(profile_id).strip().lower()
+        entry = self._entries.get(key)
+        if entry is None:
+            raise RenderProfileSchemaError(f"unknown render profile: {key}")
+        try:
+            required = {str(item).strip().lower() for item in required_capabilities}
+        except TypeError as exc:
+            raise RenderProfileSchemaError("required_capabilities must be iterable") from exc
+        if any(not item for item in required):
+            raise RenderProfileSchemaError("required capability names cannot be blank")
+        missing = sorted(required - set(entry.profile.capabilities))
+        if missing:
+            raise RenderProfileSchemaError(
+                f"render profile '{key}' lacks capabilities: {', '.join(missing)}"
+            )
+        return entry
