@@ -97,6 +97,23 @@ class H3TwoPassTests(unittest.TestCase):
         }
         validate_h3_two_pass_topology(workflow, spec)
 
+    def test_split_sampler_and_scheduler_anchors_are_patchable(self):
+        spec = self.make_spec(required_anchors=["#PASS1", "#PASS2"], preserve_audio_latent=False)
+        workflow = {
+            "1": {"class_type": "SamplerCustomAdvanced", "inputs": {}, "_meta": {"title": "#PASS1"}},
+            "2": {"class_type": "SamplerCustomAdvanced", "inputs": {}, "_meta": {"title": "#PASS2"}},
+            "3": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "old"}, "_meta": {"title": "#PASS1_SAMPLER"}},
+            "4": {"class_type": "BasicScheduler", "inputs": {"scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS1_SCHEDULER"}},
+            "5": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "old"}, "_meta": {"title": "#PASS2_SAMPLER"}},
+            "6": {"class_type": "BasicScheduler", "inputs": {"scheduler": "old", "steps": 1, "denoise": 1}, "_meta": {"title": "#PASS2_SCHEDULER"}},
+            "7": {"class_type": "MiniMaxH3AVLatentSeparateT8", "inputs": {}, "_meta": {"title": "#SEPARATE_AV"}},
+            "8": {"class_type": "VRGDG_MiniMaxH3LearnedLatentUpscale", "inputs": {}, "_meta": {"title": "#LATENT_UPSCALE"}},
+            "9": {"class_type": "VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent", "inputs": {}, "_meta": {"title": "#RECOMBINE_AV"}},
+        }
+        patched = apply_h3_two_pass_patch(workflow, spec)
+        self.assertEqual("euler", patched["3"]["inputs"]["sampler_name"])
+        self.assertEqual(8, patched["6"]["inputs"]["steps"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -134,8 +134,6 @@ def apply_h3_two_pass_patch(workflow: Mapping[str, Any], spec: H3TwoPassSpec) ->
     }
     spec.validate_workflow_anchors(by_title)
     for title, prefix in (("#PASS1", "pass1"), ("#PASS2", "pass2")):
-        node = by_title[title]
-        inputs = dict(node.get("inputs") or {})
         values = {
             "sampler_name": getattr(spec, f"{prefix}_sampler"),
             "scheduler": getattr(spec, f"{prefix}_scheduler"),
@@ -149,11 +147,21 @@ def apply_h3_two_pass_patch(workflow: Mapping[str, Any], spec: H3TwoPassSpec) ->
             "denoise": ("denoise",),
         }
         for field, value in values.items():
+            target_title = title
+            node = by_title[target_title]
+            inputs = dict(node.get("inputs") or {})
             target = next((name for name in aliases[field] if name in inputs), None)
+            if target is None:
+                split_title = f"{title}_{'SAMPLER' if field == 'sampler_name' else 'SCHEDULER'}"
+                node = by_title.get(split_title)
+                if node is None:
+                    raise H3TwoPassSchemaError(f"workflow anchor {title} has no {field} input")
+                inputs = dict(node.get("inputs") or {})
+                target = next((name for name in aliases[field] if name in inputs), None)
             if target is None:
                 raise H3TwoPassSchemaError(f"workflow anchor {title} has no {field} input")
             inputs[target] = value
-        node["inputs"] = inputs
+            node["inputs"] = inputs
     return result
 
 
