@@ -31,6 +31,7 @@ class H3PromptCheckpoint:
     status: H3CheckpointStatus
     input_fingerprint: str
     generated: dict[str, Any] = field(repr=False)
+    stage_fingerprints: Mapping[str, str] = field(default_factory=dict, repr=False)
 
 
 def checkpoint_status(generated: Mapping[str, Any]) -> H3CheckpointStatus:

@@ -80,6 +80,50 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertTrue(provenance["creative_sections_sha256"].startswith("sha256:"))
         self.assertTrue(provenance["locked_facts_sha256"].startswith("sha256:"))
 
+    def test_save_reads_production_sections_shape_for_structured_fingerprints(self):
+        result = {
+            "prompt": "compiled prompt",
+            "prompt_provenance": {"compiler": "deterministic_h3_compiler", "compiler_version": 2},
+            "sections": {
+                "h3_sections": {"subject": "hero"},
+                "shots": [{"shot_id": "shot-1", "visible_action": "turn"}],
+                "facts": {"scene_id": "segment-a", "facts": [{"key": "wardrobe", "value": "cloak"}]},
+                "shot_windows": {"shot-1": [0, 12]},
+            },
+        }
+        payload = json.loads(self.store.save(self.request(), result).path.read_text(encoding="utf-8"))
+
+        self.assertEqual(2, payload["provenance"]["compiler_version"])
+        self.assertTrue(payload["provenance"]["creative_sections_sha256"].startswith("sha256:"))
+        self.assertTrue(payload["provenance"]["locked_facts_sha256"].startswith("sha256:"))
+
+    def test_stage_fingerprints_identify_only_changed_checkpoint_inputs(self):
+        request = self.request()
+        saved = self.store.save(request, {"prompt": "cached"})
+
+        self.assertEqual(frozenset(), self.store.invalidated_stages(request, saved))
+        self.assertEqual(
+            frozenset({"creative"}),
+            self.store.invalidated_stages(
+                self.request(concept="A different action"),
+                saved,
+            ),
+        )
+        self.assertEqual(
+            frozenset({"locked_facts"}),
+            self.store.invalidated_stages(
+                self.request(segment={**request.segment, "locked_facts": {"wardrobe": "red"}}),
+                saved,
+            ),
+        )
+        self.assertEqual(
+            frozenset({"compiler"}),
+            self.store.invalidated_stages(
+                self.request(generator_revision={"contract": 2}),
+                saved,
+            ),
+        )
+
     def test_exhausted_bad_and_unjudged_results_have_distinct_statuses(self):
         bad = self.store.save(
             self.request(),
