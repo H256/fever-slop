@@ -52,10 +52,9 @@ def build(template: Path, output: Path, *, audio: bool = False) -> None:
         "latent": [separate, 0],
         "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
         "mode": "scale by multiplier",
-        # The native H3 node expects this required input as a literal value.
-        # A PrimitiveFloat link is serialized correctly but is rejected by
-        # some installed node versions during API prompt validation.
-        "scale": 2.0,
+        # ComfyUI serializes the mode-dependent multiplier under the
+        # mode.scale API input name, not as a standalone scale input.
+        "mode.scale": 2.0,
         "align": 32,
         "enable_chunking": False,
         "device": "cuda",
