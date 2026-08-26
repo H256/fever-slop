@@ -61,7 +61,13 @@ class DeterministicH3CompilerTests(unittest.TestCase):
     def test_converts_resolved_plan_to_backend_neutral_shots(self):
         plan = ResolvedPromptPlan(
             creative_intent="solemn performance",
-            shots=[PlannedShot(shot_number=2, start_seconds=2, end_seconds=4, description="The lantern rises.")],
+            shots=[PlannedShot(
+                shot_number=2,
+                start_seconds=2,
+                end_seconds=4,
+                description="The lantern rises.",
+                camera_behavior="slow push",
+            )],
             overall_soundscape="wind",
             music_intent=MusicIntent.NONE,
         )
@@ -69,6 +75,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertEqual("shot-0002", shots[0].shot_id)
         self.assertEqual("The lantern rises.", shots[0].visible_action)
         self.assertEqual("solemn performance", shots[0].performance)
+        self.assertEqual("slow push", shots[0].camera_behavior)
 
     def test_rejects_unknown_or_missing_plan_shot_ids(self):
         plan = ResolvedPromptPlan(
