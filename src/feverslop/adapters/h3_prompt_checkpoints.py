@@ -149,7 +149,7 @@ class H3PromptCheckpointStore:
             "mode": request.mode,
             "video_type": request.video_type,
             "audio_paths": request.audio_paths,
-            "generator_revision": request.generator_revision,
+            "generator_revision": self._checkpoint_generator_revision(request.generator_revision),
             "assets": self._asset_evidence(request),
         }
         encoded = json.dumps(
@@ -177,6 +177,25 @@ class H3PromptCheckpointStore:
             if isinstance(candidate, (str, Path)) and str(candidate).strip()
         }
         return [evidence[key] for key in sorted(evidence)]
+
+    @staticmethod
+    def _checkpoint_generator_revision(revision: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep prompt-contract inputs, excluding replaceable LLM runtime metadata."""
+        ignored = {
+            "api_key",
+            "base_url",
+            "endpoint",
+            "model",
+            "model_name",
+            "model_profile",
+            "profile",
+            "transport",
+        }
+        return {
+            str(key): value
+            for key, value in revision.items()
+            if str(key).lower() not in ignored
+        }
 
     def _asset_identity(self, value: str | Path) -> dict[str, Any]:
         path = Path(value)
