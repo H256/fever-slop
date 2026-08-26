@@ -58,6 +58,19 @@ class WorkflowCapabilityManifest:
             missing_nodes=tuple(item for item in self.required_nodes if item not in available_nodes),
         )
 
+    def validate_workflow_payload(self, workflow: dict) -> CapabilityValidation:
+        """Check a serialized ComfyUI workflow without contacting the backend."""
+        if not isinstance(workflow, dict):
+            raise ValueError("workflow payload must be an object")
+        serialized = str(workflow)
+        nodes = {
+            str(node.get("class_type"))
+            for node in workflow.values()
+            if isinstance(node, dict) and node.get("class_type")
+        }
+        models = {model for model in self.required_models if model in serialized}
+        return self.validate_inventory(models=models, nodes=nodes)
+
     def to_dict(self) -> dict[str, object]:
         return {
             "manifest_id": self.manifest_id,
