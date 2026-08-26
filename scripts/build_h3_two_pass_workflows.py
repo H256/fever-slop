@@ -24,7 +24,7 @@ def _first(workflow: dict, class_type: str) -> tuple[str, dict]:
     raise KeyError(f"missing workflow node: {class_type}")
 
 
-def build(template: Path, output: Path) -> None:
+def build(template: Path, output: Path, *, audio: bool = False) -> None:
     workflow = json.loads(template.read_text(encoding="utf-8-sig"))
     sampler_id, sampler = _first(workflow, "SamplerCustomAdvanced")
     sampler.setdefault("_meta", {})["title"] = "#PASS1"
@@ -36,6 +36,9 @@ def build(template: Path, output: Path) -> None:
             node.get("class_type") == class_type for node in workflow.values()
         )),
     )
+    if audio:
+        _, audio_decode = _first(workflow, "VAEDecodeAudio")
+        audio_decode.setdefault("_meta", {})["title"] = "#AUDIO_LATENT"
 
     pass1_sampler = _node(workflow, "KSamplerSelect", "#PASS1_SAMPLER", {"sampler_name": "res_multistep"})
     pass1_scheduler = _node(workflow, "BasicScheduler", "#PASS1_SCHEDULER", {
@@ -74,7 +77,8 @@ def build(template: Path, output: Path) -> None:
         "model_family": "minimax-h3",
         "pass_strategy": "two_pass",
         "topology": ["#PASS1", "#SEPARATE_AV", "#LATENT_UPSCALE", "#RECOMBINE_AV", "#PASS2"],
-        "audio_policy": "preserve_original_av_audio_latent",
+        "audio_policy": "preserve_original_av_audio_latent" if audio else "not_applicable",
+        "preserve_audio_latent": audio,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(workflow, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -85,6 +89,7 @@ def build(template: Path, output: Path) -> None:
 
 def main() -> None:
     build(WORKFLOW_DIR / "r2v_v1.json", WORKFLOW_DIR / "r2v_two_pass.json")
+    build(WORKFLOW_DIR / "r2v_audio_v1.json", WORKFLOW_DIR / "r2v_audio_two_pass.json", audio=True)
     build(WORKFLOW_DIR / "t2v.json", WORKFLOW_DIR / "t2v_two_pass.json")
 
 
