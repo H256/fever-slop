@@ -62,6 +62,15 @@ class H3TwoPassTests(unittest.TestCase):
         with self.assertRaises(H3TwoPassSchemaError):
             spec.validate_workflow_anchors({"#PROMPT", "#FRAMECOUNT", "#PASS1"})
 
+    def test_default_spec_is_available_for_every_quality_profile(self):
+        from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
+
+        for quality in ("draft", "standard", "final"):
+            spec = default_h3_two_pass_spec(quality, audio=True)
+            self.assertGreater(spec.pass1_steps, 0)
+            self.assertTrue(spec.preserve_audio_latent)
+            self.assertIn("#PASS2", spec.required_anchors)
+
 
 if __name__ == "__main__":
     unittest.main()
