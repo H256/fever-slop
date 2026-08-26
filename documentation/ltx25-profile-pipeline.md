@@ -26,6 +26,25 @@ with the previous segment's last frame, but it must not duplicate that frame in
 the final assembled timeline. The final movie muxes the original song once
 after video-only concatenation.
 
+## Prepared-scene continuation scheduling
+
+When the selected prepared LTX profile supports start frames, the renderer
+derives continuation predecessors from the visual-consistency contracts. The
+prepared-scene stage then runs those scenes through the continuation scheduler:
+
+- a successor waits for its predecessor render and continuity handoff;
+- unrelated scenes remain independent and can proceed without waiting for a
+  blocked chain;
+- changing an upstream scene marks only its downstream handoff suffix dirty;
+- each scene and boundary decision is reported through the normal Rich
+  progress output, so a long render is observable and resumable.
+
+The scheduler consumes the existing scene workflow manifests and persisted
+handoff frame manifests. It does not create a second render-plan format.
+Semantic action splitting and cutless multi-segment assembly are separate
+capabilities and must not be assumed merely because a planner emitted a
+continuation intent.
+
 ## Legacy migration
 
 Existing projects may retain legacy pipeline names and files while they are
