@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "workflows" / "video" / "ltx_25" / "t2v"
+OUT = ROOT / "workflows" / "video" / "ltx_25"
 
 
 def _transform(workflow: dict) -> dict:
@@ -53,19 +53,28 @@ def _transform(workflow: dict) -> dict:
 
 
 def main() -> None:
-    source = ROOT / "workflows" / "video_ltxv_i2v_v2.json"
-    template = json.loads(source.read_text(encoding="utf-8-sig"))
-    for quality in ("draft", "standard", "final"):
-        output = OUT / f"t2v_{quality}.json"
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(_transform(template), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        output.with_suffix(".profile.json").write_text(json.dumps({
-            "profile_id": f"ltx25-t2v-{quality}",
-            "model_version": "2.5",
-            "quality": quality,
-            "pass_strategy": "two_pass",
-            "audio_policy": "native_audio_when_declared",
-        }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    templates = {
+        "t2v": ROOT / "workflows" / "video_ltxv_i2v_v2.json",
+        "i2v": ROOT / "workflows" / "video_ltxv_i2v_v2.json",
+        "r2v": ROOT / "workflows" / "video_ltxv_i2v_v2.json",
+        "msr": ROOT / "workflows" / "video_default_i2v_ltxv_msr_1actor_1background_v4.json",
+        "ingredients": ROOT / "workflows" / "video_ltxv_ingredients_2stage_gguf_v6.json",
+    }
+    for mode, source in templates.items():
+        template = json.loads(source.read_text(encoding="utf-8-sig"))
+        for quality in ("draft", "standard", "final"):
+            output = OUT / mode / f"{mode}_{quality}.json"
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(_transform(template), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            output.with_suffix(".profile.json").write_text(json.dumps({
+                "profile_id": f"ltx25-{mode}-{quality}",
+                "model_version": "2.5",
+                "mode": mode,
+                "quality": quality,
+                "pass_strategy": "two_pass",
+                "audio_policy": "native_audio_when_declared",
+                "anchor_policy": "start_frame_and_optional_end_frame" if mode in {"i2v", "r2v"} else "none",
+            }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

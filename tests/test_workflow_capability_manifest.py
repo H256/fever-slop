@@ -62,3 +62,15 @@ class WorkflowCapabilityManifestTests(unittest.TestCase):
             serialized = json.dumps(workflow).lower()
             self.assertNotIn("2.3", serialized)
             self.assertIn("ltx-2.5", serialized)
+
+    def test_ltx25_mode_families_are_materialized(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        for mode in ("t2v", "i2v", "r2v", "msr", "ingredients"):
+            paths = sorted((root / "workflows/video/ltx_25" / mode).glob(f"{mode}_*.json"))
+            workflows = [path for path in paths if not path.name.endswith(".profile.json")]
+            self.assertEqual(3, len(workflows), mode)
+            for path in workflows:
+                serialized = path.read_text(encoding="utf-8").lower()
+                self.assertNotIn("2.3", serialized)
+                self.assertIn("ltx-2.5", serialized)
