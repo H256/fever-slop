@@ -9,6 +9,7 @@ from feverslop.domain.render_profile import (
     RenderPassStrategy,
     RenderProfileRegistry,
     RegisteredRenderProfile,
+    RenderProfileResolution,
 )
 
 
@@ -114,6 +115,33 @@ class RenderProfileTests(unittest.TestCase):
         registry = RenderProfileRegistry([entry])
         with self.assertRaises(RenderProfileSchemaError):
             registry.resolve(profile_id=profile.profile_id, required_capabilities={"does_not_exist"})
+
+    def test_resolution_has_stable_semantic_fingerprint_and_provenance(self):
+        profile = self.make_profile()
+        entry = RegisteredRenderProfile(profile=profile, workflow_path="workflows/video/minimax_h3/r2v.json")
+        resolution = RenderProfileResolution.create(
+            requested_profile_id=" MiniMax-H3-R2V-Draft-2Pass ",
+            entry=entry,
+            workflow_sha256="a" * 64,
+            model_assets=["minimax-h3.safetensors", "clip.safetensors"],
+        )
+
+        payload = resolution.to_dict()
+
+        self.assertEqual(profile.profile_id, payload["requested_profile_id"])
+        self.assertEqual("a" * 64, payload["workflow_sha256"])
+        self.assertEqual(["clip.safetensors", "minimax-h3.safetensors"], payload["model_assets"])
+        self.assertEqual(profile.capabilities, tuple(payload["capabilities"]))
+        self.assertEqual(64, len(payload["fingerprint"]))
+        self.assertEqual(resolution.fingerprint, payload["fingerprint"])
+
+        changed = RenderProfileResolution.create(
+            requested_profile_id=profile.profile_id,
+            entry=entry,
+            workflow_sha256="b" * 64,
+            model_assets=payload["model_assets"],
+        )
+        self.assertNotEqual(resolution.fingerprint, changed.fingerprint)
 
 
 if __name__ == "__main__":
