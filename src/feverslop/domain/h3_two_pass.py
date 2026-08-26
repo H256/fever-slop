@@ -153,3 +153,33 @@ def apply_h3_two_pass_patch(workflow: Mapping[str, Any], spec: H3TwoPassSpec) ->
             inputs[target] = value
         node["inputs"] = inputs
     return result
+
+
+def default_h3_two_pass_spec(quality: str, *, audio: bool = False) -> H3TwoPassSpec:
+    """Return the calibrated two-pass budget for draft, standard, or final."""
+    level = str(quality).strip().lower()
+    budgets = {
+        "draft": (12, 4, 0.55),
+        "standard": (20, 8, 0.40),
+        "final": (28, 12, 0.30),
+    }
+    try:
+        pass1_steps, pass2_steps, pass2_denoise = budgets[level]
+    except KeyError as exc:
+        raise H3TwoPassSchemaError("quality must be draft, standard, or final") from exc
+    anchors = ["#PROMPT", "#FRAMECOUNT", "#PASS1", "#PASS2"]
+    if audio:
+        anchors.append("#AUDIO_LATENT")
+    return H3TwoPassSpec.create(
+        model_assets=["minimax_h3", "minimax_h3_video_vae"],
+        pass1_sampler="res_multistep",
+        pass1_scheduler="simple",
+        pass1_steps=pass1_steps,
+        pass1_denoise=1.0,
+        pass2_sampler="res_multistep",
+        pass2_scheduler="simple",
+        pass2_steps=pass2_steps,
+        pass2_denoise=pass2_denoise,
+        preserve_audio_latent=bool(audio),
+        required_anchors=anchors,
+    )
