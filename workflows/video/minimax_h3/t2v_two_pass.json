@@ -235,7 +235,7 @@
       "pingpong": false,
       "save_output": true,
       "images": [
-        "150",
+        "149",
         0
       ],
       "audio": [
@@ -314,15 +314,6 @@
     }
   },
   "142": {
-    "class_type": "PrimitiveFloat",
-    "inputs": {
-      "value": 2.0
-    },
-    "_meta": {
-      "title": "#LATENT_UPSCALE_SCALE"
-    }
-  },
-  "143": {
     "class_type": "MinimaxH3LatentUpscaler3D",
     "inputs": {
       "latent": [
@@ -331,10 +322,7 @@
       ],
       "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
       "mode": "scale by multiplier",
-      "scale": [
-        "142",
-        0
-      ],
+      "scale": 2.0,
       "align": 32,
       "enable_chunking": false,
       "device": "cuda",
@@ -344,11 +332,11 @@
       "title": "#LATENT_UPSCALE"
     }
   },
-  "144": {
+  "143": {
     "class_type": "LTXVConcatAVLatent",
     "inputs": {
       "video_latent": [
-        "143",
+        "142",
         0
       ],
       "audio_latent": [
@@ -360,7 +348,7 @@
       "title": "#RECOMBINE_AV"
     }
   },
-  "145": {
+  "144": {
     "class_type": "KSamplerSelect",
     "inputs": {
       "sampler_name": "res_multistep"
@@ -369,7 +357,7 @@
       "title": "#PASS2_SAMPLER"
     }
   },
-  "146": {
+  "145": {
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
@@ -384,7 +372,7 @@
       "title": "#PASS2_SCHEDULER"
     }
   },
-  "147": {
+  "146": {
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
@@ -400,7 +388,7 @@
       "title": "#PASS2_GUIDER"
     }
   },
-  "148": {
+  "147": {
     "class_type": "RandomNoise",
     "inputs": {
       "noise_seed": 0
@@ -409,27 +397,27 @@
       "title": "#PASS2_NOISE"
     }
   },
-  "149": {
+  "148": {
     "class_type": "SamplerCustomAdvanced",
     "inputs": {
       "noise": [
-        "148",
-        0
-      ],
-      "guider": [
         "147",
         0
       ],
-      "sampler": [
-        "145",
-        0
-      ],
-      "sigmas": [
+      "guider": [
         "146",
         0
       ],
-      "latent_image": [
+      "sampler": [
         "144",
+        0
+      ],
+      "sigmas": [
+        "145",
+        0
+      ],
+      "latent_image": [
+        "143",
         0
       ]
     },
@@ -437,11 +425,11 @@
       "title": "#PASS2"
     }
   },
-  "150": {
+  "149": {
     "class_type": "VAEDecode",
     "inputs": {
       "samples": [
-        "149",
+        "148",
         0
       ],
       "vae": [
