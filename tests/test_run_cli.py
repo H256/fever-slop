@@ -364,17 +364,6 @@ class RunCliTests(unittest.TestCase):
         self.assertIn("anchor_fix", self.stream.getvalue())
 
     @patch("feverslop.cli.run_cli.pipeline_run")
-    def test_advanced_stage_preserves_explicit_scene_selection(self, pipeline_run):
-        exit_code = run_project_command(
-            self._args("--resume", "--stage", "ltx_render_scenes", "--scenes", "1"),
-            console=self.console,
-        )
-
-        self.assertEqual(0, exit_code)
-        pipeline_run.assert_called_once()
-        self.assertEqual("1", pipeline_run.call_args.args[0].scenes)
-
-    @patch("feverslop.cli.run_cli.pipeline_run")
     def test_explicit_runner_override_uses_compatibility_plan(self, pipeline_run):
         exit_code = run_project_command(
             self._args(

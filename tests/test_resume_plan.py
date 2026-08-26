@@ -8,7 +8,7 @@ from pathlib import Path
 
 from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.msr_prompt_enrichment import msr_prompt_input_fingerprint
-from feverslop.composition.resume_plan import build_compatibility_plan, build_resume_plan
+from feverslop.composition.resume_plan import build_resume_plan
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
@@ -40,19 +40,6 @@ class ExecutionPlanTests(unittest.TestCase):
             plan.runnable_stages,
         )
         self.assertEqual((2,), plan.runnable_scenes)
-
-    def test_compatibility_plan_defers_global_assembly_for_scene_selection(self):
-        plan = build_compatibility_plan(
-            Path("project"),
-            ("ltx_render_scenes", "concat_video_only", "mux_original_audio", "export_timeline"),
-            selected_scenes={1},
-        )
-
-        self.assertEqual(("ltx_render_scenes",), plan.runnable_stages)
-        self.assertEqual((1,), plan.runnable_scenes)
-        deferred = [item for item in plan.items if item.phase == "advanced stage" and item.stage == "concat_video_only"]
-        self.assertEqual(PlanAction.REUSE, deferred[0].action)
-        self.assertIn("partial", deferred[0].reason)
 
     def test_blocked_plan_has_no_runnable_work(self):
         plan = ExecutionPlan(
@@ -523,18 +510,6 @@ class ResumePlanTests(unittest.TestCase):
         excluded = next(item for item in plan.items if item.scene == 1)
         self.assertEqual(PlanAction.NOT_SELECTED, excluded.action)
         self.assertEqual((2,), plan.runnable_scenes)
-
-    def test_partial_scene_selection_defers_global_assembly(self):
-        self._write_base_and_derived(2)
-
-        plan = build_resume_plan(self.project, video_pipeline="ltx_msr", selected_scenes={1})
-
-        self.assertNotIn("concat_video_only", plan.runnable_stages)
-        self.assertNotIn("mux_original_audio", plan.runnable_stages)
-        self.assertNotIn("export_timeline", plan.runnable_stages)
-        assembly = [item for item in plan.items if item.phase == "assemble video"]
-        self.assertEqual(PlanAction.REUSE, assembly[0].action)
-        self.assertIn("partial", assembly[0].reason)
 
     def test_unknown_scene_selection_blocks_before_assembly(self):
         self._write_base_and_derived(2)

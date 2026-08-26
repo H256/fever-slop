@@ -282,6 +282,20 @@
       "title": "#PROMPT"
     }
   },
+  "141": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": false,
+      "anything": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
+    }
+  },
   "142": {
     "inputs": {
       "frame_rate": 24,
@@ -488,7 +502,10 @@
       ],
       "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
       "mode": "scale by multiplier",
-      "mode.scale": 2.0,
+      "scale": [
+        "160",
+        0
+      ],
       "align": 32,
       "enable_chunking": false,
       "device": "cuda",

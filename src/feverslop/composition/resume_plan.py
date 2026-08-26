@@ -24,14 +24,6 @@ _H3_PIPELINES = frozenset({
 })
 _LTX_PIPELINES = frozenset({"ltx_msr", "ltx_ingredients"})
 _REFERENCE_PIPELINES = _LTX_PIPELINES | frozenset({"minimax-h3-r2v"})
-_GLOBAL_ASSEMBLY_STAGES = frozenset({
-    "concat_video_only",
-    "mux_original_audio",
-    "diagnostic_scene_audio_concat",
-    "facefix_concat",
-    "export_timeline",
-    "openshot_export",
-})
 
 
 def build_resume_plan(
@@ -262,18 +254,9 @@ def _build_resume_plan(
             "render", render_action, render_reason, number, "ltx_render_scenes",
         ))
 
-    partial_selection = requested is not None and len(requested) < len(desired_base)
     assembly_run = any_render or not layout.movie.is_file()
-    assembly_action = PlanAction.RUN if assembly_run and not partial_selection else PlanAction.REUSE
-    assembly_reason = (
-        "partial scene selection; final assembly deferred"
-        if partial_selection
-        else "scene render changed"
-        if any_render
-        else "final movie missing"
-        if assembly_run
-        else "final movie exists"
-    )
+    assembly_action = PlanAction.RUN if assembly_run else PlanAction.REUSE
+    assembly_reason = "scene render changed" if any_render else "final movie missing" if assembly_run else "final movie exists"
     for phase, stage in (
         ("assemble video", "concat_video_only"),
         ("mux audio", "mux_original_audio"),
@@ -310,16 +293,8 @@ def build_compatibility_plan(
     items = tuple(
         ExecutionPlanItem(
             "advanced stage",
-            (
-                PlanAction.REUSE
-                if scenes and str(stage) in _GLOBAL_ASSEMBLY_STAGES
-                else PlanAction.RUN
-            ),
-            (
-                "partial scene selection; global assembly deferred"
-                if scenes and str(stage) in _GLOBAL_ASSEMBLY_STAGES
-                else "selected by compatibility flags"
-            ),
+            PlanAction.RUN,
+            "selected by compatibility flags",
             None,
             str(stage),
         )
@@ -327,7 +302,7 @@ def build_compatibility_plan(
     )
     if scenes:
         items += tuple(
-            ExecutionPlanItem("scene selection", PlanAction.RUN, "selected by --scenes", scene)
+            ExecutionPlanItem("scene selection", PlanAction.REUSE, "selected by --scenes", scene)
             for scene in scenes
         )
     return ExecutionPlan(Path(project).resolve(), "compatibility", items)
