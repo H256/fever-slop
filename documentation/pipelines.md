@@ -594,12 +594,12 @@ subsequent render command:
 ```powershell
 uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow minimax-h3-r2v `
-  --r2v-workflow .\workflows\video_minimax_h3_r2v_v1.json `
+  --r2v-workflow .\workflows\video\minimax_h3\r2v_v1.json `
   --skip-movie-render
 
 uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow minimax-h3-r2v `
-  --r2v-workflow .\workflows\video_minimax_h3_r2v_v1.json
+  --r2v-workflow .\workflows\video\minimax_h3\r2v_v1.json
 ```
 
 This ensures `movie/bible.json`, `movie/story_design.json`, `movie/screenplay.json`,
@@ -908,7 +908,7 @@ Example:
 ```powershell
 uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow minimax-h3-i2v `
-  --i2v-workflow .\workflows\video_minimax_h3_t2v.json
+  --i2v-workflow .\workflows\video\minimax_h3\t2v.json
 ```
 
 The corresponding workflow must contain the MiniMax H3 node and the usual

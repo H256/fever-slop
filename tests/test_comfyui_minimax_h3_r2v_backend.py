@@ -1224,7 +1224,7 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
         self.assertIn("aud789", result["64"]["inputs"]["audio"])
 
     def test_production_audio_workflow_adds_stem_loaders_and_trims(self):
-        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / "r2v_audio_v1.json"
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
         backend = self._backend(workflow=workflow)
 
@@ -1267,7 +1267,7 @@ class BuildWorkflowVideoAudioTests(unittest.TestCase):
         self.assertEqual([full_mix], result)
 
     def test_audio_wiring_does_not_mutate_generated_prompt(self):
-        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / "r2v_audio_v1.json"
         backend = self._backend(workflow=json.loads(workflow_path.read_text(encoding="utf-8")))
         generated_prompt = """subject_definitions:
 <Subject 1> (Bard): A singer.
@@ -1392,7 +1392,7 @@ non_diegetic_music: N/A"""},
         backend._validate_scene(scene)
 
     def test_production_audio_workflow_maps_reference_audio_from_slot_zero(self):
-        workflow_path = Path(__file__).parents[1] / "workflows" / "video_minimax_h3_r2v_audio_v1.json"
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / "r2v_audio_v1.json"
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
         backend = self._backend(workflow=workflow)
 
