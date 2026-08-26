@@ -7,6 +7,7 @@ from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
 
 from feverslop.domain.ltx_rendering import round_down_8n1
+from feverslop.domain.duration_capability import DurationCapability
 from feverslop.errors import FeverSlopValidationError
 
 
@@ -61,6 +62,7 @@ def resolve_scene_duration_policy(
     workflow_limits: Mapping[str, float],
     workflow_paths: Sequence[str | Path],
     default_max_render_duration_seconds: float | None,
+    duration_capability: DurationCapability | None = None,
 ) -> ResolvedSceneDurationPolicy:
     requested_min = _positive_finite(requested_min_seconds, "requested_min_seconds")
     requested_max = _positive_finite(requested_max_seconds, "requested_max_seconds")
@@ -74,6 +76,18 @@ def resolve_scene_duration_policy(
         raise FeverSlopValidationError("fps must be greater than zero")
     preroll = _nonnegative_integer(preroll_frames, "preroll_frames")
     tail = _nonnegative_integer(tail_frames, "tail_frames")
+    profile_min = 0.0
+    profile_max = None
+    if duration_capability is not None:
+        profile_min = duration_capability.min_seconds
+        profile_max = duration_capability.max_seconds
+        resolved_fps = duration_capability.fps
+        if requested_max < profile_min or requested_min > profile_max:
+            raise FeverSlopValidationError(
+                f"Requested scene duration [{requested_min}, {requested_max}] seconds "
+                f"cannot be represented by the selected profile limits "
+                f"[{profile_min}, {profile_max}] seconds",
+            )
 
     normalized_limits: dict[str, float] = {}
     for workflow, duration in workflow_limits.items():
@@ -102,6 +116,8 @@ def resolve_scene_duration_policy(
             workflow_basenames.append(basename)
 
     candidates: list[tuple[float, str | None]] = []
+    if profile_max is not None:
+        candidates.append((profile_max, "selected render profile"))
     for basename in workflow_basenames:
         duration = normalized_limits.get(basename, default_duration)
         if duration is not None:
@@ -129,6 +145,8 @@ def resolve_scene_duration_policy(
         Decimal(str(max_render_duration)) * Decimal(resolved_fps)
     ).to_integral_value(rounding=ROUND_FLOOR)
     max_render_frames = int(render_intervals) + 1
+    if duration_capability is not None and max_render_duration == profile_max:
+        max_render_frames = duration_capability.frames_for(max_render_duration)
     if round_render_frames_to_8n1:
         max_render_frames = round_down_8n1(max_render_frames)
     max_scene_frames = max_render_frames - preroll - tail
@@ -150,7 +168,11 @@ def resolve_scene_duration_policy(
             "Render budget cannot represent a positive scene duration at SRT millisecond precision",
         )
     effective_max = float(effective_max_decimal)
-    effective_min = min(requested_min, effective_max)
+    if effective_max < profile_min:
+        raise FeverSlopValidationError(
+            "The selected workflow limits leave no duration in the selected profile range",
+        )
+    effective_min = max(profile_min, min(requested_min, effective_max))
     return ResolvedSceneDurationPolicy(
         requested_min_seconds=requested_min,
         requested_max_seconds=requested_max,

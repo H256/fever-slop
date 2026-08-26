@@ -9,6 +9,8 @@ from numbers import Real
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Mapping
 
+from feverslop.domain.duration_capability import DurationCapability
+
 
 class RenderProfileSchemaError(ValueError):
     """Raised when a render profile does not satisfy schema version 1."""
@@ -59,6 +61,7 @@ class RenderProfile:
     postprocess: PostprocessStrategy
     capabilities: tuple[str, ...]
     max_duration_seconds: float | None = None
+    duration_capability: DurationCapability | None = None
 
     @classmethod
     def create(
@@ -73,6 +76,7 @@ class RenderProfile:
         capabilities: Any,
         max_duration_seconds: Real | None = None,
         schema_version: int = 1,
+        duration_capability: DurationCapability | Mapping[str, Any] | None = None,
     ) -> RenderProfile:
         if type(schema_version) is not int or schema_version != 1:
             raise RenderProfileSchemaError("schema_version must be 1")
@@ -103,6 +107,14 @@ class RenderProfile:
             if not isfinite(resolved_duration) or resolved_duration <= 0:
                 raise RenderProfileSchemaError("max_duration_seconds must be greater than zero")
 
+        if isinstance(duration_capability, Mapping):
+            try:
+                duration_capability = DurationCapability.create(**dict(duration_capability))
+            except (TypeError, ValueError) as exc:
+                raise RenderProfileSchemaError(f"invalid duration_capability: {exc}") from exc
+        elif duration_capability is not None and not isinstance(duration_capability, DurationCapability):
+            raise RenderProfileSchemaError("duration_capability must be an object")
+
         return cls(
             schema_version=schema_version,
             profile_id=resolved_id,
@@ -113,6 +125,7 @@ class RenderProfile:
             postprocess=_enum_value(PostprocessStrategy, postprocess, "postprocess"),
             capabilities=tuple(normalized_capabilities),
             max_duration_seconds=resolved_duration,
+            duration_capability=duration_capability,
         )
 
     @classmethod
@@ -125,7 +138,7 @@ class RenderProfile:
             raise RenderProfileSchemaError("render profile has invalid or missing fields") from exc
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "schema_version": self.schema_version,
             "profile_id": self.profile_id,
             "model_family": self.model_family,
@@ -136,6 +149,9 @@ class RenderProfile:
             "capabilities": list(self.capabilities),
             "max_duration_seconds": self.max_duration_seconds,
         }
+        if self.duration_capability is not None:
+            result["duration_capability"] = self.duration_capability.to_dict()
+        return result
 
 
 @dataclass(frozen=True)

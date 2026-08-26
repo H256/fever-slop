@@ -5,6 +5,8 @@ from math import isfinite
 from numbers import Real
 from pathlib import PurePosixPath, PureWindowsPath
 
+from feverslop.domain.duration_capability import DurationCapability
+
 
 @dataclass(frozen=True)
 class VideoWorkflowProfile:
@@ -17,6 +19,7 @@ class VideoWorkflowProfile:
     supports_per_pass_loras: bool
     satisfies_final_output: bool
     supports_start_frame: bool = False
+    duration_capability: DurationCapability | None = None
 
     @classmethod
     def create(
@@ -31,6 +34,7 @@ class VideoWorkflowProfile:
         supports_per_pass_loras: bool,
         satisfies_final_output: bool | None = None,
         supports_start_frame: bool = False,
+        duration_capability: DurationCapability | dict | None = None,
     ) -> VideoWorkflowProfile:
         resolved_name = str(name).strip()
         resolved_pipeline = str(pipeline).strip()
@@ -67,6 +71,11 @@ class VideoWorkflowProfile:
         if resolved_purpose == "preview" and final:
             raise ValueError("preview profile cannot satisfy final output")
 
+        if isinstance(duration_capability, dict):
+            duration_capability = DurationCapability.create(**duration_capability)
+        elif duration_capability is not None and not isinstance(duration_capability, DurationCapability):
+            raise ValueError("workflow profile duration_capability must be an object")
+
         return cls(
             name=resolved_name,
             pipeline=resolved_pipeline,
@@ -77,4 +86,21 @@ class VideoWorkflowProfile:
             supports_per_pass_loras=supports_per_pass_loras,
             satisfies_final_output=final,
             supports_start_frame=supports_start_frame,
+            duration_capability=duration_capability,
         )
+
+    def to_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "name": self.name,
+            "pipeline": self.pipeline,
+            "workflow": self.workflow_path,
+            "purpose": self.purpose,
+            "stages": self.stages,
+            "output_scale": self.output_scale,
+            "supports_per_pass_loras": self.supports_per_pass_loras,
+            "supports_start_frame": self.supports_start_frame,
+            "satisfies_final_output": self.satisfies_final_output,
+        }
+        if self.duration_capability is not None:
+            result["duration_capability"] = self.duration_capability.to_dict()
+        return result
