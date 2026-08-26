@@ -1,0 +1,14 @@
+{
+  "status": "pending",
+  "asset": "input/song.mp3",
+  "sha256": null,
+  "created_at": null,
+  "source_service": null,
+  "source_model": null,
+  "account_tier": null,
+  "duration_seconds": null,
+  "sample_rate_hz": null,
+  "channels": null,
+  "bitrate_kbps": null,
+  "rights_notes": ""
+}
