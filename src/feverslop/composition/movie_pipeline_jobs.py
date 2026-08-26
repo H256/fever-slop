@@ -738,11 +738,11 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         planner_backend = "deterministic"
     movie_video_workflow = _movie_backend(raw.get("movie_video_workflow"), default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"})
     msr_i2v_default = "workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json" if movie_video_workflow == "msr-i2v-startframe" else ""
-    i2v_default = "workflows/video_ltxv_i2v_native_audio_v2.json" if movie_video_workflow == "startframe-director" else "workflows/video_ltxv_i2v_v2.json"
+    i2v_default = "workflows/video/ltx_25/i2v/i2v_draft.json"
     if movie_video_workflow in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
         i2v_default = "workflows/video/minimax_h3/t2v.json"
     edit_workflow_default = "workflows/image_edit_flux2_klein_2ref_v1.json" if movie_video_workflow == "i2v-edit" else "workflows/image_edit_flux2_klein_1ref_v1.json"
-    ingredients_default = "workflows/video_ltxv_ingredients_2stage_v6.json" if movie_video_workflow == "ingredients" else ""
+    ingredients_default = "workflows/video/ltx_25/ingredients/ingredients_draft.json" if movie_video_workflow == "ingredients" else ""
     return {
         "app_config_path": str(raw.get("app_config_path") or "app_config.json"),
         "planner_backend": planner_backend,
@@ -764,7 +764,7 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
         "startframe_debug_workflows_dir": str(raw.get("startframe_debug_workflows_dir") or ""),
         "startframe_validator_base_url": str(raw.get("startframe_validator_base_url") or "http://your-llm-server.local/v1").rstrip("/"),
         "startframe_validator_model": str(raw.get("startframe_validator_model") or "gemma4-26b-a4b:vision"),
-        "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video_default_ltxv_msr_1actor_1background_v4.json"),
+        "msr_workflow": _movie_workflow_path(raw.get("msr_workflow"), "workflows/video/ltx_25/msr/msr_draft.json"),
         "msr_i2v_workflow": _movie_workflow_path(raw.get("msr_i2v_workflow"), msr_i2v_default) if msr_i2v_default or raw.get("msr_i2v_workflow") else "",
         "i2v_workflow": _movie_workflow_path(raw.get("i2v_workflow"), i2v_default),
         "r2v_workflow": _movie_workflow_path(raw.get("r2v_workflow"), "workflows/video/minimax_h3/r2v_audio_v1.json"),
