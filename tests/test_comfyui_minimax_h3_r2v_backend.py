@@ -721,6 +721,33 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertIn("Continuity anchor: <Picture 3>", result["40"]["inputs"]["value"])
         self.assertIn("previous scene", result["40"]["inputs"]["value"])
 
+    def test_uses_only_verified_boundary_manifest_anchor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            frame = project / "output" / "scene_0001" / "lastframe.png"
+            clip = project / "output" / "scene_0001" / "final.mp4"
+            frame.parent.mkdir(parents=True)
+            frame.write_bytes(b"frame")
+            clip.write_bytes(b"clip")
+            digest = __import__("hashlib").sha256
+            backend = ComfyUIMiniMaxH3R2VBackend(
+                client=FakeClient(), workflow_path=Path("wf.json"), output_dir=project / "out",
+                project_dir=project, workflow=_native_r2v_workflow(), asset_uploader=FakeAssetUploader(),
+            )
+            scene = {"keyframes": {"boundary_frame_manifest": {
+                "source_clip_path": "output/scene_0001/final.mp4",
+                "source_clip_sha256": digest(b"clip").hexdigest(),
+                "frame_index": 10,
+                "extractor_revision": "last-frame-v2",
+                "frame_path": "output/scene_0001/lastframe.png",
+                "frame_sha256": digest(b"frame").hexdigest(),
+            }}}
+            self.assertEqual(frame, backend._resolve_continuity_anchor_path(scene))
+
+            frame.write_bytes(b"stale")
+            with self.assertRaisesRegex(ValueError, "boundary frame"):
+                backend._resolve_continuity_anchor_path(scene)
+
     def test_seed_set(self):
         backend = self._backend(workflow=_native_r2v_workflow())
         backend.seed_offset = 50000

@@ -17,6 +17,8 @@ from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.artifact_hash import sha256_file
+from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.errors import FeverSlopValidationError
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
@@ -204,6 +206,18 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     def _resolve_continuity_anchor_path(self, scene: dict) -> Path | None:
         keyframes = scene.get("keyframes") or {}
+        boundary_payload = keyframes.get("boundary_frame_manifest")
+        if boundary_payload is not None:
+            manifest = BoundaryFrameManifest.from_dict(boundary_payload)
+            if self.project_dir is None:
+                raise ValueError("verified boundary frame requires a project directory")
+            frame = self._resolve_project_path(manifest.frame_path)
+            source_clip = self._resolve_project_path(manifest.source_clip_path)
+            if not frame.is_file() or sha256_file(frame) != manifest.frame_sha256:
+                raise ValueError("verified boundary frame is missing or stale")
+            if not source_clip.is_file() or sha256_file(source_clip) != manifest.source_clip_sha256:
+                raise ValueError("verified boundary source clip is missing or stale")
+            return frame
         explicit = keyframes.get("continuity_anchor_path")
         if explicit:
             return self._resolve_project_path(explicit)
