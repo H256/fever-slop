@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from feverslop.path_utils import coerce_local_path
+from feverslop.path_utils import coerce_local_path, resolve_workflow_reference
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.media_paths import safe_file_stem, write_concat_list as write_media_concat_list
 
@@ -202,7 +202,7 @@ def runner_root() -> Path:
 
 
 def resolve_runner_path(value: str | Path) -> Path:
-    return coerce_local_path(value, base_dir=runner_root())
+    return coerce_local_path(resolve_workflow_reference(value), base_dir=runner_root())
 
 
 def build_run_context(args: argparse.Namespace) -> PipelineRunContext:

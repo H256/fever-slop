@@ -8,7 +8,7 @@ from rich.panel import Panel
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
 from feverslop.config.app_config import AppConfig
-from feverslop.path_utils import coerce_local_path
+from feverslop.path_utils import coerce_local_path, resolve_workflow_reference
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.utils.rich_progress import build_progress
 from feverslop.utils.render_plan_selection import load_render_plan_subset, parse_scene_list
@@ -45,7 +45,7 @@ def main():
 
     app_config_path = coerce_local_path(args.app_config)
     render_plan_path = coerce_local_path(args.render_plan)
-    workflow_path = coerce_local_path(args.workflow)
+    workflow_path = coerce_local_path(resolve_workflow_reference(args.workflow))
     output_dir = coerce_local_path(args.output_dir)
     app_config = AppConfig.load(app_config_path)
 

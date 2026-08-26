@@ -10,7 +10,7 @@ from rich.console import Console
 from feverslop.adapters.pipeline_runner_options import add_runner_options, runner_options_from_args
 from feverslop.application.full_auto import FullAutoRequest
 from feverslop.composition.full_auto import build_full_auto_use_case
-from feverslop.path_utils import coerce_local_path
+from feverslop.path_utils import coerce_local_path, resolve_workflow_reference
 
 console = Console()
 
@@ -84,7 +84,7 @@ def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
 def run_full_auto_command(args: argparse.Namespace, *, output: Console = console) -> None:
     build_full_auto_use_case(
         app_config_path=coerce_local_path(args.app_config),
-        workflow_path=coerce_local_path(args.workflow),
+        workflow_path=coerce_local_path(resolve_workflow_reference(args.workflow)),
         console=output,
     ).execute(request_from_args(args))
 

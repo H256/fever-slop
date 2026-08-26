@@ -18,6 +18,7 @@ from feverslop.application.movie_msr_enrichment import (
 )
 from feverslop.composition.movie_workflow import patch_movie_msr_workflow
 from feverslop.config.project_config import ProjectConfig
+from feverslop.path_utils import resolve_workflow_reference
 
 JobHandler = Callable[[Callable[[str], None]], Any]
 
@@ -806,7 +807,7 @@ def _movie_backend(value: object, *, default: str, supported: set[str]) -> str:
 
 
 def _movie_workflow_path(value: object, default: str) -> str:
-    raw = str(value or default).strip()
+    raw = resolve_workflow_reference(str(value or default).strip())
     path = Path(raw)
     if path.is_absolute() or ".." in path.parts:
         raise ValueError("movie workflow paths must be repository-relative")
