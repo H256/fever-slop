@@ -6,6 +6,7 @@ from typing import Any
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
+from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
 
 
 class DeterministicH3Compiler:
@@ -24,6 +25,8 @@ class DeterministicH3Compiler:
         shots: Sequence[CreativeShotPayload],
         shot_windows: Mapping[str, tuple[float, float]],
         references: Mapping[str, Sequence[str]] | None = None,
+        prepared_reference_labels: Sequence[str] | None = None,
+        duration_seconds: float | None = None,
     ) -> str:
         normalized_mode = str(mode).strip().lower()
         if normalized_mode not in {"base", "reference"}:
@@ -64,6 +67,17 @@ class DeterministicH3Compiler:
         result = "\n".join(lines)
         if self.max_words is not None and len(result.split()) > self.max_words:
             raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
+        issues = validate_prompt_contract(
+            result,
+            facts=facts,
+            shots=tuple(by_id[key] for key in sorted(by_id)),
+            shot_windows=shot_windows,
+            references=references,
+            prepared_reference_labels=prepared_reference_labels,
+            duration_seconds=duration_seconds,
+        )
+        if issues:
+            raise PromptContractError(issues)
         return result
 
 

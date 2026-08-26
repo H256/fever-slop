@@ -500,6 +500,8 @@ class DspyH3PromptBuilder:
                     shots=shots,
                     shot_windows=windows,
                     references=references_by_shot,
+                    prepared_reference_labels=[reference["label"] for reference in references],
+                    duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
                 )
                 return {
                     "prompt": prompt,
