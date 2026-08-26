@@ -1098,3 +1098,10 @@ If a job raises an exception:
 - logs remain available while the backend process stays alive
 
 External failures usually come from ComfyUI availability, missing workflow anchors, missing models/custom nodes, FFmpeg failures, LLM endpoint failures, or invalid project paths/config.
+# Current LTX default
+
+New projects and CLI defaults use the LTX 2.5 Draft profiles under
+`workflows/video/ltx_25/`. The older LTX workflow paths shown in historical
+examples are migration inputs only; they are not active defaults. Select a
+specific profile through the project `render_profile` or an explicit workflow
+override when reproducing an older run.

@@ -1260,3 +1260,9 @@ Check tracked files:
 ```powershell
 git status --short
 ```
+# Current video workflow default
+
+The maintained default is LTX 2.5 Draft with two-pass rendering. Canonical
+workflow paths are resolved from `render_profile` (for example,
+`ltx25-i2v-draft`) and live below `workflows/video/ltx_25/`. Legacy LTX paths
+in older examples must be treated as migration inputs, not as fallback paths.
