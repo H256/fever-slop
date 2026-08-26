@@ -1,6 +1,7 @@
 import unittest
 
 from feverslop.domain.continuation_segments import split_semantic_action
+from feverslop.domain.continuity import BoundaryFrameManifest
 
 
 class ContinuationSegmentTests(unittest.TestCase):
@@ -45,6 +46,20 @@ class ContinuationSegmentTests(unittest.TestCase):
             split_semantic_action(
                 action_id="x", start_seconds=0, duration_seconds=3, max_duration_seconds=2, fps=24, min_duration_seconds=2
             )
+
+    def test_boundary_manifest_roundtrip_and_staleness_check(self):
+        manifest = BoundaryFrameManifest.create(
+            source_clip_path="output/render/scenes/scene_0001/final.mp4",
+            source_clip_sha256="a" * 64,
+            frame_index=287,
+            extractor_revision="last-frame-v2",
+            frame_path="output/render/scenes/scene_0001/lastframe.png",
+            frame_sha256="b" * 64,
+        )
+
+        self.assertEqual(manifest, BoundaryFrameManifest.from_dict(manifest.to_dict()))
+        self.assertTrue(manifest.matches(source_clip_sha256="a" * 64, frame_sha256="b" * 64))
+        self.assertFalse(manifest.matches(source_clip_sha256="c" * 64, frame_sha256="b" * 64))
 
 
 if __name__ == "__main__":
