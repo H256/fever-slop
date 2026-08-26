@@ -4,6 +4,7 @@ import json
 import unittest
 from inspect import signature
 from pathlib import Path
+from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
@@ -201,6 +202,28 @@ class WorkflowMaterializerTests(unittest.TestCase):
         self.assertIn("asset_uploader", parameters)
         self.assertIn("model_resolver", parameters)
         self.assertIn("model_workflow_path", parameters)
+
+    def test_renderer_migrates_legacy_h3_scale_input_before_queueing(self):
+        renderer = PreparedWorkflowRenderer(
+            project_dir=Path("."),
+            render_queue=object(),
+            postprocessor=object(),
+            expected_pipeline="minimax-h3-r2v",
+        )
+        workflow = {
+            "161": {
+                "class_type": "MinimaxH3LatentUpscaler3D",
+                "inputs": {"mode": "scale by multiplier", "scale": 2.0},
+            },
+        }
+
+        migrated = renderer._prepare_for_current_server(
+            workflow,
+            SimpleNamespace(assets=[]),
+        )
+
+        self.assertEqual(2.0, migrated["161"]["inputs"]["mode.scale"])
+        self.assertNotIn("scale", migrated["161"]["inputs"])
 
     def test_renderer_enforces_current_budget_for_legacy_manifest(self):
         with TemporaryDirectory() as tmp:

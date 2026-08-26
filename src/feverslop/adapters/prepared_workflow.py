@@ -480,6 +480,14 @@ class PreparedWorkflowRenderer:
     def _prepare_for_current_server(
         self, workflow: dict[str, Any], manifest: SceneWorkflowManifest,
     ) -> dict[str, Any]:
+        for node in workflow.values():
+            if not isinstance(node, dict):
+                continue
+            if node.get("class_type") != "MinimaxH3LatentUpscaler3D":
+                continue
+            inputs = node.get("inputs") or {}
+            if "mode.scale" not in inputs and "scale" in inputs:
+                inputs["mode.scale"] = inputs.pop("scale")
         replacements: dict[str, str] = {}
         if self.asset_uploader is not None:
             for asset in manifest.assets:
