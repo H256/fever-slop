@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS
@@ -10,6 +11,7 @@ from feverslop.domain.project_render_settings import (
     ProjectRenderSettings,
     WorkflowSelection,
 )
+from feverslop.domain.workflow_capability_manifest import WorkflowCapabilityManifest
 
 from .config_loader import resolve_runner_path, runner_root
 
@@ -58,6 +60,16 @@ def resolve_project_render_settings(
             mode, quality = profile_parts[1], profile_parts[2]
             profile_path = runner_root() / "workflows" / "video" / "ltx_25" / mode / f"{mode}_{quality}.json"
             if profile_path.exists() and video_target not in explicit:
+                manifest_path = runner_root() / "workflows" / "video" / "ltx_25" / "capabilities.json"
+                manifest = WorkflowCapabilityManifest.create(
+                    **json.loads(manifest_path.read_text(encoding="utf-8"))
+                )
+                validation = manifest.validate_workflow_payload(
+                    json.loads(profile_path.read_text(encoding="utf-8-sig"))
+                )
+                if not validation.ok:
+                    missing = ", ".join((*validation.missing_models, *validation.missing_nodes))
+                    raise ValueError(f"LTX 2.5 workflow capability validation failed: {missing}")
                 video_selection = WorkflowSelection.from_path(profile_path.resolve(), root=runner_root())
                 overrides[video_target] = str(profile_path.resolve())
     if config.workflows.video is not None and video_target not in explicit:
