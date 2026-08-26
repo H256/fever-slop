@@ -307,6 +307,20 @@ Use `--video-pipeline ltx_msr` to render with Multi Subject Reference instead of
 4. renders MSR clips into `output/render/ltx_msr`,
 5. concatenates the trimmed clips and muxes the original full song audio.
 
+For prepared LTX profiles with start-frame support, scene rendering is
+continuation-aware. The runner derives predecessor links from the existing
+visual-consistency contracts and schedules each linked chain serially. A
+successor is released only after the predecessor has rendered and its
+continuity handoff evidence is available; unrelated scenes remain independent.
+If an upstream scene changes, the existing dirty-state marker causes the
+affected downstream suffix to be rerendered on resume. The renderer reports
+each scheduled scene and boundary through Rich progress output.
+
+This scheduling behavior applies to prepared scene rendering. It is distinct
+from semantic action segmentation and cutless assembly: continuation intent
+metadata can be carried into the render plan, but it does not by itself split a
+scene or silently rewrite source clips.
+
 MSR frame count and preroll interact. The Licon MSR node consumes a fixed internal reference frame count such as 17 or 41 frames. FeverSlop's default rolling window adds 50 preroll frames before most scene clips. As a rule of thumb, keep the preroll segment longer than the MSR reference frame count. With the default 50-frame preroll, an MSR frame count of 17 is usually safe, 41 can be borderline for short or abrupt scenes, and values around 71 can exceed the preroll and make reference-sheet content visibly leak into the clip. If the workflow MSR frame count is changed, adjust preroll accordingly or inspect the first rendered frames carefully.
 
 Actor MSR references should be generated on a neutral solid background, preferably white or black. This helps the model separate the character from the reference background. Location references are the exception: they should remain real environment/background images because they feed the MSR background input.
