@@ -376,6 +376,7 @@ class VideoPromptGenerator:
             overall_soundscape=plan.overall_soundscape, music_intent=plan.music_intent,
             non_diegetic_music=plan.non_diegetic_music,
             alignment_instruction=plan.alignment_instruction,
+            continuation_intents=plan.continuation_intents,
         )
 
     def _render_reference(
