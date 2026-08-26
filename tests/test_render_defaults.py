@@ -1,7 +1,11 @@
 import unittest
 
 from feverslop.composition.project_repository import movie_default_config, movie_project_config
+from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.project_requests import ProjectCreateRequest
+from tempfile import TemporaryDirectory
+from pathlib import Path
+import json
 
 
 class RenderDefaultsTests(unittest.TestCase):
@@ -36,6 +40,15 @@ class RenderDefaultsTests(unittest.TestCase):
             config["render_profile"],
         )
         self.assertEqual(config["render_profile"], movie["render_profile"])
+
+    def test_project_config_resolves_legacy_profile_shape_to_ltx25_id(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config.json").write_text(json.dumps({
+                "input_audio": "", "video_pipeline": "ltx_msr",
+                "render_profile": {"quality": "draft", "pass_strategy": "two_pass", "postprocess": "none"},
+            }), encoding="utf-8")
+            self.assertEqual("ltx25-msr-draft", ProjectConfig.load(root / "config.json").render_profile)
 
 
 if __name__ == "__main__":
