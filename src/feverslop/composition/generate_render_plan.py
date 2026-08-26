@@ -113,6 +113,10 @@ def build_generate_render_plan_execution_request(
     paths = ProjectPaths.from_config(config)
     app_config = AppConfig.load(request.app_config_path)
     video_settings = config.to_video_settings()
+    profile = app_config.resolve_video_workflow_profile(
+        pipeline=config.video_pipeline,
+        purpose="final",
+    )
     preroll_frames, tail_frames, round_render_frames_to_8n1 = resolve_rolling_frame_profile(
         request.rolling_frame_profile,
         video_pipeline=config.video_pipeline,
@@ -133,6 +137,7 @@ def build_generate_render_plan_execution_request(
         default_max_render_duration_seconds=(
             app_config.comfyui.default_max_render_duration_seconds
         ),
+        duration_capability=profile.duration_capability if profile else None,
     )
     song_id = getattr(config, "song_id", None) or getattr(config, "project_name", "") or config.input_audio.stem
     return GenerateRenderPlanExecutionRequest(

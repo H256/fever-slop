@@ -6,6 +6,7 @@ from pathlib import Path
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.domain.ltx_rendering import resolve_rolling_frame_profile
+from feverslop.domain.duration_capability import DurationCapability
 from feverslop.domain.scene_duration_limits import (
     resolve_scene_duration_policy,
     validate_render_frame_budget,
@@ -62,6 +63,41 @@ class SceneDurationLimitTests(unittest.TestCase):
         self.assertEqual(2.0, result.effective_min_seconds)
         self.assertTrue(result.clamped)
         self.assertEqual("video.json", result.limiting_workflow)
+
+    def test_selected_profile_capability_controls_fps_limits_and_alignment(self):
+        result = self.resolve(
+            requested_min_seconds=1.0,
+            requested_max_seconds=20.0,
+            fps=50,
+            preroll_frames=0,
+            tail_frames=0,
+            round_render_frames_to_8n1=False,
+            workflow_limits={},
+            workflow_paths=(),
+            duration_capability=DurationCapability.create(
+                fps=24,
+                min_seconds=2,
+                max_seconds=12,
+                preferred_seconds=8,
+                frame_alignment=17,
+                frame_offset=5,
+            ),
+        )
+
+        self.assertEqual(24, result.fps)
+        self.assertEqual(2.0, result.effective_min_seconds)
+        self.assertLessEqual(result.effective_max_seconds, 12.0)
+        self.assertEqual("selected render profile", result.limiting_workflow)
+
+    def test_selected_profile_rejects_duration_before_pipeline_work(self):
+        with self.assertRaisesRegex(FeverSlopValidationError, "selected profile limits"):
+            self.resolve(
+                requested_min_seconds=1.0,
+                requested_max_seconds=1.5,
+                duration_capability=DurationCapability.create(
+                    fps=24, min_seconds=2, max_seconds=12, preferred_seconds=8,
+                ),
+            )
 
     def test_effective_cap_survives_split_srt_write_and_read_without_an_extra_frame(self):
         policy = self.resolve()

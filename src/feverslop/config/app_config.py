@@ -383,6 +383,7 @@ _VIDEO_WORKFLOW_PROFILE_FIELDS = frozenset({
     "supports_start_frame",
     "satisfies_final_output",
     "default",
+    "duration_capability",
 })
 
 
@@ -405,7 +406,12 @@ def _parse_video_workflow_profiles(
             )
         missing_fields = sorted(
             _VIDEO_WORKFLOW_PROFILE_FIELDS
-            - {"satisfies_final_output", "supports_start_frame", "default"}
+            - {
+                "satisfies_final_output",
+                "supports_start_frame",
+                "default",
+                "duration_capability",
+            }
             - set(raw_profile),
         )
         if missing_fields:
@@ -426,6 +432,7 @@ def _parse_video_workflow_profiles(
             supports_per_pass_loras=raw_profile["supports_per_pass_loras"],
             satisfies_final_output=raw_profile.get("satisfies_final_output"),
             supports_start_frame=raw_profile.get("supports_start_frame", False),
+            duration_capability=raw_profile.get("duration_capability"),
         )
         if profile.name in names:
             raise ValueError(f"Duplicate video workflow profile name: {profile.name}")

@@ -46,6 +46,24 @@ class VideoWorkflowProfileConfigTests(unittest.TestCase):
             ),
         )
 
+    def test_loads_profile_duration_capability_without_comfyui(self):
+        profile = self._profile(
+            duration_capability={
+                "fps": 24,
+                "min_seconds": 2,
+                "max_seconds": 12,
+                "preferred_seconds": 8,
+                "frame_alignment": 17,
+                "frame_offset": 5,
+            },
+        )
+        config = self._load([profile])
+
+        capability = config.video_workflow_profiles[0].duration_capability
+        self.assertIsNotNone(capability)
+        self.assertEqual(24, capability.fps)
+        self.assertEqual(192, capability.frames_for(8.2))
+
     def test_named_resolution_is_independent_of_default(self):
         config = self._load([
             self._profile(name="first", default=True),
