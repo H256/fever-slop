@@ -546,6 +546,10 @@ def build_render_plan(
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}
             if h3_entry.get("performance_timing"):
                 render_scene["performance_timing"] = h3_entry["performance_timing"]
+        if h3_entry and h3_entry.get("continuation_intents"):
+            render_scene.setdefault("metadata", {})["continuation_intents"] = list(
+                h3_entry["continuation_intents"],
+            )
 
         generated_roles = {
             PromptRole.Z_IMAGE: zimage_prompt,

@@ -61,6 +61,10 @@ from feverslop.composition.generate_render_plan import (
 )
 from feverslop.composition.canonical_plan_regenerator import CanonicalPlanRegenerator
 from feverslop.composition.resume_plan import reference_manifests_reusable
+from feverslop.composition.continuation_scheduler import (
+    ContinuationScheduler,
+    chains_from_predecessors,
+)
 from feverslop.composition.render_storyboard import build_render_storyboard_use_case
 from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
@@ -1479,6 +1483,34 @@ def _music_handoff_predecessors(
     return predecessors
 
 
+def _continuation_boundary_manifest_valid(
+    state: PipelineRunState,
+    scene: RenderScene,
+    handoff_predecessors: dict[int, int],
+) -> bool:
+    """Verify the persisted anchor evidence before releasing a successor."""
+    predecessor = handoff_predecessors.get(scene.scene_number)
+    if predecessor is None:
+        return True
+    keyframes = scene.to_dict().get("keyframes") or {}
+    manifest = keyframes.get("boundary_frame_manifest")
+    if not isinstance(manifest, dict):
+        # Older prepared manifests do not carry the handoff payload. Keep
+        # resume compatible when both sides of the boundary are present; new
+        # handoffs always take the manifest-backed path below.
+        return (
+            state.context.artifact_layout.scene_final_video(predecessor).is_file()
+            and state.context.artifact_layout.scene_final_video(scene.scene_number).is_file()
+        )
+    try:
+        frame_path = Path(manifest["frame_path"])
+        if not frame_path.is_absolute():
+            frame_path = state.context.project_config_dir / frame_path
+        return frame_path.is_file()
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
+
+
 def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
     if state.args.video_pipeline == "minimax-h3-r2v":
         # An explicit --stage list may place rendering before
@@ -1594,7 +1626,13 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         with RenderProgressReporter(
             "Rendering prepared LTX scenes", total, emit_scene_progress=True,
         ) as progress:
-            for completed, scene in enumerate(scenes, start=1):
+            completed = 0
+            rendered_scene: RenderScene | None = None
+
+            def render_one(scene: RenderScene) -> bool:
+                nonlocal completed, rendered_scene
+                completed += 1
+                rendered_scene = scene
                 workflow = state.context.artifact_layout.scene_workflow(scene.scene_number)
                 final_path = state.context.artifact_layout.scene_final_video(scene.scene_number)
                 predecessor_rendered = (
@@ -1655,6 +1693,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                         selected_scenes=[scene],
                         backend=backend,
                     )
+                    rendered_scene = render_scene
                     original_randomize_seed = backend.randomize_seed
                     if randomize_seed:
                         backend.randomize_seed = False
@@ -1734,7 +1773,26 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     mismatches = manifest.verify(state.context.project_config_dir)
                     if mismatches:
                         raise ValueError("Prepared workflow verification failed: " + "; ".join(mismatches))
+
                 progress.update(final_path, completed, total)
+                return _continuation_boundary_manifest_valid(
+                    state,
+                    rendered_scene or scene,
+                    handoff_predecessors,
+                )
+
+            scene_by_id = {f"scene-{scene.scene_number}": scene for scene in scenes}
+            chains = chains_from_predecessors(
+                [scene.scene_number for scene in scenes],
+                handoff_predecessors,
+            )
+            scheduler = ContinuationScheduler(
+                chains,
+                reporter=ConsoleReporter(console),
+            )
+            scheduler.run(
+                lambda segment_id: render_one(scene_by_id[segment_id]),
+            )
         return
 
     selected_workflows = _selected_video_workflows(state)
