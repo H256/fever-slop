@@ -36,8 +36,11 @@ bible, and shot plan.
 Payloads contain domain values such as `StoryArch`, `MovieBible`, actors,
 locations, screenplay scenes, shots, and configuration dictionaries. JSON
 strings are not used as the primary contract. H3 generation similarly passes
-typed references, relay segments, audio references, and scene context; the
-generated prompt remains the output of the DSPy contract.
+typed references, relay segments, audio references, and scene context; DSPy
+returns the typed creative plan, while the final H3 prompt is assembled by the
+deterministic compiler from that plan, locked scene facts, and resolved
+reference bindings. Anchors, timing, and retention structure therefore do not
+depend on free-form model prose.
 
 ## Fallbacks and concurrency
 

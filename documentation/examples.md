@@ -68,6 +68,11 @@ layout, direct `reference_bible` invocation, and review workflow.
 
 ## One-machine MiniMax H3 workflow
 
+The tracked `example-project` is the deterministic benchmark baseline. It is
+configured for `minimax-h3-r2v` with the draft two-pass profile and contains
+the fixed benchmark track plus its lyrics. Use it to compare planner, prompt,
+workflow, and render changes without changing the source audio.
+
 When the LLM and ComfyUI cannot keep their models loaded simultaneously, run
 the R2V pipeline in four resumable phases. This is also useful when debugging
 the hand-off artifacts:

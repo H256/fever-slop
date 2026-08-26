@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
+from feverslop.adapters.pipeline_runner_options import default_single_prompt_workflow
 from feverslop.config.app_config import AppConfig
 from feverslop.errors import FeverSlopError
 
@@ -37,6 +38,13 @@ COMFYUI_RENDERING_STAGES = frozenset({
 def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> PipelineRunState:
     context = build_run_context(args)
     app_config_path = resolve_runner_path(args.app_config)
+    single_prompt_workflow = args.single_prompt_workflow
+    if single_prompt_workflow is None or (
+        args.video_pipeline.startswith("minimax-h3-")
+        and Path(str(single_prompt_workflow)).as_posix().casefold()
+        == Path(default_single_prompt_workflow("ltx_i2v")).as_posix().casefold()
+    ):
+        single_prompt_workflow = default_single_prompt_workflow(args.video_pipeline)
     state = PipelineRunState(
         args=args,
         context=context,
@@ -47,7 +55,7 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         msr_workflow=resolve_runner_path(args.msr_workflow),
         ingredients_workflow=resolve_runner_path(args.ingredients_workflow),
         relay_workflow=resolve_runner_path(args.relay_workflow) if str(args.relay_workflow).strip() else Path(),
-        single_prompt_workflow=resolve_runner_path(args.single_prompt_workflow),
+        single_prompt_workflow=resolve_runner_path(single_prompt_workflow),
         facefix_workflow=resolve_runner_path(args.facefix_workflow),
         plan_for_next_step=_initial_render_plan(context, args, stages),
     )

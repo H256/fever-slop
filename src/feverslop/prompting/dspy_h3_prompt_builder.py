@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
-from feverslop.prompting.dspy_h3_models import MusicIntent
+from feverslop.prompting.dspy_h3_models import H3PromptSections, MusicIntent
 from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
+from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
@@ -434,6 +435,7 @@ class DspyH3PromptBuilder:
             "images": images,
             "relay_segments": relay_segments,
             "strict_fidelity": True,
+            "_section_only": True,
         }
         has_reused_audio_reference = any(
             reference.get("kind") == "audio" and reference.get("role") == "audio_reuse"
@@ -448,6 +450,51 @@ class DspyH3PromptBuilder:
         generated = None
         try:
             generated = self.generator(request)
+            if hasattr(generated, "plan"):
+                sections = H3PromptSections.from_plan(generated.plan)
+                plan = sections.to_plan()
+                facts_payload = segment.get("locked_facts") or []
+                if not facts_payload:
+                    facts_payload = [
+                        {"category": "scene", "key": "concept", "value": str(concept), "source_id": "planner:concept"},
+                    ] if str(concept).strip() else []
+                facts = LockedSceneFacts.create(
+                    scene_id=str(segment.get("segment_id") or segment.get("scene") or "scene"),
+                    facts=facts_payload,
+                )
+                shots = creative_shots_from_plan(plan)
+                windows = {}
+                references_by_shot = {}
+                for shot, creative in zip(plan.shots, shots, strict=True):
+                    start = float(shot.start_seconds or 0.0)
+                    end = float(shot.end_seconds or segment.get("duration") or segment.get("duration_seconds") or (start + 1.0))
+                    if end <= start:
+                        end = start + 1.0
+                    windows[creative.shot_id] = (start, end)
+                    references_by_shot[creative.shot_id] = list(shot.reference_labels)
+                prompt = DeterministicH3Compiler().compile(
+                    mode="base" if str(mode).lower() == "base" else "reference",
+                    facts=facts,
+                    shots=shots,
+                    shot_windows=windows,
+                    references=references_by_shot,
+                )
+                return {
+                    "prompt": prompt,
+                    "references": references,
+                    "sections": {
+                        "h3_sections": sections.model_dump(),
+                        "facts": facts.to_dict(),
+                        "shots": [shot.model_dump() for shot in shots],
+                        "shot_windows": {key: list(value) for key, value in windows.items()},
+                        "references": references_by_shot,
+                    },
+                    "prompt_provenance": {
+                        "compiler": "deterministic_h3_compiler",
+                        "compiler_version": 1,
+                        "source": "dspy_section_plan",
+                    },
+                }
             prompt = getattr(generated, "rendered_prompt", None)
             if not prompt and isinstance(generated, dict):
                 prompt = generated.get("rendered_prompt") or generated.get("prompt")
@@ -506,7 +553,7 @@ class DspyH3PromptBuilder:
         facts = (
             raw_facts
             if isinstance(raw_facts, LockedSceneFacts)
-            else LockedSceneFacts.model_validate(raw_facts)
+            else LockedSceneFacts.from_dict(raw_facts)
         )
         from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 
