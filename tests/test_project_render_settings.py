@@ -134,6 +134,19 @@ class ProjectRenderSettingsTests(unittest.TestCase):
             resolved.runner_overrides["sequence_to_sheet_workflow"],
         )
 
+    def test_h3_r2v_selects_two_pass_workflow_without_project_override(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text('{"input_audio":"song.wav"}', encoding="utf-8")
+
+            resolved = resolve_project_render_settings(root, video_pipeline="minimax-h3-r2v")
+
+        self.assertEqual(
+            str(resolve_runner_path("workflows/video/minimax_h3/r2v_audio_two_pass.json").resolve()),
+            resolved.runner_overrides["single_prompt_workflow"],
+        )
+
     def test_explicit_reference_generation_overrides_project_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
