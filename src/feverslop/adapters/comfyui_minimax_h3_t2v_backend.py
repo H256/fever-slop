@@ -146,7 +146,9 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
         if two_pass_spec is not None:
             spec = two_pass_spec if isinstance(two_pass_spec, H3TwoPassSpec) else H3TwoPassSpec.from_dict(two_pass_spec)
+            self._progress("h3_passes_validating")
             patcher = WorkflowPatcher(apply_h3_two_pass_patch(patcher.get(), spec))
+            self._progress("h3_passes_ready")
 
         return patcher.get()
 
@@ -210,11 +212,13 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self._write_debug_workflow(scene_number, workflow)
 
         # -- queue and download
+        self._progress("h3_render_submitting")
         raw_output = self.render_queue.queue_workflow_and_download_first_video(
             workflow,
             scene_number=scene_number,
             output_path=scene_dir / "raw.mp4",
         )
+        self._progress("h3_render_completed")
 
         if not self.postprocess:
             return raw_output
