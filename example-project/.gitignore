@@ -1,0 +1,6 @@
+# Generated project state
+.studio/
+output/
+plans/
+temp/
+*.log

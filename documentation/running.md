@@ -229,6 +229,10 @@ MiniMax H3 R2V choices are the 20-step
 `workflows/video/minimax_h3/r2v_v1.json` and the 8-step Turbo
 `workflows/video/minimax_h3/r2v_eb57_8s_v1.json`.
 
+Legacy project configs may still refer to the former flat path
+`video_minimax_h3_r2v_eb57_8s_v1.json`; migrate that value to the canonical
+path above before preparing a new workflow.
+
 ## Recovering after editing `base.json`
 
 The CLI verifies each prepared scene against the current authoritative
