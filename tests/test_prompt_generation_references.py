@@ -28,6 +28,24 @@ class FakePromptPipeline:
         }
 
 
+class EnrichingPromptPipeline(FakePromptPipeline):
+    def create_subject_and_locations(self, story_idea, notes):
+        self.subject_locations_calls += 1
+        self.last_notes = notes
+        return {
+            "subject": "fallback subject",
+            "actors": [{
+                "id": "singer",
+                "name": "Lead Singer",
+                "role": "generated role",
+                "gender": "female",
+                "visual_description": "short dark hair and a silver stage coat",
+                "image_prompt": "cinematic portrait of a singer in a silver stage coat",
+            }],
+            "locations": [{"id": "fallback_location", "name": "Fallback Location"}],
+        }
+
+
 class PromptGenerationReferencesTests(unittest.TestCase):
     def test_resolved_global_context_includes_actors_and_structured_locations(self):
         config = ProjectConfig(
@@ -36,8 +54,13 @@ class PromptGenerationReferencesTests(unittest.TestCase):
             input_audio=Path("song.mp3"),
             subject="legacy subject",
             locations=["Mirror Stage"],
-            actors=(ActorConfig(id="singer", name="Mara", image_prompt="portrait"),),
-            structured_locations=(StructuredLocationConfig(id="stage", name="Mirror Stage", image_prompt="stage"),),
+            actors=(ActorConfig(
+                id="singer", name="Mara", role="lead singer", gender="female",
+                visual_description="short dark hair", image_prompt="portrait",
+            ),),
+            structured_locations=(StructuredLocationConfig(
+                id="stage", name="Mirror Stage", visual_description="a mirror stage", image_prompt="stage",
+            ),),
         )
         pipeline = PromptGenerationPipeline(
             llm_factory=lambda app_config: None,
@@ -115,3 +138,37 @@ class PromptGenerationReferencesTests(unittest.TestCase):
 
         self.assertEqual("single", context["subject_mode"])
         self.assertEqual(1, context["max_scene_actors"])
+
+    def test_partial_configured_actor_keeps_gender_and_role_but_gets_llm_creative_fields(self):
+        config = ProjectConfig(
+            project_dir=Path(),
+            project_name="test",
+            input_audio=Path("song.mp3"),
+            subject="male lead singer in a broken digital reality",
+            locations=["Mirror Stage"],
+            actors=(ActorConfig(id="singer", name="Lead Singer", role="lead vocalist", gender="male"),),
+            structured_locations=(StructuredLocationConfig(id="stage", name="Mirror Stage"),),
+        )
+        pipeline = PromptGenerationPipeline(
+            llm_factory=lambda app_config: None,
+            prompt_pipeline_factory=lambda llm: None,
+            concept_batcher_factory=lambda llm, size: None,
+            scene_prompt_builder_factory=lambda llm: None,
+        )
+        prompt_pipeline = EnrichingPromptPipeline()
+
+        context = pipeline.build_resolved_global_context(
+            config=config,
+            prompt_pipeline=prompt_pipeline,
+            all_lyrics="",
+            run_spinner=lambda _description, func: func(),
+            console=None,
+        )
+
+        actor = context["actors"][0]
+        self.assertEqual(1, prompt_pipeline.subject_locations_calls)
+        self.assertEqual("male", actor["gender"])
+        self.assertEqual("lead vocalist", actor["role"])
+        self.assertEqual("short dark hair and a silver stage coat", actor["visual_description"])
+        self.assertEqual("cinematic portrait of a singer in a silver stage coat", actor["image_prompt"])
+        self.assertIn("role=lead vocalist; gender=male", prompt_pipeline.last_notes)

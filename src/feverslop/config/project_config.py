@@ -167,6 +167,7 @@ class ActorConfig:
     id: str
     name: str
     role: str = ""
+    gender: str = ""
     visual_description: str = ""
     image_prompt: str = ""
 
@@ -261,6 +262,7 @@ def _load_actor(raw: dict, index: int) -> ActorConfig:
         id=str(raw.get("id") or _safe_id(name, f"actor_{index}")).strip(),
         name=name,
         role=str(raw.get("role", "") or "").strip(),
+        gender=str(raw.get("gender", "") or "").strip(),
         visual_description=str(raw.get("visual_description", "") or "").strip(),
         image_prompt=str(raw.get("image_prompt", "") or "").strip(),
     )
