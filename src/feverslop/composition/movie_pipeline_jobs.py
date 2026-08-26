@@ -781,8 +781,11 @@ def movie_runtime_config(config: dict[str, Any] | None = None) -> dict[str, str]
 def _movie_continuity_keyframes(value: object, *, movie_video_workflow: object = None) -> str:
     mode = _movie_backend(value, default="none", supported={"none", "last-to-start"})
     workflow = _movie_backend(movie_video_workflow, default="msr", supported={"msr", "msr-i2v-startframe", "i2v-edit", "startframe-director", "ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"})
-    if mode == "last-to-start" and workflow != "msr-i2v-startframe":
-        raise ValueError("continuity_keyframes=last-to-start requires movie_video_workflow=msr-i2v-startframe")
+    if mode == "last-to-start" and workflow not in {"msr-i2v-startframe", "minimax-h3-r2v"}:
+        raise ValueError(
+            "continuity_keyframes=last-to-start requires movie_video_workflow="
+            "msr-i2v-startframe or minimax-h3-r2v"
+        )
     return mode
 
 

@@ -3853,6 +3853,12 @@ class MovieProjectTests(unittest.TestCase):
 
         self.assertEqual("last-to-start", config["continuity_keyframes"])
 
+        h3_config = movie_runtime_config({
+            "movie_video_workflow": "minimax-h3-r2v",
+            "continuity_keyframes": "last-to-start",
+        })
+        self.assertEqual("last-to-start", h3_config["continuity_keyframes"])
+
     def test_movie_runtime_config_uses_v6_ingredients_workflow_by_default(self):
         from feverslop.composition.movie_pipeline_jobs import movie_runtime_config
 
