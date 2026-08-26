@@ -13,6 +13,7 @@ from feverslop.config.project_config import (
     SCENE_PROMPT_WORD_COUNT_MIN,
 )
 from feverslop.domain.slug_utils import slugify_project_name
+from feverslop.domain.render_profile import PostprocessStrategy, QualityProfile, RenderPassStrategy
 from feverslop.ports.reporting import Reporter
 from feverslop.config.project_validation import (
     VIDEO_PIPELINE_BY_MODE,
@@ -204,6 +205,7 @@ def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
         "i2v_workflow": _project_workflow_path(request.movie_i2v_workflow, "movie_i2v_workflow"),
         "refine_location_prompts": bool(request.movie_refine_location_prompts),
         "refine_actor_prompts": bool(request.movie_refine_actor_prompts),
+        "render_profile": _render_profile_config(request),
     }
 
 
@@ -216,6 +218,7 @@ def movie_default_config(request: ProjectCreateRequest) -> dict[str, Any]:
         height=int(request.height or 704),
         fps=int(request.fps or 24),
         dialogue_language=_dialogue_language(request.dialogue_language),
+        render_profile=_render_profile_config(request),
     )
 
 
@@ -229,10 +232,11 @@ def movie_default_config_from_metadata(metadata: dict[str, Any]) -> dict[str, An
         height=int(movie.get("height") or 704),
         fps=int(movie.get("fps") or 24),
         dialogue_language=_dialogue_language(movie.get("dialogue_language")),
+        render_profile={"quality": "draft", "pass_strategy": "two_pass", "postprocess": "none"},
     )
 
 
-def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, width: int, height: int, fps: int, dialogue_language: str) -> dict[str, Any]:
+def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, width: int, height: int, fps: int, dialogue_language: str, render_profile: dict[str, str] | None = None) -> dict[str, Any]:
     return {
         "project_name": name,
         "input_audio": "",
@@ -250,6 +254,7 @@ def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, widt
             "language": "en",
         },
         "video_pipeline": "ltx_msr",
+        "render_profile": dict(render_profile or {"quality": "draft", "pass_strategy": "two_pass", "postprocess": "none"}),
         "scene_generation": {
             "min_duration": 2.0,
             "max_duration": 10.0,
@@ -316,6 +321,19 @@ def _movie_planner_backend(value: str) -> str:
     if normalized not in {"llm", "deterministic"}:
         raise ValueError("movie_planner_backend must be llm or deterministic")
     return normalized
+
+
+def _render_profile_config(request: ProjectCreateRequest) -> dict[str, str]:
+    try:
+        quality = QualityProfile(str(request.render_quality).strip().lower()).value
+        pass_strategy = RenderPassStrategy(str(request.render_pass_strategy).strip().lower()).value
+        postprocess = PostprocessStrategy(str(request.render_postprocess).strip().lower()).value
+    except ValueError as exc:
+        raise ValueError(
+            "render profile requires quality draft/standard/final, "
+            "pass strategy single_pass/two_pass, and postprocess none/seedvr",
+        ) from exc
+    return {"quality": quality, "pass_strategy": pass_strategy, "postprocess": postprocess}
 
 
 def _supported_backend(value: str, field: str, supported: set[str], *, default: str) -> str:
