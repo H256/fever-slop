@@ -365,6 +365,7 @@ class ProjectConfig:
     loras: tuple[LoraConfig, ...] = field(default_factory=tuple)
     lora_split_enabled: bool = False
     video_pipeline: str = "ltx_i2v"
+    render_profile: str = "ltx25-i2v-draft"
     reference_generation: str = "image_views"
     minimax_h3_audio_refs: AudioRefsConfig = field(default_factory=AudioRefsConfig)
 
@@ -456,6 +457,7 @@ class ProjectConfig:
         if subject_mode not in {"single", "multi"}:
             raise ValueError("subject_mode must be 'single' or 'multi'")
         video_pipeline = str(raw.get("video_pipeline", "ltx_i2v") or "ltx_i2v").strip()
+        render_profile = str(raw.get("render_profile", "ltx25-i2v-draft") or "ltx25-i2v-draft").strip().lower()
         reference_generation = str(raw.get("reference_generation", "image_views") or "image_views").strip()
         if reference_generation not in {"image_views", "sequence_sheet"}:
             raise ValueError("reference_generation must be 'image_views' or 'sequence_sheet'")
@@ -604,6 +606,7 @@ class ProjectConfig:
                 word_count_max=word_count_max,
             ),
             video_pipeline=video_pipeline or "ltx_i2v",
+            render_profile=render_profile,
             reference_generation=reference_generation,
             lora_1=lora_1,
             loras=loras,

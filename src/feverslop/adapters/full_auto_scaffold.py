@@ -28,6 +28,7 @@ class LocalProjectScaffold:
         height: int = 704,
         fps: int = 24,
         video_pipeline: str = "ltx_i2v",
+        render_profile: str = "ltx25-i2v-draft",
         silent_mode: bool = False,
     ) -> ProjectScaffoldResult:
         if not is_safe_identifier(project_slug) or sanitize_path_component(project_slug) != project_slug:
@@ -70,6 +71,7 @@ class LocalProjectScaffold:
                         "height": int(height),
                     },
                     "video_pipeline": video_pipeline,
+                    "render_profile": render_profile,
                     "audio": {
                         "demucs_model": "htdemucs_6s",
                         "whisper_model": "large-v3",
