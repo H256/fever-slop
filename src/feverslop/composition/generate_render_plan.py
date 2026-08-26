@@ -148,6 +148,7 @@ def build_generate_render_plan_execution_request(
         video_settings=video_settings,
         song_id=song_id,
         scene_duration_policy=scene_duration_policy,
+        duration_capability=profile.duration_capability if profile else None,
     )
 
 
