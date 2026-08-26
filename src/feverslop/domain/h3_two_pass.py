@@ -125,6 +125,7 @@ def apply_h3_two_pass_patch(workflow: Mapping[str, Any], spec: H3TwoPassSpec) ->
     if not isinstance(spec, H3TwoPassSpec):
         raise TypeError("spec must be an H3TwoPassSpec")
     result = {str(node_id): dict(node) for node_id, node in workflow.items()}
+    validate_audio_latent_preservation(result, spec)
     by_title = {
         str(node.get("_meta", {}).get("title")): node
         for node in result.values()
@@ -183,3 +184,38 @@ def default_h3_two_pass_spec(quality: str, *, audio: bool = False) -> H3TwoPassS
         preserve_audio_latent=bool(audio),
         required_anchors=anchors,
     )
+
+
+def validate_audio_latent_preservation(
+    workflow: Mapping[str, Any], spec: H3TwoPassSpec,
+) -> None:
+    """Ensure the audio latent branch is not routed through spatial upscaling."""
+    if not spec.preserve_audio_latent:
+        return
+    nodes = {str(node_id): node for node_id, node in workflow.items()}
+    audio_ids = {
+        node_id for node_id, node in nodes.items()
+        if node.get("_meta", {}).get("title") == "#AUDIO_LATENT"
+    }
+    if not audio_ids:
+        raise H3TwoPassSchemaError("audio-preserving two-pass workflow requires #AUDIO_LATENT")
+    reachable = set(audio_ids)
+    changed = True
+    while changed:
+        changed = False
+        for node_id, node in nodes.items():
+            if node_id in reachable:
+                continue
+            encoded = repr(node.get("inputs", {}))
+            if any(f"'{source_id}'" in encoded or f'"{source_id}"' in encoded for source_id in reachable):
+                reachable.add(node_id)
+                changed = True
+    forbidden = [
+        node_id for node_id in reachable
+        if any(token in str(nodes[node_id].get("class_type", "")).lower() for token in ("upscale", "spatial"))
+    ]
+    if forbidden:
+        raise H3TwoPassSchemaError(
+            "audio latent branch must bypass spatial upscale; offending nodes: "
+            + ", ".join(sorted(forbidden))
+        )
