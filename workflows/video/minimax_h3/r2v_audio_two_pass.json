@@ -297,7 +297,7 @@
       "pingpong": false,
       "save_output": true,
       "images": [
-        "169",
+        "168",
         0
       ],
       "audio": [
@@ -487,15 +487,6 @@
     }
   },
   "161": {
-    "class_type": "PrimitiveFloat",
-    "inputs": {
-      "value": 2.0
-    },
-    "_meta": {
-      "title": "#LATENT_UPSCALE_SCALE"
-    }
-  },
-  "162": {
     "class_type": "MinimaxH3LatentUpscaler3D",
     "inputs": {
       "latent": [
@@ -514,11 +505,11 @@
       "title": "#LATENT_UPSCALE"
     }
   },
-  "163": {
+  "162": {
     "class_type": "LTXVConcatAVLatent",
     "inputs": {
       "video_latent": [
-        "162",
+        "161",
         0
       ],
       "audio_latent": [
@@ -530,7 +521,7 @@
       "title": "#RECOMBINE_AV"
     }
   },
-  "164": {
+  "163": {
     "class_type": "KSamplerSelect",
     "inputs": {
       "sampler_name": "res_multistep"
@@ -539,7 +530,7 @@
       "title": "#PASS2_SAMPLER"
     }
   },
-  "165": {
+  "164": {
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
@@ -554,7 +545,7 @@
       "title": "#PASS2_SCHEDULER"
     }
   },
-  "166": {
+  "165": {
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
@@ -570,7 +561,7 @@
       "title": "#PASS2_GUIDER"
     }
   },
-  "167": {
+  "166": {
     "class_type": "RandomNoise",
     "inputs": {
       "noise_seed": 0
@@ -579,27 +570,27 @@
       "title": "#PASS2_NOISE"
     }
   },
-  "168": {
+  "167": {
     "class_type": "SamplerCustomAdvanced",
     "inputs": {
       "noise": [
-        "167",
-        0
-      ],
-      "guider": [
         "166",
         0
       ],
-      "sampler": [
-        "164",
-        0
-      ],
-      "sigmas": [
+      "guider": [
         "165",
         0
       ],
-      "latent_image": [
+      "sampler": [
         "163",
+        0
+      ],
+      "sigmas": [
+        "164",
+        0
+      ],
+      "latent_image": [
+        "162",
         0
       ]
     },
@@ -607,11 +598,11 @@
       "title": "#PASS2"
     }
   },
-  "169": {
+  "168": {
     "class_type": "VAEDecode",
     "inputs": {
       "samples": [
-        "168",
+        "167",
         0
       ],
       "vae": [

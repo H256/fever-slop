@@ -25,6 +25,7 @@ class H3TwoPassWorkflowTests(unittest.TestCase):
                 self.assertIn("LTXVSeparateAVLatent", classes)
                 self.assertIn("LTXVConcatAVLatent", classes)
                 self.assertIn("MinimaxH3LatentUpscaler3D", classes)
+                self.assertNotIn("PrimitiveFloat", classes)
                 self.assertFalse(any(str(name).startswith("VRGDG_") for name in classes))
                 upscaler = next(node for node in workflow.values() if node.get("class_type") == "MinimaxH3LatentUpscaler3D")
                 self.assertEqual("scale by multiplier", upscaler["inputs"]["mode"])
