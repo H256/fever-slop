@@ -73,6 +73,8 @@ def main() -> None:
                 "quality": quality,
                 "pass_strategy": "two_pass",
                 "audio_policy": "native_audio_when_declared",
+                "timing_policy": "absolute_frame_windows",
+                "preserve_audio_latent": True,
                 "anchor_policy": "start_frame_and_optional_end_frame" if mode in {"i2v", "r2v"} else "none",
             }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

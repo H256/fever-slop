@@ -5,5 +5,7 @@
   "quality": "final",
   "pass_strategy": "two_pass",
   "audio_policy": "native_audio_when_declared",
+  "timing_policy": "absolute_frame_windows",
+  "preserve_audio_latent": true,
   "anchor_policy": "none"
 }
