@@ -1962,7 +1962,15 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     )
     layout = state.context.artifact_layout
     render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
-    scene_numbers = [int(entry["scene"]) for entry in render_plan]
+    args = getattr(state, "args", None)
+    selected_scenes = parse_scene_list(getattr(args, "scenes", None))
+    if selected_scenes is None and getattr(args, "smoke_only", False):
+        selected_scenes = {int(args.smoke_scene)}
+    scene_numbers = [
+        int(entry["scene"])
+        for entry in render_plan
+        if selected_scenes is None or int(entry["scene"]) in selected_scenes
+    ]
     canonical_clips = [layout.scene_final_video(scene_number) for scene_number in scene_numbers]
     canonical_available = [clip for clip in canonical_clips if clip.is_file()]
     if canonical_available and len(canonical_available) != len(canonical_clips):
