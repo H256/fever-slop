@@ -29,7 +29,9 @@ from feverslop.adapters.project_visual_consistency import (
 )
 from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.adapters.cutless_assembly import CutlessAssemblyService
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
+from feverslop.composition.cutless_assembly import assemble_declared_cutless_group
 from feverslop.application.effective_render_plan import (
     CanonicalSceneDependencies,
     project_effective_plan,
@@ -1851,6 +1853,65 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         )
 
 
+def _assemble_declared_cutless_groups(
+    render_plan: list[dict],
+    clips: list[Path],
+    *,
+    output_dir: Path,
+    postprocessor: VideoPostProcessor,
+) -> list[Path]:
+    """Replace explicitly declared continuation groups with hard-cut movies."""
+    clips_by_segment = {
+        str((entry.get("metadata") or {}).get("segment_id") or entry.get("segment_id") or ""): clip
+        for entry, clip in zip(render_plan, clips)
+    }
+    groups: list[dict] = []
+    seen: set[str] = set()
+    for entry in render_plan:
+        for group in (entry.get("metadata") or {}).get("continuation_groups") or []:
+            group_id = str(group.get("group_id") or "").strip()
+            if group_id and group_id not in seen:
+                groups.append(group)
+                seen.add(group_id)
+    if not groups:
+        return clips
+
+    assembled = list(clips)
+    for index, group in enumerate(groups, start=1):
+        segment_ids = [
+            str(segment.get("segment_id") or "").strip()
+            for segment in group.get("segments") or []
+        ]
+        if not segment_ids or any(segment_id not in clips_by_segment for segment_id in segment_ids):
+            console.print(
+                f"[yellow]Skipping cutless group {group.get('group_id', index)}: "
+                "rendered segment clips are not individually addressable.[/yellow]",
+            )
+            continue
+        group_clips = {segment_id: clips_by_segment[segment_id] for segment_id in segment_ids}
+        output_file = output_dir / f"cutless_{index:04d}.mp4"
+        diagnostics_file = output_dir / f"cutless_{index:04d}.json"
+        assemble_declared_cutless_group(
+            group=group,
+            clips_by_segment=group_clips,
+            frame_count=postprocessor._frame_count,
+            extract_first_frame=postprocessor.extract_first_frame,
+            extract_last_frame=postprocessor.extract_last_frame,
+            assembly_service=CutlessAssemblyService(postprocessor),
+            output_file=output_file,
+            diagnostics_file=diagnostics_file,
+            fps=int(render_plan[0].get("fps") or 24),
+            duplicate_policy=str(group.get("duplicate_policy") or "reject"),
+        )
+        first_clip_index = min(assembled.index(clips_by_segment[segment_id]) for segment_id in segment_ids)
+        assembled = [
+            clip for clip in assembled
+            if clip not in group_clips.values() or clip == assembled[first_clip_index]
+        ]
+        assembled[first_clip_index] = output_file
+    return assembled
+
+
 def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     from .config_loader import (
         collect_render_plan_scene_clips,
@@ -1881,6 +1942,12 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
             state.context.ltx_dir,
             layout=None,
         )
+    clips = _assemble_declared_cutless_groups(
+        render_plan,
+        clips,
+        output_dir=layout.final_dir,
+        postprocessor=VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k"),
+    )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
     postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
     console.print(f"Concatenating base variant: {len(clips)} scene clips")
