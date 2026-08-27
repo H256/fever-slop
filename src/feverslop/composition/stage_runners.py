@@ -532,6 +532,12 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         if config.video_pipeline == "minimax-h3-r2v"
         else None
     )
+    app_config = AppConfig.load(state.app_config_path)
+    profile = app_config.resolve_video_workflow_profile(
+        pipeline=config.video_pipeline,
+        purpose="final",
+        name=getattr(state.args, "video_workflow_profile", None),
+    )
     regenerator = CanonicalPlanRegenerator(
         config.project_dir,
         selected_scene_numbers=selected_scene_numbers,
@@ -550,6 +556,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         stem_files=stem_files,
         project_dir=config.project_dir,
         max_scene_actors=config.max_scene_actors,
+        duration_capability=(profile.duration_capability if profile is not None else None),
         plan_writer=regenerator.write,
     )
     if selected_scene_spec:
@@ -915,7 +922,14 @@ def _all_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
     )
     projected = project_effective_plan(payload, canonical_payload)
     _require_fresh_reference_projections(state, payload, projected)
-    validate_scene_sequence(projected)
+    if not any(scene.get("technical_segment_id") for scene in projected):
+        validate_scene_sequence(projected)
+    else:
+        numbers = [scene.get("scene") for scene in projected]
+        if any(type(number) is not int or number <= 0 for number in numbers):
+            raise ValueError("Technical render scenes must use positive integer scene IDs")
+        if len(numbers) != len(set(numbers)):
+            raise ValueError("Technical render scenes must use unique scene IDs")
     return RenderPlan.from_dicts(projected).scenes
 
 
@@ -1171,25 +1185,41 @@ def _attach_music_continuity_handoffs(
     for render_scene in selected_scenes:
         scene = render_scene.to_dict()
         number = render_scene.scene_number
-        previous = by_number.get(number - 1)
+        predecessor_id = str(scene.get("continuation_predecessor_id") or "").strip()
+        previous = (
+            next(
+                (
+                    payload for payload in all_payloads
+                    if str(payload.get("technical_segment_id") or payload.get("segment_id") or "").strip()
+                    == predecessor_id
+                ),
+                None,
+            )
+            if predecessor_id
+            else by_number.get(number - 1)
+        )
+        previous_number = int(previous["scene"]) if previous is not None else number - 1
         previous_contract = _stored_consistency_contract(previous)
         current_contract = _stored_consistency_contract(scene)
         if (
             previous_contract is None
             or current_contract is None
-            or previous_contract.scene + 1 != current_contract.scene
+            or (
+                not predecessor_id
+                and previous_contract.scene + 1 != current_contract.scene
+            )
             or not can_handoff(previous_contract, current_contract)
         ):
             attached.append(render_scene)
             continue
-        previous_clip = state.context.artifact_layout.scene_final_video(number - 1)
+        previous_clip = state.context.artifact_layout.scene_final_video(previous_number)
         if not previous_clip.is_file() and not explicitly_selected:
             attached.append(render_scene)
             continue
         output_frame = (
             state.context.render_dir
             / "keyframes"
-            / f"scene_{number - 1:04}_to_{number:04}_start.png"
+            / f"scene_{previous_number:04}_to_{number:04}_start.png"
         )
         scene = ContinuityHandoffUseCase(
             PostprocessorFrameExtractor(
@@ -1482,6 +1512,17 @@ def _music_handoff_predecessors(
             and can_handoff(previous_contract, current_contract)
         ):
             predecessors[current_contract.scene] = previous_contract.scene
+    technical_by_id = {
+        str(payload.get("technical_segment_id") or payload.get("segment_id") or "").strip(): payload
+        for payload in payloads
+    }
+    for current_scene in payloads:
+        predecessor_id = str(current_scene.get("continuation_predecessor_id") or "").strip()
+        if not predecessor_id:
+            continue
+        previous_scene = technical_by_id.get(predecessor_id)
+        if previous_scene is not None:
+            predecessors[int(current_scene["scene"])] = int(previous_scene["scene"])
     return predecessors
 
 

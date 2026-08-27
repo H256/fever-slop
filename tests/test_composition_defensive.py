@@ -73,6 +73,17 @@ class TestValidateRenderPlanEntries(unittest.TestCase):
         tmp = self._write_plan(render_plan)
         self.assertEqual(2, count_render_plan_items(tmp, scene_numbers={1, 3}))
 
+    def test_count_selects_all_technical_segments_for_semantic_scene(self):
+        from feverslop.composition.config_loader import count_render_plan_items
+
+        render_plan = [
+            {"scene": 1_001_001, "semantic_scene": 1},
+            {"scene": 1_001_002, "semantic_scene": 1},
+            {"scene": 2},
+        ]
+        tmp = self._write_plan(render_plan)
+        self.assertEqual(2, count_render_plan_items(tmp, scene_numbers={1}))
+
 
 class TestSelectedVideoWorkflows(unittest.TestCase):
     """COMP-107: empty workflow guard."""

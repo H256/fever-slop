@@ -13,6 +13,7 @@ from feverslop.domain.canonical_render_plan import (
 )
 from feverslop.domain.continuation_contract import ContinuationGroup
 from feverslop.domain.continuation_segments import split_semantic_action
+from feverslop.pipeline.continuation_render_plan import materialize_continuation_entries
 from feverslop.domain.duration_capability import DurationCapability
 from feverslop.domain.performance_sync import select_performance_stems
 from feverslop.domain.subject_directives import (
@@ -734,7 +735,14 @@ def build_render_plan(
         megapixels = getattr(video_settings, "megapixels", None)
         if megapixels is not None:
             render_scene["megapixels"] = megapixels
-        render_plan.append(render_scene)
+        continuation_groups = (render_scene.get("metadata") or {}).get("continuation_groups") or []
+        if continuation_groups:
+            for group in continuation_groups:
+                render_plan.extend(
+                    materialize_continuation_entries(render_scene, group=group),
+                )
+        else:
+            render_plan.append(render_scene)
 
     validate_canonical_plan(render_plan)
     writer = plan_writer or artifact_store.write_json

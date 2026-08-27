@@ -31,10 +31,13 @@ class ContinuityHandoffUseCase:
         *,
         handoff_prompt: str | None = None,
     ) -> dict[str, Any]:
+        explicit_continuation = bool(
+            str(current_scene.get("continuation_predecessor_id") or "").strip()
+        )
         if (
             previous.mode not in _HANDOFF_MODES
             or current.mode not in _HANDOFF_MODES
-            or previous.scene + 1 != current.scene
+            or (not explicit_continuation and previous.scene + 1 != current.scene)
             or not can_handoff(previous, current)
         ):
             raise ValueError(

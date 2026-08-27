@@ -41,9 +41,22 @@ prepared-scene stage then runs those scenes through the continuation scheduler:
 
 The scheduler consumes the existing scene workflow manifests and persisted
 handoff frame manifests. It does not create a second render-plan format.
-Semantic action splitting and cutless multi-segment assembly are separate
-capabilities and must not be assumed merely because a planner emitted a
-continuation intent.
+
+Long semantic actions are materialized in the render plan as technical entries
+with stable `technical_segment_id` values, deterministic numeric artifact IDs,
+absolute `abs_start_seconds`/`abs_end_seconds`, and an explicit
+`continuation_predecessor_id`. The semantic scene remains available through
+`semantic_scene`, so selecting a scene renders and counts its complete
+technical chain. Each technical entry is therefore independently addressable
+for workflow preparation, resume, rendering, and diagnostics.
+
+The selected profile's duration capability controls the split. Audio patches
+use each entry's absolute timing window, while the predecessor handoff uses the
+persisted last-frame boundary manifest. The concat stage discovers the declared
+technical segment IDs, validates their boundary evidence, removes only a
+proven duplicate first frame, and writes a cutless assembly diagnostics JSON
+next to the assembled group. A missing or invalid segment clip blocks that
+group from being silently presented as a complete cutless result.
 
 ## Legacy migration
 
