@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.domain.h3_prompt_checkpoint import valid_h3_prompt_contract
 from feverslop.errors import FeverSlopDataError
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
@@ -279,7 +280,10 @@ class H3PromptPipeline:
             not_approved = [
                 str(item.get("segment_id"))
                 for item in context["h3_prompts"]
-                if (item.get("prompt_judge") or {}).get("verdict") != "good"
+                if (
+                    not valid_h3_prompt_contract(item)
+                    or (item.get("prompt_judge") or {}).get("verdict") != "good"
+                )
             ]
             if not_approved:
                 raise FeverSlopDataError(
@@ -325,6 +329,8 @@ def _h3_prompt_status_message(
     elif status == "recompiled":
         version_suffix = f"; using v{compiler_version}" if compiler_version is not None else ""
         label = f"recompiled (compiler checkpoint invalidated{version_suffix})"
+    elif status == "regenerating":
+        label = "regenerating (saved structured plan fails current guide contract)"
     elif status == "completed":
         label = "completed"
     else:

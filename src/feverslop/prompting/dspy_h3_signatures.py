@@ -120,6 +120,15 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         prop, environment, camera instruction, composition constraint, or relevant
         reference role has been lost.
 
+        For full-reference generation, author enough concrete creative detail across the
+        planned shot descriptions for the compiled detailed_description to contain 350-500
+        English words. A single-shot plan does not permit a shorter description. Cover
+        composition, subject appearance and position, environment, lighting, action and
+        state changes, camera movement, current sound, and each reference's active point.
+        Also provide style_opening as one or two concrete English sentences establishing
+        the target video's visual style and lighting. Do not put a shot label, timestamp,
+        section header, or backend reference label in style_opening.
+
         `requested_music_intent` is authoritative when it is non-empty. In particular,
         `requested_music_intent=none` means the soundtrack/scene audio is already
         supplied elsewhere and you MUST return `music_intent=none` with

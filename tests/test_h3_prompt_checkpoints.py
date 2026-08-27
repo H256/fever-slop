@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -136,6 +137,38 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
             {"prompt": "fallback prompt"},
         )
         self.assertEqual("unjudged", unjudged.status)
+
+    def test_v8_checkpoint_requires_deterministic_contract_and_good_judge(self):
+        request = self.request(generator_revision={
+            "compiler": "deterministic_h3_compiler",
+            "compiler_version": 8,
+        })
+        missing_contract = self.store.save(request, {
+            "prompt": "compiled",
+            "prompt_provenance": {
+                "compiler": "deterministic_h3_compiler",
+                "compiler_version": 8,
+            },
+            "prompt_judge": {"verdict": "good"},
+        })
+        self.assertEqual("unjudged", missing_contract.status)
+        self.assertIsNone(self.store.load(request))
+
+        valid = self.store.save(request, {
+            "prompt": "compiled",
+            "prompt_provenance": {
+                "compiler": "deterministic_h3_compiler",
+                "compiler_version": 8,
+            },
+            "prompt_contract": {
+                "valid": True,
+                "compiler_version": 8,
+                "prompt_sha256": "sha256:" + hashlib.sha256(b"compiled").hexdigest(),
+            },
+            "prompt_judge": {"verdict": "good"},
+        })
+        self.assertEqual("good", valid.status)
+        self.assertIsNotNone(self.store.load(request))
 
     def test_load_does_not_reuse_rejected_or_unjudged_checkpoints(self):
         request = self.request()

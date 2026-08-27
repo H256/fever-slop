@@ -336,6 +336,130 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual("good", result["prompt_judge"]["verdict"])
         self.assertEqual("action-1", result["continuation_intents"][0]["action_id"])
 
+    def test_r2v_deterministic_contract_retries_before_calling_judge(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        short_plan = ResolvedPromptPlan(
+            creative_intent="A short performance.",
+            style_opening="Live-action cinematic imagery uses cool practical lighting.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A performer turns toward the window.",
+                start_seconds=0,
+                end_seconds=5,
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        rich_sentence = (
+            "A precisely framed physical action establishes composition, appearance, position, "
+            "lighting, environmental motion, performance detail, and deliberate camera movement."
+        )
+        rich_plan = short_plan.model_copy(update={
+            "shots": [short_plan.shots[0].model_copy(update={
+                "description": " ".join([rich_sentence] * 36),
+            })],
+        })
+        requests = []
+        judged_prompts = []
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=short_plan if len(requests) == 1 else rich_plan)
+
+            def judge_compiled_prompt(self, *, final_prompt, **_kwargs):
+                judged_prompts.append(final_prompt)
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 5},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+        )
+
+        self.assertEqual(2, len(requests))
+        self.assertEqual(1, len(judged_prompts))
+        self.assertIn("350", requests[1]["notes"])
+        self.assertEqual(judged_prompts[0], result["prompt"])
+
+    def test_judge_field_issues_are_forwarded_to_creative_regeneration(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        sentence = (
+            "A precise cinematic composition establishes appearance, position, environment, "
+            "lighting, physical action, state change, camera movement, and current sound."
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="A complete performance.",
+            style_opening="Live-action imagery uses restrained amber practical lighting.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description=" ".join([sentence] * 36),
+                start_seconds=0,
+                end_seconds=5,
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+        judge_calls = []
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                judge_calls.append(1)
+                if len(judge_calls) == 1:
+                    return PromptJudgeResult(
+                        verdict="bad",
+                        repair_instruction="Repair only the affected shot field.",
+                        field_issues=[{
+                            "shot_id": "shot-0001",
+                            "field": "camera_behavior",
+                            "issue_code": "camera.missing_speed",
+                            "repair_instruction": "Specify camera speed.",
+                        }],
+                    )
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 5},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+        )
+
+        self.assertEqual(2, len(requests))
+        self.assertIn("Repair only the affected shot field", requests[1]["notes"])
+        self.assertIn("shot-0001.camera_behavior: Specify camera speed", requests[1]["notes"])
+        self.assertEqual("good", result["prompt_judge"]["verdict"])
+
     def test_compatibility_export_delegates_to_canonical_generator(self):
         from unittest.mock import patch
 

@@ -472,7 +472,8 @@ class VideoPromptGenerator:
                 description=subject.description, source_references=subject.source_references,
             ))
         return ResolvedPromptPlan(
-            creative_intent=plan.creative_intent, subjects=subjects,
+            creative_intent=plan.creative_intent, style_opening=plan.style_opening,
+            subjects=subjects,
             reference_usage=plan.reference_usage, shots=plan.shots,
             overall_soundscape=plan.overall_soundscape, music_intent=plan.music_intent,
             non_diegetic_music=plan.non_diegetic_music,

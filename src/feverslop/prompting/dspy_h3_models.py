@@ -218,6 +218,7 @@ class CreativeShotPayload(BaseModel):
 
 class PromptPlan(BaseModel):
     creative_intent: str
+    style_opening: str | None = None
     subjects: list[PlannedSubject] = Field(default_factory=list)
     reference_usage: list[ReferenceUsage] = Field(default_factory=list)
     shots: list[PlannedShot] = Field(default_factory=list)
@@ -251,6 +252,7 @@ class SubjectDefinition(BaseModel):
 
 class ResolvedPromptPlan(BaseModel):
     creative_intent: str
+    style_opening: str | None = None
     subjects: list[SubjectDefinition] = Field(default_factory=list)
     reference_usage: list[ReferenceUsage] = Field(default_factory=list)
     shots: list[PlannedShot] = Field(default_factory=list)
@@ -272,6 +274,7 @@ class H3PromptSections(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     creative_intent: str
+    style_opening: str | None = None
     subjects: list[SubjectDefinition] = Field(default_factory=list)
     reference_usage: list[ReferenceUsage] = Field(default_factory=list)
     shots: list[PlannedShot] = Field(default_factory=list)

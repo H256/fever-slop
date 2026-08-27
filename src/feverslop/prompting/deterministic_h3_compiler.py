@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 7
+H3_COMPILER_VERSION = 8
 
 
 class DeterministicH3Compiler:
@@ -136,9 +136,12 @@ class DeterministicH3Compiler:
             for label in prepared_reference_labels or ():
                 if label in represented:
                     continue
-                subject_lines.append(
-                    f"{label} is a prepared reference input used by the target video."
-                )
+                subject_lines.append(_render_prepared_reference_definition(
+                    label, metadata_by_label.get(label, {}),
+                ))
+            subject_sources = {
+                label for subject in plan.subjects for label in subject.source_references
+            }
             for usage in plan.reference_usage:
                 if usage.reference_label.lower().startswith("<audio "):
                     metadata = metadata_by_label.get(usage.reference_label, {})
@@ -154,6 +157,11 @@ class DeterministicH3Compiler:
                     }.get(copy_mode, "is referenced for the target video's soundtrack")
                     subject_lines.append(
                         f"{usage.reference_label} is the {role} and {relationship}."
+                    )
+                elif usage.reference_label not in subject_sources:
+                    subject_lines.append(
+                        f"{usage.reference_label} is the reference input for {usage.purpose}; "
+                        f"{usage.details.rstrip('.')} .".replace(" .", ".")
                     )
             frame_roles = {"first_frame", "last_frame", "keyframe", "storyboard", "composition"}
             retention_lines = [
@@ -191,13 +199,33 @@ class DeterministicH3Compiler:
                 )
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
             retention_lines.extend(usage_retention_lines)
-            detailed_parts = [
-                "The target video uses a cinematic visual style with deliberate visual continuity."
-            ]
+            detailed_parts = [str(plan.style_opening or "").strip()]
+            audio_labels = {
+                usage.reference_label
+                for usage in plan.reference_usage
+                if usage.reference_label.lower().startswith("<audio ")
+            }
+            audio_labels.update(
+                label for label, metadata in metadata_by_label.items()
+                if str(metadata.get("kind") or "").casefold() == "audio"
+            )
+            audio_relationships = {
+                label: _audio_relationship_phrase(label, metadata_by_label.get(label, {}))
+                for label in sorted(audio_labels)
+            }
             detailed_parts.extend(
-                _render_shot_with_references(index, shot, plan)
+                _render_shot_with_references(
+                    index,
+                    shot,
+                    plan,
+                    audio_relationships=audio_relationships,
+                    reference_metadata=metadata_by_label,
+                    final_shot=index == len(plan.shots),
+                )
                 + (
-                    " " + _render_camera_behavior(shot.camera_behavior)
+                    " " + _replace_subject_names(
+                        _render_camera_behavior(shot.camera_behavior), plan,
+                    )
                     if shot.camera_behavior and not _description_covers_camera(shot)
                     else ""
                 )
@@ -212,7 +240,8 @@ class DeterministicH3Compiler:
                 soundscape = "No additional diegetic ambience or physical sound effects are specified."
             sections = [
                 "subject_definitions:\n" + "\n".join(subject_lines),
-                "summary: [reference generation] " + _replace_subject_names(plan.creative_intent, plan),
+                "summary: " + _summary_prefix(plan, metadata_by_label) + " "
+                + _render_summary(plan, metadata_by_label),
                 "retention_analysis:\n" + "\n".join(retention_lines),
                 "detailed_description: " + detailed,
                 "overall_soundscape: " + soundscape,
@@ -220,8 +249,7 @@ class DeterministicH3Compiler:
             ]
         else:
             detailed = "\n".join(
-                f"[Shot {index}] {shot.description}"
-                + (" " + " ".join(shot.reference_labels) if shot.reference_labels else "")
+                _render_base_shot(index, shot, mode, final_shot=index == len(plan.shots))
                 for index, shot in enumerate(plan.shots, start=1)
             )
             sections = [
@@ -229,7 +257,7 @@ class DeterministicH3Compiler:
                 "overall_soundscape: " + plan.overall_soundscape,
                 "non_diegetic_music: " + (plan.non_diegetic_music or "N/A"),
             ]
-            instruction = plan.alignment_instruction
+            instruction = None
             duration = float(duration_seconds or 0.0)
             if not instruction and mode is PromptMode.I2V:
                 instruction = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced."
@@ -237,7 +265,8 @@ class DeterministicH3Compiler:
                 instruction = (
                     "How the reference pictures align with the target video — "
                     "Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; "
-                    f"Picture 2 (from Shot 1) aligns with the {duration:.2f}-second mark of the target video."
+                    f"Picture 2 (from Shot {max((shot.shot_number for shot in plan.shots), default=1)}) "
+                    f"aligns with the {duration:.2f}-second mark of the target video."
                 )
             elif not instruction and mode is PromptMode.L2V:
                 final_shot = max((shot.shot_number for shot in plan.shots), default=1)
@@ -263,13 +292,18 @@ def _subject_shot_numbers(subject: Any, plan: ResolvedPromptPlan) -> tuple[int, 
 
 
 def _shot_reference_labels(shot: Any, plan: ResolvedPromptPlan) -> tuple[str, ...]:
+    involved = {str(value).casefold() for value in getattr(shot, "involved_subjects", ())}
     subject_labels = [
         subject.label
         for subject in plan.subjects
         if (
             set(subject.source_references).intersection(shot.reference_labels)
-            or subject.name in getattr(shot, "involved_subjects", ())
-            or subject.label in getattr(shot, "involved_subjects", ())
+            or subject.name.casefold() in involved
+            or subject.label.casefold() in involved
+            or (
+                subject.name.strip()
+                and re.search(rf"\b{re.escape(subject.name)}\b", str(shot.description), re.IGNORECASE)
+            )
         )
     ]
     return tuple(dict.fromkeys(subject_labels))
@@ -288,23 +322,60 @@ def _clean_subject_description(subject: Any) -> str:
     )
 
 
-def _render_shot_with_references(index: int, shot: Any, plan: ResolvedPromptPlan) -> str:
+def _render_shot_with_references(
+    index: int,
+    shot: Any,
+    plan: ResolvedPromptPlan,
+    *,
+    audio_relationships: Mapping[str, str] | None = None,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+    final_shot: bool = False,
+) -> str:
     labels = _shot_reference_labels(shot, plan)
-    description = _replace_subject_names(str(shot.description), plan, labels)
+    description = _replace_subject_names(str(shot.description), plan)
     missing = [label for label in labels if label not in description]
     if missing:
         visible = " and ".join(missing)
         verb = "is" if len(missing) == 1 else "are"
         description = f"{visible} {verb} visible in the shot. {description}"
-    if labels and index == 1:
-        audio_labels = [
-            usage.reference_label
-            for usage in plan.reference_usage
-            if usage.reference_label.lower().startswith("<audio ")
-        ]
-        if audio_labels:
-            suffix = " and ".join(audio_labels)
-            description = f"{description.rstrip('.')} with {suffix} active in the soundtrack."
+    available_audio = audio_relationships or {}
+    audio_labels = [
+        label
+        for label in shot.reference_labels
+        if label in available_audio
+    ]
+    assigned_audio = {
+        label
+        for planned_shot in plan.shots
+        for label in planned_shot.reference_labels
+        if label in available_audio
+    }
+    if index == 1:
+        audio_labels.extend(
+            label for label in available_audio
+            if label not in assigned_audio and label not in audio_labels
+        )
+    if audio_labels:
+        relationships = " and ".join(available_audio[label] for label in audio_labels)
+        description = f"{description.rstrip('.')} with {relationships}."
+    subject_sources = {
+        label for subject in plan.subjects for label in subject.source_references
+    }
+    metadata_by_label = reference_metadata or {}
+    standalone_labels = [
+        label for label in shot.reference_labels
+        if label not in subject_sources and label not in available_audio
+    ]
+    for label in standalone_labels:
+        role = str(metadata_by_label.get(label, {}).get("role") or "reference").casefold()
+        if role == "first_frame" and index == 1:
+            description = f"The shot begins from {label}, preserving its composition. {description}"
+        elif role == "last_frame" and final_shot:
+            description = f"{description.rstrip('.')} and ends on {label}."
+        else:
+            description = (
+                f"{description.rstrip('.')} while {label} guides the applicable visual relationship."
+            )
     cut = "" if index == 1 else f" At {_time(float(shot.start_seconds or 0.0))},"
     return f"[Shot {index}]{cut} {description}"
 
@@ -322,12 +393,101 @@ def _replace_subject_names(
         )
         for subject in plan.subjects
         if subject.label in allowed
-        for phrase in (f"The {subject.name}", subject.name)
+        for phrase in (subject.name,)
         if phrase.strip()
     )
     for phrase, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
-        text = text.replace(phrase, label)
+        normalized_phrase = re.sub(r"^(?:the\s+)", "", phrase.strip(), flags=re.IGNORECASE)
+        text = re.sub(
+            rf"(?<![\w>])(?:the\s+)?{re.escape(normalized_phrase)}(?=\b|'s\b)",
+            label,
+            text,
+            flags=re.IGNORECASE,
+        )
     return text
+
+
+def _audio_relationship_phrase(label: str, metadata: Mapping[str, Any]) -> str:
+    copy_mode = str(metadata.get("copy_mode") or "reference")
+    if copy_mode == "fully_copy":
+        return f"{label} fully copied as the complete soundtrack and timing reference"
+    if copy_mode == "partially_copy":
+        return f"the selected signal from {label} partially copied into the target video's audio"
+    return f"{label} referenced for the target video's soundtrack"
+
+
+def _render_prepared_reference_definition(label: str, metadata: Mapping[str, Any]) -> str:
+    kind = str(metadata.get("kind") or "reference").casefold()
+    if kind == "audio":
+        relationship = _audio_relationship_phrase(label, metadata)
+        return f"{label} is an audio input; {relationship}."
+    role = str(metadata.get("role") or "reference input").replace("_", " ")
+    description = str(metadata.get("description") or "its supplied visual characteristics").strip().rstrip(".")
+    return f"{label} is the {role} reference, defining {description}."
+
+
+def _summary_prefix(
+    plan: ResolvedPromptPlan,
+    metadata_by_label: Mapping[str, Mapping[str, Any]],
+) -> str:
+    task_types: list[str] = []
+    roles = {str(item.get("role") or "").casefold() for item in metadata_by_label.values()}
+    if roles.intersection({"first_frame", "last_frame", "keyframe"}):
+        task_types.append("keyframe completion")
+    if "edit_source" in roles:
+        task_types.append("video editing")
+    elif "continuation" in roles:
+        task_types.append("video continuation")
+    if plan.subjects or roles.difference({"audio_reuse"}):
+        task_types.append("reference generation")
+    copy_modes = {
+        str(item.get("copy_mode") or "").casefold()
+        for item in metadata_by_label.values()
+        if str(item.get("kind") or "").casefold() == "audio"
+    }
+    if copy_modes.intersection({"fully_copy", "partially_copy"}):
+        task_types.append("audio reuse")
+    if "reference" in copy_modes:
+        task_types.append("audio reference")
+    return "[" + " + ".join(dict.fromkeys(task_types or ["reference generation"])) + "]"
+
+
+def _render_summary(
+    plan: ResolvedPromptPlan,
+    metadata_by_label: Mapping[str, Mapping[str, Any]],
+) -> str:
+    summary = _replace_subject_names(plan.creative_intent, plan).strip().rstrip(".") + "."
+    audio_labels = {
+        usage.reference_label
+        for usage in plan.reference_usage
+        if usage.reference_label.casefold().startswith("<audio ")
+    }
+    audio_labels.update(
+        label for label, metadata in metadata_by_label.items()
+        if str(metadata.get("kind") or "").casefold() == "audio"
+    )
+    for label in sorted(audio_labels):
+        if label in summary:
+            continue
+        copy_mode = str(metadata_by_label.get(label, {}).get("copy_mode") or "reference")
+        relationship = {
+            "fully_copy": f"{label} is fully copied as the complete target-video audio track.",
+            "partially_copy": f"Selected signal from {label} is partially copied into the target video.",
+        }.get(copy_mode, f"{label} is referenced without copying its original signal.")
+        summary += " " + relationship
+    return summary
+
+
+def _render_base_shot(index: int, shot: Any, mode: PromptMode, *, final_shot: bool) -> str:
+    description = str(shot.description).strip()
+    if mode in {PromptMode.I2V, PromptMode.FL2V} and index == 1:
+        description = f"The shot begins from <Picture 1>, preserving its composition. {description}"
+    if mode is PromptMode.FL2V and final_shot:
+        description = f"{description.rstrip('.')} and ends on <Picture 2>."
+    elif mode is PromptMode.L2V and final_shot:
+        description = f"{description.rstrip('.')} and converges to the final frame in <Picture 1>."
+    cut = "" if index == 1 else f" At {_time(float(shot.start_seconds or 0.0))},"
+    return f"[Shot {index}]{cut} {description}"
 
 
 def _lower_initial(value: str) -> str:
@@ -370,10 +530,11 @@ def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) 
     def tagged(match: re.Match[str]) -> str:
         content = match.group(1).strip()
         content = re.sub(r"^(?:\[[^]]+\]|en|de|fr|es)\s*", "", content, flags=re.IGNORECASE)
+        content = _ensure_dialogue_punctuation(content)
         return f"<d>[{language}] {content}</d>"
 
     def split_tagged(match: re.Match[str]) -> str:
-        return f"<d>[{language}] {match.group(1).strip()}</d>"
+        return f"<d>[{language}] {_ensure_dialogue_punctuation(match.group(1).strip())}</d>"
 
     normalized = re.sub(
         r"<d>\s*(?:\[[^]]+\])?\s*</d>\s*(.*?)\s*<</d>",
@@ -391,6 +552,7 @@ def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) 
 
     def quoted(match: re.Match[str]) -> str:
         prefix, content = match.group(1), match.group(3).strip()
+        content = _ensure_dialogue_punctuation(content)
         return f"{prefix}<d>[{language}] {content}</d>"
 
     normalized = re.sub(
@@ -399,6 +561,7 @@ def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) 
         quoted,
         normalized,
     )
+    normalized = re.sub(r"</d>\s*[.?!](?=\s|$)", "</d>", normalized, flags=re.IGNORECASE)
     # Remove speaker IDs from every visible subject first. They are re-added
     # only to the first human subject in an explicit vocal clause.
     for subject in plan.subjects:
@@ -439,6 +602,15 @@ def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) 
             normalized = normalized[:anchor] + marker + normalized[anchor:]
             offset += len(marker)
     return normalized
+
+
+def _ensure_dialogue_punctuation(content: str) -> str:
+    text = str(content).strip()
+    if not text or re.search(r"<(?:scenetrans|cutoff)>\s*$", text, re.IGNORECASE):
+        return text
+    if text[-1] not in ".?!":
+        text += "."
+    return text
 
 
 def _dialogue_contents(text: str) -> tuple[str, ...]:
