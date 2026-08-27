@@ -167,6 +167,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             facts=self.facts,
             shots=self.shots[:1],
             shot_windows={"shot-02": (0.0, 4.0)},
+            references={"shot-0001": ["<Picture 1>", "<Audio 1>"]},
             prepared_reference_labels=["<Picture 1>", "<Audio 1>"],
             reference_metadata=[
                 {"label": "<Picture 1>", "kind": "picture", "copy_mode": "reference"},
@@ -180,8 +181,10 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertLess(detailed.index("cinematic visual style"), detailed.index("[Shot 1]"))
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
-        self.assertIn("<Picture 1>: fully_preserved", prompt)
+        self.assertIn("References in this shot: <Subject 1>, <Picture 1>, <Audio 1>.", detailed)
+        self.assertNotIn("<Picture 1>: fully_preserved", prompt)
         self.assertIn("<Audio 1>: fully_copy", prompt)
+        self.assertNotIn("..", detailed)
 
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(

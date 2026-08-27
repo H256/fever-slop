@@ -45,6 +45,7 @@ class DeterministicH3Compiler:
                 ),
                 plan=plan,
                 facts=facts,
+                references=references,
                 prepared_reference_labels=prepared_reference_labels,
                 reference_metadata=reference_metadata,
                 duration_seconds=duration_seconds,
@@ -104,6 +105,7 @@ class DeterministicH3Compiler:
         mode: PromptMode,
         plan: ResolvedPromptPlan,
         facts: LockedSceneFacts,
+        references: Mapping[str, Sequence[str]] | None,
         prepared_reference_labels: Sequence[str] | None,
         reference_metadata: Sequence[Mapping[str, Any]] | None,
         duration_seconds: float | None,
@@ -126,15 +128,20 @@ class DeterministicH3Compiler:
                 subject_lines.append(
                     f"{label} is a prepared reference input used by the target video."
                 )
+            frame_roles = {"first_frame", "last_frame", "keyframe", "storyboard", "composition"}
             retention_lines = [
                 f"{subject.label} (appears in [Shot {shot_number}]): fully_preserved - "
                 f"{subject.description}"
                 for subject in plan.subjects
                 for shot_number in _subject_shot_numbers(subject, plan)
             ]
+            usage_retention_lines: list[str] = []
             for usage in plan.reference_usage:
                 reference = metadata_by_label.get(usage.reference_label, {})
                 kind = str(reference.get("kind") or "").lower()
+                role = str(reference.get("role") or usage.purpose or "").lower()
+                if kind == "picture" and role not in frame_roles:
+                    continue
                 marker = (
                     str(reference.get("copy_mode") or "reference")
                     if kind == "audio"
@@ -145,7 +152,7 @@ class DeterministicH3Compiler:
                     "weak_reference", "fully_copy", "partially_copy", "reference",
                 }:
                     marker = "reference" if kind == "audio" else "fully_preserved"
-                retention_lines.append(f"{usage.reference_label}: {marker} - {usage.details}")
+                usage_retention_lines.append(f"{usage.reference_label}: {marker} - {usage.details}")
             for label in prepared_reference_labels or ():
                 if label in represented:
                     continue
@@ -156,13 +163,14 @@ class DeterministicH3Compiler:
                     else "fully_preserved"
                 )
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
+            retention_lines.extend(usage_retention_lines)
             detailed_parts = [
-                f"The target video uses a cinematic visual style centered on {plan.creative_intent}."
+                "The target video uses a cinematic visual style with deliberate visual continuity."
             ]
             detailed_parts.extend(
                 f"[Shot {index}] {shot.description}"
-                + _shot_reference_details(shot, plan)
-                + (f" Camera movement: {shot.camera_behavior}." if shot.camera_behavior else "")
+                + _shot_reference_details(shot, plan, references)
+                + (f" Camera movement: {_sentence(shot.camera_behavior)}" if shot.camera_behavior else "")
                 for index, shot in enumerate(plan.shots, start=1)
             )
             detailed = "\n".join(detailed_parts)
@@ -218,14 +226,26 @@ def _subject_shot_numbers(subject: Any, plan: ResolvedPromptPlan) -> tuple[int, 
     ) or tuple(shot.shot_number for shot in plan.shots[:1])
 
 
-def _shot_reference_details(shot: Any, plan: ResolvedPromptPlan) -> str:
+def _shot_reference_details(
+    shot: Any,
+    plan: ResolvedPromptPlan,
+    references: Mapping[str, Sequence[str]] | None,
+) -> str:
     subject_labels = [
         subject.label
         for subject in plan.subjects
         if set(subject.source_references).intersection(shot.reference_labels)
     ]
-    labels = list(dict.fromkeys([*subject_labels, *shot.reference_labels]))
+    labels = list(dict.fromkeys([
+        *subject_labels,
+        *shot.reference_labels,
+        *(references or {}).get(f"shot-{int(shot.shot_number):04d}", ()),
+    ]))
     return (" References in this shot: " + ", ".join(labels) + ".") if labels else ""
+
+
+def _sentence(value: str) -> str:
+    return value.strip().rstrip(".") + "."
 
 
 def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayload, ...]:

@@ -372,7 +372,7 @@ class DspyH3PromptBuilder:
 
     def checkpoint_revision(self) -> dict[str, Any]:
         revision: dict[str, Any] = {
-            "contract": 2,
+            "contract": 3,
             "generator": f"{type(self.generator).__module__}.{type(self.generator).__qualname__}",
             "judge_attempts": int(getattr(self.generator, "judge_attempts", 0)),
         }
@@ -524,7 +524,7 @@ class DspyH3PromptBuilder:
                     ],
                     "prompt_provenance": {
                         "compiler": "deterministic_h3_compiler",
-                        "compiler_version": 2,
+                        "compiler_version": 3,
                         "source": "dspy_section_plan",
                     },
                 }
