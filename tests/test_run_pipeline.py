@@ -441,6 +441,45 @@ class RunPipelinePathTests(unittest.TestCase):
             self.assertEqual([layout.video_only], video_only_outputs)
 
     @patch("feverslop.composition.stage_runners.VideoPostProcessor")
+    def test_concat_uses_only_selected_scene(self, postprocessor_class):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            layout = SceneArtifactLayout(project)
+            layout.plans_dir.mkdir(parents=True)
+            layout.base_plan.write_text(
+                json.dumps([{"scene": 1}, {"scene": 2}, {"scene": 3}]),
+                encoding="utf-8",
+            )
+            layout.scene_dir(2).mkdir(parents=True)
+            layout.scene_final_video(2).touch()
+            context = Namespace(
+                artifact_layout=layout,
+                ltx_dir=layout.scenes_dir,
+                concat_list=layout.final_dir / "concat_list.txt",
+                concat_raw=layout.concat_raw,
+            )
+            state = Namespace(
+                args=Namespace(scenes="2"),
+                plan_for_next_step=layout.base_plan,
+                context=context,
+                video_only_path=None,
+            )
+            processor = postprocessor_class.return_value
+            processor.concat_clips.side_effect = lambda *, output_file, **_kwargs: Path(output_file)
+
+            _run_concat_video_only_stage(state)
+
+            video_only_call = next(
+                call for call in processor.concat_clips.call_args_list
+                if call.kwargs["video_only"]
+            )
+            self.assertEqual(
+                [layout.scene_final_video(2)],
+                [Path(line.removeprefix("file '").removesuffix("'"))
+                 for line in video_only_call.kwargs["concat_list"].read_text().splitlines()],
+            )
+
+    @patch("feverslop.composition.stage_runners.VideoPostProcessor")
     def test_concat_does_not_mix_canonical_and_legacy_base_clips(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
