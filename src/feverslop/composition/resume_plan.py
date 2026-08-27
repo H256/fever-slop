@@ -441,7 +441,7 @@ def _h3_state(layout: SceneArtifactLayout, scene: Mapping[str, Any], number: int
     expected = ((role.get("generated") or {}).get("provenance") or {}).get("input_fingerprint")
     if expected and expected != payload.get("input_fingerprint"):
         return PlanAction.RUN, "H3 input fingerprint changed"
-    if str(payload.get("status") or "").lower() not in {"good", "unjudged"}:
+    if str(payload.get("status") or "").lower() != "good":
         return PlanAction.RUN, "H3 checkpoint is not renderable"
     return PlanAction.REUSE, "judged H3 checkpoint matches"
 

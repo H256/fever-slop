@@ -5,6 +5,7 @@ from typing import Any
 
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
+from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
 from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
 
@@ -21,6 +22,7 @@ class DeterministicH3Compiler:
         self,
         *,
         mode: str,
+        plan: ResolvedPromptPlan | None = None,
         facts: LockedSceneFacts,
         shots: Sequence[CreativeShotPayload],
         shot_windows: Mapping[str, tuple[float, float]],
@@ -29,8 +31,22 @@ class DeterministicH3Compiler:
         duration_seconds: float | None = None,
     ) -> str:
         normalized_mode = str(mode).strip().lower()
-        if normalized_mode not in {"base", "reference"}:
-            raise ValueError("mode must be base or reference")
+        if normalized_mode not in {"base", "reference", "ref", *(item.value for item in PromptMode)}:
+            raise ValueError("mode must be base, reference, or a PromptMode value")
+        if plan is not None:
+            return self._compile_guide_prompt(
+                mode=(
+                    PromptMode.R2V
+                    if normalized_mode in {"reference", "ref", "r2v"}
+                    else PromptMode.T2V
+                    if normalized_mode == "base"
+                    else PromptMode(normalized_mode)
+                ),
+                plan=plan,
+                facts=facts,
+                prepared_reference_labels=prepared_reference_labels,
+                duration_seconds=duration_seconds,
+            )
         if not isinstance(facts, LockedSceneFacts):
             raise TypeError("facts must be LockedSceneFacts")
         by_id: dict[str, CreativeShotPayload] = {}
@@ -78,6 +94,84 @@ class DeterministicH3Compiler:
         )
         if issues:
             raise PromptContractError(issues)
+        return result
+
+    def _compile_guide_prompt(
+        self,
+        *,
+        mode: PromptMode,
+        plan: ResolvedPromptPlan,
+        facts: LockedSceneFacts,
+        prepared_reference_labels: Sequence[str] | None,
+        duration_seconds: float | None,
+    ) -> str:
+        """Serialize LLM-authored fields into the MiniMax guide grammar."""
+        if mode is PromptMode.R2V:
+            subject_lines = [subject.render() for subject in plan.subjects]
+            represented = {
+                *[label for subject in plan.subjects for label in subject.source_references],
+                *[usage.reference_label for usage in plan.reference_usage],
+            }
+            for label in prepared_reference_labels or ():
+                if label in represented:
+                    continue
+                subject_lines.append(
+                    f"{label} is a prepared reference input used by the target video."
+                )
+            retention_lines = [
+                f"{usage.reference_label}: reference - {usage.details}"
+                for usage in plan.reference_usage
+            ]
+            for label in prepared_reference_labels or ():
+                if label in represented:
+                    continue
+                marker = "reference" if "Audio" in label else "fully_preserved"
+                retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
+            detailed = "\n".join(
+                f"[Shot {index}] {shot.description}"
+                + (" " + " ".join(shot.reference_labels) if shot.reference_labels else "")
+                for index, shot in enumerate(plan.shots, start=1)
+            )
+            sections = [
+                "subject_definitions:\n" + "\n".join(subject_lines),
+                "summary: [reference generation] " + plan.creative_intent,
+                "retention_analysis:\n" + "\n".join(retention_lines),
+                "detailed_description: " + detailed,
+                "overall_soundscape: " + plan.overall_soundscape,
+                "non_diegetic_music: " + (plan.non_diegetic_music or "N/A"),
+            ]
+        else:
+            detailed = "\n".join(
+                f"[Shot {index}] {shot.description}"
+                + (" " + " ".join(shot.reference_labels) if shot.reference_labels else "")
+                for index, shot in enumerate(plan.shots, start=1)
+            )
+            sections = [
+                "integrated_multimodal_description: " + detailed,
+                "overall_soundscape: " + plan.overall_soundscape,
+                "non_diegetic_music: " + (plan.non_diegetic_music or "N/A"),
+            ]
+            instruction = plan.alignment_instruction
+            duration = float(duration_seconds or 0.0)
+            if not instruction and mode is PromptMode.I2V:
+                instruction = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced."
+            elif not instruction and mode is PromptMode.FL2V:
+                instruction = (
+                    "How the reference pictures align with the target video — "
+                    "Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; "
+                    f"Picture 2 (from Shot 1) aligns with the {duration:.2f}-second mark of the target video."
+                )
+            elif not instruction and mode is PromptMode.L2V:
+                final_shot = max((shot.shot_number for shot in plan.shots), default=1)
+                instruction = (
+                    "How the reference pictures align with the target video — "
+                    f"<Picture 1> (from [Shot {final_shot}]) aligns with the {duration:.2f}-second mark of the target video."
+                )
+            if instruction:
+                sections.insert(0, instruction)
+        result = "\n\n".join(section.strip() for section in sections)
+        if self.max_words is not None and len(result.split()) > self.max_words:
+            raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
         return result
 
 

@@ -7,7 +7,13 @@ from feverslop.prompting.deterministic_h3_compiler import (
     creative_shots_from_plan,
     validate_creative_shots_against_plan,
 )
-from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan, MusicIntent, PlannedShot
+from feverslop.prompting.dspy_h3_models import (
+    MusicIntent,
+    PlannedShot,
+    ReferenceUsage,
+    ResolvedPromptPlan,
+    SubjectDefinition,
+)
 
 
 class DeterministicH3CompilerTests(unittest.TestCase):
@@ -50,6 +56,101 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             shot_windows={"shot-02": (4.5, 9.0), "shot-01": (0.0, 4.5)},
             references={"shot-02": ["<Audio 1>", "<Picture 1>"], "shot-01": ["<Picture 1>"]},
         ))
+
+    def test_compiles_guide_shaped_prompt_from_typed_plan_content(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE SUMMARY",
+            subjects=[],
+            reference_usage=[],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="CREATIVE SHOT DESCRIPTION",
+                visible_action="CREATIVE ACTION",
+                performance="CREATIVE PERFORMANCE",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="t2v",
+            plan=plan,
+            facts=self.facts,
+            shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+        )
+        self.assertNotIn("BASE PROMPT", prompt)
+        self.assertIn("integrated_multimodal_description:", prompt)
+        self.assertIn("CREATIVE SHOT DESCRIPTION", prompt)
+        self.assertIn("overall_soundscape: CREATIVE SOUNDSCAPE", prompt)
+
+    def test_compiles_r2v_six_sections_and_authoritative_reference_anchors(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE R2V SUMMARY",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="singer",
+                description="CREATIVE SUBJECT DESCRIPTION",
+                source_references=["<Picture 1>"],
+            )],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 1>",
+                purpose="audio reuse",
+                details="CREATIVE RETENTION DETAIL",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="CREATIVE R2V SHOT",
+                start_seconds=0,
+                end_seconds=2,
+                reference_labels=["<Picture 1>", "<Audio 1>"],
+            )],
+            overall_soundscape="CREATIVE R2V SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            prepared_reference_labels=["<Picture 1>", "<Audio 1>", "<Video 1>"],
+        )
+        fields = [
+            "subject_definitions:", "summary:", "retention_analysis:",
+            "detailed_description:", "overall_soundscape:", "non_diegetic_music:",
+        ]
+        self.assertEqual(sorted(prompt.find(field) for field in fields), [prompt.find(field) for field in fields])
+        for value in ("CREATIVE SUBJECT DESCRIPTION", "CREATIVE R2V SUMMARY", "CREATIVE RETENTION DETAIL", "CREATIVE R2V SHOT"):
+            self.assertIn(value, prompt)
+        self.assertIn("<Picture 1>", prompt)
+        self.assertIn("<Audio 1>", prompt)
+        self.assertIn("<Video 1>", prompt)
+
+    def test_compiles_mode_specific_frame_instructions(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=3, description="action", start_seconds=0, end_seconds=4)],
+            overall_soundscape="N/A",
+            music_intent=MusicIntent.NONE,
+        )
+        compiler = DeterministicH3Compiler()
+        for mode, expected in (
+            ("i2v", "at 0.00 seconds into the target video"),
+            ("fl2v", "Picture 2 (from Shot 1) aligns with the 4.00-second mark"),
+            ("l2v", "<Picture 1> (from [Shot 3]) aligns with the 4.00-second mark"),
+        ):
+            with self.subTest(mode=mode):
+                prompt = compiler.compile(
+                    mode=mode,
+                    plan=plan,
+                    facts=self.facts,
+                    shots=self.shots[:1],
+                    shot_windows={"shot-02": (0.0, 4.0)},
+                    duration_seconds=4,
+                )
+                self.assertIn(expected, prompt)
 
     def test_enforces_word_budget(self):
         with self.assertRaisesRegex(ValueError, "word budget"):

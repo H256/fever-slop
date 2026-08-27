@@ -131,4 +131,54 @@ def validate_prompt_contract(
     return issues
 
 
-__all__ = ["PromptContractError", "PromptContractIssue", "validate_prompt_contract"]
+def validate_h3_prompt_shape(prompt: str, *, mode: str) -> list[PromptContractIssue]:
+    """Validate the guide-level field shape of the final H3 prompt."""
+    text = str(prompt or "")
+    normalized = str(mode).strip().lower()
+    if normalized in {"r2v", "ref", "reference"}:
+        expected = (
+            "subject_definitions:",
+            "summary:",
+            "retention_analysis:",
+            "detailed_description:",
+            "overall_soundscape:",
+            "non_diegetic_music:",
+        )
+    else:
+        expected = (
+            "integrated_multimodal_description:",
+            "overall_soundscape:",
+            "non_diegetic_music:",
+        )
+    positions = [
+        [match.start() for match in re.finditer(rf"(?m)^{re.escape(field)}", text)]
+        for field in expected
+    ]
+    if any(len(matches) == 0 for matches in positions):
+        return [PromptContractIssue(
+            "h3.sections.missing",
+            "prompt",
+            "compiled prompt does not match the required H3 field structure",
+        )]
+    if any(len(matches) != 1 for matches in positions):
+        return [PromptContractIssue(
+            "h3.sections.duplicate",
+            "prompt",
+            "compiled prompt contains duplicate H3 field headers",
+        )]
+    flat_positions = [matches[0] for matches in positions]
+    if flat_positions != sorted(flat_positions):
+        return [PromptContractIssue(
+            "h3.sections.order",
+            "prompt",
+            "compiled prompt fields are out of order",
+        )]
+    return []
+
+
+__all__ = [
+    "PromptContractError",
+    "PromptContractIssue",
+    "validate_h3_prompt_shape",
+    "validate_prompt_contract",
+]

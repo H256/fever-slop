@@ -14,6 +14,7 @@ from feverslop.prompting.dspy_h3_models import AudioSubjectBinding, H3PromptSect
 from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
 from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_h3_prompt_shape
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
     subject_directives_from_scene,
@@ -371,7 +372,7 @@ class DspyH3PromptBuilder:
 
     def checkpoint_revision(self) -> dict[str, Any]:
         revision: dict[str, Any] = {
-            "contract": 1,
+            "contract": 2,
             "generator": f"{type(self.generator).__module__}.{type(self.generator).__qualname__}",
             "judge_attempts": int(getattr(self.generator, "judge_attempts", 0)),
         }
@@ -495,7 +496,8 @@ class DspyH3PromptBuilder:
                     windows[creative.shot_id] = (start, end)
                     references_by_shot[creative.shot_id] = list(shot.reference_labels)
                 prompt = DeterministicH3Compiler().compile(
-                    mode="base" if str(mode).lower() == "base" else "reference",
+                    mode=mode,
+                    plan=plan,
                     facts=facts,
                     shots=shots,
                     shot_windows=windows,
@@ -503,7 +505,10 @@ class DspyH3PromptBuilder:
                     prepared_reference_labels=[reference["label"] for reference in references],
                     duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
                 )
-                return {
+                shape_issues = validate_h3_prompt_shape(prompt, mode=mode)
+                if shape_issues:
+                    raise PromptContractError(shape_issues)
+                result = {
                     "prompt": prompt,
                     "references": references,
                     "sections": {
@@ -518,10 +523,21 @@ class DspyH3PromptBuilder:
                     ],
                     "prompt_provenance": {
                         "compiler": "deterministic_h3_compiler",
-                        "compiler_version": 1,
+                        "compiler_version": 2,
                         "source": "dspy_section_plan",
                     },
                 }
+                judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
+                if callable(judge_compiled):
+                    judged = judge_compiled(
+                        request=request,
+                        plan=plan,
+                        references=references,
+                        final_prompt=prompt,
+                    )
+                    if judged is not None:
+                        result["prompt_judge"] = judged.model_dump()
+                return result
             prompt = getattr(generated, "rendered_prompt", None)
             if not prompt and isinstance(generated, dict):
                 prompt = generated.get("rendered_prompt") or generated.get("prompt")

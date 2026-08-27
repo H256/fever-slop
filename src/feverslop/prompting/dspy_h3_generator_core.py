@@ -182,7 +182,7 @@ class VideoPromptGenerator:
         request: VideoPromptRequest,
         plan: ResolvedPromptPlan,
         references: list[ResolvedReference],
-        prompt: BaseVideoPrompt | ReferenceVideoPrompt,
+        prompt: BaseVideoPrompt | ReferenceVideoPrompt | str,
     ) -> PromptJudgeResult | None:
         if self.judge is None:
             return None
@@ -190,7 +190,7 @@ class VideoPromptGenerator:
         try:
             output = self.judge(
                 guide=self._read(guide_path),
-                final_prompt=prompt.render(),
+                final_prompt=prompt if isinstance(prompt, str) else prompt.render(),
                 authoritative_plan=plan.model_dump_json(indent=2),
                 references=references,
             )
@@ -202,6 +202,31 @@ class VideoPromptGenerator:
                 verdict="bad",
                 issues=[f"judge unavailable: {type(exc).__name__}: {exc}"],
             )
+
+    def judge_compiled_prompt(
+        self,
+        *,
+        request: dict[str, Any],
+        plan: ResolvedPromptPlan,
+        references: list[ResolvedReference],
+        final_prompt: str,
+    ) -> PromptJudgeResult | None:
+        """Judge the exact deterministic prompt sent to the video backend."""
+        if self.judge is None:
+            return None
+        request_model = VideoPromptRequest.model_validate({
+            "mode": request["mode"],
+            "user_prompt": request["user_prompt"],
+            "duration_seconds": request.get("duration_seconds"),
+            "references": [reference.model_dump() for reference in references],
+            "strict_fidelity": bool(request.get("strict_fidelity", True)),
+        })
+        return self._judge_final_prompt(
+            request_model,
+            plan,
+            references,
+            final_prompt,
+        )
 
     @staticmethod
     def _read(path: str | Path) -> str:

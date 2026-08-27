@@ -88,6 +88,51 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
 # ─── H3PromptBuilder compatibility export ───────────────────────────────────
 
 class H3PromptBuilderCompatibilityTests(unittest.TestCase):
+    def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="CREATIVE DESCRIPTION",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        observed = {}
+
+        class Generator:
+            def __call__(self, _request):
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, *, final_prompt, **_kwargs):
+                observed["prompt"] = final_prompt
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertEqual(observed["prompt"], result["prompt"])
+        self.assertIn("integrated_multimodal_description:", result["prompt"])
+        self.assertIn("CREATIVE DESCRIPTION", result["prompt"])
+        self.assertEqual("good", result["prompt_judge"]["verdict"])
+
     def test_compatibility_export_delegates_to_canonical_generator(self):
         from unittest.mock import patch
 

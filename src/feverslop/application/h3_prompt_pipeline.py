@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.errors import FeverSlopDataError
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
@@ -256,6 +257,17 @@ class H3PromptPipeline:
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
+        if model_spec and model_spec.is_minimax_h3:
+            not_approved = [
+                str(item.get("segment_id"))
+                for item in context["h3_prompts"]
+                if (item.get("prompt_judge") or {}).get("verdict") != "good"
+            ]
+            if not_approved:
+                raise FeverSlopDataError(
+                    "MiniMax H3 prompt validation blocked render preparation for scenes: "
+                    + ", ".join(not_approved),
+                )
         if reporter is not None:
             bad_judgements = []
             for item in context["h3_prompts"]:

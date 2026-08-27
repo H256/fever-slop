@@ -147,7 +147,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
-        self.assertEqual(1, revision["contract"])
+        self.assertEqual(2, revision["contract"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
