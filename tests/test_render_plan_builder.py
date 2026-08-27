@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.duration_capability import DurationCapability
 from feverslop.errors import FeverSlopDataError
 
 # Access the private helper for direct unit testing
@@ -127,6 +128,56 @@ class OriginalStylePromptTests(unittest.TestCase):
 
 
 class BuildRenderPlanTests(unittest.TestCase):
+    def test_continuation_intents_are_materialized_with_profile_aligned_segments(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            h3_path = temp / "h3.json"
+            output_path = temp / "render_plan.json"
+            scene_prompts_path.write_text(json.dumps([{
+                "scene": 1,
+                "segment_id": "scene-001",
+                "type": "instrumental",
+                "start": 10.0,
+                "end": 18.0,
+                "duration": 8.0,
+                "zimage_prompt": "z",
+                "ltx_base_prompt": "base",
+            }]), encoding="utf-8")
+            relay_path.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
+            h3_path.write_text(json.dumps([{
+                "segment_id": "scene-001",
+                "continuation_intents": [{
+                    "action_id": "orbit",
+                    "requires_continuation": True,
+                    "desired_duration_seconds": 8.0,
+                }],
+            }]), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_path, relay_path, output_path,
+                VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                h3_prompts_json=h3_path,
+                duration_capability=DurationCapability.create(
+                    fps=24, min_seconds=2.0, max_seconds=3.0,
+                    preferred_seconds=3.0, frame_alignment=8, frame_offset=0,
+                ),
+            )
+
+            scene = json.loads(output_path.read_text(encoding="utf-8"))[0]
+            group = scene["metadata"]["continuation_groups"][0]
+            segments = group["segments"]
+            self.assertEqual("scene-001:orbit", group["group_id"])
+            self.assertEqual(["orbit-0001", "orbit-0002", "orbit-0003"], [s["segment_id"] for s in segments])
+            self.assertEqual(10.0, group["semantic_start_seconds"])
+            self.assertEqual(18.0, group["semantic_end_seconds"])
+            self.assertEqual(10.0, segments[0]["start_seconds"])
+            self.assertEqual(18.0, segments[-1]["end_seconds"])
+            self.assertTrue(all(s["duration_seconds"] <= 3.0 for s in segments))
+            self.assertEqual([False, True, True], [s["starts_with_anchor"] for s in segments])
+
     def test_seed_minus_one_generates_and_persists_a_different_seed_per_scene(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

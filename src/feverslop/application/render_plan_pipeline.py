@@ -75,6 +75,7 @@ class RenderPlanPipeline:
             if config is not None
             else 0,
             max_scene_actors=getattr(config, "max_scene_actors", 4) if config is not None else 4,
+            duration_capability=context["duration_capability"],
         )
         if regenerator is not None:
             build_kwargs["plan_writer"] = regenerator.write

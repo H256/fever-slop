@@ -94,8 +94,11 @@ def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayl
         seen.add(number)
         result.append(CreativeShotPayload(
             shot_id=f"shot-{number:04d}",
-            visible_action=shot.description,
-            performance=plan.creative_intent,
+            visible_action=shot.visible_action or shot.description,
+            performance=shot.performance or plan.creative_intent,
+            camera_behavior=shot.camera_behavior,
+            environmental_motion=shot.environmental_motion,
+            transition_intent=shot.transition_intent,
         ))
     return validate_creative_shots_against_plan(plan, result)
 
