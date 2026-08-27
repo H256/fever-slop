@@ -51,6 +51,26 @@ _VOCAL_NEGATION_PATTERN = re.compile(
 )
 
 
+def _normalize_judge_payload(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+    payload = dict(value)
+    raw_verdict = str(payload.get("verdict") or "").strip().lower()
+    if raw_verdict in {"good", "pass", "passed", "accept", "accepted"}:
+        payload["verdict"] = "good"
+    elif raw_verdict in {
+        "bad", "fail", "failed", "reject", "rejected", "pass_with_minor_issues",
+    }:
+        payload["verdict"] = "bad"
+    elif not raw_verdict:
+        # Some local models return only observations and an empty issue list.
+        # Treat that as a pass; any reported issue remains fail-closed.
+        payload["verdict"] = "bad" if payload.get("issues") or payload.get("field_issues") else "good"
+    else:
+        payload["verdict"] = "bad"
+    return payload
+
+
 _REFERENCE_LABEL_PATTERN = re.compile(r"<(?:Picture|Video|Audio)\s+\d+>")
 
 
@@ -196,7 +216,7 @@ class VideoPromptGenerator:
                 authoritative_plan=plan.model_dump_json(indent=2),
                 references=references,
             )
-            value = getattr(output, "judge", output)
+            value = _normalize_judge_payload(getattr(output, "judge", output))
             try:
                 return PromptJudgeResult.model_validate(value)
             except Exception:

@@ -193,6 +193,52 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertIn("section formatting needs repair", result.issues)
         self.assertEqual([], result.field_issues)
 
+    def test_judge_normalizes_common_status_words_and_observation_only_results(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        responses = iter((
+            {"verdict": "pass", "issues": []},
+            {"verdict": "fail", "issues": ["bad shape"]},
+            {"observations": {"issues": []}, "issues": []},
+        ))
+        generator.judge = lambda **_payload: SimpleNamespace(judge=next(responses))
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+        request = {"mode": PromptMode.R2V.value, "user_prompt": "prompt"}
+
+        self.assertEqual("good", generator.judge_compiled_prompt(
+            request=request, plan=plan, references=[], final_prompt="prompt",
+        ).verdict)
+        self.assertEqual("bad", generator.judge_compiled_prompt(
+            request=request, plan=plan, references=[], final_prompt="prompt",
+        ).verdict)
+        self.assertEqual("good", generator.judge_compiled_prompt(
+            request=request, plan=plan, references=[], final_prompt="prompt",
+        ).verdict)
+
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
         from types import SimpleNamespace
 
