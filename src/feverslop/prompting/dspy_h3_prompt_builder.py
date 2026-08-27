@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -518,7 +519,7 @@ class DspyH3PromptBuilder:
                             "shot_windows": {key: list(value) for key, value in windows.items()},
                             "references": references_by_shot,
                         },
-                        "continuation_intents": [intent.model_dump() for intent in sections.continuation_intents],
+                        "continuation_intents": [asdict(intent) for intent in sections.continuation_intents],
                         "prompt_provenance": {
                             "compiler": "deterministic_h3_compiler",
                             "compiler_version": 3,
@@ -533,7 +534,12 @@ class DspyH3PromptBuilder:
                         judge_attempts.append(judged.model_dump())
                         result["prompt_judge"] = judged.model_dump()
                         result["prompt_judge_attempts"] = list(judge_attempts)
-                    if judged is None or judged.verdict == "good" or attempt == max_attempts - 1:
+                    if (
+                        judged is None
+                        or judged.verdict == "good"
+                        or attempt == max_attempts - 1
+                        or any(issue.startswith("judge unavailable:") for issue in judged.issues)
+                    ):
                         break
                     feedback = "; ".join(judged.issues) or "the prompt did not satisfy the guide"
                     self._report_judge_retry(attempt + 2, max_attempts, feedback)

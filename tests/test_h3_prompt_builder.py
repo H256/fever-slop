@@ -288,6 +288,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         from types import SimpleNamespace
 
         from feverslop.prompting.dspy_h3_models import (
+            ContinuationIntent,
             MusicIntent,
             PlannedShot,
             PromptJudgeResult,
@@ -298,6 +299,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         plan = ResolvedPromptPlan(
             creative_intent="CREATIVE INTENT",
             shots=[PlannedShot(shot_number=1, description="CREATIVE DESCRIPTION")],
+            continuation_intents=[ContinuationIntent("action-1", True, "crosses a cut")],
             overall_soundscape="CREATIVE SOUNDSCAPE",
             music_intent=MusicIntent.NONE,
         )
@@ -330,6 +332,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertIn("Do not add reference labels or timestamps", requests[1]["notes"])
         self.assertIn("<d>[Language] ...</d>", requests[1]["notes"])
         self.assertEqual("good", result["prompt_judge"]["verdict"])
+        self.assertEqual("action-1", result["continuation_intents"][0]["action_id"])
 
     def test_compatibility_export_delegates_to_canonical_generator(self):
         from unittest.mock import patch

@@ -189,6 +189,7 @@ class VideoPromptGenerator:
         self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
         self.warning_callback = warning_callback
         self.lm = self.dspy_runtime.make_lm(llm)
+        self.judge_lm = self.dspy_runtime.make_lm(llm, max_tokens=512)
 
     def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
         self.warning_callback = callback
@@ -273,7 +274,7 @@ class VideoPromptGenerator:
             ],
             "strict_fidelity": bool(request.get("strict_fidelity", True)),
         })
-        with self.dspy_runtime.context(lm=self.lm):
+        with self.dspy_runtime.context(lm=getattr(self, "judge_lm", self.lm)):
             return self._judge_final_prompt(
                 request_model,
                 plan,
