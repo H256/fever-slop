@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from feverslop.domain.visual_consistency import (
     ReferenceAnchor,
@@ -60,6 +61,53 @@ class _Extractor:
 
 
 class ContinuityHandoffTests(unittest.TestCase):
+    def test_explicit_technical_continuation_allows_nonsemantic_scene_numbers(self):
+        from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            clip = project / "scene_7001001.mp4"
+            clip.write_bytes(b"clip")
+            extractor = _Extractor()
+            extractor.project_dir = project
+            result = ContinuityHandoffUseCase(extractor).execute(
+                _contract(7_001_001),
+                _contract(7_001_002, transition="continuous"),
+                clip,
+                project / "handoff.png",
+                {
+                    "scene": 7_001_002,
+                    "continuation_predecessor_id": "orbit-0001",
+                },
+            )
+
+        self.assertEqual(7_001_001, result["keyframes"]["startframe_source_scene"])
+        self.assertEqual(1, len(extractor.calls))
+
+    def test_handoff_predecessors_follow_technical_segment_ids(self):
+        from feverslop.composition.stage_runners import _music_handoff_predecessors
+
+        scenes = [
+            SimpleNamespace(to_dict=lambda: {
+                "scene": 7_001_001,
+                "technical_segment_id": "orbit-0001",
+                "visual_consistency": _contract(7_001_001).to_dict(),
+            }),
+            SimpleNamespace(to_dict=lambda: {
+                "scene": 7_001_002,
+                "technical_segment_id": "orbit-0002",
+                "continuation_predecessor_id": "orbit-0001",
+                "visual_consistency": _contract(7_001_002, transition="continuous").to_dict(),
+            }),
+        ]
+
+        predecessors = _music_handoff_predecessors(
+            scenes,
+            profile=SimpleNamespace(supports_start_frame=True),
+        )
+
+        self.assertEqual({7_001_002: 7_001_001}, predecessors)
+
     def test_rejects_out_of_order_duplicate_and_gapped_scene_sequences(self):
         from feverslop.domain.visual_consistency import validate_scene_sequence
 

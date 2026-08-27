@@ -131,7 +131,12 @@ class RenderPlan:
     ) -> RenderPlan:
         scenes = self.scenes
         if scene_numbers is not None:
-            scenes = tuple(scene for scene in scenes if scene.scene_number in scene_numbers)
+            scenes = tuple(
+                scene
+                for scene in scenes
+                if scene.scene_number in scene_numbers
+                or int(scene.data.get("semantic_scene", scene.scene_number)) in scene_numbers
+            )
         if limit is not None:
             scenes = scenes[:limit]
         return RenderPlan(scenes)

@@ -166,8 +166,10 @@ class BuildRenderPlanTests(unittest.TestCase):
                 ),
             )
 
-            scene = json.loads(output_path.read_text(encoding="utf-8"))[0]
-            group = scene["metadata"]["continuation_groups"][0]
+            scenes = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual([1_001_001, 1_001_002, 1_001_003], [scene["scene"] for scene in scenes])
+            self.assertEqual(["orbit-0001", "orbit-0002", "orbit-0003"], [scene["segment_id"] for scene in scenes])
+            group = scenes[0]["metadata"]["continuation_groups"][0]
             segments = group["segments"]
             self.assertEqual("scene-001:orbit", group["group_id"])
             self.assertEqual(["orbit-0001", "orbit-0002", "orbit-0003"], [s["segment_id"] for s in segments])

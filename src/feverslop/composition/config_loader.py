@@ -191,7 +191,12 @@ def count_render_plan_items(render_plan_path: str | Path, scene_numbers: set[int
     render_plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
     _validate_render_plan_entries(render_plan)
     if scene_numbers is not None:
-        render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
+        render_plan = [
+            scene
+            for scene in render_plan
+            if int(scene["scene"]) in scene_numbers
+            or int(scene.get("semantic_scene", scene["scene"])) in scene_numbers
+        ]
     if limit is not None:
         render_plan = render_plan[:limit]
     return len(render_plan)
