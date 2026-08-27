@@ -144,7 +144,10 @@ class RenderPlan:
             while changed:
                 changed = False
                 for scene in scenes:
-                    if scene.scene_number not in selected:
+                    if (
+                        scene.scene_number not in selected
+                        or not scene.data.get("technical_segment_id")
+                    ):
                         continue
                     predecessor_id = str(
                         scene.data.get("continuation_predecessor_id") or "",
