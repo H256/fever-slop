@@ -483,61 +483,69 @@ class DspyH3PromptBuilder:
         try:
             generated = self.generator(request)
             if hasattr(generated, "plan"):
-                sections = H3PromptSections.from_plan(generated.plan)
-                plan = sections.to_plan()
-                shots = creative_shots_from_plan(plan)
-                windows = {}
-                references_by_shot = {}
-                for shot, creative in zip(plan.shots, shots, strict=True):
-                    start = float(shot.start_seconds or 0.0)
-                    end = float(shot.end_seconds or segment.get("duration") or segment.get("duration_seconds") or (start + 1.0))
-                    if end <= start:
-                        end = start + 1.0
-                    windows[creative.shot_id] = (start, end)
-                    references_by_shot[creative.shot_id] = list(shot.reference_labels)
-                prompt = DeterministicH3Compiler().compile(
-                    mode=mode,
-                    plan=plan,
-                    facts=facts,
-                    shots=shots,
-                    shot_windows=windows,
-                    references=references_by_shot,
-                    prepared_reference_labels=[reference["label"] for reference in references],
-                    reference_metadata=references,
-                    duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
-                )
-                shape_issues = validate_h3_prompt_shape(prompt, mode=mode)
-                if shape_issues:
-                    raise PromptContractError(shape_issues)
-                result = {
-                    "prompt": prompt,
-                    "references": references,
-                    "sections": {
-                        "h3_sections": sections.model_dump(),
-                        "facts": facts.to_dict(),
-                        "shots": [shot.model_dump() for shot in shots],
-                        "shot_windows": {key: list(value) for key, value in windows.items()},
-                        "references": references_by_shot,
-                    },
-                    "continuation_intents": [
-                        intent.model_dump() for intent in sections.continuation_intents
-                    ],
-                    "prompt_provenance": {
-                        "compiler": "deterministic_h3_compiler",
-                        "compiler_version": 3,
-                        "source": "dspy_section_plan",
-                    },
-                }
-                judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
-                if callable(judge_compiled):
-                    judged = judge_compiled(
-                        request=request,
-                        plan=plan,
-                        references=references,
-                        final_prompt=prompt,
+                max_attempts = max(1, int(getattr(self.generator, "judge_attempts", 1)))
+                judge_attempts = []
+                for attempt in range(max_attempts):
+                    sections = H3PromptSections.from_plan(generated.plan)
+                    plan = sections.to_plan()
+                    shots = creative_shots_from_plan(plan)
+                    windows = {}
+                    references_by_shot = {}
+                    for shot, creative in zip(plan.shots, shots, strict=True):
+                        start = float(shot.start_seconds or 0.0)
+                        end = float(shot.end_seconds or segment.get("duration") or segment.get("duration_seconds") or (start + 1.0))
+                        if end <= start:
+                            end = start + 1.0
+                        windows[creative.shot_id] = (start, end)
+                        references_by_shot[creative.shot_id] = list(shot.reference_labels)
+                    prompt = DeterministicH3Compiler().compile(
+                        mode=mode, plan=plan, facts=facts, shots=shots,
+                        shot_windows=windows, references=references_by_shot,
+                        prepared_reference_labels=[reference["label"] for reference in references],
+                        reference_metadata=references,
+                        duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
                     )
+                    shape_issues = validate_h3_prompt_shape(prompt, mode=mode)
+                    if shape_issues:
+                        raise PromptContractError(shape_issues)
+                    result = {
+                        "prompt": prompt,
+                        "references": references,
+                        "sections": {
+                            "h3_sections": sections.model_dump(),
+                            "facts": facts.to_dict(),
+                            "shots": [shot.model_dump() for shot in shots],
+                            "shot_windows": {key: list(value) for key, value in windows.items()},
+                            "references": references_by_shot,
+                        },
+                        "continuation_intents": [intent.model_dump() for intent in sections.continuation_intents],
+                        "prompt_provenance": {
+                            "compiler": "deterministic_h3_compiler",
+                            "compiler_version": 3,
+                            "source": "dspy_section_plan",
+                        },
+                    }
+                    judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
+                    judged = judge_compiled(
+                        request=request, plan=plan, references=references, final_prompt=prompt,
+                    ) if callable(judge_compiled) else None
                     if judged is not None:
+                        judge_attempts.append(judged.model_dump())
                         result["prompt_judge"] = judged.model_dump()
+                        result["prompt_judge_attempts"] = list(judge_attempts)
+                    if judged is None or judged.verdict == "good" or attempt == max_attempts - 1:
+                        break
+                    feedback = "; ".join(judged.issues) or "the prompt did not satisfy the guide"
+                    self._report_judge_retry(attempt + 2, max_attempts, feedback)
+                    request = {
+                        **request,
+                        "notes": (
+                            f"{request.get('notes', '')}\n\n"
+                            "Regenerate the structured fields and fix these judge findings: "
+                            f"{feedback}"
+                        ).strip(),
+                    }
+                    generated = self.generator(request)
                 return result
             prompt = getattr(generated, "rendered_prompt", None)
             if not prompt and isinstance(generated, dict):
@@ -579,6 +587,14 @@ class DspyH3PromptBuilder:
         if judge_attempts:
             result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
+
+    def _report_judge_retry(self, attempt: int, total: int, feedback: str) -> None:
+        warning = getattr(self.generator, "_warning", None)
+        if callable(warning):
+            warning(
+                f"H3 compiled prompt judge retry {attempt}/{total}: {feedback}",
+                title="H3 compiled prompt judge retry",
+            )
 
     @staticmethod
     def _build_structured_prompt(

@@ -284,6 +284,51 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertIn("CREATIVE DESCRIPTION", result["prompt"])
         self.assertEqual("good", result["prompt_judge"]["verdict"])
 
+    def test_typed_plan_recompiles_after_bad_judge_with_feedback(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(shot_number=1, description="CREATIVE DESCRIPTION")],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+        judges = iter((
+            PromptJudgeResult(verdict="bad", issues=["use the required guide label"]),
+            PromptJudgeResult(verdict="good"),
+        ))
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return next(judges)
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertEqual(2, len(requests))
+        self.assertIn("use the required guide label", requests[1]["notes"])
+        self.assertEqual("good", result["prompt_judge"]["verdict"])
+
     def test_compatibility_export_delegates_to_canonical_generator(self):
         from unittest.mock import patch
 
