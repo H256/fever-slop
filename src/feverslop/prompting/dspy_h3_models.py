@@ -243,9 +243,9 @@ class SubjectDefinition(BaseModel):
     source_references: list[str] = Field(default_factory=list)
 
     def render(self) -> str:
-        text = f"{self.label} ({self.name}): {self.description}"
+        text = f"{self.label} is {self.name}, {self.description}"
         if self.source_references:
-            text += " Source references: " + ", ".join(self.source_references) + "."
+            text += " in " + ", ".join(self.source_references) + "."
         return text
 
 

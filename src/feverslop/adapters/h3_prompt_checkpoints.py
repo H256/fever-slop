@@ -133,10 +133,20 @@ class H3PromptCheckpointStore:
             "bad_exhausted": "BAD",
             "unjudged": "UNJUDGED",
         }[checkpoint.status]
-        self.reporter.message(
+        message = (
             f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
-            f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}",
+            f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}"
         )
+        if checkpoint.status == "bad_exhausted":
+            judge = checkpoint.generated.get("prompt_judge")
+            issues = judge.get("issues") if isinstance(judge, dict) else None
+            if issues:
+                summary = "; ".join(str(issue).strip() for issue in issues if str(issue).strip())
+                if summary:
+                    message += f"; issues: {summary[:500]}"
+                    if len(summary) > 500:
+                        message += "..."
+        self.reporter.message(message)
 
     def _sync_canonical(self, checkpoint: H3PromptCheckpoint) -> None:
         store = CanonicalPlanStore(self.project_dir)

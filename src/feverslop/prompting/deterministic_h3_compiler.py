@@ -170,7 +170,11 @@ class DeterministicH3Compiler:
             detailed_parts.extend(
                 f"[Shot {index}] {shot.description}"
                 + _shot_reference_details(shot, plan, references)
-                + (f" Camera movement: {_sentence(shot.camera_behavior)}" if shot.camera_behavior else "")
+                + (
+                    f" Camera movement: {_sentence(shot.camera_behavior)}"
+                    if shot.camera_behavior and not _description_covers_camera(shot)
+                    else ""
+                )
                 for index, shot in enumerate(plan.shots, start=1)
             )
             detailed = "\n".join(detailed_parts)
@@ -234,14 +238,48 @@ def _shot_reference_details(
     subject_labels = [
         subject.label
         for subject in plan.subjects
-        if set(subject.source_references).intersection(shot.reference_labels)
+        if (
+            set(subject.source_references).intersection(shot.reference_labels)
+            or subject.name in getattr(shot, "involved_subjects", ())
+            or subject.label in getattr(shot, "involved_subjects", ())
+        )
+    ]
+    subject_sources = [
+        source
+        for subject in plan.subjects
+        if subject.label in subject_labels
+        for source in subject.source_references
     ]
     labels = list(dict.fromkeys([
         *subject_labels,
         *shot.reference_labels,
         *(references or {}).get(f"shot-{int(shot.shot_number):04d}", ()),
+        *[
+            usage.reference_label
+            for usage in plan.reference_usage
+            if usage.reference_label.lower().startswith("<audio ")
+        ],
+    ]))
+    # Picture sources that only define a subject belong in that subject's
+    # definition, not as standalone shot anchors. Concrete frame anchors stay.
+    frame_labels = set((references or {}).get(f"shot-{int(shot.shot_number):04d}", ()))
+    labels = list(dict.fromkeys([
+        *subject_labels,
+        *[label for label in labels if label not in subject_sources or label in frame_labels],
     ]))
     return (" References in this shot: " + ", ".join(labels) + ".") if labels else ""
+
+
+def _description_covers_camera(shot: Any) -> bool:
+    description = str(shot.description or "").lower()
+    camera = str(shot.camera_behavior or "").lower()
+    if "camera" not in description or not camera:
+        return False
+    words = {
+        word for word in camera.replace(",", " ").split()
+        if len(word) >= 5 and word not in {"camera", "movement", "slowly", "tracking"}
+    }
+    return len(words.intersection(description.replace(",", " ").split())) >= 1
 
 
 def _sentence(value: str) -> str:

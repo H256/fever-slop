@@ -155,7 +155,8 @@ class DeterministicH3CompilerTests(unittest.TestCase):
                 camera_behavior="slow panoramic sweep with small amplitude",
                 start_seconds=0,
                 end_seconds=4,
-                reference_labels=["<Picture 1>", "<Audio 1>"],
+                reference_labels=[],
+                involved_subjects=["Elara"],
             )],
             overall_soundscape="Neon streets hum softly.",
             music_intent=MusicIntent.NONE,
@@ -167,7 +168,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             facts=self.facts,
             shots=self.shots[:1],
             shot_windows={"shot-02": (0.0, 4.0)},
-            references={"shot-0001": ["<Picture 1>", "<Audio 1>"]},
+            references={"shot-0001": []},
             prepared_reference_labels=["<Picture 1>", "<Audio 1>"],
             reference_metadata=[
                 {"label": "<Picture 1>", "kind": "picture", "copy_mode": "reference"},
@@ -181,7 +182,8 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertLess(detailed.index("cinematic visual style"), detailed.index("[Shot 1]"))
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
-        self.assertIn("References in this shot: <Subject 1>, <Picture 1>, <Audio 1>.", detailed)
+        self.assertIn("References in this shot: <Subject 1>, <Audio 1>.", detailed)
+        self.assertNotIn("<Picture 1>.", detailed)
         self.assertNotIn("<Picture 1>: fully_preserved", prompt)
         self.assertIn("<Audio 1>: fully_copy", prompt)
         self.assertNotIn("..", detailed)
