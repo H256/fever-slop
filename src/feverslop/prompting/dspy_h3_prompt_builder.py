@@ -12,8 +12,12 @@ from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
 from feverslop.domain.locked_scene_facts import LockedSceneFacts, locked_scene_facts_from_scene
 from feverslop.prompting.dspy_h3_models import AudioSubjectBinding, H3PromptSections, MusicIntent
-from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
-from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
+from feverslop.prompting.deterministic_h3_compiler import (
+    H3_COMPILER_NAME,
+    H3_COMPILER_VERSION,
+    DeterministicH3Compiler,
+    creative_shots_from_plan,
+)
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_h3_prompt_shape
 from feverslop.prompting.subject_directive_planning import (
@@ -374,6 +378,8 @@ class DspyH3PromptBuilder:
     def checkpoint_revision(self) -> dict[str, Any]:
         revision: dict[str, Any] = {
             "contract": 3,
+            "compiler": H3_COMPILER_NAME,
+            "compiler_version": H3_COMPILER_VERSION,
             "generator": f"{type(self.generator).__module__}.{type(self.generator).__qualname__}",
             "judge_attempts": int(getattr(self.generator, "judge_attempts", 0)),
         }
@@ -401,6 +407,8 @@ class DspyH3PromptBuilder:
             return self._build_structured_prompt(
                 mode=mode,
                 segment=segment,
+                concept=concept,
+                global_context=global_context,
                 sections=structured_sections,
             )
         references, images = _scene_references(
@@ -523,8 +531,8 @@ class DspyH3PromptBuilder:
                         },
                         "continuation_intents": [asdict(intent) for intent in sections.continuation_intents],
                         "prompt_provenance": {
-                            "compiler": "deterministic_h3_compiler",
-                            "compiler_version": 7,
+                            "compiler": H3_COMPILER_NAME,
+                            "compiler_version": H3_COMPILER_VERSION,
                             "source": "dspy_section_plan",
                         },
                     }
@@ -607,11 +615,13 @@ class DspyH3PromptBuilder:
                 title="H3 compiled prompt judge retry",
             )
 
-    @staticmethod
     def _build_structured_prompt(
+        self,
         *,
         mode: str,
         segment: dict[str, Any],
+        concept: str,
+        global_context: dict[str, Any],
         sections: dict[str, Any],
     ) -> dict[str, Any]:
         """Compile planner-owned sections without invoking the legacy prose generator.
@@ -626,6 +636,88 @@ class DspyH3PromptBuilder:
             if isinstance(raw_facts, LockedSceneFacts)
             else LockedSceneFacts.from_dict(raw_facts)
         )
+        raw_h3_sections = sections.get("h3_sections")
+        if raw_h3_sections is not None:
+            h3_sections = H3PromptSections.model_validate(raw_h3_sections)
+            plan = h3_sections.to_plan()
+            shots = creative_shots_from_plan(plan)
+            stored_windows = sections.get("shot_windows") or {}
+            windows: dict[str, tuple[float, float]] = {}
+            references_by_shot: dict[str, list[str]] = {}
+            stored_references = sections.get("references") or {}
+            duration = float(
+                segment.get("duration") or segment.get("duration_seconds") or 0
+            ) or None
+            for planned, shot in zip(plan.shots, shots, strict=True):
+                raw_window = stored_windows.get(shot.shot_id)
+                start = float(
+                    raw_window[0]
+                    if isinstance(raw_window, (list, tuple)) and len(raw_window) == 2
+                    else planned.start_seconds or 0.0
+                )
+                end = float(
+                    raw_window[1]
+                    if isinstance(raw_window, (list, tuple)) and len(raw_window) == 2
+                    else planned.end_seconds or duration or (start + 1.0)
+                )
+                if end <= start:
+                    end = start + 1.0
+                windows[shot.shot_id] = (start, end)
+                references_by_shot[shot.shot_id] = list(
+                    stored_references.get(shot.shot_id) or planned.reference_labels
+                )
+            resolved_references = list(sections.get("resolved_references") or [])
+            prompt = DeterministicH3Compiler().compile(
+                mode=mode,
+                plan=plan,
+                facts=facts,
+                shots=shots,
+                shot_windows=windows,
+                references=references_by_shot,
+                prepared_reference_labels=[
+                    str(reference["label"])
+                    for reference in resolved_references
+                    if isinstance(reference, dict) and reference.get("label")
+                ],
+                reference_metadata=resolved_references,
+                duration_seconds=duration,
+                dialogue_language=str(global_context.get("language") or "English"),
+            )
+            shape_issues = validate_h3_prompt_shape(prompt, mode=mode)
+            if shape_issues:
+                raise PromptContractError(shape_issues)
+            result = {
+                "prompt": prompt,
+                "references": resolved_references,
+                "segment_id": segment.get("segment_id"),
+                "sections": sections,
+                "continuation_intents": [
+                    asdict(intent) for intent in h3_sections.continuation_intents
+                ],
+                "prompt_provenance": {
+                    "compiler": H3_COMPILER_NAME,
+                    "compiler_version": H3_COMPILER_VERSION,
+                    "source": "resumed_dspy_section_plan",
+                },
+            }
+            judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
+            if callable(judge_compiled):
+                judged = judge_compiled(
+                    request={
+                        "mode": mode,
+                        "user_prompt": str(concept),
+                        "duration_seconds": duration,
+                        "strict_fidelity": True,
+                    },
+                    plan=plan,
+                    references=resolved_references,
+                    final_prompt=prompt,
+                )
+                if judged is not None:
+                    result["prompt_judge"] = judged.model_dump()
+                    result["prompt_judge_attempts"] = [judged.model_dump()]
+            return result
+
         from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 
         shots = [
@@ -648,8 +740,8 @@ class DspyH3PromptBuilder:
             "sections": sections,
             "continuation_intents": list(sections.get("continuation_intents") or []),
             "prompt_provenance": {
-                "compiler": "deterministic_h3_compiler",
-                "compiler_version": 1,
+                "compiler": H3_COMPILER_NAME,
+                "compiler_version": H3_COMPILER_VERSION,
                 "source": "structured_sections",
             },
         }
@@ -731,7 +823,10 @@ class DspyH3PromptBuilder:
                         video_type=video_type,
                         audio_paths=audio_paths,
                         reference_root=reference_root,
-                        structured_sections=stale_checkpoint.generated["sections"],
+                        structured_sections={
+                            **stale_checkpoint.generated["sections"],
+                            "resolved_references": stale_checkpoint.generated.get("references") or [],
+                        },
                     )
                     if checkpoint_store is not None and checkpoint_input is not None:
                         checkpoint_store.save(checkpoint_input, result)

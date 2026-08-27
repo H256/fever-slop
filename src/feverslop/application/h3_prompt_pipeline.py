@@ -203,6 +203,20 @@ class H3PromptPipeline:
             else None
         )
         generator_revision = _generator_revision(app_config, builder)
+        compiler_name = generator_revision.get("compiler")
+        compiler_version = generator_revision.get("compiler_version")
+        if (
+            reporter is not None
+            and model_spec is not None
+            and model_spec.is_minimax_h3
+            and compiler_name
+            and compiler_version is not None
+        ):
+            reporter.message(
+                f"[cyan]H3 prompt compiler: {compiler_name} v{compiler_version}. "
+                "Matching checkpoints are reused; stale compiler checkpoints are "
+                "invalidated and saved structured plans are recompiled.[/cyan]",
+            )
         selected_scene_numbers = (
             context["selected_scene_numbers"]
             if "selected_scene_numbers" in context.keys()
@@ -237,10 +251,14 @@ class H3PromptPipeline:
             audio_paths=audio_paths,
             reference_root=getattr(config, "project_dir", None),
             progress_callback=lambda current, total: progress.update(current),
-            status_callback=lambda current, total, status: (
-                reporter.message(
-                    f"[cyan]H3 prompts: {current}/{total} scenes - "
-                    f"{'start' if status == 'started' else 'reused' if status == 'reused' else 'completed'}[/cyan]",
+            status_callback=(
+                lambda current, total, status: reporter.message(
+                    _h3_prompt_status_message(
+                        current,
+                        total,
+                        status,
+                        compiler_version=compiler_version,
+                    ),
                 )
                 if reporter is not None
                 else None
@@ -291,6 +309,27 @@ class H3PromptPipeline:
             else:
                 reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
         return context
+
+
+def _h3_prompt_status_message(
+    current: int,
+    total: int,
+    status: str,
+    *,
+    compiler_version: Any = None,
+) -> str:
+    if status == "started":
+        label = "start"
+    elif status == "reused":
+        label = "reused (checkpoint matches current inputs and compiler)"
+    elif status == "recompiled":
+        version_suffix = f"; using v{compiler_version}" if compiler_version is not None else ""
+        label = f"recompiled (compiler checkpoint invalidated{version_suffix})"
+    elif status == "completed":
+        label = "completed"
+    else:
+        label = status
+    return f"[cyan]H3 prompts: {current}/{total} scenes - {label}[/cyan]"
 
 
 def _generator_revision(app_config: Any, builder: Any) -> dict[str, Any]:

@@ -223,6 +223,61 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         self.assertTrue(captured["reuse_checkpoints"])
 
+    def test_minimax_reports_compiler_revision_and_recompile_status(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        messages = []
+
+        class Builder:
+            def checkpoint_revision(self):
+                return {
+                    "compiler": "deterministic_h3_compiler",
+                    "compiler_version": 7,
+                }
+
+            def build_all_h3_prompts(self, **kwargs):
+                kwargs["status_callback"](1, 1, "recompiled")
+
+        class ArtifactStore:
+            def read_json(self, _path):
+                return []
+
+        context = GenerateRenderPlanContext(
+            app_config=SimpleNamespace(llm=SimpleNamespace(prompt_judge_attempts=3)),
+            config=SimpleNamespace(
+                video_pipeline="minimax-h3-r2v",
+                minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+                project_dir=Path("project"),
+            ),
+            stage1_segments=[{"scene": 1, "segment_id": "s1"}],
+            concept_prompts={},
+            scene_details={},
+            global_context={},
+            h3_prompts_json=Path("h3.json"),
+            artifact_store=ArtifactStore(),
+            log_step=lambda _: None,
+            log_file=lambda *_: None,
+            reporter=SimpleNamespace(
+                message=messages.append,
+                warning=lambda *_args, **_kwargs: None,
+            ),
+        )
+
+        H3PromptPipeline(
+            llm_factory=lambda _: None,
+            h3_prompt_builder_factory=lambda _: Builder(),
+            dspy_prompt_builder_factory=lambda _: Builder(),
+        ).run(context)
+
+        self.assertTrue(any(
+            "H3 prompt compiler: deterministic_h3_compiler v7" in message
+            for message in messages
+        ))
+        self.assertTrue(any(
+            "recompiled (compiler checkpoint invalidated; using v7)" in message
+            for message in messages
+        ))
+
     def test_run_accepts_typed_context_when_relay_path_is_optional(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 

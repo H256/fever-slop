@@ -11,6 +11,10 @@ from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
 from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
 
 
+H3_COMPILER_NAME = "deterministic_h3_compiler"
+H3_COMPILER_VERSION = 7
+
+
 class DeterministicH3Compiler:
     """Compile structured facts and creative fields without model or I/O side effects."""
 
