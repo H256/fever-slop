@@ -182,11 +182,56 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertLess(detailed.index("cinematic visual style"), detailed.index("[Shot 1]"))
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
-        self.assertIn("References in this shot: <Subject 1>, <Audio 1>.", detailed)
+        self.assertIn("<Subject 1> are visible in the shot.", detailed)
+        self.assertIn("<Audio 1> active in the soundtrack.", detailed)
         self.assertNotIn("<Picture 1>.", detailed)
         self.assertNotIn("<Picture 1>: fully_preserved", prompt)
         self.assertIn("<Audio 1>: fully_copy", prompt)
         self.assertNotIn("..", detailed)
+
+    def test_r2v_compiler_places_labels_in_natural_prose_and_defines_audio(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="a singer in a luminous city",
+            subjects=[
+                SubjectDefinition(
+                    label="<Subject 1>", name="Lead Singer", description="a man with sharp features",
+                    source_references=["<Picture 1>"],
+                ),
+                SubjectDefinition(
+                    label="<Subject 2>", name="Augmented Metropolis", description="a glowing city",
+                    source_references=["<Picture 2>"],
+                ),
+            ],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 1>", purpose="audio reuse", details="the complete soundtrack is copied",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The camera slowly tracks backward as the singer raises his hands.",
+                camera_behavior="slowly tracking backward",
+                start_seconds=0,
+                end_seconds=4,
+                involved_subjects=["Lead Singer", "Augmented Metropolis"],
+            )],
+            overall_soundscape="A clean electronic hum.",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 4.0)},
+            reference_metadata=[
+                {"label": "<Picture 1>", "kind": "picture", "role": "subject"},
+                {"label": "<Picture 2>", "kind": "picture", "role": "environment"},
+                {"label": "<Audio 1>", "kind": "audio", "copy_mode": "fully_copy"},
+            ],
+        )
+        self.assertIn("<Subject 1> is a man with sharp features in <Picture 1>.", prompt)
+        self.assertIn("<Subject 2> is a glowing city in <Picture 2>.", prompt)
+        self.assertIn("<Audio 1> is", prompt)
+        self.assertNotIn("References in this shot:", prompt)
+        self.assertNotIn("Camera movement:", prompt)
+        self.assertIn("<Subject 1>", prompt.split("[Shot 1]", 1)[1])
+        self.assertIn("<Subject 2>", prompt.split("[Shot 1]", 1)[1])
 
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(

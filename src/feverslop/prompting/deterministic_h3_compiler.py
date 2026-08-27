@@ -112,7 +112,10 @@ class DeterministicH3Compiler:
     ) -> str:
         """Serialize LLM-authored fields into the MiniMax guide grammar."""
         if mode is PromptMode.R2V:
-            subject_lines = [subject.render() for subject in plan.subjects]
+            subject_lines = [
+                _render_subject_definition(subject)
+                for subject in plan.subjects
+            ]
             metadata_by_label = {
                 str(reference.get("label")): reference
                 for reference in reference_metadata or ()
@@ -128,6 +131,11 @@ class DeterministicH3Compiler:
                 subject_lines.append(
                     f"{label} is a prepared reference input used by the target video."
                 )
+            for usage in plan.reference_usage:
+                if usage.reference_label.lower().startswith("<audio "):
+                    metadata = metadata_by_label.get(usage.reference_label, {})
+                    description = str(metadata.get("description") or usage.details).strip()
+                    subject_lines.append(f"{usage.reference_label} is reused in the target video; {description.rstrip('.') }.")
             frame_roles = {"first_frame", "last_frame", "keyframe", "storyboard", "composition"}
             retention_lines = [
                 f"{subject.label} (appears in [Shot {shot_number}]): fully_preserved - "
@@ -168,8 +176,7 @@ class DeterministicH3Compiler:
                 "The target video uses a cinematic visual style with deliberate visual continuity."
             ]
             detailed_parts.extend(
-                f"[Shot {index}] {shot.description}"
-                + _shot_reference_details(shot, plan, references)
+                _render_shot_with_references(index, shot, plan)
                 + (
                     f" Camera movement: {_sentence(shot.camera_behavior)}"
                     if shot.camera_behavior and not _description_covers_camera(shot)
@@ -230,11 +237,7 @@ def _subject_shot_numbers(subject: Any, plan: ResolvedPromptPlan) -> tuple[int, 
     ) or tuple(shot.shot_number for shot in plan.shots[:1])
 
 
-def _shot_reference_details(
-    shot: Any,
-    plan: ResolvedPromptPlan,
-    references: Mapping[str, Sequence[str]] | None,
-) -> str:
+def _shot_reference_labels(shot: Any, plan: ResolvedPromptPlan) -> tuple[str, ...]:
     subject_labels = [
         subject.label
         for subject in plan.subjects
@@ -244,30 +247,36 @@ def _shot_reference_details(
             or subject.label in getattr(shot, "involved_subjects", ())
         )
     ]
-    subject_sources = [
-        source
-        for subject in plan.subjects
-        if subject.label in subject_labels
-        for source in subject.source_references
-    ]
-    labels = list(dict.fromkeys([
-        *subject_labels,
-        *shot.reference_labels,
-        *(references or {}).get(f"shot-{int(shot.shot_number):04d}", ()),
-        *[
+    return tuple(dict.fromkeys(subject_labels))
+
+
+def _render_subject_definition(subject: Any) -> str:
+    description = str(subject.description).strip().rstrip(".")
+    sources = " and ".join(subject.source_references)
+    return f"{subject.label} is {description} in {sources}." if sources else f"{subject.label} is {description}."
+
+
+def _render_shot_with_references(index: int, shot: Any, plan: ResolvedPromptPlan) -> str:
+    labels = _shot_reference_labels(shot, plan)
+    description = str(shot.description)
+    for subject in plan.subjects:
+        if subject.label not in labels:
+            continue
+        for name in (subject.name, f"The {subject.name}"):
+            description = description.replace(name, subject.label)
+    missing = [label for label in labels if label not in description]
+    if missing:
+        description = f"{' and '.join(missing)} are visible in the shot. {description}"
+    if labels:
+        audio_labels = [
             usage.reference_label
             for usage in plan.reference_usage
             if usage.reference_label.lower().startswith("<audio ")
-        ],
-    ]))
-    # Picture sources that only define a subject belong in that subject's
-    # definition, not as standalone shot anchors. Concrete frame anchors stay.
-    frame_labels = set((references or {}).get(f"shot-{int(shot.shot_number):04d}", ()))
-    labels = list(dict.fromkeys([
-        *subject_labels,
-        *[label for label in labels if label not in subject_sources or label in frame_labels],
-    ]))
-    return (" References in this shot: " + ", ".join(labels) + ".") if labels else ""
+        ]
+        if audio_labels:
+            suffix = " and ".join(audio_labels)
+            description = f"{description.rstrip('.')} with {suffix} active in the soundtrack."
+    return f"[Shot {index}] {description}"
 
 
 def _description_covers_camera(shot: Any) -> bool:
