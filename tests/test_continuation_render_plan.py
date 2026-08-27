@@ -6,11 +6,26 @@ from types import SimpleNamespace
 from feverslop.application.render_video import _attach_r2v_continuation_anchor
 from feverslop.application.render_video import RenderVideoScenesRequest, RenderVideoScenesUseCase
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.domain.render_plan import RenderPlan
 from feverslop.domain.continuation_segments import split_semantic_action
 from feverslop.pipeline.continuation_render_plan import materialize_continuation_entries
 
 
 class ContinuationRenderPlanTests(unittest.TestCase):
+    def test_selecting_a_technical_successor_includes_required_predecessors(self):
+        plan = RenderPlan.from_dicts([
+            {"scene": 7_001_001, "technical_segment_id": "orbit-0001"},
+            {
+                "scene": 7_001_002,
+                "technical_segment_id": "orbit-0002",
+                "continuation_predecessor_id": "orbit-0001",
+            },
+        ])
+
+        selected = plan.select(scene_numbers={7_001_002})
+
+        self.assertEqual([7_001_001, 7_001_002], [scene.scene_number for scene in selected.scenes])
+
     def test_production_r2v_use_case_renders_and_anchors_complete_technical_chain(self):
         class FakePostprocessor:
             last_frame_index = 3
@@ -83,6 +98,74 @@ class ContinuationRenderPlanTests(unittest.TestCase):
         self.assertEqual(
             "render/scene_7001001/final.mp4",
             backend.requests[1].scene["keyframes"]["boundary_frame_manifest"]["source_clip_path"],
+        )
+
+    def test_forced_rerender_reattaches_current_persisted_anchor(self):
+        class FakePostprocessor:
+            last_frame_index = 3
+
+            @staticmethod
+            def extract_last_frame(_source, destination):
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(b"boundary")
+                return destination
+
+        class FakeBackend:
+            pipeline_name = "minimax-h3-r2v"
+
+            def __init__(self, output_dir):
+                self.output_dir = output_dir
+                self.postprocessor = FakePostprocessor()
+                self.project_dir = output_dir.parent
+                self.requests = []
+
+            def render_video(self, request):
+                self.requests.append(request)
+                output = self.output_dir / f"scene_{request.scene_number:04}" / "final.mp4"
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"video")
+                return output
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan_path = root / "render_plan.json"
+            plan_path.write_text(
+                __import__("json").dumps([
+                    {
+                        "scene": 7_001_001,
+                        "semantic_scene": 7,
+                        "technical_segment_id": "orbit-0001",
+                    },
+                    {
+                        "scene": 7_001_002,
+                        "semantic_scene": 7,
+                        "technical_segment_id": "orbit-0002",
+                        "continuation_predecessor_id": "orbit-0001",
+                    },
+                ]),
+                encoding="utf-8",
+            )
+            backend = FakeBackend(root / "render")
+            request = RenderVideoScenesRequest(
+                render_plan_path=plan_path,
+                workflow_path=root / "workflow.json",
+                audio_file=root / "song.mp3",
+                storyboard_dir=root / "storyboard",
+                output_dir=backend.output_dir,
+                scene_numbers={7},
+                skip_existing=False,
+            )
+            use_case = RenderVideoScenesUseCase(backend, JsonArtifactStore())
+            use_case.execute(request)
+            backend.requests.clear()
+
+            use_case.execute(request)
+
+        self.assertEqual(2, len(backend.requests))
+        self.assertIn("boundary_frame_manifest", backend.requests[1].scene["keyframes"])
+        self.assertEqual(
+            "last_frame_from_previous",
+            backend.requests[1].scene["keyframes"]["startframe_mode"],
         )
 
     def test_r2v_anchor_materialization_persists_verified_boundary(self):

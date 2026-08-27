@@ -20,6 +20,7 @@ from feverslop.ports.rendering import (
 )
 from feverslop.ports.reporting import Reporter
 from feverslop.utils.io import file_is_valid
+from feverslop.utils.io import atomic_write_json, read_json_object
 
 
 @dataclass(frozen=True)
@@ -81,23 +82,39 @@ class RenderVideoScenesUseCase:
             predecessor_id = str(
                 scene_payload.get("continuation_predecessor_id") or "",
             ).strip()
-            if (
-                predecessor_id
-                and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v"
-            ):
+            predecessor_clip: Path | None = None
+            boundary_is_current = False
+            if predecessor_id and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v":
                 predecessor_clip = rendered_by_segment.get(predecessor_id)
                 if predecessor_clip is None or not predecessor_clip.is_file():
                     raise ValueError(
                         f"Continuation segment {technical_segment_id or scene.scene_number} "
                         f"requires rendered predecessor {predecessor_id}",
                     )
-                scene_payload = _attach_r2v_continuation_anchor(
-                    scene_payload,
-                    predecessor_id=predecessor_id,
+                boundary_is_current = _continuation_boundary_is_current(
+                    scene_number=scene.scene_number,
                     predecessor_clip=predecessor_clip,
                     output_dir=request.output_dir,
                     backend=self.backend,
                 )
+            if predecessor_id and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v":
+                assert predecessor_clip is not None
+                if boundary_is_current:
+                    scene_payload = _restore_r2v_continuation_anchor(
+                        scene_payload,
+                        predecessor_id=predecessor_id,
+                        scene_number=scene.scene_number,
+                        output_dir=request.output_dir,
+                        backend=self.backend,
+                    )
+                else:
+                    scene_payload = _attach_r2v_continuation_anchor(
+                        scene_payload,
+                        predecessor_id=predecessor_id,
+                        predecessor_clip=predecessor_clip,
+                        output_dir=request.output_dir,
+                        backend=self.backend,
+                    )
                 scene = type(scene).from_dict(scene_payload)
             video_request = VideoRenderRequest(
                 scene=scene_payload,
@@ -160,6 +177,17 @@ class RenderVideoScenesUseCase:
                     self.backend.randomize_seed = original_randomize_seed
             else:
                 output_path = self.backend.render_video(video_request)
+            if predecessor_id and not boundary_is_current:
+                boundary_manifest = (scene_payload.get("keyframes") or {}).get(
+                    "boundary_frame_manifest"
+                )
+                if isinstance(boundary_manifest, dict):
+                    atomic_write_json(
+                        request.output_dir
+                        / f"scene_{scene.scene_number:04}"
+                        / "continuation_boundary.json",
+                        boundary_manifest,
+                    )
             rendered.append(output_path)
             if technical_segment_id:
                 rendered_by_segment[technical_segment_id] = output_path
@@ -236,3 +264,62 @@ def _stored_continuation_path(path: Path, project_dir: Path | None) -> str:
     if project_dir is not None and path.is_relative_to(project_dir):
         return path.relative_to(project_dir).as_posix()
     return path.as_posix()
+
+
+def _restore_r2v_continuation_anchor(
+    scene: dict[str, Any],
+    *,
+    predecessor_id: str,
+    scene_number: int,
+    output_dir: Path,
+    backend: Any,
+) -> dict[str, Any]:
+    """Reattach a current persisted boundary to a rerender request."""
+    sidecar = output_dir / f"scene_{int(scene_number):04}" / "continuation_boundary.json"
+    manifest = BoundaryFrameManifest.from_dict(read_json_object(sidecar))
+    project_dir = getattr(backend, "project_dir", None)
+    frame_path = Path(manifest.frame_path)
+    if project_dir is not None and not frame_path.is_absolute():
+        frame_path = Path(project_dir) / frame_path
+    frame_path = frame_path.resolve()
+    if not frame_path.is_file() or sha256_file(frame_path) != manifest.frame_sha256:
+        raise ValueError(f"Persisted continuation anchor is invalid: {frame_path}")
+
+    keyframes = dict(scene.get("keyframes") or {})
+    keyframes.update({
+        "continuity_anchor_path": frame_path.as_posix(),
+        "startframe_path": frame_path.as_posix(),
+        "startframe_mode": "last_frame_from_previous",
+        "startframe_source_clip_path": manifest.source_clip_path,
+        "startframe_source_clip_sha256": manifest.source_clip_sha256,
+        "startframe_extractor": manifest.extractor_revision,
+        "startframe_sha256": manifest.frame_sha256,
+        "boundary_frame_manifest": manifest.to_dict(),
+        "continuation_predecessor_id": predecessor_id,
+    })
+    result = dict(scene)
+    result["keyframes"] = keyframes
+    return result
+
+
+def _continuation_boundary_is_current(
+    *,
+    scene_number: int,
+    predecessor_clip: Path,
+    output_dir: Path,
+    backend: Any,
+) -> bool:
+    sidecar = output_dir / f"scene_{int(scene_number):04}" / "continuation_boundary.json"
+    try:
+        manifest = BoundaryFrameManifest.from_dict(read_json_object(sidecar))
+        if manifest.source_clip_sha256 != sha256_file(predecessor_clip):
+            return False
+        project_dir = getattr(backend, "project_dir", None)
+        frame = (
+            Path(project_dir) / manifest.frame_path
+            if project_dir is not None and not Path(manifest.frame_path).is_absolute()
+            else Path(manifest.frame_path)
+        )
+        return frame.is_file() and sha256_file(frame) == manifest.frame_sha256
+    except (FileNotFoundError, OSError, TypeError, ValueError):
+        return False
