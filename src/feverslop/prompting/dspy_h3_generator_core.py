@@ -224,12 +224,13 @@ class VideoPromptGenerator:
             ],
             "strict_fidelity": bool(request.get("strict_fidelity", True)),
         })
-        return self._judge_final_prompt(
-            request_model,
-            plan,
-            references,
-            final_prompt,
-        )
+        with self.dspy_runtime.context(lm=self.lm):
+            return self._judge_final_prompt(
+                request_model,
+                plan,
+                references,
+                final_prompt,
+            )
 
     @staticmethod
     def _read(path: str | Path) -> str:

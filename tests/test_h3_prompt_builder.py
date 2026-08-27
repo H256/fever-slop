@@ -89,6 +89,7 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
 
 class H3PromptBuilderCompatibilityTests(unittest.TestCase):
     def test_compiled_prompt_judge_accepts_runtime_reference_dicts(self):
+        from contextlib import contextmanager
         from types import SimpleNamespace
 
         from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
@@ -106,6 +107,14 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         )
         generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
         generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+
+        @contextmanager
+        def lm_context(*, lm):
+            observed["lm_context"] = lm
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
 
         plan = ResolvedPromptPlan(
             creative_intent="intent",
@@ -130,6 +139,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
 
         self.assertEqual("good", result.verdict)
         self.assertEqual("<Picture 1>", observed["references"][0]["label"])
+        self.assertIs(generator.lm, observed["lm_context"])
 
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
         from types import SimpleNamespace
