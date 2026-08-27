@@ -97,19 +97,24 @@ class RenderVideoScenesUseCase:
                     output_dir=request.output_dir,
                     backend=self.backend,
                 )
-            if (
-                predecessor_id
-                and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v"
-                and not boundary_is_current
-            ):
+            if predecessor_id and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v":
                 assert predecessor_clip is not None
-                scene_payload = _attach_r2v_continuation_anchor(
-                    scene_payload,
-                    predecessor_id=predecessor_id,
-                    predecessor_clip=predecessor_clip,
-                    output_dir=request.output_dir,
-                    backend=self.backend,
-                )
+                if boundary_is_current:
+                    scene_payload = _restore_r2v_continuation_anchor(
+                        scene_payload,
+                        predecessor_id=predecessor_id,
+                        scene_number=scene.scene_number,
+                        output_dir=request.output_dir,
+                        backend=self.backend,
+                    )
+                else:
+                    scene_payload = _attach_r2v_continuation_anchor(
+                        scene_payload,
+                        predecessor_id=predecessor_id,
+                        predecessor_clip=predecessor_clip,
+                        output_dir=request.output_dir,
+                        backend=self.backend,
+                    )
                 scene = type(scene).from_dict(scene_payload)
             video_request = VideoRenderRequest(
                 scene=scene_payload,
@@ -259,6 +264,42 @@ def _stored_continuation_path(path: Path, project_dir: Path | None) -> str:
     if project_dir is not None and path.is_relative_to(project_dir):
         return path.relative_to(project_dir).as_posix()
     return path.as_posix()
+
+
+def _restore_r2v_continuation_anchor(
+    scene: dict[str, Any],
+    *,
+    predecessor_id: str,
+    scene_number: int,
+    output_dir: Path,
+    backend: Any,
+) -> dict[str, Any]:
+    """Reattach a current persisted boundary to a rerender request."""
+    sidecar = output_dir / f"scene_{int(scene_number):04}" / "continuation_boundary.json"
+    manifest = BoundaryFrameManifest.from_dict(read_json_object(sidecar))
+    project_dir = getattr(backend, "project_dir", None)
+    frame_path = Path(manifest.frame_path)
+    if project_dir is not None and not frame_path.is_absolute():
+        frame_path = Path(project_dir) / frame_path
+    frame_path = frame_path.resolve()
+    if not frame_path.is_file() or sha256_file(frame_path) != manifest.frame_sha256:
+        raise ValueError(f"Persisted continuation anchor is invalid: {frame_path}")
+
+    keyframes = dict(scene.get("keyframes") or {})
+    keyframes.update({
+        "continuity_anchor_path": frame_path.as_posix(),
+        "startframe_path": frame_path.as_posix(),
+        "startframe_mode": "last_frame_from_previous",
+        "startframe_source_clip_path": manifest.source_clip_path,
+        "startframe_source_clip_sha256": manifest.source_clip_sha256,
+        "startframe_extractor": manifest.extractor_revision,
+        "startframe_sha256": manifest.frame_sha256,
+        "boundary_frame_manifest": manifest.to_dict(),
+        "continuation_predecessor_id": predecessor_id,
+    })
+    result = dict(scene)
+    result["keyframes"] = keyframes
+    return result
 
 
 def _continuation_boundary_is_current(
