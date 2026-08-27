@@ -390,13 +390,21 @@ def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayl
         seen.add(number)
         result.append(CreativeShotPayload(
             shot_id=f"shot-{number:04d}",
-            visible_action=shot.visible_action or shot.description,
-            performance=shot.performance or plan.creative_intent,
-            camera_behavior=shot.camera_behavior,
-            environmental_motion=shot.environmental_motion,
-            transition_intent=shot.transition_intent,
+            visible_action=_strip_compiler_syntax(shot.visible_action or shot.description),
+            performance=_strip_compiler_syntax(shot.performance or plan.creative_intent),
+            camera_behavior=_strip_compiler_syntax(shot.camera_behavior),
+            environmental_motion=_strip_compiler_syntax(shot.environmental_motion),
+            transition_intent=_strip_compiler_syntax(shot.transition_intent),
         ))
     return validate_creative_shots_against_plan(plan, result)
+
+
+def _strip_compiler_syntax(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = re.sub(r"<(?:Picture|Video|Audio)\s+\d+>", "", str(value), flags=re.IGNORECASE)
+    text = re.sub(r"\b\d{2}:\d{2}(?:[:.]\d{2,3})\b", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def validate_creative_shots_against_plan(

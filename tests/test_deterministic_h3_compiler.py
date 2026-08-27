@@ -271,6 +271,25 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Audio 1> is the vocals audio source", prompt)
         self.assertNotIn("overall_soundscape: The vocal line So I blink", prompt)
 
+    def test_creative_projection_removes_compiler_owned_labels_from_fields(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="action",
+                visible_action="<Picture 9> move toward the window",
+                performance="singing",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+
+        projected = creative_shots_from_plan(plan)
+
+        self.assertEqual("move toward the window", projected[0].visible_action)
+
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(
             creative_intent="intent",
