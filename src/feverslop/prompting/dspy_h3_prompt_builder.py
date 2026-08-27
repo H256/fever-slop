@@ -524,7 +524,7 @@ class DspyH3PromptBuilder:
                         "continuation_intents": [asdict(intent) for intent in sections.continuation_intents],
                         "prompt_provenance": {
                             "compiler": "deterministic_h3_compiler",
-                            "compiler_version": 3,
+                            "compiler_version": 4,
                             "source": "dspy_section_plan",
                         },
                     }
