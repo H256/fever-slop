@@ -98,6 +98,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             PlannedShot,
             PromptMode,
             ResolvedPromptPlan,
+            ResolvedReference,
         )
 
         observed = {}
@@ -138,7 +139,8 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         )
 
         self.assertEqual("good", result.verdict)
-        self.assertEqual("<Picture 1>", observed["references"][0]["label"])
+        self.assertEqual("<Picture 1>", observed["references"][0].label)
+        self.assertIsInstance(observed["references"][0], ResolvedReference)
         self.assertIs(generator.lm, observed["lm_context"])
 
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):

@@ -35,7 +35,11 @@ class H3PromptCheckpointStore:
 
     def load(self, request: H3PromptCheckpointInput) -> H3PromptCheckpoint | None:
         checkpoint = self.load_for_resume(request)
-        if checkpoint is None or checkpoint.input_fingerprint != self._fingerprint(request):
+        if (
+            checkpoint is None
+            or checkpoint.status != "good"
+            or checkpoint.input_fingerprint != self._fingerprint(request)
+        ):
             return None
         self._sync_canonical(checkpoint)
         self._report("reused", checkpoint)

@@ -137,6 +137,15 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         )
         self.assertEqual("unjudged", unjudged.status)
 
+    def test_load_does_not_reuse_rejected_or_unjudged_checkpoints(self):
+        request = self.request()
+        self.store.save(request, {"prompt": "rejected", "prompt_judge": {"verdict": "bad"}})
+        self.assertIsNone(self.store.load(request))
+
+        request = self.request(scene_number=2, segment_id="segment-b", segment={"scene": 2, "segment_id": "segment-b"})
+        self.store.save(request, {"prompt": "unjudged"})
+        self.assertIsNone(self.store.load(request))
+
     def test_changed_input_or_generator_revision_is_not_reused(self):
         request = self.request()
         self.store.save(request, {"prompt": "cached", "prompt_judge": {"verdict": "good"}})
@@ -241,7 +250,7 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
 
     def test_reuse_syncs_checkpoint_created_before_canonical_base_existed(self):
         request = self.request()
-        self.store.save(request, {"prompt": "checkpoint prompt"})
+        self.store.save(request, {"prompt": "checkpoint prompt", "prompt_judge": {"verdict": "good"}})
         base = self.project / "output/render/plans/base.json"
         base.parent.mkdir(parents=True)
         base.write_text(json.dumps([{

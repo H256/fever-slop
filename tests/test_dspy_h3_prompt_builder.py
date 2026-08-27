@@ -19,6 +19,7 @@ from feverslop.prompting.dspy_h3_models import (
     PlannedShot,
     PlannedSubject,
     PromptMode,
+    PromptJudgeResult,
     PromptPlan,
     ReferenceAsset,
     ReferenceKind,
@@ -43,6 +44,7 @@ from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
 
 class FakeGeneratedPrompt:
     rendered_prompt = "subject_definitions: <Subject 1>\ndetailed_description: test"
+    judge = PromptJudgeResult(verdict="good")
 
 
 class FakeGenerator:

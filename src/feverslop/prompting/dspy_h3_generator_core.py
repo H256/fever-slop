@@ -214,13 +214,18 @@ class VideoPromptGenerator:
         """Judge the exact deterministic prompt sent to the video backend."""
         if self.judge is None:
             return None
+        resolved_references = [
+            reference
+            if isinstance(reference, ResolvedReference)
+            else ResolvedReference.model_validate(reference)
+            for reference in references
+        ]
         request_model = VideoPromptRequest.model_validate({
             "mode": request["mode"],
             "user_prompt": request["user_prompt"],
             "duration_seconds": request.get("duration_seconds"),
             "references": [
-                reference.model_dump() if hasattr(reference, "model_dump") else dict(reference)
-                for reference in references
+                reference.model_dump() for reference in resolved_references
             ],
             "strict_fidelity": bool(request.get("strict_fidelity", True)),
         })
@@ -228,7 +233,7 @@ class VideoPromptGenerator:
             return self._judge_final_prompt(
                 request_model,
                 plan,
-                references,
+                resolved_references,
                 final_prompt,
             )
 
