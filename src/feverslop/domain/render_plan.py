@@ -131,11 +131,33 @@ class RenderPlan:
     ) -> RenderPlan:
         scenes = self.scenes
         if scene_numbers is not None:
+            by_technical_id = {
+                str(
+                    scene.data.get("technical_segment_id")
+                    or scene.data.get("segment_id")
+                    or "",
+                ).strip(): scene
+                for scene in scenes
+            }
+            selected = set(scene_numbers)
+            changed = True
+            while changed:
+                changed = False
+                for scene in scenes:
+                    if scene.scene_number not in selected:
+                        continue
+                    predecessor_id = str(
+                        scene.data.get("continuation_predecessor_id") or "",
+                    ).strip()
+                    predecessor = by_technical_id.get(predecessor_id)
+                    if predecessor is not None and predecessor.scene_number not in selected:
+                        selected.add(predecessor.scene_number)
+                        changed = True
             scenes = tuple(
                 scene
                 for scene in scenes
-                if scene.scene_number in scene_numbers
-                or int(scene.data.get("semantic_scene", scene.scene_number)) in scene_numbers
+                if scene.scene_number in selected
+                or int(scene.data.get("semantic_scene", scene.scene_number)) in selected
             )
         if limit is not None:
             scenes = scenes[:limit]
