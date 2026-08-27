@@ -237,6 +237,40 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 1>", prompt.split("[Shot 1]", 1)[1])
         self.assertIn("<Subject 2>", prompt.split("[Shot 1]", 1)[1])
 
+    def test_r2v_compiler_canonicalizes_dialogue_and_audio_anchors(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="The singer performs.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Lead Singer", description="a singer",
+                source_references=["<Picture 1>"],
+            )],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 1>", purpose="vocals", details="vocals stem",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="<Subject 1> sings 'So I blink' with intense eyes.",
+                start_seconds=0, end_seconds=2,
+            )],
+            overall_soundscape="The vocal line So I blink continues over the scene.",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            prepared_reference_labels=["<Picture 1>", "<Audio 1>"],
+            dialogue_language="German",
+            reference_metadata=[{
+                "label": "<Audio 1>", "kind": "audio", "name": "vocals",
+                "description": "vocals stem", "copy_mode": "partially_copy",
+            }],
+        )
+        self.assertIn("<d>[German] So I blink</d>", prompt)
+        self.assertIn("<Subject 1> (S1) sings", prompt)
+        self.assertNotIn("<d>en So I blink</d>", prompt)
+        self.assertIn("<Audio 1> is the vocals audio source", prompt)
+        self.assertNotIn("overall_soundscape: The vocal line So I blink", prompt)
+
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(
             creative_intent="intent",

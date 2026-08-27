@@ -449,6 +449,7 @@ class DspyH3PromptBuilder:
             "video_type": video_type,
             "duration_seconds": segment.get("duration") or segment.get("duration_seconds"),
             "user_prompt": user_prompt,
+            "source_language": str(global_context.get("language") or "").strip(),
             "notes": json.dumps({
                 "scene": segment,
                 "scene_details": scene_details,
@@ -505,6 +506,7 @@ class DspyH3PromptBuilder:
                         prepared_reference_labels=[reference["label"] for reference in references],
                         reference_metadata=references,
                         duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
+                        dialogue_language=str(request.get("source_language") or "English"),
                     )
                     shape_issues = validate_h3_prompt_shape(prompt, mode=mode)
                     if shape_issues:

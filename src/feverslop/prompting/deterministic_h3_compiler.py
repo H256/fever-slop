@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import re
 from typing import Any
 
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
@@ -30,6 +31,7 @@ class DeterministicH3Compiler:
         prepared_reference_labels: Sequence[str] | None = None,
         reference_metadata: Sequence[Mapping[str, Any]] | None = None,
         duration_seconds: float | None = None,
+        dialogue_language: str | None = None,
     ) -> str:
         normalized_mode = str(mode).strip().lower()
         if normalized_mode not in {"base", "reference", "ref", *(item.value for item in PromptMode)}:
@@ -49,6 +51,7 @@ class DeterministicH3Compiler:
                 prepared_reference_labels=prepared_reference_labels,
                 reference_metadata=reference_metadata,
                 duration_seconds=duration_seconds,
+                dialogue_language=dialogue_language,
             )
         if not isinstance(facts, LockedSceneFacts):
             raise TypeError("facts must be LockedSceneFacts")
@@ -109,6 +112,7 @@ class DeterministicH3Compiler:
         prepared_reference_labels: Sequence[str] | None,
         reference_metadata: Sequence[Mapping[str, Any]] | None,
         duration_seconds: float | None,
+        dialogue_language: str | None,
     ) -> str:
         """Serialize LLM-authored fields into the MiniMax guide grammar."""
         if mode is PromptMode.R2V:
@@ -135,14 +139,17 @@ class DeterministicH3Compiler:
                 if usage.reference_label.lower().startswith("<audio "):
                     metadata = metadata_by_label.get(usage.reference_label, {})
                     copy_mode = str(metadata.get("copy_mode") or "reference")
-                    if copy_mode in {"fully_copy", "partially_copy"}:
-                        subject_lines.append(
-                            f"{usage.reference_label} is directly reused as the target video's audio signal."
-                        )
-                    else:
-                        subject_lines.append(
-                            f"{usage.reference_label} is an audio reference for the target video's soundtrack."
-                        )
+                    description = str(metadata.get("description") or usage.details).strip().rstrip(".")
+                    name = str(metadata.get("name") or "audio reference").strip()
+                    relationship = (
+                        "is copied into the target video's audio signal"
+                        if copy_mode in {"fully_copy", "partially_copy"}
+                        else "is referenced for the target video's soundtrack"
+                    )
+                    subject_lines.append(
+                        f"{usage.reference_label} is the {name} audio source ({description}); "
+                        f"it {relationship}."
+                    )
             frame_roles = {"first_frame", "last_frame", "keyframe", "storyboard", "composition"}
             retention_lines = [
                 f"{subject.label} (appears in [Shot {shot_number}]): fully_preserved - "
@@ -191,13 +198,18 @@ class DeterministicH3Compiler:
                 )
                 for index, shot in enumerate(plan.shots, start=1)
             )
-            detailed = "\n".join(detailed_parts)
+            detailed = _normalize_r2v_dialogue("\n".join(detailed_parts), dialogue_language or "English", plan)
+            soundscape = _replace_subject_names(plan.overall_soundscape, plan)
+            for lyric in _dialogue_contents(detailed):
+                soundscape = _remove_sentence_containing(soundscape, lyric)
+            if not soundscape.strip():
+                soundscape = "The synchronized reference soundtrack and environmental ambience continue throughout the scene."
             sections = [
                 "subject_definitions:\n" + "\n".join(subject_lines),
                 "summary: [reference generation] " + _replace_subject_names(plan.creative_intent, plan),
                 "retention_analysis:\n" + "\n".join(retention_lines),
                 "detailed_description: " + detailed,
-                "overall_soundscape: " + plan.overall_soundscape,
+                "overall_soundscape: " + soundscape,
                 "non_diegetic_music: " + (plan.non_diegetic_music or "N/A"),
             ]
         else:
@@ -323,6 +335,46 @@ def _description_covers_camera(shot: Any) -> bool:
 
 def _sentence(value: str) -> str:
     return value.strip().rstrip(".") + "."
+
+
+def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) -> str:
+    """Canonicalize mechanical dialogue syntax after creative fields are authored."""
+    language = str(language or "English").strip() or "English"
+    def tagged(match: re.Match[str]) -> str:
+        content = match.group(1).strip()
+        content = re.sub(r"^(?:\[[^]]+\]|en|de|fr|es)\s*", "", content, flags=re.IGNORECASE)
+        return f"<d>[{language}] {content}</d>"
+
+    normalized = re.sub(r"<d>\s*(.*?)\s*</d>", tagged, text, flags=re.IGNORECASE | re.DOTALL)
+
+    def quoted(match: re.Match[str]) -> str:
+        prefix, content = match.group(1), match.group(3).strip()
+        return f"{prefix}<d>[{language}] {content}</d>"
+
+    normalized = re.sub(
+        r"(?i)(\b(?:sing|sings|singing|lyrics|says|saying)[^\n]{0,120}?)(['\"])([^'\"]+)\2",
+        quoted,
+        normalized,
+    )
+    # Keep speaker IDs stable for a visible singing subject. The first subject
+    # that is explicitly named in the vocal clause is the first vocal source.
+    for number, subject in enumerate(plan.subjects, start=1):
+        label = re.escape(subject.label)
+        pattern = re.compile(rf"({label})(?!\s*\(S\d+\))(?=[^\n]{{0,100}}(?:singing|sings|sing|lip-sync))", re.IGNORECASE)
+        normalized = pattern.sub(rf"\1 (S{number})", normalized, count=1)
+    return normalized
+
+
+def _dialogue_contents(text: str) -> tuple[str, ...]:
+    return tuple(match.strip() for match in re.findall(r"<d>\s*\[[^]]+\]\s*(.*?)\s*</d>", text, re.IGNORECASE | re.DOTALL) if match.strip())
+
+
+def _remove_sentence_containing(text: str, phrase: str) -> str:
+    if not phrase:
+        return text
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept = [part for part in parts if phrase.casefold() not in part.casefold()]
+    return " ".join(kept).strip()
 
 
 def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayload, ...]:
