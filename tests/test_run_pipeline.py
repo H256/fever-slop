@@ -3,6 +3,7 @@ import unittest
 from argparse import Namespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from rich.progress import TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
@@ -30,6 +31,7 @@ from feverslop.config.project_config import (
 )
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
+from feverslop.domain.duration_capability import DurationCapability
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -61,12 +63,16 @@ class RunPipelinePathTests(unittest.TestCase):
             state = Namespace(
                 args=Namespace(scenes="1", video_pipeline="minimax-h3-r2v"),
                 context=context,
+                app_config_path=project / "app-config.json",
                 plan_for_next_step=None,
             )
             regenerator = Mock()
             regenerator.write = Mock()
 
             with patch("feverslop.composition.stage_runners.ProjectConfig.load", return_value=config), \
+                patch("feverslop.composition.stage_runners.AppConfig.load", return_value=Mock(
+                    resolve_video_workflow_profile=Mock(return_value=None),
+                )), \
                 patch("feverslop.composition.stage_runners.CanonicalPlanRegenerator", return_value=regenerator) as factory, \
                 patch("feverslop.composition.stage_runners.build_render_plan") as builder:
                 _run_render_plan_stage(state)
@@ -76,6 +82,49 @@ class RunPipelinePathTests(unittest.TestCase):
         self.assertEqual(context.reference_plan, factory.call_args.kwargs["reference_plan_path"])
         self.assertIs(regenerator.write, builder.call_args.kwargs["plan_writer"])
         self.assertEqual(context.render_plan, state.plan_for_next_step)
+
+    def test_render_plan_stage_passes_selected_profile_duration_capability(self):
+        with TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            prompts = project / "output/prompts"
+            prompts.mkdir(parents=True)
+            paths = Namespace(prompts_dir=prompts, stems_dir=project / "output/stems")
+            config = Namespace(
+                paths=paths,
+                song_id="song",
+                minimax_h3_audio_refs=Namespace(stems=()),
+                input_audio=project / "song.wav",
+                project_dir=project,
+                max_scene_actors=4,
+                video_pipeline="minimax-h3-r2v",
+                to_video_settings=lambda: object(),
+            )
+            context = Namespace(
+                project_config_path=project / "config.json",
+                render_plan=project / "output/render/plans/base.json",
+                reference_plan=project / "output/render/plans/references.json",
+            )
+            state = Namespace(
+                args=Namespace(scenes=None, video_pipeline="minimax-h3-r2v", video_workflow_profile=None),
+                context=context,
+                app_config_path=project / "app-config.json",
+                plan_for_next_step=None,
+            )
+            capability = DurationCapability.create(
+                fps=24, min_seconds=2.0, max_seconds=3.0,
+                preferred_seconds=3.0, frame_alignment=8, frame_offset=0,
+            )
+            profile = SimpleNamespace(duration_capability=capability)
+            regenerator = Mock(write=Mock())
+            with patch("feverslop.composition.stage_runners.ProjectConfig.load", return_value=config), \
+                patch("feverslop.composition.stage_runners.AppConfig.load", return_value=Mock(
+                    resolve_video_workflow_profile=Mock(return_value=profile),
+                )), \
+                patch("feverslop.composition.stage_runners.CanonicalPlanRegenerator", return_value=regenerator), \
+                patch("feverslop.composition.stage_runners.build_render_plan") as builder:
+                _run_render_plan_stage(state)
+
+        self.assertIs(capability, builder.call_args.kwargs["duration_capability"])
 
     def test_deferred_h3_partial_resume_preserves_override_and_reference_bindings(self):
         with TemporaryDirectory() as temp_dir:

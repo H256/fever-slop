@@ -532,6 +532,12 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         if config.video_pipeline == "minimax-h3-r2v"
         else None
     )
+    app_config = AppConfig.load(state.app_config_path)
+    profile = app_config.resolve_video_workflow_profile(
+        pipeline=config.video_pipeline,
+        purpose="final",
+        name=getattr(state.args, "video_workflow_profile", None),
+    )
     regenerator = CanonicalPlanRegenerator(
         config.project_dir,
         selected_scene_numbers=selected_scene_numbers,
@@ -550,6 +556,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         stem_files=stem_files,
         project_dir=config.project_dir,
         max_scene_actors=config.max_scene_actors,
+        duration_capability=(profile.duration_capability if profile is not None else None),
         plan_writer=regenerator.write,
     )
     if selected_scene_spec:
