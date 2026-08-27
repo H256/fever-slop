@@ -182,7 +182,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertLess(detailed.index("cinematic visual style"), detailed.index("[Shot 1]"))
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
-        self.assertIn("<Subject 1> are visible in the shot.", detailed)
+        self.assertIn("<Subject 1> is visible in the shot.", detailed)
         self.assertIn("<Audio 1> active in the soundtrack.", detailed)
         self.assertNotIn("<Picture 1>.", detailed)
         self.assertNotIn("<Picture 1>: fully_preserved", prompt)
@@ -191,7 +191,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
 
     def test_r2v_compiler_places_labels_in_natural_prose_and_defines_audio(self):
         plan = ResolvedPromptPlan(
-            creative_intent="a singer in a luminous city",
+            creative_intent="Lead Singer in The Augmented Metropolis",
             subjects=[
                 SubjectDefinition(
                     label="<Subject 1>", name="Lead Singer", description="a man with sharp features",
@@ -228,8 +228,12 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 1> is a man with sharp features in <Picture 1>.", prompt)
         self.assertIn("<Subject 2> is a glowing city in <Picture 2>.", prompt)
         self.assertIn("<Audio 1> is", prompt)
+        self.assertNotIn("full_mix -", prompt)
         self.assertNotIn("References in this shot:", prompt)
         self.assertNotIn("Camera movement:", prompt)
+        self.assertIn("<Subject 1>", prompt.split("summary:", 1)[1].split("retention_analysis:", 1)[0])
+        self.assertNotIn("The <Subject", prompt)
+        self.assertNotIn("<Subject 1> are", prompt)
         self.assertIn("<Subject 1>", prompt.split("[Shot 1]", 1)[1])
         self.assertIn("<Subject 2>", prompt.split("[Shot 1]", 1)[1])
 

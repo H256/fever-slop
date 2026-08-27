@@ -134,8 +134,15 @@ class DeterministicH3Compiler:
             for usage in plan.reference_usage:
                 if usage.reference_label.lower().startswith("<audio "):
                     metadata = metadata_by_label.get(usage.reference_label, {})
-                    description = str(metadata.get("description") or usage.details).strip()
-                    subject_lines.append(f"{usage.reference_label} is reused in the target video; {description.rstrip('.') }.")
+                    copy_mode = str(metadata.get("copy_mode") or "reference")
+                    if copy_mode in {"fully_copy", "partially_copy"}:
+                        subject_lines.append(
+                            f"{usage.reference_label} is directly reused as the target video's audio signal."
+                        )
+                    else:
+                        subject_lines.append(
+                            f"{usage.reference_label} is an audio reference for the target video's soundtrack."
+                        )
             frame_roles = {"first_frame", "last_frame", "keyframe", "storyboard", "composition"}
             retention_lines = [
                 f"{subject.label} (appears in [Shot {shot_number}]): fully_preserved - "
@@ -187,7 +194,7 @@ class DeterministicH3Compiler:
             detailed = "\n".join(detailed_parts)
             sections = [
                 "subject_definitions:\n" + "\n".join(subject_lines),
-                "summary: [reference generation] " + plan.creative_intent,
+                "summary: [reference generation] " + _replace_subject_names(plan.creative_intent, plan),
                 "retention_analysis:\n" + "\n".join(retention_lines),
                 "detailed_description: " + detailed,
                 "overall_soundscape: " + plan.overall_soundscape,
@@ -251,22 +258,19 @@ def _shot_reference_labels(shot: Any, plan: ResolvedPromptPlan) -> tuple[str, ..
 
 
 def _render_subject_definition(subject: Any) -> str:
-    description = str(subject.description).strip().rstrip(".")
+    description = _lower_initial(str(subject.description).strip().rstrip("."))
     sources = " and ".join(subject.source_references)
     return f"{subject.label} is {description} in {sources}." if sources else f"{subject.label} is {description}."
 
 
 def _render_shot_with_references(index: int, shot: Any, plan: ResolvedPromptPlan) -> str:
     labels = _shot_reference_labels(shot, plan)
-    description = str(shot.description)
-    for subject in plan.subjects:
-        if subject.label not in labels:
-            continue
-        for name in (subject.name, f"The {subject.name}"):
-            description = description.replace(name, subject.label)
+    description = _replace_subject_names(str(shot.description), plan, labels)
     missing = [label for label in labels if label not in description]
     if missing:
-        description = f"{' and '.join(missing)} are visible in the shot. {description}"
+        visible = " and ".join(missing)
+        verb = "is" if len(missing) == 1 else "are"
+        description = f"{visible} {verb} visible in the shot. {description}"
     if labels:
         audio_labels = [
             usage.reference_label
@@ -277,6 +281,31 @@ def _render_shot_with_references(index: int, shot: Any, plan: ResolvedPromptPlan
             suffix = " and ".join(audio_labels)
             description = f"{description.rstrip('.')} with {suffix} active in the soundtrack."
     return f"[Shot {index}] {description}"
+
+
+def _replace_subject_names(
+    text: str,
+    plan: ResolvedPromptPlan,
+    labels: Sequence[str] | None = None,
+) -> str:
+    allowed = set(labels or (subject.label for subject in plan.subjects))
+    replacements = sorted(
+        (
+            phrase,
+            subject.label,
+        )
+        for subject in plan.subjects
+        if subject.label in allowed
+        for phrase in (f"The {subject.name}", subject.name)
+        if phrase.strip()
+    )
+    for phrase, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
+        text = text.replace(phrase, label)
+    return text
+
+
+def _lower_initial(value: str) -> str:
+    return value[:1].lower() + value[1:] if value else value
 
 
 def _description_covers_camera(shot: Any) -> bool:
