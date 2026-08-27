@@ -187,6 +187,7 @@ class RunPipelinePathTests(unittest.TestCase):
                     render_plan=base,
                     reference_plan=references,
                 ),
+                app_config_path=project / "app-config.json",
                 plan_for_next_step=None,
             )
 
