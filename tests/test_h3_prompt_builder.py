@@ -142,6 +142,8 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual("<Picture 1>", observed["references"][0].label)
         self.assertIsInstance(observed["references"][0], ResolvedReference)
         self.assertIs(generator.lm, observed["lm_context"])
+        self.assertNotIn("\n  ", observed["authoritative_plan"])
+        self.assertNotIn("## 7. Complete Example", observed["guide"])
 
     def test_judge_keeps_section_feedback_when_field_issue_is_not_repairable(self):
         from contextlib import contextmanager

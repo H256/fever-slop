@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections import defaultdict
@@ -72,6 +73,12 @@ def _normalize_judge_payload(value: Any) -> Any:
 
 
 _REFERENCE_LABEL_PATTERN = re.compile(r"<(?:Picture|Video|Audio)\s+\d+>")
+
+
+def _judge_guide(guide: str, mode: PromptMode) -> str:
+    """Keep judge context to normative rules, not the guide's long example."""
+    marker = "\n## 7. Complete Example" if mode is PromptMode.R2V else "\n## 5. Cases"
+    return guide.split(marker, 1)[0].rstrip() if marker in guide else guide
 
 
 def _split_reference_labels(value: str) -> list[str]:
@@ -211,10 +218,15 @@ class VideoPromptGenerator:
             return None
         guide_path = self.reference_guide_path if request.mode is PromptMode.R2V else self.base_guide_path
         try:
+            guide = _judge_guide(self._read(guide_path), request.mode)
             output = self.judge(
-                guide=self._read(guide_path),
+                guide=guide,
                 final_prompt=prompt if isinstance(prompt, str) else prompt.render(),
-                authoritative_plan=plan.model_dump_json(indent=2),
+                authoritative_plan=json.dumps(
+                    plan.model_dump(mode="json", exclude_none=True),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
                 references=references,
             )
             value = _normalize_judge_payload(getattr(output, "judge", output))

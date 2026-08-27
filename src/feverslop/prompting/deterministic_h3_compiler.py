@@ -185,7 +185,7 @@ class DeterministicH3Compiler:
             detailed_parts.extend(
                 _render_shot_with_references(index, shot, plan)
                 + (
-                    f" Camera movement: {_sentence(shot.camera_behavior)}"
+                    f" The camera {_sentence(shot.camera_behavior)}"
                     if shot.camera_behavior and not _description_covers_camera(shot)
                     else ""
                 )
