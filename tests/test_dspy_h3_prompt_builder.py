@@ -1127,6 +1127,45 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("walks slowly", result.shots[0].description)
         self.assertEqual("Performance", result.creative_intent)
 
+    def test_field_repair_ignores_invalid_unaddressed_candidate_fields(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        original = ResolvedPromptPlan(
+            creative_intent="Performance",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="walks slowly",
+                camera_behavior="shakes",
+            )],
+            overall_soundscape="Music.",
+            music_intent=MusicIntent.NONE,
+        )
+        generator.planner = lambda **_: type("Prediction", (), {"plan": PromptPlan(
+            creative_intent="Replacement",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="<Picture 9> invalid backend syntax",
+                camera_behavior="slow pan",
+            )],
+            overall_soundscape="Music.",
+            music_intent=MusicIntent.NONE,
+        )})()
+        issue = CreativeFieldIssue(
+            shot_id="shot-0001",
+            field="camera_behavior",
+            issue_code="camera.invalid",
+            repair_instruction="Use a slow pan.",
+        )
+
+        result = generator._repair_creative_plan(
+            VideoPromptRequest(mode=PromptMode.R2V, user_prompt="A scene", duration_seconds=5),
+            original,
+            [],
+            [issue],
+        )
+
+        self.assertEqual("slow pan", result.shots[0].camera_behavior)
+        self.assertEqual("walks slowly", result.shots[0].description)
+
     def test_generator_components_have_dedicated_modules(self):
         self.assertEqual(VideoPromptGenerator.__module__, "feverslop.prompting.dspy_h3_generator")
         self.assertEqual(LocalImageAnalyzer.__module__, "feverslop.prompting.dspy_h3_analyzer")

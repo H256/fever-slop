@@ -52,6 +52,14 @@ _VOCAL_NEGATION_PATTERN = re.compile(
 )
 
 
+def _sanitize_creative_repair(value: Any) -> str:
+    """Remove compiler-owned syntax from one LLM repair candidate field."""
+    text = str(value or "")
+    text = re.sub(r"<(?:Picture|Video|Audio)\s+\d+>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b\d{2}:\d{2}(?:[:.]\d{2,3})\b", "", text)
+    return re.sub(r"\s+", " ", text).strip(" ,;:.\n\t")
+
+
 def _normalize_judge_payload(value: Any) -> Any:
     if not isinstance(value, Mapping):
         return value
@@ -588,29 +596,16 @@ class VideoPromptGenerator:
             candidate_plan = prediction.plan
             _normalize_plan_reference_labels(candidate_plan)
             current_payloads = creative_shots_from_plan(plan)
-            candidate_payloads = creative_shots_from_plan(
-                ResolvedPromptPlan(
-                    creative_intent=candidate_plan.creative_intent,
-                    subjects=[SubjectDefinition(
-                        label=f"<Subject {index}>",
-                        name=subject.name,
-                        description=subject.description,
-                        source_references=subject.source_references,
-                    ) for index, subject in enumerate(candidate_plan.subjects, 1)],
-                    reference_usage=candidate_plan.reference_usage,
-                    shots=candidate_plan.shots,
-                    overall_soundscape=candidate_plan.overall_soundscape,
-                    music_intent=candidate_plan.music_intent,
-                    non_diegetic_music=candidate_plan.non_diegetic_music,
-                    alignment_instruction=candidate_plan.alignment_instruction,
-                    continuation_intents=candidate_plan.continuation_intents,
-                ),
-            )
-            candidates = {payload.shot_id: payload for payload in candidate_payloads}
+            candidates = {
+                f"shot-{int(shot.shot_number):04d}": shot
+                for shot in candidate_plan.shots
+            }
             replacements = {}
             for issue in field_issues:
                 payload = candidates.get(issue.shot_id)
-                value = None if payload is None else getattr(payload, issue.field)
+                value = None if payload is None else _sanitize_creative_repair(
+                    getattr(payload, issue.field, None),
+                )
                 if value is not None and str(value).strip():
                     replacements[(issue.shot_id, issue.field)] = str(value).strip()
             repaired_payloads = repair_creative_payloads(
