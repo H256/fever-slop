@@ -290,6 +290,42 @@ class DeterministicH3CompilerTests(unittest.TestCase):
 
         self.assertEqual("move toward the window", projected[0].visible_action)
 
+    def test_r2v_compiler_repairs_duplicate_subject_labels_and_speaker_tags(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="The singer performs.",
+            subjects=[
+                SubjectDefinition(
+                    label="<Subject 1>", name="Lead Singer",
+                    description="<Subject 1> is a man with sharp features",
+                    source_references=["<Picture 1>"],
+                ),
+                SubjectDefinition(
+                    label="<Subject 2>", name="Apartment",
+                    description="a minimalist apartment",
+                ),
+            ],
+            shots=[PlannedShot(
+                shot_number=1,
+                description=(
+                    "<Subject 2> (S2) is visible. <Subject 1> (S1) sings "
+                    "<d>[en] </d>So I blink<</d>."
+                ),
+                start_seconds=0, end_seconds=2,
+            )],
+            overall_soundscape="Ambient room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+        )
+
+        self.assertIn("<Subject 1> is a man with sharp features in <Picture 1>.", prompt)
+        self.assertNotIn("<Subject 1> is <Subject 1> is", prompt)
+        self.assertIn("<Subject 2> is visible", prompt)
+        self.assertNotIn("<Subject 2> (S2)", prompt)
+        self.assertIn("<Subject 1> (S1) sings <d>[English] So I blink</d>", prompt)
+
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(
             creative_intent="intent",

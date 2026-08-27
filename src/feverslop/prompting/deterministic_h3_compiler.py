@@ -141,6 +141,9 @@ class DeterministicH3Compiler:
                     copy_mode = str(metadata.get("copy_mode") or "reference")
                     description = str(metadata.get("description") or usage.details).strip().rstrip(".")
                     name = str(metadata.get("name") or "audio reference").strip()
+                    description = re.sub(
+                        rf"^{re.escape(name)}\s*[-:–]\s*", "", description, flags=re.IGNORECASE,
+                    )
                     relationship = (
                         "is copied into the target video's audio signal"
                         if copy_mode in {"fully_copy", "partially_copy"}
@@ -271,6 +274,9 @@ def _shot_reference_labels(shot: Any, plan: ResolvedPromptPlan) -> tuple[str, ..
 
 def _render_subject_definition(subject: Any) -> str:
     description = _lower_initial(str(subject.description).strip().rstrip("."))
+    description = re.sub(
+        rf"^{re.escape(subject.label)}\s+is\s+", "", description, flags=re.IGNORECASE,
+    )
     sources = " and ".join(subject.source_references)
     return f"{subject.label} is {description} in {sources}." if sources else f"{subject.label} is {description}."
 
@@ -345,7 +351,22 @@ def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) 
         content = re.sub(r"^(?:\[[^]]+\]|en|de|fr|es)\s*", "", content, flags=re.IGNORECASE)
         return f"<d>[{language}] {content}</d>"
 
-    normalized = re.sub(r"<d>\s*(.*?)\s*</d>", tagged, text, flags=re.IGNORECASE | re.DOTALL)
+    def split_tagged(match: re.Match[str]) -> str:
+        return f"<d>[{language}] {match.group(1).strip()}</d>"
+
+    normalized = re.sub(
+        r"<d>\s*(?:\[[^]]+\])?\s*</d>\s*(.*?)\s*<</d>",
+        split_tagged,
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    normalized = re.sub(
+        r"<d>\s*<d>\s*(.*?)\s*</d>\s*</d>",
+        split_tagged,
+        normalized,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    normalized = re.sub(r"<d>\s*(.*?)\s*</d>", tagged, normalized, flags=re.IGNORECASE | re.DOTALL)
 
     def quoted(match: re.Match[str]) -> str:
         prefix, content = match.group(1), match.group(3).strip()
@@ -356,9 +377,19 @@ def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) 
         quoted,
         normalized,
     )
-    # Keep speaker IDs stable for a visible singing subject. The first subject
-    # that is explicitly named in the vocal clause is the first vocal source.
-    for number, subject in enumerate(plan.subjects, start=1):
+    # Remove speaker IDs from every visible subject first. They are re-added
+    # only to the first human subject in an explicit vocal clause.
+    for subject in plan.subjects:
+        normalized = re.sub(
+            rf"({re.escape(subject.label)})\s*\(S\d+\)", r"\1", normalized, flags=re.IGNORECASE,
+        )
+    human_subject = next((
+        (number, subject) for number, subject in enumerate(plan.subjects, start=1)
+        if re.search(r"\b(?:man|woman|person|human|singer|performer|actor|actress|child)\b",
+                     f"{subject.name} {subject.description}", re.IGNORECASE)
+    ), None)
+    if human_subject is not None:
+        number, subject = human_subject
         label = re.escape(subject.label)
         pattern = re.compile(rf"({label})(?!\s*\(S\d+\))(?=[^\n]{{0,100}}(?:singing|sings|sing|lip-sync))", re.IGNORECASE)
         normalized = pattern.sub(rf"\1 (S{number})", normalized, count=1)
