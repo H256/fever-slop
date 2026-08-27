@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Mapping
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from feverslop.prompting.creative_field_repair import repair_creative_payloads
 from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
 from feverslop.prompting.dspy_h3_models import (
     BaseVideoPrompt,
+    CreativeFieldIssue,
     GeneratedVideoPrompt,
     ImageAnalysisMode,
     MusicIntent,
@@ -195,7 +197,29 @@ class VideoPromptGenerator:
                 references=references,
             )
             value = getattr(output, "judge", output)
-            return PromptJudgeResult.model_validate(value)
+            try:
+                return PromptJudgeResult.model_validate(value)
+            except Exception:
+                if not isinstance(value, Mapping):
+                    raise
+                repairable = []
+                section_feedback = []
+                for issue in value.get("field_issues", ()) or ():
+                    try:
+                        repairable.append(CreativeFieldIssue.model_validate(issue).model_dump())
+                    except Exception:
+                        if isinstance(issue, Mapping):
+                            section_feedback.append(
+                                f"{issue.get('field', 'section')}: "
+                                f"{issue.get('repair_instruction', 'review this section')}"
+                            )
+                repaired = dict(value)
+                repaired["field_issues"] = repairable
+                repaired["issues"] = [
+                    *[str(item) for item in (value.get("issues", ()) or ())],
+                    *section_feedback,
+                ]
+                return PromptJudgeResult.model_validate(repaired)
         except Exception as exc:
             self._warning(f"H3 final prompt judge unavailable: {exc}")
             return PromptJudgeResult(

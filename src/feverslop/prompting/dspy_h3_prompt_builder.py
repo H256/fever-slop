@@ -503,6 +503,7 @@ class DspyH3PromptBuilder:
                     shot_windows=windows,
                     references=references_by_shot,
                     prepared_reference_labels=[reference["label"] for reference in references],
+                    reference_metadata=references,
                     duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
                 )
                 shape_issues = validate_h3_prompt_shape(prompt, mode=mode)

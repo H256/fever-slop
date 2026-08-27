@@ -143,6 +143,56 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertIsInstance(observed["references"][0], ResolvedReference)
         self.assertIs(generator.lm, observed["lm_context"])
 
+    def test_judge_keeps_section_feedback_when_field_issue_is_not_repairable(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        generator.judge = lambda **_payload: SimpleNamespace(judge={
+            "verdict": "bad",
+            "issues": ["section formatting needs repair"],
+            "field_issues": [{
+                "shot_id": "shot-0001",
+                "field": "detailed_description",
+                "issue_code": "missing_style",
+                "repair_instruction": "add the style sentence",
+            }],
+        })
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+
+        result = generator.judge_compiled_prompt(
+            request={"mode": PromptMode.R2V.value, "user_prompt": "prompt"},
+            plan=plan,
+            references=[],
+            final_prompt="subject_definitions:\n<Subject 1> is a subject",
+        )
+
+        self.assertEqual("bad", result.verdict)
+        self.assertIn("section formatting needs repair", result.issues)
+        self.assertEqual([], result.field_issues)
+
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
         from types import SimpleNamespace
 

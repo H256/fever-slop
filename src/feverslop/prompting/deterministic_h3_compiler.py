@@ -28,6 +28,7 @@ class DeterministicH3Compiler:
         shot_windows: Mapping[str, tuple[float, float]],
         references: Mapping[str, Sequence[str]] | None = None,
         prepared_reference_labels: Sequence[str] | None = None,
+        reference_metadata: Sequence[Mapping[str, Any]] | None = None,
         duration_seconds: float | None = None,
     ) -> str:
         normalized_mode = str(mode).strip().lower()
@@ -45,6 +46,7 @@ class DeterministicH3Compiler:
                 plan=plan,
                 facts=facts,
                 prepared_reference_labels=prepared_reference_labels,
+                reference_metadata=reference_metadata,
                 duration_seconds=duration_seconds,
             )
         if not isinstance(facts, LockedSceneFacts):
@@ -103,11 +105,17 @@ class DeterministicH3Compiler:
         plan: ResolvedPromptPlan,
         facts: LockedSceneFacts,
         prepared_reference_labels: Sequence[str] | None,
+        reference_metadata: Sequence[Mapping[str, Any]] | None,
         duration_seconds: float | None,
     ) -> str:
         """Serialize LLM-authored fields into the MiniMax guide grammar."""
         if mode is PromptMode.R2V:
             subject_lines = [subject.render() for subject in plan.subjects]
+            metadata_by_label = {
+                str(reference.get("label")): reference
+                for reference in reference_metadata or ()
+                if str(reference.get("label") or "").strip()
+            }
             represented = {
                 *[label for subject in plan.subjects for label in subject.source_references],
                 *[usage.reference_label for usage in plan.reference_usage],
@@ -119,19 +127,45 @@ class DeterministicH3Compiler:
                     f"{label} is a prepared reference input used by the target video."
                 )
             retention_lines = [
-                f"{usage.reference_label}: reference - {usage.details}"
-                for usage in plan.reference_usage
+                f"{subject.label} (appears in [Shot {shot_number}]): fully_preserved - "
+                f"{subject.description}"
+                for subject in plan.subjects
+                for shot_number in _subject_shot_numbers(subject, plan)
             ]
+            for usage in plan.reference_usage:
+                reference = metadata_by_label.get(usage.reference_label, {})
+                kind = str(reference.get("kind") or "").lower()
+                marker = (
+                    str(reference.get("copy_mode") or "reference")
+                    if kind == "audio"
+                    else "fully_preserved"
+                )
+                if marker not in {
+                    "fully_preserved", "partially_preserved", "attribute_transfer",
+                    "weak_reference", "fully_copy", "partially_copy", "reference",
+                }:
+                    marker = "reference" if kind == "audio" else "fully_preserved"
+                retention_lines.append(f"{usage.reference_label}: {marker} - {usage.details}")
             for label in prepared_reference_labels or ():
                 if label in represented:
                     continue
-                marker = "reference" if "Audio" in label else "fully_preserved"
+                metadata = metadata_by_label.get(label, {})
+                marker = (
+                    str(metadata.get("copy_mode") or "reference")
+                    if str(metadata.get("kind") or "").lower() == "audio"
+                    else "fully_preserved"
+                )
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
-            detailed = "\n".join(
+            detailed_parts = [
+                f"The target video uses a cinematic visual style centered on {plan.creative_intent}."
+            ]
+            detailed_parts.extend(
                 f"[Shot {index}] {shot.description}"
-                + (" " + " ".join(shot.reference_labels) if shot.reference_labels else "")
+                + _shot_reference_details(shot, plan)
+                + (f" Camera movement: {shot.camera_behavior}." if shot.camera_behavior else "")
                 for index, shot in enumerate(plan.shots, start=1)
             )
+            detailed = "\n".join(detailed_parts)
             sections = [
                 "subject_definitions:\n" + "\n".join(subject_lines),
                 "summary: [reference generation] " + plan.creative_intent,
@@ -173,6 +207,25 @@ class DeterministicH3Compiler:
         if self.max_words is not None and len(result.split()) > self.max_words:
             raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
         return result
+
+
+def _subject_shot_numbers(subject: Any, plan: ResolvedPromptPlan) -> tuple[int, ...]:
+    labels = set(subject.source_references)
+    return tuple(
+        shot.shot_number
+        for shot in plan.shots
+        if labels.intersection(shot.reference_labels)
+    ) or tuple(shot.shot_number for shot in plan.shots[:1])
+
+
+def _shot_reference_details(shot: Any, plan: ResolvedPromptPlan) -> str:
+    subject_labels = [
+        subject.label
+        for subject in plan.subjects
+        if set(subject.source_references).intersection(shot.reference_labels)
+    ]
+    labels = list(dict.fromkeys([*subject_labels, *shot.reference_labels]))
+    return (" References in this shot: " + ", ".join(labels) + ".") if labels else ""
 
 
 def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayload, ...]:

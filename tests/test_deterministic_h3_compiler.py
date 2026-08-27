@@ -128,6 +128,61 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Audio 1>", prompt)
         self.assertIn("<Video 1>", prompt)
 
+    def test_r2v_compiler_serializes_guide_style_shot_labels_and_retention_markers(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="a polished augmented metropolis at twilight",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="Elara",
+                description="a young woman with sharp features",
+                source_references=["<Picture 1>"],
+            )],
+            reference_usage=[
+                ReferenceUsage(
+                    reference_label="<Picture 1>",
+                    purpose="identity",
+                    details="Elara's face and dark hair remain recognizable.",
+                ),
+                ReferenceUsage(
+                    reference_label="<Audio 1>",
+                    purpose="audio reuse",
+                    details="The original soundtrack is reused for rhythm continuity.",
+                ),
+            ],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A wide shot shows the city.",
+                camera_behavior="slow panoramic sweep with small amplitude",
+                start_seconds=0,
+                end_seconds=4,
+                reference_labels=["<Picture 1>", "<Audio 1>"],
+            )],
+            overall_soundscape="Neon streets hum softly.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 4.0)},
+            prepared_reference_labels=["<Picture 1>", "<Audio 1>"],
+            reference_metadata=[
+                {"label": "<Picture 1>", "kind": "picture", "copy_mode": "reference"},
+                {"label": "<Audio 1>", "kind": "audio", "copy_mode": "fully_copy"},
+            ],
+        )
+
+        detailed = prompt.split("detailed_description: ", 1)[1].split(
+            "\n\noverall_soundscape:", 1,
+        )[0]
+        self.assertLess(detailed.index("cinematic visual style"), detailed.index("[Shot 1]"))
+        self.assertIn("<Subject 1>", detailed)
+        self.assertIn("slow panoramic sweep with small amplitude", detailed)
+        self.assertIn("<Picture 1>: fully_preserved", prompt)
+        self.assertIn("<Audio 1>: fully_copy", prompt)
+
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(
             creative_intent="intent",
