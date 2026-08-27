@@ -280,7 +280,8 @@ def _render_shot_with_references(index: int, shot: Any, plan: ResolvedPromptPlan
         if audio_labels:
             suffix = " and ".join(audio_labels)
             description = f"{description.rstrip('.')} with {suffix} active in the soundtrack."
-    return f"[Shot {index}] {description}"
+    cut = "" if index == 1 else f" At {_time(float(shot.start_seconds or 0.0))},"
+    return f"[Shot {index}]{cut} {description}"
 
 
 def _replace_subject_names(

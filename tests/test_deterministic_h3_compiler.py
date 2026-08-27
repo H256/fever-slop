@@ -261,6 +261,26 @@ class DeterministicH3CompilerTests(unittest.TestCase):
                 )
                 self.assertIn(expected, prompt)
 
+    def test_r2v_compiler_inserts_guide_cut_timestamp_for_later_shots(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="a continuous performance",
+            shots=[
+                PlannedShot(shot_number=1, description="The singer stands.", start_seconds=0, end_seconds=2),
+                PlannedShot(shot_number=2, description="The singer turns.", start_seconds=2.42, end_seconds=4),
+            ],
+            overall_soundscape="Room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 4.0)},
+        )
+        detailed = prompt.split("detailed_description: ", 1)[1].split(
+            "\n\noverall_soundscape:", 1,
+        )[0]
+        self.assertIn("[Shot 1]", detailed)
+        self.assertIn("[Shot 2] At 00:02.420,", detailed)
+
     def test_enforces_word_budget(self):
         with self.assertRaisesRegex(ValueError, "word budget"):
             DeterministicH3Compiler(max_words=3).compile(

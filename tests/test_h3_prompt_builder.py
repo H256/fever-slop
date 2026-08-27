@@ -327,6 +327,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
 
         self.assertEqual(2, len(requests))
         self.assertIn("use the required guide label", requests[1]["notes"])
+        self.assertIn("Do not add reference labels, timestamps, or <d> tags", requests[1]["notes"])
         self.assertEqual("good", result["prompt_judge"]["verdict"])
 
     def test_compatibility_export_delegates_to_canonical_generator(self):
