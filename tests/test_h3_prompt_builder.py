@@ -88,6 +88,49 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
 # ─── H3PromptBuilder compatibility export ───────────────────────────────────
 
 class H3PromptBuilderCompatibilityTests(unittest.TestCase):
+    def test_compiled_prompt_judge_accepts_runtime_reference_dicts(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        observed = {}
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.judge = lambda **payload: observed.update(payload) or SimpleNamespace(
+            judge={"verdict": "good"},
+        )
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+        references = [{
+            "label": "<Picture 1>",
+            "kind": "picture",
+            "source": "reference.png",
+            "role": "subject",
+            "description": "a subject",
+        }]
+
+        result = generator.judge_compiled_prompt(
+            request={"mode": PromptMode.R2V.value, "user_prompt": "prompt"},
+            plan=plan,
+            references=references,
+            final_prompt="subject_definitions:\n<Picture 1> is a subject",
+        )
+
+        self.assertEqual("good", result.verdict)
+        self.assertEqual("<Picture 1>", observed["references"][0]["label"])
+
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
         from types import SimpleNamespace
 

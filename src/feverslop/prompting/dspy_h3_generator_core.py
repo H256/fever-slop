@@ -218,7 +218,10 @@ class VideoPromptGenerator:
             "mode": request["mode"],
             "user_prompt": request["user_prompt"],
             "duration_seconds": request.get("duration_seconds"),
-            "references": [reference.model_dump() for reference in references],
+            "references": [
+                reference.model_dump() if hasattr(reference, "model_dump") else dict(reference)
+                for reference in references
+            ],
             "strict_fidelity": bool(request.get("strict_fidelity", True)),
         })
         return self._judge_final_prompt(
