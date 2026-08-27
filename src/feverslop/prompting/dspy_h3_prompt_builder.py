@@ -543,8 +543,9 @@ class DspyH3PromptBuilder:
                             f"{request.get('notes', '')}\n\n"
                             "Regenerate the structured fields and fix these judge findings: "
                             f"{feedback}\n"
-                            "Do not add reference labels, timestamps, or <d> tags to structured fields; "
-                            "the deterministic compiler adds guide syntax."
+                            "Do not add reference labels or timestamps to structured fields; "
+                            "the deterministic compiler adds those guide tokens. Keep dialogue or lyric "
+                            "content inside the guide-required <d>[Language] ...</d> form."
                         ).strip(),
                     }
                     generated = self.generator(request)
