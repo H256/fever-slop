@@ -83,7 +83,7 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
     def test_save_reads_production_sections_shape_for_structured_fingerprints(self):
         result = {
             "prompt": "compiled prompt",
-            "prompt_provenance": {"compiler": "deterministic_h3_compiler", "compiler_version": 6},
+            "prompt_provenance": {"compiler": "deterministic_h3_compiler", "compiler_version": 7},
             "sections": {
                 "h3_sections": {"subject": "hero"},
                 "shots": [{"shot_id": "shot-1", "visible_action": "turn"}],
@@ -93,7 +93,7 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         }
         payload = json.loads(self.store.save(self.request(), result).path.read_text(encoding="utf-8"))
 
-        self.assertEqual(6, payload["provenance"]["compiler_version"])
+        self.assertEqual(7, payload["provenance"]["compiler_version"])
         self.assertTrue(payload["provenance"]["creative_sections_sha256"].startswith("sha256:"))
         self.assertTrue(payload["provenance"]["locked_facts_sha256"].startswith("sha256:"))
 

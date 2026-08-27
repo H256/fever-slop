@@ -268,7 +268,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<d>[German] So I blink</d>", prompt)
         self.assertIn("<Subject 1> (S1) sings", prompt)
         self.assertNotIn("<d>en So I blink</d>", prompt)
-        self.assertIn("<Audio 1> is the vocals audio source", prompt)
+        self.assertIn("<Audio 1> is the vocal stem and is partially copied", prompt)
         self.assertNotIn("overall_soundscape: The vocal line So I blink", prompt)
 
     def test_creative_projection_removes_compiler_owned_labels_from_fields(self):
@@ -325,6 +325,110 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 2> is visible", prompt)
         self.assertNotIn("<Subject 2> (S2)", prompt)
         self.assertIn("<Subject 1> (S1) sings <d>[English] So I blink</d>", prompt)
+
+    def test_r2v_compiler_canonicalizes_multishot_vocal_reference_plan(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="The Lead Singer confronts the fracturing apartment.",
+            subjects=[
+                SubjectDefinition(
+                    label="<Subject 1>", name="Lead Singer",
+                    description="A man with sharp features", source_references=["<Picture 1>"],
+                ),
+                SubjectDefinition(
+                    label="<Subject 2>", name="Apartment",
+                    description="A minimalist apartment", source_references=["<Picture 2>"],
+                ),
+                SubjectDefinition(
+                    label="<Subject 3>", name="floor_cracks",
+                    description="Cracks in the floor",
+                ),
+            ],
+            reference_usage=[
+                ReferenceUsage(reference_label="<Audio 1>", purpose="vocals", details="vocals stem"),
+                ReferenceUsage(reference_label="<Audio 2>", purpose="song", details="full mix"),
+            ],
+            shots=[
+                PlannedShot(
+                    shot_number=1, start_seconds=0, end_seconds=2,
+                    description=(
+                        "The Lead Singer is centered. He sings "
+                        "<d>[en] first line</d>. The camera slowly tilts down."
+                    ),
+                    camera_behavior="Slowly tilting downward from the Lead Singer's gaze.",
+                    involved_subjects=["Lead Singer", "Apartment", "floor_cracks"],
+                ),
+                PlannedShot(
+                    shot_number=2, start_seconds=2, end_seconds=3,
+                    description="The Lead Singer is silent while the camera continues downward.",
+                    camera_behavior="Continuing the downward tilt.",
+                    involved_subjects=["Lead Singer", "Apartment", "floor_cracks"],
+                ),
+                PlannedShot(
+                    shot_number=3, start_seconds=3, end_seconds=5,
+                    description=(
+                        "The Lead Singer, facing the floor, resumes singing "
+                        "<d>[en] second line</d>. The camera completes the tilt."
+                    ),
+                    camera_behavior="Completing the downward tilt.",
+                    involved_subjects=["Lead Singer", "Apartment", "floor_cracks"],
+                ),
+            ],
+            overall_soundscape="A musical track featuring vocals and a full mix.",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 5.0)}, dialogue_language="en",
+            prepared_reference_labels=["<Picture 1>", "<Picture 2>", "<Audio 1>", "<Audio 2>"],
+            reference_metadata=[
+                {"label": "<Audio 1>", "kind": "audio", "name": "vocals", "copy_mode": "partially_copy"},
+                {"label": "<Audio 2>", "kind": "audio", "name": "full_mix", "copy_mode": "fully_copy"},
+            ],
+        )
+        detailed = prompt.split("detailed_description: ", 1)[1].split("\n\noverall_soundscape:", 1)[0]
+
+        self.assertEqual(2, detailed.count("<Subject 1> (S1)"))
+        self.assertIn("<Subject 1> (S1) sings <d>[English] first line</d>", detailed)
+        self.assertNotIn("<Subject 1> (S1) is silent", detailed)
+        self.assertNotIn("(S2)", detailed)
+        self.assertNotIn("(S3)", detailed)
+        self.assertIn("<d>[English] first line</d>", detailed)
+        self.assertIn("<d>[English] second line</d>", detailed)
+        self.assertEqual(1, detailed.count("<Audio 1>"))
+        self.assertEqual(1, detailed.count("<Audio 2>"))
+        self.assertNotIn("The camera Slowly", detailed)
+        self.assertIn("<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3])", prompt)
+        self.assertNotIn("overall_soundscape: A musical track", prompt)
+
+    def test_r2v_compiler_assigns_speaker_ids_by_first_vocal_event(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="Two people speak in a room.",
+            subjects=[
+                SubjectDefinition(label="<Subject 1>", name="Room", description="An interior room"),
+                SubjectDefinition(label="<Subject 2>", name="Alice", description="A woman in a blue coat"),
+                SubjectDefinition(label="<Subject 3>", name="Bob", description="A man in a dark coat"),
+            ],
+            shots=[
+                PlannedShot(
+                    shot_number=1, start_seconds=0, end_seconds=2,
+                    description="Alice says <d>[en] Hello.</d>", involved_subjects=["Room", "Alice"],
+                ),
+                PlannedShot(
+                    shot_number=2, start_seconds=2, end_seconds=4,
+                    description="Bob says <d>[en] Welcome.</d>", involved_subjects=["Room", "Bob"],
+                ),
+            ],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 4.0)}, dialogue_language="en",
+        )
+
+        self.assertIn("<Subject 2> (S1) says <d>[English] Hello.</d>", prompt)
+        self.assertIn("<Subject 3> (S2) says <d>[English] Welcome.</d>", prompt)
+        self.assertNotIn("<Subject 1> (S", prompt)
 
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(
