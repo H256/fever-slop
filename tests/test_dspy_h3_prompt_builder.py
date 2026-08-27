@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from importlib.resources import files
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
@@ -39,7 +40,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _scene_references,
 )
 from feverslop.prompting.scene_prompt_builder import normalize_scene_references
-from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures
+from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures, build_h3_signature_bundle
 
 
 class FakeGeneratedPrompt:
@@ -1156,6 +1157,11 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             field = signature.input_fields["relay_segments"]
             self.assertFalse(field.is_required())
             self.assertEqual(field.default, [])
+
+    def test_judge_output_accepts_section_level_feedback_for_normalization(self):
+        judge = build_h3_signature_bundle().judge_final_prompt
+
+        self.assertEqual(dict[str, Any], judge.output_fields["judge"].annotation)
 
     def test_integrated_guides_are_bundled_with_prompting_package(self):
         guides = files("feverslop.prompting.guides")

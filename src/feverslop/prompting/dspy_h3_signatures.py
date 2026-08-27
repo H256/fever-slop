@@ -10,7 +10,6 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
     from feverslop.prompting.dspy_h3_models import (
         BaseVideoPrompt,
         ImageAnalysis,
-        PromptJudgeResult,
         PromptPlan,
         ResolvedPromptPlan,
         ResolvedReference,
@@ -360,7 +359,10 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         final_prompt: str = dspy_module.InputField()
         authoritative_plan: str = dspy_module.InputField()
         references: list[ResolvedReference] = dspy_module.InputField()
-        judge: PromptJudgeResult = dspy_module.OutputField()
+        # Keep this as a raw object because the model may report section-level
+        # feedback in field_issues; the application normalizes that response
+        # into PromptJudgeResult after DSPy returns it.
+        judge: dict[str, Any] = dspy_module.OutputField()
 
     return H3SignatureBundle(
         AnalyzeImage,
