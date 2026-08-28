@@ -393,9 +393,11 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual(2, len(requests))
         self.assertEqual(1, len(judged_prompts))
         self.assertIn("350", requests[1]["notes"])
+        self.assertIn("actual:", requests[1]["notes"])
+        self.assertIn("Expand the LLM-authored shot description, visible action, performance", requests[1]["notes"])
         self.assertEqual(judged_prompts[0], result["prompt"])
 
-    def test_judge_field_issues_are_forwarded_to_creative_regeneration(self):
+    def test_judge_field_issues_repair_only_addressed_creative_fields(self):
         from types import SimpleNamespace
 
         from feverslop.prompting.dspy_h3_models import (
@@ -424,6 +426,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         )
         requests = []
         judge_calls = []
+        repair_calls = []
 
         class Generator:
             judge_attempts = 2
@@ -431,6 +434,13 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             def __call__(self, request):
                 requests.append(request)
                 return SimpleNamespace(plan=plan)
+
+            def repair_compiled_plan(self, **kwargs):
+                repair_calls.append(kwargs)
+                repaired_shot = kwargs["plan"].shots[0].model_copy(update={
+                    "camera_behavior": "The camera pushes in at slow speed.",
+                })
+                return kwargs["plan"].model_copy(update={"shots": [repaired_shot]})
 
             def judge_compiled_prompt(self, **_kwargs):
                 judge_calls.append(1)
@@ -455,9 +465,10 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             mode="r2v",
         )
 
-        self.assertEqual(2, len(requests))
-        self.assertIn("Repair only the affected shot field", requests[1]["notes"])
-        self.assertIn("shot-0001.camera_behavior: Specify camera speed", requests[1]["notes"])
+        self.assertEqual(1, len(requests))
+        self.assertEqual(1, len(repair_calls))
+        self.assertEqual("camera_behavior", repair_calls[0]["field_issues"][0].field)
+        self.assertIn("pushes in at slow speed", result["prompt"])
         self.assertEqual("good", result["prompt_judge"]["verdict"])
 
     def test_compatibility_export_delegates_to_canonical_generator(self):

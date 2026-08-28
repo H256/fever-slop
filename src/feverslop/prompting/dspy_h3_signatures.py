@@ -128,6 +128,10 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         Also provide style_opening as one or two concrete English sentences establishing
         the target video's visual style and lighting. Do not put a shot label, timestamp,
         section header, or backend reference label in style_opening.
+        Write description, visible_action, performance, camera_behavior,
+        environmental_motion, and transition_intent as complementary concrete prose.
+        The deterministic compiler concatenates every populated field, so do not duplicate
+        the same sentence across fields and do not leave the requested detail only implicit.
 
         `requested_music_intent` is authoritative when it is non-empty. In particular,
         `requested_music_intent=none` means the soundtrack/scene audio is already

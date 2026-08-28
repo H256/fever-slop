@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 8
+H3_COMPILER_VERSION = 10
 
 
 class DeterministicH3Compiler:
@@ -145,16 +145,23 @@ class DeterministicH3Compiler:
             for usage in plan.reference_usage:
                 if usage.reference_label.lower().startswith("<audio "):
                     metadata = metadata_by_label.get(usage.reference_label, {})
-                    copy_mode = str(metadata.get("copy_mode") or "reference")
+                    copy_mode = _effective_audio_copy_mode(metadata)
                     name = str(metadata.get("name") or "audio reference").strip()
-                    role = {
-                        "full_mix": "complete soundtrack",
-                        "vocals": "vocal stem",
-                    }.get(name.casefold(), name.replace("_", " "))
+                    role = (
+                        "original full-mix song used only as a rhythm and timing reference"
+                        if name.casefold() == "full_mix" and copy_mode == "reference"
+                        else {
+                            "full_mix": "complete soundtrack",
+                            "vocals": "vocal stem",
+                        }.get(name.casefold(), name.replace("_", " "))
+                    )
                     relationship = {
                         "fully_copy": "is fully copied as the target video's audio signal",
                         "partially_copy": "is partially copied into the target video's audio signal",
-                    }.get(copy_mode, "is referenced for the target video's soundtrack")
+                    }.get(
+                        copy_mode,
+                        "is referenced for rhythm and timing without copying the source signal",
+                    )
                     subject_lines.append(
                         f"{usage.reference_label} is the {role} and {relationship}."
                     )
@@ -178,7 +185,7 @@ class DeterministicH3Compiler:
                 if kind == "picture" and role not in frame_roles:
                     continue
                 marker = (
-                    str(reference.get("copy_mode") or "reference")
+                    _effective_audio_copy_mode(reference)
                     if kind == "audio"
                     else "fully_preserved"
                 )
@@ -193,7 +200,7 @@ class DeterministicH3Compiler:
                     continue
                 metadata = metadata_by_label.get(label, {})
                 marker = (
-                    str(metadata.get("copy_mode") or "reference")
+                    _effective_audio_copy_mode(metadata)
                     if str(metadata.get("kind") or "").lower() == "audio"
                     else "fully_preserved"
                 )
@@ -222,13 +229,6 @@ class DeterministicH3Compiler:
                     reference_metadata=metadata_by_label,
                     final_shot=index == len(plan.shots),
                 )
-                + (
-                    " " + _replace_subject_names(
-                        _render_camera_behavior(shot.camera_behavior), plan,
-                    )
-                    if shot.camera_behavior and not _description_covers_camera(shot)
-                    else ""
-                )
                 for index, shot in enumerate(plan.shots, start=1)
             )
             detailed = _normalize_r2v_dialogue("\n".join(detailed_parts), dialogue_language or "English", plan)
@@ -245,11 +245,15 @@ class DeterministicH3Compiler:
                 "retention_analysis:\n" + "\n".join(retention_lines),
                 "detailed_description: " + detailed,
                 "overall_soundscape: " + soundscape,
-                "non_diegetic_music: " + (plan.non_diegetic_music or "N/A"),
+                "non_diegetic_music: " + _render_non_diegetic_music(
+                    plan, metadata_by_label,
+                ),
             ]
         else:
             detailed = "\n".join(
-                _render_base_shot(index, shot, mode, final_shot=index == len(plan.shots))
+                _render_base_shot(
+                    index, shot, plan, mode, final_shot=index == len(plan.shots),
+                )
                 for index, shot in enumerate(plan.shots, start=1)
             )
             sections = [
@@ -332,7 +336,7 @@ def _render_shot_with_references(
     final_shot: bool = False,
 ) -> str:
     labels = _shot_reference_labels(shot, plan)
-    description = _replace_subject_names(str(shot.description), plan)
+    description = _render_authored_shot_fields(shot, plan)
     missing = [label for label in labels if label not in description]
     if missing:
         visible = " and ".join(missing)
@@ -357,7 +361,7 @@ def _render_shot_with_references(
         )
     if audio_labels:
         relationships = " and ".join(available_audio[label] for label in audio_labels)
-        description = f"{description.rstrip('.')} with {relationships}."
+        description = f"{relationships}. {description}"
     subject_sources = {
         label for subject in plan.subjects for label in subject.source_references
     }
@@ -408,12 +412,27 @@ def _replace_subject_names(
 
 
 def _audio_relationship_phrase(label: str, metadata: Mapping[str, Any]) -> str:
-    copy_mode = str(metadata.get("copy_mode") or "reference")
+    copy_mode = _effective_audio_copy_mode(metadata)
     if copy_mode == "fully_copy":
-        return f"{label} fully copied as the complete soundtrack and timing reference"
+        return f"{label} is fully copied as the complete soundtrack and timing reference"
     if copy_mode == "partially_copy":
         return f"the selected signal from {label} partially copied into the target video's audio"
-    return f"{label} referenced for the target video's soundtrack"
+    return (
+        f"{label} is referenced for the target video's rhythm and timing "
+        "without copying the source signal"
+    )
+
+
+def _effective_audio_copy_mode(metadata: Mapping[str, Any]) -> str:
+    """Canonicalize legacy global-song metadata for a scene-level target."""
+    raw = str(metadata.get("copy_mode") or "reference").casefold()
+    identity = " ".join((
+        str(metadata.get("name") or ""),
+        str(metadata.get("description") or ""),
+    )).casefold()
+    if "full_mix" in identity and re.search(r"\b(?:original song|beat|rhythm)\b", identity):
+        return "reference"
+    return raw if raw in {"fully_copy", "partially_copy", "reference", "weak_reference"} else "reference"
 
 
 def _render_prepared_reference_definition(label: str, metadata: Mapping[str, Any]) -> str:
@@ -441,7 +460,7 @@ def _summary_prefix(
     if plan.subjects or roles.difference({"audio_reuse"}):
         task_types.append("reference generation")
     copy_modes = {
-        str(item.get("copy_mode") or "").casefold()
+        _effective_audio_copy_mode(item)
         for item in metadata_by_label.values()
         if str(item.get("kind") or "").casefold() == "audio"
     }
@@ -469,17 +488,73 @@ def _render_summary(
     for label in sorted(audio_labels):
         if label in summary:
             continue
-        copy_mode = str(metadata_by_label.get(label, {}).get("copy_mode") or "reference")
+        copy_mode = _effective_audio_copy_mode(metadata_by_label.get(label, {}))
         relationship = {
             "fully_copy": f"{label} is fully copied as the complete target-video audio track.",
             "partially_copy": f"Selected signal from {label} is partially copied into the target video.",
-        }.get(copy_mode, f"{label} is referenced without copying its original signal.")
+        }.get(copy_mode, f"{label} is referenced without copying the source signal.")
         summary += " " + relationship
+    missing_subjects = [
+        subject.label for subject in plan.subjects if subject.label not in summary
+    ]
+    if missing_subjects:
+        summary += " The target video includes " + _english_join(missing_subjects) + "."
     return summary
 
 
-def _render_base_shot(index: int, shot: Any, mode: PromptMode, *, final_shot: bool) -> str:
-    description = str(shot.description).strip()
+def _english_join(values: Sequence[str]) -> str:
+    items = [str(value).strip() for value in values if str(value).strip()]
+    if len(items) < 2:
+        return "".join(items)
+    if len(items) == 2:
+        return " and ".join(items)
+    return ", ".join(items[:-1]) + ", and " + items[-1]
+
+
+def _render_non_diegetic_music(
+    plan: ResolvedPromptPlan,
+    metadata_by_label: Mapping[str, Mapping[str, Any]],
+) -> str:
+    parts = [str(plan.non_diegetic_music or "").strip()]
+    for label, metadata in sorted(metadata_by_label.items()):
+        if str(metadata.get("kind") or "").casefold() != "audio":
+            continue
+        identity = " ".join((
+            str(metadata.get("name") or ""),
+            str(metadata.get("description") or ""),
+        )).casefold()
+        if not re.search(r"\b(?:full_mix|song|music|score|instrumental)\b", identity):
+            continue
+        copy_mode = _effective_audio_copy_mode(metadata)
+        if copy_mode in {"reference", "weak_reference"} and plan.music_intent.value == "none":
+            continue
+        relationship = {
+            "fully_copy": (
+                f"{label} is directly reused as the complete audience-only score."
+            ),
+            "partially_copy": (
+                f"The selected audience-only music layer from {label} is partially copied "
+                "into the target video."
+            ),
+        }.get(
+            copy_mode,
+            f"{label} is referenced for the audience-only score's rhythm, tempo, and "
+            "dynamic timing without copying the source signal.",
+        )
+        if label not in " ".join(parts):
+            parts.append(relationship)
+    return " ".join(part for part in parts if part) or "N/A"
+
+
+def _render_base_shot(
+    index: int,
+    shot: Any,
+    plan: ResolvedPromptPlan,
+    mode: PromptMode,
+    *,
+    final_shot: bool,
+) -> str:
+    description = _render_authored_shot_fields(shot, plan)
     if mode in {PromptMode.I2V, PromptMode.FL2V} and index == 1:
         description = f"The shot begins from <Picture 1>, preserving its composition. {description}"
     if mode is PromptMode.FL2V and final_shot:
@@ -494,13 +569,40 @@ def _lower_initial(value: str) -> str:
     return value[:1].lower() + value[1:] if value else value
 
 
-def _description_covers_camera(shot: Any) -> bool:
-    description = str(shot.description or "").lower()
-    return "camera" in description
+def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
+    """Join every LLM-authored creative field without inventing scene content."""
+    values = (
+        shot.description,
+        shot.visible_action,
+        shot.performance,
+        _render_camera_behavior(shot.camera_behavior) if shot.camera_behavior else "",
+        shot.environmental_motion,
+        shot.transition_intent,
+    )
+    parts: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _replace_subject_names(str(value or "").strip(), plan)
+        key = re.sub(r"\W+", " ", text, flags=re.UNICODE).strip().casefold()
+        if not text or not key or key in seen:
+            continue
+        seen.add(key)
+        parts.append(_with_terminal_punctuation(text))
+    return " ".join(parts)
+
+
+def _with_terminal_punctuation(value: str) -> str:
+    text = str(value).strip()
+    if not text or text.endswith((".", "!", "?", "</d>")):
+        return text
+    return text + "."
 
 
 def _render_camera_behavior(value: str) -> str:
-    text = _lower_initial(str(value).strip().rstrip("."))
+    raw = str(value).strip()
+    if re.match(r"(?i)^the camera\b", raw):
+        return _with_terminal_punctuation(raw)
+    text = _lower_initial(raw.rstrip("."))
     replacements = {
         "tracking": "tracks",
         "zooming": "zooms",
@@ -626,9 +728,10 @@ def _remove_sentence_containing(text: str, phrase: str) -> str:
 
 
 def _remove_music_sentences(text: str) -> str:
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    parts = re.split(r"(?<=[.!?;])\s+", text.strip())
     music = re.compile(r"\b(?:musical track|full mix|song|vocals?|background music)\b", re.IGNORECASE)
-    return " ".join(part for part in parts if not music.search(part)).strip()
+    retained = " ".join(part for part in parts if not music.search(part)).strip(" ;")
+    return retained[:1].upper() + retained[1:] if retained else ""
 
 
 def creative_shots_from_plan(plan: ResolvedPromptPlan) -> tuple[CreativeShotPayload, ...]:

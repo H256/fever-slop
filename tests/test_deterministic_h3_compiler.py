@@ -85,6 +85,44 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("CREATIVE SHOT DESCRIPTION", prompt)
         self.assertIn("overall_soundscape: CREATIVE SOUNDSCAPE", prompt)
 
+    def test_r2v_compiler_preserves_every_llm_authored_shot_field(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A complete reference-guided performance.",
+            style_opening="Live-action imagery uses cool practical lighting and crisp contrast.",
+            subjects=[],
+            reference_usage=[],
+            shots=[PlannedShot(
+                shot_number=1,
+                description=" ".join([
+                    "The camera-facing composition remains visually explicit.",
+                ] * 72),
+                visible_action="The performer raises both hands in a controlled arc.",
+                performance="Her expression shifts from restraint to open defiance.",
+                camera_behavior="The camera pushes forward slowly at eye level.",
+                environmental_motion="Loose paper circles through the cold backlight.",
+                transition_intent="The movement settles into a held final pose.",
+                start_seconds=0,
+                end_seconds=5,
+            )],
+            overall_soundscape="Paper rustles over a low room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 5.0)},
+            duration_seconds=5,
+        )
+
+        self.assertIn("raises both hands in a controlled arc", prompt)
+        self.assertIn("expression shifts from restraint to open defiance", prompt)
+        self.assertIn("pushes forward slowly at eye level", prompt)
+        self.assertIn("Loose paper circles through the cold backlight", prompt)
+        self.assertIn("settles into a held final pose", prompt)
+
     def test_compiles_r2v_six_sections_and_authoritative_reference_anchors(self):
         plan = ResolvedPromptPlan(
             creative_intent="CREATIVE R2V SUMMARY",
@@ -185,7 +223,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
         self.assertIn("<Subject 1> is visible in the shot.", detailed)
-        self.assertIn("<Audio 1> fully copied as the complete soundtrack", detailed)
+        self.assertIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
         self.assertNotIn("<Picture 1>.", detailed)
         self.assertNotIn("<Picture 1>: fully_preserved", prompt)
         self.assertIn("<Audio 1>: fully_copy", prompt)
@@ -354,8 +392,69 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         detailed = prompt.split("detailed_description:", 1)[1].split(
             "overall_soundscape:", 1,
         )[0]
-        self.assertIn("<Audio 1> fully copied as the complete soundtrack", detailed)
+        self.assertIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
         self.assertNotIn("<Audio 1> active in the soundtrack", detailed)
+        self.assertIn(
+            "non_diegetic_music: <Audio 1> is directly reused as the complete audience-only score.",
+            prompt,
+        )
+
+    def test_r2v_compiler_tracks_all_subjects_and_keeps_non_music_ambience(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="The singer performs in a sterile city.",
+            subjects=[
+                SubjectDefinition(label="<Subject 1>", name="singer", description="a singer"),
+                SubjectDefinition(label="<Subject 2>", name="digital_paradise", description="a sterile city"),
+            ],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 1>",
+                purpose="audio reference",
+                details="Use the original song for rhythm continuity without copying its signal.",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The singer crosses the sterile city.",
+                start_seconds=0,
+                end_seconds=4,
+                involved_subjects=["singer", "digital_paradise"],
+                reference_labels=["<Audio 1>"],
+            )],
+            overall_soundscape=(
+                "The supplied full_mix song establishes the beat; subtle sterile digital "
+                "ambience remains low throughout the scene."
+            ),
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 4.0)},
+            prepared_reference_labels=["<Audio 1>"],
+            reference_metadata=[{
+                "label": "<Audio 1>",
+                "kind": "audio",
+                "name": "full_mix",
+                "description": "original song for beat and rhythm continuity",
+                "copy_mode": "fully_copy",
+            }],
+        )
+
+        summary = prompt.split("summary:", 1)[1].split("retention_analysis:", 1)[0]
+        self.assertIn("<Subject 1>", summary)
+        self.assertIn("<Subject 2>", summary)
+        self.assertIn("overall_soundscape: Subtle sterile digital ambience", prompt)
+        self.assertIn("non_diegetic_music: N/A", prompt)
+        self.assertIn("<Audio 1>: reference", prompt)
+        self.assertNotIn("<Audio 1>: fully_copy", prompt)
+        self.assertIn("without copying the source signal", prompt)
+        self.assertNotIn("<Audio 1> is the complete soundtrack", prompt)
+        detailed = prompt.split("detailed_description:", 1)[1].split(
+            "overall_soundscape:", 1,
+        )[0]
+        self.assertLess(detailed.index("<Audio 1>"), detailed.index("crosses the sterile city"))
 
     def test_r2v_compiler_replaces_subject_aliases_case_insensitively(self):
         plan = ResolvedPromptPlan(

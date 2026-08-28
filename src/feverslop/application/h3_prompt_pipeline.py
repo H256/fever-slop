@@ -218,6 +218,26 @@ class H3PromptPipeline:
                 "Matching checkpoints are reused; stale compiler checkpoints are "
                 "invalidated and saved structured plans are recompiled.[/cyan]",
             )
+        output_budget = getattr(llm, "max_tokens", None)
+        if (
+            reporter is not None
+            and model_spec is not None
+            and model_spec.is_minimax_h3
+            and output_budget is not None
+        ):
+            reporter.message(
+                f"[cyan]H3 planner output budget: {output_budget} tokens per structured plan.[/cyan]",
+            )
+        judge_output_budget = getattr(llm, "prompt_judge_max_tokens", None)
+        if (
+            reporter is not None
+            and model_spec is not None
+            and model_spec.is_minimax_h3
+            and judge_output_budget is not None
+        ):
+            reporter.message(
+                f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
+            )
         selected_scene_numbers = (
             context["selected_scene_numbers"]
             if "selected_scene_numbers" in context.keys()
@@ -350,5 +370,8 @@ def _generator_revision(app_config: Any, builder: Any) -> dict[str, Any]:
             revision["model"] = str(model_for("structured"))
         revision["prompt_judge_attempts"] = int(
             getattr(llm_config, "prompt_judge_attempts", 3),
+        )
+        revision["prompt_judge_max_tokens"] = int(
+            getattr(llm_config, "prompt_judge_max_tokens", 8192),
         )
     return revision

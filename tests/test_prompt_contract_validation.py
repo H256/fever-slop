@@ -112,6 +112,9 @@ class PromptContractValidationTests(unittest.TestCase):
         )
 
         self.assertIn("h3.detail.too_short", [issue.code for issue in issues])
+        too_short = next(issue for issue in issues if issue.code == "h3.detail.too_short")
+        self.assertIn("actual:", too_short.message)
+        self.assertRegex(too_short.message, r"actual: \d+ words")
         self.assertIn("h3.audio.relationship_missing", [issue.code for issue in issues])
         self.assertIn("h3.audio.summary_missing", [issue.code for issue in issues])
 

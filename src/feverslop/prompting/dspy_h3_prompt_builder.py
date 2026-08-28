@@ -119,6 +119,47 @@ def _audio_description(name: str, binding: dict[str, str] | None) -> str:
     return f"{name} stem bound to {binding['subject_label']}{speaker}"
 
 
+def _scene_audio_copy_mode(name: str, description: str) -> str:
+    """Classify scene-level audio without claiming the whole song is copied 1:1."""
+    identity = f"{name} {description}".casefold()
+    return "reference" if "full_mix" in identity else "partially_copy"
+
+
+def _normalize_resolved_scene_references(
+    references: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Upgrade stale scene-level full-song metadata before compile and judge."""
+    normalized: list[dict[str, Any]] = []
+    for reference in references:
+        item = dict(reference)
+        identity = f"{item.get('name', '')} {item.get('description', '')}".casefold()
+        if item.get("kind") == "audio" and "full_mix" in identity:
+            item["copy_mode"] = "reference"
+        normalized.append(item)
+    return normalized
+
+
+def _normalize_plan_audio_usage(plan: Any, references: list[dict[str, Any]]) -> Any:
+    """Align planner-owned audio wording with deterministic scene metadata."""
+    by_label = {str(item.get("label")): item for item in references}
+    usages = []
+    for usage in plan.reference_usage:
+        reference = by_label.get(usage.reference_label, {})
+        if (
+            str(reference.get("kind") or "").casefold() == "audio"
+            and str(reference.get("copy_mode") or "").casefold() == "reference"
+        ):
+            usage = usage.model_copy(update={
+                "purpose": "audio reference",
+                "details": (
+                    "Use the supplied original song only for beat, rhythm, and dynamic "
+                    "timing continuity without copying the source signal."
+                ),
+            })
+        usages.append(usage)
+    return plan.model_copy(update={"reference_usage": usages})
+
+
 def _scene_references(
     segment: dict[str, Any],
     audio_paths: dict[str, Path] | None,
@@ -260,8 +301,8 @@ def _scene_references(
             continue
         if fully_instrumental and "vocal" in tag.casefold() and "full_mix" not in tag.casefold():
             continue
-        copy_mode = "fully_copy" if "full_mix" in tag.casefold() else "partially_copy"
         description = tag or _audio_description(path.stem, audio_bindings.get(path.stem))
+        copy_mode = _scene_audio_copy_mode(path.stem, description)
         if tag and path.stem in audio_bindings:
             binding = audio_bindings[path.stem]
             speaker = f" ({binding['speaker_id']})" if binding.get("speaker_id") else ""
@@ -285,7 +326,7 @@ def _scene_references(
             name=name,
             description=_audio_description(name, audio_bindings.get(name)),
             role="audio_reuse",
-        ) | {"copy_mode": "fully_copy" if name == "full_mix" else "partially_copy"})
+        ) | {"copy_mode": _scene_audio_copy_mode(name, _audio_description(name, audio_bindings.get(name)))})
 
     for reference in pending_audio_references:
         add_reference(reference)
@@ -505,8 +546,10 @@ class DspyH3PromptBuilder:
             if hasattr(generated, "plan"):
                 max_attempts = max(1, int(getattr(self.generator, "judge_attempts", 1)))
                 judge_attempts = []
+                current_plan = generated.plan
                 for attempt in range(max_attempts):
-                    sections = H3PromptSections.from_plan(generated.plan)
+                    normalized_plan = _normalize_plan_audio_usage(current_plan, references)
+                    sections = H3PromptSections.from_plan(normalized_plan)
                     plan = sections.to_plan()
                     shots = creative_shots_from_plan(plan)
                     windows = {}
@@ -542,6 +585,13 @@ class DspyH3PromptBuilder:
                             f"{issue.code}: {issue.message}"
                             for issue in shape_issues
                         )
+                        creative_expansion = (
+                            " Expand the LLM-authored shot description, visible action, performance, "
+                            "camera behavior, environmental motion, and transition intent with concrete "
+                            "scene-specific detail; every populated field is assembled by the compiler."
+                            if any(issue.code == "h3.detail.too_short" for issue in shape_issues)
+                            else ""
+                        )
                         self._report_contract_retry(attempt + 2, max_attempts, feedback)
                         request = {
                             **request,
@@ -552,9 +602,11 @@ class DspyH3PromptBuilder:
                                 f"result: {feedback}. Keep the total R2V detailed-description "
                                 "content within 350-500 English words. Do not add compiler-owned "
                                 "section headers, reference definitions, shot labels, or timestamps."
+                                f"{creative_expansion}"
                             ).strip(),
                         }
                         generated = self.generator(request)
+                        current_plan = generated.plan
                         continue
                     result = {
                         "prompt": prompt,
@@ -591,6 +643,17 @@ class DspyH3PromptBuilder:
                         break
                     feedback = _judge_feedback(judged)
                     self._report_judge_retry(attempt + 2, max_attempts, feedback)
+                    repair_compiled_plan = getattr(
+                        self.generator, "repair_compiled_plan", None,
+                    )
+                    if judged.field_issues and callable(repair_compiled_plan):
+                        current_plan = repair_compiled_plan(
+                            request=request,
+                            plan=plan,
+                            references=references,
+                            field_issues=judged.field_issues,
+                        )
+                        continue
                     request = {
                         **request,
                         "notes": (
@@ -603,6 +666,7 @@ class DspyH3PromptBuilder:
                         ).strip(),
                     }
                     generated = self.generator(request)
+                    current_plan = generated.plan
                 return result
             prompt = getattr(generated, "rendered_prompt", None)
             if not prompt and isinstance(generated, dict):
@@ -686,6 +750,10 @@ class DspyH3PromptBuilder:
         if raw_h3_sections is not None:
             h3_sections = H3PromptSections.model_validate(raw_h3_sections)
             plan = h3_sections.to_plan()
+            resolved_references = _normalize_resolved_scene_references(
+                list(sections.get("resolved_references") or []),
+            )
+            plan = _normalize_plan_audio_usage(plan, resolved_references)
             shots = creative_shots_from_plan(plan)
             stored_windows = sections.get("shot_windows") or {}
             windows: dict[str, tuple[float, float]] = {}
@@ -712,7 +780,6 @@ class DspyH3PromptBuilder:
                 references_by_shot[shot.shot_id] = list(
                     stored_references.get(shot.shot_id) or planned.reference_labels
                 )
-            resolved_references = list(sections.get("resolved_references") or [])
             prompt = DeterministicH3Compiler().compile(
                 mode=mode,
                 plan=plan,

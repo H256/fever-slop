@@ -36,6 +36,8 @@ from feverslop.prompting.guide_loader import load_markdown_guide
 
 logger = logging.getLogger(__name__)
 
+_H3_JUDGE_MAX_TOKENS = 8192
+
 _ACTIVE_VOCAL_PATTERN = re.compile(
     r"\b(?:sing|sings|singing|lip[- ]sync(?:s|ing)?|mouth\s+(?:moves|moving|opens?))\b",
     re.IGNORECASE,
@@ -204,7 +206,10 @@ class VideoPromptGenerator:
         self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
         self.warning_callback = warning_callback
         self.lm = self.dspy_runtime.make_lm(llm)
-        self.judge_lm = self.dspy_runtime.make_lm(llm, max_tokens=512)
+        self.judge_lm = self.dspy_runtime.make_lm(
+            llm,
+            max_tokens=int(getattr(llm, "prompt_judge_max_tokens", _H3_JUDGE_MAX_TOKENS)),
+        )
 
     def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
         self.warning_callback = callback
@@ -300,6 +305,35 @@ class VideoPromptGenerator:
                 plan,
                 resolved_references,
                 final_prompt,
+            )
+
+    def repair_compiled_plan(
+        self,
+        *,
+        request: dict[str, Any],
+        plan: ResolvedPromptPlan,
+        references: list[ResolvedReference],
+        field_issues: list[CreativeFieldIssue],
+    ) -> ResolvedPromptPlan:
+        """Repair only judge-addressed creative fields in a compiled-plan retry."""
+        resolved_references = [
+            reference
+            if isinstance(reference, ResolvedReference)
+            else ResolvedReference.model_validate(reference)
+            for reference in references
+        ]
+        request_model = VideoPromptRequest.model_validate({
+            **request,
+            "references": [
+                reference.model_dump() for reference in resolved_references
+            ],
+        })
+        with self.dspy_runtime.context(lm=self.lm):
+            return self._repair_creative_plan(
+                request_model,
+                plan,
+                resolved_references,
+                field_issues,
             )
 
     @staticmethod

@@ -145,6 +145,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         app_config = SimpleNamespace(
             llm=SimpleNamespace(
                 prompt_judge_attempts=4,
+                prompt_judge_max_tokens=12288,
                 model_for=lambda purpose: "checkpoint-model",
             ),
         )
@@ -175,6 +176,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         self.assertFalse(captured["reuse_checkpoints"])
         self.assertEqual("checkpoint-model", captured["generator_revision"]["model"])
         self.assertEqual(4, captured["generator_revision"]["prompt_judge_attempts"])
+        self.assertEqual(12288, captured["generator_revision"]["prompt_judge_max_tokens"])
         self.assertEqual("abc", captured["generator_revision"]["guide_sha256"])
 
     def test_run_reuses_checkpoints_for_a_complete_scene_selection(self):
@@ -264,13 +266,24 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         )
 
         H3PromptPipeline(
-            llm_factory=lambda _: None,
+            llm_factory=lambda _: SimpleNamespace(
+                max_tokens=65536,
+                prompt_judge_max_tokens=8192,
+            ),
             h3_prompt_builder_factory=lambda _: Builder(),
             dspy_prompt_builder_factory=lambda _: Builder(),
         ).run(context)
 
         self.assertTrue(any(
             "H3 prompt compiler: deterministic_h3_compiler v7" in message
+            for message in messages
+        ))
+        self.assertTrue(any(
+            "H3 planner output budget: 65536 tokens" in message
+            for message in messages
+        ))
+        self.assertTrue(any(
+            "H3 judge output budget: 8192 tokens" in message
             for message in messages
         ))
         self.assertTrue(any(

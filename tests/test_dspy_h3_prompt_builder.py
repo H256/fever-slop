@@ -151,6 +151,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
+        self.assertEqual(10, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -460,7 +461,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         audio = [reference for reference in references if reference["kind"] == "audio"]
         self.assertEqual(["full_mix"], [reference["name"] for reference in audio])
-        self.assertEqual("fully_copy", audio[0]["copy_mode"])
+        self.assertEqual("reference", audio[0]["copy_mode"])
 
     def test_scene_audio_labels_follow_role_stem_then_full_mix_order(self):
         references, _images = _scene_references(
@@ -812,6 +813,30 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             )
 
         self.assertEqual(0.25, lm_factory.call_args.kwargs["temperature"])
+
+    def test_generator_gives_the_structured_judge_enough_output_tokens(self):
+        class Client:
+            base_url = "http://your-llm-server.local/v1"
+            api_key = "none-needed"
+
+        class LLM:
+            client = Client()
+            model = "gemma4-26b-a4b"
+            temperature = 0.75
+            max_tokens = 65536
+            prompt_judge_max_tokens = 8192
+            dspy_cache = False
+
+        guides = files("feverslop.prompting.guides")
+        with patch("dspy.LM") as lm_factory:
+            VideoPromptGenerator(
+                base_guide_path=guides / "minimax-h3-base.md",
+                reference_guide_path=guides / "minimax-h3-references.md",
+                llm=LLM(),
+            )
+
+        self.assertEqual(65536, lm_factory.call_args_list[0].kwargs["max_tokens"])
+        self.assertEqual(8192, lm_factory.call_args_list[1].kwargs["max_tokens"])
 
     def test_reference_limits_use_plural_picture_field(self):
         generator = object.__new__(CoreVideoPromptGenerator)

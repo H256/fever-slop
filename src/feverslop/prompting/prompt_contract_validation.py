@@ -228,7 +228,8 @@ def _validate_r2v_contract(
         issues.append(PromptContractIssue(
             "h3.detail.too_short",
             "detailed_description",
-            "generation-mode detailed_description must contain at least 350 English words",
+            "generation-mode detailed_description must contain at least 350 English words "
+            f"(actual: {word_count} words)",
         ))
     issues.extend(_validate_shots(detailed, plan))
     if re.search(r"\(S\d+(?:,S\d+)*\)", retention):

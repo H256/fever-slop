@@ -7,6 +7,7 @@ from feverslop.prompting.dspy_h3_models import (
     MusicIntent,
     PlannedShot,
     PromptJudgeResult,
+    ReferenceUsage,
     ResolvedPromptPlan,
     SubjectDefinition,
 )
@@ -95,7 +96,7 @@ class StructuredH3BuilderTests(unittest.TestCase):
         self.assertIn("FULL REFERENCE PROMPT", result["prompt"])
         self.assertIn("The singer raises the lantern.", result["prompt"])
         self.assertEqual("deterministic_h3_compiler", result["prompt_provenance"]["compiler"])
-        self.assertEqual(8, result["prompt_provenance"]["compiler_version"])
+        self.assertEqual(10, result["prompt_provenance"]["compiler_version"])
 
     def test_checkpoint_revision_tracks_the_deterministic_compiler(self):
         builder = DspyH3PromptBuilder(lambda _request: None)
@@ -103,18 +104,22 @@ class StructuredH3BuilderTests(unittest.TestCase):
         revision = builder.checkpoint_revision()
 
         self.assertEqual("deterministic_h3_compiler", revision["compiler"])
-        self.assertEqual(8, revision["compiler_version"])
+        self.assertEqual(10, revision["compiler_version"])
 
     def test_resume_recompiles_saved_plan_with_guide_compiler_and_rejudges(self):
         class JudgeOnlyGenerator:
             def __init__(self):
                 self.judged_prompts = []
+                self.judged_references = []
+                self.judged_plans = []
 
             def __call__(self, _request):
                 raise AssertionError("resume recompile must not regenerate creative fields")
 
             def judge_compiled_prompt(self, **kwargs):
                 self.judged_prompts.append(kwargs["final_prompt"])
+                self.judged_references.append(kwargs["references"])
+                self.judged_plans.append(kwargs["plan"])
                 return PromptJudgeResult(verdict="good", issues=[])
 
         generator = JudgeOnlyGenerator()
@@ -127,12 +132,17 @@ class StructuredH3BuilderTests(unittest.TestCase):
                 description="a woman in a silver cloak",
                 source_references=["<Picture 1>"],
             )],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 1>",
+                purpose="audio reference",
+                details="Use the original song for beat and rhythm continuity.",
+            )],
             shots=[PlannedShot(
                 shot_number=1,
                 start_seconds=0,
                 end_seconds=5,
                 description=self.rich_description() + " The singer raises the lantern.",
-                reference_labels=["<Subject 1>", "<Picture 1>"],
+                reference_labels=["<Subject 1>", "<Picture 1>", "<Audio 1>"],
             )],
             overall_soundscape="Wind moves through the room.",
             music_intent=MusicIntent.NONE,
@@ -154,6 +164,14 @@ class StructuredH3BuilderTests(unittest.TestCase):
                     "name": "the singer",
                     "description": "a woman in a silver cloak",
                     "role": "subject",
+                }, {
+                    "label": "<Audio 1>",
+                    "source": "song.wav",
+                    "kind": "audio",
+                    "name": "full_mix",
+                    "description": "full_mix - original song for beat and rhythm continuity",
+                    "role": "audio_reuse",
+                    "copy_mode": "fully_copy",
                 }],
             },
         )
@@ -161,6 +179,11 @@ class StructuredH3BuilderTests(unittest.TestCase):
         self.assertTrue(result["prompt"].startswith("subject_definitions:"))
         self.assertEqual("good", result["prompt_judge"]["verdict"])
         self.assertEqual([result["prompt"]], generator.judged_prompts)
+        self.assertEqual("reference", result["references"][1]["copy_mode"])
+        self.assertEqual("reference", generator.judged_references[0][1]["copy_mode"])
+        [audio_usage] = generator.judged_plans[0].reference_usage
+        self.assertEqual("audio reference", audio_usage.purpose)
+        self.assertIn("without copying", audio_usage.details)
 
     def test_resume_regenerates_when_saved_plan_fails_current_guide_contract(self):
         from pathlib import Path
