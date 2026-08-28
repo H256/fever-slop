@@ -4,9 +4,9 @@ from contextlib import nullcontext
 from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_models import (
     BaseVideoPrompt,
+    H3CreativePlan,
+    H3CreativeShot,
     MusicIntent,
-    PlannedSubject,
-    PromptPlan,
     ResolvedPromptPlan,
     ResolvedReference,
 )
@@ -86,13 +86,9 @@ class DspyRuntimeTests(unittest.TestCase):
                 self.calls.append(kwargs)
                 if self.signature == "Plan":
                     return type("Prediction", (), {
-                        "plan": PromptPlan(
+                        "plan": H3CreativePlan(
                             creative_intent="intent",
-                            subjects=[PlannedSubject(
-                                name="Dancer",
-                                description="A dancer",
-                                source_references=["<Picture 1>"],
-                            )],
+                            shots=[H3CreativeShot(description="A dancer moves.")],
                             overall_soundscape="quiet",
                             music_intent=MusicIntent.NONE,
                         ),

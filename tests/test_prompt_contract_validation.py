@@ -79,7 +79,7 @@ class PromptContractValidationTests(unittest.TestCase):
         )
         self.assertEqual([], validate_h3_prompt_shape(prompt, mode="t2v"))
 
-    def test_h3_shape_validator_rejects_short_r2v_body_and_implicit_audio(self):
+    def test_h3_shape_validator_rejects_implicit_audio_without_gating_creative_length(self):
         prompt = (
             "subject_definitions:\n"
             "<Audio 1> is the complete soundtrack and is fully copied.\n\n"
@@ -111,11 +111,8 @@ class PromptContractValidationTests(unittest.TestCase):
             reference_metadata=[{"label": "<Audio 1>", "kind": "audio"}],
         )
 
-        self.assertIn("h3.detail.too_short", [issue.code for issue in issues])
-        too_short = next(issue for issue in issues if issue.code == "h3.detail.too_short")
-        self.assertIn("actual:", too_short.message)
-        self.assertRegex(too_short.message, r"actual: \d+ words")
-        self.assertIn("h3.audio.relationship_missing", [issue.code for issue in issues])
+        self.assertNotIn("h3.detail.too_short", [issue.code for issue in issues])
+        self.assertNotIn("h3.audio.relationship_missing", [issue.code for issue in issues])
         self.assertIn("h3.audio.summary_missing", [issue.code for issue in issues])
 
     def test_h3_contract_rejects_wrong_shot_timing_alias_and_retention_speaker(self):

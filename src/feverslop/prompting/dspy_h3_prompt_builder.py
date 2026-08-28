@@ -483,6 +483,12 @@ class DspyH3PromptBuilder:
             if str(scene_details.get(key) or "").strip()
         ]
         user_prompt = str(concept or "").strip()
+        creative_prompt = str(segment.get("h3_creative_prompt") or "").strip()
+        if creative_prompt:
+            user_prompt = (
+                f"{user_prompt}\n\nExisting backend-neutral scene motion prompt:\n"
+                f"{creative_prompt}"
+            ).strip()
         if directive_plan is not None:
             user_prompt = f"{user_prompt}\n\n{project_directives_to_prompt(directive_plan)}".strip()
         if directing_lines:
@@ -520,13 +526,6 @@ class DspyH3PromptBuilder:
             "_section_only": True,
             "audio_subject_bindings": audio_subject_bindings,
         }
-        if str(mode).strip().lower() in {"r2v", "ref", "reference"}:
-            request["notes"] = (
-                f"{request['notes']}\n\n"
-                "For full-reference generation, write sufficiently rich creative shot "
-                "descriptions so the compiled detailed_description contains 350-500 "
-                "English words. A single shot does not permit a shorter description."
-            )
         has_reused_audio_reference = any(
             reference.get("kind") == "audio" and reference.get("role") == "audio_reuse"
             for reference in references
@@ -585,13 +584,6 @@ class DspyH3PromptBuilder:
                             f"{issue.code}: {issue.message}"
                             for issue in shape_issues
                         )
-                        creative_expansion = (
-                            " Expand the LLM-authored shot description, visible action, performance, "
-                            "camera behavior, environmental motion, and transition intent with concrete "
-                            "scene-specific detail; every populated field is assembled by the compiler."
-                            if any(issue.code == "h3.detail.too_short" for issue in shape_issues)
-                            else ""
-                        )
                         self._report_contract_retry(attempt + 2, max_attempts, feedback)
                         request = {
                             **request,
@@ -599,10 +591,8 @@ class DspyH3PromptBuilder:
                                 f"{request.get('notes', '')}\n\n"
                                 "Regenerate the structured creative fields because the "
                                 "deterministic final-prompt validator rejected the compiled "
-                                f"result: {feedback}. Keep the total R2V detailed-description "
-                                "content within 350-500 English words. Do not add compiler-owned "
-                                "section headers, reference definitions, shot labels, or timestamps."
-                                f"{creative_expansion}"
+                                f"result: {feedback}. Do not add compiler-owned section headers, "
+                                "reference definitions, shot labels, or timestamps."
                             ).strip(),
                         }
                         generated = self.generator(request)

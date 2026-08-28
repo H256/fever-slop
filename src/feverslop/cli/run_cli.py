@@ -138,7 +138,11 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
             for stages, scenes in units:
                 run_args = argparse.Namespace(**vars(args))
                 run_args.stages = list(stages)
-                run_args.scenes = ",".join(str(scene) for scene in scenes) or None
+                run_args.scenes = (
+                    args.scenes
+                    if plan.mode == "compatibility"
+                    else ",".join(str(scene) for scene in scenes) or None
+                )
                 _apply_runner_defaults(run_args)
                 pipeline_run(run_args, on_stage_complete=remember)
         except Exception as exc:

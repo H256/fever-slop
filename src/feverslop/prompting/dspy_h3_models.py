@@ -4,7 +4,7 @@ from enum import Enum
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from feverslop.domain.continuation_intent import ContinuationIntent
 
@@ -184,6 +184,73 @@ class PlannedShot(BaseModel):
     involved_subjects: list[str] = Field(default_factory=list)
     reference_labels: list[str] = Field(default_factory=list)
     hard_cut_after: bool = False
+
+
+class H3CreativeShot(BaseModel):
+    """Creative shot prose returned by the H3 LLM; labels and timing syntax are compiler-owned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(min_length=1)
+    visible_action: str | None = None
+    performance: str | None = None
+    camera_behavior: str | None = None
+    environmental_motion: str | None = None
+    transition_intent: str | None = None
+
+    @field_validator(
+        "description",
+        "visible_action",
+        "performance",
+        "camera_behavior",
+        "environmental_motion",
+        "transition_intent",
+    )
+    @classmethod
+    def reject_compiler_syntax(cls, value: str | None) -> str | None:
+        return _reject_h3_compiler_syntax(value)
+
+
+class H3CreativePlan(BaseModel):
+    """Only the creative fields needed to enrich an existing scene plan for H3."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    creative_intent: str
+    style_opening: str | None = None
+    shots: list[H3CreativeShot] = Field(default_factory=list)
+    overall_soundscape: str
+    music_intent: MusicIntent
+    non_diegetic_music: str | None = None
+
+    @field_validator(
+        "creative_intent",
+        "style_opening",
+        "overall_soundscape",
+        "non_diegetic_music",
+    )
+    @classmethod
+    def reject_compiler_syntax(cls, value: str | None) -> str | None:
+        return _reject_h3_compiler_syntax(value)
+
+    @model_validator(mode="after")
+    def validate_music(self) -> "H3CreativePlan":
+        if self.music_intent == MusicIntent.NONE:
+            self.non_diegetic_music = None
+        elif not self.non_diegetic_music:
+            raise ValueError("A non_diegetic_music description is required when music is enabled")
+        return self
+
+
+def _reject_h3_compiler_syntax(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if re.search(r"<(?:Subject|Picture|Video|Audio)\s+\d+>", text, re.IGNORECASE):
+        raise ValueError("H3 creative fields must not contain compiler-owned reference labels")
+    if re.search(r"\[Shot\s+\d+\]|\b\d{2}:\d{2}(?:[:.]\d{2,3})\b", text, re.IGNORECASE):
+        raise ValueError("H3 creative fields must not contain compiler-owned shot syntax or timecodes")
+    return value
 
 
 class CreativeShotPayload(BaseModel):

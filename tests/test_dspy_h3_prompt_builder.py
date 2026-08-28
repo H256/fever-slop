@@ -16,6 +16,8 @@ from feverslop.prompting.dspy_h3_generator_core import (
 )
 from feverslop.prompting.dspy_h3_models import (
     CreativeFieldIssue,
+    H3CreativePlan,
+    H3CreativeShot,
     MusicIntent,
     PlannedShot,
     PlannedSubject,
@@ -151,7 +153,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(10, revision["compiler_version"])
+        self.assertEqual(12, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -537,7 +539,12 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
     def test_passes_general_steering_and_prompt_guidance_to_generator(self):
         generator = FakeGenerator()
         DspyH3PromptBuilder(generator).build_h3_prompt(
-            segment={"segment_id": "seg-1", "duration_seconds": 2, "fps": 24},
+            segment={
+                "segment_id": "seg-1",
+                "duration_seconds": 2,
+                "fps": 24,
+                "h3_creative_prompt": "A low tracking shot preserves the planned movement.",
+            },
             concept="A singer performs.",
             scene_details={"character_motion": "Singer gestures toward the crowd."},
             global_context={
@@ -556,6 +563,10 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("A singer crosses a mountain.", notes)
         self.assertNotIn("must be visible in at least one described shot", notes)
         self.assertIn("Character Motion: Singer gestures toward the crowd.", generator.requests[0]["user_prompt"])
+        self.assertIn(
+            "Existing backend-neutral scene motion prompt:\nA low tracking shot preserves the planned movement.",
+            generator.requests[0]["user_prompt"],
+        )
 
     def test_passes_source_language_metadata_without_inferring_from_names(self):
         generator = FakeGenerator()
@@ -850,7 +861,161 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual([item.label for item in resolved], ["<Picture 1>", "<Picture 2>"])
 
-    def test_persistent_unknown_planner_references_fail_after_three_attempts_with_all_labels(self):
+    def test_h3_creative_plan_schema_contains_no_compiler_owned_reference_fields(self):
+        from feverslop.prompting import dspy_h3_models
+
+        plan_type = getattr(dspy_h3_models, "H3CreativePlan", None)
+
+        self.assertIsNotNone(plan_type)
+        self.assertNotIn("subjects", plan_type.model_fields)
+        self.assertNotIn("reference_usage", plan_type.model_fields)
+        self.assertNotIn("continuation_intents", plan_type.model_fields)
+        self.assertNotIn("alignment_instruction", plan_type.model_fields)
+        for field in ("shot_number", "start_seconds", "end_seconds", "hard_cut_after"):
+            self.assertNotIn(field, H3CreativeShot.model_fields)
+
+    def test_h3_creative_fields_reject_compiler_owned_syntax(self):
+        for description in (
+            "The performer enters beside <Picture 99>.",
+            "The camera cuts at 00:03.500.",
+        ):
+            with self.subTest(description=description):
+                with self.assertRaises(ValueError):
+                    H3CreativeShot(description=description)
+        self.assertEqual(
+            "The station clock reads 12:30.",
+            H3CreativeShot(description="The station clock reads 12:30.").description,
+        )
+
+    def test_planner_rejects_llm_authored_shot_count_without_relay_structure(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.planner = lambda **_: type("Prediction", (), {"plan": PromptPlan(
+            creative_intent="Invented cuts.",
+            shots=[
+                PlannedShot(shot_number=1, description="First invented shot."),
+                PlannedShot(shot_number=2, description="Second invented shot."),
+            ],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )})()
+
+        with self.assertRaisesRegex(ValueError, "authoritative scene structure"):
+            generator._plan(VideoPromptRequest(
+                mode=PromptMode.R2V,
+                user_prompt="One planned scene",
+                duration_seconds=5,
+            ), [])
+
+    def test_planner_uses_authoritative_relay_timing_instead_of_authored_timing(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.planner = lambda **_: type("Prediction", (), {"plan": PromptPlan(
+            creative_intent="Two ordered actions.",
+            shots=[
+                PlannedShot(
+                    shot_number=9, start_seconds=20, end_seconds=21,
+                    description="The performer raises one hand.",
+                ),
+                PlannedShot(
+                    shot_number=4, start_seconds=30, end_seconds=31,
+                    description="The performer lowers the hand.",
+                ),
+            ],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )})()
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A scene",
+            duration_seconds=5,
+            relay_segments=[
+                {"start_seconds": 0.0, "end_seconds": 2.0, "prompt": "raise"},
+                {"start_seconds": 2.0, "end_seconds": 5.0, "prompt": "lower"},
+            ],
+        )
+
+        result = generator._plan(request, [])
+
+        self.assertEqual([1, 2], [shot.shot_number for shot in result.shots])
+        self.assertEqual(
+            [(0.0, 2.0), (2.0, 5.0)],
+            [(shot.start_seconds, shot.end_seconds) for shot in result.shots],
+        )
+
+    def test_h3_planner_signature_requests_only_creative_scene_enrichment(self):
+        from feverslop.prompting.dspy_h3_signatures import build_h3_signature_bundle
+
+        instructions = build_h3_signature_bundle().build_prompt_plan.__doc__ or ""
+
+        self.assertIn("creative MiniMax H3 shot prose only", instructions)
+        self.assertIn("complete grammatical sentence", instructions)
+        self.assertIn("350-500", instructions)
+        self.assertNotIn("Map each subject", instructions)
+
+    def test_planner_cannot_override_deterministic_reference_assignments(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        authored = PromptPlan(
+            creative_intent="A singer crosses a fractured neon room.",
+            subjects=[PlannedSubject(
+                name="Invented duplicate",
+                description="A wide shot instead of a subject definition",
+                source_references=["<Picture 9>"],
+            )],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 9>",
+                purpose="invented",
+                details="invented",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The singer walks through the room.",
+                start_seconds=0,
+                end_seconds=5,
+                involved_subjects=["Invented duplicate"],
+                reference_labels=["<Picture 9>", "<Audio 9>"],
+            )],
+            overall_soundscape="Glass fragments click across the floor.",
+            music_intent=MusicIntent.NONE,
+        )
+        calls = []
+        generator.planner = lambda **kwargs: (
+            calls.append(kwargs)
+            or type("Prediction", (), {"plan": authored.model_copy(deep=True)})()
+        )
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A scene",
+            duration_seconds=5.0,
+        )
+        references = [
+            ResolvedReference(
+                label="<Picture 1>", kind="picture", source="actor.png",
+                role="subject", name="Jack", description="A dark-haired singer in a silver coat",
+            ),
+            ResolvedReference(
+                label="<Picture 2>", kind="picture", source="room.png",
+                role="environment", name="Glitch Room", description="A fractured neon room",
+            ),
+            ResolvedReference(
+                label="<Audio 1>", kind="audio", source="vocals.wav",
+                role="audio_reuse", name="vocals", description="The scene vocal stem",
+            ),
+        ]
+
+        result = generator._plan(request, references)
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual(["Jack", "Glitch Room"], [subject.name for subject in result.subjects])
+        self.assertEqual(
+            [["<Picture 1>"], ["<Picture 2>"]],
+            [subject.source_references for subject in result.subjects],
+        )
+        self.assertEqual(["<Audio 1>"], [usage.reference_label for usage in result.reference_usage])
+        self.assertEqual(
+            ["<Picture 1>", "<Picture 2>", "<Audio 1>"],
+            result.shots[0].reference_labels,
+        )
+
+    def test_unknown_planner_references_are_discarded_without_retry(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         plan = PromptPlan(
             creative_intent="Invalid",
@@ -894,9 +1059,11 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         result = generator._plan(request, references)
         self.assertEqual("Invalid", result.creative_intent)
-        self.assertEqual(3, len(calls))
+        self.assertEqual(1, len(calls))
+        self.assertEqual([["<Picture 1>"]], [subject.source_references for subject in result.subjects])
+        self.assertEqual(["<Picture 1>"], result.shots[0].reference_labels)
 
-    def test_retries_planner_after_unknown_reference(self):
+    def test_does_not_retry_creative_planner_for_compiler_owned_reference_fields(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         plans = [
             PromptPlan(
@@ -906,6 +1073,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                     description="A singer",
                     source_references=["<Picture 9>"],
                 )],
+                shots=[PlannedShot(shot_number=1, description="The singer performs.")],
                 overall_soundscape="A song",
                 music_intent=MusicIntent.NONE,
             ),
@@ -916,6 +1084,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                     description="A singer",
                     source_references=["<Picture 1>"],
                 )],
+                shots=[PlannedShot(shot_number=1, description="The singer performs.")],
                 overall_soundscape="A song",
                 music_intent=MusicIntent.NONE,
             ),
@@ -942,10 +1111,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         result = generator._plan(request, references)
 
-        self.assertEqual("Valid attempt", result.creative_intent)
-        self.assertEqual(2, len(calls))
-        self.assertIn("<Picture 9>", calls[1]["notes"])
-        self.assertIn("<Picture 1>", calls[1]["notes"])
+        self.assertEqual("Invalid attempt", result.creative_intent)
+        self.assertEqual(1, len(calls))
+        self.assertEqual([["<Picture 1>"]], [subject.source_references for subject in result.subjects])
 
     def test_planner_retries_when_a_loaded_picture_is_not_mapped_to_a_subject(self):
         generator = object.__new__(CoreVideoPromptGenerator)
@@ -956,6 +1124,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 description="A drummer",
                 source_references=["<Picture 1>"],
             )],
+            shots=[PlannedShot(shot_number=1, description="The drummer performs.")],
             overall_soundscape="A song",
             music_intent=MusicIntent.NONE,
         )
@@ -965,6 +1134,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 PlannedSubject(name="Drummer", description="A drummer", source_references=["<Picture 1>"]),
                 PlannedSubject(name="Stage", description="A black stage", source_references=["<Picture 2>"]),
             ],
+            shots=[PlannedShot(shot_number=1, description="The drummer performs on stage.")],
             overall_soundscape="A song",
             music_intent=MusicIntent.NONE,
         )
@@ -986,11 +1156,12 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
         self.assertEqual(["<Subject 1>", "<Subject 2>"], [subject.label for subject in result.subjects])
 
-    def test_planner_reconstructs_persistently_unmapped_visuals_with_warning(self):
+    def test_compiler_maps_visual_subjects_without_planner_warning(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         invalid = PromptPlan(
             creative_intent="Performance",
             subjects=[],
+            shots=[PlannedShot(shot_number=1, description="The singer performs over the reef.")],
             overall_soundscape="A song",
             music_intent=MusicIntent.NONE,
         )
@@ -1007,8 +1178,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             ResolvedReference(label="<Picture 2>", kind="picture", source="reef.png", role="environment", name="The Azure Reef", description="Blue crystalline reef"),
         ]
 
-        with self.assertLogs("feverslop.prompting.dspy_h3_generator_core", level="INFO") as captured:
-            result = generator._plan(request, references)
+        result = generator._plan(request, references)
 
         self.assertEqual(1, len(calls))
         self.assertEqual(
@@ -1016,7 +1186,6 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             [subject.source_references for subject in result.subjects],
         )
         self.assertEqual(["Lead Singer", "The Azure Reef"], [subject.name for subject in result.subjects])
-        self.assertTrue(any("normalized required subject mappings" in message for message in captured.output))
 
     def test_reference_renderer_retries_unknown_subject_with_mismatch_details(self):
         generator = object.__new__(CoreVideoPromptGenerator)
@@ -1124,10 +1293,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             overall_soundscape="Music.",
             music_intent=MusicIntent.NONE,
         )
-        generator.planner = lambda **_: type("Prediction", (), {"plan": PromptPlan(
+        generator.planner = lambda **_: type("Prediction", (), {"plan": H3CreativePlan(
             creative_intent="Replacement",
-            shots=[PlannedShot(
-                shot_number=1,
+            shots=[H3CreativeShot(
                 description="must not replace this action",
                 camera_behavior="slow pan",
             )],

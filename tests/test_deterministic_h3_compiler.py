@@ -123,6 +123,42 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("Loose paper circles through the cold backlight", prompt)
         self.assertIn("settles into a held final pose", prompt)
 
+    def test_r2v_compiler_turns_possessive_action_phrase_into_natural_prose(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A tired performer studies the skyline.",
+            style_opening="Live-action imagery uses cold cyan lighting.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Jack", description="a tired young man",
+            )],
+            reference_usage=[],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A wide shot frames Jack beneath the skyline.",
+                visible_action="Jack's slow head tilt and slight shoulder slump.",
+                performance="Jack remains visibly exhausted.",
+                involved_subjects=["Jack"],
+                start_seconds=0,
+                end_seconds=3,
+            )],
+            overall_soundscape="A low electrical hum continues.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 3.0)},
+            duration_seconds=3,
+        )
+
+        self.assertIn(
+            "The shot shows <Subject 1>'s slow head tilt and slight shoulder slump.",
+            prompt,
+        )
+        self.assertNotIn(". <Subject 1>'s slow head tilt", prompt)
+
     def test_compiles_r2v_six_sections_and_authoritative_reference_anchors(self):
         plan = ResolvedPromptPlan(
             creative_intent="CREATIVE R2V SUMMARY",
@@ -223,7 +259,9 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
         self.assertIn("<Subject 1> is visible in the shot.", detailed)
-        self.assertIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
+        self.assertNotIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
+        self.assertNotIn("<Audio 1> is visible in the shot", detailed)
+        self.assertIn("fully copied as the target video's audio signal", prompt)
         self.assertNotIn("<Picture 1>.", detailed)
         self.assertNotIn("<Picture 1>: fully_preserved", prompt)
         self.assertIn("<Audio 1>: fully_copy", prompt)
@@ -355,7 +393,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Audio 1> is the vocal stem and is partially copied", prompt)
         self.assertNotIn("overall_soundscape: The vocal line So I blink", prompt)
 
-    def test_r2v_compiler_states_audio_copy_relationship_inside_the_shot(self):
+    def test_r2v_compiler_states_audio_copy_relationship_outside_the_shot(self):
         plan = ResolvedPromptPlan(
             creative_intent="A continuous performance.",
             reference_usage=[ReferenceUsage(
@@ -392,10 +430,52 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         detailed = prompt.split("detailed_description:", 1)[1].split(
             "overall_soundscape:", 1,
         )[0]
-        self.assertIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
+        self.assertNotIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
+        self.assertIn("fully copied as the target video's audio signal", prompt)
         self.assertNotIn("<Audio 1> active in the soundtrack", detailed)
         self.assertIn(
             "non_diegetic_music: <Audio 1> is directly reused as the complete audience-only score.",
+            prompt,
+        )
+
+    def test_r2v_compiler_places_partially_copied_music_stem_in_music_section(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A performer crosses an illuminated room.",
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 1>",
+                purpose="audio reuse",
+                details="The drum stem is partially copied.",
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A performer crosses the illuminated room.",
+                start_seconds=0,
+                end_seconds=4,
+                reference_labels=["<Audio 1>"],
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 4.0)},
+            prepared_reference_labels=["<Audio 1>"],
+            reference_metadata=[{
+                "label": "<Audio 1>",
+                "kind": "audio",
+                "name": "drums",
+                "description": "isolated drum stem",
+                "copy_mode": "partially_copy",
+            }],
+        )
+
+        self.assertIn(
+            "non_diegetic_music: The selected audience-only music layer from <Audio 1> "
+            "is partially copied into the target video.",
             prompt,
         )
 
@@ -454,7 +534,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         detailed = prompt.split("detailed_description:", 1)[1].split(
             "overall_soundscape:", 1,
         )[0]
-        self.assertLess(detailed.index("<Audio 1>"), detailed.index("crosses the sterile city"))
+        self.assertNotIn("<Audio 1>", detailed)
 
     def test_r2v_compiler_replaces_subject_aliases_case_insensitively(self):
         plan = ResolvedPromptPlan(
@@ -613,8 +693,10 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("(S3)", detailed)
         self.assertIn("<d>[English] first line.</d>", detailed)
         self.assertIn("<d>[English] second line.</d>", detailed)
-        self.assertEqual(1, detailed.count("<Audio 1>"))
-        self.assertEqual(1, detailed.count("<Audio 2>"))
+        self.assertIn("</d> from <Audio 1>", detailed)
+        self.assertNotIn("<Audio 2>", detailed)
+        self.assertNotIn("partially copied", detailed)
+        self.assertNotIn("referenced for the target video's rhythm", detailed)
         self.assertNotIn("The camera Slowly", detailed)
         self.assertIn("<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3])", prompt)
         self.assertNotIn("overall_soundscape: A musical track", prompt)

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from feverslop.application.h3_prompt_pipeline import (
     _attach_beat_events,
     _attach_relay_segments,
+    _attach_subject_directives,
     _configured_audio_paths,
 )
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
@@ -12,6 +13,21 @@ from feverslop.domain.performance_sync import select_performance_stems
 
 
 class ConfiguredAudioPathTests(unittest.TestCase):
+    def test_attaches_existing_scene_motion_prompt_as_h3_creative_input(self):
+        result = _attach_subject_directives(
+            [{"segment_id": "segment_001"}],
+            [{
+                "segment_id": "segment_001",
+                "ltx_base_prompt": "A deliberate tracking shot follows the singer.",
+                "subject_directives": {"subjects": []},
+            }],
+        )
+
+        self.assertEqual(
+            "A deliberate tracking shot follows the singer.",
+            result[0]["h3_creative_prompt"],
+        )
+
     def test_attaches_scene_local_beat_and_downbeat_events(self):
         result = _attach_beat_events(
             [{"segment_id": "s2", "start": 8.0, "end": 10.0}],

@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 10
+H3_COMPILER_VERSION = 12
 
 
 class DeterministicH3Compiler:
@@ -207,35 +207,64 @@ class DeterministicH3Compiler:
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
             retention_lines.extend(usage_retention_lines)
             detailed_parts = [str(plan.style_opening or "").strip()]
-            audio_labels = {
-                usage.reference_label
-                for usage in plan.reference_usage
-                if usage.reference_label.lower().startswith("<audio ")
-            }
-            audio_labels.update(
-                label for label, metadata in metadata_by_label.items()
-                if str(metadata.get("kind") or "").casefold() == "audio"
-            )
-            audio_relationships = {
-                label: _audio_relationship_phrase(label, metadata_by_label.get(label, {}))
-                for label in sorted(audio_labels)
-            }
             detailed_parts.extend(
                 _render_shot_with_references(
                     index,
                     shot,
                     plan,
-                    audio_relationships=audio_relationships,
                     reference_metadata=metadata_by_label,
                     final_shot=index == len(plan.shots),
                 )
                 for index, shot in enumerate(plan.shots, start=1)
             )
-            detailed = _normalize_r2v_dialogue("\n".join(detailed_parts), dialogue_language or "English", plan)
+            vocal_audio_label = next((
+                label
+                for label, metadata in metadata_by_label.items()
+                if str(metadata.get("kind") or "").casefold() == "audio"
+                and (
+                    _effective_audio_copy_mode(metadata) == "partially_copy"
+                    or re.search(
+                        r"\b(?:vocal|voice|dialogue|speech)\b",
+                        " ".join((
+                            str(metadata.get("name") or ""),
+                            str(metadata.get("description") or ""),
+                        )),
+                        re.IGNORECASE,
+                    )
+                )
+            ), None)
+            detailed = _normalize_r2v_dialogue(
+                "\n".join(detailed_parts),
+                dialogue_language or "English",
+                plan,
+                vocal_audio_label=vocal_audio_label,
+            )
+            for label, metadata in sorted(metadata_by_label.items()):
+                copy_mode = _effective_audio_copy_mode(metadata)
+                if (
+                    str(metadata.get("kind") or "").casefold() == "audio"
+                    and copy_mode in {"fully_copy", "partially_copy"}
+                    and _audio_layer_kind(metadata) == "vocal"
+                    and label not in detailed
+                ):
+                    detailed += " " + _copied_audio_layer_sentence(
+                        label, copy_mode, "vocal layer",
+                    )
             soundscape = _replace_subject_names(plan.overall_soundscape, plan)
             for lyric in _dialogue_contents(detailed):
                 soundscape = _remove_sentence_containing(soundscape, lyric)
             soundscape = _remove_music_sentences(soundscape)
+            for label, metadata in sorted(metadata_by_label.items()):
+                copy_mode = _effective_audio_copy_mode(metadata)
+                if (
+                    str(metadata.get("kind") or "").casefold() == "audio"
+                    and copy_mode in {"fully_copy", "partially_copy"}
+                    and _audio_layer_kind(metadata) == "ambience"
+                    and label not in soundscape
+                ):
+                    soundscape += " " + _copied_audio_layer_sentence(
+                        label, copy_mode, "ambience and sound-effects layer",
+                    )
             if not soundscape.strip():
                 soundscape = "No additional diegetic ambience or physical sound effects are specified."
             sections = [
@@ -331,7 +360,6 @@ def _render_shot_with_references(
     shot: Any,
     plan: ResolvedPromptPlan,
     *,
-    audio_relationships: Mapping[str, str] | None = None,
     reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
     final_shot: bool = False,
 ) -> str:
@@ -342,33 +370,14 @@ def _render_shot_with_references(
         visible = " and ".join(missing)
         verb = "is" if len(missing) == 1 else "are"
         description = f"{visible} {verb} visible in the shot. {description}"
-    available_audio = audio_relationships or {}
-    audio_labels = [
-        label
-        for label in shot.reference_labels
-        if label in available_audio
-    ]
-    assigned_audio = {
-        label
-        for planned_shot in plan.shots
-        for label in planned_shot.reference_labels
-        if label in available_audio
-    }
-    if index == 1:
-        audio_labels.extend(
-            label for label in available_audio
-            if label not in assigned_audio and label not in audio_labels
-        )
-    if audio_labels:
-        relationships = " and ".join(available_audio[label] for label in audio_labels)
-        description = f"{relationships}. {description}"
     subject_sources = {
         label for subject in plan.subjects for label in subject.source_references
     }
     metadata_by_label = reference_metadata or {}
     standalone_labels = [
         label for label in shot.reference_labels
-        if label not in subject_sources and label not in available_audio
+        if label not in subject_sources
+        and str(metadata_by_label.get(label, {}).get("kind") or "").casefold() != "audio"
     ]
     for label in standalone_labels:
         role = str(metadata_by_label.get(label, {}).get("role") or "reference").casefold()
@@ -433,6 +442,24 @@ def _effective_audio_copy_mode(metadata: Mapping[str, Any]) -> str:
     if "full_mix" in identity and re.search(r"\b(?:original song|beat|rhythm)\b", identity):
         return "reference"
     return raw if raw in {"fully_copy", "partially_copy", "reference", "weak_reference"} else "reference"
+
+
+def _audio_layer_kind(metadata: Mapping[str, Any]) -> str:
+    identity = " ".join((
+        str(metadata.get("name") or ""),
+        str(metadata.get("description") or ""),
+    )).casefold()
+    if re.search(r"\b(?:vocal|voice|dialogue|speech|narration)\b", identity):
+        return "vocal"
+    if re.search(r"\b(?:ambience|ambient|sound effect|sfx|foley|room tone)\b", identity):
+        return "ambience"
+    return "music"
+
+
+def _copied_audio_layer_sentence(label: str, copy_mode: str, layer: str) -> str:
+    if copy_mode == "fully_copy":
+        return f"The {layer} from {label} is fully copied into the target video."
+    return f"The selected {layer} from {label} is partially copied into the target video."
 
 
 def _render_prepared_reference_definition(label: str, metadata: Mapping[str, Any]) -> str:
@@ -519,11 +546,7 @@ def _render_non_diegetic_music(
     for label, metadata in sorted(metadata_by_label.items()):
         if str(metadata.get("kind") or "").casefold() != "audio":
             continue
-        identity = " ".join((
-            str(metadata.get("name") or ""),
-            str(metadata.get("description") or ""),
-        )).casefold()
-        if not re.search(r"\b(?:full_mix|song|music|score|instrumental)\b", identity):
+        if _audio_layer_kind(metadata) != "music":
             continue
         copy_mode = _effective_audio_copy_mode(metadata)
         if copy_mode in {"reference", "weak_reference"} and plan.music_intent.value == "none":
@@ -572,17 +595,19 @@ def _lower_initial(value: str) -> str:
 def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
     """Join every LLM-authored creative field without inventing scene content."""
     values = (
-        shot.description,
-        shot.visible_action,
-        shot.performance,
-        _render_camera_behavior(shot.camera_behavior) if shot.camera_behavior else "",
-        shot.environmental_motion,
-        shot.transition_intent,
+        ("description", shot.description),
+        ("visible_action", shot.visible_action),
+        ("performance", shot.performance),
+        ("camera_behavior", _render_camera_behavior(shot.camera_behavior) if shot.camera_behavior else ""),
+        ("environmental_motion", shot.environmental_motion),
+        ("transition_intent", shot.transition_intent),
     )
     parts: list[str] = []
     seen: set[str] = set()
-    for value in values:
+    for field, value in values:
         text = _replace_subject_names(str(value or "").strip(), plan)
+        if field == "visible_action" and re.match(r"^[^.!?]{1,80}['’]s\s", text):
+            text = f"The shot shows {text}"
         key = re.sub(r"\W+", " ", text, flags=re.UNICODE).strip().casefold()
         if not text or not key or key in seen:
             continue
@@ -620,7 +645,13 @@ def _render_camera_behavior(value: str) -> str:
     return f"The camera movement is described as {text}."
 
 
-def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) -> str:
+def _normalize_r2v_dialogue(
+    text: str,
+    language: str,
+    plan: ResolvedPromptPlan,
+    *,
+    vocal_audio_label: str | None = None,
+) -> str:
     """Canonicalize mechanical dialogue syntax after creative fields are authored."""
     language_value = str(language or "English").strip() or "English"
     language = {
@@ -703,6 +734,13 @@ def _normalize_r2v_dialogue(text: str, language: str, plan: ResolvedPromptPlan) 
             marker = f" (S{speaker_id})"
             normalized = normalized[:anchor] + marker + normalized[anchor:]
             offset += len(marker)
+    if vocal_audio_label:
+        normalized = re.sub(
+            r"</d>(?!\s+from\s+<Audio\s+\d+>)",
+            f"</d> from {vocal_audio_label}.",
+            normalized,
+            flags=re.IGNORECASE,
+        )
     return normalized
 
 

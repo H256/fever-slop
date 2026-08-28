@@ -98,6 +98,26 @@ class RunCliTests(unittest.TestCase):
         self.assertEqual("2", executed_args.scenes)
 
     @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_compatibility_h3_stage_preserves_explicit_scene_selection(self, pipeline_run):
+        exit_code = run_project_command(
+            self._args(
+                "--resume",
+                "--stage",
+                "h3_prompts",
+                "--scenes",
+                "1",
+                "--video-pipeline",
+                "minimax-h3-r2v",
+            ),
+            console=self.console,
+        )
+
+        self.assertEqual(0, exit_code)
+        executed_args = pipeline_run.call_args.args[0]
+        self.assertEqual(["h3_prompts"], executed_args.stages)
+        self.assertEqual("1", executed_args.scenes)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
     def test_unchanged_dry_run_and_resume_render_the_same_plan(self, pipeline_run):
         plan = self._plan()
         with patch("feverslop.cli.run_cli.build_resume_plan", return_value=plan), patch(

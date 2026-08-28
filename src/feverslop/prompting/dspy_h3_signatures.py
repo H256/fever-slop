@@ -9,8 +9,8 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
 
     from feverslop.prompting.dspy_h3_models import (
         BaseVideoPrompt,
+        H3CreativePlan,
         ImageAnalysis,
-        PromptPlan,
         ResolvedPromptPlan,
         ResolvedReference,
         RetentionAnalysis,
@@ -24,123 +24,31 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         user_hint: str = dspy_module.InputField()
         analysis: ImageAnalysis = dspy_module.OutputField()
 
-    class BuildPromptPlan(dspy_module.Signature):
-        """Create a strict, generation-ready video plan from the supplied user instruction,
-        references, relay segments, and metadata.
+    class BuildCreativePromptPlan(dspy_module.Signature):
+        """Enrich the existing scene plan with creative MiniMax H3 shot prose only.
 
-        The plan is shared by all generation modes. Do not assume full-reference output
-        syntax here. Plan the requested video faithfully; the downstream renderer will
-        apply the mode-specific output guide.
+        Preserve the supplied scene concept, camera motion, character motion, spatial
+        relations, subject directives, relay timing, and continuity. Add concrete visual
+        detail only where those inputs leave room for it.
 
-        Preserve explicit input requirements instead of summarizing them away.
+        Do not define subjects, assign references, write retention analysis, create final
+        section headers, or emit backend labels, shot labels, or formatted timestamps. The
+        application owns all reference mappings and final mode-specific prompt assembly.
+        Return one creative shot for each supplied relay segment, in the same order. When
+        no relay segments are supplied, return exactly one creative shot. Never choose
+        shot numbers, timestamps, durations, or hard-cut flags; the application derives them
+        from the authoritative scene and relay timeline.
 
-        Priority:
-        1. explicit user and relay-segment directions,
-        2. subject identity and appearance,
-        3. clothing, accessories, props, and environment,
-        4. requested action and performance direction,
-        5. composition and camera direction,
-        6. temporal and shot continuity,
-        7. optional stylistic elaboration.
+        Return complementary description, action, performance, camera, environment, and
+        transition prose without repeating the same sentence. Every populated prose field
+        must be a complete grammatical sentence, not a heading, note, or noun phrase. For
+        R2V, include a concrete style_opening and normally target 350-500 English words
+        across the combined shot fields, scaled to the scene's actual information load.
+        This is a writing target; the downstream validator judges structure and the final
+        judge evaluates whether the description is sufficiently detailed.
 
-        Treat supplied references according to their declared roles. A reference role is
-        a semantic constraint, not merely metadata.
-
-        For subject references, preserve identity-critical visible attributes such as
-        face, hair, body characteristics, clothing, footwear, accessories, and props
-        when provided.
-
-        For environment references, preserve defining spatial and visual characteristics.
-
-        For composition, motion, camera, keyframe, first-frame, last-frame, storyboard,
-        temporal-structure, edit-source, continuation, and audio references, preserve
-        the concrete effect appropriate to that role.
-
-        Do not invent, rename, renumber, merge, or silently omit reference labels.
-
-        Directing instructions are executable constraints. Preserve concrete information
-        such as:
-        - who is visible,
-        - subject position and orientation,
-        - pose and action,
-        - action order,
-        - required props,
-        - wardrobe state,
-        - facial/performance state,
-        - environment,
-        - framing,
-        - camera angle and movement,
-        - movement direction and speed,
-        - lighting,
-        - timing and shot boundaries,
-        - generic spatial relations and visibility scope.
-
-        For every planned active subject, record whether and where it is visible in each
-        relevant shot. Preserve explicit spatial relations literally, including stage versus
-        audience, foreground versus background, left/center/right, front/behind, and the
-        subject's relation to required props. When a subject's declared role identifies a
-        tool, instrument, vehicle, or other role-defining prop used by the scene, bind that
-        prop explicitly to the same subject and do not transfer it to another subject.
-        Anonymous people in an environment reference
-        must never absorb, replace, or spatially relocate a named subject.
-
-        Unless the scene explicitly says an actor is absent or off-screen, every actor
-        reference declared in the input is an active named subject. Include it in the plan
-        and keep it visibly distinct from anonymous environment people. If the input gives no
-        exact position, choose a coherent separate layer rather than placing the named actor
-        inside the crowd or silently dropping the actor.
-
-        A subject mentioned only as an audio source, voice, reaction, or implied stage
-        presence does not count as visible coverage. For every actor action in character
-        motion, create a visual subject entry and attach that actor to the corresponding shot
-        with a concrete position, visible pose, and action.
-
-        Do not replace specific directions with generic equivalents. For example,
-        "slow truck right" must not become "cinematic camera movement", and a specified
-        outfit must not become "casual clothing".
-
-        If relay_segments are supplied, preserve their temporal ordering and attach each
-        action, prop, state, and camera instruction to the corresponding planned shot.
-
-        For each semantic action that should continue across technical render segments,
-        add a continuation_intents entry with a stable action_id, requires_continuation=true,
-        and the desired semantic duration in seconds. This is creative intent only: never
-        choose backend frame counts, workflow limits, or technical segment boundaries.
-        If the user requests a hard cut after a planned shot, preserve it with
-        hard_cut_after=true and do not mark that boundary as continuation. When the input
-        is ambiguous, default to a normal cut rather than inventing continuation intent.
-
-        Across shots, preserve identity, wardrobe, props, environment, spatial state, and
-        action continuity unless the input explicitly changes them.
-
-        When strict_fidelity=true, explicit source information is authoritative. Creativity
-        may fill unspecified details but must not overwrite specified ones.
-
-        Before returning the plan, verify internally that no explicit action, outfit,
-        prop, environment, camera instruction, composition constraint, or relevant
-        reference role has been lost.
-
-        For full-reference generation, author enough concrete creative detail across the
-        planned shot descriptions for the compiled detailed_description to contain 350-500
-        English words. A single-shot plan does not permit a shorter description. Cover
-        composition, subject appearance and position, environment, lighting, action and
-        state changes, camera movement, current sound, and each reference's active point.
-        Also provide style_opening as one or two concrete English sentences establishing
-        the target video's visual style and lighting. Do not put a shot label, timestamp,
-        section header, or backend reference label in style_opening.
-        Write description, visible_action, performance, camera_behavior,
-        environmental_motion, and transition_intent as complementary concrete prose.
-        The deterministic compiler concatenates every populated field, so do not duplicate
-        the same sentence across fields and do not leave the requested detail only implicit.
-
-        `requested_music_intent` is authoritative when it is non-empty. In particular,
-        `requested_music_intent=none` means the soundtrack/scene audio is already
-        supplied elsewhere and you MUST return `music_intent=none` with
-        `non_diegetic_music` omitted or null. Do not reinterpret referenced song audio
-        as non-diegetic music. For requested/enabled `generate` or `reference`, provide
-        a concrete non-diegetic music description. Scene vocals, instruments, and
-        referenced soundtrack audio belong in the detailed description and audio
-        references, not in this field.
+        `requested_music_intent` is authoritative. When it is `none`, return
+        `music_intent=none` and omit `non_diegetic_music`.
         """
 
         mode: str = dspy_module.InputField()
@@ -151,7 +59,7 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         strict_fidelity: bool = dspy_module.InputField()
         requested_music_intent: str = dspy_module.InputField()
         relay_segments: list[dict[str, Any]] = dspy_module.InputField(default=[])
-        plan: PromptPlan = dspy_module.OutputField()
+        plan: H3CreativePlan = dspy_module.OutputField()
 
     class RenderBasePrompt(dspy_module.Signature):
         """Render a production-ready MiniMax base-mode prompt from the resolved plan.
@@ -381,7 +289,7 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
 
     return H3SignatureBundle(
         AnalyzeImage,
-        BuildPromptPlan,
+        BuildCreativePromptPlan,
         RenderBasePrompt,
         RenderReferencePrompt,
         JudgeFinalPrompt,

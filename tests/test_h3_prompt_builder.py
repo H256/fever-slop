@@ -336,7 +336,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual("good", result["prompt_judge"]["verdict"])
         self.assertEqual("action-1", result["continuation_intents"][0]["action_id"])
 
-    def test_r2v_deterministic_contract_retries_before_calling_judge(self):
+    def test_r2v_deterministic_contract_does_not_retry_for_creative_length(self):
         from types import SimpleNamespace
 
         from feverslop.prompting.dspy_h3_models import (
@@ -390,11 +390,8 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             mode="r2v",
         )
 
-        self.assertEqual(2, len(requests))
+        self.assertEqual(1, len(requests))
         self.assertEqual(1, len(judged_prompts))
-        self.assertIn("350", requests[1]["notes"])
-        self.assertIn("actual:", requests[1]["notes"])
-        self.assertIn("Expand the LLM-authored shot description, visible action, performance", requests[1]["notes"])
         self.assertEqual(judged_prompts[0], result["prompt"])
 
     def test_judge_field_issues_repair_only_addressed_creative_fields(self):

@@ -210,6 +210,8 @@ def _validate_r2v_contract(
     summary = _h3_section(text, "summary:", "retention_analysis:")
     retention = _h3_section(text, "retention_analysis:", "detailed_description:")
     detailed = _h3_section(text, "detailed_description:", "overall_soundscape:")
+    soundscape = _h3_section(text, "overall_soundscape:", "non_diegetic_music:")
+    music = text.partition("non_diegetic_music:")[2]
     style_opening = str(plan.style_opening or "").strip()
     before_first_shot = detailed.partition("[Shot 1]")[0].strip()
     if not style_opening or before_first_shot != style_opening:
@@ -221,15 +223,6 @@ def _validate_r2v_contract(
     if not re.match(r"^\[[a-z][a-z +]+\]\s+\S", summary):
         issues.append(PromptContractIssue(
             "h3.summary.task_type", "summary", "summary must begin with one task-type prefix",
-        ))
-    word_count = len(re.findall(r"\b[\w'-]+\b", detailed))
-    task_prefix = summary.partition("]")[0].casefold()
-    if "video editing" not in task_prefix and word_count < 350:
-        issues.append(PromptContractIssue(
-            "h3.detail.too_short",
-            "detailed_description",
-            "generation-mode detailed_description must contain at least 350 English words "
-            f"(actual: {word_count} words)",
         ))
     issues.extend(_validate_shots(detailed, plan))
     if re.search(r"\(S\d+(?:,S\d+)*\)", retention):
@@ -277,6 +270,14 @@ def _validate_r2v_contract(
         ),
     }
     for label in sorted(audio_labels):
+        audio_metadata = metadata_by_label.get(label, {})
+        copy_mode = str(audio_metadata.get("copy_mode") or "reference").casefold()
+        audio_identity = " ".join((
+            str(audio_metadata.get("name") or ""),
+            str(audio_metadata.get("description") or ""),
+        )).casefold()
+        if "full_mix" in audio_identity and re.search(r"\b(?:original song|beat|rhythm)\b", audio_identity):
+            copy_mode = "reference"
         if label not in summary:
             issues.append(PromptContractIssue(
                 "h3.audio.summary_missing",
@@ -292,26 +293,25 @@ def _validate_r2v_contract(
             issues.append(PromptContractIssue(
                 "h3.audio.retention_missing", "retention_analysis", "audio reference has no retention entry", label,
             ))
-        locations = [match.start() for match in re.finditer(re.escape(label), detailed)]
-        if not locations:
+        audible_sections = f"{detailed}\n{soundscape}\n{music}"
+        if copy_mode in {"fully_copy", "partially_copy"} and label not in audible_sections:
             issues.append(PromptContractIssue(
                 "h3.audio.missing",
-                "detailed_description",
-                "defined audio reference is not cited where its relationship applies",
+                "audio_sections",
+                "defined audio reference is not cited in a matching visible or audible section",
                 label,
             ))
-        elif not any(
-            re.search(
-                r"\b(?:copied|referenced|reused)\b",
-                detailed[max(0, location - 120):location + len(label) + 180],
-                re.IGNORECASE,
-            )
-            for location in locations
+        relationship_sections = f"{definitions}\n{summary}\n{retention}\n{soundscape}\n{music}"
+        if label in relationship_sections and not re.search(
+            rf"(?:{re.escape(label)}.{{0,180}}\b(?:copied|referenced|reused|copy|reference)\b|"
+            rf"\b(?:copied|referenced|reused|copy|reference)\b.{{0,180}}{re.escape(label)})",
+            relationship_sections,
+            re.IGNORECASE | re.DOTALL,
         ):
             issues.append(PromptContractIssue(
                 "h3.audio.relationship_missing",
-                "detailed_description",
-                "audio reference citation must state whether its signal is copied or referenced",
+                "audio_sections",
+                "audio reference must state whether its signal is copied or referenced",
                 label,
             ))
     issues.extend(_validate_dialogue(detailed))

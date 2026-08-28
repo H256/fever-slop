@@ -71,17 +71,29 @@ def _attach_beat_events(stage1_segments: list[dict], beat_data: dict[str, Any]) 
 
 
 def _attach_subject_directives(stage1_segments: list[dict], scene_prompts: list[dict]) -> list[dict]:
-    directives_by_segment = {
-        str(scene.get("segment_id")): scene.get("subject_directives")
+    prompts_by_segment = {
+        str(scene.get("segment_id")): scene
         for scene in scene_prompts
-        if scene.get("subject_directives") is not None
     }
     enriched = []
     for segment in stage1_segments:
         result = dict(segment)
-        directives = directives_by_segment.get(str(segment.get("segment_id")))
+        scene_prompt = prompts_by_segment.get(str(segment.get("segment_id"))) or {}
+        directives = scene_prompt.get("subject_directives")
         if directives is not None:
             result["subject_directives"] = directives
+        creative_prompt = next((
+            str(scene_prompt.get(key) or "").strip()
+            for key in (
+                "ltx_base_prompt",
+                "i2v_prompt_from_t2i",
+                "original_style_i2v_prompt",
+                "base_concept",
+            )
+            if str(scene_prompt.get(key) or "").strip()
+        ), "")
+        if creative_prompt:
+            result["h3_creative_prompt"] = creative_prompt
         enriched.append(result)
     return enriched
 
