@@ -250,6 +250,15 @@ class H3PromptPipeline:
             reporter.message(
                 f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
             )
+            reporter.message(
+                "[cyan]H3 judge mode: "
+                + (
+                    "blocking; BAD verdicts stop render preparation."
+                    if bool(getattr(llm, "prompt_judge_blocking", True))
+                    else "advisory; BAD verdicts are saved but do not stop the pipeline."
+                )
+                + "[/cyan]",
+            )
         selected_scene_numbers = (
             context["selected_scene_numbers"]
             if "selected_scene_numbers" in context.keys()
@@ -320,12 +329,20 @@ class H3PromptPipeline:
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
         if model_spec and model_spec.is_minimax_h3:
+            app_config = context["app_config"]
+            llm_config = getattr(app_config, "llm", None)
+            judge_blocking = bool(
+                getattr(llm_config, "prompt_judge_blocking", True)
+            )
             not_approved = [
                 str(item.get("segment_id"))
                 for item in context["h3_prompts"]
                 if (
                     not valid_h3_prompt_contract(item)
-                    or (item.get("prompt_judge") or {}).get("verdict") != "good"
+                    or (
+                        judge_blocking
+                        and (item.get("prompt_judge") or {}).get("verdict") != "good"
+                    )
                 )
             ]
             if not_approved:
@@ -396,5 +413,8 @@ def _generator_revision(app_config: Any, builder: Any) -> dict[str, Any]:
         )
         revision["prompt_judge_max_tokens"] = int(
             getattr(llm_config, "prompt_judge_max_tokens", 8192),
+        )
+        revision["prompt_judge_blocking"] = bool(
+            getattr(llm_config, "prompt_judge_blocking", True),
         )
     return revision

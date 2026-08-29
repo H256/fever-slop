@@ -108,6 +108,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
             max_concurrent_requests=app_config.llm.max_concurrent_requests,
             prompt_judge_attempts=app_config.llm.prompt_judge_attempts,
             prompt_judge_max_tokens=app_config.llm.prompt_judge_max_tokens,
+            prompt_judge_blocking=app_config.llm.prompt_judge_blocking,
         )
         return DspyH3PromptBuilder(
             build_dspy_generator(llm),

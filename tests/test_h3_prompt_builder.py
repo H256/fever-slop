@@ -336,6 +336,93 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual("good", result["prompt_judge"]["verdict"])
         self.assertEqual("action-1", result["continuation_intents"][0]["action_id"])
 
+    def test_advisory_judge_saves_bad_verdict_without_regenerating(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(shot_number=1, description="CREATIVE DESCRIPTION")],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+
+        class Generator:
+            judge_attempts = 3
+            prompt_judge_blocking = False
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return PromptJudgeResult(verdict="bad", issues=["wording"])
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertEqual(1, len(requests))
+        self.assertEqual("bad", result["prompt_judge"]["verdict"])
+
+    def test_judge_feedback_does_not_feed_compiler_labels_back_to_planner(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(shot_number=1, description="CREATIVE DESCRIPTION")],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+        verdicts = iter((
+            PromptJudgeResult(
+                verdict="bad",
+                issues=["<Subject 2> must not be followed by He"],
+            ),
+            PromptJudgeResult(verdict="good"),
+        ))
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return next(verdicts)
+
+        DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertNotIn("<Subject 2>", requests[1]["notes"])
+
     def test_r2v_deterministic_contract_does_not_retry_for_creative_length(self):
         from types import SimpleNamespace
 

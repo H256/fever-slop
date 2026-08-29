@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -497,6 +498,56 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
                 h3_prompt_builder_factory=lambda _: Builder(),
                 dspy_prompt_builder_factory=lambda _: Builder(),
             ).run(context)
+
+    def test_minimax_pipeline_allows_bad_advisory_judge_with_valid_contract(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        prompt = "usable"
+        item = {
+            "segment_id": "s1",
+            "prompt": prompt,
+            "prompt_provenance": {"compiler_version": 24},
+            "prompt_contract": {
+                "valid": True,
+                "compiler_version": 24,
+                "prompt_sha256": "sha256:" + hashlib.sha256(prompt.encode()).hexdigest(),
+            },
+            "prompt_judge": {"verdict": "bad", "issues": ["wording"]},
+        }
+
+        class Builder:
+            def build_all_h3_prompts(self, **kwargs):
+                kwargs["artifact_store"].write_json(kwargs["output_json_path"], [item])
+
+        class ArtifactStore:
+            def read_json(self, _path):
+                return [item]
+
+            def write_json(self, _path, data):
+                return data
+
+        context = GenerateRenderPlanContext(
+            app_config=SimpleNamespace(llm=SimpleNamespace(
+                prompt_judge_attempts=1,
+                prompt_judge_blocking=False,
+            )),
+            config=SimpleNamespace(
+                video_pipeline="minimax-h3-r2v",
+                minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+            ),
+            stage1_segments=[{"segment_id": "s1"}],
+            concept_prompts={}, scene_details={}, global_context={},
+            h3_prompts_json=Path("h3.json"), artifact_store=ArtifactStore(),
+            log_step=lambda _: None, log_file=lambda *_: None,
+        )
+
+        H3PromptPipeline(
+            llm_factory=lambda _: None,
+            h3_prompt_builder_factory=lambda _: Builder(),
+            dspy_prompt_builder_factory=lambda _: Builder(),
+        ).run(context)
+
+        self.assertEqual([item], context["h3_prompts"])
 
     def test_minimax_pipeline_blocks_good_judge_without_compiler_contract(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline

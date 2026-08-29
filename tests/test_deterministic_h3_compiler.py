@@ -259,7 +259,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("deliberate visual continuity", detailed)
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
-        self.assertIn("<Subject 1> is visible in the shot.", detailed)
+        self.assertIn("<Subject 1> is also present in the shot.", detailed)
         self.assertNotIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
         self.assertNotIn("<Audio 1> is visible in the shot", detailed)
         self.assertIn("fully copied as the target video's audio signal", prompt)
@@ -267,6 +267,108 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("<Picture 1>: fully_preserved", prompt)
         self.assertIn("<Audio 1>: fully_copy", prompt)
         self.assertNotIn("..", detailed)
+
+    def test_missing_environment_label_does_not_steal_following_pronoun(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A technician crosses a city.",
+            subjects=[
+                SubjectDefinition(label="<Subject 1>", name="Jack", description="a technician"),
+                SubjectDefinition(label="<Subject 2>", name="Metropolis", description="a cityscape"),
+            ],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="He struggles to maintain focus while Jack walks forward.",
+                involved_subjects=["Jack", "Metropolis"],
+            )],
+            overall_soundscape="Quiet ambience.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+        )
+
+        self.assertNotIn("<Subject 2> is visible in the shot. He", prompt)
+        self.assertIn("He struggles to maintain focus while <Subject 1> walks forward.", prompt)
+        self.assertIn("<Subject 2> is also present in the shot.", prompt)
+
+    def test_camera_behavior_is_rendered_without_meta_wrapper(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A camera study.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A technician pauses.",
+                camera_behavior="The low-angle arc continues slowly.",
+            )],
+            overall_soundscape="Quiet ambience.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+        )
+
+        self.assertIn("The low-angle arc continues slowly.", prompt)
+        self.assertNotIn("camera movement is described as", prompt)
+
+    def test_camera_repairs_double_article_fragment(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A camera study.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A technician pauses.",
+                camera_behavior="The camera the low-angle perspective.",
+            )],
+            overall_soundscape="Quiet ambience.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+        )
+
+        self.assertIn("The camera maintains the low-angle perspective.", prompt)
+
+    def test_relay_cleanup_removes_empty_lyric_quotes(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A vocal close-up.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The performer pours emotion into the lyrics ''.",
+            )],
+            overall_soundscape="Digital static surrounds the vocals.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        normalized = plan_with_authoritative_relay(
+            plan,
+            [{"state": "singing", "lyrics": "Hold on"}],
+        )
+
+        self.assertNotIn("''", normalized.shots[0].description)
+
+    def test_soundscape_preserves_ambience_when_vocal_clause_is_removed(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A glitching city.",
+            shots=[PlannedShot(shot_number=1, description="A figure waits.")],
+            overall_soundscape=(
+                "Subtle digital static and rhythmic glitching sounds surround the scene, "
+                "while resonant vocals carry the melody."
+            ),
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{"state": "singing", "lyrics": "Hold on"}],
+        )
+
+        self.assertIn("Subtle digital static and rhythmic glitching sounds", prompt)
+        self.assertNotIn("No additional diegetic ambience", prompt)
 
     def test_base_modes_compile_exact_shot_timestamps_and_frame_relationships(self):
         plan = ResolvedPromptPlan(

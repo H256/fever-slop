@@ -45,6 +45,22 @@ class H3PromptCheckpointStore:
         self._report("reused", checkpoint)
         return checkpoint
 
+    def load_advisory(
+        self,
+        request: H3PromptCheckpointInput,
+    ) -> H3PromptCheckpoint | None:
+        """Reuse a matching deterministic prompt even when its LLM judge said BAD."""
+        checkpoint = self.load_for_resume(request)
+        if (
+            checkpoint is None
+            or checkpoint.status not in {"good", "bad_exhausted"}
+            or checkpoint.input_fingerprint != self._fingerprint(request)
+        ):
+            return None
+        self._sync_canonical(checkpoint)
+        self._report("reused", checkpoint)
+        return checkpoint
+
     def load_for_resume(self, request: H3PromptCheckpointInput) -> H3PromptCheckpoint | None:
         """Load an identity-matching checkpoint, even when inputs are stale."""
         path = self.layout.scene_h3_prompt(request.scene_number)

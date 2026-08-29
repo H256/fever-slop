@@ -499,6 +499,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             max_concurrent_requests=current_config.llm.max_concurrent_requests,
             prompt_judge_attempts=current_config.llm.prompt_judge_attempts,
             prompt_judge_max_tokens=current_config.llm.prompt_judge_max_tokens,
+            prompt_judge_blocking=current_config.llm.prompt_judge_blocking,
         ),
         h3_prompt_builder_factory=H3PromptBuilder,
         dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(

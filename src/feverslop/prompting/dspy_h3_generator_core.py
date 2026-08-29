@@ -131,7 +131,17 @@ _VOCAL_NEGATION_PATTERN = re.compile(
 def _sanitize_creative_repair(value: Any) -> str:
     """Remove compiler-owned syntax from one LLM repair candidate field."""
     text = str(value or "")
-    text = re.sub(r"<(?:Picture|Video|Audio)\s+\d+>", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"<(Subject|Picture|Video|Audio)\s+\d+>",
+        lambda match: {
+            "subject": "the referenced subject",
+            "picture": "the reference image",
+            "video": "the reference video",
+            "audio": "the reference audio",
+        }[match.group(1).casefold()],
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"\b\d{2}:\d{2}(?:[:.]\d{2,3})\b", "", text)
     return re.sub(r"\s+", " ", text).strip(" ,;:.\n\t")
 
@@ -239,6 +249,7 @@ class VideoPromptGenerator:
             else None
         )
         self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
+        self.prompt_judge_blocking = bool(getattr(llm, "prompt_judge_blocking", True))
         self.warning_callback = warning_callback
         self.lm = self.dspy_runtime.make_lm(llm)
         self.judge_lm = self.dspy_runtime.make_lm(

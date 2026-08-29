@@ -131,6 +131,7 @@ class LocalOpenAIClient:
         max_concurrent_requests: int = 1,
         prompt_judge_attempts: int = 3,
         prompt_judge_max_tokens: int = 8192,
+        prompt_judge_blocking: bool = True,
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
         min_request_interval_seconds: float = 0.0,
@@ -160,6 +161,7 @@ class LocalOpenAIClient:
         self.max_concurrent_requests = int(max_concurrent_requests)
         self.prompt_judge_attempts = int(prompt_judge_attempts)
         self.prompt_judge_max_tokens = int(prompt_judge_max_tokens)
+        self.prompt_judge_blocking = bool(prompt_judge_blocking)
         self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics

@@ -24,6 +24,7 @@ class LLMConfig:
     max_concurrent_requests: int = 1
     prompt_judge_attempts: int = 3
     prompt_judge_max_tokens: int = 8192
+    prompt_judge_blocking: bool = True
     models: dict[str, str] = field(default_factory=dict)
     _local_api_key: str | None = field(default=None, repr=False)
 
@@ -262,6 +263,10 @@ class AppConfig:
         llm_max_concurrent_requests = int(llm_raw.get("max_concurrent_requests", 1))
         llm_prompt_judge_attempts = int(llm_raw.get("prompt_judge_attempts", 3))
         llm_prompt_judge_max_tokens = int(llm_raw.get("prompt_judge_max_tokens", 8192))
+        llm_prompt_judge_blocking = _parse_bool(
+            llm_raw.get("prompt_judge_blocking", True),
+            "llm.prompt_judge_blocking",
+        )
         llm_models_raw = llm_raw.get("models", {})
         if not isinstance(llm_models_raw, dict):
             raise ValueError("llm.models must be an object")
@@ -302,6 +307,7 @@ class AppConfig:
                 max_concurrent_requests=llm_max_concurrent_requests,
                 prompt_judge_attempts=llm_prompt_judge_attempts,
                 prompt_judge_max_tokens=llm_prompt_judge_max_tokens,
+                prompt_judge_blocking=llm_prompt_judge_blocking,
                 models=llm_models,
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),

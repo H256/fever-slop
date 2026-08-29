@@ -175,6 +175,18 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.store.save(request, {"prompt": "rejected", "prompt_judge": {"verdict": "bad"}})
         self.assertIsNone(self.store.load(request))
 
+    def test_advisory_load_reuses_matching_bad_checkpoint(self):
+        request = self.request()
+        saved = self.store.save(
+            request,
+            {"prompt": "rejected", "prompt_judge": {"verdict": "bad"}},
+        )
+
+        loaded = self.store.load_advisory(request)
+
+        self.assertEqual(saved.path, loaded.path)
+        self.assertEqual("bad_exhausted", loaded.status)
+
         request = self.request(scene_number=2, segment_id="segment-b", segment={"scene": 2, "segment_id": "segment-b"})
         self.store.save(request, {"prompt": "unjudged"})
         self.assertIsNone(self.store.load(request))

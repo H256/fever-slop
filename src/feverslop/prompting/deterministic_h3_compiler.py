@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 24
+H3_COMPILER_VERSION = 26
 
 
 def plan_with_authoritative_relay(
@@ -46,6 +46,7 @@ def plan_with_authoritative_relay(
             cleaned = _strip_authored_dialogue_markup(value)
             if content:
                 cleaned = re.sub(re.escape(content), "", cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r"(['\"])\s*\1", "", cleaned)
             cleaned = re.sub(r"\[[^]\r\n]+\]", "", cleaned)
             cleaned = _remove_authored_vocal_claims(f"[Shot 1] {cleaned}", relay)
             cleaned = re.sub(r"^\[Shot 1\]\s*", "", cleaned).strip()
@@ -386,6 +387,7 @@ class DeterministicH3Compiler:
             )
             for lyric in _dialogue_contents(detailed):
                 soundscape = _remove_sentence_containing(soundscape, lyric)
+            soundscape = _remove_authored_vocal_claims(soundscape, {})
             soundscape = _remove_music_sentences(soundscape)
             for label, metadata in sorted(metadata_by_label.items()):
                 copy_mode = _effective_audio_copy_mode(metadata)
@@ -502,7 +504,9 @@ def _render_shot_with_references(
     if missing:
         visible = " and ".join(missing)
         verb = "is" if len(missing) == 1 else "are"
-        description = f"{visible} {verb} visible in the shot. {description}"
+        description = (
+            f"{description.rstrip('.')}. {visible} {verb} also present in the shot."
+        )
     subject_sources = {
         label for subject in plan.subjects for label in subject.source_references
     }
@@ -760,6 +764,9 @@ def _with_terminal_punctuation(value: str) -> str:
 
 def _render_camera_behavior(value: str) -> str:
     raw = str(value).strip()
+    malformed = re.match(r"(?i)^the camera\s+the\s+(.+?)[.]?$", raw)
+    if malformed:
+        return f"The camera maintains the {malformed.group(1).rstrip('.')}."
     if re.match(r"(?i)^the camera\b", raw):
         return _with_terminal_punctuation(raw)
     text = _lower_initial(raw.rstrip("."))
@@ -777,7 +784,7 @@ def _render_camera_behavior(value: str) -> str:
     if match and match.group(2) in replacements:
         adverb = f" {match.group(1)}" if match.group(1) else ""
         return f"The camera{adverb} {replacements[match.group(2)]}{match.group(3)}."
-    return f"The camera movement is described as {text}."
+    return _with_terminal_punctuation(raw)
 
 
 def _normalize_r2v_dialogue(
@@ -1050,8 +1057,14 @@ def _remove_sentence_containing(text: str, phrase: str) -> str:
 
 
 def _remove_music_sentences(text: str) -> str:
+    text = re.sub(
+        r"(?:,\s*)?(?:while\s+)?[^,.;]*\bvocals?\b[^.;]*[.;]?",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
     parts = re.split(r"(?<=[.!?;])\s+", text.strip())
-    music = re.compile(r"\b(?:musical track|full mix|song|vocals?|background music)\b", re.IGNORECASE)
+    music = re.compile(r"\b(?:musical track|full mix|song|background music)\b", re.IGNORECASE)
     retained = " ".join(part for part in parts if not music.search(part)).strip(" ;")
     return retained[:1].upper() + retained[1:] if retained else ""
 

@@ -770,11 +770,12 @@ class DspyH3PromptBuilder:
                     if (
                         judged is None
                         or judged.verdict == "good"
+                        or not bool(getattr(self.generator, "prompt_judge_blocking", True))
                         or attempt == max_attempts - 1
                         or any(issue.startswith("judge unavailable:") for issue in judged.issues)
                     ):
                         break
-                    feedback = _judge_feedback(judged)
+                    feedback = _sanitize_judge_feedback(_judge_feedback(judged))
                     self._report_judge_retry(attempt + 2, max_attempts, feedback)
                     repair_compiled_plan = getattr(
                         self.generator, "repair_compiled_plan", None,
@@ -798,8 +799,17 @@ class DspyH3PromptBuilder:
                             "content inside the guide-required <d>[Language] ...</d> form."
                         ).strip(),
                     }
-                    generated = self.generator(request)
-                    current_plan = generated.plan
+                    try:
+                        generated = self.generator(request)
+                        current_plan = generated.plan
+                    except Exception as repair_exc:
+                        if self.warning_callback is not None:
+                            self.warning_callback(
+                                "H3 judge repair was rejected; preserving the valid compiled "
+                                f"prompt and BAD verdict: {_safe_error_message(repair_exc)}",
+                                title="H3 judge repair",
+                            )
+                        break
                 return result
             prompt = getattr(generated, "rendered_prompt", None)
             if not prompt and isinstance(generated, dict):
@@ -1061,7 +1071,14 @@ class DspyH3PromptBuilder:
                     generator_revision=generator_revision or {},
                 )
                 if reuse_checkpoints:
-                    checkpoint = checkpoint_store.load(checkpoint_input)
+                    advisory_loader = getattr(checkpoint_store, "load_advisory", None)
+                    if (
+                        not bool(getattr(self.generator, "prompt_judge_blocking", True))
+                        and callable(advisory_loader)
+                    ):
+                        checkpoint = advisory_loader(checkpoint_input)
+                    else:
+                        checkpoint = checkpoint_store.load(checkpoint_input)
             if checkpoint is not None:
                 if status_callback is not None:
                     status_callback(current, total, "reused")
@@ -1107,7 +1124,10 @@ class DspyH3PromptBuilder:
                             status_callback(current, total, "regenerating")
                     else:
                         judge = result.get("prompt_judge") or {}
-                        if judge.get("verdict") != "good":
+                        if (
+                            judge.get("verdict") != "good"
+                            and bool(getattr(self.generator, "prompt_judge_blocking", True))
+                        ):
                             feedback = "; ".join(
                                 str(issue) for issue in judge.get("issues") or []
                             ) or "compiled prompt was not approved"
@@ -1200,3 +1220,18 @@ def _judge_feedback(judged: Any) -> str:
         for issue in judged.field_issues
     )
     return "; ".join(dict.fromkeys(parts)) or "the prompt did not satisfy the guide"
+
+
+def _sanitize_judge_feedback(value: str) -> str:
+    """Keep compiler-owned labels out of planner repair instructions."""
+    return re.sub(
+        r"<(Subject|Picture|Video|Audio)\s+\d+>",
+        lambda match: {
+            "subject": "the referenced subject",
+            "picture": "the reference image",
+            "video": "the reference video",
+            "audio": "the reference audio",
+        }[match.group(1).casefold()],
+        str(value),
+        flags=re.IGNORECASE,
+    )
