@@ -21,6 +21,31 @@ from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class ExecutionPlanTests(unittest.TestCase):
+    def test_h3_checkpoint_from_old_compiler_is_regenerated(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            layout = SceneArtifactLayout(Path(temp_dir))
+            checkpoint = layout.scene_h3_prompt(1)
+            checkpoint.parent.mkdir(parents=True)
+            checkpoint.write_text(json.dumps({
+                "status": "good",
+                "input_fingerprint": "fp",
+                "provenance": {"compiler_version": 27},
+            }), encoding="utf-8")
+            scene = {
+                "canonical": {
+                    "roles": {
+                        str(PromptRole.H3_VIDEO): {
+                            "generated": {"provenance": {"input_fingerprint": "fp"}},
+                        },
+                    },
+                },
+            }
+
+            action, reason = _h3_state(layout, scene, 1)
+
+        self.assertIs(PlanAction.RUN, action)
+        self.assertIn("compiler", reason)
+
     def test_advisory_h3_bad_checkpoint_is_renderable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             layout = SceneArtifactLayout(Path(temp_dir))

@@ -1144,7 +1144,11 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("<Subject 1> is <Subject 1> is", prompt)
         self.assertIn("<Subject 2> is visible", prompt)
         self.assertNotIn("<Subject 2> (S2)", prompt)
-        self.assertIn("<Subject 1> (S1) sings, <d>[English] So I blink.</d>", prompt)
+        self.assertIn(
+            "<Subject 1> (S1) sings with visible mouth movements precisely synchronized "
+            "to the vocal, <d>[English] So I blink.</d>",
+            prompt,
+        )
 
     def test_r2v_compiler_canonicalizes_multishot_vocal_reference_plan(self):
         plan = ResolvedPromptPlan(
@@ -1223,7 +1227,11 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         detailed = prompt.split("detailed_description: ", 1)[1].split("\n\noverall_soundscape:", 1)[0]
 
         self.assertEqual(2, detailed.count("<Subject 1> (S1)"))
-        self.assertIn("<Subject 1> (S1) sings, <d>[English] first line.</d>", detailed)
+        self.assertIn(
+            "<Subject 1> (S1) sings with visible mouth movements precisely synchronized "
+            "to the vocal, <d>[English] first line.</d>",
+            detailed,
+        )
         self.assertNotIn("<Subject 1> (S1) is silent", detailed)
         self.assertNotIn("(S2)", detailed)
         self.assertNotIn("(S3)", detailed)

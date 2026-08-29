@@ -182,7 +182,14 @@ class H3PromptPipeline:
         stage1_segments = context["stage1_segments"]
         concept_prompts = context["concept_prompts"]
         scene_details = context["scene_details"]
-        global_context = context["global_context"]
+        global_context = dict(context["global_context"])
+        configured_audio_bindings = getattr(
+            getattr(config, "minimax_h3_audio_refs", None),
+            "subject_bindings",
+            {},
+        )
+        if configured_audio_bindings:
+            global_context["audio_subject_bindings"] = configured_audio_bindings
         stage1_segments = _normalize_h3_scene_references(stage1_segments, global_context)
         h3_prompts_json = context["h3_prompts_json"]
         artifact_store = context["artifact_store"]

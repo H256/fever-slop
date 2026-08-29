@@ -6,6 +6,7 @@ from pathlib import Path
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.scene_prompt_builder import (
     ScenePromptBuilder,
+    normalize_scene_references,
     scene_prompt_word_limit,
 )
 from tests.prompt_fakes import GeneralModulesFake
@@ -273,7 +274,13 @@ class ScenePromptBuilderTests(unittest.TestCase):
 
             data = json.loads(output_path.read_text(encoding="utf-8"))
 
-        self.assertEqual({"actor_ids": ["singer"], "location_id": "stage"}, data[0]["references"])
+        self.assertEqual({
+            "actor_ids": ["singer"],
+            "location_id": "stage",
+            "audio_subject_bindings": {
+                "vocals": {"subject_id": "singer", "speaker_id": "S1"},
+            },
+        }, data[0]["references"])
 
     def test_build_scene_prompts_passes_selected_cast_to_t2i_and_i2v(self):
         modules = GeneralModulesFake()
@@ -350,6 +357,43 @@ class ScenePromptBuilderTests(unittest.TestCase):
 
         self.assertEqual(actor_ids, modules.calls[0].payload["scene_cast"]["visible_actor_ids"])
 
+    def test_mixed_scene_applies_configured_vocalist_binding_and_visibility(self):
+        references = normalize_scene_references(
+            {"actor_ids": ["tamsin"]},
+            {
+                "actors": [{"id": "tamsin"}, {"id": "soren"}],
+                "subject_mode": "multi",
+                "max_scene_actors": 2,
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "soren", "speaker_id": "S1"},
+                },
+            },
+            segment_type="mixed",
+        )
+
+        self.assertEqual(["tamsin", "soren"], references["actor_ids"])
+        self.assertEqual(
+            {"vocals": {"subject_id": "soren", "speaker_id": "S1"}},
+            references["audio_subject_bindings"],
+        )
+
+    def test_instrumental_scene_does_not_apply_configured_vocalist_binding(self):
+        references = normalize_scene_references(
+            {"actor_ids": ["tamsin"]},
+            {
+                "actors": [{"id": "tamsin"}, {"id": "soren"}],
+                "subject_mode": "multi",
+                "max_scene_actors": 2,
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "soren", "speaker_id": "S1"},
+                },
+            },
+            segment_type="instrumental",
+        )
+
+        self.assertEqual(["tamsin"], references["actor_ids"])
+        self.assertNotIn("audio_subject_bindings", references)
+
     def test_single_subject_mode_forces_first_actor_reference(self):
         modules = GeneralModulesFake()
         builder = ScenePromptBuilder(object(), modules=modules)
@@ -381,7 +425,13 @@ class ScenePromptBuilderTests(unittest.TestCase):
 
             data = json.loads(output_path.read_text(encoding="utf-8"))
 
-        self.assertEqual({"actor_ids": ["mara"], "location_id": "stage"}, data[0]["references"])
+        self.assertEqual({
+            "actor_ids": ["mara"],
+            "location_id": "stage",
+            "audio_subject_bindings": {
+                "vocals": {"subject_id": "mara", "speaker_id": "S1"},
+            },
+        }, data[0]["references"])
 
 
 if __name__ == "__main__":

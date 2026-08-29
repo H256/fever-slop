@@ -230,6 +230,7 @@ VALID_AUDIO_REF_STEMS = frozenset({"vocals", "drums", "bass", "other", "full_mix
 @dataclass(frozen=True)
 class AudioRefsConfig:
     stems: list[str] = field(default_factory=lambda: ["vocals", "full_mix"])
+    subject_bindings: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 def _load_lora_config(raw: dict) -> LoraConfig:
@@ -625,6 +626,14 @@ class ProjectConfig:
             lora_split_enabled=bool(raw.get("lora_split_enabled", False)),
             minimax_h3_audio_refs=AudioRefsConfig(
                 stems=cls._validate_stems(list(audio_refs_raw.get("stems", ["vocals", "full_mix"]))),
+                subject_bindings={
+                    str(stem): {
+                        "subject_id": str(binding.get("subject_id") or "").strip(),
+                        "speaker_id": str(binding.get("speaker_id") or "").strip(),
+                    }
+                    for stem, binding in (audio_refs_raw.get("subject_bindings") or {}).items()
+                    if isinstance(binding, dict)
+                },
             ),
         )
 

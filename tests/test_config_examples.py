@@ -43,7 +43,7 @@ class ConfigExampleTests(unittest.TestCase):
         self.assertEqual(
             {"enabled", "name", "strength_model", "strength_clip"}, set(raw["lora_1"])
         )
-        self.assertEqual({"stems"}, set(raw["minimax_h3_audio_refs"]))
+        self.assertEqual({"stems", "subject_bindings"}, set(raw["minimax_h3_audio_refs"]))
         self.assertEqual(
             {"id", "name", "role", "visual_description", "image_prompt"},
             set(raw["actors"][0]),

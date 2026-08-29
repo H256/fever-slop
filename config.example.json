@@ -55,5 +55,8 @@
   "lora_1": {"enabled": false, "name": "", "strength_model": 1.0, "strength_clip": 1.0},
   "loras": [],
   "lora_split_enabled": false,
-  "minimax_h3_audio_refs": {"stems": ["vocals", "full_mix"]}
+  "minimax_h3_audio_refs": {
+    "stems": ["vocals", "full_mix"],
+    "subject_bindings": {"vocals": {"subject_id": "hero", "speaker_id": "S1"}}
+  }
 }
