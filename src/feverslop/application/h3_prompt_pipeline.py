@@ -351,17 +351,16 @@ class H3PromptPipeline:
                     + ", ".join(not_approved),
                 )
         if reporter is not None:
-            bad_judgements = []
-            for item in context["h3_prompts"]:
-                judge = item.get("prompt_judge") or {}
-                if judge.get("verdict") == "bad":
-                    bad_judgements.append(item)
-                    reporter.message(
-                        "[yellow]H3 prompt judge: BAD for "
-                        f"{item.get('segment_id')}; prompt saved and pipeline continues: "
-                        f"{'; '.join(str(issue) for issue in judge.get('issues') or [])}[/yellow]",
-                    )
+            bad_judgements = [
+                item for item in context["h3_prompts"]
+                if (item.get("prompt_judge") or {}).get("verdict") == "bad"
+            ]
             if bad_judgements:
+                reporter.table(
+                    "[yellow]H3 prompt judge findings[/yellow]",
+                    ["Scene", "Issue", "Finding"],
+                    _h3_judge_issue_rows(bad_judgements),
+                )
                 reporter.message(
                     "[yellow]H3 prompt judge summary: "
                     f"{len(bad_judgements)} scene(s) marked BAD. "
@@ -373,6 +372,30 @@ class H3PromptPipeline:
             else:
                 reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
         return context
+
+
+def _h3_judge_issue_rows(items: list[dict[str, Any]]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for item in items:
+        segment_id = str(item.get("segment_id") or "unknown")
+        judge = item.get("prompt_judge") or {}
+        findings = [str(issue).strip() for issue in judge.get("issues") or []]
+        for issue in judge.get("field_issues") or []:
+            if not isinstance(issue, dict):
+                continue
+            location = ".".join(
+                value for value in (
+                    str(issue.get("shot_id") or "").strip(),
+                    str(issue.get("field") or "").strip(),
+                ) if value
+            )
+            detail = str(
+                issue.get("repair_instruction") or issue.get("issue_code") or "Field issue",
+            ).strip()
+            findings.append(f"{location}: {detail}" if location else detail)
+        for number, finding in enumerate(findings or ["No details returned."], start=1):
+            rows.append([segment_id, str(number), finding])
+    return rows
 
 
 def _h3_prompt_status_message(

@@ -8,12 +8,34 @@ from feverslop.application.h3_prompt_pipeline import (
     _attach_relay_segments,
     _attach_subject_directives,
     _configured_audio_paths,
+    _h3_judge_issue_rows,
 )
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.performance_sync import select_performance_stems
 
 
 class ConfiguredAudioPathTests(unittest.TestCase):
+    def test_bad_h3_judgements_expand_to_one_table_row_per_issue(self):
+        rows = _h3_judge_issue_rows([{
+            "segment_id": "segment_004",
+            "prompt_judge": {
+                "verdict": "bad",
+                "issues": ["Broken sentence.", "Missing soundscape."],
+                "field_issues": [{
+                    "shot_id": "shot-0002",
+                    "field": "performance",
+                    "issue_code": "grammar.fragment",
+                    "repair_instruction": "Add a finite verb.",
+                }],
+            },
+        }])
+
+        self.assertEqual([
+            ["segment_004", "1", "Broken sentence."],
+            ["segment_004", "2", "Missing soundscape."],
+            ["segment_004", "3", "shot-0002.performance: Add a finite verb."],
+        ], rows)
+
     def test_attaches_existing_scene_motion_prompt_as_h3_creative_input(self):
         result = _attach_subject_directives(
             [{"segment_id": "segment_001"}],
