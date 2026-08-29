@@ -470,7 +470,8 @@ class DeterministicH3CompilerTests(unittest.TestCase):
                 source_references=["<Picture 1>"],
             )],
             reference_usage=[ReferenceUsage(
-                reference_label="<Audio 1>", purpose="vocals", details="vocals stem",
+                reference_label="<Audio 1>", purpose="vocals",
+                details="vocals stem; bound to <Subject 1> (S1)",
             )],
             shots=[PlannedShot(
                 shot_number=1,
@@ -502,6 +503,10 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("<d>en So I blink</d>", prompt)
         self.assertIn("<Audio 1> is the vocal stem and is partially copied", prompt)
         self.assertNotIn("overall_soundscape: The vocal line So I blink", prompt)
+        retention = prompt.split("retention_analysis:\n", 1)[1].split(
+            "\n\ndetailed_description:", 1,
+        )[0]
+        self.assertNotIn("(S1)", retention)
 
     def test_r2v_compiler_inserts_authoritative_relay_lyrics(self):
         plan = ResolvedPromptPlan(
@@ -1275,6 +1280,11 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 2> (S1) says, <d>[English] Hello.</d>", prompt)
         self.assertIn("<Subject 3> (S2) says, <d>[English] Welcome.</d>", prompt)
         self.assertNotIn("<Subject 1> (S", prompt)
+        retention = prompt.split("retention_analysis:\n", 1)[1].split(
+            "\n\ndetailed_description:", 1,
+        )[0]
+        self.assertNotIn("(S1)", retention)
+        self.assertNotIn("(S2)", retention)
 
     def test_compiles_mode_specific_frame_instructions(self):
         plan = ResolvedPromptPlan(

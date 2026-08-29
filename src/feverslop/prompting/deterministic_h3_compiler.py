@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 26
+H3_COMPILER_VERSION = 27
 
 
 def plan_with_authoritative_relay(
@@ -290,7 +290,10 @@ class DeterministicH3Compiler:
                     "weak_reference", "fully_copy", "partially_copy", "reference",
                 }:
                     marker = "reference" if kind == "audio" else "fully_preserved"
-                usage_retention_lines.append(f"{usage.reference_label}: {marker} - {usage.details}")
+                retention_details = re.sub(r"\s*\(S\d+(?:,S\d+)*\)", "", usage.details)
+                usage_retention_lines.append(
+                    f"{usage.reference_label}: {marker} - {retention_details}",
+                )
             for label in prepared_reference_labels or ():
                 if label in represented:
                     continue
