@@ -195,9 +195,10 @@ class H3PromptCheckpointStore:
             }
             current_h3 = scene.get("h3")
             current_prompt = current_h3.get("prompt") if isinstance(current_h3, dict) else None
-            current_effective = resolve_effective_role(scene, PromptRole.H3_VIDEO)
-            if role.get("generated") == generated and current_prompt == current_effective:
-                return
+            if role.get("generated") == generated:
+                current_effective = resolve_effective_role(scene, PromptRole.H3_VIDEO)
+                if current_prompt == current_effective:
+                    return
             role["generated"] = generated
             h3 = scene.setdefault("h3", {})
             if not isinstance(h3, dict):

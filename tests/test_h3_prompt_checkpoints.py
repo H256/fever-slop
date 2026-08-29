@@ -295,6 +295,22 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertEqual(saved.input_fingerprint, role["generated"]["provenance"]["input_fingerprint"])
         self.assertEqual("human approved", scene["h3"]["prompt"])
 
+    def test_save_populates_previously_empty_canonical_h3_role(self):
+        base = self.project / "output/render/plans/base.json"
+        base.parent.mkdir(parents=True)
+        canonical = build_canonical_scene(
+            segment_id="segment-a",
+            generated_roles={},
+        )
+        base.write_text(json.dumps([{"scene": 1, "canonical": canonical}]), encoding="utf-8")
+
+        self.store.save(self.request(), {"prompt": "first generated H3 prompt"})
+
+        scene = json.loads(base.read_text(encoding="utf-8"))[0]
+        role = scene["canonical"]["roles"][PromptRole.H3_VIDEO]
+        self.assertEqual("first generated H3 prompt", role["generated"]["value"])
+        self.assertEqual("first generated H3 prompt", scene["h3"]["prompt"])
+
     def test_reuse_syncs_checkpoint_created_before_canonical_base_existed(self):
         request = self.request()
         self.store.save(request, {"prompt": "checkpoint prompt", "prompt_judge": {"verdict": "good"}})
