@@ -9,6 +9,7 @@ from feverslop.errors import FeverSlopDataError
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
+from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 from feverslop.utils.sub_step_progress import SubStepProgress
 
 
@@ -98,6 +99,23 @@ def _attach_subject_directives(stage1_segments: list[dict], scene_prompts: list[
     return enriched
 
 
+def _normalize_h3_scene_references(
+    stage1_segments: list[dict],
+    global_context: dict[str, Any],
+) -> list[dict]:
+    return [
+        {
+            **segment,
+            "references": normalize_scene_references(
+                segment.get("references") or {},
+                global_context,
+                segment_type=str(segment.get("type") or ""),
+            ),
+        }
+        for segment in stage1_segments
+    ]
+
+
 def _configured_audio_paths(
     config: Any,
     stem_files: dict[str, Any] | None,
@@ -165,6 +183,7 @@ class H3PromptPipeline:
         concept_prompts = context["concept_prompts"]
         scene_details = context["scene_details"]
         global_context = context["global_context"]
+        stage1_segments = _normalize_h3_scene_references(stage1_segments, global_context)
         h3_prompts_json = context["h3_prompts_json"]
         artifact_store = context["artifact_store"]
         log_step = context["log_step"]

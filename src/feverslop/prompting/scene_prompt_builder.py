@@ -52,7 +52,12 @@ def scene_prompt_word_limit(global_context: dict) -> int:
     return configured if configured > 0 else SCENE_PROMPT_WORD_COUNT_MAX
 
 
-def normalize_scene_references(references: dict, global_context: dict) -> dict:
+def normalize_scene_references(
+    references: dict,
+    global_context: dict,
+    *,
+    segment_type: str = "",
+) -> dict:
     actors = [
         str(actor.get("id", "")).strip()
         for actor in global_context.get("actors", [])
@@ -89,6 +94,16 @@ def normalize_scene_references(references: dict, global_context: dict) -> dict:
                 if str(actor_id).strip() in actors
             ]
             output["actor_ids"] = (selected or [actors[0]])[:max_scene_actors]
+
+    selected_actors = output.get("actor_ids") or []
+    if (
+        segment_type == "vocals"
+        and len(selected_actors) == 1
+        and not output.get("audio_subject_bindings")
+    ):
+        output["audio_subject_bindings"] = {
+            "vocals": {"subject_id": selected_actors[0], "speaker_id": "S1"},
+        }
 
     if locations:
         location_id = str(output.get("location_id", "")).strip()
@@ -237,6 +252,7 @@ class ScenePromptBuilder:
                 references = normalize_scene_references(
                     dict(concept.get("references") or {}),
                     global_context,
+                    segment_type=str(segment.get("type") or ""),
                 )
                 concept = str(concept.get("concept", ""))
             cast = resolve_scene_cast(

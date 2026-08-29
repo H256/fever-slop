@@ -9,12 +9,28 @@ from feverslop.application.h3_prompt_pipeline import (
     _attach_subject_directives,
     _configured_audio_paths,
     _h3_judge_issue_rows,
+    _normalize_h3_scene_references,
 )
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.performance_sync import select_performance_stems
 
 
 class ConfiguredAudioPathTests(unittest.TestCase):
+    def test_h3_stage_backfills_single_visible_vocal_actor_binding(self):
+        result = _normalize_h3_scene_references(
+            [{
+                "segment_id": "segment_004",
+                "type": "vocals",
+                "references": {"actor_ids": ["jack"]},
+            }],
+            {"actors": [{"id": "jack"}]},
+        )
+
+        self.assertEqual(
+            {"vocals": {"subject_id": "jack", "speaker_id": "S1"}},
+            result[0]["references"]["audio_subject_bindings"],
+        )
+
     def test_bad_h3_judgements_expand_to_one_table_row_per_issue(self):
         rows = _h3_judge_issue_rows([{
             "segment_id": "segment_004",

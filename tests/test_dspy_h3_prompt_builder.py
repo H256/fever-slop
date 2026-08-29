@@ -501,6 +501,18 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("location_only", references["subject_mode"])
         self.assertEqual([], references["actor_ids"])
 
+    def test_single_visible_actor_is_bound_to_vocal_stem_for_vocal_scene(self):
+        references = normalize_scene_references(
+            {"actor_ids": ["jack"]},
+            {"actors": [{"id": "jack"}]},
+            segment_type="vocals",
+        )
+
+        self.assertEqual(
+            {"vocals": {"subject_id": "jack", "speaker_id": "S1"}},
+            references["audio_subject_bindings"],
+        )
+
     def test_scene_references_deduplicate_audio_paths_from_scene_and_global_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

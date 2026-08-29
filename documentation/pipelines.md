@@ -196,8 +196,10 @@ and is serialized into the audio definition without changing slot numbering:
 ```
 
 The vocal binding requires a speaker ID; `full_mix` deliberately cannot be
-bound to a subject because it remains a global beat/rhythm reference. Missing
-bindings remain explicitly unbound rather than being inferred.
+bound to a subject because it remains a global beat/rhythm reference. In a
+`vocals` scene with exactly one selected visible actor, that actor is bound to
+the vocal stem as `S1`. Multi-actor scenes remain unbound unless configured
+explicitly.
 
 ## Standard Pipeline
 
