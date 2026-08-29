@@ -10,9 +10,9 @@
   },
   "lyrics": "[Verse]\nPixels dance on my retina\nThey sold me “perfect” in a feed\nBut the seams keep showing through it\nLittle glitches I can’t unsee\n\n[Chorus]\nSo I blink and the frame shakes loose\nWhat looked so clean starts cutting through\nIf this is all there is to hold\nI want the parts they left uncontrolled",
   "music_style": "symphonic power metal, gothic metal ballad, medieval folk metal, 168 BPM, half-time pulse, double-kick drums, twin-guitar harmonies, tolling toms, electric violin, operatic choir, male lead vocals, organ drones, plate reverb, analog saturation, cinematic strings, minor key, anthemic sorrow, dark grandeur",
-  "story_idea": "Inside a flawless augmented transit terminal, AR compliance inspector Elara notices maintenance worker Soren marking hidden cracks with red thread. She follows him through the polished illusion, initially trying to stop him. Soren reveals the unfiltered machinery and neglected damage beneath the projection. During the chorus they choose to pull the thread together, tearing open the synthetic veneer until the real station is visible. They finish side by side before the exposed dawn-lit structure, no longer opponents.",
+  "story_idea": "Inside a flawless augmented transit terminal, AR compliance inspector Tamsin notices maintenance worker and underground singer Soren marking hidden cracks with red thread. She follows him through the polished illusion, initially trying to stop him. Soren sings the male vocal while revealing the unfiltered machinery and neglected damage beneath the projection. During the chorus they choose to pull the thread together, tearing open the synthetic veneer until the real station is visible. They finish side by side before the exposed dawn-lit structure, no longer opponents.",
   "style": "Cinematic near-future realism transitioning from immaculate neon cyan and gold augmented surfaces to tactile steel, dust, cable bundles, cracked concrete, and warm natural dawn light. Preserve stable faces, wardrobe, scale, and screen direction across cuts.",
-  "subject": "Elara and Soren are distinct recurring characters. Elara begins aligned with the artificial order while Soren exposes the physical reality beneath it; their relationship changes from pursuit and resistance to deliberate cooperation.",
+  "subject": "Tamsin and Soren are distinct recurring characters. Tamsin begins aligned with the artificial order while Soren exposes the physical reality beneath it; their relationship changes from pursuit and resistance to deliberate cooperation. Soren is the only visible singer and performs the male vocal passages. Tamsin never lip-syncs.",
   "locations": [
     {
       "id": "mirrorline_central",
@@ -24,16 +24,16 @@
   ],
   "actors": [
     {
-      "id": "elara",
-      "name": "Elara",
+      "id": "tamsin",
+      "name": "Tamsin",
       "role": "AR compliance inspector and protagonist",
       "visual_description": "A woman in her early thirties with a sharp oval face, dark brown eyes, and a precise black bob. She wears a fitted ivory inspection coat with thin cyan luminous seams, charcoal trousers, black boots, and a transparent augmented-reality visor. Her posture begins controlled and upright and becomes physically freer as the illusion breaks.",
-      "image_prompt": "Full-body neutral character reference of Elara, early-thirties woman, sharp oval face, dark brown eyes, precise black bob, fitted ivory inspection coat with thin cyan luminous seams, charcoal trousers, black boots, transparent AR visor, realistic cinematic character design, plain studio background."
+      "image_prompt": "Full-body neutral character reference of Tamsin, early-thirties woman, sharp oval face, dark brown eyes, precise black bob, fitted ivory inspection coat with thin cyan luminous seams, charcoal trousers, black boots, transparent AR visor, realistic cinematic character design, plain studio background."
     },
     {
       "id": "soren",
       "name": "Soren",
-      "role": "maintenance worker and catalyst",
+      "role": "maintenance worker, underground singer, and only visible vocalist",
       "visual_description": "A man in his late thirties with a broad weathered face, close-cropped copper hair, pale gray eyes, and light stubble. He wears a worn rust-red utility jacket over a dark graphite work suit, heavy boots, fingerless gloves, and a coil of vivid red survey thread clipped to his belt. His movement is economical and grounded.",
       "image_prompt": "Full-body neutral character reference of Soren, late-thirties man, broad weathered face, close-cropped copper hair, pale gray eyes, light stubble, worn rust-red utility jacket over dark graphite work suit, heavy boots, fingerless gloves, vivid red survey thread on belt, realistic cinematic character design, plain studio background."
     }
@@ -41,12 +41,12 @@
   "steering": {
     "story_idea": "Build a clear arc: discovery, pursuit, confrontation, revelation, cooperation, release. Use the red survey thread as the visual action connecting both characters and the two visual layers of the setting.",
     "concepts": "Keep both characters narratively active. Alternate individual discovery shots with two-person staging, and make the transition from augmented perfection to physical reality progressively visible rather than instantaneous.",
-    "final_prompts": "Do not infer that either character sings or performs. Only depict singing when timing data explicitly assigns a visible speaker. Keep Elara and Soren visually distinct and preserve the red thread as Soren's prop until Elara deliberately takes hold of it."
+    "final_prompts": "Soren is the only visible singer: show him performing the male vocal only during detected vocal passages. Tamsin never sings or lip-syncs. Keep Tamsin and Soren visually distinct and preserve the red thread as Soren's prop until Tamsin deliberately takes hold of it."
   },
   "prompt_guidance": {
     "character_visibility": "When both characters are present, keep both clearly visible and spatially separated; never merge, duplicate, or swap their identities.",
     "physical_interaction": "Show concrete hand and body actions around the red thread: marking a crack, blocking a hand, offering the thread, taking it, and pulling together.",
-    "outfit_rules": "Elara always wears the ivory cyan-trim inspection coat and visor until she removes the visor; Soren always wears the rust-red utility jacket and carries the red thread.",
+    "outfit_rules": "Tamsin always wears the ivory cyan-trim inspection coat and visor until she removes the visor; Soren always wears the rust-red utility jacket and carries the red thread.",
     "environments": "Use the same recognizable terminal landmarks throughout while progressively revealing the raw station beneath the augmented overlay."
   }
 }

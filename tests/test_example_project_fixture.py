@@ -30,7 +30,7 @@ class ExampleProjectFixtureTests(unittest.TestCase):
         self.assertEqual("multi", config["subject_mode"])
         self.assertEqual(2, config["max_scene_actors"])
         self.assertEqual(0.4, config["video"]["megapixels"])
-        self.assertEqual({"elara", "soren"}, {actor["id"] for actor in config["actors"]})
+        self.assertEqual({"tamsin", "soren"}, {actor["id"] for actor in config["actors"]})
         self.assertEqual(["mirrorline_central"], [location["id"] for location in config["locations"]])
         self.assertTrue((EXAMPLE_PROJECT / "input" / "README.md").is_file())
         self.assertTrue((EXAMPLE_PROJECT / config["input_audio"]).is_file())
